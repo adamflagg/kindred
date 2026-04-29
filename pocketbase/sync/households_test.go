@@ -20,7 +20,7 @@ func TestTransformHouseholdToPB(t *testing.T) {
 	s := &HouseholdsSync{}
 
 	// Mock CampMinder API response (based on HouseholdDetails schema in persons.yaml)
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID":                    float64(123456),
 		"ClientID":              float64(754),
 		"Greeting":              "Hunter and Ashley",
@@ -29,7 +29,7 @@ func TestTransformHouseholdToPB(t *testing.T) {
 		"BillingMailingTitle":   "Mr. and Mrs Hunter Doe",
 		"HouseholdPhone":        "212-523-5555",
 		"LastUpdatedUTC":        "2025-01-15T10:30:00.000Z",
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1":      "123 Main St",
 			"Address2":      "Apt 4B",
 			"City":          "Boulder",
@@ -89,7 +89,7 @@ func TestTransformHouseholdHandlesMissingFields(t *testing.T) {
 	s := &HouseholdsSync{}
 
 	// Minimal data with only required fields
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
 	}
 
@@ -125,7 +125,7 @@ func TestTransformHouseholdRequiredIDError(t *testing.T) {
 	s := &HouseholdsSync{}
 
 	// Missing ID field
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"Greeting": "Hunter and Ashley",
 	}
 
@@ -140,7 +140,7 @@ func TestTransformHouseholdZeroIDError(t *testing.T) {
 	s := &HouseholdsSync{}
 
 	// ID=0 (invalid)
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(0),
 	}
 
@@ -155,15 +155,15 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 	s := &HouseholdsSync{}
 
 	// Mock persons data with households
-	personsData := []map[string]interface{}{
+	personsData := []map[string]any{
 		{
 			"ID": float64(1001),
-			"Households": map[string]interface{}{
-				"PrincipalHousehold": map[string]interface{}{
+			"Households": map[string]any{
+				"PrincipalHousehold": map[string]any{
 					"ID":       float64(100),
 					"Greeting": "The Johnson Family",
 				},
-				"PrimaryChildhoodHousehold": map[string]interface{}{
+				"PrimaryChildhoodHousehold": map[string]any{
 					"ID":       float64(100), // Same as principal
 					"Greeting": "The Johnson Family",
 				},
@@ -171,8 +171,8 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 		},
 		{
 			"ID": float64(1002),
-			"Households": map[string]interface{}{
-				"PrincipalHousehold": map[string]interface{}{
+			"Households": map[string]any{
+				"PrincipalHousehold": map[string]any{
 					"ID":       float64(200),
 					"Greeting": "The Garcia Family",
 				},
@@ -180,8 +180,8 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 		},
 		{
 			"ID": float64(1003),
-			"Households": map[string]interface{}{
-				"PrincipalHousehold": map[string]interface{}{
+			"Households": map[string]any{
+				"PrincipalHousehold": map[string]any{
 					"ID":       float64(100), // Duplicate - same as person 1001
 					"Greeting": "The Johnson Family",
 				},
@@ -219,9 +219,9 @@ func TestExtractHouseholdsFromPersons(t *testing.T) {
 func TestTransformHouseholdToPB_BillingAddressFields(t *testing.T) {
 	s := &HouseholdsSync{}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1":      "123 Main St",
 			"Address2":      "Apt 4B",
 			"City":          "Boulder",
@@ -263,9 +263,9 @@ func TestTransformHouseholdToPB_BillingAddressFields(t *testing.T) {
 func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testing.T) {
 	s := &HouseholdsSync{}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1":   "456 Oak St",
 			"City":       "Austin",
 			"State":      "TX", // Using State instead of StateProvince
@@ -290,9 +290,9 @@ func TestTransformHouseholdToPB_BillingAddressFields_StateFieldFallback(t *testi
 func TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback(t *testing.T) {
 	s := &HouseholdsSync{}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1": "789 Pine Ave",
 			"City":     "Seattle",
 			"State":    "WA",
@@ -317,7 +317,7 @@ func TestTransformHouseholdToPB_BillingAddressFields_ZipFieldFallback(t *testing
 func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T) {
 	s := &HouseholdsSync{}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
 		// No BillingAddress
 	}
@@ -345,9 +345,9 @@ func TestTransformHouseholdToPB_BillingAddressFields_MissingAddress(t *testing.T
 func TestTransformHouseholdToPB_BillingAddressFields_CountryDefault(t *testing.T) {
 	s := &HouseholdsSync{}
 
-	householdData := map[string]interface{}{
+	householdData := map[string]any{
 		"ID": float64(123456),
-		"BillingAddress": map[string]interface{}{
+		"BillingAddress": map[string]any{
 			"Address1": "123 Main St",
 			"City":     "Chicago",
 			"State":    "IL",

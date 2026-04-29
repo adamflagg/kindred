@@ -62,7 +62,7 @@ func TestCallAPIProcessor(t *testing.T) {
 				}
 
 				// Verify request body has expected fields
-				var reqBody map[string]interface{}
+				var reqBody map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 					t.Errorf("failed to decode request body: %v", err)
 				}
@@ -103,7 +103,7 @@ func TestCallAPIProcessor(t *testing.T) {
 // TestCallAPIProcessor_ForceField verifies the force field is serialized in the request body
 func TestCallAPIProcessor_ForceField(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
+		var reqBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 			t.Fatalf("failed to decode request body: %v", err)
 		}
@@ -140,7 +140,7 @@ func TestCallAPIProcessor_ForceField(t *testing.T) {
 // TestCallAPIProcessor_CollectTracesField verifies collect_traces is serialized in the request body
 func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var reqBody map[string]interface{}
+		var reqBody map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
 			t.Fatalf("failed to decode request body: %v", err)
 		}

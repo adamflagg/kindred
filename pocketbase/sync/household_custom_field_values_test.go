@@ -25,7 +25,7 @@ func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
 	// Mock CampMinder API response for a custom field value
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(100), // Custom field definition ID (used by caller to resolve PB ID)
 		"value": "Premium",
 	}
@@ -70,7 +70,7 @@ func TestTransformHouseholdCustomFieldValueToPB(t *testing.T) {
 func TestTransformHouseholdCustomFieldValueEmptyValue(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id":    float64(100),
 		"value": "",
 	}
@@ -86,7 +86,7 @@ func TestTransformHouseholdCustomFieldValueEmptyValue(t *testing.T) {
 func TestTransformHouseholdCustomFieldValueNilValue(t *testing.T) {
 	s := &HouseholdCustomFieldValuesSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"id": float64(100),
 		// Value is missing/nil
 	}

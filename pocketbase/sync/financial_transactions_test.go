@@ -34,7 +34,7 @@ func TestTransformTransactionToPB(t *testing.T) {
 	}
 
 	// Mock CampMinder API response (lowercase field names per OpenAPI spec)
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":          float64(57783711),
 		"transactionNumber":      float64(12345),
 		"season":                 float64(2025),
@@ -112,7 +112,7 @@ func TestTransformTransactionToPB(t *testing.T) {
 }
 
 // Test helper functions for field verification
-func verifyIntField(t *testing.T, data map[string]interface{}, field string, want int) {
+func verifyIntField(t *testing.T, data map[string]any, field string, want int) {
 	t.Helper()
 	got, ok := data[field].(int)
 	if !ok {
@@ -124,7 +124,7 @@ func verifyIntField(t *testing.T, data map[string]interface{}, field string, wan
 	}
 }
 
-func verifyFloatField(t *testing.T, data map[string]interface{}, field string, want float64) {
+func verifyFloatField(t *testing.T, data map[string]any, field string, want float64) {
 	t.Helper()
 	got, ok := data[field].(float64)
 	if !ok {
@@ -136,7 +136,7 @@ func verifyFloatField(t *testing.T, data map[string]interface{}, field string, w
 	}
 }
 
-func verifyStringField(t *testing.T, data map[string]interface{}, field, want string) {
+func verifyStringField(t *testing.T, data map[string]any, field, want string) {
 	t.Helper()
 	got, ok := data[field].(string)
 	if !ok {
@@ -148,7 +148,7 @@ func verifyStringField(t *testing.T, data map[string]interface{}, field, want st
 	}
 }
 
-func verifyBoolField(t *testing.T, data map[string]interface{}, field string, want bool) {
+func verifyBoolField(t *testing.T, data map[string]any, field string, want bool) {
 	t.Helper()
 	got, ok := data[field].(bool)
 	if !ok {
@@ -160,14 +160,14 @@ func verifyBoolField(t *testing.T, data map[string]interface{}, field string, wa
 	}
 }
 
-func verifyFieldSet(t *testing.T, data map[string]interface{}, field string) {
+func verifyFieldSet(t *testing.T, data map[string]any, field string) {
 	t.Helper()
 	if data[field] == nil || data[field] == "" {
 		t.Errorf("%s should be set", field)
 	}
 }
 
-func verifyFieldEmpty(t *testing.T, data map[string]interface{}, field string) {
+func verifyFieldEmpty(t *testing.T, data map[string]any, field string) {
 	t.Helper()
 	if data[field] != nil && data[field] != "" {
 		t.Errorf("%s should be nil/empty, got %v", field, data[field])
@@ -178,7 +178,7 @@ func TestTransformTransactionToPB_Reversed(t *testing.T) {
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":       float64(12345),
 		"season":              float64(2025),
 		"isReversed":          true,
@@ -204,7 +204,7 @@ func TestTransformTransactionToPB_MissingTransactionID(t *testing.T) {
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"season":              float64(2025),
 		"financialCategoryId": float64(100),
 		"amount":              float64(50.0),
@@ -220,7 +220,7 @@ func TestTransformTransactionToPB_ZeroTransactionID(t *testing.T) {
 	s := &FinancialTransactionsSync{}
 	lookupMaps := TransactionLookupMaps{}
 
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":       float64(0),
 		"season":              float64(2025),
 		"financialCategoryId": float64(100),
@@ -238,7 +238,7 @@ func TestTransformTransactionToPB_NullOptionalFields(t *testing.T) {
 	lookupMaps := TransactionLookupMaps{}
 
 	// Transaction with all optional relation fields as nil
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":          float64(12345),
 		"season":                 float64(2025),
 		"postDate":               "2025-11-11T00:00:00Z",
@@ -292,7 +292,7 @@ func TestTransformTransactionToPB_UnknownRelations(t *testing.T) {
 	// Empty lookup maps - relations won't be resolvable
 	lookupMaps := TransactionLookupMaps{}
 
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":       float64(12345),
 		"season":              float64(2025),
 		"financialCategoryId": float64(999), // Not in lookup map
@@ -327,7 +327,7 @@ func TestTransformTransactionToPB_NegativeAmount(t *testing.T) {
 	lookupMaps := TransactionLookupMaps{}
 
 	// Refund/credit with negative amount
-	transactionData := map[string]interface{}{
+	transactionData := map[string]any{
 		"transactionId":       float64(12345),
 		"season":              float64(2025),
 		"financialCategoryId": float64(100),

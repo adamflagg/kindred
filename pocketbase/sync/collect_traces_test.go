@@ -122,7 +122,7 @@ func TestCollectTraces_JSONSerialization(t *testing.T) {
 			t.Fatalf("failed to marshal request: %v", err)
 		}
 
-		var decoded map[string]interface{}
+		var decoded map[string]any
 		if err := json.Unmarshal(data, &decoded); err != nil {
 			t.Fatalf("failed to unmarshal: %v", err)
 		}
@@ -150,7 +150,7 @@ func TestCollectTraces_JSONSerialization(t *testing.T) {
 			t.Fatalf("failed to marshal request: %v", err)
 		}
 
-		var decoded map[string]interface{}
+		var decoded map[string]any
 		if err := json.Unmarshal(data, &decoded); err != nil {
 			t.Fatalf("failed to unmarshal: %v", err)
 		}
@@ -179,7 +179,7 @@ func TestCollectTraces_EndToEndFalseViaCallAPIProcessor(t *testing.T) {
 	var fieldPresent bool
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]interface{}
+		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Errorf("failed to decode request body: %v", err)
 			w.WriteHeader(500)

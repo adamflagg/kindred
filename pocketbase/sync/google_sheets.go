@@ -29,7 +29,7 @@ type TabPropertyUpdate struct {
 
 // SheetsWriter interface for writing to Google Sheets (enables mocking)
 type SheetsWriter interface {
-	WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{}) error
+	WriteToSheet(ctx context.Context, spreadsheetID, sheetTab string, data [][]any) error
 	ClearSheet(ctx context.Context, spreadsheetID, sheetTab string) error
 	EnsureSheet(ctx context.Context, spreadsheetID, sheetTab string) error
 	SetTabColor(ctx context.Context, spreadsheetID, sheetTab string, color TabColor) error
@@ -55,7 +55,7 @@ func NewRealSheetsWriter(service *sheets.Service) *RealSheetsWriter {
 
 // WriteToSheet writes data to a specific sheet tab
 func (w *RealSheetsWriter) WriteToSheet(
-	ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{},
+	ctx context.Context, spreadsheetID, sheetTab string, data [][]any,
 ) error {
 	valueRange := &sheets.ValueRange{
 		Values: data,
@@ -341,7 +341,7 @@ type PersonInfo struct {
 }
 
 // safeString safely converts an interface{} to string
-func safeString(v interface{}) string {
+func safeString(v any) string {
 	if v == nil {
 		return ""
 	}

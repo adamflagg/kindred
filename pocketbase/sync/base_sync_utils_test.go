@@ -9,7 +9,7 @@ import (
 func TestCompositeKey(t *testing.T) {
 	tests := []struct {
 		name     string
-		id       interface{}
+		id       any
 		year     int
 		expected string
 	}{
@@ -38,8 +38,8 @@ func TestFieldEquals(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		existing interface{}
-		newVal   interface{}
+		existing any
+		newVal   any
 		expected bool
 	}{
 		// Nil and empty equivalence
@@ -86,7 +86,7 @@ func TestFieldEquals(t *testing.T) {
 		{"different JSON arrays", `[1,2,3]`, `[1,2,4]`, false},
 
 		// Direct comparison
-		{"same interface values", interface{}(42), interface{}(42), true},
+		{"same interface values", any(42), any(42), true},
 	}
 
 	for _, tt := range tests {
@@ -186,8 +186,8 @@ func TestByteSliceHandling(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		existing interface{}
-		newVal   interface{}
+		existing any
+		newVal   any
 		expected bool
 	}{
 		{
@@ -225,9 +225,9 @@ func TestNormalizeToStringSlice(t *testing.T) {
 		{"nil input", nil, nil},
 		{"empty []string", []string{}, []string{}},
 		{"[]string with values", []string{"a", "b", "c"}, []string{"a", "b", "c"}},
-		{"empty []interface{}", []interface{}{}, []string{}},
-		{"[]interface{} with strings", []interface{}{"x", "y", "z"}, []string{"x", "y", "z"}},
-		{"[]interface{} with non-strings", []interface{}{"a", 123}, nil},
+		{"empty []interface{}", []any{}, []string{}},
+		{"[]interface{} with strings", []any{"x", "y", "z"}, []string{"x", "y", "z"}},
+		{"[]interface{} with non-strings", []any{"a", 123}, nil},
 		{"[]any with strings", []any{"p", "q"}, []string{"p", "q"}},
 		{"[]any with mixed types", []any{"a", true}, nil},
 		// Single string is intentionally converted to []string{str} because
@@ -268,8 +268,8 @@ func TestFieldEqualsSliceComparison(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		existing interface{}
-		newVal   interface{}
+		existing any
+		newVal   any
 		expected bool
 	}{
 		// Same type comparisons
@@ -278,17 +278,17 @@ func TestFieldEqualsSliceComparison(t *testing.T) {
 		{"different length []string", []string{"a", "b"}, []string{"a", "b", "c"}, false},
 
 		// Cross-type comparisons (PocketBase returns []interface{}, we set []string)
-		{"[]interface{} vs []string same", []interface{}{"id1", "id2"}, []string{"id1", "id2"}, true},
-		{"[]string vs []interface{} same", []string{"id1", "id2"}, []interface{}{"id1", "id2"}, true},
-		{"[]interface{} vs []string different", []interface{}{"id1", "id2"}, []string{"id1", "id3"}, false},
+		{"[]interface{} vs []string same", []any{"id1", "id2"}, []string{"id1", "id2"}, true},
+		{"[]string vs []interface{} same", []string{"id1", "id2"}, []any{"id1", "id2"}, true},
+		{"[]interface{} vs []string different", []any{"id1", "id2"}, []string{"id1", "id3"}, false},
 
 		// Order-independent comparison (sorted before compare)
 		{"same values different order", []string{"c", "a", "b"}, []string{"a", "b", "c"}, true},
-		{"[]interface{} vs []string different order", []interface{}{"z", "x", "y"}, []string{"x", "y", "z"}, true},
+		{"[]interface{} vs []string different order", []any{"z", "x", "y"}, []string{"x", "y", "z"}, true},
 
 		// Empty slices
 		{"both empty []string", []string{}, []string{}, true},
-		{"empty []interface{} vs empty []string", []interface{}{}, []string{}, true},
+		{"empty []interface{} vs empty []string", []any{}, []string{}, true},
 	}
 
 	for _, tt := range tests {

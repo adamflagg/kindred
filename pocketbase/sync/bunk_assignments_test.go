@@ -11,13 +11,13 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		assignmentData   map[string]interface{}
+		assignmentData   map[string]any
 		wantIsDeleted    bool
 		wantInRecordData bool
 	}{
 		{
 			name: "assignment with is_deleted false (active)",
-			assignmentData: map[string]interface{}{
+			assignmentData: map[string]any{
 				"ID":         float64(1000),
 				"PersonID":   float64(123),
 				"SessionID":  float64(1),
@@ -30,7 +30,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 		},
 		{
 			name: "assignment with is_deleted true (deleted)",
-			assignmentData: map[string]interface{}{
+			assignmentData: map[string]any{
 				"ID":         float64(1001),
 				"PersonID":   float64(124),
 				"SessionID":  float64(1),
@@ -43,7 +43,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 		},
 		{
 			name: "assignment without is_deleted field defaults to false",
-			assignmentData: map[string]interface{}{
+			assignmentData: map[string]any{
 				"ID":         float64(1002),
 				"PersonID":   float64(125),
 				"SessionID":  float64(1),
@@ -76,7 +76,7 @@ func TestBunkAssignmentsSync_processAssignment_ExtractsIsDeleted(t *testing.T) {
 				return
 			}
 			assignmentCMID := int(idFloat)
-			recordData := map[string]interface{}{
+			recordData := map[string]any{
 				"year":       2025,
 				"cm_id":      assignmentCMID,
 				"is_deleted": isDeleted,
@@ -98,7 +98,7 @@ func TestBunkAssignmentsSync_IsDeletedFieldTypes(t *testing.T) {
 	// Test handling of different IsDeleted field types from API
 	tests := []struct {
 		name      string
-		apiValue  interface{}
+		apiValue  any
 		wantValue bool
 		wantOk    bool
 	}{

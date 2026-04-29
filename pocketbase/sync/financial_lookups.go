@@ -64,7 +64,7 @@ func (s *FinancialLookupsSync) syncFinancialCategories(ctx context.Context) erro
 	slog.Info("Syncing financial categories")
 
 	// Pre-load existing records (global - no year filter)
-	preloadFn := func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -145,7 +145,7 @@ func (s *FinancialLookupsSync) syncPaymentMethods(ctx context.Context) error {
 	slog.Info("Syncing payment methods")
 
 	// Pre-load existing records (global - no year filter)
-	existingRecords, err := s.PreloadRecordsGlobal("payment_methods", "", func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecordsGlobal("payment_methods", "", func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -219,9 +219,9 @@ func (s *FinancialLookupsSync) syncPaymentMethods(ctx context.Context) error {
 // Transform functions
 
 func (s *FinancialLookupsSync) transformFinancialCategoryToPB(
-	data map[string]interface{},
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+	data map[string]any,
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// id (required) - API uses lowercase field names
 	idFloat, ok := data["id"].(float64)
@@ -247,8 +247,8 @@ func (s *FinancialLookupsSync) transformFinancialCategoryToPB(
 	return pbData, nil
 }
 
-func (s *FinancialLookupsSync) transformPaymentMethodToPB(data map[string]interface{}) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *FinancialLookupsSync) transformPaymentMethodToPB(data map[string]any) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// id (required) - API uses lowercase field names
 	idFloat, ok := data["id"].(float64)

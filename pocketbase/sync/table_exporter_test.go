@@ -186,7 +186,7 @@ func TestFieldResolver_ResolveMultiRelation(t *testing.T) {
 	}
 
 	// Input is array of PB IDs
-	ids := []interface{}{"tag_1", "tag_3"}
+	ids := []any{"tag_1", "tag_3"}
 	got := resolver.ResolveValue(ids, &col)
 
 	// Should be comma-separated names
@@ -214,7 +214,7 @@ func TestFieldResolver_ResolveMultiRelation_Empty(t *testing.T) {
 	}
 
 	// Empty array
-	got := resolver.ResolveValue([]interface{}{}, &col)
+	got := resolver.ResolveValue([]any{}, &col)
 	if got != "" {
 		t.Errorf("ResolveValue([]) = %q, want empty", got)
 	}
@@ -258,7 +258,7 @@ func TestBuildDataMatrix_Headers(t *testing.T) {
 	}
 
 	resolver := NewFieldResolver()
-	data := BuildDataMatrix([]map[string]interface{}{}, columns, resolver)
+	data := BuildDataMatrix([]map[string]any{}, columns, resolver)
 
 	// Should have header row
 	if len(data) != 1 {
@@ -288,7 +288,7 @@ func TestBuildDataMatrix_DataRows(t *testing.T) {
 		{Field: "grade", Header: "Grade", Type: FieldTypeNumber},
 	}
 
-	records := []map[string]interface{}{
+	records := []map[string]any{
 		{"first_name": "Emma", "grade": float64(5)},
 		{"first_name": "Liam", "grade": float64(6)},
 	}
@@ -385,7 +385,7 @@ func TestTableExporter_ExportCallsEnsureSheet(t *testing.T) {
 		},
 	}
 
-	records := []map[string]interface{}{
+	records := []map[string]any{
 		{"name": "Test Record"},
 	}
 
@@ -528,7 +528,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 	}
 
 	// Test 1: Both fields empty - should return empty
-	record := map[string]interface{}{
+	record := map[string]any{
 		"gender_identity_name":     "",
 		"gender_identity_write_in": "",
 	}
@@ -538,7 +538,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 	}
 
 	// Test 2: Standard field set, write-in empty - should return standard
-	record = map[string]interface{}{
+	record = map[string]any{
 		"gender_identity_name":     "Non-binary",
 		"gender_identity_write_in": "",
 	}
@@ -548,7 +548,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 	}
 
 	// Test 3: Both set - write-in should take precedence
-	record = map[string]interface{}{
+	record = map[string]any{
 		"gender_identity_name":     "Other",
 		"gender_identity_write_in": "Genderqueer",
 	}
@@ -558,7 +558,7 @@ func TestFieldResolver_ResolveWriteInOverride(t *testing.T) {
 	}
 
 	// Test 4: Write-in set, standard empty - should return write-in
-	record = map[string]interface{}{
+	record = map[string]any{
 		"gender_identity_name":     "",
 		"gender_identity_write_in": "Custom Identity",
 	}
@@ -759,7 +759,7 @@ func TestBuildDataMatrix_WriteInOverride(t *testing.T) {
 	}
 
 	// Record with write-in value (should override)
-	records := []map[string]interface{}{
+	records := []map[string]any{
 		{"gender_identity_name": "Other", "gender_identity_write_in": "Genderqueer"},
 		{"gender_identity_name": "Non-binary", "gender_identity_write_in": ""},
 		{"gender_identity_name": "", "gender_identity_write_in": ""},

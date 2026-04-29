@@ -63,7 +63,7 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load existing records for this year
-	existingRecords, err := s.PreloadRecords("households", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("households", filter, func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok {
 			return int(cmID), true
 		}
@@ -97,7 +97,7 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	slog.Info("Found unique persons from attendees for household extraction", "count", len(personIDs), "year", year)
 
 	// Track unique households across all batches
-	allHouseholds := make(map[int]map[string]interface{})
+	allHouseholds := make(map[int]map[string]any)
 
 	// Process persons in batches to extract households
 	batchSize := 500
@@ -198,12 +198,12 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 }
 
 // extractUniqueHouseholds extracts unique households from persons data
-func (s *HouseholdsSync) extractUniqueHouseholds(personsData []map[string]interface{}) []map[string]interface{} {
-	householdMap := make(map[int]map[string]interface{})
+func (s *HouseholdsSync) extractUniqueHouseholds(personsData []map[string]any) []map[string]any {
+	householdMap := make(map[int]map[string]any)
 
 	for _, person := range personsData {
 		// Get Households object from person
-		householdsObj, ok := person["Households"].(map[string]interface{})
+		householdsObj, ok := person["Households"].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -211,7 +211,7 @@ func (s *HouseholdsSync) extractUniqueHouseholds(personsData []map[string]interf
 		// Extract households from all three possible locations
 		householdTypes := []string{"PrincipalHousehold", "PrimaryChildhoodHousehold", "AlternateChildhoodHousehold"}
 		for _, hType := range householdTypes {
-			if household, ok := householdsObj[hType].(map[string]interface{}); ok {
+			if household, ok := householdsObj[hType].(map[string]any); ok {
 				if id, idOK := household["ID"].(float64); idOK && id > 0 {
 					// Store household, deduplicating by ID
 					householdMap[int(id)] = household
@@ -221,7 +221,7 @@ func (s *HouseholdsSync) extractUniqueHouseholds(personsData []map[string]interf
 	}
 
 	// Convert map to slice
-	result := make([]map[string]interface{}, 0, len(householdMap))
+	result := make([]map[string]any, 0, len(householdMap))
 	for _, household := range householdMap {
 		result = append(result, household)
 	}
@@ -231,10 +231,10 @@ func (s *HouseholdsSync) extractUniqueHouseholds(personsData []map[string]interf
 
 // transformHouseholdToPB transforms CampMinder household data to PocketBase format
 func (s *HouseholdsSync) transformHouseholdToPB(
-	data map[string]interface{},
+	data map[string]any,
 	year int,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract ID (required)
 	idFloat, ok := data["ID"].(float64)
@@ -283,7 +283,7 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 	pbData["billing_postal_code"] = ""
 	pbData["billing_country"] = ""
 
-	if billing, ok := data["BillingAddress"].(map[string]interface{}); ok {
+	if billing, ok := data["BillingAddress"].(map[string]any); ok {
 		hasAddressData := false
 
 		if addr1 := s.getString(billing, "Address1", ""); addr1 != "" {
@@ -340,7 +340,7 @@ func (s *HouseholdsSync) transformHouseholdToPB(
 }
 
 // getString extracts a string value from a map with a default fallback
-func (s *HouseholdsSync) getString(data map[string]interface{}, key, defaultValue string) string {
+func (s *HouseholdsSync) getString(data map[string]any, key, defaultValue string) string {
 	if val, ok := data[key].(string); ok {
 		return val
 	}

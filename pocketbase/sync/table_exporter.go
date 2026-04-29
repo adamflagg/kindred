@@ -161,7 +161,7 @@ func (r *FieldResolver) SetCMIDIndexedLookup(collection string, data map[int]str
 
 // ResolveWriteInOverride resolves write-in override fields
 // Returns write_in value if non-empty, otherwise standard field value
-func (r *FieldResolver) ResolveWriteInOverride(record map[string]interface{}, col *ColumnConfig) string {
+func (r *FieldResolver) ResolveWriteInOverride(record map[string]any, col *ColumnConfig) string {
 	// Check write-in field first
 	writeIn := safeString(record[col.WriteInField])
 	if writeIn != "" {
@@ -214,7 +214,7 @@ func (r *FieldResolver) LookupByCMID(collection string, cmID int) string {
 }
 
 // ResolveValue transforms a raw value based on column configuration
-func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) interface{} {
+func (r *FieldResolver) ResolveValue(value any, col *ColumnConfig) any {
 	if value == nil {
 		return ""
 	}
@@ -324,7 +324,7 @@ func (r *FieldResolver) ResolveValue(value interface{}, col *ColumnConfig) inter
 }
 
 // resolveMultiRelation handles multi-select relation fields
-func (r *FieldResolver) resolveMultiRelation(value interface{}, col *ColumnConfig) string {
+func (r *FieldResolver) resolveMultiRelation(value any, col *ColumnConfig) string {
 	// Handle nil
 	if value == nil {
 		return ""
@@ -333,7 +333,7 @@ func (r *FieldResolver) resolveMultiRelation(value interface{}, col *ColumnConfi
 	// Convert to slice of IDs
 	var ids []string
 	switch v := value.(type) {
-	case []interface{}:
+	case []any:
 		for _, item := range v {
 			if s := safeString(item); s != "" {
 				ids = append(ids, s)
@@ -364,14 +364,14 @@ func (r *FieldResolver) resolveMultiRelation(value interface{}, col *ColumnConfi
 }
 
 // resolveMultiSelect handles multi-select fields (non-relation) by joining values
-func (r *FieldResolver) resolveMultiSelect(value interface{}) string {
+func (r *FieldResolver) resolveMultiSelect(value any) string {
 	if value == nil {
 		return ""
 	}
 
 	var values []string
 	switch v := value.(type) {
-	case []interface{}:
+	case []any:
 		for _, item := range v {
 			if s := safeString(item); s != "" {
 				values = append(values, s)
@@ -394,15 +394,15 @@ func (r *FieldResolver) resolveMultiSelect(value interface{}) string {
 // BuildDataMatrix converts records to a 2D array for Google Sheets
 // First row contains headers, subsequent rows contain data
 func BuildDataMatrix(
-	records []map[string]interface{},
+	records []map[string]any,
 	columns []ColumnConfig,
 	resolver *FieldResolver,
-) [][]interface{} {
+) [][]any {
 	// Preallocate: 1 header row + data rows
-	data := make([][]interface{}, 0, 1+len(records))
+	data := make([][]any, 0, 1+len(records))
 
 	// Build header row (use index to avoid copying 136-byte struct)
-	headers := make([]interface{}, len(columns))
+	headers := make([]any, len(columns))
 	for i := range columns {
 		headers[i] = columns[i].Header
 	}
@@ -410,7 +410,7 @@ func BuildDataMatrix(
 
 	// Build data rows (use index to avoid copying 136-byte struct)
 	for _, record := range records {
-		row := make([]interface{}, len(columns))
+		row := make([]any, len(columns))
 		for i := range columns {
 			col := &columns[i]
 			// WriteInOverride needs access to full record
@@ -446,7 +446,7 @@ func NewTableExporter(writer SheetsWriter, resolver *FieldResolver, spreadsheetI
 }
 
 // Export exports records to a Google Sheet tab
-func (e *TableExporter) Export(ctx context.Context, config *ExportConfig, records []map[string]interface{}) error {
+func (e *TableExporter) Export(ctx context.Context, config *ExportConfig, records []map[string]any) error {
 	// Get the resolved sheet name
 	sheetName := config.GetResolvedSheetName(e.year)
 

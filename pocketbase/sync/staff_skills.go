@@ -212,7 +212,7 @@ func (s *StaffSkillsSync) Sync(ctx context.Context) error {
 		demo := demographics[sv.personCMID]
 
 		// Build record data
-		recordData := map[string]interface{}{
+		recordData := map[string]any{
 			"person_id":       sv.personCMID,
 			"skill_cm_id":     sv.skillCMID,
 			"skill_name":      sv.skillName,
@@ -352,7 +352,7 @@ func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
 	}
 
 	// Handle as []interface{} (JSON array from record.Get())
-	if arr, ok := rawValue.([]interface{}); ok {
+	if arr, ok := rawValue.([]any); ok {
 		for _, v := range arr {
 			if str, ok := v.(string); ok && str == partitionStaff {
 				return true
@@ -633,7 +633,7 @@ func (s *StaffSkillsSync) preloadExistingRecords(year int) (map[string]*core.Rec
 // Uses compareFields (inclusion list): only the listed fields are checked for changes.
 // Delegates to the shared compareRecordNeedsUpdate in base_sync.go.
 func (s *StaffSkillsSync) recordNeedsUpdate(
-	existing *core.Record, newData map[string]interface{}, compareFields []string,
+	existing *core.Record, newData map[string]any, compareFields []string,
 ) bool {
 	return compareRecordNeedsUpdate(existing, newData, compareFields)
 }

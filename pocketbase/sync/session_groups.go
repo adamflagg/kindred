@@ -36,7 +36,7 @@ func (s *SessionGroupsSync) Sync(ctx context.Context) error {
 	filter := fmt.Sprintf("year = %d", year)
 
 	// Pre-load existing records for this year
-	existingRecords, err := s.PreloadRecords("session_groups", filter, func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecords("session_groups", filter, func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok {
 			return int(cmID), true
 		}
@@ -136,10 +136,10 @@ func (s *SessionGroupsSync) Sync(ctx context.Context) error {
 
 // transformSessionGroupToPB transforms CampMinder session group data to PocketBase format
 func (s *SessionGroupsSync) transformSessionGroupToPB(
-	data map[string]interface{},
+	data map[string]any,
 	year int,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract group ID (required)
 	groupIDFloat, ok := data["ID"].(float64)

@@ -21,7 +21,7 @@ func TestTransformPersonTagDefinitionToPB(t *testing.T) {
 
 	// Mock CampMinder API response (based on TagDef schema in persons.yaml)
 	// Note: TagDef does NOT have an ID field - Name is the identifier
-	tagData := map[string]interface{}{
+	tagData := map[string]any{
 		"Name":           "Alumni",
 		"IsSeasonal":     true,
 		"IsHidden":       false,
@@ -57,7 +57,7 @@ func TestTransformPersonTagDefinitionHandlesMissingFields(t *testing.T) {
 	s := &PersonTagDefinitionsSync{}
 
 	// Minimal data with only required fields
-	tagData := map[string]interface{}{
+	tagData := map[string]any{
 		"Name": "Volunteer",
 	}
 
@@ -85,7 +85,7 @@ func TestTransformPersonTagDefinitionRequiredNameError(t *testing.T) {
 	s := &PersonTagDefinitionsSync{}
 
 	// Missing Name field
-	tagData := map[string]interface{}{
+	tagData := map[string]any{
 		"IsSeasonal": true,
 	}
 
@@ -100,7 +100,7 @@ func TestTransformPersonTagDefinitionEmptyNameError(t *testing.T) {
 	s := &PersonTagDefinitionsSync{}
 
 	// Empty Name field
-	tagData := map[string]interface{}{
+	tagData := map[string]any{
 		"Name": "",
 	}
 

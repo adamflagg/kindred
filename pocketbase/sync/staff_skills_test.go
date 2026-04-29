@@ -234,28 +234,28 @@ func TestIsStaffPartition(t *testing.T) {
 func TestContainsStaffPartitionWithJSONArray(t *testing.T) {
 	tests := []struct {
 		name        string
-		rawValue    interface{}
+		rawValue    any
 		wantIsStaff bool
 	}{
 		// JSON array with Staff
 		{
 			name:        "JSON array with Staff only",
-			rawValue:    []interface{}{"Staff"},
+			rawValue:    []any{"Staff"},
 			wantIsStaff: true,
 		},
 		{
 			name:        "JSON array with Staff and others",
-			rawValue:    []interface{}{"Camper", "Staff", "Alumnus"},
+			rawValue:    []any{"Camper", "Staff", "Alumnus"},
 			wantIsStaff: true,
 		},
 		{
 			name:        "JSON array without Staff",
-			rawValue:    []interface{}{"Camper", "Parent"},
+			rawValue:    []any{"Camper", "Parent"},
 			wantIsStaff: false,
 		},
 		{
 			name:        "empty JSON array",
-			rawValue:    []interface{}{},
+			rawValue:    []any{},
 			wantIsStaff: false,
 		},
 		// String array variant
@@ -290,13 +290,13 @@ func TestContainsStaffPartitionWithJSONArray(t *testing.T) {
 
 // containsStaffPartitionFromRaw handles both JSON array (from Get) and string (from GetString)
 // This is what the fix should implement in staff_skills.go
-func containsStaffPartitionFromRaw(rawValue interface{}) bool {
+func containsStaffPartitionFromRaw(rawValue any) bool {
 	if rawValue == nil {
 		return false
 	}
 
 	// Handle as []interface{} (JSON array from record.Get())
-	if arr, ok := rawValue.([]interface{}); ok {
+	if arr, ok := rawValue.([]any); ok {
 		for _, v := range arr {
 			if str, ok := v.(string); ok && str == partitionStaff {
 				return true
@@ -863,7 +863,7 @@ func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("last_name", testLastName)
 		existing.Set("person", "pb_abc123")
 
-		newData := map[string]interface{}{
+		newData := map[string]any{
 			"skill_name":      "Archery",
 			"is_intermediate": true,
 			"is_experienced":  false,
@@ -892,7 +892,7 @@ func TestStaffSkillsRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("last_name", testLastName)
 		existing.Set("person", "pb_abc123")
 
-		newData := map[string]interface{}{
+		newData := map[string]any{
 			"skill_name":      "Archery",
 			"is_intermediate": true,
 			"is_experienced":  true,

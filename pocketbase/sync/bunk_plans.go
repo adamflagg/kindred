@@ -264,10 +264,10 @@ func (s *BunkPlansSync) syncBunkPlans(ctx context.Context) error {
 }
 
 // processBunkPlan processes a single bunk plan record and returns the number of assignments created
-func (s *BunkPlansSync) processBunkPlan(planData map[string]interface{}) (int, error) {
+func (s *BunkPlansSync) processBunkPlan(planData map[string]any) (int, error) {
 	planID, _ := planData["ID"].(float64)
-	bunkIDs, _ := planData["BunkIDs"].([]interface{})
-	sessionIDs, _ := planData["SessionIDs"].([]interface{})
+	bunkIDs, _ := planData["BunkIDs"].([]any)
+	sessionIDs, _ := planData["SessionIDs"].([]any)
 
 	// Extract name and code fields
 	name, _ := planData["Name"].(string)
@@ -399,7 +399,7 @@ func (s *BunkPlansSync) createBunkPlan(planID, bunkCMID, sessionCMID int, name, 
 	s.TrackProcessedCompositeKey(key, year)
 
 	// Prepare data for the record
-	recordData := map[string]interface{}{
+	recordData := map[string]any{
 		"year":      year,
 		"cm_id":     planID, // The plan's own CampMinder ID
 		"name":      name,

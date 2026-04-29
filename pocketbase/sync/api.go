@@ -171,7 +171,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 						continue
 					}
 					if !validFields[f] {
-						return e.JSON(http.StatusBadRequest, map[string]interface{}{
+						return e.JSON(http.StatusBadRequest, map[string]any{
 							"error": fmt.Sprintf(
 								"Invalid source_field: %s. Valid options: "+
 									"bunk_with, not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
@@ -188,7 +188,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 				if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
 					limit = l
 				} else {
-					return e.JSON(http.StatusBadRequest, map[string]interface{}{
+					return e.JSON(http.StatusBadRequest, map[string]any{
 						"error": "Invalid limit parameter. Must be a positive integer.",
 					})
 				}
@@ -485,7 +485,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -509,7 +509,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 	// Get current year from environment
 	currentYear, err := ParseSeasonYear()
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return e.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
 
 	// Get user info for queue tracking
@@ -528,14 +528,14 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		// Queue the individual sync with debug flag
 		qs, err := orchestrator.EnqueueIndividualSync(currentYear, syncType, nil, debug, requestedBy)
 		if err != nil {
-			return e.JSON(http.StatusConflict, map[string]interface{}{
+			return e.JSON(http.StatusConflict, map[string]any{
 				"error": err.Error(),
 			})
 		}
 
 		// Successfully queued - return 202 Accepted
 		position := orchestrator.GetQueuePositionByID(qs.ID)
-		return e.JSON(http.StatusAccepted, map[string]interface{}{
+		return e.JSON(http.StatusAccepted, map[string]any{
 			"status":   "queued",
 			"queue_id": qs.ID,
 			"position": position,
@@ -568,7 +568,7 @@ func handleIndividualSync(e *core.RequestEvent, scheduler *Scheduler, syncType s
 		processQueuedSyncs(orchestrator)
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
@@ -583,7 +583,7 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if any bunking-related sync is already running
 	for _, job := range GetRefreshBunkingJobs() {
 		if orchestrator.IsRunning(job) {
-			return e.JSON(http.StatusConflict, map[string]interface{}{
+			return e.JSON(http.StatusConflict, map[string]any{
 				"error":  "Bunking sync already in progress",
 				"status": "running",
 			})
@@ -600,7 +600,7 @@ func handleRefreshBunking(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message": "Bunking refresh started (bunks, plans, assignments)",
 		"status":  "started",
 	})
@@ -739,20 +739,20 @@ func saveCSVWithBackup(csvDir string, uploadYear int, csvData []byte) (string, e
 func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error {
 	form, err := e.Request.MultipartReader()
 	if err != nil {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{"error": "Invalid multipart form"})
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": "Invalid multipart form"})
 	}
 
 	// Read and validate CSV from form
 	uploadResult, err := readCSVFromMultipart(form)
 	if err != nil {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{"error": err.Error()})
+		return e.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}
 
 	// Parse and validate CSV headers
 	headers, err := parseAndValidateCSV(uploadResult.data)
 	if err != nil {
 		slog.Error("CSV parsing error", "error", err)
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error":     err.Error(),
 			"details":   "Please ensure the file is a valid CSV with comma-separated values",
 			"file_size": len(uploadResult.data),
@@ -763,7 +763,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	// Check required columns
 	requiredColumns := []string{"PersonID", "Last Name", "First Name"}
 	if missing := findMissingColumns(headers, requiredColumns); len(missing) > 0 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error":            "Missing required columns",
 			"missing_columns":  missing,
 			"found_columns":    headers,
@@ -774,18 +774,18 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 	// Determine upload year and save file
 	uploadYear, err := determineUploadYear(e.Request.URL.Query().Get("year"))
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return e.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
 	csvDir := filepath.Join(scheduler.app.DataDir(), "bunk_requests")
 
 	latestPath, err := saveCSVWithBackup(csvDir, uploadYear, uploadResult.data)
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
+		return e.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
 	}
 	slog.Info("CSV file saved", "year", uploadYear, "path", latestPath)
 
 	// Update metadata
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"filename":     uploadResult.filename,
 		"uploaded_at":  time.Now().Format(time.RFC3339),
 		"size":         len(uploadResult.data),
@@ -855,7 +855,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 		}
 	}
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":                  "CSV uploaded successfully",
 		"filename":                 uploadResult.filename,
 		"header_count":             len(headers),
@@ -910,7 +910,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"household_custom_values",
 	}
 
-	statuses := make(map[string]interface{})
+	statuses := make(map[string]any)
 	for _, syncType := range syncTypes {
 		if status := orchestrator.GetStatus(syncType); status != nil {
 			statuses[syncType] = status
@@ -942,9 +942,9 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Add queue info
 	queue := orchestrator.GetQueuedSyncs()
-	queueInfo := make([]map[string]interface{}, len(queue))
+	queueInfo := make([]map[string]any, len(queue))
 	for i, qs := range queue {
-		queueInfo[i] = map[string]interface{}{
+		queueInfo[i] = map[string]any{
 			"id":                    qs.ID,
 			"year":                  qs.Year,
 			"type":                  qs.Type, // "unified", "phase", "individual"
@@ -960,7 +960,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Add current run progress (remaining jobs in current sequence)
 	runType, remaining, total, completed := orchestrator.GetCurrentRunProgress()
 	if runType != "" {
-		statuses["_current_run"] = map[string]interface{}{
+		statuses["_current_run"] = map[string]any{
 			"type":           runType,
 			"total_jobs":     total,
 			"completed_jobs": completed,
@@ -979,14 +979,14 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearStr := e.Request.URL.Query().Get("year")
 	if yearStr == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter",
 		})
 	}
 
 	year, err := strconv.Atoi(yearStr)
 	if err != nil || year < 2017 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be 2017 or later.",
 		})
 	}
@@ -1000,7 +1000,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get current year from environment
 	currentYear, yerr := ParseSeasonYear()
 	if yerr != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{"error": yerr.Error()})
+		return e.JSON(http.StatusInternalServerError, map[string]any{"error": yerr.Error()})
 	}
 
 	// Parse optional query parameters
@@ -1026,14 +1026,14 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		qs, err := orchestrator.EnqueueUnifiedSync(year, service, includeCustomValues, debug, requestedBy)
 		if err != nil {
 			// Queue is full
-			return e.JSON(http.StatusConflict, map[string]interface{}{
+			return e.JSON(http.StatusConflict, map[string]any{
 				"error": err.Error(),
 			})
 		}
 
 		// Successfully queued - return 202 Accepted
 		position := orchestrator.GetQueuePositionByID(qs.ID)
-		return e.JSON(http.StatusAccepted, map[string]interface{}{
+		return e.JSON(http.StatusAccepted, map[string]any{
 			"status":              "queued",
 			"queue_id":            qs.ID,
 			"position":            position,
@@ -1101,7 +1101,7 @@ func handleUnifiedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		processQueuedSyncs(orchestrator)
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":             "Sync started",
 		"year":                year,
 		"service":             service,
@@ -1289,7 +1289,7 @@ func handleCancelQueuedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get the queue ID from path parameter
 	id := e.Request.PathValue("id")
 	if id == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing queue ID",
 		})
 	}
@@ -1298,13 +1298,13 @@ func handleCancelQueuedSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Try to cancel the queued sync
 	if !orchestrator.CancelQueuedSync(id) {
-		return e.JSON(http.StatusNotFound, map[string]interface{}{
+		return e.JSON(http.StatusNotFound, map[string]any{
 			"error": "Queued sync not found",
 			"id":    id,
 		})
 	}
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message": "Queued sync canceled",
 		"id":      id,
 	})
@@ -1316,12 +1316,12 @@ func handleCancelRunningSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Try to cancel the running sync
 	if !orchestrator.CancelRunningSync() {
-		return e.JSON(http.StatusNotFound, map[string]interface{}{
+		return e.JSON(http.StatusNotFound, map[string]any{
 			"error": "No sync currently running",
 		})
 	}
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message": "Running sync canceled",
 	})
 }
@@ -1330,7 +1330,7 @@ func handleCancelRunningSync(e *core.RequestEvent, scheduler *Scheduler) error {
 func handleHourlySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if hourly sync is already running
 	if scheduler.IsHourlySyncRunning() {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error": "Hourly sync already in progress",
 		})
 	}
@@ -1338,7 +1338,7 @@ func handleHourlySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Trigger hourly sync
 	scheduler.TriggerHourlySync()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message": "Hourly sync triggered",
 	})
 }
@@ -1347,7 +1347,7 @@ func handleHourlySync(e *core.RequestEvent, scheduler *Scheduler) error {
 func handleWeeklySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if weekly sync is already running
 	if scheduler.IsWeeklySyncRunning() {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error": "Weekly sync already in progress",
 		})
 	}
@@ -1355,7 +1355,7 @@ func handleWeeklySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Trigger weekly sync
 	scheduler.TriggerWeeklySync()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Weekly sync triggered",
 		"services": GetWeeklySyncJobs(),
 	})
@@ -1367,7 +1367,7 @@ func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if custom values sync is already running
 	if orchestrator.IsRunning("person_custom_values") || orchestrator.IsRunning("household_custom_values") {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error": "Custom values sync already in progress",
 		})
 	}
@@ -1375,7 +1375,7 @@ func handleCustomValuesSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Trigger custom values sync
 	scheduler.TriggerCustomValuesSync()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Custom values sync triggered",
 		"services": GetCustomValuesSyncJobs(),
 	})
@@ -1394,7 +1394,7 @@ func handleGetAvailableYears(e *core.RequestEvent, app *pocketbase.PocketBase) e
 	`).Column(&years)
 
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Failed to query available years",
 		})
 	}
@@ -1405,7 +1405,7 @@ func handleGetAvailableYears(e *core.RequestEvent, app *pocketbase.PocketBase) e
 		currentYear = time.Now().Year()
 	}
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"current":   currentYear,
 		"available": years,
 	})
@@ -1417,7 +1417,7 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Get the base client
 	if orchestrator.baseClient == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "CampMinder client not initialized",
 			"hint":  "Check that CAMPMINDER_API_KEY, CAMPMINDER_CLIENT_ID, and CAMPMINDER_SEASON_ID are set",
 		})
@@ -1427,11 +1427,11 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 	// We'll use GetSessions as it's a read-only operation
 	sessions, err := orchestrator.baseClient.GetSessions()
 	if err != nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error":   "CampMinder connection failed",
 			"details": err.Error(),
 			"hint":    "Check API credentials and network connectivity",
-			"config": map[string]interface{}{
+			"config": map[string]any{
 				"client_id": orchestrator.baseClient.GetClientID(),
 				"season_id": orchestrator.baseClient.GetSeasonID(),
 			},
@@ -1439,10 +1439,10 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 
 	// Success - return connection info
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"status":  "connected",
 		"message": "CampMinder client connection successful",
-		"config": map[string]interface{}{
+		"config": map[string]any{
 			"client_id":      orchestrator.baseClient.GetClientID(),
 			"season_id":      orchestrator.baseClient.GetSeasonID(),
 			"sessions_found": len(sessions),
@@ -1458,7 +1458,7 @@ func handleTestConnection(e *core.RequestEvent, scheduler *Scheduler) error {
 func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Check if Google Sheets is configured
 	if !google.IsEnabled() {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Google Sheets export is not enabled",
 			"hint":  "Set GOOGLE_SHEETS_ENABLED=true and configure credentials",
 		})
@@ -1468,7 +1468,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 	yearsParam := e.Request.URL.Query().Get("years")
 	years, err := ParseExportYearsParam(yearsParam)
 	if err != nil {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": fmt.Sprintf("Invalid years parameter: %v", err),
 		})
 	}
@@ -1485,7 +1485,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 	if len(years) > 0 {
 		currentYear := time.Now().Year()
 		if err := ValidateExportYears(years, currentYear); err != nil {
-			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": err.Error(),
 			})
 		}
@@ -1495,7 +1495,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 
 	// Check if already running
 	if orchestrator.IsRunning("multi_workbook_export") {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Multi-workbook export already in progress",
 			"status":   "running",
 			"syncType": "multi_workbook_export",
@@ -1506,7 +1506,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 	service := orchestrator.GetService("multi_workbook_export")
 	multiExport, ok := service.(*MultiWorkbookExport)
 	if !ok || multiExport == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Multi-workbook export service not available",
 			"hint":  "Ensure GOOGLE_SHEETS_ENABLED=true and credentials are configured",
 		})
@@ -1536,7 +1536,7 @@ func handleMultiWorkbookExport(e *core.RequestEvent, scheduler *Scheduler) error
 	}()
 
 	// Build response
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message":  "Multi-workbook export started",
 		"status":   "started",
 		"syncType": "multi_workbook_export",
@@ -1565,7 +1565,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 
 	// Validate session parameter
 	if !IsValidSession(session) {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
 		})
 	}
@@ -1577,7 +1577,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*PersonCustomFieldValuesSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Person custom field values sync service not found",
 		})
 	}
@@ -1587,7 +1587,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 	// Mark as running BEFORE starting goroutine to prevent race condition
 	// This ensures the first frontend poll sees the sync as active
 	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
 			"syncType": syncType,
@@ -1616,7 +1616,7 @@ func handlePersonCustomFieldValuesSync(e *core.RequestEvent, scheduler *Schedule
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
@@ -1641,7 +1641,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 
 	// Validate session parameter
 	if !IsValidSession(session) {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid session parameter. Must be 'all' or a numeric session cm_id.",
 		})
 	}
@@ -1653,7 +1653,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*HouseholdCustomFieldValuesSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Household custom field values sync service not found",
 		})
 	}
@@ -1663,7 +1663,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 	// Mark as running BEFORE starting goroutine to prevent race condition
 	// This ensures the first frontend poll sees the sync as active
 	if err := orchestrator.MarkSyncRunning(syncType); err != nil {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    err.Error(),
 			"status":   "running",
 			"syncType": syncType,
@@ -1692,7 +1692,7 @@ func handleHouseholdCustomFieldValuesSync(e *core.RequestEvent, scheduler *Sched
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  fmt.Sprintf("%s sync started", syncType),
 		"status":   "started",
 		"syncType": syncType,
@@ -1709,7 +1709,7 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -1723,7 +1723,7 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 		if y, err := strconv.Atoi(yearParam); err == nil && y >= 2017 && y <= time.Now().Year() {
 			year = y
 		} else {
-			return e.JSON(http.StatusBadRequest, map[string]interface{}{
+			return e.JSON(http.StatusBadRequest, map[string]any{
 				"error": "Invalid year parameter. Must be between 2017 and current year.",
 			})
 		}
@@ -1762,7 +1762,7 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 			}
 		}()
 
-		return e.JSON(http.StatusOK, map[string]interface{}{
+		return e.JSON(http.StatusOK, map[string]any{
 			"message":  "Financial transactions historical sync started",
 			"status":   "started",
 			"syncType": syncType,
@@ -1792,7 +1792,7 @@ func handleFinancialTransactionsSync(e *core.RequestEvent, scheduler *Scheduler)
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Financial transactions sync started",
 		"status":   "started",
 		"syncType": syncType,
@@ -1807,7 +1807,7 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper history computation already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -1817,14 +1817,14 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -1836,7 +1836,7 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*CamperHistorySync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Camper history sync service not found",
 		})
 	}
@@ -1865,7 +1865,7 @@ func handleCamperHistorySync(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper history computation started",
 		"status":   "started",
 		"syncType": syncType,
@@ -1882,7 +1882,7 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Family camp derived computation already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -1892,14 +1892,14 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -1911,7 +1911,7 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*FamilyCampDerivedSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Family camp derived sync service not found",
 		})
 	}
@@ -1940,7 +1940,7 @@ func handleFamilyCampDerivedSync(e *core.RequestEvent, scheduler *Scheduler) err
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Family camp derived computation started",
 		"status":   "started",
 		"syncType": syncType,
@@ -1957,7 +1957,7 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff skills sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -1967,14 +1967,14 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -1986,7 +1986,7 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*StaffSkillsSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Staff skills sync service not found",
 		})
 	}
@@ -2016,7 +2016,7 @@ func handleStaffSkillsSync(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff skills extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2033,7 +2033,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Financial aid applications sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2043,14 +2043,14 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2062,7 +2062,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*FinancialAidApplicationsSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Financial aid applications sync service not found",
 		})
 	}
@@ -2091,7 +2091,7 @@ func handleFinancialAidApplicationsSync(e *core.RequestEvent, scheduler *Schedul
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Financial aid applications extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2108,7 +2108,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Household demographics computation already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2118,14 +2118,14 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2137,7 +2137,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*HouseholdDemographicsSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Household demographics sync service not found",
 		})
 	}
@@ -2167,7 +2167,7 @@ func handleHouseholdDemographicsSync(e *core.RequestEvent, scheduler *Scheduler)
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Household demographics computation started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2214,7 +2214,7 @@ func handleGetPhases(e *core.RequestEvent) error {
 		})
 	}
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"phases": result,
 	})
 }
@@ -2228,14 +2228,14 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2243,7 +2243,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required phase parameter
 	phaseParam := e.Request.URL.Query().Get("phase")
 	if phaseParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required phase parameter. Use ?phase=<source|expensive|transform|process|export>",
 		})
 	}
@@ -2258,7 +2258,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}
 	if !validPhase {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error":        "Invalid phase parameter",
 			"valid_phases": []string{"source", "expensive", "transform", "process", "export"},
 		})
@@ -2267,7 +2267,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get jobs for this phase
 	jobs := GetJobsForPhase(phase)
 	if len(jobs) == 0 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "No jobs found for phase: " + string(phase),
 		})
 	}
@@ -2289,14 +2289,14 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		// Queue the phase sync instead of returning conflict (pass debug flag)
 		qs, err := orchestrator.EnqueuePhaseSync(year, phase, debug, requestedBy)
 		if err != nil {
-			return e.JSON(http.StatusConflict, map[string]interface{}{
+			return e.JSON(http.StatusConflict, map[string]any{
 				"error": err.Error(),
 			})
 		}
 
 		// Successfully queued - return 202 Accepted
 		position := orchestrator.GetQueuePositionByID(qs.ID)
-		response := map[string]interface{}{
+		response := map[string]any{
 			"status":   "queued",
 			"queue_id": qs.ID,
 			"position": position,
@@ -2376,7 +2376,7 @@ func handleRunPhase(e *core.RequestEvent, scheduler *Scheduler) error {
 		processQueuedSyncs(orchestrator)
 	}()
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"message": "Phase sync started",
 		"status":  "started",
 		"phase":   string(phase),
@@ -2395,7 +2395,7 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper dietary sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2405,14 +2405,14 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2420,7 +2420,7 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*CamperDietarySync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Camper dietary sync service not found",
 		})
 	}
@@ -2446,7 +2446,7 @@ func handleCamperDietarySync(e *core.RequestEvent, scheduler *Scheduler) error {
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper dietary extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2462,7 +2462,7 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Camper transportation sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2472,14 +2472,14 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2487,7 +2487,7 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*CamperTransportationSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Camper transportation sync service not found",
 		})
 	}
@@ -2513,7 +2513,7 @@ func handleCamperTransportationSync(e *core.RequestEvent, scheduler *Scheduler) 
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Camper transportation extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2529,7 +2529,7 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Quest registrations sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2539,14 +2539,14 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2554,7 +2554,7 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*QuestRegistrationsSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Quest registrations sync service not found",
 		})
 	}
@@ -2580,7 +2580,7 @@ func handleQuestRegistrationsSync(e *core.RequestEvent, scheduler *Scheduler) er
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Quest registrations extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2596,7 +2596,7 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff applications sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2606,14 +2606,14 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2621,7 +2621,7 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*StaffApplicationsSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Staff applications sync service not found",
 		})
 	}
@@ -2647,7 +2647,7 @@ func handleStaffApplicationsSync(e *core.RequestEvent, scheduler *Scheduler) err
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff applications extraction started",
 		"status":   "started",
 		"syncType": syncType,
@@ -2663,7 +2663,7 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 
 	// Check if already running
 	if orchestrator.IsRunning(syncType) {
-		return e.JSON(http.StatusConflict, map[string]interface{}{
+		return e.JSON(http.StatusConflict, map[string]any{
 			"error":    "Staff vehicle info sync already in progress",
 			"status":   "running",
 			"syncType": syncType,
@@ -2673,14 +2673,14 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	// Parse required year parameter
 	yearParam := e.Request.URL.Query().Get("year")
 	if yearParam == "" {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Missing required year parameter. Use ?year=YYYY",
 		})
 	}
 
 	year, err := strconv.Atoi(yearParam)
 	if err != nil || year < 2017 || year > 2050 {
-		return e.JSON(http.StatusBadRequest, map[string]interface{}{
+		return e.JSON(http.StatusBadRequest, map[string]any{
 			"error": "Invalid year parameter. Must be between 2017 and 2050.",
 		})
 	}
@@ -2688,7 +2688,7 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 	// Get the service and set options
 	service, ok := orchestrator.GetService(syncType).(*StaffVehicleInfoSync)
 	if !ok || service == nil {
-		return e.JSON(http.StatusInternalServerError, map[string]interface{}{
+		return e.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "Staff vehicle info sync service not found",
 		})
 	}
@@ -2714,7 +2714,7 @@ func handleStaffVehicleInfoSync(e *core.RequestEvent, scheduler *Scheduler) erro
 		}
 	}()
 
-	return e.JSON(http.StatusOK, map[string]interface{}{
+	return e.JSON(http.StatusOK, map[string]any{
 		"message":  "Staff vehicle info extraction started",
 		"status":   "started",
 		"syncType": syncType,

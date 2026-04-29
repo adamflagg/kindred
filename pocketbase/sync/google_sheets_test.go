@@ -8,7 +8,7 @@ import (
 
 // MockSheetsWriter implements SheetsWriter interface for testing
 type MockSheetsWriter struct {
-	WrittenData   map[string][][]interface{} // sheetName -> rows
+	WrittenData   map[string][][]any // sheetName -> rows
 	ClearedTabs   []string
 	EnsuredTabs   []string            // Tracks tabs that were ensured to exist
 	ExistingTabs  map[string]bool     // Simulates which tabs already exist
@@ -35,7 +35,7 @@ type MockSheetsWriter struct {
 
 func NewMockSheetsWriter() *MockSheetsWriter {
 	return &MockSheetsWriter{
-		WrittenData:     make(map[string][][]interface{}),
+		WrittenData:     make(map[string][][]any),
 		ClearedTabs:     []string{},
 		EnsuredTabs:     []string{},
 		ExistingTabs:    make(map[string]bool),
@@ -47,7 +47,7 @@ func NewMockSheetsWriter() *MockSheetsWriter {
 	}
 }
 
-func (m *MockSheetsWriter) WriteToSheet(_ context.Context, _, sheetTab string, data [][]interface{}) error {
+func (m *MockSheetsWriter) WriteToSheet(_ context.Context, _, sheetTab string, data [][]any) error {
 	if m.WriteError != nil {
 		return m.WriteError
 	}

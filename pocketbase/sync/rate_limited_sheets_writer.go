@@ -68,7 +68,7 @@ func NewRateLimitedSheetsWriter(inner SheetsWriter, config *SheetsRateLimitConfi
 
 // WriteToSheet delegates to inner writer with rate limiting and 429 retry.
 func (w *RateLimitedSheetsWriter) WriteToSheet(
-	ctx context.Context, spreadsheetID, sheetTab string, data [][]interface{},
+	ctx context.Context, spreadsheetID, sheetTab string, data [][]any,
 ) error {
 	return w.executeWithRetry(ctx, "WriteToSheet", []*rate.Limiter{w.writeLimiter}, func() error {
 		return w.inner.WriteToSheet(ctx, spreadsheetID, sheetTab, data)

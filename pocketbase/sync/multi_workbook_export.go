@@ -374,7 +374,7 @@ func (m *MultiWorkbookExport) SyncForYears(
 }
 
 // queryCollection queries records from a PocketBase collection.
-func (m *MultiWorkbookExport) queryCollection(collection, filter string, limit int) ([]map[string]interface{}, error) {
+func (m *MultiWorkbookExport) queryCollection(collection, filter string, limit int) ([]map[string]any, error) {
 	records, err := m.App.FindRecordsByFilter(
 		collection,
 		filter,
@@ -387,9 +387,9 @@ func (m *MultiWorkbookExport) queryCollection(collection, filter string, limit i
 	}
 
 	// Convert to map format for generic processing
-	result := make([]map[string]interface{}, len(records))
+	result := make([]map[string]any, len(records))
 	for i, r := range records {
-		data := make(map[string]interface{})
+		data := make(map[string]any)
 		data["id"] = r.Id
 		for _, field := range r.Collection().Fields {
 			data[field.GetName()] = r.Get(field.GetName())

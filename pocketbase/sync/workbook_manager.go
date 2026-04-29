@@ -413,7 +413,7 @@ func (m *WorkbookManager) UpdateMasterIndex(ctx context.Context) error {
 
 // BuildIndexSheetData builds the data matrix for the master index sheet.
 // Rows are sorted: globals first, then years in descending order.
-func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
+func BuildIndexSheetData(workbooks []WorkbookRecord) [][]any {
 	// Sort workbooks: globals first, then years descending
 	sorted := make([]WorkbookRecord, len(workbooks))
 	copy(sorted, workbooks)
@@ -432,13 +432,13 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 	})
 
 	// Preallocate data with header row + one row per workbook
-	data := make([][]interface{}, 0, 1+len(sorted))
-	data = append(data, []interface{}{"Year", "Workbook", "Link", "Last Sync", "Tabs", "Records", "Status"})
+	data := make([][]any, 0, 1+len(sorted))
+	data = append(data, []any{"Year", "Workbook", "Link", "Last Sync", "Tabs", "Records", "Status"})
 
 	// Add data rows
 	for i := range sorted {
 		wb := &sorted[i]
-		var yearDisplay interface{}
+		var yearDisplay any
 		if wb.WorkbookType == workbookTypeGlobals {
 			yearDisplay = "Globals"
 		} else {
@@ -454,7 +454,7 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 		// Create hyperlink formula for the link column
 		link := fmt.Sprintf(`=HYPERLINK(%q,"Open")`, wb.URL)
 
-		data = append(data, []interface{}{
+		data = append(data, []any{
 			yearDisplay,
 			wb.Title,
 			link,
@@ -469,7 +469,7 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]interface{} {
 }
 
 // safeInt safely converts an interface{} to int
-func safeInt(v interface{}) int {
+func safeInt(v any) int {
 	if v == nil {
 		return 0
 	}

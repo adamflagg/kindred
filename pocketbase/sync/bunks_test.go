@@ -10,7 +10,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		input         map[string]interface{}
+		input         map[string]any
 		wantCMID      int
 		wantName      string
 		wantGender    string
@@ -21,7 +21,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 	}{
 		{
 			name: "bunk with all new fields",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"ID":        float64(123),
 				"Name":      "B-1",
 				"IsActive":  true,
@@ -38,7 +38,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 		},
 		{
 			name: "bunk with is_active false",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"ID":        float64(124),
 				"Name":      "G-2",
 				"IsActive":  false,
@@ -55,7 +55,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 		},
 		{
 			name: "AG bunk with new fields",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"ID":        float64(125),
 				"Name":      "AG-8",
 				"IsActive":  true,
@@ -72,7 +72,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 		},
 		{
 			name: "bunk with missing optional fields defaults properly",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"ID":   float64(126),
 				"Name": "B-3",
 				// IsActive, SortOrder, AreaID omitted
@@ -87,7 +87,7 @@ func TestBunksSync_transformBunkToPB_WithNewFields(t *testing.T) {
 		},
 		{
 			name: "bunk with zero values",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"ID":        float64(127),
 				"Name":      "G-4",
 				"IsActive":  false,

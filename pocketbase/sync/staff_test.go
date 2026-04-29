@@ -55,7 +55,7 @@ func TestTransformStaffToPB_PersonID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Build test data
-			data := map[string]interface{}{
+			data := map[string]any{
 				"PersonID": tt.personID,
 			}
 
@@ -92,8 +92,8 @@ func TestTransformStaffToPB_PersonID(t *testing.T) {
 
 // testTransformStaffPersonID simulates the person_id extraction logic from transformStaffToPB.
 // After the fix, both person_id (CM ID) and person (PB relation) should be set.
-func testTransformStaffPersonID(data map[string]interface{}, personMap map[int]string) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func testTransformStaffPersonID(data map[string]any, personMap map[int]string) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// PersonID from CampMinder (required for resolving person relation)
 	personIDFloat, ok := data["PersonID"].(float64)
@@ -165,8 +165,8 @@ func TestSetStatusFields_AllStatuses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pbData := make(map[string]interface{})
-			data := map[string]interface{}{
+			pbData := make(map[string]any)
+			data := map[string]any{
 				"StatusID":   tt.statusID,
 				"StatusName": tt.statusName,
 			}
@@ -307,7 +307,7 @@ func TestPreserveBunkDataDeletesFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pbData := map[string]interface{}{
+			pbData := map[string]any{
 				"status_id":  tt.statusID,
 				"bunks":      []string{"new_bunk_1"},
 				"bunk_staff": true,
@@ -341,27 +341,27 @@ func TestPreserveBunkDataDeletesFields(t *testing.T) {
 func TestTransformStaffToPB_MissingPersonID(t *testing.T) {
 	tests := []struct {
 		name    string
-		data    map[string]interface{}
+		data    map[string]any
 		wantErr bool
 	}{
 		{
 			name:    "missing PersonID",
-			data:    map[string]interface{}{},
+			data:    map[string]any{},
 			wantErr: true,
 		},
 		{
 			name:    "zero PersonID",
-			data:    map[string]interface{}{"PersonID": float64(0)},
+			data:    map[string]any{"PersonID": float64(0)},
 			wantErr: true,
 		},
 		{
 			name:    "wrong type PersonID",
-			data:    map[string]interface{}{"PersonID": "12345"},
+			data:    map[string]any{"PersonID": "12345"},
 			wantErr: true,
 		},
 		{
 			name:    "valid PersonID",
-			data:    map[string]interface{}{"PersonID": float64(12345)},
+			data:    map[string]any{"PersonID": float64(12345)},
 			wantErr: false,
 		},
 	}

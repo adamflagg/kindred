@@ -835,8 +835,8 @@ func TestFAFieldEquals(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		existing interface{}
-		newVal   interface{}
+		existing any
+		newVal   any
 		expected bool
 	}{
 		// nil vs empty string equivalence
@@ -889,21 +889,21 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		existing   map[string]interface{}
-		newData    map[string]interface{}
+		existing   map[string]any
+		newData    map[string]any
 		skipFields map[string]bool
 		expected   bool
 	}{
 		{
 			name: "no changes - should not need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"contact_first_name": "John",
 				"contact_email":      "john@example.com",
 				"total_gross_income": float64(100000),
 				"interest_expressed": true,
 				"year":               float64(2025),
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"contact_first_name": "John",
 				"contact_email":      "john@example.com",
 				"total_gross_income": float64(100000),
@@ -915,11 +915,11 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "string field changed - should need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"contact_first_name": "John",
 				"contact_email":      "john@example.com",
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"contact_first_name": "John",
 				"contact_email":      "john.new@example.com",
 			},
@@ -928,10 +928,10 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "number field changed - should need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"total_gross_income": float64(100000),
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"total_gross_income": float64(120000),
 			},
 			skipFields: nil,
@@ -939,10 +939,10 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "bool field changed - should need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"interest_expressed": false,
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"interest_expressed": true,
 			},
 			skipFields: nil,
@@ -950,11 +950,11 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "only skipped field changed - should not need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"contact_first_name": "John",
 				"year":               float64(2024),
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"contact_first_name": "John",
 				"year":               2025,
 			},
@@ -963,10 +963,10 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "nil vs empty string - should not need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"contact_first_name": nil,
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"contact_first_name": "",
 			},
 			skipFields: nil,
@@ -974,10 +974,10 @@ func TestFARecordNeedsUpdate(t *testing.T) {
 		},
 		{
 			name: "float64 vs int same value - should not need update",
-			existing: map[string]interface{}{
+			existing: map[string]any{
 				"num_children": float64(3),
 			},
-			newData: map[string]interface{}{
+			newData: map[string]any{
 				"num_children": 3,
 			},
 			skipFields: nil,
@@ -1014,7 +1014,7 @@ func TestFAApplicationToRecordData(t *testing.T) {
 	// Verify key fields are present and correct
 	tests := []struct {
 		field    string
-		expected interface{}
+		expected any
 	}{
 		{"person", "person123"},
 		{"household", "household456"},
@@ -1049,12 +1049,12 @@ func TestFAUpsertIdempotencyBehavior(t *testing.T) {
 	s := &FinancialAidApplicationsSync{}
 
 	// Scenario 1: Record data matches existing - should skip
-	existingData := map[string]interface{}{
+	existingData := map[string]any{
 		"contact_first_name": "John",
 		"contact_email":      "john@example.com",
 		"total_gross_income": float64(100000),
 	}
-	newDataSame := map[string]interface{}{
+	newDataSame := map[string]any{
 		"contact_first_name": "John",
 		"contact_email":      "john@example.com",
 		"total_gross_income": float64(100000),
@@ -1065,7 +1065,7 @@ func TestFAUpsertIdempotencyBehavior(t *testing.T) {
 	}
 
 	// Scenario 2: Record data differs - should update
-	newDataDifferent := map[string]interface{}{
+	newDataDifferent := map[string]any{
 		"contact_first_name": "John",
 		"contact_email":      "john.updated@example.com", // Changed
 		"total_gross_income": float64(100000),

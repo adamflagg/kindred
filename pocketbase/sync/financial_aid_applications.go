@@ -866,8 +866,8 @@ func (s *FinancialAidApplicationsSync) upsertApplications(
 }
 
 // recordToMap converts a PocketBase record to a map for comparison
-func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[string]interface{} {
-	return map[string]interface{}{
+func (s *FinancialAidApplicationsSync) recordToMap(record *core.Record) map[string]any {
+	return map[string]any{
 		// Core identifiers
 		"person":    record.GetString("person"),
 		"household": record.GetString("household"),
@@ -1024,8 +1024,8 @@ func (s *FinancialAidApplicationsSync) forceWALCheckpoint() error {
 }
 
 // toRecordData converts faApplicationData to a map for database operations
-func (app *faApplicationData) toRecordData(year int) map[string]interface{} {
-	return map[string]interface{}{
+func (app *faApplicationData) toRecordData(year int) map[string]any {
+	return map[string]any{
 		// Core identifiers
 		"person":    app.personPBID,
 		"household": app.householdPBID,
@@ -1129,7 +1129,7 @@ func (app *faApplicationData) toRecordData(year int) map[string]interface{} {
 }
 
 // fieldEquals compares two field values for equality, handling type conversions
-func (s *FinancialAidApplicationsSync) fieldEquals(existing, newVal interface{}) bool {
+func (s *FinancialAidApplicationsSync) fieldEquals(existing, newVal any) bool {
 	// Handle nil vs empty string
 	if (existing == nil && newVal == "") || (existing == "" && newVal == nil) {
 		return true
@@ -1175,7 +1175,7 @@ func (s *FinancialAidApplicationsSync) fieldEquals(existing, newVal interface{})
 
 // recordNeedsUpdate checks if any field differs between existing record and new data
 func (s *FinancialAidApplicationsSync) recordNeedsUpdate(
-	existing map[string]interface{}, newData map[string]interface{}, skipFields map[string]bool,
+	existing map[string]any, newData map[string]any, skipFields map[string]bool,
 ) bool {
 	for field, newValue := range newData {
 		if skipFields != nil && skipFields[field] {

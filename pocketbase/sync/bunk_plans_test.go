@@ -10,13 +10,13 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		planData     map[string]interface{}
-		wantIsActive interface{}
+		planData     map[string]any
+		wantIsActive any
 		wantInData   bool
 	}{
 		{
 			name: "plan with is_active true",
-			planData: map[string]interface{}{
+			planData: map[string]any{
 				"ID":       float64(1),
 				"Name":     "Test Plan",
 				"Code":     "TP1",
@@ -27,7 +27,7 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 		},
 		{
 			name: "plan with is_active false",
-			planData: map[string]interface{}{
+			planData: map[string]any{
 				"ID":       float64(2),
 				"Name":     "Inactive Plan",
 				"Code":     "IP1",
@@ -38,7 +38,7 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 		},
 		{
 			name: "plan without is_active field defaults to true",
-			planData: map[string]interface{}{
+			planData: map[string]any{
 				"ID":   float64(3),
 				"Name": "Default Plan",
 				"Code": "DP1",
@@ -68,7 +68,7 @@ func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 				t.Fatal("missing ID in test data")
 				return
 			}
-			recordData := map[string]interface{}{
+			recordData := map[string]any{
 				"year":      2025,
 				"cm_id":     int(idFloat),
 				"name":      tt.planData["Name"],
@@ -94,30 +94,30 @@ func TestBunkPlansSync_processBunkPlan_ExtractsIsActive(t *testing.T) {
 
 	testCases := []struct {
 		name         string
-		planData     map[string]interface{}
+		planData     map[string]any
 		expectActive bool
 	}{
 		{
 			name: "active plan",
-			planData: map[string]interface{}{
+			planData: map[string]any{
 				"ID":         float64(100),
 				"Name":       "Active Plan",
 				"Code":       "AP",
 				"IsActive":   true,
-				"BunkIDs":    []interface{}{float64(1)},
-				"SessionIDs": []interface{}{float64(1)},
+				"BunkIDs":    []any{float64(1)},
+				"SessionIDs": []any{float64(1)},
 			},
 			expectActive: true,
 		},
 		{
 			name: "inactive plan",
-			planData: map[string]interface{}{
+			planData: map[string]any{
 				"ID":         float64(101),
 				"Name":       "Inactive Plan",
 				"Code":       "IP",
 				"IsActive":   false,
-				"BunkIDs":    []interface{}{float64(1)},
-				"SessionIDs": []interface{}{float64(1)},
+				"BunkIDs":    []any{float64(1)},
+				"SessionIDs": []any{float64(1)},
 			},
 			expectActive: false,
 		},

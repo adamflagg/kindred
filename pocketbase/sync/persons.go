@@ -414,7 +414,7 @@ func (s *PersonsSync) logSyncResults(householdStats Stats) {
 
 // processPerson processes a single person using pre-loaded existing persons
 func (s *PersonsSync) processPerson(
-	personData map[string]interface{},
+	personData map[string]any,
 	isCamper bool,
 	existingPersons map[int]*core.Record,
 	tagDefsByName map[string]string,
@@ -533,12 +533,12 @@ func (s *PersonsSync) processPerson(
 //
 //nolint:gocyclo // data transform function with many field mappings
 func (s *PersonsSync) transformPersonToPB(
-	cmPerson map[string]interface{},
+	cmPerson map[string]any,
 	year int,
 	isCamper bool,
-) (map[string]interface{}, error) {
+) (map[string]any, error) {
 	// Skip if no CamperDetails (means they're not a camper)
-	camperDetails, ok := cmPerson["CamperDetails"].(map[string]interface{})
+	camperDetails, ok := cmPerson["CamperDetails"].(map[string]any)
 	if !ok || camperDetails == nil {
 		name := s.getPersonName(cmPerson)
 		slog.Debug("Skipping person - no CamperDetails (not a camper)",
@@ -549,7 +549,7 @@ func (s *PersonsSync) transformPersonToPB(
 		return nil, nil
 	}
 
-	pbData := make(map[string]interface{})
+	pbData := make(map[string]any)
 
 	// Extract base fields
 	if id, ok := cmPerson["ID"].(float64); ok {
@@ -557,7 +557,7 @@ func (s *PersonsSync) transformPersonToPB(
 	}
 
 	// Name fields - fix ALL CAPS names from CampMinder while preserving mixed-case
-	if nameData, ok := cmPerson["Name"].(map[string]interface{}); ok {
+	if nameData, ok := cmPerson["Name"].(map[string]any); ok {
 		firstName := s.getString(nameData, "First", fmt.Sprintf("MISSING_FIRST_%.0f", cmPerson["ID"]))
 		lastName := s.getString(nameData, "Last", fmt.Sprintf("MISSING_LAST_%.0f", cmPerson["ID"]))
 
@@ -648,10 +648,10 @@ func (s *PersonsSync) transformPersonToPB(
 	// phone_numbers and email_addresses JSON fields removed (unused in application)
 	pbData["primary_email"] = ""
 	pbData["secondary_email"] = ""
-	if contactDetails, ok := cmPerson["ContactDetails"].(map[string]interface{}); ok {
+	if contactDetails, ok := cmPerson["ContactDetails"].(map[string]any); ok {
 		if emails := contactDetails["Emails"]; emails != nil {
 			// Extract primary and secondary emails to discrete fields
-			if emailList, ok := emails.([]interface{}); ok && len(emailList) > 0 {
+			if emailList, ok := emails.([]any); ok && len(emailList) > 0 {
 				primaryEmail, secondaryEmail := s.extractPrimarySecondaryEmails(emailList)
 				pbData["primary_email"] = primaryEmail
 				pbData["secondary_email"] = secondaryEmail
@@ -665,10 +665,10 @@ func (s *PersonsSync) transformPersonToPB(
 	// address JSON field removed - only discrete fields are populated
 	pbData["address_city"] = ""
 	pbData["address_state"] = ""
-	if households, ok := cmPerson["Households"].(map[string]interface{}); ok {
+	if households, ok := cmPerson["Households"].(map[string]any); ok {
 		// Extract address from primary childhood household
-		if primary, ok := households["PrimaryChildhoodHousehold"].(map[string]interface{}); ok {
-			if billing, ok := primary["BillingAddress"].(map[string]interface{}); ok {
+		if primary, ok := households["PrimaryChildhoodHousehold"].(map[string]any); ok {
+			if billing, ok := primary["BillingAddress"].(map[string]any); ok {
 				// Extract discrete address fields for querying
 				if city := s.getString(billing, "City", ""); city != "" {
 					pbData["address_city"] = city
@@ -687,9 +687,9 @@ func (s *PersonsSync) transformPersonToPB(
 	}
 
 	// Extract household ID from FamilyPersons (legacy field, kept for backward compatibility)
-	if familyPersons, ok := cmPerson["FamilyPersons"].([]interface{}); ok {
+	if familyPersons, ok := cmPerson["FamilyPersons"].([]any); ok {
 		for _, fp := range familyPersons {
-			if fpMap, ok := fp.(map[string]interface{}); ok {
+			if fpMap, ok := fp.(map[string]any); ok {
 				if familyID, ok := fpMap["FamilyID"].(float64); ok && familyID > 0 {
 					pbData["household_id"] = int(familyID)
 					break
@@ -700,10 +700,10 @@ func (s *PersonsSync) transformPersonToPB(
 
 	// Extract parent/guardian names from Relatives array
 	// Used for name resolution when bunk requests reference parents' last names
-	if relatives, ok := cmPerson["Relatives"].([]interface{}); ok {
-		parents := make([]map[string]interface{}, 0)
+	if relatives, ok := cmPerson["Relatives"].([]any); ok {
+		parents := make([]map[string]any, 0)
 		for _, rel := range relatives {
-			relMap, ok := rel.(map[string]interface{})
+			relMap, ok := rel.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -713,10 +713,10 @@ func (s *PersonsSync) transformPersonToPB(
 				continue
 			}
 
-			parentData := make(map[string]interface{})
+			parentData := make(map[string]any)
 
 			// Extract name
-			if nameData, ok := relMap["Name"].(map[string]interface{}); ok {
+			if nameData, ok := relMap["Name"].(map[string]any); ok {
 				firstName := s.getString(nameData, "First", "")
 				lastName := s.getString(nameData, "Last", "")
 				if firstName != "" || lastName != "" {
@@ -760,8 +760,8 @@ func (s *PersonsSync) transformPersonToPB(
 
 // Helper methods
 
-func (s *PersonsSync) getPersonName(person map[string]interface{}) string {
-	if nameData, ok := person["Name"].(map[string]interface{}); ok {
+func (s *PersonsSync) getPersonName(person map[string]any) string {
+	if nameData, ok := person["Name"].(map[string]any); ok {
 		first := s.getString(nameData, "First", "")
 		last := s.getString(nameData, "Last", "")
 		return fmt.Sprintf("%s %s", first, last)
@@ -769,21 +769,21 @@ func (s *PersonsSync) getPersonName(person map[string]interface{}) string {
 	return "Unknown"
 }
 
-func (s *PersonsSync) getString(data map[string]interface{}, key, defaultValue string) string {
+func (s *PersonsSync) getString(data map[string]any, key, defaultValue string) string {
 	if val, ok := data[key].(string); ok {
 		return val
 	}
 	return defaultValue
 }
 
-func (s *PersonsSync) getInt(data map[string]interface{}, key string, defaultValue int) int {
+func (s *PersonsSync) getInt(data map[string]any, key string, defaultValue int) int {
 	if val, ok := data[key].(float64); ok {
 		return int(val)
 	}
 	return defaultValue
 }
 
-func (s *PersonsSync) getFloat(data map[string]interface{}, key string, defaultValue float64) float64 {
+func (s *PersonsSync) getFloat(data map[string]any, key string, defaultValue float64) float64 {
 	if val, ok := data[key].(float64); ok {
 		return val
 	}
@@ -829,7 +829,7 @@ func (s *PersonsSync) fixAllCapsName(name string) string {
 // extractPrimarySecondaryEmails extracts primary and secondary emails from CampMinder emails array.
 // Primary email is the one with IsLogin: true, or the first entry if none have IsLogin.
 // Secondary email is the first email that isn't the primary, if one exists.
-func (s *PersonsSync) extractPrimarySecondaryEmails(emailList []interface{}) (primary, secondary string) {
+func (s *PersonsSync) extractPrimarySecondaryEmails(emailList []any) (primary, secondary string) {
 	if len(emailList) == 0 {
 		return "", ""
 	}
@@ -839,7 +839,7 @@ func (s *PersonsSync) extractPrimarySecondaryEmails(emailList []interface{}) (pr
 	var otherEmails []string
 
 	for _, email := range emailList {
-		emailMap, ok := email.(map[string]interface{})
+		emailMap, ok := email.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -947,12 +947,12 @@ func (s *PersonsSync) updateAttendeeRelations(year int) error {
 }
 
 // extractUniqueHouseholds extracts unique households from persons data (combined sync)
-func (s *PersonsSync) extractUniqueHouseholds(personsData []map[string]interface{}) []map[string]interface{} {
-	householdMap := make(map[int]map[string]interface{})
+func (s *PersonsSync) extractUniqueHouseholds(personsData []map[string]any) []map[string]any {
+	householdMap := make(map[int]map[string]any)
 
 	for _, person := range personsData {
 		// Get Households object from person
-		householdsObj, ok := person["Households"].(map[string]interface{})
+		householdsObj, ok := person["Households"].(map[string]any)
 		if !ok {
 			continue
 		}
@@ -960,7 +960,7 @@ func (s *PersonsSync) extractUniqueHouseholds(personsData []map[string]interface
 		// Extract households from all three possible locations
 		householdTypes := []string{"PrincipalHousehold", "PrimaryChildhoodHousehold", "AlternateChildhoodHousehold"}
 		for _, hType := range householdTypes {
-			if household, ok := householdsObj[hType].(map[string]interface{}); ok {
+			if household, ok := householdsObj[hType].(map[string]any); ok {
 				if id, idOK := household["ID"].(float64); idOK && id > 0 {
 					// Store household, deduplicating by ID
 					householdMap[int(id)] = household
@@ -970,7 +970,7 @@ func (s *PersonsSync) extractUniqueHouseholds(personsData []map[string]interface
 	}
 
 	// Convert map to slice
-	result := make([]map[string]interface{}, 0, len(householdMap))
+	result := make([]map[string]any, 0, len(householdMap))
 	for _, household := range householdMap {
 		result = append(result, household)
 	}
@@ -980,27 +980,27 @@ func (s *PersonsSync) extractUniqueHouseholds(personsData []map[string]interface
 
 // extractHouseholdIDsFromPerson extracts the CampMinder IDs for all three household types
 // Returns a struct with the IDs (0 if not present)
-func (s *PersonsSync) extractHouseholdIDsFromPerson(personData map[string]interface{}) personHouseholdIDs {
+func (s *PersonsSync) extractHouseholdIDsFromPerson(personData map[string]any) personHouseholdIDs {
 	result := personHouseholdIDs{}
 
-	householdsObj, ok := personData["Households"].(map[string]interface{})
+	householdsObj, ok := personData["Households"].(map[string]any)
 	if !ok {
 		return result
 	}
 
-	if principal, ok := householdsObj["PrincipalHousehold"].(map[string]interface{}); ok {
+	if principal, ok := householdsObj["PrincipalHousehold"].(map[string]any); ok {
 		if id, ok := principal["ID"].(float64); ok && id > 0 {
 			result.PrincipalID = int(id)
 		}
 	}
 
-	if primary, ok := householdsObj["PrimaryChildhoodHousehold"].(map[string]interface{}); ok {
+	if primary, ok := householdsObj["PrimaryChildhoodHousehold"].(map[string]any); ok {
 		if id, ok := primary["ID"].(float64); ok && id > 0 {
 			result.PrimaryChildhoodID = int(id)
 		}
 	}
 
-	if alternate, ok := householdsObj["AlternateChildhoodHousehold"].(map[string]interface{}); ok {
+	if alternate, ok := householdsObj["AlternateChildhoodHousehold"].(map[string]any); ok {
 		if id, ok := alternate["ID"].(float64); ok && id > 0 {
 			result.AlternateChildhoodID = int(id)
 		}
@@ -1043,7 +1043,7 @@ func (s *PersonsSync) extractTagIDsWithYearFilter(
 		return nil
 	}
 
-	tagsArray, ok := tagsRaw.([]interface{})
+	tagsArray, ok := tagsRaw.([]any)
 	if !ok {
 		return nil
 	}
@@ -1056,7 +1056,7 @@ func (s *PersonsSync) extractTagIDsWithYearFilter(
 	seen := make(map[string]bool)
 	var tagIDs []string
 	for _, tagRaw := range tagsArray {
-		if tag, ok := tagRaw.(map[string]interface{}); ok {
+		if tag, ok := tagRaw.(map[string]any); ok {
 			name, nameOK := tag["Name"].(string)
 			if !nameOK || name == "" {
 				continue
@@ -1090,7 +1090,7 @@ func (s *PersonsSync) extractTagIDs(personData map[string]any, tagDefsByName map
 		return nil
 	}
 
-	tagsArray, ok := tagsRaw.([]interface{})
+	tagsArray, ok := tagsRaw.([]any)
 	if !ok {
 		return nil
 	}
@@ -1103,7 +1103,7 @@ func (s *PersonsSync) extractTagIDs(personData map[string]any, tagDefsByName map
 	seen := make(map[string]bool)
 	var tagIDs []string
 	for _, tagRaw := range tagsArray {
-		if tag, ok := tagRaw.(map[string]interface{}); ok {
+		if tag, ok := tagRaw.(map[string]any); ok {
 			if name, ok := tag["Name"].(string); ok && name != "" {
 				if tagID, exists := tagDefsByName[name]; exists {
 					if !seen[tagID] {
@@ -1119,8 +1119,8 @@ func (s *PersonsSync) extractTagIDs(personData map[string]any, tagDefsByName map
 }
 
 // transformHouseholdToPB transforms CampMinder household data to PocketBase format (combined sync)
-func (s *PersonsSync) transformHouseholdToPB(data map[string]interface{}, year int) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *PersonsSync) transformHouseholdToPB(data map[string]any, year int) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// Extract ID (required)
 	idFloat, ok := data["ID"].(float64)
@@ -1169,7 +1169,7 @@ func (s *PersonsSync) transformHouseholdToPB(data map[string]interface{}, year i
 	pbData["billing_postal_code"] = ""
 	pbData["billing_country"] = ""
 
-	if billing, ok := data["BillingAddress"].(map[string]interface{}); ok {
+	if billing, ok := data["BillingAddress"].(map[string]any); ok {
 		hasAddressData := false
 
 		if addr1 := s.getString(billing, "Address1", ""); addr1 != "" {
@@ -1411,7 +1411,7 @@ func (s *PersonsSync) getPersonIDsFromStaff() ([]int, error) {
 	slog.Debug("Fetching staff person IDs from CampMinder")
 
 	pageSize := 500
-	var allStaffRecords []map[string]interface{}
+	var allStaffRecords []map[string]any
 
 	// Fetch staff across all statuses (active, resigned, dismissed, cancelled)
 	for _, status := range allStaffStatuses {
@@ -1439,7 +1439,7 @@ func (s *PersonsSync) getPersonIDsFromStaff() ([]int, error) {
 
 // extractPersonIDsFromStaffRecords extracts unique person IDs from staff API records
 // Handles deduplication and skips invalid/missing person IDs
-func (s *PersonsSync) extractPersonIDsFromStaffRecords(staffRecords []map[string]interface{}) []int {
+func (s *PersonsSync) extractPersonIDsFromStaffRecords(staffRecords []map[string]any) []int {
 	if len(staffRecords) == 0 {
 		return []int{}
 	}

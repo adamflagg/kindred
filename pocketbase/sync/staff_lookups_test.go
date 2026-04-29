@@ -23,7 +23,7 @@ func TestTransformProgramAreaToPB(t *testing.T) {
 	s := &StaffLookupsSync{}
 
 	// Mock CampMinder API response
-	programAreaData := map[string]interface{}{
+	programAreaData := map[string]any{
 		"ID":   float64(100),
 		"Name": "Aquatics",
 	}
@@ -50,7 +50,7 @@ func TestTransformProgramAreaToPB(t *testing.T) {
 func TestTransformProgramAreaToPB_MissingID(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"Name": "Aquatics",
 	}
 
@@ -63,7 +63,7 @@ func TestTransformProgramAreaToPB_MissingID(t *testing.T) {
 func TestTransformProgramAreaToPB_ZeroID(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(0),
 		"Name": "Aquatics",
 	}
@@ -77,7 +77,7 @@ func TestTransformProgramAreaToPB_ZeroID(t *testing.T) {
 func TestTransformProgramAreaToPB_MissingName(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID": float64(100),
 	}
 
@@ -90,7 +90,7 @@ func TestTransformProgramAreaToPB_MissingName(t *testing.T) {
 func TestTransformProgramAreaToPB_EmptyName(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(100),
 		"Name": "",
 	}
@@ -109,7 +109,7 @@ func TestTransformOrgCategoryToPB(t *testing.T) {
 	s := &StaffLookupsSync{}
 
 	// Mock CampMinder API response
-	orgCategoryData := map[string]interface{}{
+	orgCategoryData := map[string]any{
 		"ID":   float64(200),
 		"Name": "Leadership",
 	}
@@ -136,7 +136,7 @@ func TestTransformOrgCategoryToPB(t *testing.T) {
 func TestTransformOrgCategoryToPB_MissingID(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"Name": "Leadership",
 	}
 
@@ -149,7 +149,7 @@ func TestTransformOrgCategoryToPB_MissingID(t *testing.T) {
 func TestTransformOrgCategoryToPB_ZeroID(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(0),
 		"Name": "Leadership",
 	}
@@ -163,7 +163,7 @@ func TestTransformOrgCategoryToPB_ZeroID(t *testing.T) {
 func TestTransformOrgCategoryToPB_MissingName(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID": float64(200),
 	}
 
@@ -176,7 +176,7 @@ func TestTransformOrgCategoryToPB_MissingName(t *testing.T) {
 func TestTransformOrgCategoryToPB_EmptyName(t *testing.T) {
 	s := &StaffLookupsSync{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(200),
 		"Name": "",
 	}
@@ -200,7 +200,7 @@ func TestTransformPositionToPB(t *testing.T) {
 	}
 
 	// Mock CampMinder API response
-	positionData := map[string]interface{}{
+	positionData := map[string]any{
 		"ID":            float64(300),
 		"Name":          "Lifeguard",
 		"ProgramAreaID": float64(100),
@@ -229,7 +229,7 @@ func TestTransformPositionToPB_NoProgramArea(t *testing.T) {
 	programAreaMap := map[int]string{}
 
 	// Position without program area
-	positionData := map[string]interface{}{
+	positionData := map[string]any{
 		"ID":   float64(300),
 		"Name": "Lifeguard",
 	}
@@ -262,7 +262,7 @@ func TestTransformPositionToPB_UnknownProgramArea(t *testing.T) {
 	}
 
 	// Position references a program area not in the map
-	positionData := map[string]interface{}{
+	positionData := map[string]any{
 		"ID":            float64(300),
 		"Name":          "Lifeguard",
 		"ProgramAreaID": float64(999), // Not in map
@@ -287,7 +287,7 @@ func TestTransformPositionToPB_MissingID(t *testing.T) {
 
 	programAreaMap := map[int]string{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"Name": "Lifeguard",
 	}
 
@@ -302,7 +302,7 @@ func TestTransformPositionToPB_ZeroID(t *testing.T) {
 
 	programAreaMap := map[int]string{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(0),
 		"Name": "Lifeguard",
 	}
@@ -318,7 +318,7 @@ func TestTransformPositionToPB_MissingName(t *testing.T) {
 
 	programAreaMap := map[int]string{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID": float64(300),
 	}
 
@@ -333,7 +333,7 @@ func TestTransformPositionToPB_EmptyName(t *testing.T) {
 
 	programAreaMap := map[int]string{}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"ID":   float64(300),
 		"Name": "",
 	}

@@ -71,7 +71,7 @@ func (s *StaffLookupsSync) syncProgramAreas(ctx context.Context) error {
 	slog.Info("Syncing staff program areas")
 
 	// Pre-load existing records (global - no year filter)
-	preloadFn := func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -152,7 +152,7 @@ func (s *StaffLookupsSync) syncOrgCategories(ctx context.Context) error {
 	slog.Info("Syncing staff org categories")
 
 	// Pre-load existing records (global - no year filter)
-	preloadFn := func(record *core.Record) (interface{}, bool) {
+	preloadFn := func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -231,7 +231,7 @@ func (s *StaffLookupsSync) syncPositions(ctx context.Context) error {
 	slog.Info("Syncing staff positions")
 
 	// Pre-load existing records (global - no year filter)
-	existingRecords, err := s.PreloadRecordsGlobal("staff_positions", "", func(record *core.Record) (interface{}, bool) {
+	existingRecords, err := s.PreloadRecordsGlobal("staff_positions", "", func(record *core.Record) (any, bool) {
 		if cmID, ok := record.Get("cm_id").(float64); ok && cmID > 0 {
 			return int(cmID), true
 		}
@@ -317,8 +317,8 @@ func (s *StaffLookupsSync) syncPositions(ctx context.Context) error {
 
 // Transform functions
 
-func (s *StaffLookupsSync) transformProgramAreaToPB(data map[string]interface{}) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *StaffLookupsSync) transformProgramAreaToPB(data map[string]any) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// ID (required)
 	idFloat, ok := data["ID"].(float64)
@@ -337,8 +337,8 @@ func (s *StaffLookupsSync) transformProgramAreaToPB(data map[string]interface{})
 	return pbData, nil
 }
 
-func (s *StaffLookupsSync) transformOrgCategoryToPB(data map[string]interface{}) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+func (s *StaffLookupsSync) transformOrgCategoryToPB(data map[string]any) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// ID (required)
 	idFloat, ok := data["ID"].(float64)
@@ -358,10 +358,10 @@ func (s *StaffLookupsSync) transformOrgCategoryToPB(data map[string]interface{})
 }
 
 func (s *StaffLookupsSync) transformPositionToPB(
-	data map[string]interface{},
+	data map[string]any,
 	programAreaMap map[int]string,
-) (map[string]interface{}, error) {
-	pbData := make(map[string]interface{})
+) (map[string]any, error) {
+	pbData := make(map[string]any)
 
 	// ID (required)
 	idFloat, ok := data["ID"].(float64)

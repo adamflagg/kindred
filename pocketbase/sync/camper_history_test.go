@@ -2432,7 +2432,7 @@ func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("bunk_cm_id", 200)
 		existing.Set("synagogue", testSynagogue)
 
-		newData := map[string]interface{}{
+		newData := map[string]any{
 			"session_name":        "Session 1",
 			"first_name":          testFirstName,
 			"last_name":           "Garcia",
@@ -2487,7 +2487,7 @@ func TestCamperHistoryRecordNeedsUpdateUsesCompareFields(t *testing.T) {
 		existing.Set("bunk_cm_id", 200)
 		existing.Set("synagogue", testSynagogue)
 
-		newData := map[string]interface{}{
+		newData := map[string]any{
 			"session_name":        "Session 1",
 			"first_name":          testFirstName,
 			"last_name":           "Garcia",
