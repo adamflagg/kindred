@@ -26,12 +26,21 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     ['all-bunk-requests', sessionCmId, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
-  // Seed the per-camper key used by CamperDetailsPanel so we can verify it
-  // also gets invalidated by status mutations.
+  // Seed every per-camper-derived key that surfaces request data, so we can
+  // verify status mutations propagate to ALL of them. See spec §15.4.
   qc.setQueryData(
     ['person-bunk-requests', 1001, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
+  qc.setQueryData(
+    ['person-all-bunk-requests', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
+  qc.setQueryData(
+    ['bunk_requests_tooltip', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
+  qc.setQueryData(['request-satisfaction', 1001], {})
   return qc
 }
 
@@ -43,6 +52,21 @@ function isAllBunkRequestsStale(qc: QueryClient, sessionCmId = 1001, year = 2025
 
 function isPersonBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
   const state = qc.getQueryState(['person-bunk-requests', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isPersonAllBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['person-all-bunk-requests', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isTooltipStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['bunk_requests_tooltip', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isSatisfactionStale(qc: QueryClient, personCmId = 1001) {
+  const state = qc.getQueryState(['request-satisfaction', personCmId])
   return state?.isInvalidated === true
 }
 
@@ -137,12 +161,18 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
   })
 
   it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
@@ -150,12 +180,18 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
   })
 
   it('CreateRequestModal create invalidates all-bunk-requests', () => {
@@ -163,12 +199,18 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
     }
 
     onSuccessAfterFix(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
   })
 })
 

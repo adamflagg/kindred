@@ -513,6 +513,9 @@ export default function RequestReviewPanel({
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
       void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       if (!variables.suppressToast) {
         toast.success('Request updated')
@@ -537,6 +540,9 @@ export default function RequestReviewPanel({
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
       void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
       toast.success('Requests updated')
       setSelectedRequests(new Set())
@@ -580,6 +586,9 @@ export default function RequestReviewPanel({
                 void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
                 void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
                 void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+                void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+                void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+                void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
                 void queryClient.invalidateQueries({
                   queryKey: ['cohort-request-relations'],
                 })
@@ -638,6 +647,9 @@ export default function RequestReviewPanel({
                 void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
                 void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
                 void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+                void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+                void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+                void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
                 void queryClient.invalidateQueries({
                   queryKey: ['cohort-request-relations'],
                 })

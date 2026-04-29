@@ -29,10 +29,13 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // Calculate satisfaction summary
+  // Calculate satisfaction summary.
+  // Spec §2.1: only resolved rows are evaluated. The legacy filter
+  // `status !== 'pending'` admitted declined rows; tighten to the
+  // affirmative resolved-only rule.
   const countableRequests = allBunkRequests.filter(
     (r) =>
-      r.status !== 'pending' &&
+      r.status === 'resolved' &&
       (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
         ? r.requestee_id && r.requestee_id > 0
         : !!r.age_preference_target)

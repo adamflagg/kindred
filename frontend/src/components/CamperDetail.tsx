@@ -234,7 +234,12 @@ export default function CamperDetail() {
     enrolledCampers.length > 1
       ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined))
       : undefined
-  const agePreferenceRequests = allBunkRequests.filter((r) => r.request_type === 'age_preference')
+  // Spec §2.1: only resolved rows are user-visible in BunkingStatusPanel.
+  // (admin ParsedRequestsPanel below still consumes the unfiltered
+  // allBunkRequests for debug purposes.)
+  const agePreferenceRequests = allBunkRequests.filter(
+    (r) => r.request_type === 'age_preference' && r.status === 'resolved'
+  )
 
   return (
     <div className="space-y-6">
