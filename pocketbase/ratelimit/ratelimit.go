@@ -112,7 +112,7 @@ func (r *RateLimiter) Success() {
 
 // ExecuteWithRetry executes a function with rate limiting and retry logic
 func (r *RateLimiter) ExecuteWithRetry(ctx context.Context, fn func() error) error {
-	for attempt := 0; attempt < r.config.MaxAttempts; attempt++ {
+	for range r.config.MaxAttempts {
 		// Wait for rate limiter
 		if err := r.Wait(ctx); err != nil {
 			return fmt.Errorf("rate limiter wait: %w", err)

@@ -678,7 +678,7 @@ func parseBooleanCustomValue(value string) bool {
 // toLowerASCII converts ASCII letters to lowercase
 func toLowerASCII(s string) string {
 	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if c >= 'A' && c <= 'Z' {
 			c += 'a' - 'A'

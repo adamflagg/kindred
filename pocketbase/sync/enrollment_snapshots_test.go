@@ -169,7 +169,7 @@ func TestSnapshotCancelledFilterUsesBritishSpelling(t *testing.T) {
 	}
 
 	// Create attendees with British spelling (as stored by attendees.go)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		r := core.NewRecord(col)
 		r.Set("status", "cancelled") // British spelling from CampMinder
 		r.Set("year", 2025)

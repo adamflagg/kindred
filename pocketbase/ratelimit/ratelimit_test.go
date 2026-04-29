@@ -230,7 +230,7 @@ func TestRateLimiter_HandleError_MaxAttempts(t *testing.T) {
 	rateLimitErr := errors.New("429 rate limit")
 
 	// First 2 errors should be retryable
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		shouldRetry, _ := rl.HandleError(rateLimitErr)
 		if !shouldRetry {
 			t.Errorf("Error %d should be retryable", i+1)
@@ -257,7 +257,7 @@ func TestRateLimiter_HandleError_MaxDelay(t *testing.T) {
 
 	// Multiple errors to trigger backoff beyond MaxDelay
 	var lastWaitTime time.Duration
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		_, waitTime := rl.HandleError(rateLimitErr)
 		lastWaitTime = waitTime
 	}
@@ -280,7 +280,7 @@ func TestRateLimiter_Success(t *testing.T) {
 	rateLimitErr := errors.New("429 rate limit")
 
 	// Trigger some errors to increase consecutive error count
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		rl.HandleError(rateLimitErr)
 	}
 
@@ -450,7 +450,7 @@ func TestRateLimiter_ConcurrentAccess(_ *testing.T) {
 	// Run concurrent operations to test thread safety
 	done := make(chan bool)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			ctx := context.Background()
 			_ = rl.Wait(ctx)
@@ -461,7 +461,7 @@ func TestRateLimiter_ConcurrentAccess(_ *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 
