@@ -838,9 +838,9 @@ class SocialGraphBuilder:
 
         # Calculate request satisfaction per source (Stage 2 parent-paramount).
         # Three buckets per source:
-        #   "satisfied"   — has request edges of this source, >=1 satisfied
-        #   "isolated"    — has request edges of this source, 0 satisfied
-        #   "no_requests" — has no request edges of this source
+        #   "satisfied"    — has request edges of this source, >=1 satisfied
+        #   "unsatisfied"  — has request edges of this source, 0 satisfied
+        #   "no_requests"  — has no request edges of this source
         #
         # `satisfaction_status` is the aggregate (any-source) value preserved for
         # backwards compat with consumers not yet migrated to the split. New
@@ -865,7 +865,7 @@ class SocialGraphBuilder:
                     and (requested_bunk := self.graph.nodes[requested_person].get("bunk_cm_id"))
                     and bunk == requested_bunk
                 )
-                return "satisfied" if satisfied_count > 0 else "isolated"
+                return "satisfied" if satisfied_count > 0 else "unsatisfied"
 
             parent_status_map[node] = _bucket(parent_edges)
             staff_status_map[node] = _bucket(staff_edges)

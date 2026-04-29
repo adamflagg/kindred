@@ -1,14 +1,17 @@
 """Tests for SocialGraphBuilder satisfaction_status calculation.
 
 Locked behavior (scoreboard #43):
-- ≥1 request satisfied  → "satisfied"   (renders green border)
-- has requests, 0 satisfied → "isolated" (renders red border)
-- no request edges at all → "no_requests" (renders gray border — neutral, nothing to satisfy)
+- ≥1 request satisfied  → "satisfied"    (renders green border)
+- has requests, 0 satisfied → "unsatisfied" (renders red border)
+- no request edges at all → "no_requests"  (renders gray border — neutral, nothing to satisfy)
 
 Per scoreboard #43 follow-up: a camper with zero requests should not be lumped
 into either bucket — they have nothing to satisfy. The legacy logic merged that
-case into "satisfied" or "isolated" depending on whether other (sibling/school)
+case into "satisfied" or "unsatisfied" depending on whether other (sibling/school)
 edges existed, which was misleading.
+
+Stage 3a: renamed from "isolated" to "unsatisfied" to align with codebase
+nomenclature (sidebar alerts, frontend display labels).
 """
 
 from __future__ import annotations
@@ -75,12 +78,12 @@ def test_some_requests_satisfied_collapses_to_satisfied() -> None:
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
 
 
-def test_has_requests_none_satisfied_marks_isolated() -> None:
+def test_has_requests_none_satisfied_marks_unsatisfied() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2)])
     builder._calculate_node_metrics()
-    assert builder.graph.nodes[1]["satisfaction_status"] == "isolated"
-    assert builder.graph.nodes[2]["satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
+    assert builder.graph.nodes[2]["satisfaction_status"] == "unsatisfied"
 
 
 def test_no_request_edges_marks_no_requests_even_when_connected() -> None:
@@ -130,7 +133,7 @@ def test_optimized_builder_classifies_correctly() -> None:
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
-    assert builder.graph.nodes[3]["satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[3]["satisfaction_status"] == "unsatisfied"
     assert builder.graph.nodes[5]["satisfaction_status"] == "no_requests"
 
 
@@ -175,20 +178,20 @@ def _fake_request(requester_id: int, requestee_id: int, source: str | None = "fa
     return request
 
 
-def test_node_emits_parent_satisfaction_status_isolated_when_only_parent_unsat() -> None:
+def test_node_emits_parent_satisfaction_status_unsatisfied_when_only_parent_unsat() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "family")])
     builder._calculate_node_metrics()
-    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "unsatisfied"
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
 
 
-def test_node_emits_staff_satisfaction_status_isolated_when_only_staff_unsat() -> None:
+def test_node_emits_staff_satisfaction_status_unsatisfied_when_only_staff_unsat() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "staff")])
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
-    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
 def test_node_with_both_sources_evaluates_independently() -> None:
@@ -202,7 +205,7 @@ def test_node_with_both_sources_evaluates_independently() -> None:
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["parent_satisfaction_status"] == "satisfied"
-    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
 def test_node_with_no_requests_at_all_emits_no_requests_for_both_splits() -> None:
@@ -220,7 +223,7 @@ def test_legacy_satisfaction_status_still_emitted_for_backwards_compat() -> None
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "family")])
     builder._calculate_node_metrics()
     assert "satisfaction_status" in builder.graph.nodes[1]
-    assert builder.graph.nodes[1]["satisfaction_status"] == "isolated"
+    assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
 
 
 def test_request_edges_carry_source_attribute() -> None:
@@ -244,3 +247,31 @@ def test_request_edges_carry_source_attribute() -> None:
     assert edge_1_2.get("source") == "family"
     assert edge_2_3 is not None
     assert edge_2_3.get("source") == "staff"
+
+
+# ---------------------------------------------------------------------------
+# Stage 3a: "isolated" → "unsatisfied" rename
+# ---------------------------------------------------------------------------
+
+
+def test_satisfaction_status_uses_unsatisfied_not_isolated() -> None:
+    """Stage 3a: graph payload uses 'unsatisfied' instead of 'isolated'.
+
+    Applies to parent_satisfaction_status, staff_satisfaction_status, and
+    legacy satisfaction_status. The string 'isolated' must never appear in
+    any of these three node attributes.
+    """
+    builder = _make_builder()
+    # One camper with an unsatisfied parent request (different bunks).
+    _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "family")])
+    builder._calculate_node_metrics()
+
+    # New value must be present.
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "unsatisfied"
+    assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
+
+    # Old value must never appear in any of the three status fields.
+    for node_id in builder.graph.nodes():
+        for attr in ("parent_satisfaction_status", "staff_satisfaction_status", "satisfaction_status"):
+            val = builder.graph.nodes[node_id].get(attr)
+            assert val != "isolated", f"node {node_id} {attr}='isolated' — Stage 3a requires 'unsatisfied'"
