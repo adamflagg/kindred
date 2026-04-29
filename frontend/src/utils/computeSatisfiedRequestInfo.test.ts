@@ -103,6 +103,44 @@ describe('computeSatisfiedRequestInfo Shape A', () => {
     expect(result.parentMinOneViolation).toBe(false)
   })
 
+  it('skips non-resolved rows (pending/declined) across all three slices', () => {
+    // Spec §2.1: only status === 'resolved' rows are evaluated.
+    // Regression: SAME_AGE-target age_preference rows land as status=pending
+    // for staff review and were leaking into materialParent unsatisfied counts.
+    const pendingMaterial = baseReq({
+      id: 'r-pending-material',
+      source_field: 'bunk_with',
+      requestee_id: 9999, // would be UNsatisfied if evaluated
+      status: 'pending',
+    })
+    const declinedBestEffort = baseReq({
+      id: 'r-declined-best',
+      source_field: 'socialize_with',
+      requestee_id: 9998,
+      status: 'declined',
+    })
+    const pendingStaff = baseReq({
+      id: 'r-pending-staff',
+      source: 'staff',
+      source_field: 'not_bunk_with',
+      request_type: 'not_bunk_with',
+      requestee_id: 1002, // would be UNsatisfied
+      status: 'pending',
+    })
+    const result = computeSatisfiedRequestInfo(
+      [pendingMaterial, declinedBestEffort, pendingStaff],
+      1001,
+      personSet,
+      [],
+      6
+    )
+    expect(result.materialParent.total).toBe(0)
+    expect(result.bestEffortParent.total).toBe(0)
+    expect(result.staff.total).toBe(0)
+    expect(result.parentMinOneViolation).toBe(false)
+    expect(result.staffUnsatisfiedAlert).toBe(false)
+  })
+
   it('staffUnsatisfiedAlert when staff total > 0 and zero satisfied', () => {
     const result = computeSatisfiedRequestInfo(
       [

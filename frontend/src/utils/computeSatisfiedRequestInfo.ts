@@ -74,6 +74,10 @@ export function computeSatisfiedRequestInfo(
   const satisfiedRequests: BunkRequest[] = []
 
   for (const req of personRequests) {
+    // Spec §2.1: only resolved rows count toward satisfaction stats.
+    // Pending (e.g. SAME_AGE staff-review path) and declined must not leak
+    // into any of the three slices.
+    if (req.status !== 'resolved') continue
     const sat = isSatisfied(req)
     if (sat) satisfiedRequests.push(req)
     if (req.source_field === 'bunk_with') {
