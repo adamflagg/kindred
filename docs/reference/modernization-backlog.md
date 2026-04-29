@@ -119,7 +119,7 @@ The original audit was scoped to "features the existing code visibly avoids," so
 
 ### 2c. Execution order (easiest → hardest)
 
-Operational ranking driving the row-by-row PR loop in `modernization-prompts.md` Part B.
+Operational ranking driving the row-by-row PR loop in `modernization-prompts.md` Part B. **Pick rule: status `next` first, else lowest-numbered live row.** Bundle hints in the table are guidance for the brief, not a directive to skip — never re-rank based on a bundle hint.
 
 #### Retired
 
@@ -132,13 +132,13 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | Rank | Status | Item | Where | Count | Bundle |
 |---|---|---|---|---|---|
 | 1 | ✓ shipped #1066 | manual map-clear → `clear()` builtin | `sync/base_sync.go:121, 1416` | 2 | — |
-| 2 | next | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `multi_workbook_ordering.go` (2×), `table_exporter.go` | 6 | bundle w/ #3 |
-| 3 | | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `workbook_manager.go`, `multi_workbook_ordering.go` (2×) | 3 | bundle w/ #2 |
+| 2 | next | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `multi_workbook_ordering.go` (2×), `table_exporter.go` | 6 | may bundle w/ #3 |
+| 3 | | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `workbook_manager.go`, `multi_workbook_ordering.go` (2×) | 3 | may bundle w/ #2 |
 | 4 | | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
-| 5 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | bundle w/ #6 |
-| 6 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | bundle w/ #5 |
-| 7 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | bundle w/ #8 (single codemod) |
-| 8 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | bundle w/ #7 |
+| 5 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | may bundle w/ #6 |
+| 6 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | may bundle w/ #5 |
+| 7 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #8 (single codemod) |
+| 8 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | may bundle w/ #7 |
 | 9 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
 | 10 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #11 |
 | 11 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #10 subset) | after #10 |

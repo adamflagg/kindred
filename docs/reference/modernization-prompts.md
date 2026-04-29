@@ -9,6 +9,24 @@ Run Part A rarely (once per language, then again on toolchain bumps). Run Part B
 
 ---
 
+## Front door: which section?
+
+If you were invoked with this prompt and no language/section specified, do **not** guess. List the section headings from `modernization-backlog.md` and ask the user to pick one. Default options:
+
+> The modernization backlog has these sections:
+> - §1 Python (3.14)
+> - §2 Go (1.26) — uses §a/§b/§c structure
+> - §3 Frontend (React 19, TypeScript 5.8, Node 22)
+> - §4 Infrastructure + Caddy (hardening checklist, different artifact)
+>
+> Which section should I work in? And do you want **Part A** (re-run / upgrade the audit for that section) or **Part B** (execute the next row)?
+
+Once the user picks, proceed to Part A or Part B as instructed below.
+
+If the user named a section or row in their original invocation, skip this step and go straight to the named work.
+
+---
+
 ## Rules that apply to both parts
 
 These are load-bearing. Every section that has skipped them has produced bugs or stale docs.
