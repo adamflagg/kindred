@@ -254,6 +254,35 @@ def test_request_edges_carry_source_attribute() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_socialize_with_only_camper_no_parent_unsatisfied() -> None:
+    """A camper whose only resolved request is a socialize_with-source
+    age_preference (best-effort) must NOT get parent_satisfaction_status='unsatisfied'.
+    Best-effort rows don't drive the parent badge.
+
+    Why this passes immediately (implicit materiality narrowing):
+    _add_request_edges queries bunk_requests with
+    `request_type = "bunk_with" && status != "removed"`, so age_preference rows
+    from socialize_with-source entries are filtered out at the DB layer.
+    They never become graph edges, so parent_edges in _calculate_node_metrics is
+    empty for such a camper → status falls through to "no_requests".
+
+    This test locks that behavior as a regression guard — if the DB filter is ever
+    accidentally widened to include age_preference rows, this test will catch it.
+    """
+    builder = _make_builder()
+    # Emma Johnson (cm_id=5001) alone in bunk 101.
+    # No edges — simulates a camper whose only request was age_preference (socialize_with-source),
+    # which was filtered out before reaching the graph.
+    _populate(builder, nodes={5001: 101}, request_edges=[])
+    builder._calculate_node_metrics()
+    status = builder.graph.nodes[5001]["parent_satisfaction_status"]
+    assert status != "unsatisfied", (
+        f"parent_satisfaction_status={status!r} for a camper with no request edges — "
+        "age_preference/socialize_with-source rows must not drive the parent badge"
+    )
+    assert status == "no_requests", f"expected 'no_requests' for a camper with no edges, got {status!r}"
+
+
 def test_satisfaction_status_uses_unsatisfied_not_isolated() -> None:
     """Stage 3a: graph payload uses 'unsatisfied' instead of 'isolated'.
 

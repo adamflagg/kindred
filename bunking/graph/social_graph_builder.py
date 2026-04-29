@@ -852,6 +852,14 @@ class SocialGraphBuilder:
         for node in self.graph.nodes():
             node_bunk = self.graph.nodes[node].get("bunk_cm_id")
             request_edges = [(n, data) for n, data in self.graph[node].items() if data.get("edge_type") == "request"]
+            # Materiality note: parent_satisfaction_status reflects only material parent
+            # requests (bunk_with-source).  best-effort socialize_with rows carry
+            # request_type = "age_preference", which _add_request_edges intentionally
+            # excludes via its DB filter (`request_type = "bunk_with"`).  Those rows
+            # therefore never produce graph edges, so they can never appear in
+            # request_edges here.  The `source == "family"` filter below is correct as-is;
+            # no explicit source_field guard is needed.
+            # Regression test: test_socialize_with_only_camper_no_parent_unsatisfied
             parent_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "family"]
             staff_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "staff"]
 
