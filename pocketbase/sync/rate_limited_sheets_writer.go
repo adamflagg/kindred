@@ -208,9 +208,7 @@ func (w *RateLimitedSheetsWriter) executeWithRetry(
 
 		// Exponential backoff with cap
 		backoff = time.Duration(float64(backoff) * w.config.BackoffMultiplier)
-		if backoff > w.config.MaxBackoff {
-			backoff = w.config.MaxBackoff
-		}
+		backoff = min(backoff, w.config.MaxBackoff)
 	}
 
 	slog.Error("Google Sheets rate limit retries exhausted",

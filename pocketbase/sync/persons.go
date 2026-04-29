@@ -634,11 +634,7 @@ func (s *PersonsSync) transformPersonToPB(
 
 	// Cap last_year_attended at current year (since we only sync enrolled attendees)
 	lastYear := s.getInt(camperDetails, "LastYearAttended", 0)
-	if lastYear > year {
-		pbData["last_year_attended"] = year
-	} else {
-		pbData["last_year_attended"] = lastYear
-	}
+	pbData["last_year_attended"] = min(lastYear, year)
 
 	// Gender identity and pronouns
 	pbData["gender_identity_id"] = s.getInt(cmPerson, "GenderIdentityID", 0)

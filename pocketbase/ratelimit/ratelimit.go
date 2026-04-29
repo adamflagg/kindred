@@ -75,7 +75,7 @@ func (r *RateLimiter) HandleError(err error) (shouldRetry bool, waitTime time.Du
 		r.consecutiveErrors++
 
 		// Calculate exponential backoff
-		waitTime = time.Duration(math.Min(
+		waitTime = time.Duration(min(
 			float64(r.currentDelay)*math.Pow(r.config.BackoffMultiplier, float64(r.consecutiveErrors-1)),
 			float64(r.config.MaxDelay),
 		))

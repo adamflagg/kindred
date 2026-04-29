@@ -562,9 +562,7 @@ func (o *Orchestrator) runSingleSyncInternal(parentCtx context.Context, syncType
 		timeout := 2 * time.Hour
 		if parentDeadline, hasDeadline := parentCtx.Deadline(); hasDeadline {
 			remaining := time.Until(parentDeadline)
-			if remaining > timeout {
-				timeout = remaining
-			}
+			timeout = max(timeout, remaining)
 		}
 		syncCtx, cancel = context.WithTimeout(context.Background(), timeout)
 		defer cancel()
