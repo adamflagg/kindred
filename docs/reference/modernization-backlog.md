@@ -108,7 +108,7 @@ The original audit was scoped to "features the existing code visibly avoids," so
 | `min` / `max` builtins | 1.21 | surveyed | ~10 manual `if a > b` ternaries (`sync/orchestrator.go:565`, `sync/rate_limited_sheets_writer.go:211`, `sync/sheets_scheduling.go:60,63`, `sync/persons.go:637, 1029`, `ratelimit/ratelimit.go:85`, `sync/feedback/handler.go:104`) + 1 `math.Min` (`ratelimit/ratelimit.go:78`) | Drops a few `math` imports if all converted. **MEDIUM**. |
 | `cmp.Or` (first non-zero) | 1.22 | surveyed | ~5 chained-nonzero patterns (`sync/normalize_geographic.go:487`, `sync/table_exporter.go:262, 358`, `sync/camper_transportation_test.go:296`, `sync/camper_history_test.go:1045`) | Readability only. **LOW–MEDIUM**. |
 | `math/rand/v2` | 1.22 | **already adopted** | `sync/orchestrator.go:9` already imports `math/rand/v2`; `sync/rate_limited_sheets_writer.go` correctly uses `crypto/rand` for jitter | No work — confirms 1.22 idiom is partially adopted. ✓ |
-| `slices.Concat` | 1.22 | surveyed | 3 trivial `append(x, y...)` callsites (`sync/multi_workbook_ordering.go:39`, `sync/persons.go:1429`, `campminder/client.go:1020`) | Marginal. **LOW**. |
+| `slices.Concat` | 1.22 | **retired (false positive)** | 3 `append(x, y...)` callsites (`sync/multi_workbook_ordering.go:39`, `sync/persons.go:1429`, `campminder/client.go:1020`) — but 2 are loop accumulators where `slices.Concat` would lose `append`'s growth amortization, and the 3rd rewrite is no clearer than the original | See Retired subsection in §2c. |
 | `slices.Chunk` | 1.23 | surveyed | 6 manual `for i := 0; i < len(x); i += batchSize` chunkers (`sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus `camper_history_test.go:529`) | **MEDIUM** — strictly better than the for-range rewrite for these specific loops. Replaces the "still needs classic form for `i += batchSize`" caveat above. |
 | Range-over-func iterators (`for x := range fn`) | 1.23 | surveyed | No callback-iteration patterns (`func(...) bool` only appears as `sort.Slice` less-funcs, which are migrating to `slices.SortFunc` anyway) | No candidates. ✓ |
 | Generic type aliases (`type Set[T] = map[T]struct{}`) | 1.24 | surveyed | No generic functions in the codebase (`func Foo[T ...]` returned 0 hits) | N/A — no generics to alias. ✓ |
@@ -126,6 +126,7 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | Item | Where | Reason |
 |---|---|---|
 | `strings.Index() != -1` → `strings.Contains(...)` | `sync/base_sync.go:1084` | **FALSE POSITIVE** — `idx` is used as a slice boundary (`result[:idx] + result[endIdx:]`), not just as a presence check; `strings.Contains` would discard the offset. See §2a annotation. *Lesson: always inspect surrounding code before adding to §2a.* |
+| `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `sync/persons.go:1429`, `campminder/client.go:1020` | **FALSE POSITIVE** — 2 of 3 callsites are loop accumulators (`persons.go:1429` inside `for status { for page {…} }`; `client.go:1020` inside `for month := 1; month <= 12 {…}`) where `slices.Concat` would lose `append`'s growth-amortized capacity and allocate fresh on every iteration. The 3rd site (`multi_workbook_ordering.go:39`) is a single conditional concat where the rewrite is no clearer than the current 5 lines. *Lesson: filter `append(x, y...)` candidates for non-loop context — the spread-append regex matches accumulator anti-patterns where `slices.Concat` is actively wrong.* |
 
 #### Live (renumbered after retired and already-done/N/A items removed)
 
@@ -135,19 +136,18 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | 2 | ✓ shipped #1066 | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `camper_history_test.go`, `multi_workbook_ordering.go` (2×), `table_exporter.go` (2×) | 8 | bundled w/ #3; drift +`camper_history_test.go:546` (audit miss) |
 | 3 | ✓ shipped #1066 | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `base_sync.go:1402`, `workbook_manager.go` | 3 | bundled w/ #2 |
 | — | ✓ shipped #1066 | `sort.Ints` → `slices.Sort` (drift, audit miss) | `sync/family_camp_derived_test.go:163` | 1 | included in #2/#3 bundle to drop `"sort"` import package-wide |
-| 4 | next | `append(x, y...)` → `slices.Concat` | `sync/multi_workbook_ordering.go:39`, `persons.go:1429`, `campminder/client.go:1020` | 3 | — |
-| 5 | | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | may bundle w/ #6 |
-| 6 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | may bundle w/ #5 |
-| 7 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #8 (single codemod) |
-| 8 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | may bundle w/ #7 |
-| 9 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
-| 10 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #11 |
-| 11 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #10 subset) | after #10 |
-| 12 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
-| 13 | | `time.After` in retry loop | `sync/rate_limited_sheets_writer.go:194` | 1 | — |
-| 14 | | string error matching → sentinels | `sync/rate_limited_sheets_writer.go` (Google 429), `scheduler_test.go`, `workbook_manager_test.go`, `orchestrator_test.go` | 4 | behavioral |
-| 15 | | `testing/synctest` for time-based tests | `orchestrator_test.go`, `scheduler_test.go`, `rate_limited_sheets_writer_test.go`, `rbac/config_hooks_test.go` | 10+ sleeps | 1.25 GA shipped, toolchain is 1.26 — no longer gated |
-| 16 | deferred | `encoding/json/v2` | `campminder/client.go` (33), `sync/base_sync.go` (8) | hot path | defer until ecosystem signal (deps accept v2 marshalers) |
+| 4 | next | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | may bundle w/ #5 |
+| 5 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | may bundle w/ #4 |
+| 6 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #7 (single codemod) |
+| 7 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | may bundle w/ #6 |
+| 8 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
+| 9 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #10 |
+| 10 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #9 subset) | after #9 |
+| 11 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
+| 12 | | `time.After` in retry loop | `sync/rate_limited_sheets_writer.go:194` | 1 | — |
+| 13 | | string error matching → sentinels | `sync/rate_limited_sheets_writer.go` (Google 429), `scheduler_test.go`, `workbook_manager_test.go`, `orchestrator_test.go` | 4 | behavioral |
+| 14 | | `testing/synctest` for time-based tests | `orchestrator_test.go`, `scheduler_test.go`, `rate_limited_sheets_writer_test.go`, `rbac/config_hooks_test.go` | 10+ sleeps | 1.25 GA shipped, toolchain is 1.26 — no longer gated |
+| 15 | deferred | `encoding/json/v2` | `campminder/client.go` (33), `sync/base_sync.go` (8) | hot path | defer until ecosystem signal (deps accept v2 marshalers) |
 
 ---
 
