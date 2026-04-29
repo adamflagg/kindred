@@ -140,10 +140,10 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | 5 | ✓ shipped #1070 | `cmp.Or` (first non-zero) | `sync/table_exporter.go:262` | 1 | bundled w/ #4; ~4 audit entries retired as false positives (`normalize_geographic.go:487`, `table_exporter.go:358` — "if non-empty, do X" patterns rather than first-non-zero fallbacks) |
 | 6 | ✓ shipped #1071 | `map[string]interface{}` → `map[string]any` | hotspots | 603 | bundled w/ #7 as single `gofmt -r` codemod; surfaced pre-existing dead branch in `normalizeToStringSlice` (issue #1072) |
 | 7 | ✓ shipped #1071 | `interface{}` → `any` | `sync/api.go` (122), `base_sync.go` (29), `households.go`, widespread | 141 (744 incl. #6) | bundled w/ #6 |
-| 8 | next | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
-| 9 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #10 |
-| 10 | | `for i := 0; …` → `for i := range s` | `sync/households.go`, `staff_skills.go`, `session_resolver.go`, `sessions.go`, `camper_history.go`, `rate_limited_sheets_writer.go`, tests | 26 (− #9 subset) | after #9 |
-| 11 | | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
+| 8 | in flight #1074 | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
+| 9 | in flight #1075 | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #10 |
+| 10 | in flight #1076 | `for i := 0; …` → `for i := range s` | `sync/sessions.go` (n² sort outer), `rate_limited_sheets_writer.go` (retry), `ratelimit/ratelimit.go` (retry), `household_demographics_test.go` (byte-indexed string), `google/client_test.go` (substring search), tests | 22 | stacked on #1075; not-obviously-safe sites documented in PR body |
+| 11 | next | `fmt.Sprintf` inside `slog` | `campminder/client.go:1008`, `sync/financial_transactions.go:106`, `sync/orchestrator.go:784,844` | 4 | — |
 | 12 | | `time.After` in retry loop | `sync/rate_limited_sheets_writer.go:194` | 1 | — |
 | 13 | | string error matching → sentinels | `sync/rate_limited_sheets_writer.go` (Google 429), `scheduler_test.go`, `workbook_manager_test.go`, `orchestrator_test.go` | 4 | behavioral |
 | 14 | | `testing/synctest` for time-based tests | `orchestrator_test.go`, `scheduler_test.go`, `rate_limited_sheets_writer_test.go`, `rbac/config_hooks_test.go` | 10+ sleeps | 1.25 GA shipped, toolchain is 1.26 — no longer gated |
