@@ -32,6 +32,15 @@ interface ValidationStatistics {
   bunks_at_capacity: number
   bunks_under_capacity: number
   bunks_over_capacity: number
+  // Stage 3a: material (hard) parent requests
+  material_parent_requests?: number
+  satisfied_material_parent_requests?: number
+  material_parent_request_satisfaction_rate?: number
+  campers_with_unsatisfied_material_parent_requests?: number
+  // Stage 3a: best-effort (soft) parent requests
+  best_effort_parent_requests?: number
+  satisfied_best_effort_parent_requests?: number
+  best_effort_parent_request_satisfaction_rate?: number
   field_stats: Record<string, FieldStats>
 }
 
@@ -695,6 +704,19 @@ export default function PostValidationResultsModal({
           </div>
         </div>
       </div>
+
+      {/* Best-effort parent preferences — Stage 3a minimal display */}
+      {(statistics.best_effort_parent_requests ?? 0) > 0 && (
+        <div className="border-border/50 border-t px-5 py-3">
+          <p className="text-muted-foreground text-xs">
+            Best-effort preferences honored:{' '}
+            <span className="text-foreground font-medium">
+              {statistics.satisfied_best_effort_parent_requests ?? 0} of{' '}
+              {statistics.best_effort_parent_requests}
+            </span>
+          </p>
+        </div>
+      )}
 
       {/* Issues List (if any) */}
       {hasIssues && (
