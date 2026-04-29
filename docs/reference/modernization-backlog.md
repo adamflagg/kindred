@@ -136,9 +136,9 @@ Operational ranking driving the row-by-row PR loop in `modernization-prompts.md`
 | 2 | ✓ shipped #1066 | `sort.Strings` → `slices.Sort` | `rbac/hooks.go`, `sync/base_sync.go` (2×), `camper_history_test.go`, `multi_workbook_ordering.go` (2×), `table_exporter.go` (2×) | 8 | bundled w/ #3; drift +`camper_history_test.go:546` (audit miss) |
 | 3 | ✓ shipped #1066 | `sort.Slice` → `slices.SortFunc` | `sync/normalize_geographic_test.go`, `base_sync.go:1402`, `workbook_manager.go` | 3 | bundled w/ #2 |
 | — | ✓ shipped #1066 | `sort.Ints` → `slices.Sort` (drift, audit miss) | `sync/family_camp_derived_test.go:163` | 1 | included in #2/#3 bundle to drop `"sort"` import package-wide |
-| 4 | next | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `sheets_scheduling.go:60,63`, `persons.go:637, 1029`, `ratelimit/ratelimit.go:78,85`, `feedback/handler.go:104` | ~11 | may bundle w/ #5 |
-| 5 | | `cmp.Or` (first non-zero) | `sync/normalize_geographic.go:487`, `table_exporter.go:262, 358` | ~5 | may bundle w/ #4 |
-| 6 | | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #7 (single codemod) |
+| 4 | ✓ shipped #1070 | `min` / `max` builtins | `sync/orchestrator.go:565`, `rate_limited_sheets_writer.go:211`, `persons.go:637`, `ratelimit/ratelimit.go:78` | 4 | bundled w/ #5; ~7 audit entries retired as false positives (early-return validators in `sheets_scheduling.go:60,63` & `persons.go:1029`, side-effecting if in `ratelimit.go:85`, error-size check in `feedback/handler.go:104`) |
+| 5 | ✓ shipped #1070 | `cmp.Or` (first non-zero) | `sync/table_exporter.go:262` | 1 | bundled w/ #4; ~4 audit entries retired as false positives (`normalize_geographic.go:487`, `table_exporter.go:358` — "if non-empty, do X" patterns rather than first-non-zero fallbacks) |
+| 6 | next | `map[string]interface{}` → `map[string]any` | hotspots | 603 | may bundle w/ #7 (single codemod) |
 | 7 | | `interface{}` → `any` | `sync/api.go` (108), `base_sync.go` (42), `households.go` (35+), widespread | 744 | may bundle w/ #6 |
 | 8 | | log/slog consolidation | `campminder/client.go:11` (`log.Printf` alongside `slog`) | 1 file | — |
 | 9 | | manual chunkers → `slices.Chunk` | `sync/households.go:104`, `staff_skills.go:541`, `session_resolver.go:188`, `camper_history.go:1042`, `persons.go:283`, plus test | 6 | land before #10 |
