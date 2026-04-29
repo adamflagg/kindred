@@ -204,6 +204,30 @@ describe('ValidationScoreCard parent-paramount stats', () => {
     expect(staffScope.getByText('(25/50)')).toBeInTheDocument()
   })
 
+  it('does not render NaN% when rate fields are missing from a stale payload', () => {
+    // Stage 1 rate fields are typed as required `number`, but during rollout
+    // (or with a stale cached scenario response) the runtime payload can
+    // still arrive without them. Math.round(undefined * 100) === NaN, which
+    // would render as "NaN%". Guard against that.
+    const stats = makeStats({
+      total_requests: 100,
+      satisfied_requests: 50,
+    })
+    // @ts-expect-error — deliberately violating the type contract to simulate
+    // a stale runtime payload, mirroring the real risk during rollout.
+    delete stats.request_satisfaction_rate
+    // @ts-expect-error — see above
+    delete stats.parent_request_satisfaction_rate
+    // @ts-expect-error — see above
+    delete stats.staff_request_satisfaction_rate
+
+    const { container } = render(
+      <ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />
+    )
+    expect(container.textContent).not.toContain('NaN')
+    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(3)
+  })
+
   it('renders an All Requests stat alongside Parent and Staff', () => {
     const stats = makeStats({
       total_requests: 60,

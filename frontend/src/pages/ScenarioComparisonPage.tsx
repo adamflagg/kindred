@@ -1118,6 +1118,39 @@ export default function ScenarioComparisonPage() {
   )
 }
 
+// One percentage stat tile inside ValidationScoreCard. Three of these render
+// per scoreboard column (All / Parent / Staff Requests).
+function StatBlock({
+  label,
+  pct,
+  satisfied,
+  total,
+}: {
+  label: string
+  pct: number
+  satisfied: number
+  total: number
+}) {
+  return (
+    <div>
+      <div className="text-muted-foreground text-xs tracking-wider uppercase">{label}</div>
+      <div className="flex items-baseline gap-1">
+        <span
+          className={clsx(
+            'text-xl font-bold',
+            pct >= 80 ? 'text-forest-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600'
+          )}
+        >
+          {pct}%
+        </span>
+        <span className="text-muted-foreground text-xs">
+          ({satisfied}/{total})
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // Validation Score Card Component - detailed validation stats
 export interface ValidationScoreCardProps {
   label: string
@@ -1141,9 +1174,9 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
   }
 
   const stats = validation.statistics
-  const satisfactionPct = Math.round(stats.request_satisfaction_rate * 100)
-  const parentPct = Math.round(stats.parent_request_satisfaction_rate * 100)
-  const staffPct = Math.round(stats.staff_request_satisfaction_rate * 100)
+  const satisfactionPct = Math.round((stats.request_satisfaction_rate ?? 0) * 100)
+  const parentPct = Math.round((stats.parent_request_satisfaction_rate ?? 0) * 100)
+  const staffPct = Math.round((stats.staff_request_satisfaction_rate ?? 0) * 100)
 
   return (
     <div
@@ -1156,73 +1189,24 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
     >
       <div className="mb-3 truncate text-sm font-semibold">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
-        {/* All Requests (aggregate) */}
-        <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">All Requests</div>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={clsx(
-                'text-xl font-bold',
-                satisfactionPct >= 80
-                  ? 'text-forest-600'
-                  : satisfactionPct >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              )}
-            >
-              {satisfactionPct}%
-            </span>
-            <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_requests}/{stats.total_requests})
-            </span>
-          </div>
-        </div>
-        {/* Parent Requests (parent-paramount — Stage 1 honest field) */}
-        <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">
-            Parent Requests
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={clsx(
-                'text-xl font-bold',
-                parentPct >= 80
-                  ? 'text-forest-600'
-                  : parentPct >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              )}
-            >
-              {parentPct}%
-            </span>
-            <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_parent_requests}/{stats.parent_requests})
-            </span>
-          </div>
-        </div>
-        {/* Staff Requests (secondary) */}
-        <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">
-            Staff Requests
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={clsx(
-                'text-xl font-bold',
-                staffPct >= 80
-                  ? 'text-forest-600'
-                  : staffPct >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              )}
-            >
-              {staffPct}%
-            </span>
-            <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_staff_requests}/{stats.staff_requests})
-            </span>
-          </div>
-        </div>
+        <StatBlock
+          label="All Requests"
+          pct={satisfactionPct}
+          satisfied={stats.satisfied_requests}
+          total={stats.total_requests}
+        />
+        <StatBlock
+          label="Parent Requests"
+          pct={parentPct}
+          satisfied={stats.satisfied_parent_requests}
+          total={stats.parent_requests}
+        />
+        <StatBlock
+          label="Staff Requests"
+          pct={staffPct}
+          satisfied={stats.satisfied_staff_requests}
+          total={stats.staff_requests}
+        />
         {/* Violations & Risks */}
         <div>
           <div className="text-muted-foreground text-xs tracking-wider uppercase">Violations</div>
