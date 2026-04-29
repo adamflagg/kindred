@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -537,19 +538,13 @@ func (s *StaffSkillsSync) loadStaffDemographics(
 	}
 
 	// Process in batches
-	batchSize := 100
-	for i := 0; i < len(ids); i += batchSize {
+	const batchSize = 100
+	for batch := range slices.Chunk(ids, batchSize) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
 		}
-
-		end := i + batchSize
-		if end > len(ids) {
-			end = len(ids)
-		}
-		batch := ids[i:end]
 
 		// Build OR filter
 		conditions := make([]string, len(batch))

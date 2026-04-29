@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -279,29 +280,28 @@ func (s *PersonsSync) processPersonBatches(
 		personHouseholdMap:    make(map[int]personHouseholdIDs),
 	}
 
-	batchSize := 500
-	for i := 0; i < len(personIDs); i += batchSize {
+	const batchSize = 500
+	processed := 0
+	for batch := range slices.Chunk(personIDs, batchSize) {
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
 		}
 
-		end := min(i+batchSize, len(personIDs))
-		batch := personIDs[i:end]
-
-		slog.Info("Processing persons batch", "start", i+1, "end", end, "total", len(personIDs))
+		slog.Info("Processing persons batch", "start", processed+1, "end", processed+len(batch), "total", len(personIDs))
 
 		persons, err := s.Client.GetPersons(batch)
 		if err != nil {
 			return nil, fmt.Errorf("fetching persons batch: %w", err)
 		}
 
-		if i == 0 && len(persons) > 0 {
+		if processed == 0 && len(persons) > 0 {
 			s.SyncSuccessful = true
 		}
 
 		s.processBatchPersons(persons, camperIDsSet, existingPersons, tagDefsByName, divisionsByID, year, result)
+		processed += len(batch)
 	}
 
 	slog.Info("Extracted unique households from persons", "count", len(result.extractedHouseholds))
