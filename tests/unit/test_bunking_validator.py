@@ -899,7 +899,7 @@ def test_validator_skips_binning_for_requests_with_null_source_field():
         bunks=bunks,
         assignments=assignments,
         persons=persons,
-        requests=requests,
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 
@@ -1000,8 +1000,8 @@ def test_bunk_with_request_counts_as_material_parent():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,
-        requests=requests,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 
@@ -1042,8 +1042,8 @@ def test_socialize_with_request_counts_as_best_effort():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,
-        requests=requests,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 
@@ -1081,8 +1081,8 @@ def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,
-        requests=requests,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 
@@ -1126,8 +1126,8 @@ def test_unassigned_requester_excluded_from_all_buckets():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,
-        requests=requests,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 
@@ -1208,8 +1208,8 @@ def test_three_grade_bunk_age_preference_evaluation():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,
-        requests=requests,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
     )
     stats = result.statistics
 

@@ -11,8 +11,9 @@ _calculate_node_metrics).
 from __future__ import annotations
 
 import sys
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import networkx as nx
 import pytest
@@ -92,7 +93,7 @@ def _build_bunk_graph_with_satisfaction(person_ids: list[int]) -> nx.DiGraph:
 
 
 @pytest.fixture
-def bunk_graph_client() -> TestClient:
+def bunk_graph_client() -> Generator[TestClient]:
     """Return a TestClient for the social_graph router with all heavy deps mocked."""
     bunk_cm_id = 9001
     session_cm_id = 5001

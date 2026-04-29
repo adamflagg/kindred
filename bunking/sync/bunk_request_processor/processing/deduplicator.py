@@ -38,7 +38,7 @@ def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bo
     # Both must be non-None strings and they must differ
     if targets[0] is None or targets[1] is None:
         return False
-    return targets[0] != targets[1]
+    return bool(targets[0] != targets[1])
 
 
 def _split_age_pref_pair(

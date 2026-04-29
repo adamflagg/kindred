@@ -10,7 +10,7 @@ from typing import Any
 from bunking.logging_config import get_logger
 
 from ..core.constants import PRIORITY_KEYWORDS
-from ..core.models import ParsedRequest, RequestSource, RequestType
+from ..core.models import ParsedRequest, RequestType
 from ..shared.constants import SourceField
 
 logger = get_logger(__name__)
