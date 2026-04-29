@@ -335,6 +335,7 @@ class SocialGraphBuilder:
                             edge_data["has_request"] = True
                             edge_data["request_priority"] = priority
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
+                            edge_data["source"] = getattr(request, "source", None)
                             edge_data["weight"] = max(edge_data["weight"], weight)
                             logger.info(
                                 f"Added reciprocal request as secondary type to sibling edge: {person1} <-> {person2}"
@@ -350,6 +351,7 @@ class SocialGraphBuilder:
                             priority=priority,
                             confidence=getattr(request, "confidence_score", 1.0),
                             reciprocal=True,
+                            source=getattr(request, "source", None),
                         )
                         request_count += 1
                         logger.info(f"Added reciprocal request edge #{request_count}: {person1} <-> {person2}")
@@ -370,6 +372,7 @@ class SocialGraphBuilder:
                                 edge_data["has_request"] = True
                                 edge_data["request_priority"] = req_priority
                                 edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
+                                edge_data["source"] = getattr(request, "source", None)
                                 edge_data["weight"] = max(edge_data["weight"], weight)
                                 logger.info(
                                     f"Added request as secondary type to sibling edge: {requester} -> {requestee}"
@@ -385,6 +388,7 @@ class SocialGraphBuilder:
                                 priority=req_priority,
                                 confidence=getattr(request, "confidence_score", 1.0),
                                 reciprocal=False,
+                                source=getattr(request, "source", None),
                             )
                             request_count += 1
                             logger.info(f"Added request edge #{request_count}: {requester} -> {requestee}")
@@ -626,6 +630,7 @@ class SocialGraphBuilder:
                     priority=priority,
                     confidence=confidence_score,
                     is_reciprocal=getattr(request, "is_reciprocal", False),
+                    source=getattr(request, "source", None),
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
@@ -831,30 +836,44 @@ class SocialGraphBuilder:
                 component_map[node] = len(component)
         nx.set_node_attributes(self.graph, component_map, "component_size")
 
-        # Calculate request satisfaction based on actual bunk assignments.
-        # Three buckets, scoreboard #43:
-        #   "satisfied"   — has request edges, ≥1 satisfied (green border)
-        #   "isolated"    — has request edges, 0 satisfied (red border)
-        #   "no_requests" — has no request edges at all (gray border, neutral)
-        satisfaction_map = {}
+        # Calculate request satisfaction per source (Stage 2 parent-paramount).
+        # Three buckets per source:
+        #   "satisfied"   — has request edges of this source, >=1 satisfied
+        #   "isolated"    — has request edges of this source, 0 satisfied
+        #   "no_requests" — has no request edges of this source
+        #
+        # `satisfaction_status` is the aggregate (any-source) value preserved for
+        # backwards compat with consumers not yet migrated to the split. New
+        # consumers should read `parent_satisfaction_status` (drives the bunk-board
+        # / graph parent-paramount visuals) and `staff_satisfaction_status`.
+        parent_status_map: dict[Any, str] = {}
+        staff_status_map: dict[Any, str] = {}
+        aggregate_status_map: dict[Any, str] = {}
         for node in self.graph.nodes():
             node_bunk = self.graph.nodes[node].get("bunk_cm_id")
             request_edges = [(n, data) for n, data in self.graph[node].items() if data.get("edge_type") == "request"]
+            parent_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "family"]
+            staff_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "staff"]
 
-            if not request_edges:
-                satisfaction_map[node] = "no_requests"
-                continue
+            def _bucket(edges: list[tuple[Any, dict[str, Any]]], bunk: Any = node_bunk) -> str:
+                if not edges:
+                    return "no_requests"
+                satisfied_count = sum(
+                    1
+                    for requested_person, _ in edges
+                    if bunk
+                    and (requested_bunk := self.graph.nodes[requested_person].get("bunk_cm_id"))
+                    and bunk == requested_bunk
+                )
+                return "satisfied" if satisfied_count > 0 else "isolated"
 
-            satisfied_count = sum(
-                1
-                for requested_person, _ in request_edges
-                if node_bunk
-                and (requested_bunk := self.graph.nodes[requested_person].get("bunk_cm_id"))
-                and node_bunk == requested_bunk
-            )
-            satisfaction_map[node] = "satisfied" if satisfied_count > 0 else "isolated"
+            parent_status_map[node] = _bucket(parent_edges)
+            staff_status_map[node] = _bucket(staff_edges)
+            aggregate_status_map[node] = _bucket(request_edges)
 
-        nx.set_node_attributes(self.graph, satisfaction_map, "satisfaction_status")
+        nx.set_node_attributes(self.graph, parent_status_map, "parent_satisfaction_status")
+        nx.set_node_attributes(self.graph, staff_status_map, "staff_satisfaction_status")
+        nx.set_node_attributes(self.graph, aggregate_status_map, "satisfaction_status")
 
     def _detect_via_communities(self, min_size: int, max_size: int) -> list[set[int]]:
         """Detect communities using Louvain algorithm"""

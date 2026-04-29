@@ -1,9 +1,42 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
-import { CamperPill } from './ScenarioComparisonPage'
+import {
+  CamperPill,
+  ValidationScoreCard,
+  type ValidationResult,
+  type ValidationStatistics,
+} from './ScenarioComparisonPage'
 import type { LockGroupSummary } from '../utils/scenarioComparisonUtils'
+
+function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationStatistics {
+  return {
+    total_requests: 0,
+    satisfied_requests: 0,
+    request_satisfaction_rate: 0,
+    explicit_csv_requests: 0,
+    satisfied_explicit_csv_requests: 0,
+    explicit_csv_request_satisfaction_rate: 0,
+    parent_requests: 0,
+    satisfied_parent_requests: 0,
+    parent_request_satisfaction_rate: 0,
+    campers_with_unsatisfied_parent_requests: 0,
+    staff_requests: 0,
+    satisfied_staff_requests: 0,
+    staff_request_satisfaction_rate: 0,
+    campers_with_unsatisfied_staff_requests: 0,
+    negative_request_violations: 0,
+    assigned_campers: 0,
+    unassigned_campers: 0,
+    isolation_risks: 0,
+    ...overrides,
+  }
+}
+
+function makeValidation(stats: ValidationStatistics): ValidationResult {
+  return { statistics: stats, issues: [] }
+}
 
 afterEach(cleanup)
 
@@ -126,5 +159,90 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
     const popover = screen.getByTestId('friend-group-popover')
     expect(popover.parentElement).toBe(document.body)
     expect(popover.closest('[data-testid="camper-pill"]')).toBeNull()
+  })
+})
+
+// ─── Stage 2 parent-paramount: ValidationScoreCard badges ──────────────────
+
+describe('ValidationScoreCard parent-paramount stats', () => {
+  it('renders Parent Requests stat from parent_request_satisfaction_rate (not explicit_csv)', () => {
+    const stats = makeStats({
+      total_requests: 100,
+      satisfied_requests: 50,
+      request_satisfaction_rate: 0.5,
+      // Legacy values (mixed staff notes — what the badge USED to read)
+      explicit_csv_requests: 100,
+      satisfied_explicit_csv_requests: 50,
+      explicit_csv_request_satisfaction_rate: 0.5,
+      // Honest parent-paramount values (what the badge SHOULD read)
+      parent_requests: 10,
+      satisfied_parent_requests: 9,
+      parent_request_satisfaction_rate: 0.9,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    const parentLabel = screen.getByText(/^Parent Requests$/i)
+    const parentSection = parentLabel.parentElement!
+    const parentScope = within(parentSection)
+    expect(parentScope.getByText('90%')).toBeInTheDocument()
+    expect(parentScope.getByText('(9/10)')).toBeInTheDocument()
+  })
+
+  it('renders Staff Requests stat as a sibling badge', () => {
+    const stats = makeStats({
+      parent_requests: 10,
+      satisfied_parent_requests: 10,
+      parent_request_satisfaction_rate: 1.0,
+      staff_requests: 50,
+      satisfied_staff_requests: 25,
+      staff_request_satisfaction_rate: 0.5,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="right" />)
+    const staffLabel = screen.getByText(/^Staff Requests$/i)
+    const staffSection = staffLabel.parentElement!
+    const staffScope = within(staffSection)
+    expect(staffScope.getByText('50%')).toBeInTheDocument()
+    expect(staffScope.getByText('(25/50)')).toBeInTheDocument()
+  })
+
+  it('does not render NaN% when rate fields are missing from a stale payload', () => {
+    // Stage 1 rate fields are typed as required `number`, but during rollout
+    // (or with a stale cached scenario response) the runtime payload can
+    // still arrive without them. Math.round(undefined * 100) === NaN, which
+    // would render as "NaN%". Guard against that.
+    const stats = makeStats({
+      total_requests: 100,
+      satisfied_requests: 50,
+    })
+    // @ts-expect-error — deliberately violating the type contract to simulate
+    // a stale runtime payload, mirroring the real risk during rollout.
+    delete stats.request_satisfaction_rate
+    // @ts-expect-error — see above
+    delete stats.parent_request_satisfaction_rate
+    // @ts-expect-error — see above
+    delete stats.staff_request_satisfaction_rate
+
+    const { container } = render(
+      <ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />
+    )
+    expect(container.textContent).not.toContain('NaN')
+    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('renders an All Requests stat alongside Parent and Staff', () => {
+    const stats = makeStats({
+      total_requests: 60,
+      satisfied_requests: 35,
+      request_satisfaction_rate: 35 / 60,
+      parent_requests: 10,
+      satisfied_parent_requests: 9,
+      parent_request_satisfaction_rate: 0.9,
+      staff_requests: 50,
+      satisfied_staff_requests: 26,
+      staff_request_satisfaction_rate: 0.52,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.getByText(/^All Requests$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Parent Requests$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Staff Requests$/i)).toBeInTheDocument()
   })
 })

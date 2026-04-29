@@ -2,13 +2,14 @@
  * Tests for Cytoscape styles and graph data transformations
  */
 import { describe, it, expect } from 'vitest'
+import type { NodeSingular } from 'cytoscape'
 import {
   getCytoscapeStyles,
   createGraphElements,
   type GraphNodeData,
   type GraphEdgeData,
 } from './cytoscapeStyles'
-import { EDGE_COLORS } from './constants'
+import { EDGE_COLORS, STATUS_COLORS } from './constants'
 import { expectDefined } from '../../test/testUtils'
 
 describe('getCytoscapeStyles', () => {
@@ -329,6 +330,35 @@ describe('createGraphElements', () => {
     )
     expect(positive.data.request_type).toBe('bunk_with')
   })
+
+  it('forwards parent/staff satisfaction status onto camper nodes', () => {
+    const nodesWithSplits: GraphNodeData[] = [
+      {
+        id: 1,
+        name: 'Alice',
+        grade: 5,
+        centrality: 0.5,
+        clustering: 0.3,
+        satisfaction_status: 'satisfied',
+        parent_satisfaction_status: 'satisfied',
+        staff_satisfaction_status: 'isolated',
+        bunk_cm_id: 100,
+        community: 1,
+      },
+    ]
+    const { nodes } = createGraphElements(nodesWithSplits, [], mockBunksData, {
+      request: true,
+      historical: true,
+      sibling: true,
+      school: true,
+    })
+    const alice = expectDefined(
+      nodes.find((n) => n.data.id === '1'),
+      'alice'
+    )
+    expect(alice.data.parent_satisfaction_status).toBe('satisfied')
+    expect(alice.data.staff_satisfaction_status).toBe('isolated')
+  })
 })
 
 describe('EDGE_COLORS constant', () => {
@@ -389,5 +419,69 @@ describe('edge curve rendering', () => {
     }
     const color = (lineColor as (e: unknown) => string)(fakeEdge)
     expect(color).toBe('#e74c3c')
+  })
+})
+
+describe('parent-paramount node border', () => {
+  function makeFakeNode(
+    overrides: Partial<{
+      parent_satisfaction_status: string
+      staff_satisfaction_status: string
+      satisfaction_status: string
+    }>
+  ) {
+    const data: Record<string, unknown> = { ...overrides }
+    return {
+      data: (key: string) => data[key],
+    } as unknown as NodeSingular
+  }
+
+  it('reads parent_satisfaction_status for primary border color', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const nodeStyle = expectDefined(
+      styles.find((s) => s.selector === 'node:childless'),
+      'node:childless style'
+    )
+    const borderFn = (nodeStyle.style as { 'border-color': (e: NodeSingular) => string })[
+      'border-color'
+    ]
+    const node = makeFakeNode({
+      parent_satisfaction_status: 'isolated',
+      staff_satisfaction_status: 'satisfied',
+    })
+    expect(borderFn(node)).toBe(STATUS_COLORS['isolated'])
+  })
+
+  it('falls back to legacy satisfaction_status when parent_satisfaction_status is absent', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const nodeStyle = expectDefined(
+      styles.find((s) => s.selector === 'node:childless'),
+      'node:childless style'
+    )
+    const borderFn = (nodeStyle.style as { 'border-color': (e: NodeSingular) => string })[
+      'border-color'
+    ]
+    const node = makeFakeNode({ satisfaction_status: 'satisfied' })
+    expect(borderFn(node)).toBe(STATUS_COLORS['satisfied'])
+  })
+
+  it('does NOT render staff state on the node (Stage 2 scope decision)', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const nodeStyle = expectDefined(
+      styles.find((s) => s.selector === 'node:childless'),
+      'node:childless style'
+    )
+    const borderFn = (nodeStyle.style as { 'border-color': (e: NodeSingular) => string })[
+      'border-color'
+    ]
+    const a = makeFakeNode({
+      parent_satisfaction_status: 'satisfied',
+      staff_satisfaction_status: 'isolated',
+    })
+    const b = makeFakeNode({
+      parent_satisfaction_status: 'satisfied',
+      staff_satisfaction_status: 'satisfied',
+    })
+    expect(borderFn(a)).toBe(borderFn(b))
   })
 })

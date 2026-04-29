@@ -7,6 +7,22 @@ export interface BunkmateInfo {
   grade: number | null
 }
 
+// Stage 2 parent-paramount split. Parent = source==='family' (bunk_with +
+// socialize_with). Staff = source==='staff' (not_bunk_with + bunking_notes +
+// internal_notes). Requests with source==='notes' or unset fall through both
+// splits but still count in the aggregate totalRequests/satisfiedCount.
+export interface SatisfiedRequestInfo {
+  totalRequests: number
+  satisfiedCount: number
+  topPrioritySatisfied: boolean
+  priorityLevels: number[]
+  hasLockedPriority: boolean
+  parentTotal: number
+  parentSatisfied: number
+  staffTotal: number
+  staffSatisfied: number
+}
+
 interface BunkRequestContextValue {
   // All requests for the session
   allRequests: BunkRequest[]
@@ -20,13 +36,7 @@ interface BunkRequestContextValue {
     bunkCmId: number,
     campersInBunk: BunkmateInfo[],
     requesterGrade: number | null
-  ) => {
-    totalRequests: number
-    satisfiedCount: number
-    topPrioritySatisfied: boolean
-    priorityLevels: number[]
-    hasLockedPriority: boolean
-  }
+  ) => SatisfiedRequestInfo
   // Loading state
   isLoading: boolean
   error: Error | null

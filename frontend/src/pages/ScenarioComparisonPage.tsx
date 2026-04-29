@@ -176,20 +176,32 @@ interface BunkComparison {
 }
 
 // Validation score types
-interface ValidationStatistics {
+export interface ValidationStatistics {
   total_requests: number
   satisfied_requests: number
   request_satisfaction_rate: number
+  // Legacy aggregate fields, kept until Stage 4 retires them. Stage 1 left
+  // these intact so any consumer not yet migrated keeps working.
   explicit_csv_requests: number
   satisfied_explicit_csv_requests: number
   explicit_csv_request_satisfaction_rate: number
+  // Stage 1 parent-paramount fields. Frontend reads these now.
+  parent_requests: number
+  satisfied_parent_requests: number
+  parent_request_satisfaction_rate: number
+  campers_with_unsatisfied_parent_requests: number
+  // Stage 1 staff fields, distinct from parent.
+  staff_requests: number
+  satisfied_staff_requests: number
+  staff_request_satisfaction_rate: number
+  campers_with_unsatisfied_staff_requests: number
   negative_request_violations: number
   assigned_campers: number
   unassigned_campers: number
   isolation_risks: number
 }
 
-interface ValidationResult {
+export interface ValidationResult {
   statistics: ValidationStatistics
   issues: Array<{ severity: string; type: string; message: string }>
 }
@@ -1106,14 +1118,47 @@ export default function ScenarioComparisonPage() {
   )
 }
 
+// One percentage stat tile inside ValidationScoreCard. Three of these render
+// per scoreboard column (All / Parent / Staff Requests).
+function StatBlock({
+  label,
+  pct,
+  satisfied,
+  total,
+}: {
+  label: string
+  pct: number
+  satisfied: number
+  total: number
+}) {
+  return (
+    <div>
+      <div className="text-muted-foreground text-xs tracking-wider uppercase">{label}</div>
+      <div className="flex items-baseline gap-1">
+        <span
+          className={clsx(
+            'text-xl font-bold',
+            pct >= 80 ? 'text-forest-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600'
+          )}
+        >
+          {pct}%
+        </span>
+        <span className="text-muted-foreground text-xs">
+          ({satisfied}/{total})
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // Validation Score Card Component - detailed validation stats
-interface ValidationScoreCardProps {
+export interface ValidationScoreCardProps {
   label: string
   validation: ValidationResult | null | undefined
   side: 'left' | 'right'
 }
 
-function ValidationScoreCard({ label, validation, side }: ValidationScoreCardProps) {
+export function ValidationScoreCard({ label, validation, side }: ValidationScoreCardProps) {
   if (!validation) {
     return (
       <div
@@ -1129,8 +1174,9 @@ function ValidationScoreCard({ label, validation, side }: ValidationScoreCardPro
   }
 
   const stats = validation.statistics
-  const satisfactionPct = Math.round(stats.request_satisfaction_rate * 100)
-  const explicitPct = Math.round(stats.explicit_csv_request_satisfaction_rate * 100)
+  const satisfactionPct = Math.round((stats.request_satisfaction_rate ?? 0) * 100)
+  const parentPct = Math.round((stats.parent_request_satisfaction_rate ?? 0) * 100)
+  const staffPct = Math.round((stats.staff_request_satisfaction_rate ?? 0) * 100)
 
   return (
     <div
@@ -1143,50 +1189,24 @@ function ValidationScoreCard({ label, validation, side }: ValidationScoreCardPro
     >
       <div className="mb-3 truncate text-sm font-semibold">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
-        {/* Request Satisfaction */}
-        <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">All Requests</div>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={clsx(
-                'text-xl font-bold',
-                satisfactionPct >= 80
-                  ? 'text-forest-600'
-                  : satisfactionPct >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              )}
-            >
-              {satisfactionPct}%
-            </span>
-            <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_requests}/{stats.total_requests})
-            </span>
-          </div>
-        </div>
-        {/* Explicit Field Satisfaction */}
-        <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">
-            Parent Requests
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={clsx(
-                'text-xl font-bold',
-                explicitPct >= 80
-                  ? 'text-forest-600'
-                  : explicitPct >= 60
-                    ? 'text-amber-600'
-                    : 'text-red-600'
-              )}
-            >
-              {explicitPct}%
-            </span>
-            <span className="text-muted-foreground text-xs">
-              ({stats.satisfied_explicit_csv_requests}/{stats.explicit_csv_requests})
-            </span>
-          </div>
-        </div>
+        <StatBlock
+          label="All Requests"
+          pct={satisfactionPct}
+          satisfied={stats.satisfied_requests}
+          total={stats.total_requests}
+        />
+        <StatBlock
+          label="Parent Requests"
+          pct={parentPct}
+          satisfied={stats.satisfied_parent_requests}
+          total={stats.parent_requests}
+        />
+        <StatBlock
+          label="Staff Requests"
+          pct={staffPct}
+          satisfied={stats.satisfied_staff_requests}
+          total={stats.staff_requests}
+        />
         {/* Violations & Risks */}
         <div>
           <div className="text-muted-foreground text-xs tracking-wider uppercase">Violations</div>

@@ -20,6 +20,11 @@ class SocialGraphNode(BaseModel):
     clustering: float = 0.0
     community: int | None = None
     satisfaction_status: str | None = None  # 'satisfied' | 'isolated' | 'no_requests'
+    # Stage 2 parent-paramount split. parent_satisfaction_status drives the graph
+    # node border color in the frontend; staff_satisfaction_status is emitted but
+    # intentionally not rendered (Stage 2 scope decision).
+    parent_satisfaction_status: str | None = None
+    staff_satisfaction_status: str | None = None
     first_year: bool = False  # True if camper has no historical attendance
     last_year_session: str | None = None  # Previous year's session name
     last_year_bunk: str | None = None  # Previous year's bunk name

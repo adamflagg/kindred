@@ -188,6 +188,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                     "reciprocal": reciprocal,
                     "confidence": round(request.confidence_score, 2) if request.confidence_score else None,
                     "year": request.year,
+                    "source": getattr(request, "source", None),
                 }
 
                 edge_data.append((person_id, requestee, edge_attrs))
