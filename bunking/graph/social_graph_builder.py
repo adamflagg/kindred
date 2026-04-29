@@ -604,8 +604,13 @@ class SocialGraphBuilder:
         # bunk_requests uses session_id, requester_id, requestee_id fields
         requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
             query_params={
+                # Spec §2.1: only resolved rows generate graph edges.
+                # The bunk-graph path (line 286) already filters status =
+                # "resolved"; this aligns the session-graph path with the
+                # same rule. Pending or declined requests must NOT produce
+                # phantom edges in the social graph.
                 "filter": f"year = {year} && session_id = {session_cm_id} && "
-                f'request_type = "bunk_with" && status != "removed"'
+                f'request_type = "bunk_with" && status = "resolved"'
             }
         )
 

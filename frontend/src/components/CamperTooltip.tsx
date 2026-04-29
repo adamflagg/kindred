@@ -36,7 +36,10 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
       if (!camper.person_cm_id) return []
 
       const records = await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
-        filter: `requester_id = ${camper.person_cm_id} && request_type = 'age_preference' && year = ${currentYear}`,
+        // Spec §2.1: tooltip should only surface resolved age preferences.
+        // Pending (e.g. SAME_AGE staff-review) and declined rows must not
+        // appear as if they were applied.
+        filter: `requester_id = ${camper.person_cm_id} && request_type = 'age_preference' && year = ${currentYear} && status = "resolved"`,
       })
 
       return records

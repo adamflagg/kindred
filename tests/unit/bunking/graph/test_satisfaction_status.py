@@ -226,6 +226,31 @@ def test_legacy_satisfaction_status_still_emitted_for_backwards_compat() -> None
     assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
 
 
+def test_session_graph_request_edges_only_query_resolved_rows() -> None:
+    """Spec §2.1 + Stage 3a sweep: _add_request_edges (session-graph path) must
+    query bunk_requests with `status = "resolved"`, NOT `status != "removed"`.
+
+    The legacy filter `status != "removed"` was permissive — pending and
+    declined rows leaked into the graph as phantom edges. The bunk-graph path
+    (line 286) was already correct; this regression-locks the session-graph
+    path to the same rule.
+    """
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    builder = SocialGraphBuilder(pb=pb)
+    builder.graph = nx.Graph()
+    builder._add_request_edges(year=2026, session_cm_id=999)
+
+    call_kwargs = pb.collection.return_value.get_full_list.call_args.kwargs
+    filter_str = call_kwargs.get("query_params", {}).get("filter", "")
+    assert 'status = "resolved"' in filter_str, (
+        f"session-graph filter must require status=resolved, got: {filter_str!r}"
+    )
+    assert 'status != "removed"' not in filter_str, (
+        f"session-graph filter must not use legacy 'status != removed'; got: {filter_str!r}"
+    )
+
+
 def test_request_edges_carry_source_attribute() -> None:
     """Each request edge should expose the source-of-record (family/staff) so
     satisfaction can be computed per source. Required by Stage 2 to drive
