@@ -47,6 +47,21 @@ const MATCHING_MAX_AGE_MS = 10 * 60_000
 
 export const CSV_UPLOAD_STORAGE_KEY = 'csvUploadStartedAt'
 
+export function markCsvUploadStarted(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, new Date().toISOString())
+}
+
+export function clearCsvUploadMarker(): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.removeItem(CSV_UPLOAD_STORAGE_KEY)
+}
+
+export function readCsvUploadMarker(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  return localStorage.getItem(CSV_UPLOAD_STORAGE_KEY)
+}
+
 function isSyncFromCsvUpload(syncStartedAt: string, csvUploadStartedAt: string | null): boolean {
   if (!csvUploadStartedAt) return false
   const csvAt = new Date(csvUploadStartedAt).getTime()

@@ -2,7 +2,7 @@ import { type ChangeEvent, useState, useRef } from 'react'
 import { Upload, Loader2, FileText, AlertCircle, CheckCircle } from 'lucide-react'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { syncService, type UploadError } from '../services/sync'
-import { CSV_UPLOAD_STORAGE_KEY } from '../services/csvPipelineStatus'
+import { clearCsvUploadMarker, markCsvUploadStarted } from '../services/csvPipelineStatus'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useCurrentYear } from '../hooks/useCurrentYear'
@@ -26,7 +26,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
       // Mark this browser session as having initiated a CSV upload so the
       // CsvPipelineIndicator can attribute the next bunk_requests sync to
       // the upload (rather than the nightly cron, which also runs that sync).
-      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, new Date().toISOString())
+      markCsvUploadStarted()
     },
     onSuccess: () => {
       toast.success(
@@ -45,7 +45,7 @@ export default function BunkRequestsUpload({ compact = false }: BunkRequestsUplo
     onError: (error: UploadError) => {
       // Upload failed before the sync could start — clear the marker so a
       // subsequent cron run isn't falsely attributed to this upload.
-      localStorage.removeItem(CSV_UPLOAD_STORAGE_KEY)
+      clearCsvUploadMarker()
       if (error.missing_columns) {
         toast.error(
           <div>

@@ -2,21 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { useApiWithAuth } from './useApiWithAuth'
 import {
   CSV_UPLOAD_PROXIMITY_MS,
-  CSV_UPLOAD_STORAGE_KEY,
   derivePhase,
   fetchLatestDebugRun,
   fetchSyncStatus,
+  readCsvUploadMarker,
   type PipelinePhase,
 } from '../services/csvPipelineStatus'
 import { queryKeys } from '../utils/queryKeys'
 
 const ACTIVE_POLL_MS = 2000
 const STALE_TIME_MS = 1500
-
-function readCsvUploadMarker(): string | null {
-  if (typeof localStorage === 'undefined') return null
-  return localStorage.getItem(CSV_UPLOAD_STORAGE_KEY)
-}
 
 // Marker is "recent" while it is still within the attribution proximity window.
 // Sharing the same constant as derivePhase prevents the poll window and the
