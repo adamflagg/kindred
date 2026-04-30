@@ -24,7 +24,6 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
 
   it('bunk_with × bunk_with × family → materialParent', () => {
     const req = makeReq({
-      id: 'a',
       request_type: 'bunk_with',
       source_field: 'bunk_with',
       source: 'family',
@@ -53,7 +52,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       source: 'staff',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   // BUG-FIX CASE — pre-fix this row landed in `staff` due to the
@@ -76,7 +75,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       source: 'staff',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('not_bunk_with × bunking_notes × staff → staff', () => {
@@ -86,7 +85,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       source: 'staff',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('not_bunk_with × internal_notes × staff → staff', () => {
@@ -96,7 +95,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       source: 'staff',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('age_preference × bunk_with × family → materialParent', () => {
@@ -107,7 +106,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       age_preference_target: 'older',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.materialParent.total).toBe(1)
+    expect(slices.materialParent).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('age_preference × socialize_with × family → bestEffortParent', () => {
@@ -118,19 +117,19 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       age_preference_target: 'younger',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.bestEffortParent.total).toBe(1)
+    expect(slices.bestEffortParent).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
     expect(slices.materialParent.total).toBe(0)
   })
 
   it('age_preference × null × family → bestEffortParent (legacy fallback, #1086)', () => {
     const req = makeReq({
       request_type: 'age_preference',
-      source_field: null as any,
+      source_field: undefined,
       source: 'family',
       age_preference_target: 'older',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.bestEffortParent.total).toBe(1)
+    expect(slices.bestEffortParent).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('age_preference × bunking_notes × staff → staff', () => {
@@ -141,7 +140,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       age_preference_target: 'older',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 
   it('age_preference × internal_notes × staff → staff', () => {
@@ -152,7 +151,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       age_preference_target: 'younger',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(1)
+    expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
 })
 
@@ -189,6 +188,16 @@ describe('computeSlicesFromPredicate — flag derivation', () => {
     })
     const slices = computeSlicesFromPredicate([req], noneSatisfied)
     expect(slices.staffUnsatisfiedAlert).toBe(true)
+  })
+
+  it('staffUnsatisfiedAlert false when at least one staff satisfied', () => {
+    const req = makeReq({
+      request_type: 'not_bunk_with',
+      source_field: 'not_bunk_with',
+      source: 'staff',
+    })
+    const slices = computeSlicesFromPredicate([req], () => true)
+    expect(slices.staffUnsatisfiedAlert).toBe(false)
   })
 
   it('skips non-resolved requests entirely', () => {
