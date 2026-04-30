@@ -139,6 +139,15 @@ interface CamperDetailsPanelProps {
    * PB query.
    */
   getBunkForPerson?: (cmId: number) => number | null
+  /**
+   * When set, the camper this panel is rendering is out of the active graph
+   * scope filter. The panel renders a soft warning banner pointing the user
+   * to clear the filter to keep viewing.
+   */
+  outOfScope?: {
+    camperName: string
+    onClearFilter: () => void
+  }
 }
 
 // Interface for historical records
@@ -167,6 +176,7 @@ export default function CamperDetailsPanel({
   bunkCampers,
   assignedBunkCmId,
   getBunkForPerson,
+  outOfScope,
 }: CamperDetailsPanelProps) {
   // Internal close state enables slide-out animation before unmount.
   // handleClose sets this to true, which triggers the exit animation.
@@ -809,6 +819,20 @@ export default function CamperDetailsPanel({
   // Render the panel content
   const renderContent = () => (
     <div className={embedded ? 'space-y-3' : 'flex-1 space-y-4 overflow-auto'}>
+      {/* Out-of-scope warning banner */}
+      {outOfScope && (
+        <div className="border-b border-yellow-200 bg-yellow-50 px-4 py-2 text-sm text-yellow-900">
+          <span className="font-medium">{outOfScope.camperName}</span> is no longer in your filtered
+          scope.
+          <button
+            type="button"
+            onClick={outOfScope.onClearFilter}
+            className="ml-3 font-semibold underline hover:text-yellow-700"
+          >
+            Clear filter to keep viewing
+          </button>
+        </div>
+      )}
       {/* Quick Stats Bar */}
       <div className="bg-forest-900/50 border-forest-600/20 border-b px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
