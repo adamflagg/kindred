@@ -1392,3 +1392,137 @@ def test_three_grade_bunk_age_preference_evaluation():
     # the slice-specific rate instead.
     assert stats.best_effort_parent_request_satisfaction_rate == 1.0
     assert stats.material_parent_requests == 0
+
+
+# ---------------------------------------------------------------------------
+# Stage 3b.1 §2.8 — Backend parity: slice classification truth table
+# ---------------------------------------------------------------------------
+# Each parametrize entry maps one row of the §2.8 truth table to the
+# validator slice counter that must increment. We test classification only —
+# satisfaction doesn't matter, so we don't bother building satisfying bunks.
+#
+# "material"     → stats.material_parent_requests   == 1
+# "best_effort"  → stats.best_effort_parent_requests == 1
+# "staff"        → stats.staff_requests              == 1
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "request_type, source_field, source, expected_slice",
+    [
+        # row 1: bunk_with / bunk_with / family → materialParent
+        ("bunk_with", SourceField.BUNK_WITH, "family", "material"),
+        # row 2: bunk_with / bunking_notes / staff → staff
+        ("bunk_with", SourceField.BUNKING_NOTES, "staff", "staff"),
+        # row 3: bunk_with / internal_notes / staff → staff
+        ("bunk_with", SourceField.INTERNAL_NOTES, "staff", "staff"),
+        # row 4: not_bunk_with / bunk_with / family → materialParent  (bug-fix parity)
+        ("not_bunk_with", SourceField.BUNK_WITH, "family", "material"),
+        # row 5: not_bunk_with / not_bunk_with / staff → staff
+        ("not_bunk_with", SourceField.NOT_BUNK_WITH, "staff", "staff"),
+        # row 6: not_bunk_with / bunking_notes / staff → staff
+        ("not_bunk_with", SourceField.BUNKING_NOTES, "staff", "staff"),
+        # row 7: not_bunk_with / internal_notes / staff → staff
+        ("not_bunk_with", SourceField.INTERNAL_NOTES, "staff", "staff"),
+        # row 8: age_preference / bunk_with / family → materialParent
+        ("age_preference", SourceField.BUNK_WITH, "family", "material"),
+        # row 9: age_preference / socialize_with / family → bestEffortParent
+        ("age_preference", SourceField.SOCIALIZE_WITH, "family", "best_effort"),
+        # row 10: age_preference / null / family → bestEffortParent  (legacy fallback #1086)
+        ("age_preference", None, "family", "best_effort"),
+        # row 11: age_preference / bunking_notes / staff → staff
+        ("age_preference", SourceField.BUNKING_NOTES, "staff", "staff"),
+        # row 12: age_preference / internal_notes / staff → staff
+        ("age_preference", SourceField.INTERNAL_NOTES, "staff", "staff"),
+    ],
+    ids=[
+        "bunk_with__bunk_with__family",
+        "bunk_with__bunking_notes__staff",
+        "bunk_with__internal_notes__staff",
+        "not_bunk_with__bunk_with__family",
+        "not_bunk_with__not_bunk_with__staff",
+        "not_bunk_with__bunking_notes__staff",
+        "not_bunk_with__internal_notes__staff",
+        "age_preference__bunk_with__family",
+        "age_preference__socialize_with__family",
+        "age_preference__null__family",
+        "age_preference__bunking_notes__staff",
+        "age_preference__internal_notes__staff",
+    ],
+)
+def test_validator_slice_classification(
+    request_type: str,
+    source_field: str | None,
+    source: str,
+    expected_slice: str,
+) -> None:
+    """Backend slice classification must match the frontend computeSlicesFromPredicate
+    truth table per Stage 3b.1 §2.8.
+
+    We test classification (which counter increments) not satisfaction. Both campers
+    are placed in the same bunk; not_bunk_with rows will therefore be unsatisfied, but
+    that doesn't affect which slice counter receives the request.
+    """
+    session = _mock_session(cm_id="10000099", name="Parity Test")
+    persons = [
+        MockPerson(campminder_id="9901", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="9902", name="Liam Garcia", grade=6),
+    ]
+    bunks = [_mock_bunk("8801")]
+    assignments = [
+        _mock_assignment("9901", "8801"),
+        _mock_assignment("9902", "8801"),
+    ]
+
+    # For age_preference rows the target is None (no concrete person); for all
+    # others it points to the second camper.
+    target = None if request_type == "age_preference" else "9902"
+
+    request = MockBunkRequest(
+        requester_person_cm_id="9901",
+        requested_person_cm_id=target,
+        request_type=request_type,
+        status="resolved",
+        source_field=source_field,
+        source=source,
+        age_preference_target="older" if request_type == "age_preference" else None,
+    )
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=[request],  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    material = stats.material_parent_requests
+    best_effort = stats.best_effort_parent_requests
+    staff = stats.staff_requests
+
+    if expected_slice == "material":
+        assert material == 1, (
+            f"Expected material_parent_requests=1 for "
+            f"(request_type={request_type!r}, source_field={source_field!r}, source={source!r}); "
+            f"got material={material}, best_effort={best_effort}, staff={staff}"
+        )
+        assert best_effort == 0
+        assert staff == 0
+    elif expected_slice == "best_effort":
+        assert best_effort == 1, (
+            f"Expected best_effort_parent_requests=1 for "
+            f"(request_type={request_type!r}, source_field={source_field!r}, source={source!r}); "
+            f"got material={material}, best_effort={best_effort}, staff={staff}"
+        )
+        assert material == 0
+        assert staff == 0
+    elif expected_slice == "staff":
+        assert staff == 1, (
+            f"Expected staff_requests=1 for "
+            f"(request_type={request_type!r}, source_field={source_field!r}, source={source!r}); "
+            f"got material={material}, best_effort={best_effort}, staff={staff}"
+        )
+        assert material == 0
+        assert best_effort == 0
