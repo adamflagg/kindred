@@ -139,3 +139,12 @@ export function getUnitSideForBunk(bunkName: string): { unit: string; side: Unit
 
   return null
 }
+
+/**
+ * Return the subset of `bunkNames` whose unit matches `unitName`.
+ * Order is preserved from the input array. Unknown bunk names (those for
+ * which `getUnitForBunk` returns null) are silently dropped.
+ */
+export function getBunksInUnit(unitName: string, bunkNames: string[]): string[] {
+  return bunkNames.filter((name) => getUnitForBunk(name) === unitName)
+}

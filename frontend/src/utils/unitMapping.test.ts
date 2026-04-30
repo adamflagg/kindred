@@ -3,7 +3,7 @@
  * Maps bunk names (e.g. "B-1", "G-12", "Aleph") to unit names
  */
 import { describe, it, expect } from 'vitest'
-import { getUnitForBunk, getUnitSideForBunk, UNIT_COLORS } from './unitMapping'
+import { getUnitForBunk, getUnitSideForBunk, UNIT_COLORS, getBunksInUnit } from './unitMapping'
 
 describe('getUnitForBunk', () => {
   describe('Nitzanim unit (Aleph, Bet)', () => {
@@ -227,5 +227,29 @@ describe('UNIT_COLORS', () => {
     const colors = Object.values(UNIT_COLORS)
     const unique = new Set(colors)
     expect(unique.size).toBe(colors.length)
+  })
+})
+
+describe('getBunksInUnit', () => {
+  it('returns the bunks that belong to the named unit', () => {
+    const all = ['B-3', 'G-3', 'B-4', 'G-4', 'B-5', 'G-5']
+    expect(getBunksInUnit('Galil', all)).toEqual(['B-3', 'G-3', 'B-4', 'G-4'])
+  })
+
+  it('returns AG bunks under their numeric unit', () => {
+    expect(getBunksInUnit('Galil', ['AG-3', 'AG-5'])).toEqual(['AG-3'])
+  })
+
+  it('returns Nitzanim bunks for prefixed and unprefixed Aleph/Bet', () => {
+    const all = ['Aleph', 'Bet', 'B-Aleph', 'G-Bet']
+    expect(getBunksInUnit('Nitzanim', all)).toEqual(['Aleph', 'Bet', 'B-Aleph', 'G-Bet'])
+  })
+
+  it('returns empty array for unknown unit', () => {
+    expect(getBunksInUnit('Nope', ['B-3', 'G-5'])).toEqual([])
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(getBunksInUnit('Galil', [])).toEqual([])
   })
 })
