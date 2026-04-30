@@ -246,11 +246,11 @@ function CamperCard({
               {camper.name}
             </p>
             <div className="flex flex-shrink-0 items-center gap-1">
-              {/* Parent-paramount: parent requests submitted, none satisfied. */}
-              {satisfiedInfo.parentTotal > 0 && satisfiedInfo.parentSatisfied === 0 && (
+              {/* Parent-paramount: material parent request unsatisfied (>=1 request, 0 satisfied). */}
+              {satisfiedInfo.parentMinOneViolation && (
                 <span
                   className="text-orange-500 dark:text-orange-400"
-                  title={`${satisfiedInfo.parentTotal} parent request${satisfiedInfo.parentTotal > 1 ? 's' : ''}, none satisfied`}
+                  title={`${satisfiedInfo.materialParent.total} parent request${satisfiedInfo.materialParent.total > 1 ? 's' : ''}, none satisfied`}
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <path
@@ -261,13 +261,13 @@ function CamperCard({
                   </svg>
                 </span>
               )}
-              {/* Staff requests unsatisfied. Always shown when staffTotal > 0 && staffSatisfied === 0,
+              {/* Staff requests unsatisfied. Always shown when staffUnsatisfiedAlert is true,
                   independent of parent state — user wants the complete "what didn't land" picture
                   for staff input even when parent is met (resolved Q #6 in Stage 2 spec). */}
-              {satisfiedInfo.staffTotal > 0 && satisfiedInfo.staffSatisfied === 0 && (
+              {satisfiedInfo.staffUnsatisfiedAlert && (
                 <span
                   className="text-amber-500 dark:text-amber-400"
-                  title={`${satisfiedInfo.staffTotal} staff request${satisfiedInfo.staffTotal > 1 ? 's' : ''}, none satisfied`}
+                  title={`${satisfiedInfo.staff.total} staff request${satisfiedInfo.staff.total > 1 ? 's' : ''}, none satisfied`}
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <circle cx="10" cy="10" r="7" />

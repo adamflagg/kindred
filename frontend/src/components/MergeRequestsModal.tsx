@@ -7,6 +7,7 @@ import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 import { pb } from '../lib/pocketbase'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { invalidateRequestQueries } from '../utils/queryKeys'
 
 interface MergeRequestsModalProps {
   isOpen: boolean
@@ -147,12 +148,8 @@ export default function MergeRequestsModal({
       return response.json() as Promise<MergeResponse>
     },
     onSuccess: () => {
-      // Invalidate all related queries to refresh data
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
-      void queryClient.invalidateQueries({ queryKey: ['source-links'] })
-      void queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] })
+      // Merge rewrites source linkages between rows — invalidate aux keys too.
+      invalidateRequestQueries(queryClient, { includeSourceLinks: true })
       onMergeComplete()
       onClose()
     },

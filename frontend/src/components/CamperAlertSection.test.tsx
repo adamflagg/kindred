@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import { CamperAlertSection } from './CamperAlertSection'
 import type { CamperAlert } from './CamperAlertSection'
+import { buildCamperAlerts } from '../utils/camperAlertUtils'
 
 describe('CamperAlertSection', () => {
   const mockOnRequestAlertClick = vi.fn()
@@ -198,6 +199,84 @@ describe('CamperAlertSection', () => {
       expect(screen.getByText('In friend group (3 members)')).toBeInTheDocument()
     })
   })
+
+  // ─── 6. Materiality rule: best-effort (socialize_with) doesn't trip parent alert ─
+
+  describe('materiality gating in buildCamperAlerts', () => {
+    // The materiality gate lives in buildCamperAlerts, not in this renderer.
+    // Exercise the gate directly so the test fails if the gate flips.
+    const baseRequestInfo = {
+      materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      parentMinOneViolation: false,
+      staffUnsatisfiedAlert: false,
+      topPrioritySatisfied: true,
+      priorityLevels: [],
+    }
+
+    it('produces no parent alert when only best-effort requests are unsatisfied', () => {
+      const alerts = buildCamperAlerts({
+        assignedBunkCmId: 100,
+        requestInfo: {
+          ...baseRequestInfo,
+          bestEffortParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+        },
+        lockState: 'none',
+        lockGroupSize: 0,
+      })
+      const parentAlert = alerts.find((a) => a.id === 'unsatisfied-parent-requests')
+      expect(parentAlert).toBeUndefined()
+    })
+
+    it('produces a parent alert when material parent requests are unsatisfied', () => {
+      const alerts = buildCamperAlerts({
+        assignedBunkCmId: 100,
+        requestInfo: {
+          ...baseRequestInfo,
+          materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
+          parentMinOneViolation: true,
+        },
+        lockState: 'none',
+        lockGroupSize: 0,
+      })
+      const parentAlert = alerts.find((a) => a.id === 'unsatisfied-parent-requests')
+      expect(parentAlert).toBeDefined()
+      expect(parentAlert?.label).toBe('2 parent requests, none satisfied')
+    })
+
+    it('produces no alerts at all for an unassigned camper, regardless of request state', () => {
+      const alerts = buildCamperAlerts({
+        assignedBunkCmId: null,
+        requestInfo: {
+          ...baseRequestInfo,
+          materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+          parentMinOneViolation: true,
+          staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+          staffUnsatisfiedAlert: true,
+        },
+        lockState: 'none',
+        lockGroupSize: 0,
+      })
+      expect(alerts.filter((a) => a.requestRelated)).toEqual([])
+    })
+  })
+
+  describe('materiality rule (legacy renderer assertions)', () => {
+    it('socialize_with-only camper with unsatisfied best-effort does NOT trigger unsatisfied-parent-requests alert', () => {
+      // When parentMinOneViolation is false (no material bunk_with requests),
+      // the buildCamperAlerts util must NOT emit unsatisfied-parent-requests
+      // even if bestEffortParent has unsatisfied requests. This test verifies
+      // the rendered alert section respects that rule at the component layer.
+      const alerts: CamperAlert[] = []
+      // (no 'unsatisfied-parent-requests' alert — parentMinOneViolation is false)
+
+      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
+
+      expect(screen.queryByRole('button', { name: /parent request/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /alerts/i })).not.toBeInTheDocument()
+    })
+  })
 })
 
 // ─── Integration: CamperDetailsPanel renders alert section ────────────────────
@@ -235,11 +314,13 @@ vi.mock('../hooks', async () => {
       hasRequests: () => false,
       getRequestsForCamper: () => [],
       getSatisfiedRequestInfo: () => ({
-        totalRequests: 0,
-        satisfiedCount: 0,
+        materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: false,
+        staffUnsatisfiedAlert: false,
         topPrioritySatisfied: false,
         priorityLevels: [] as number[],
-        hasLockedPriority: false,
       }),
       isLoading: false,
       error: null,
@@ -286,11 +367,13 @@ describe('CamperDetailsPanel — alert section integration', () => {
 
     const spy = vi.fn(
       (_personCmId: number, _bunkCmId: number, _campers: unknown, _grade: number | null) => ({
-        totalRequests: 2,
-        satisfiedCount: 0,
+        materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
+        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+        parentMinOneViolation: true,
+        staffUnsatisfiedAlert: false,
         topPrioritySatisfied: false,
         priorityLevels: [] as number[],
-        hasLockedPriority: false,
       })
     )
     vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({

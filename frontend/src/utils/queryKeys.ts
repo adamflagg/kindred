@@ -298,6 +298,52 @@ export const queryKeys = {
       metric,
       duration,
     ] as const,
+
+  // Prefix factories for broad invalidation of bunk_request data.
+  bunkRequestsPrefix: () => ['bunk-requests'] as const,
+  allBunkRequestsPrefix: () => ['all-bunk-requests'] as const,
+  personBunkRequestsPrefix: () => ['person-bunk-requests'] as const,
+  personAllBunkRequestsPrefix: () => ['person-all-bunk-requests'] as const,
+  bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
+  requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
+  cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
+  // Source-link keys are auxiliary — only merge/split mutations rewrite
+  // source linkages. Pass `includeSourceLinks: true` to invalidate these.
+  sourceLinksPrefix: () => ['source-links'] as const,
+  expandedSourceLinksPrefix: () => ['expanded-source-links'] as const,
+}
+
+/**
+ * Invalidate every React Query key consumed by request-derived UI
+ * (alerts, badges, satisfaction marks, graph borders). Call from any
+ * mutation handler that changes a `bunk_requests` row.
+ *
+ * The full inventory of keys is pinned by
+ * `frontend/src/hooks/session/__tests__/alert-invalidation.test.ts` —
+ * adding a new key requires updating both this helper and that contract.
+ *
+ * Pass `includeSourceLinks: true` from merge/split handlers, which
+ * additionally rewrite source linkages between rows.
+ */
+export interface InvalidateRequestQueriesOptions {
+  includeSourceLinks?: boolean
+}
+
+export function invalidateRequestQueries(
+  queryClient: { invalidateQueries: (args: { queryKey: readonly unknown[] }) => unknown },
+  options: InvalidateRequestQueriesOptions = {}
+): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.personBunkRequestsPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.personAllBunkRequestsPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsTooltipPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.requestSatisfactionPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.cohortRequestRelationsPrefix() })
+  if (options.includeSourceLinks) {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
+  }
 }
 
 /**

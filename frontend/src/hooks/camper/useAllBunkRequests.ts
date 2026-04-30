@@ -35,6 +35,11 @@ export function useAllBunkRequests(
       }
 
       try {
+        // Admin-debug fetch: intentionally does NOT filter status = "resolved"
+        // so the full-page CamperDetail's ParsedRequestsPanel can show every
+        // row (pending and declined included) for staff audit.
+        // Satisfaction-facing consumers downstream filter at their own
+        // boundary — see useSatisfactionData and computeSatisfiedRequestInfo.
         const filter = `requester_id = ${personCmId} && year = ${currentYear}`
         const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
           filter,

@@ -208,3 +208,59 @@ class TestAgePreferenceSatisfied:
             preference="younger",
         )
         assert satisfied is True
+
+
+# ==================== THREE-GRADE-BUNK HANDLING (Stage 3a) ====================
+
+
+def test_three_grade_bunk_clear_second_place_evaluates_as_two_grade():
+    # Bunk distribution: 6 sixth-graders, 4 seventh-graders, 2 fifth-graders.
+    # Top 2 by count: {7, 6}. Requester is 6th grade preferring older.
+    # Real-grades pair {6, 7} has older → satisfied.
+    bunkmate_grades = [7, 7, 7, 7, 6, 6, 6, 6, 6, 5, 5]
+    satisfied, _ = is_age_preference_satisfied(6, bunkmate_grades, "older")
+    assert satisfied is True
+
+
+def test_three_grade_bunk_clear_second_place_fail_case():
+    # Bunk distribution: 6 fifth-graders, 4 sixth-graders, 2 seventh-graders.
+    # Top 2 by count: {5, 6}. Requester is 6th grade preferring older.
+    # Real-grades pair {5, 6}: requester is the top grade and has younger bunkmates → unsatisfied for "older".
+    bunkmate_grades = [5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7]
+    satisfied, _ = is_age_preference_satisfied(6, bunkmate_grades, "older")
+    assert satisfied is False
+
+
+def test_three_grade_bunk_tied_second_place_satisfies():
+    # Bunk distribution: 8 sixth-graders, 2 fifth-graders, 2 seventh-graders.
+    # Tied for second place (both at count 2) → return satisfied.
+    bunkmate_grades = [6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 7, 7]
+    satisfied, _ = is_age_preference_satisfied(6, bunkmate_grades, "older")
+    assert satisfied is True
+
+
+def test_three_grade_bunk_tied_second_place_satisfies_younger_pref():
+    # Same distribution, requester preferring younger.
+    bunkmate_grades = [6, 6, 6, 6, 6, 6, 6, 6, 5, 5, 7, 7]
+    satisfied, _ = is_age_preference_satisfied(6, bunkmate_grades, "younger")
+    assert satisfied is True
+
+
+def test_three_grade_bunk_lopsided_911_tied_second():
+    # 9/1/1 distribution: 9 sixth, 1 fifth, 1 seventh.
+    # Tied for second place → satisfied regardless of preference.
+    bunkmate_grades = [6, 6, 6, 6, 6, 6, 6, 6, 6, 5, 7]
+    assert is_age_preference_satisfied(6, bunkmate_grades, "older")[0] is True
+    assert is_age_preference_satisfied(6, bunkmate_grades, "younger")[0] is True
+
+
+def test_two_grade_bunk_unchanged_pass():
+    # Regression: existing two-grade-bunk logic still works.
+    bunkmate_grades = [6, 6, 7, 7]
+    assert is_age_preference_satisfied(6, bunkmate_grades, "older")[0] is True
+
+
+def test_two_grade_bunk_unchanged_fail():
+    # Regression: prefer older but only younger present → fail.
+    bunkmate_grades = [5, 5, 6]
+    assert is_age_preference_satisfied(6, bunkmate_grades, "older")[0] is False

@@ -200,6 +200,10 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
                 status="resolved",
+                # Bin into material_parent so total_requests reflects this row
+                # (total = material + staff).
+                source_field=SourceField.BUNK_WITH,
+                source="family",
             )
         ]
 
@@ -229,6 +233,11 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
                 status="resolved",
+                # alerting bucket requires the row to bin into material_parent
+                # (source_field=bunk_with) or staff. Production CSV import
+                # always sets source_field, so the test mirrors real data.
+                source_field=SourceField.BUNK_WITH,
+                source="family",
             )
         ]
 
@@ -258,6 +267,10 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
                 status="resolved",
+                # Staff source so the row bins into staff_requests and
+                # contributes to total_requests (= material + staff).
+                source_field=SourceField.NOT_BUNK_WITH,
+                source="staff",
             )
         ]
 
@@ -285,6 +298,11 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
                 status="resolved",
+                # alerting bucket needs the row to bin into staff
+                # (source_field=not_bunk_with, source=staff). In production the
+                # CSV/sync path always sets these.
+                source_field=SourceField.NOT_BUNK_WITH,
+                source="staff",
             )
         ]
 
@@ -731,16 +749,71 @@ class TestNormalizeSourceField:
         for field_data in result.statistics.field_stats.values():
             assert field_data["total"] == 0
 
+    def test_canonical_bunk_with_increments_material_parent_counters(
+        self, validator, session, bunks, persons, assignments
+    ):
+        """A canonical SourceField.BUNK_WITH input must populate
+        material_parent_requests (in addition to field_stats['share_bunk_with'])."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.BUNK_WITH,
+                source="family",
+            )
+        ]
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+        assert result.statistics.material_parent_requests == 1, (
+            f"canonical BUNK_WITH must increment material_parent_requests; "
+            f"got {result.statistics.material_parent_requests}"
+        )
+        assert result.statistics.satisfied_material_parent_requests == 1
+        assert result.statistics.best_effort_parent_requests == 0
+
+    def test_canonical_socialize_with_increments_best_effort_counters(
+        self, validator, session, bunks, persons, assignments
+    ):
+        """Canonical SourceField.SOCIALIZE_WITH must populate
+        best_effort_parent_requests, NOT material_parent_requests."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.SOCIALIZE_WITH,
+                source="family",
+            )
+        ]
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+        assert result.statistics.best_effort_parent_requests == 1, (
+            f"canonical SOCIALIZE_WITH must increment best_effort_parent_requests; "
+            f"got {result.statistics.best_effort_parent_requests}"
+        )
+        assert result.statistics.material_parent_requests == 0, (
+            f"SOCIALIZE_WITH must NOT bin to material_parent (best-effort only); "
+            f"got material_parent_requests={result.statistics.material_parent_requests}"
+        )
+
 
 def test_validation_statistics_has_parent_staff_breakdown_fields():
-    """ValidationStatistics declares parent/staff breakdown fields defaulting to 0/0.0."""
+    """ValidationStatistics declares material_parent/best_effort_parent/staff breakdown fields defaulting to 0/0.0."""
     stats = ValidationStatistics()
 
-    # Parent breakdown — campers with parent-source requests (bunk_with or socialize_with)
-    assert stats.parent_requests == 0
-    assert stats.satisfied_parent_requests == 0
-    assert stats.parent_request_satisfaction_rate == 0.0
-    assert stats.campers_with_unsatisfied_parent_requests == 0
+    # Material parent breakdown — bunk_with source_field requests
+    assert stats.material_parent_requests == 0
+    assert stats.satisfied_material_parent_requests == 0
+    assert stats.material_parent_request_satisfaction_rate == 0.0
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
+
+    # Best-effort parent breakdown — socialize_with source_field requests
+    assert stats.best_effort_parent_requests == 0
+    assert stats.satisfied_best_effort_parent_requests == 0
+    assert stats.best_effort_parent_request_satisfaction_rate == 0.0
 
     # Staff breakdown — campers with staff-source requests (not_bunk_with, bunking_notes, internal_notes)
     assert stats.staff_requests == 0
@@ -793,7 +866,7 @@ def _mock_request(
 
 
 def test_validator_bins_parent_requests_separately_from_staff():
-    """Parent-source requests count in parent_* stats; staff-source in staff_*. No overlap."""
+    """material_parent (bunk_with source_field) and staff (RequestSource.STAFF) requests are counted separately."""
     session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
@@ -802,10 +875,10 @@ def test_validator_bins_parent_requests_separately_from_staff():
         _mock_assignment("20002", "30001"),
     ]
     requests = [
-        # Parent: 20001 wants to bunk with 20002 — satisfied (both in 30001)
-        _mock_request("20001", "20002", "bunk_with", "family"),
-        # Staff: 20002 has an internal note not_bunk_with 20003 (20003 not present)
-        _mock_request("20002", "20003", "not_bunk_with", "staff", request_type="not_bunk_with"),
+        # Material parent: 20001 wants to bunk with 20002 (source_field=bunk_with) — satisfied (both in 30001)
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        # Staff: 20002 has an internal note not_bunk_with 20003 (20003 not present) — satisfied (20003 absent)
+        _mock_request("20002", "20003", SourceField.NOT_BUNK_WITH, "staff", request_type="not_bunk_with"),
     ]
 
     validator = BunkingValidator()
@@ -818,19 +891,19 @@ def test_validator_bins_parent_requests_separately_from_staff():
     )
     stats = result.statistics
 
-    assert stats.parent_requests == 1
-    assert stats.satisfied_parent_requests == 1
-    assert stats.parent_request_satisfaction_rate == 1.0
+    assert stats.material_parent_requests == 1
+    assert stats.satisfied_material_parent_requests == 1
+    assert stats.material_parent_request_satisfaction_rate == 1.0
     assert stats.staff_requests == 1
     assert stats.satisfied_staff_requests == 1
     assert stats.staff_request_satisfaction_rate == 1.0
-    assert stats.campers_with_unsatisfied_parent_requests == 0
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
     assert stats.campers_with_unsatisfied_staff_requests == 0
 
 
 def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
-    """A camper with a parent request unsatisfied but staff requests satisfied
-    should appear in campers_with_unsatisfied_parent_requests but NOT in the
+    """A camper with a material parent request unsatisfied but staff requests satisfied
+    should appear in campers_with_unsatisfied_material_parent_requests but NOT in the
     staff equivalent. Stage 4 uses this binning for the solver minimum-one rule."""
     session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
@@ -841,10 +914,10 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
         _mock_assignment("20003", "30002"),
     ]
     requests = [
-        # Parent: 20001 wants to bunk with 20002 — UNSATISFIED (20002 is in 30002)
-        _mock_request("20001", "20002", "bunk_with", "family"),
+        # Material parent: 20001 wants to bunk with 20002 (source_field=bunk_with) — UNSATISFIED
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
         # Staff: 20001 should not bunk with 20003 — SATISFIED (20003 in 30002, 20001 in 30001)
-        _mock_request("20001", "20003", "internal_notes", "staff", request_type="not_bunk_with"),
+        _mock_request("20001", "20003", SourceField.INTERNAL_NOTES, "staff", request_type="not_bunk_with"),
     ]
 
     validator = BunkingValidator()
@@ -857,18 +930,18 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
     )
     stats = result.statistics
 
-    assert stats.parent_requests == 1
-    assert stats.satisfied_parent_requests == 0
+    assert stats.material_parent_requests == 1
+    assert stats.satisfied_material_parent_requests == 0
     assert stats.staff_requests == 1
     assert stats.satisfied_staff_requests == 1
-    assert stats.campers_with_unsatisfied_parent_requests == 1  # 20001
+    assert stats.campers_with_unsatisfied_material_parent_requests == 1  # 20001
     assert stats.campers_with_unsatisfied_staff_requests == 0  # 20001's staff is satisfied
 
 
-def test_validator_skips_binning_for_requests_with_null_source():
-    """Requests with source=None (legacy records or unset) count toward
-    total_requests but fall through both parent and staff bins. Stage 1 silently
-    excludes them from breakdown stats."""
+def test_validator_skips_binning_for_requests_with_null_source_field():
+    """Requests with source_field=None (legacy records or unset) fall through all
+    parent and staff bins. Since total_requests = material + staff, a
+    null-source-field request also does NOT contribute to total_requests."""
     session = _mock_session()
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
@@ -877,8 +950,52 @@ def test_validator_skips_binning_for_requests_with_null_source():
         _mock_assignment("20002", "30001"),
     ]
     requests = [
-        # Source-less request — satisfied (both in 30001) but binned nowhere
-        _mock_request("20001", "20002", "bunk_with", None),
+        # No source_field — satisfied (both in 30001) but binned nowhere in breakdown stats
+        MockBunkRequest(
+            requester_person_cm_id="20001",
+            requested_person_cm_id="20002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=None,
+            source=None,
+        ),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    # total = material + staff = 0 (null-source request bins nowhere)
+    assert stats.total_requests == 0
+    assert stats.satisfied_requests == 0
+    assert stats.material_parent_requests == 0
+    assert stats.best_effort_parent_requests == 0
+    assert stats.staff_requests == 0
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
+    assert stats.campers_with_unsatisfied_staff_requests == 0
+
+
+def test_validator_source_field_drives_binning_regardless_of_source_enum():
+    """source_field (not source enum) determines material vs best-effort vs staff bin.
+    A request with source_field=bunk_with and a legacy source="notes" value (not in
+    RequestSource enum) still bins as material_parent because source_field is bunk_with."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+    ]
+    requests = [
+        # source_field=bunk_with, source=notes (legacy/unknown enum value)
+        # bins as material_parent because source_field drives binning
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "notes"),
     ]
 
     validator = BunkingValidator()
@@ -893,25 +1010,40 @@ def test_validator_skips_binning_for_requests_with_null_source():
 
     assert stats.total_requests == 1
     assert stats.satisfied_requests == 1
-    assert stats.parent_requests == 0
+    assert stats.material_parent_requests == 1  # bins by source_field, not source enum
     assert stats.staff_requests == 0
-    assert stats.campers_with_unsatisfied_parent_requests == 0
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
     assert stats.campers_with_unsatisfied_staff_requests == 0
 
 
-def test_validator_skips_binning_for_legacy_notes_source_value():
-    """The bunk_requests schema permits a legacy source="notes" value not present
-    in the RequestSource enum. Such rows count toward total_requests but fall
-    through both parent and staff bins. Pins the documented behavior."""
-    session = _mock_session()
-    persons = [_mock_person("20001"), _mock_person("20002")]
+# ---------------------------------------------------------------------------
+# Stage 3a: material_parent_* and best_effort_parent_* field tests
+# ---------------------------------------------------------------------------
+
+
+def test_total_requests_excludes_best_effort():
+    """Aggregate total_requests / satisfied_requests narrow to
+    material_parent + staff. A best-effort socialize_with row is reported
+    in best_effort_parent_requests only, NOT in total_requests.
+
+    Earlier iterations aggregated over valid_requests_by_person which
+    included best-effort.
+    """
+    session = _mock_session(cm_id="10000001", name="Test Session")
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
     bunks = [_mock_bunk("30001")]
     assignments = [
         _mock_assignment("20001", "30001"),
         _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30001"),
     ]
     requests = [
-        _mock_request("20001", "20002", "bunk_with", "notes"),
+        # Material parent: 20001 wants to bunk with 20002 (bunk_with) — satisfied
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        # Best-effort parent: 20001 wants to socialize with 20003 — satisfied (same bunk)
+        _mock_request("20001", "20003", SourceField.SOCIALIZE_WITH, "family"),
+        # Staff: 20002 has internal note bunk_with 20003 — satisfied (same bunk)
+        _mock_request("20002", "20003", SourceField.INTERNAL_NOTES, "staff"),
     ]
 
     validator = BunkingValidator()
@@ -924,9 +1056,339 @@ def test_validator_skips_binning_for_legacy_notes_source_value():
     )
     stats = result.statistics
 
-    assert stats.total_requests == 1
-    assert stats.satisfied_requests == 1
-    assert stats.parent_requests == 0
+    # Slice counts: material=1, best_effort=1, staff=1.
+    assert stats.material_parent_requests == 1
+    assert stats.satisfied_material_parent_requests == 1
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 1
+    assert stats.staff_requests == 1
+    assert stats.satisfied_staff_requests == 1
+
+    # total_requests = material_parent + staff (best-effort is excluded).
+    assert stats.total_requests == 2, (
+        f"total_requests must be material_parent + staff = 1 + 1 = 2, "
+        f"got {stats.total_requests}. Best-effort must NOT contribute."
+    )
+    assert stats.satisfied_requests == 2, (
+        f"satisfied_requests must be material_parent + staff satisfied = 1 + 1 = 2, got {stats.satisfied_requests}."
+    )
+
+
+def test_validation_statistics_no_legacy_parent_fields():
+    """Stage 1 parent_* fields are deleted from ValidationStatistics."""
+    stats = ValidationStatistics()
+    assert not hasattr(stats, "parent_requests")
+    assert not hasattr(stats, "satisfied_parent_requests")
+    assert not hasattr(stats, "parent_request_satisfaction_rate")
+    assert not hasattr(stats, "campers_with_unsatisfied_parent_requests")
+
+
+def test_validation_statistics_no_explicit_csv_fields():
+    """explicit_csv_* fields are deleted from ValidationStatistics."""
+    stats = ValidationStatistics()
+    assert not hasattr(stats, "explicit_csv_requests")
+    assert not hasattr(stats, "satisfied_explicit_csv_requests")
+    assert not hasattr(stats, "explicit_csv_request_satisfaction_rate")
+    assert not hasattr(stats, "campers_with_unsatisfied_explicit_requests")
+
+
+def test_bunk_with_request_counts_as_material_parent():
+    """A resolved bunk_with request with source_field=bunk_with counts as
+    material_parent_requests. Emma (1001) requests Liam (1002), both in same bunk."""
+    session = _mock_session(cm_id="10000001", name="Test Session")
+    # Emma grade 5, Liam grade 5 — same bunk
+    persons = [
+        MockPerson(campminder_id="1001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="1002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [_mock_bunk("9001")]
+    assignments = [
+        _mock_assignment("1001", "9001"),
+        _mock_assignment("1002", "9001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1001",
+            requested_person_cm_id="1002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_WITH,
+            source="family",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    assert stats.material_parent_requests == 1
+    assert stats.satisfied_material_parent_requests == 1
+    assert stats.material_parent_request_satisfaction_rate == 1.0
+    assert stats.best_effort_parent_requests == 0
+
+
+def test_socialize_with_request_counts_as_best_effort():
+    """A resolved age_preference request (socialize_with source) counts as
+    best_effort_parent_requests only, not material_parent_requests.
+    Olivia (1003) requests older bunkmates; Samuel (1005) is older and in same bunk."""
+    session = _mock_session(cm_id="10000002", name="Test Session 2")
+    persons = [
+        MockPerson(campminder_id="1003", name="Olivia Chen", grade=5),
+        MockPerson(campminder_id="1005", name="Samuel Johnson", grade=6),  # older
+    ]
+    bunks = [_mock_bunk("9002")]
+    assignments = [
+        _mock_assignment("1003", "9002"),
+        _mock_assignment("1005", "9002"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1003",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 1
+    assert stats.material_parent_requests == 0
+
+
+def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
+    """A camper with only best_effort (socialize_with) requests does NOT appear in
+    campers_with_unsatisfied_material_parent_requests even when the preference is
+    unsatisfied (Riley is alone, no bunkmates to compare age with)."""
+    session = _mock_session(cm_id="10000003", name="Test Session 3")
+    persons = [
+        MockPerson(campminder_id="1004", name="Riley Sam", grade=5),
+    ]
+    bunks = [_mock_bunk("9003")]
+    assignments = [
+        _mock_assignment("1004", "9003"),  # Riley alone in bunk
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1004",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    # best_effort request is unsatisfied (alone in bunk) but Riley is NOT a material violator
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 0
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
+
+
+def test_best_effort_only_camper_does_not_trigger_unsatisfied_valid_requests_warning():
+    """A camper whose only resolved requests are best-effort socialize_with
+    rows must NOT appear in `campers_with_unsatisfied_valid_requests` — the
+    alerting bucket excludes best-effort. Otherwise socialize_with-only
+    campers trip a spurious warning whenever the request can't be honored."""
+    session = _mock_session(cm_id="10000005", name="Test Session 5")
+    persons = [
+        MockPerson(campminder_id="3501", name="Riley Sam", grade=5),
+    ]
+    bunks = [_mock_bunk("9501")]
+    assignments = [
+        _mock_assignment("3501", "9501"),  # Riley alone — age preference cannot satisfy
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="3501",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+
+    summary_issue = next(
+        (i for i in result.issues if i.type == "campers_with_unsatisfied_valid_requests"),
+        None,
+    )
+    assert summary_issue is None, (
+        "best-effort-only camper must not trigger the unsatisfied-valid-requests "
+        f"summary; got issue with details={summary_issue.details if summary_issue else None}"
+    )
+
+    valid_request_issues = [i for i in result.issues if i.type == "valid_request_unsatisfied"]
+    assert valid_request_issues == [], (
+        f"best-effort-only camper must not produce valid_request_unsatisfied "
+        f"WARNINGs; got {[i.details for i in valid_request_issues]}"
+    )
+
+
+def test_unassigned_requester_excluded_from_all_buckets():
+    """A camper without a bunk assignment whose requests are resolved should
+    contribute 0 to material_parent, best_effort_parent, and staff totals.
+    The request is excluded entirely — not counted as unsatisfied."""
+    # Emma exists in persons but has NO BunkAssignment.
+    # Liam is bunked in bunk 9001.
+    # Emma has a resolved bunk_with request for Liam.
+    # Validator output should show all bucket totals are 0 and Emma is NOT a violator.
+    session = _mock_session(cm_id="10000004", name="Test Session 4")
+    persons = [
+        MockPerson(campminder_id="2001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="2002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [_mock_bunk("9001")]
+    assignments = [
+        # Liam is assigned; Emma is NOT assigned
+        _mock_assignment("2002", "9001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",  # Emma — no bunk assignment
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_WITH,
+            source="family",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    # Emma's request is excluded entirely — not counted in any bucket
+    assert stats.material_parent_requests == 0
+    assert stats.satisfied_material_parent_requests == 0
+    assert stats.best_effort_parent_requests == 0
     assert stats.staff_requests == 0
-    assert stats.campers_with_unsatisfied_parent_requests == 0
-    assert stats.campers_with_unsatisfied_staff_requests == 0
+    # Emma does NOT appear as a violator (request was skipped, not marked unsatisfied)
+    assert stats.campers_with_unsatisfied_material_parent_requests == 0
+    assert stats.total_requests == 0  # excluded from valid totals, not just buckets
+    assert stats.satisfied_requests == 0
+
+
+def test_three_grade_bunk_age_preference_evaluation():
+    """End-to-end: validator's is_request_satisfied uses the real-grades logic
+    on three-grade bunks. Tied second-place → satisfied.
+
+    Bunk 9001 contains:
+    - 8 sixth-graders (cm_ids 3001-3008)
+    - 2 fifth-graders (3010-3011)
+    - 2 seventh-graders (3020-3021)
+
+    Camper Liam Garcia (cm_id=3001, grade 6) has a resolved age_preference
+    request with target=older. Distribution 8/2/2 with tied second place
+    → satisfied per Task 1 real-grades rule.
+
+    Expected: stats.best_effort_parent_requests == 1,
+    satisfied_best_effort_parent_requests == 1, satisfaction_rate == 1.0.
+    """
+    session = _mock_session(cm_id="10000005", name="Test Session 5")
+    persons = [
+        # 8 sixth-graders (most common)
+        MockPerson(campminder_id="3001", name="Liam Garcia", grade=6),
+        MockPerson(campminder_id="3002", name="Sixth Grader 2", grade=6),
+        MockPerson(campminder_id="3003", name="Sixth Grader 3", grade=6),
+        MockPerson(campminder_id="3004", name="Sixth Grader 4", grade=6),
+        MockPerson(campminder_id="3005", name="Sixth Grader 5", grade=6),
+        MockPerson(campminder_id="3006", name="Sixth Grader 6", grade=6),
+        MockPerson(campminder_id="3007", name="Sixth Grader 7", grade=6),
+        MockPerson(campminder_id="3008", name="Sixth Grader 8", grade=6),
+        # 2 fifth-graders (tied for second)
+        MockPerson(campminder_id="3010", name="Fifth Grader 1", grade=5),
+        MockPerson(campminder_id="3011", name="Fifth Grader 2", grade=5),
+        # 2 seventh-graders (tied for second)
+        MockPerson(campminder_id="3020", name="Seventh Grader 1", grade=7),
+        MockPerson(campminder_id="3021", name="Seventh Grader 2", grade=7),
+    ]
+    bunks = [_mock_bunk("9001", max_size=12)]
+    assignments = [
+        _mock_assignment("3001", "9001"),
+        _mock_assignment("3002", "9001"),
+        _mock_assignment("3003", "9001"),
+        _mock_assignment("3004", "9001"),
+        _mock_assignment("3005", "9001"),
+        _mock_assignment("3006", "9001"),
+        _mock_assignment("3007", "9001"),
+        _mock_assignment("3008", "9001"),
+        _mock_assignment("3010", "9001"),
+        _mock_assignment("3011", "9001"),
+        _mock_assignment("3020", "9001"),
+        _mock_assignment("3021", "9001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="3001",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+    stats = result.statistics
+
+    # Distribution 8/2/2 with tied second place → satisfied
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 1
+    # Aggregate request_satisfaction_rate excludes best-effort, so verify
+    # the slice-specific rate instead.
+    assert stats.best_effort_parent_request_satisfaction_rate == 1.0
+    assert stats.material_parent_requests == 0

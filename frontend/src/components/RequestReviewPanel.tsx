@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { formatSourceField } from '../utils/formatSourceField'
+import { invalidateRequestQueries } from '../utils/queryKeys'
 import { highlightSourceText } from '../utils/highlightSourceText'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
@@ -216,7 +217,10 @@ export default function RequestReviewPanel({
     [filters.requestTypes, filters.statuses]
   )
 
-  // Fetch bunk requests
+  // Staff-review exemption: this fetch intentionally does NOT hard-pin
+  // status = "resolved". RequestReviewPanel exists to surface pending
+  // and declined rows for staff approval; the status filter is dynamic,
+  // driven by `filters.statuses` below.
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['bunk-requests', sessionId, relatedSessionIds, year, queryKeyFilters],
     queryFn: async () => {
@@ -288,8 +292,9 @@ export default function RequestReviewPanel({
     return new Map(persons.map((p: PersonsResponse) => [p.cm_id, p]))
   }, [persons])
 
-  // Fetch absorbed requests for split modal when a request is selected for splitting
-  // These are soft-deleted requests that were merged into the selected request
+  // Staff-review exemption: absorbed-request lookup for the split modal.
+  // Merged-away rows scoped by merged_into, used by staff to undo a merge.
+  // These never feed satisfaction views, alerts, badges, or dots.
   const { data: absorbedRequestsData = [], isLoading: isLoadingAbsorbedRequests } = useQuery({
     queryKey: ['absorbed-requests', requestToSplit?.id],
     queryFn: async () => {
@@ -510,8 +515,7 @@ export default function RequestReviewPanel({
       return pb.collection('bunk_requests').update(id, updates)
     },
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       if (!variables.suppressToast) {
         toast.success('Request updated')
       }
@@ -532,8 +536,7 @@ export default function RequestReviewPanel({
       return Promise.all(ids.map((id) => pb.collection('bunk_requests').update(id, updates)))
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       toast.success('Requests updated')
       setSelectedRequests(new Set())
     },
@@ -573,10 +576,7 @@ export default function RequestReviewPanel({
                 await pb
                   .collection('bunk_requests')
                   .update(id, { status: priorStatus, request_locked: priorLocked })
-                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-                void queryClient.invalidateQueries({
-                  queryKey: ['cohort-request-relations'],
-                })
+                invalidateRequestQueries(queryClient)
               },
             })
           },
@@ -629,10 +629,7 @@ export default function RequestReviewPanel({
                       .update(p.id, { status: p.status, request_locked: p.request_locked })
                   )
                 )
-                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-                void queryClient.invalidateQueries({
-                  queryKey: ['cohort-request-relations'],
-                })
+                invalidateRequestQueries(queryClient)
               },
             })
           },

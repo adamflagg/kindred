@@ -123,18 +123,16 @@ class ValidationStatistics(BaseModel):
         }
     )
 
-    # Explicit CSV field request tracking (share_bunk_with, do_not_share_with, bunking_notes, internal_notes)
-    explicit_csv_requests: int = 0
-    satisfied_explicit_csv_requests: int = 0
-    explicit_csv_request_satisfaction_rate: float = 0.0
-    campers_with_unsatisfied_explicit_requests: int = 0
+    # Material parent (bunk_with-source only) — drives orange-triangle / parent-min-one rule.
+    material_parent_requests: int = 0
+    satisfied_material_parent_requests: int = 0
+    material_parent_request_satisfaction_rate: float = 0.0
+    campers_with_unsatisfied_material_parent_requests: int = 0
 
-    # Parent-source request tracking (bunk_with + socialize_with, per RequestSource.FAMILY).
-    # Stage 1 emits these alongside explicit_csv_* for future UI consumption; no UI consumer yet.
-    parent_requests: int = 0
-    satisfied_parent_requests: int = 0
-    parent_request_satisfaction_rate: float = 0.0
-    campers_with_unsatisfied_parent_requests: int = 0
+    # Best-effort parent (socialize_with-source only) — emitted for modal display, drives no alarm.
+    best_effort_parent_requests: int = 0
+    satisfied_best_effort_parent_requests: int = 0
+    best_effort_parent_request_satisfaction_rate: float = 0.0
 
     # Staff-source request tracking, per RequestSource.STAFF. Source fields:
     # SourceField.NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
@@ -353,16 +351,6 @@ class BunkingValidator:
         # Valid statuses are 'resolved' (accepted/approved)
         valid_statuses = {"resolved"}
 
-        # Define explicit CSV fields for must-satisfy-one constraint (using normalized names)
-        explicit_csv_fields = {
-            "share_bunk_with",
-            "do_not_share_with",
-            "bunking_notes",
-            "internal_notes",
-            "bunk_with",
-            "not_bunk_with",
-        }
-
         # Build assignments_by_bunk for age_preference satisfaction checking
         assignments_by_bunk: dict[str, list[BunkAssignment]] = defaultdict(list)
         for assignment in assignments_by_person.values():
@@ -372,12 +360,16 @@ class BunkingValidator:
         requests_by_person = defaultdict(list)
         valid_requests_by_person = defaultdict(list)
         satisfied_requests_by_person = defaultdict(list)
-        explicit_requests_by_person = defaultdict(list)
-        satisfied_explicit_by_person = defaultdict(list)
-        parent_requests_by_person = defaultdict(list)
-        satisfied_parent_by_person = defaultdict(list)
+        material_parent_by_person = defaultdict(list)
+        satisfied_material_parent_by_person = defaultdict(list)
+        best_effort_parent_by_person = defaultdict(list)
+        satisfied_best_effort_parent_by_person = defaultdict(list)
         staff_requests_by_person = defaultdict(list)
         satisfied_staff_by_person = defaultdict(list)
+        # Alerting bucket = material parent ∪ staff. Best-effort drives no
+        # alarms, so socialize_with rows are intentionally absent.
+        alerting_requests_by_person: dict[Any, list[Any]] = defaultdict(list)
+        satisfied_alerting_by_person: dict[Any, list[Any]] = defaultdict(list)
 
         def normalize_source_field(raw_field: str) -> str | None:
             """Normalize database source_field values to consistent snake_case keys.
@@ -503,28 +495,33 @@ class BunkingValidator:
 
             # Only consider valid requests (resolved status)
             if request.status in valid_statuses:
+                # Skip requests from campers who have no bunk assignment.
+                # An unassigned requester cannot be evaluated for satisfaction,
+                # so the request is excluded from all totals entirely.
+                if requester_id not in assignments_by_person:
+                    continue
+
                 valid_requests_by_person[requester_id].append(request)
 
                 # Get source fields (only known fields, unknown fields filtered out)
                 source_fields = get_source_fields(request)
 
-                # Check if this is an explicit CSV field request
-                is_explicit = any(field in explicit_csv_fields for field in source_fields)
-                if is_explicit:
-                    explicit_requests_by_person[requester_id].append(request)
-
-                # Bin by request.source (RequestSource enum value) for Stage 1
-                # breakdown stats. Production stores `source` as the enum's str
-                # value ("family" / "staff"); requests with source=None or any
-                # unrecognized value (notably the legacy "notes" enum value still
-                # permitted by the bunk_requests schema) fall through both branches
-                # and are counted only in the aggregate total/satisfied stats.
-                is_family = request.source == RequestSource.FAMILY.value
+                # Bin by source_field for material vs best-effort parent tracking.
+                # material = bunk_with source_field; best_effort = socialize_with source_field.
+                # Staff binning uses RequestSource enum as before.
                 is_staff = request.source == RequestSource.STAFF.value
-                if is_family:
-                    parent_requests_by_person[requester_id].append(request)
+                raw_source_field = getattr(request, "source_field", None)
+                is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH or (
+                    raw_source_field is None and request.request_type == "age_preference"
+                )
+                if raw_source_field == SourceField.BUNK_WITH:
+                    material_parent_by_person[requester_id].append(request)
+                    alerting_requests_by_person[requester_id].append(request)
+                elif is_best_effort:
+                    best_effort_parent_by_person[requester_id].append(request)
                 elif is_staff:
                     staff_requests_by_person[requester_id].append(request)
+                    alerting_requests_by_person[requester_id].append(request)
 
                 # Update field stats (only for known fields)
                 for field in source_fields:
@@ -535,12 +532,14 @@ class BunkingValidator:
                 person_assignment = assignments_by_person.get(requester_id)
                 if is_request_satisfied(request, person_assignment, assignments_by_person):
                     satisfied_requests_by_person[requester_id].append(request)
-                    if is_explicit:
-                        satisfied_explicit_by_person[requester_id].append(request)
-                    if is_family:
-                        satisfied_parent_by_person[requester_id].append(request)
+                    if raw_source_field == SourceField.BUNK_WITH:
+                        satisfied_material_parent_by_person[requester_id].append(request)
+                        satisfied_alerting_by_person[requester_id].append(request)
+                    elif is_best_effort:
+                        satisfied_best_effort_parent_by_person[requester_id].append(request)
                     elif is_staff:
                         satisfied_staff_by_person[requester_id].append(request)
+                        satisfied_alerting_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)
                     for field in source_fields:
@@ -552,28 +551,21 @@ class BunkingValidator:
             if field_data["total"] > 0:
                 field_data["satisfaction_rate"] = field_data["satisfied"] / field_data["total"]
 
-        # Find campers with valid requests but NONE satisfied
+        # Find campers with valid alerting requests (material parent or staff)
+        # but NONE satisfied. Best-effort socialize_with rows are excluded
+        # because best-effort drives no alarms.
         campers_with_unsatisfied_valid_requests = []
-        campers_with_unsatisfied_explicit_requests = []
 
-        for person_id, valid_requests in valid_requests_by_person.items():
-            if len(valid_requests) > 0 and len(satisfied_requests_by_person[person_id]) == 0:
-                # This person has valid requests but none are satisfied
+        for person_id, alerting_requests in alerting_requests_by_person.items():
+            if len(alerting_requests) > 0 and len(satisfied_alerting_by_person[person_id]) == 0:
                 campers_with_unsatisfied_valid_requests.append(person_id)
-
-                # Check if they have unsatisfied explicit requests
-                if (
-                    len(explicit_requests_by_person[person_id]) > 0
-                    and len(satisfied_explicit_by_person[person_id]) == 0
-                ):
-                    campers_with_unsatisfied_explicit_requests.append(person_id)
 
                 # Get person info for reporting
                 person = person_by_id.get(person_id)
                 person_name = person.name if person else f"Person {person_id}"
 
-                # Report each unsatisfied valid request for this person
-                for request in valid_requests:
+                # Report each unsatisfied alerting request for this person
+                for request in alerting_requests:
                     source_fields = get_source_fields(request)
                     if request.request_type == "bunk_with" and request.requested_person_cm_id:
                         requested_person = person_by_id.get(request.requested_person_cm_id)
@@ -625,42 +617,54 @@ class BunkingValidator:
                                 )
                             )
 
-        # Update statistics
-        total_valid_requests = sum(len(reqs) for reqs in valid_requests_by_person.values())
-        total_satisfied_valid_requests = sum(len(reqs) for reqs in satisfied_requests_by_person.values())
+        # Aggregate totals narrow to material_parent + staff (the alerting
+        # bucket). Best-effort socialize_with is reported only in its own
+        # slice and never contributes to the aggregate or the summary issue.
+        total_alerting_requests = sum(len(reqs) for reqs in alerting_requests_by_person.values())
+        total_satisfied_alerting_requests = sum(len(reqs) for reqs in satisfied_alerting_by_person.values())
 
-        stats.total_requests = total_valid_requests
-        stats.satisfied_requests = total_satisfied_valid_requests
-
-        if stats.total_requests > 0:
-            stats.request_satisfaction_rate = stats.satisfied_requests / stats.total_requests
-
-        # Calculate explicit CSV field stats
-        stats.explicit_csv_requests = sum(len(reqs) for reqs in explicit_requests_by_person.values())
-        stats.satisfied_explicit_csv_requests = sum(len(reqs) for reqs in satisfied_explicit_by_person.values())
-        if stats.explicit_csv_requests > 0:
-            stats.explicit_csv_request_satisfaction_rate = (
-                stats.satisfied_explicit_csv_requests / stats.explicit_csv_requests
+        # Material parent (bunk_with source_field) stats.
+        stats.material_parent_requests = sum(len(reqs) for reqs in material_parent_by_person.values())
+        stats.satisfied_material_parent_requests = sum(
+            len(reqs) for reqs in satisfied_material_parent_by_person.values()
+        )
+        if stats.material_parent_requests > 0:
+            stats.material_parent_request_satisfaction_rate = (
+                stats.satisfied_material_parent_requests / stats.material_parent_requests
             )
-        stats.campers_with_unsatisfied_explicit_requests = len(campers_with_unsatisfied_explicit_requests)
+        stats.campers_with_unsatisfied_material_parent_requests = sum(
+            1
+            for pid, reqs in material_parent_by_person.items()
+            if reqs and not satisfied_material_parent_by_person.get(pid)
+        )
 
-        # Stage 1 parent/staff breakdown stats (RequestSource-driven).
-        stats.parent_requests = sum(len(reqs) for reqs in parent_requests_by_person.values())
-        stats.satisfied_parent_requests = sum(len(reqs) for reqs in satisfied_parent_by_person.values())
-        if stats.parent_requests > 0:
-            stats.parent_request_satisfaction_rate = stats.satisfied_parent_requests / stats.parent_requests
+        # Best-effort parent (socialize_with source_field) stats.
+        stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())
+        stats.satisfied_best_effort_parent_requests = sum(
+            len(reqs) for reqs in satisfied_best_effort_parent_by_person.values()
+        )
+        if stats.best_effort_parent_requests > 0:
+            stats.best_effort_parent_request_satisfaction_rate = (
+                stats.satisfied_best_effort_parent_requests / stats.best_effort_parent_requests
+            )
 
         stats.staff_requests = sum(len(reqs) for reqs in staff_requests_by_person.values())
         stats.satisfied_staff_requests = sum(len(reqs) for reqs in satisfied_staff_by_person.values())
         if stats.staff_requests > 0:
             stats.staff_request_satisfaction_rate = stats.satisfied_staff_requests / stats.staff_requests
 
-        stats.campers_with_unsatisfied_parent_requests = sum(
-            1 for requester_id in parent_requests_by_person if not satisfied_parent_by_person.get(requester_id)
-        )
         stats.campers_with_unsatisfied_staff_requests = sum(
             1 for requester_id in staff_requests_by_person if not satisfied_staff_by_person.get(requester_id)
         )
+
+        # total_requests / satisfied_requests = material_parent + staff.
+        # Best-effort socialize_with is reported only in its own slice; an
+        # aggregate that included it would surface unactionable noise on
+        # the orange-triangle and amber-dot tiles.
+        stats.total_requests = stats.material_parent_requests + stats.staff_requests
+        stats.satisfied_requests = stats.satisfied_material_parent_requests + stats.satisfied_staff_requests
+        if stats.total_requests > 0:
+            stats.request_satisfaction_rate = stats.satisfied_requests / stats.total_requests
 
         # Add summary issue if there are campers with unsatisfied valid requests
         if campers_with_unsatisfied_valid_requests:
@@ -672,9 +676,8 @@ class BunkingValidator:
                     message=f"{len(campers_with_unsatisfied_valid_requests)} campers have valid requests but NONE are satisfied",
                     details={
                         "count": len(campers_with_unsatisfied_valid_requests),
-                        "total_valid_requests": total_valid_requests,
-                        "total_satisfied": total_satisfied_valid_requests,
-                        "explicit_unsatisfied_count": len(campers_with_unsatisfied_explicit_requests),
+                        "total_valid_requests": total_alerting_requests,
+                        "total_satisfied": total_satisfied_alerting_requests,
                     },
                     affected_ids=campers_with_unsatisfied_valid_requests[:10],  # First 10 for UI
                 ),

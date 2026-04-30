@@ -5,9 +5,10 @@ existing database records."""
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
-from ..core.models import BunkRequest, RequestSource, RequestType
+from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType
 from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
@@ -17,6 +18,37 @@ SOURCE_PRIORITY = {
     RequestSource.STAFF: 2,  # Staff validates/confirms family requests
     RequestSource.FAMILY: 1,  # Original family submission
 }
+
+
+def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bool:
+    """Return True when the group is exactly two AGE_PREFERENCE requests — one from
+    SourceField.BUNK_WITH and one from SourceField.SOCIALIZE_WITH — and their
+    age_preference metadata values are both present but differ.
+
+    This is the Stage 3a conflict case: prose-derived age direction contradicts the
+    boolean dropdown direction, so both rows must survive for staff review instead of
+    being silently merged.
+    """
+    if len(group_requests) != 2:
+        return False
+    fields = {r.source_field for r in group_requests}
+    if fields != {SourceField.BUNK_WITH, SourceField.SOCIALIZE_WITH}:
+        return False
+    targets = [r.metadata.get("age_preference") for r in group_requests]
+    # Both must be non-None strings and they must differ
+    if targets[0] is None or targets[1] is None:
+        return False
+    return bool(targets[0] != targets[1])
+
+
+def _split_age_pref_pair(
+    group_requests: list[BunkRequest],
+) -> tuple[BunkRequest, BunkRequest]:
+    """Return (bunk_with_row, socialize_with_row) from a two-element group known to
+    contain exactly one BUNK_WITH and one SOCIALIZE_WITH AGE_PREFERENCE request."""
+    bunk_with_req = next(r for r in group_requests if r.source_field == SourceField.BUNK_WITH)
+    socialize_with_req = next(r for r in group_requests if r.source_field == SourceField.SOCIALIZE_WITH)
+    return bunk_with_req, socialize_with_req
 
 
 @dataclass
@@ -123,6 +155,20 @@ class Deduplicator:
                 # No duplicates in batch
                 kept_requests.append(group_requests[0])
             else:
+                # Stage 3a: conflict-target detection for parent age_preference pairs.
+                # When a bunk_with-parsed AGE_PREFERENCE and a socialize_with AGE_PREFERENCE
+                # exist for the same person but carry different targets (e.g., prose="older"
+                # vs boolean="younger"), the bunk_with-derived row is demoted to pending for
+                # staff review. Both rows survive — no merge.
+                if _is_conflicting_age_preference_pair(group_requests):
+                    bunk_with_req, socialize_with_req = _split_age_pref_pair(group_requests)
+                    bunk_with_pending = dataclasses.replace(bunk_with_req, status=RequestStatus.PENDING)
+                    kept_requests.append(bunk_with_pending)
+                    kept_requests.append(socialize_with_req)
+                    # No entry in duplicate_groups: these are not merged duplicates,
+                    # they are kept as distinct records for staff review.
+                    continue
+
                 # Tiebreak order (descending): SOURCE_PRIORITY, then bunk_with-source
                 # preference (Stage 1 fix for parent age_pref dedupe), then confidence.
                 # SOURCE_PRIORITY dominates first, so the bunk_with bias only changes

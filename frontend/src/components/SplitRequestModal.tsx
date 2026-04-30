@@ -6,6 +6,7 @@ import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 import { pb } from '../lib/pocketbase'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { invalidateRequestQueries } from '../utils/queryKeys'
 
 interface SourceLinkData {
   original_request_id: string
@@ -206,12 +207,8 @@ export default function SplitRequestModal({
       return response.json() as Promise<SplitResponse>
     },
     onSuccess: () => {
-      // Invalidate all related queries to refresh data
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
-      void queryClient.invalidateQueries({ queryKey: ['source-links'] })
-      void queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] })
+      // Split rewrites source linkages between rows — invalidate aux keys too.
+      invalidateRequestQueries(queryClient, { includeSourceLinks: true })
       onSplitComplete()
       onClose()
     },

@@ -43,16 +43,17 @@ vi.mock('../contexts/LockGroupContext', () => ({
 
 vi.mock('../hooks', () => ({
   useBunkRequestContext: () => ({
+    // Stage 3a Shape A — three-slice split. The pre-3a flat shape
+    // (totalRequests/parentTotal/staffTotal) silently leaves consumers
+    // reading materialParent.total / staff.total etc. as undefined.
     getSatisfiedRequestInfo: () => ({
-      totalRequests: 0,
-      satisfiedCount: 0,
+      materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
+      parentMinOneViolation: false,
+      staffUnsatisfiedAlert: false,
       topPrioritySatisfied: false,
       priorityLevels: [],
-      hasLockedPriority: false,
-      parentTotal: 0,
-      parentSatisfied: 0,
-      staffTotal: 0,
-      staffSatisfied: 0,
     }),
   }),
   useBunkRequestsFromContext: () => ({ data: {}, requestStatus: {} }),
@@ -60,6 +61,8 @@ vi.mock('../hooks', () => ({
 }))
 
 vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2026 }))
+
+import { useBunkRequestContext } from '../hooks'
 
 import BunkCard from './BunkCard'
 
@@ -73,6 +76,22 @@ const fakeBunk = {
   occupancy: 0,
   utilization: 0,
 }
+
+// Stage 3a Shape A migration — the mocked getSatisfiedRequestInfo must
+// return the new three-slice shape (materialParent / bestEffortParent /
+// staff), not the pre-Stage-3a flat shape (totalRequests, parentTotal,
+// staffTotal). Audit 2026-04-29 found three test files still returning
+// the legacy shape; consumers reading the new shape silently got
+// undefined.
+describe('mock contract — getSatisfiedRequestInfo Shape A', () => {
+  it('returns materialParent / bestEffortParent / staff slices', () => {
+    const ctx = useBunkRequestContext()
+    const info = ctx.getSatisfiedRequestInfo(1, 2, [], null)
+    expect(info.materialParent).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
+    expect(info.bestEffortParent).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
+    expect(info.staff).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
+  })
+})
 
 describe('BunkCard droppable prod gating', () => {
   beforeEach(() => useDroppableMock.mockClear())

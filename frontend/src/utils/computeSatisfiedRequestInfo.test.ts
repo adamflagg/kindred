@@ -2,108 +2,162 @@ import { describe, it, expect } from 'vitest'
 import { computeSatisfiedRequestInfo } from './computeSatisfiedRequestInfo'
 import type { BunkRequest } from '../types/app-types'
 
-function req(overrides: Partial<BunkRequest>): BunkRequest {
-  return {
-    id: 'r-x',
-    requester_id: 1,
-    requestee_id: 2,
+const baseReq = (overrides: Partial<BunkRequest>): BunkRequest =>
+  ({
+    id: 'r1',
+    requester_id: 1001,
+    requestee_id: 1002,
     request_type: 'bunk_with',
+    source: 'family',
+    source_field: 'bunk_with',
+    status: 'resolved',
     priority: 4,
     year: 2026,
     session_id: 999,
-    status: 'resolved',
     confidence_score: 0.95,
-    source: 'family',
+    created: '2026-01-01T00:00:00Z',
+    updated: '2026-01-01T00:00:00Z',
     ...overrides,
-  } as BunkRequest
-}
+  }) as BunkRequest
 
-describe('computeSatisfiedRequestInfo — parent/staff splits', () => {
-  it('returns zeroed splits when person has no requests', () => {
-    const info = computeSatisfiedRequestInfo([], 1, new Set(), [], 8)
-    expect(info.parentTotal).toBe(0)
-    expect(info.parentSatisfied).toBe(0)
-    expect(info.staffTotal).toBe(0)
-    expect(info.staffSatisfied).toBe(0)
+describe('computeSatisfiedRequestInfo Shape A', () => {
+  const personSet = new Set([1001, 1002])
+
+  it('returns three slices and derived flags', () => {
+    const result = computeSatisfiedRequestInfo([baseReq({})], 1001, personSet, [], 6)
+    expect(result.materialParent.total).toBe(1)
+    expect(result.materialParent.satisfied).toBe(1)
+    expect(result.materialParent.satisfactionRate).toBe(1.0)
+    expect(result.bestEffortParent.total).toBe(0)
+    expect(result.staff.total).toBe(0)
+    expect(result.parentMinOneViolation).toBe(false)
+    expect(result.staffUnsatisfiedAlert).toBe(false)
   })
 
-  it('bins parent and staff bunk_with separately', () => {
-    const requests = [
-      req({ id: 'p1', requester_id: 1, requestee_id: 2, source: 'family' }),
-      req({ id: 's1', requester_id: 1, requestee_id: 3, source: 'staff' }),
-    ]
-    const personSet = new Set([1, 2, 3])
-    const info = computeSatisfiedRequestInfo(requests, 1, personSet, [8, 8], 8)
-    expect(info.parentTotal).toBe(1)
-    expect(info.parentSatisfied).toBe(1)
-    expect(info.staffTotal).toBe(1)
-    expect(info.staffSatisfied).toBe(1)
-    expect(info.totalRequests).toBe(2)
-    expect(info.satisfiedCount).toBe(2)
+  it('source_field=bunk_with bins to materialParent', () => {
+    const result = computeSatisfiedRequestInfo(
+      [baseReq({ source_field: 'bunk_with' })],
+      1001,
+      personSet,
+      [],
+      6
+    )
+    expect(result.materialParent.total).toBe(1)
+    expect(result.bestEffortParent.total).toBe(0)
   })
 
-  it('parent satisfied and staff unsatisfied evaluate independently', () => {
-    const requests = [
-      req({ id: 'p1', requester_id: 1, requestee_id: 2, source: 'family' }),
-      req({
-        id: 's1',
-        requester_id: 1,
-        requestee_id: 99,
-        source: 'staff',
-        request_type: 'bunk_with',
-      }),
-    ]
-    const personSet = new Set([1, 2])
-    const info = computeSatisfiedRequestInfo(requests, 1, personSet, [8], 8)
-    expect(info.parentTotal).toBe(1)
-    expect(info.parentSatisfied).toBe(1)
-    expect(info.staffTotal).toBe(1)
-    expect(info.staffSatisfied).toBe(0)
+  it('source_field=socialize_with bins to bestEffortParent', () => {
+    const result = computeSatisfiedRequestInfo(
+      [
+        baseReq({
+          source_field: 'socialize_with',
+          request_type: 'age_preference',
+          age_preference_target: 'older',
+        }),
+      ],
+      1001,
+      personSet,
+      [7, 7],
+      6
+    )
+    expect(result.bestEffortParent.total).toBe(1)
+    expect(result.bestEffortParent.satisfied).toBe(1)
+    expect(result.materialParent.total).toBe(0)
   })
 
-  it('not_bunk_with staff request is satisfied when target is NOT in bunk', () => {
-    const requests = [
-      req({
-        id: 's1',
-        requester_id: 1,
-        requestee_id: 99,
-        source: 'staff',
-        request_type: 'not_bunk_with',
-      }),
-    ]
-    const personSet = new Set([1, 2])
-    const info = computeSatisfiedRequestInfo(requests, 1, personSet, [8], 8)
-    expect(info.staffTotal).toBe(1)
-    expect(info.staffSatisfied).toBe(1)
+  it('source=staff bins to staff slice', () => {
+    const result = computeSatisfiedRequestInfo(
+      [
+        baseReq({
+          source: 'staff',
+          source_field: 'not_bunk_with',
+          request_type: 'not_bunk_with',
+        }),
+      ],
+      1001,
+      new Set([1001]), // requestee NOT in same bunk → not_bunk_with satisfied
+      [],
+      6
+    )
+    expect(result.staff.total).toBe(1)
+    expect(result.staff.satisfied).toBe(1)
   })
 
-  it('source==="notes" or unset falls through both splits but counts in aggregate', () => {
-    const notesReq = req({ id: 'n1', requester_id: 1, requestee_id: 2, source: 'notes' })
-    const unsetReq = { ...req({ id: 'u1', requester_id: 1, requestee_id: 3 }) }
-    delete (unsetReq as { source?: unknown }).source
-    const requests = [notesReq, unsetReq as BunkRequest]
-    const personSet = new Set([1, 2, 3])
-    const info = computeSatisfiedRequestInfo(requests, 1, personSet, [8, 8], 8)
-    expect(info.parentTotal).toBe(0)
-    expect(info.staffTotal).toBe(0)
-    expect(info.totalRequests).toBe(2)
-    expect(info.satisfiedCount).toBe(2)
+  it('parentMinOneViolation true only when material parent unsatisfied', () => {
+    const unsatBunkWith = baseReq({ source_field: 'bunk_with', requestee_id: 9999 })
+    const result = computeSatisfiedRequestInfo([unsatBunkWith], 1001, personSet, [], 6)
+    expect(result.materialParent.satisfied).toBe(0)
+    expect(result.parentMinOneViolation).toBe(true)
   })
 
-  it('age_preference parent request bins as parent', () => {
-    const requests = [
-      req({
-        id: 'p1',
-        requester_id: 1,
-        requestee_id: null,
-        source: 'family',
-        request_type: 'age_preference',
-        age_preference_target: 'older',
-      }),
-    ]
-    // Requester is grade 5; bunkmate is grade 7 → older preference satisfied.
-    const info = computeSatisfiedRequestInfo(requests, 1, new Set([1, 2]), [7], 5)
-    expect(info.parentTotal).toBe(1)
-    expect(info.parentSatisfied).toBe(1)
+  it('best-effort-only camper never trips parentMinOneViolation', () => {
+    const unsatSocialize = baseReq({
+      source_field: 'socialize_with',
+      request_type: 'age_preference',
+      age_preference_target: 'older',
+      requestee_id: null,
+    })
+    const result = computeSatisfiedRequestInfo([unsatSocialize], 1001, new Set([1001]), [], 6)
+    expect(result.materialParent.total).toBe(0)
+    expect(result.bestEffortParent.satisfied).toBe(0)
+    expect(result.parentMinOneViolation).toBe(false)
+  })
+
+  it('skips non-resolved rows (pending/declined) across all three slices', () => {
+    // Only status === 'resolved' rows are evaluated.
+    // Regression: SAME_AGE-target age_preference rows land as status=pending
+    // for staff review and were leaking into materialParent unsatisfied counts.
+    const pendingMaterial = baseReq({
+      id: 'r-pending-material',
+      source_field: 'bunk_with',
+      requestee_id: 9999, // would be UNsatisfied if evaluated
+      status: 'pending',
+    })
+    const declinedBestEffort = baseReq({
+      id: 'r-declined-best',
+      source_field: 'socialize_with',
+      requestee_id: 9998,
+      status: 'declined',
+    })
+    const pendingStaff = baseReq({
+      id: 'r-pending-staff',
+      source: 'staff',
+      source_field: 'not_bunk_with',
+      request_type: 'not_bunk_with',
+      requestee_id: 1002, // would be UNsatisfied
+      status: 'pending',
+    })
+    const result = computeSatisfiedRequestInfo(
+      [pendingMaterial, declinedBestEffort, pendingStaff],
+      1001,
+      personSet,
+      [],
+      6
+    )
+    expect(result.materialParent.total).toBe(0)
+    expect(result.bestEffortParent.total).toBe(0)
+    expect(result.staff.total).toBe(0)
+    expect(result.parentMinOneViolation).toBe(false)
+    expect(result.staffUnsatisfiedAlert).toBe(false)
+  })
+
+  it('staffUnsatisfiedAlert when staff total > 0 and zero satisfied', () => {
+    const result = computeSatisfiedRequestInfo(
+      [
+        baseReq({
+          source: 'staff',
+          source_field: 'not_bunk_with',
+          request_type: 'not_bunk_with',
+          requestee_id: 1002,
+        }),
+      ],
+      1001,
+      personSet, // requestee IS in same bunk → not_bunk_with UNsatisfied
+      [],
+      6
+    )
+    expect(result.staff.total).toBe(1)
+    expect(result.staff.satisfied).toBe(0)
+    expect(result.staffUnsatisfiedAlert).toBe(true)
   })
 })

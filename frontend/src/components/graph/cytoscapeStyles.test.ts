@@ -72,7 +72,7 @@ describe('createGraphElements', () => {
       grade: 5,
       centrality: 0.2,
       clustering: 0.1,
-      satisfaction_status: 'isolated',
+      satisfaction_status: 'unsatisfied',
       bunk_cm_id: undefined,
       community: 2,
     },
@@ -341,7 +341,7 @@ describe('createGraphElements', () => {
         clustering: 0.3,
         satisfaction_status: 'satisfied',
         parent_satisfaction_status: 'satisfied',
-        staff_satisfaction_status: 'isolated',
+        staff_satisfaction_status: 'unsatisfied',
         bunk_cm_id: 100,
         community: 1,
       },
@@ -357,7 +357,7 @@ describe('createGraphElements', () => {
       'alice'
     )
     expect(alice.data.parent_satisfaction_status).toBe('satisfied')
-    expect(alice.data.staff_satisfaction_status).toBe('isolated')
+    expect(alice.data.staff_satisfaction_status).toBe('unsatisfied')
   })
 })
 
@@ -446,10 +446,10 @@ describe('parent-paramount node border', () => {
       'border-color'
     ]
     const node = makeFakeNode({
-      parent_satisfaction_status: 'isolated',
+      parent_satisfaction_status: 'unsatisfied',
       staff_satisfaction_status: 'satisfied',
     })
-    expect(borderFn(node)).toBe(STATUS_COLORS['isolated'])
+    expect(borderFn(node)).toBe(STATUS_COLORS['unsatisfied'])
   })
 
   it('falls back to legacy satisfaction_status when parent_satisfaction_status is absent', () => {
@@ -476,7 +476,7 @@ describe('parent-paramount node border', () => {
     ]
     const a = makeFakeNode({
       parent_satisfaction_status: 'satisfied',
-      staff_satisfaction_status: 'isolated',
+      staff_satisfaction_status: 'unsatisfied',
     })
     const b = makeFakeNode({
       parent_satisfaction_status: 'satisfied',

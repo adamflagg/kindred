@@ -10,13 +10,12 @@ export interface GraphNode {
   centrality: number
   clustering: number
   community: number | null
-  // Backend may still emit 'partial' for older cached graphs; frontend treats it as 'satisfied'.
-  satisfaction_status?: 'satisfied' | 'partial' | 'isolated' | 'no_requests'
-  // Stage 2 parent-paramount split. parent_satisfaction_status drives the border
-  // color (parent paramount); staff_satisfaction_status flows through but is not
-  // currently rendered on the graph.
-  parent_satisfaction_status?: 'satisfied' | 'isolated' | 'no_requests'
-  staff_satisfaction_status?: 'satisfied' | 'isolated' | 'no_requests'
+  satisfaction_status?: 'satisfied' | 'unsatisfied' | 'no_requests'
+  // Stage 2 parent-paramount split. Both fields drive 3b's parent/staff edge
+  // filter checkbox; in 3a, only parent_satisfaction_status is rendered as the
+  // node border color.
+  parent_satisfaction_status?: 'satisfied' | 'unsatisfied' | 'no_requests'
+  staff_satisfaction_status?: 'satisfied' | 'unsatisfied' | 'no_requests'
   // Legacy fields that may still be referenced
   age?: number
   sex?: string

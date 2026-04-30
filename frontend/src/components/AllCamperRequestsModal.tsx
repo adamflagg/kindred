@@ -7,7 +7,7 @@ import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { RequestEditableHeader } from './RequestEditableHeader'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
-import { queryKeys } from '../utils/queryKeys'
+import { invalidateRequestQueries, queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason } from '../utils/dispositionColors'
 import { highlightSourceText } from '../utils/highlightSourceText'
@@ -166,8 +166,7 @@ export function AllCamperRequestsModal({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
       })
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       toast.success('Request updated')
       setConfirmPopover(null)
     },
@@ -184,6 +183,10 @@ export function AllCamperRequestsModal({
     updateRequestMutation.mutate({ id: requestId, updates })
   }
 
+  // Staff-review exemption: this fetch intentionally does NOT filter
+  // status = "resolved". The modal renders every request with
+  // status-colored dots and offers approve/decline actions, functioning
+  // as a per-camper staff-review surface.
   const {
     data: requests = [],
     isLoading,

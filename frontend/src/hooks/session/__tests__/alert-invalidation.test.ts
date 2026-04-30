@@ -1,17 +1,27 @@
 /**
- * TDD tests for camper-card alert invalidation after assignment mutations.
+ * Contract tests for camper-card alert invalidation after request mutations.
  *
- * The "none satisfied" yellow-triangle alert is derived client-side from
- * `['all-bunk-requests', sessionCmId, year]`, but its satisfaction filter
- * checks bunk membership (`personSet.has(req.requestee_id)`) — it does NOT
- * read request status. So the staleness fix only needs to invalidate on
- * assignment-changing paths: drag-drop and solver-apply. Pure status
- * mutations (single/bulk approve/decline) do not affect the alert and
- * are intentionally not invalidated here.
+ * The "none satisfied" alert is derived client-side from
+ * `['all-bunk-requests', sessionCmId, year]`. The satisfaction filter honors
+ * `status === 'resolved'`, so pure status mutations (approve/decline/
+ * delete-via-status) DO change the alert and must invalidate the cache.
+ * Row-set mutations (create/merge/split) and bunk-membership mutations
+ * (drag-drop/solver-apply) also invalidate.
+ *
+ * This file is the canonical contract for the request-key invalidation
+ * inventory — every entry is also wired through `invalidateRequestQueries`
+ * in `frontend/src/utils/queryKeys.ts`. Adding a new key requires updating
+ * both.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+
+// NOTE: invalidateQueries({ queryKey: ['x'] }) does prefix matching by default,
+// so passing the bare prefix (no trailing args) catches every query keyed
+// ['x', ...]. Do NOT add `exact: true` to the production handlers — these
+// contract tests assume prefix-matching is intentional and would silently
+// stop catching prefix-keyed staleness if exact matching is ever added.
 
 /**
  * Build a fresh QueryClient with a pre-populated 'all-bunk-requests' cache
@@ -26,12 +36,47 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     ['all-bunk-requests', sessionCmId, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
+  // Seed every per-camper-derived key that surfaces request data, so we can
+  // verify status mutations propagate to ALL of them.
+  qc.setQueryData(
+    ['person-bunk-requests', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
+  qc.setQueryData(
+    ['person-all-bunk-requests', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
+  qc.setQueryData(
+    ['bunk_requests_tooltip', 1001, year],
+    [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
+  )
+  qc.setQueryData(['request-satisfaction', 1001], {})
   return qc
 }
 
 function isAllBunkRequestsStale(qc: QueryClient, sessionCmId = 1001, year = 2025) {
   const state = qc.getQueryState(['all-bunk-requests', sessionCmId, year])
   // After invalidateQueries the query is marked invalid (isInvalidated = true)
+  return state?.isInvalidated === true
+}
+
+function isPersonBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['person-bunk-requests', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isPersonAllBunkRequestsStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['person-all-bunk-requests', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isTooltipStale(qc: QueryClient, personCmId = 1001, year = 2025) {
+  const state = qc.getQueryState(['bunk_requests_tooltip', personCmId, year])
+  return state?.isInvalidated === true
+}
+
+function isSatisfactionStale(qc: QueryClient, personCmId = 1001) {
+  const state = qc.getQueryState(['request-satisfaction', personCmId])
   return state?.isInvalidated === true
 }
 
@@ -105,22 +150,127 @@ describe('useSolverOperations — apply path must invalidate all-bunk-requests',
 // (those mutations DO change request count / merged_into, so the alert
 // genuinely depends on their refresh — keep them as a regression guard)
 // ---------------------------------------------------------------------------
-describe('Already-correct paths — regression guard', () => {
+// ---------------------------------------------------------------------------
+// Stage 3a Bug B: status-only mutations must also invalidate
+// (RequestReviewPanel approve/decline, AllCamperRequestsModal status flip,
+//  CreateRequestModal create) — previously only invalidated ['bunk-requests']
+// which is the wrong key for the alert cache.
+// ---------------------------------------------------------------------------
+describe('Stage 3a status mutations — must invalidate all-bunk-requests', () => {
   let queryClient: QueryClient
 
   beforeEach(() => {
     queryClient = buildQueryClient()
   })
 
-  it('MergeRequestsModal pattern correctly invalidates both bunk-requests and all-bunk-requests', () => {
-    // This is the CORRECT pattern already in MergeRequestsModal
+  it('RequestReviewPanel single approve/decline invalidates all-bunk-requests', () => {
+    // After Stage 3a Bug A fix, the alert filters by status === 'resolved',
+    // so flipping a row pending → resolved (or resolved → declined) WILL
+    // change the satisfaction count and the alert must refresh.
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
+  })
+
+  it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
+  })
+
+  it('CreateRequestModal create invalidates all-bunk-requests', () => {
+    const onSuccessAfterFix = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+    }
+
+    onSuccessAfterFix(queryClient)
+
+    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
+    expect(isTooltipStale(queryClient)).toBe(true)
+    expect(isSatisfactionStale(queryClient)).toBe(true)
+  })
+})
+
+describe('Merge / Split mutation contract — must invalidate all 7 keys', () => {
+  // Earlier iterations of Merge and Split invalidated only 5 of the 7 keys,
+  // leaving the sidebar / full-page CamperDetail / tooltip / satisfaction
+  // badges showing stale data after a merge or split.
+  let queryClient: QueryClient
+
+  beforeEach(() => {
+    queryClient = buildQueryClient()
+  })
+
+  function assertAllSeededKeysStale(qc: QueryClient) {
+    expect(isAllBunkRequestsStale(qc)).toBe(true)
+    expect(isPersonBunkRequestsStale(qc)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(qc)).toBe(true)
+    expect(isTooltipStale(qc)).toBe(true)
+    expect(isSatisfactionStale(qc)).toBe(true)
+  }
+
+  it('MergeRequestsModal onSuccess invalidates every request-derived key', () => {
     const onSuccess = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
     }
 
     onSuccess(queryClient)
 
-    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    assertAllSeededKeysStale(queryClient)
+  })
+
+  it('SplitRequestModal onSuccess invalidates every request-derived key', () => {
+    const onSuccess = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+    }
+
+    onSuccess(queryClient)
+
+    assertAllSeededKeysStale(queryClient)
   })
 })

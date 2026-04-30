@@ -23,6 +23,7 @@ from api.constants.collections import (
 )
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
 
 logger = get_logger(__name__)
@@ -281,16 +282,29 @@ class SocialGraphBuilder:
 
         # Add ONLY request edges between bunk members
         try:
-            # Get all requests for members of this bunk
+            # Get all requests for members of this bunk. Both bunk_with
+            # (parent) and not_bunk_with (staff) edges land here; not_bunk_with
+            # edges between bunkmates are violations and render red, and the
+            # bucketer inverts the satisfaction rule for them. age_preference
+            # rows have no paired requestee.
+            # session_id filter is required: a person in multiple sessions in
+            # the same year would otherwise leak cross-session rows into this
+            # bunk's graph. Keep parity with _add_request_edges.
             requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
-                query_params={"filter": f'year = {year} && status = "resolved"'}
+                query_params={
+                    "filter": f"year = {year} && session_id = {session_cm_id} && "
+                    f'(request_type = "bunk_with" || request_type = "not_bunk_with") && '
+                    f'status = "resolved"'
+                }
             )
 
             logger.info(f"Processing {len(requests)} total resolved requests for year {year}")
             request_count = 0
 
-            # Group requests by pair to detect reciprocals
-            # Note: bunk_requests uses requester_id and requestee_id fields
+            # Group by (pair, request_type) so opposite types don't collide.
+            # An A→B bunk_with paired with B→A not_bunk_with must NOT collapse
+            # into one edge — different request_types render and bucket
+            # differently (not_bunk_with same-bunk = violation).
             request_pairs = defaultdict(list)
             for request in requests:
                 requester = getattr(request, "requester_id", None)
@@ -302,12 +316,17 @@ class SocialGraphBuilder:
                     and requestee in bunk_members
                 ):
                     if requester != requestee:  # Skip self-referential
-                        pair_key = (min(requester, requestee), max(requester, requestee))
+                        rtype = getattr(request, "request_type", RequestType.BUNK_WITH.value)
+                        pair_key = (
+                            min(requester, requestee),
+                            max(requester, requestee),
+                            rtype,
+                        )
                         request_pairs[pair_key].append(request)
 
             # Process request pairs
             for pair_key, pair_requests in request_pairs.items():
-                person1, person2 = pair_key
+                person1, person2, request_type = pair_key
 
                 # Check if we have reciprocal requests
                 has_forward = any(
@@ -341,7 +360,8 @@ class SocialGraphBuilder:
                                 f"Added reciprocal request as secondary type to sibling edge: {person1} <-> {person2}"
                             )
                     else:
-                        # Add single reciprocal edge
+                        # Add single reciprocal edge with the pair_key's
+                        # request_type (authoritative — pair_keys include type).
                         bunk_graph.add_edge(
                             person1,
                             person2,
@@ -352,6 +372,7 @@ class SocialGraphBuilder:
                             confidence=getattr(request, "confidence_score", 1.0),
                             reciprocal=True,
                             source=getattr(request, "source", None),
+                            request_type=request_type,
                         )
                         request_count += 1
                         logger.info(f"Added reciprocal request edge #{request_count}: {person1} <-> {person2}")
@@ -389,6 +410,7 @@ class SocialGraphBuilder:
                                 confidence=getattr(request, "confidence_score", 1.0),
                                 reciprocal=False,
                                 source=getattr(request, "source", None),
+                                request_type=getattr(request, "request_type", RequestType.BUNK_WITH.value),
                             )
                             request_count += 1
                             logger.info(f"Added request edge #{request_count}: {requester} -> {requestee}")
@@ -470,6 +492,17 @@ class SocialGraphBuilder:
             f"Edge types: request={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'request'])}, "
             f"sibling={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'sibling'])}"
         )
+
+        # Populate satisfaction node attrs (parent_satisfaction_status,
+        # staff_satisfaction_status, satisfaction_status).  _calculate_node_metrics
+        # operates on self.graph, so we temporarily point it at bunk_graph.
+        # (#1063 Layer 2 fix)
+        saved_graph = self.graph
+        self.graph = bunk_graph
+        try:
+            self._calculate_node_metrics()
+        finally:
+            self.graph = saved_graph
 
         return bunk_graph
 
@@ -589,12 +622,18 @@ class SocialGraphBuilder:
         logger.info(f"Attendees without assignments: {len(attendees) - assignments_found}")
 
     def _add_request_edges(self, year: int, session_cm_id: int) -> None:
-        """Add edges from bunk requests"""
-        # bunk_requests uses session_id, requester_id, requestee_id fields
+        """Add edges from bunk requests.
+
+        Only resolved rows produce edges. Both bunk_with (parent-source) and
+        not_bunk_with (staff-source) edges are emitted — the latter render
+        as red lines on the graph so staff can see violation candidates.
+        age_preference rows have no paired requestee and don't produce edges.
+        """
         requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
             query_params={
                 "filter": f"year = {year} && session_id = {session_cm_id} && "
-                f'request_type = "bunk_with" && status != "removed"'
+                f'(request_type = "bunk_with" || request_type = "not_bunk_with") && '
+                f'status = "resolved"'
             }
         )
 
@@ -631,6 +670,7 @@ class SocialGraphBuilder:
                     confidence=confidence_score,
                     is_reciprocal=getattr(request, "is_reciprocal", False),
                     source=getattr(request, "source", None),
+                    request_type=getattr(request, "request_type", RequestType.BUNK_WITH.value),
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
@@ -838,9 +878,9 @@ class SocialGraphBuilder:
 
         # Calculate request satisfaction per source (Stage 2 parent-paramount).
         # Three buckets per source:
-        #   "satisfied"   — has request edges of this source, >=1 satisfied
-        #   "isolated"    — has request edges of this source, 0 satisfied
-        #   "no_requests" — has no request edges of this source
+        #   "satisfied"    — has request edges of this source, >=1 satisfied
+        #   "unsatisfied"  — has request edges of this source, 0 satisfied
+        #   "no_requests"  — has no request edges of this source
         #
         # `satisfaction_status` is the aggregate (any-source) value preserved for
         # backwards compat with consumers not yet migrated to the split. New
@@ -851,21 +891,44 @@ class SocialGraphBuilder:
         aggregate_status_map: dict[Any, str] = {}
         for node in self.graph.nodes():
             node_bunk = self.graph.nodes[node].get("bunk_cm_id")
-            request_edges = [(n, data) for n, data in self.graph[node].items() if data.get("edge_type") == "request"]
-            parent_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "family"]
-            staff_edges = [(n, d) for (n, d) in request_edges if d.get("source") == "staff"]
+            # Single-pass split. Bucket on request_type rather than source —
+            # request_type is what _bucket inverts on (not_bunk_with: same-bunk
+            # = violation), so misrouting a FAMILY-source not_bunk_with into
+            # the parent bucket would invert its evaluation direction.
+            request_edges: list[tuple[Any, dict[str, Any]]] = []
+            parent_edges: list[tuple[Any, dict[str, Any]]] = []
+            staff_edges: list[tuple[Any, dict[str, Any]]] = []
+            for n, data in self.graph[node].items():
+                if data.get("edge_type") != "request":
+                    continue
+                request_edges.append((n, data))
+                rtype = data.get("request_type")
+                if rtype == "bunk_with":
+                    parent_edges.append((n, data))
+                elif rtype == "not_bunk_with":
+                    staff_edges.append((n, data))
 
             def _bucket(edges: list[tuple[Any, dict[str, Any]]], bunk: Any = node_bunk) -> str:
                 if not edges:
                     return "no_requests"
-                satisfied_count = sum(
-                    1
-                    for requested_person, _ in edges
-                    if bunk
-                    and (requested_bunk := self.graph.nodes[requested_person].get("bunk_cm_id"))
-                    and bunk == requested_bunk
-                )
-                return "satisfied" if satisfied_count > 0 else "isolated"
+                # An unbunked requester has no bunk to satisfy against — render
+                # neutral (no_requests) instead of forcing a verdict.
+                if not bunk:
+                    return "no_requests"
+                satisfied_count = 0
+                for requested_person, edata in edges:
+                    requested_bunk = self.graph.nodes[requested_person].get("bunk_cm_id")
+                    same_bunk = bool(requested_bunk) and bunk == requested_bunk
+                    # not_bunk_with inverts: same-bunk = violation (unsatisfied),
+                    # different-bunk or unbunked target = satisfied.
+                    if edata.get("request_type") == "not_bunk_with":
+                        if not same_bunk:
+                            satisfied_count += 1
+                    else:
+                        # bunk_with (default for legacy un-tagged edges): same-bunk = satisfied
+                        if same_bunk:
+                            satisfied_count += 1
+                return "satisfied" if satisfied_count > 0 else "unsatisfied"
 
             parent_status_map[node] = _bucket(parent_edges)
             staff_status_map[node] = _bucket(staff_edges)

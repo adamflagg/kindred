@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import MergeRequestsModal from './MergeRequestsModal'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
+import { queryKeys } from '../utils/queryKeys'
 
 // Mock the useApiWithAuth hook
 const mockFetchWithAuth = vi.fn()
@@ -70,6 +71,28 @@ function renderWithQueryClient(ui: React.ReactElement) {
     },
   })
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
+
+// Render with a pre-seeded QueryClient so tests can verify invalidation.
+function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, year = 2025) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  // Seed every request-derived React Query key so we can assert invalidation.
+  queryClient.setQueryData(queryKeys.bunkRequestsPrefix(), [])
+  queryClient.setQueryData([...queryKeys.allBunkRequestsPrefix(), 1000001, year], [])
+  queryClient.setQueryData([...queryKeys.personBunkRequestsPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.personAllBunkRequestsPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.bunkRequestsTooltipPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.requestSatisfactionPrefix(), requesterId], {})
+  queryClient.setQueryData(queryKeys.cohortRequestRelationsPrefix(), [])
+  return {
+    queryClient,
+    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+  }
 }
 
 describe('MergeRequestsModal', () => {
@@ -363,6 +386,63 @@ describe('MergeRequestsModal', () => {
       fireEvent.click(cancelButton)
 
       expect(onClose).toHaveBeenCalled()
+    })
+  })
+
+  // Earlier iterations of Merge invalidated only 5 of the 7 request keys —
+  // the 4 per-camper keys (person-bunk-requests, person-all-bunk-requests,
+  // bunk_requests_tooltip, request-satisfaction) plus cohort-request-relations
+  // went stale on the sidebar, full-page CamperDetail, tooltip, and
+  // satisfaction badges after a merge.
+  describe('cache invalidation contract', () => {
+    function isStale(qc: QueryClient, key: readonly unknown[]) {
+      return qc.getQueryState(key)?.isInvalidated === true
+    }
+
+    it('invalidates all 7 request-derived React Query keys after a successful merge', async () => {
+      const requests = [
+        createMockRequest({ id: 'req_1', requester_id: 12345, year: 2025 }),
+        createMockRequest({ id: 'req_2', requester_id: 12345, year: 2025 }),
+      ]
+
+      mockFetchWithAuth.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          merged_request_id: 'req_1',
+          deleted_request_ids: ['req_2'],
+          source_fields: [],
+          confidence_score: 0.95,
+        }),
+      })
+
+      const { queryClient } = renderWithSeededClient(
+        <MergeRequestsModal
+          isOpen={true}
+          onClose={() => {}}
+          requests={requests}
+          onMergeComplete={() => {}}
+        />
+      )
+
+      const mergeButton = screen.getByRole('button', { name: /merge/i })
+      fireEvent.click(mergeButton)
+
+      await waitFor(() => {
+        expect(isStale(queryClient, ['bunk-requests'])).toBe(true)
+      })
+
+      expect(isStale(queryClient, [...queryKeys.allBunkRequestsPrefix(), 1000001, 2025])).toBe(true)
+      expect(isStale(queryClient, [...queryKeys.personBunkRequestsPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.personAllBunkRequestsPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.bunkRequestsTooltipPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.requestSatisfactionPrefix(), 12345])).toBe(true)
+      expect(isStale(queryClient, queryKeys.cohortRequestRelationsPrefix())).toBe(true)
     })
   })
 

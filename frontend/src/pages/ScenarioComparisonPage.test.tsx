@@ -15,13 +15,13 @@ function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationSta
     total_requests: 0,
     satisfied_requests: 0,
     request_satisfaction_rate: 0,
-    explicit_csv_requests: 0,
-    satisfied_explicit_csv_requests: 0,
-    explicit_csv_request_satisfaction_rate: 0,
-    parent_requests: 0,
-    satisfied_parent_requests: 0,
-    parent_request_satisfaction_rate: 0,
-    campers_with_unsatisfied_parent_requests: 0,
+    material_parent_requests: 0,
+    satisfied_material_parent_requests: 0,
+    material_parent_request_satisfaction_rate: 0,
+    campers_with_unsatisfied_material_parent_requests: 0,
+    best_effort_parent_requests: 0,
+    satisfied_best_effort_parent_requests: 0,
+    best_effort_parent_request_satisfaction_rate: 0,
     staff_requests: 0,
     satisfied_staff_requests: 0,
     staff_request_satisfaction_rate: 0,
@@ -162,25 +162,31 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
   })
 })
 
-// ─── Stage 2 parent-paramount: ValidationScoreCard badges ──────────────────
+// Legacy explicit_csv_* aggregate fields were removed from
+// ValidationStatistics. Guard against accidental re-introduction.
+
+describe('explicit_csv_* fields are removed', () => {
+  it('makeStats does not produce legacy explicit_csv_* keys', () => {
+    const stats = makeStats()
+    const keys = Object.keys(stats)
+    expect(keys).not.toContain('explicit_csv_requests')
+    expect(keys).not.toContain('satisfied_explicit_csv_requests')
+    expect(keys).not.toContain('explicit_csv_request_satisfaction_rate')
+  })
+})
+
+// ─── Stage 3a parent-paramount: ValidationScoreCard — material + best-effort tiles ──
 
 describe('ValidationScoreCard parent-paramount stats', () => {
-  it('renders Parent Requests stat from parent_request_satisfaction_rate (not explicit_csv)', () => {
+  it('renders Material Parent tile from material_parent_request_satisfaction_rate', () => {
     const stats = makeStats({
-      total_requests: 100,
-      satisfied_requests: 50,
-      request_satisfaction_rate: 0.5,
-      // Legacy values (mixed staff notes — what the badge USED to read)
-      explicit_csv_requests: 100,
-      satisfied_explicit_csv_requests: 50,
-      explicit_csv_request_satisfaction_rate: 0.5,
-      // Honest parent-paramount values (what the badge SHOULD read)
-      parent_requests: 10,
-      satisfied_parent_requests: 9,
-      parent_request_satisfaction_rate: 0.9,
+      // Stage 3a material-parent values (what the tile SHOULD read)
+      material_parent_requests: 10,
+      satisfied_material_parent_requests: 9,
+      material_parent_request_satisfaction_rate: 0.9,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
-    const parentLabel = screen.getByText(/^Parent Requests$/i)
+    const parentLabel = screen.getByText(/^Material Parent$/i)
     const parentSection = parentLabel.parentElement!
     const parentScope = within(parentSection)
     expect(parentScope.getByText('90%')).toBeInTheDocument()
@@ -189,9 +195,9 @@ describe('ValidationScoreCard parent-paramount stats', () => {
 
   it('renders Staff Requests stat as a sibling badge', () => {
     const stats = makeStats({
-      parent_requests: 10,
-      satisfied_parent_requests: 10,
-      parent_request_satisfaction_rate: 1.0,
+      material_parent_requests: 10,
+      satisfied_material_parent_requests: 10,
+      material_parent_request_satisfaction_rate: 1.0,
       staff_requests: 50,
       satisfied_staff_requests: 25,
       staff_request_satisfaction_rate: 0.5,
@@ -205,7 +211,7 @@ describe('ValidationScoreCard parent-paramount stats', () => {
   })
 
   it('does not render NaN% when rate fields are missing from a stale payload', () => {
-    // Stage 1 rate fields are typed as required `number`, but during rollout
+    // Stage 3a rate fields are typed as required `number`, but during rollout
     // (or with a stale cached scenario response) the runtime payload can
     // still arrive without them. Math.round(undefined * 100) === NaN, which
     // would render as "NaN%". Guard against that.
@@ -217,32 +223,73 @@ describe('ValidationScoreCard parent-paramount stats', () => {
     // a stale runtime payload, mirroring the real risk during rollout.
     delete stats.request_satisfaction_rate
     // @ts-expect-error — see above
-    delete stats.parent_request_satisfaction_rate
+    delete stats.material_parent_request_satisfaction_rate
     // @ts-expect-error — see above
     delete stats.staff_request_satisfaction_rate
+    // @ts-expect-error — see above
+    delete stats.best_effort_parent_request_satisfaction_rate
 
     const { container } = render(
       <ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />
     )
     expect(container.textContent).not.toContain('NaN')
-    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(3)
+    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(4)
   })
 
-  it('renders an All Requests stat alongside Parent and Staff', () => {
+  it('renders four tiles: All Requests, Material Parent, Best-Effort Parent, Staff', () => {
     const stats = makeStats({
-      total_requests: 60,
-      satisfied_requests: 35,
-      request_satisfaction_rate: 35 / 60,
-      parent_requests: 10,
-      satisfied_parent_requests: 9,
-      parent_request_satisfaction_rate: 0.9,
+      material_parent_requests: 10,
+      satisfied_material_parent_requests: 9,
+      material_parent_request_satisfaction_rate: 0.9,
+      best_effort_parent_requests: 5,
+      satisfied_best_effort_parent_requests: 3,
+      best_effort_parent_request_satisfaction_rate: 0.6,
       staff_requests: 50,
       satisfied_staff_requests: 26,
       staff_request_satisfaction_rate: 0.52,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
     expect(screen.getByText(/^All Requests$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Parent Requests$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Material Parent$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Best-Effort Parent$/i)).toBeInTheDocument()
     expect(screen.getByText(/^Staff Requests$/i)).toBeInTheDocument()
+  })
+
+  it('All Requests tile counts material_parent + staff only (excludes best-effort)', () => {
+    // material: 10 total, 8 satisfied; staff: 20 total, 15 satisfied
+    // best-effort: 5 total, 4 satisfied — must NOT appear in "All" denominator
+    // expected All: (8+15)/(10+20) = 23/30 = 76%
+    const stats = makeStats({
+      material_parent_requests: 10,
+      satisfied_material_parent_requests: 8,
+      material_parent_request_satisfaction_rate: 0.8,
+      best_effort_parent_requests: 5,
+      satisfied_best_effort_parent_requests: 4,
+      best_effort_parent_request_satisfaction_rate: 0.8,
+      staff_requests: 20,
+      satisfied_staff_requests: 15,
+      staff_request_satisfaction_rate: 0.75,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    const allLabel = screen.getByText(/^All Requests$/i)
+    const allSection = allLabel.parentElement!
+    const allScope = within(allSection)
+    // 23/30 = 76.666...% → Math.round = 77%
+    expect(allScope.getByText('77%')).toBeInTheDocument()
+    expect(allScope.getByText('(23/30)')).toBeInTheDocument()
+  })
+
+  it('Best-Effort Parent tile reads best_effort_parent_request_satisfaction_rate', () => {
+    const stats = makeStats({
+      best_effort_parent_requests: 8,
+      satisfied_best_effort_parent_requests: 5,
+      best_effort_parent_request_satisfaction_rate: 0.625,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    const beLabel = screen.getByText(/^Best-Effort Parent$/i)
+    const beSection = beLabel.parentElement!
+    const beScope = within(beSection)
+    expect(beScope.getByText('63%')).toBeInTheDocument()
+    expect(beScope.getByText('(5/8)')).toBeInTheDocument()
   })
 })

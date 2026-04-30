@@ -193,7 +193,9 @@ class TestPriorityCalculator:
         assert priority == 1
 
     def test_age_preference_from_socialize_with_sole_request(self, calculator):
-        """age_preference from socialize_with as sole request gets priority 4 (same as bunk_with sole age pref)"""
+        """Stage 3a: age_preference from socialize_with as sole request stays at priority 1.
+        Sole-promotion is removed — socialize_with is best-effort, never counts toward
+        parent-min-one, and always emits at priority 1."""
         request = ParsedRequest(
             raw_text="younger",
             request_type=RequestType.AGE_PREFERENCE,
@@ -207,18 +209,13 @@ class TestPriorityCalculator:
         )
 
         priority = calculator.calculate_priority(request, [request])
-        assert priority == 4, "Sole age_preference from socialize_with should get priority 4"
+        assert priority == 1, (
+            "Stage 3a: sole age_preference from socialize_with must stay at priority 1 (sole-promotion removed)"
+        )
 
     def test_age_preference_from_socialize_with_with_other_requests(self, calculator):
-        """age_preference from socialize_with with other non-bunk_with requests still
-        gets promoted to priority 4.
-
-        Updated per Stage 1 fix: staff requests (and other non-bunk_with source_field
-        requests) no longer suppress socialize_with sole-promote. Only a request with
-        source_field=BUNK_WITH (parent bunk_with text) suppresses the promotion.
-
-        The 'other' request here is a BUNK_WITH type but from source_field=SOCIALIZE_WITH,
-        meaning it's not a parent bunk_with field submission — so promotion still applies.
+        """Stage 3a: age_preference from socialize_with with other non-bunk_with requests
+        stays at priority 1. Sole-promotion removed — context no longer affects the outcome.
         """
         requests = [
             ParsedRequest(
@@ -246,11 +243,10 @@ class TestPriorityCalculator:
         ]
 
         priority = calculator.calculate_priority(requests[1], requests)
-        # Updated per Stage 1 fix: no bunk_with source_field request exists,
-        # so socialize_with is still the "sole" parent input — priority 4.
-        assert priority == 4, (
-            "age_preference from socialize_with should be priority 4 when no "
-            "source_field=BUNK_WITH request exists (only non-bunk_with source requests)"
+        # Stage 3a: sole-promotion removed entirely. Always priority 1.
+        assert priority == 1, (
+            "Stage 3a: age_preference from socialize_with must always be priority 1 "
+            "(sole-promotion removed, context no longer affects outcome)"
         )
 
     def test_staff_notes_request(self, calculator):
@@ -503,22 +499,40 @@ class TestConfigDrivenPriorityCalculator:
         assert priority == 4, "Default keywords should work when config only overrides rules"
 
 
-class TestSocializeWithParentParamountStage1:
-    """Stage 1 fix: staff requests don't suppress socialize_with sole-promote.
+class TestSocializeWithParentParamountStage3a:
+    """Stage 3a: sole-promotion removed from socialize_with.
 
-    Per the parent-paramount taxonomy: socialize_with is sole parent input when
-    no bunk_with request exists. Staff requests (internal_notes, bunking_notes,
-    not_bunk_with) are not parent input and must not suppress the promotion.
+    Per the materiality refactor: socialize_with is best-effort and never counts
+    toward the parent-min-one rule. Sole-promotion was misleading — it implied the
+    age preference was a hard requirement. socialize_with always emits at priority 1.
     """
 
     @pytest.fixture
     def calculator(self):
         return PriorityCalculator()
 
-    def test_socialize_with_sole_promoted_when_bunk_with_empty_even_with_staff_notes(self, calculator):
-        """Per parent-paramount rule: socialize_with is the sole parent input when
-        no bunk_with request exists, and gets priority 4. Staff notes don't suppress
-        this — they're not parent input."""
+    def test_socialize_with_stays_priority_one_when_no_bunk_with_text(self, calculator):
+        """Stage 3a: sole-promotion removed. socialize_with rows always emit at
+        priority 1, regardless of whether the parent submitted bunk_with text."""
+        socialize_req = ParsedRequest(
+            raw_text="younger",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.YOUNGER,
+            source_field=SourceField.SOCIALIZE_WITH,
+            source=RequestSource.FAMILY,
+            confidence=1.0,
+            csv_position=0,
+            metadata={},
+        )
+
+        priority = calculator.calculate_priority(socialize_req, [socialize_req])
+
+        assert priority == 1, "Stage 3a: socialize_with must stay at priority 1 (sole-promotion removed)"
+
+    def test_socialize_with_stays_priority_one_even_with_staff_notes(self, calculator):
+        """Stage 3a: sole-promotion removed. socialize_with is priority 1 even when
+        coexisting with staff notes — context no longer affects the outcome."""
         socialize_req = ParsedRequest(
             raw_text="younger",
             request_type=RequestType.AGE_PREFERENCE,
@@ -545,9 +559,8 @@ class TestSocializeWithParentParamountStage1:
 
         priority = calculator.calculate_priority(socialize_req, all_for_person)
 
-        assert priority == 4, (
-            "socialize_with should be sole-promoted to priority 4 when no bunk_with "
-            "exists for the camper, regardless of staff requests"
+        assert priority == 1, (
+            "Stage 3a: socialize_with stays at priority 1 regardless of staff requests (sole-promotion removed)"
         )
 
     def test_socialize_with_low_priority_when_bunk_with_exists(self, calculator):
@@ -629,10 +642,9 @@ class TestSocializeWithParentParamountStage1:
             "guards against accidental any→all rewrite"
         )
 
-    def test_socialize_with_sole_promoted_with_only_other_family_socialize_with(self, calculator):
-        """Two FAMILY socialize_with siblings (no bunk_with text anywhere) should
-        still sole-promote to priority 4. Regression guard against a future
-        misread of 'has_parent_bunk_with' that might count any FAMILY entry."""
+    def test_socialize_with_priority_one_with_sibling_socialize_with(self, calculator):
+        """Stage 3a: Two FAMILY socialize_with siblings (no bunk_with text anywhere)
+        both stay at priority 1. Sole-promotion removed entirely."""
         socialize_a = ParsedRequest(
             raw_text="younger",
             request_type=RequestType.AGE_PREFERENCE,
@@ -659,9 +671,9 @@ class TestSocializeWithParentParamountStage1:
 
         priority = calculator.calculate_priority(socialize_a, all_for_person)
 
-        assert priority == 4, (
-            "socialize_with should sole-promote to priority 4 even with another "
-            "FAMILY socialize_with sibling, since no bunk_with text exists"
+        assert priority == 1, (
+            "Stage 3a: socialize_with sibling pair must stay at priority 1 — "
+            "sole-promotion removed, context no longer matters"
         )
 
 

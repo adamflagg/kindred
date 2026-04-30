@@ -4,40 +4,29 @@
  * In prod mode the card must render title="Switch to a scenario to edit" on
  * its root element. In scenario mode no such title is set.
  *
- * Stage 2 parent-paramount: the card renders a parent triangle when parent
- * requests are unsatisfied, and a separate amber staff dot when staff requests
- * are unsatisfied. Both can render simultaneously; staff dot is independent
- * of parent state (resolved Q #6 in the Stage 2 spec).
+ * Stage 3a parent-paramount Shape A: the card renders a parent triangle when
+ * parentMinOneViolation is true, and a separate amber staff dot when
+ * staffUnsatisfiedAlert is true. Both can render simultaneously; staff dot is
+ * independent of parent state (resolved Q #6 in the Stage 2 spec).
  */
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { RequestSlice, SatisfiedRequestInfo } from '../contexts/BunkRequestContext'
 
-interface MockSatisfiedInfo {
-  totalRequests: number
-  satisfiedCount: number
-  topPrioritySatisfied: boolean
-  priorityLevels: number[]
-  hasLockedPriority: boolean
-  parentTotal: number
-  parentSatisfied: number
-  staffTotal: number
-  staffSatisfied: number
-}
+const EMPTY_SLICE: RequestSlice = { total: 0, satisfied: 0, satisfactionRate: 1 }
 
-const emptySatisfiedInfo: MockSatisfiedInfo = {
-  totalRequests: 0,
-  satisfiedCount: 0,
+const emptySatisfiedInfo: SatisfiedRequestInfo = {
+  materialParent: EMPTY_SLICE,
+  bestEffortParent: EMPTY_SLICE,
+  staff: EMPTY_SLICE,
+  parentMinOneViolation: false,
+  staffUnsatisfiedAlert: false,
   topPrioritySatisfied: false,
   priorityLevels: [],
-  hasLockedPriority: false,
-  parentTotal: 0,
-  parentSatisfied: 0,
-  staffTotal: 0,
-  staffSatisfied: 0,
 }
 
-let mockSatisfiedInfo: MockSatisfiedInfo = { ...emptySatisfiedInfo }
-function setSatisfiedInfo(overrides: Partial<MockSatisfiedInfo>) {
+let mockSatisfiedInfo: SatisfiedRequestInfo = { ...emptySatisfiedInfo }
+function setSatisfiedInfo(overrides: Partial<SatisfiedRequestInfo>) {
   mockSatisfiedInfo = { ...emptySatisfiedInfo, ...overrides }
 }
 
@@ -118,12 +107,10 @@ const assignedCamper: Camper = {
 } as unknown as Camper
 
 describe('CamperCard parent-paramount icons', () => {
-  it('renders parent triangle when parentTotal > 0 and parentSatisfied === 0', () => {
+  it('renders parent triangle when parentMinOneViolation is true', () => {
     setSatisfiedInfo({
-      totalRequests: 1,
-      satisfiedCount: 0,
-      parentTotal: 1,
-      parentSatisfied: 0,
+      materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+      parentMinOneViolation: true,
     })
     const { container } = render(
       <CamperCard
@@ -137,12 +124,10 @@ describe('CamperCard parent-paramount icons', () => {
     expect(container.querySelector('[title*="staff request"]')).toBeNull()
   })
 
-  it('renders staff dot when staffTotal > 0 / staffSatisfied === 0 / parentTotal === 0', () => {
+  it('renders staff dot when staffUnsatisfiedAlert is true and no parent violation', () => {
     setSatisfiedInfo({
-      totalRequests: 1,
-      satisfiedCount: 0,
-      staffTotal: 1,
-      staffSatisfied: 0,
+      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+      staffUnsatisfiedAlert: true,
     })
     const { container } = render(
       <CamperCard
@@ -156,14 +141,12 @@ describe('CamperCard parent-paramount icons', () => {
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
   })
 
-  it('renders BOTH icons when parent and staff are both unsatisfied', () => {
+  it('renders BOTH icons when parentMinOneViolation and staffUnsatisfiedAlert are both true', () => {
     setSatisfiedInfo({
-      totalRequests: 2,
-      satisfiedCount: 0,
-      parentTotal: 1,
-      parentSatisfied: 0,
-      staffTotal: 1,
-      staffSatisfied: 0,
+      materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+      parentMinOneViolation: true,
+      staffUnsatisfiedAlert: true,
     })
     const { container } = render(
       <CamperCard
@@ -179,12 +162,10 @@ describe('CamperCard parent-paramount icons', () => {
 
   it('renders staff dot when staff unsat even if parent is satisfied (resolved Q #6)', () => {
     setSatisfiedInfo({
-      totalRequests: 2,
-      satisfiedCount: 1,
-      parentTotal: 1,
-      parentSatisfied: 1,
-      staffTotal: 1,
-      staffSatisfied: 0,
+      materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
+      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
+      parentMinOneViolation: false,
+      staffUnsatisfiedAlert: true,
     })
     const { container } = render(
       <CamperCard
@@ -198,14 +179,12 @@ describe('CamperCard parent-paramount icons', () => {
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
   })
 
-  it('renders no icons when both parent and staff are fully satisfied', () => {
+  it('renders no icons when both parentMinOneViolation and staffUnsatisfiedAlert are false', () => {
     setSatisfiedInfo({
-      totalRequests: 2,
-      satisfiedCount: 2,
-      parentTotal: 1,
-      parentSatisfied: 1,
-      staffTotal: 1,
-      staffSatisfied: 1,
+      materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
+      staff: { total: 1, satisfied: 1, satisfactionRate: 1 },
+      parentMinOneViolation: false,
+      staffUnsatisfiedAlert: false,
     })
     const { container } = render(
       <CamperCard

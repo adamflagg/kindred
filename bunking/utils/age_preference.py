@@ -10,6 +10,32 @@ The TypeScript equivalent is in frontend/src/utils/agePreferenceSatisfaction.ts
 
 from __future__ import annotations
 
+from collections import Counter
+
+
+def _real_grades(bunkmate_grades: list[int]) -> tuple[list[int] | None, bool]:
+    """Identify the two grades to evaluate against in a three-grade bunk.
+
+    Returns (real_grades, tied_second_place).
+    - For 1- or 2-grade bunks: returns (None, False) — caller uses raw bunkmate_grades.
+    - For 3+ grade bunks where most-frequent grade is not unique: returns (None, False) — caller uses raw grades.
+    - For 3+ grade bunks with a unique most-frequent grade and unique second-most-frequent grade: returns ([most_common, second_common], False).
+    - For 3+ grade bunks with a unique most-frequent grade but tied second-most-frequent place: returns (None, True) — caller treats as satisfied.
+    """
+    distinct = set(bunkmate_grades)
+    if len(distinct) <= 2:
+        return None, False
+    counts = Counter(bunkmate_grades).most_common()
+    most_common_grade, most_common_count = counts[0]
+    second_common_grade, second_common_count = counts[1]
+    # If most-frequent grade is not uniquely #1, fall back to raw grades (no real-grades adjustment).
+    if most_common_count == second_common_count:
+        return None, False
+    # Most-frequent grade is unique. Check if second-most-frequent place is also unique.
+    if len(counts) >= 3 and counts[2][1] == second_common_count:
+        return None, True
+    return [most_common_grade, second_common_grade], False
+
 
 def is_age_preference_satisfied(
     requester_grade: int,
@@ -32,6 +58,12 @@ def is_age_preference_satisfied(
     """
     if not bunkmate_grades:
         return False, "No bunkmates yet"
+
+    real, tied_second_place = _real_grades(bunkmate_grades)
+    if tied_second_place:
+        return True, "Three-grade bunk with tied second-place — satisfied"
+    if real is not None:
+        bunkmate_grades = real
 
     min_grade = min(bunkmate_grades)
     max_grade = max(bunkmate_grades)

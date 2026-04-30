@@ -29,10 +29,12 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // Calculate satisfaction summary
+  // Calculate satisfaction summary. Use the affirmative resolved-only
+  // filter; an earlier `status !== 'pending'` form silently admitted
+  // declined rows.
   const countableRequests = allBunkRequests.filter(
     (r) =>
-      r.status !== 'pending' &&
+      r.status === 'resolved' &&
       (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
         ? r.requestee_id && r.requestee_id > 0
         : !!r.age_preference_target)
@@ -43,8 +45,12 @@ export function BunkingStatusPanel({
   ).length
   const hasSatisfactionData = !satisfactionLoading && Object.keys(satisfactionData).length > 0
 
-  // Filter person-based requests (not age preference)
-  const personRequests = allBunkRequests.filter((r) => r.request_type !== 'age_preference')
+  // The per-camper list must agree with the "X/Y met" summary above —
+  // both filter to status === 'resolved' so pending and declined rows
+  // don't render here with status-colored dots.
+  const personRequests = allBunkRequests.filter(
+    (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
+  )
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">

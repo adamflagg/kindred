@@ -57,9 +57,13 @@ export function useSatisfactionData(
           (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with')
       )
 
-      // Age-pref requests we'll evaluate (any status; just needs a target)
+      // Age-pref requests we'll evaluate (resolved + valid target). Only
+      // resolved rows are evaluated — pending or declined age preferences
+      // (e.g. SAME_AGE held for staff review) don't render satisfaction
+      // badges in CamperDetail full-page view.
       const agePreferenceRequests = allBunkRequests.filter(
-        (r) => r.request_type === 'age_preference' && r.age_preference_target
+        (r) =>
+          r.request_type === 'age_preference' && r.status === 'resolved' && r.age_preference_target
       )
 
       if (personRequests.length === 0 && agePreferenceRequests.length === 0) {

@@ -31,6 +31,9 @@ export function CamperRequestSummary({
   const { user } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
 
+  // Staff-review exemption: this fetch intentionally does NOT filter
+  // status = "resolved". RequestReviewPanel consumes it to show pending
+  // and declined rows for staff approval.
   const {
     data: requests = [],
     isLoading: isLoadingRequests,

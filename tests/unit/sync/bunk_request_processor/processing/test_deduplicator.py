@@ -1157,5 +1157,176 @@ class TestParentAgePreferenceDeduplication:
         assert result.kept_requests[0].source_field == SourceField.SOCIALIZE_WITH
 
 
+class TestConflictTargetDemotion:
+    """Test Stage 3a: conflict-target case demotes bunk_with-parsed age_preference to pending.
+
+    When a parent submits BOTH bunk_with prose (AI-parsed to age_preference) AND a
+    socialize_with boolean (also age_preference), and their targets differ (e.g., prose
+    says "older" but boolean says "younger"), the bunk_with-parsed row is demoted to
+    status=pending for staff review. The socialize_with row stays resolved.
+
+    Both rows survive in output (no merge).
+    """
+
+    @pytest.fixture
+    def deduplicator(self):
+        """Create a Deduplicator without repository (batch-only dedup)"""
+        return Deduplicator()
+
+    def _age_pref(
+        self,
+        source_field: str,
+        age_target: str,
+        confidence: float = 0.90,
+        source: RequestSource = RequestSource.FAMILY,
+        requester_cm_id: int = 4001,
+        year: int = 2025,
+        session_cm_id: int = 1000001,
+    ) -> BunkRequest:
+        return BunkRequest(
+            requester_cm_id=requester_cm_id,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=session_cm_id,
+            priority=1,
+            confidence_score=confidence,
+            source=source,
+            source_field=source_field,
+            csv_position=0,
+            year=year,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": age_target},
+        )
+
+    def test_conflict_target_demotes_bunk_with_parsed_to_pending(self, deduplicator):
+        """When bunk_with prose parses to age_preference target=older and
+        socialize_with boolean is target=younger, the bunk_with-parsed row
+        is demoted to status=pending. socialize_with stays resolved.
+
+        Both rows survive (no merge).
+
+        Represents Olivia Chen (cm_id=4001) whose prose says "older" but
+        checkbox says "younger".
+        """
+        bunk_with_row = self._age_pref(
+            source_field=SourceField.BUNK_WITH,
+            age_target="older",
+            confidence=0.85,
+        )
+        socialize_row = self._age_pref(
+            source_field=SourceField.SOCIALIZE_WITH,
+            age_target="younger",
+            confidence=1.0,
+        )
+
+        result = deduplicator.deduplicate_batch([bunk_with_row, socialize_row])
+
+        # Both rows must survive (no merge happened)
+        assert len(result.kept_requests) == 2, f"Expected 2 rows (no merge), got {len(result.kept_requests)}"
+
+        # Find each row by source_field
+        kept_by_field = {r.source_field: r for r in result.kept_requests}
+        assert SourceField.BUNK_WITH in kept_by_field, "bunk_with row must be in output"
+        assert SourceField.SOCIALIZE_WITH in kept_by_field, "socialize_with row must be in output"
+
+        # bunk_with-parsed row demoted to pending
+        bunk_with_kept = kept_by_field[SourceField.BUNK_WITH]
+        assert bunk_with_kept.status == RequestStatus.PENDING, (
+            f"Expected bunk_with row status=pending, got {bunk_with_kept.status!r}"
+        )
+
+        # socialize_with row stays resolved
+        socialize_kept = kept_by_field[SourceField.SOCIALIZE_WITH]
+        assert socialize_kept.status == RequestStatus.RESOLVED, (
+            f"Expected socialize_with row status=resolved, got {socialize_kept.status!r}"
+        )
+
+    def test_conflict_target_other_direction_also_demotes(self, deduplicator):
+        """Same demotion fires when prose=younger and boolean=older (reverse direction)."""
+        bunk_with_row = self._age_pref(
+            source_field=SourceField.BUNK_WITH,
+            age_target="younger",
+            confidence=0.88,
+        )
+        socialize_row = self._age_pref(
+            source_field=SourceField.SOCIALIZE_WITH,
+            age_target="older",
+            confidence=1.0,
+        )
+
+        result = deduplicator.deduplicate_batch([bunk_with_row, socialize_row])
+
+        assert len(result.kept_requests) == 2
+
+        kept_by_field = {r.source_field: r for r in result.kept_requests}
+        assert kept_by_field[SourceField.BUNK_WITH].status == RequestStatus.PENDING
+        assert kept_by_field[SourceField.SOCIALIZE_WITH].status == RequestStatus.RESOLVED
+
+    def test_same_target_age_preference_still_merges(self, deduplicator):
+        """Regression: when bunk_with prose parses age_pref=older AND boolean is older,
+        they merge as before — bunk_with-source survivor at standard priority.
+
+        Exactly ONE row remains with source_field=bunk_with.
+        """
+        bunk_with_row = self._age_pref(
+            source_field=SourceField.BUNK_WITH,
+            age_target="older",
+            confidence=0.92,
+        )
+        socialize_row = self._age_pref(
+            source_field=SourceField.SOCIALIZE_WITH,
+            age_target="older",
+            confidence=1.0,
+        )
+
+        result = deduplicator.deduplicate_batch([bunk_with_row, socialize_row])
+
+        # Same-target: merges to ONE row
+        assert len(result.kept_requests) == 1, f"Expected 1 row (same-target merge), got {len(result.kept_requests)}"
+        assert result.kept_requests[0].source_field == SourceField.BUNK_WITH, (
+            f"Expected bunk_with to survive merge; got {result.kept_requests[0].source_field}"
+        )
+        # Merged row stays resolved
+        assert result.kept_requests[0].status == RequestStatus.RESOLVED
+
+    def test_null_age_target_falls_back_to_same_target_merge(self, deduplicator):
+        """When the bunk_with row's age_preference is None (parse failure),
+        the conflict-target check returns False, so the same-target merge
+        path runs and produces ONE surviving row — the bunk_with row,
+        which beats socialize_with under the standard preference order.
+        Status stays resolved.
+        """
+        bunk_with_row = self._age_pref(
+            source_field=SourceField.BUNK_WITH,
+            age_target="older",
+            confidence=0.85,
+        )
+        # Override to None to simulate parse failure
+        bunk_with_row.metadata["age_preference"] = None
+
+        socialize_row = self._age_pref(
+            source_field=SourceField.SOCIALIZE_WITH,
+            age_target="younger",
+            confidence=1.0,
+        )
+
+        result = deduplicator.deduplicate_batch([bunk_with_row, socialize_row])
+
+        assert len(result.kept_requests) == 1, (
+            f"None target falls back to same-target merge → exactly 1 row; "
+            f"got {len(result.kept_requests)}: "
+            f"{[(r.source_field, r.status) for r in result.kept_requests]}"
+        )
+        survivor = result.kept_requests[0]
+        assert survivor.source_field == SourceField.BUNK_WITH, (
+            f"bunk_with must beat socialize_with in fallback merge; got source_field={survivor.source_field}"
+        )
+        assert survivor.status == RequestStatus.RESOLVED, (
+            f"fallback merge must NOT promote to pending (only conflicting "
+            f"non-null targets do); got status={survivor.status}"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
