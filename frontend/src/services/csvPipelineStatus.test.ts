@@ -41,6 +41,66 @@ describe('derivePhase', () => {
       expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('idle')
     })
 
+    it('returns idle when sync started well BEFORE the upload (cron mid-flight, then user uploads)', () => {
+      // A cron sync started 8 minutes ago. User uploads 1 minute ago. With a
+      // symmetric Math.abs check, the cron's running state would be incorrectly
+      // attributed to the upload — exactly the bug in the inverted-time
+      // direction. Direction matters: only syncs at-or-after the upload count.
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'running',
+        startedAt: ago(8),
+      }
+      const csvUploadStartedAt = ago(1)
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('idle')
+    })
+
+    it('returns idle when a cron sync completed shortly before the upload', () => {
+      // Cron at 02:00, user uploads at 02:05. The cron's `done` state must NOT
+      // be displayed as the user's upload result.
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(8),
+        finishedAt: ago(6),
+      }
+      const fresh: DebugPipelineRun = {
+        run_id: 'r-cron-recent',
+        created: ago(5),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(2)
+      expect(derivePhase(sync, fresh, csvUploadStartedAt).phase).toBe('idle')
+    })
+  })
+
+  describe('clock skew tolerance', () => {
+    it('attributes a sync that started slightly before the upload (small client/server clock skew)', () => {
+      // Client clock is ~30 seconds ahead of server. The upload marker says
+      // T+30s but the server-recorded sync.startedAt says T+0. Within bounded
+      // skew tolerance, attribute the sync.
+      const now = Date.now()
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'running',
+        startedAt: new Date(now).toISOString(),
+      }
+      const csvUploadStartedAt = new Date(now + 30_000).toISOString()
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('importing')
+    })
+
+    it('rejects a sync that started well before the upload, beyond skew tolerance', () => {
+      // Sync started 5 min before the upload — beyond reasonable clock skew,
+      // indicating a pre-existing cron run rather than this user's upload.
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'running',
+        startedAt: ago(7),
+      }
+      const csvUploadStartedAt = ago(2)
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('idle')
+    })
+
     it('returns idle for a completed cron sync with a fresh debug row but no CSV upload context', () => {
       // Cron also runs process_requests in IS_DOCKER, which writes a debug row.
       // Without a CSV upload from this browser, the user shouldn't see "Done at 3am" notifications.

@@ -32,7 +32,13 @@ const GRACE_WINDOW_MS = 30 * 60_000
 
 // CSV upload marker must be within this window of the sync's startedAt for the
 // indicator to attribute the sync to a CSV upload (vs a nightly cron run).
-const CSV_UPLOAD_PROXIMITY_MS = 10 * 60_000
+export const CSV_UPLOAD_PROXIMITY_MS = 10 * 60_000
+
+// csvUploadStartedAt is a client-clock timestamp; sync.startedAt is a server-
+// clock timestamp. Tolerate small skew (typical NTP drift) when comparing them
+// while still rejecting pre-existing cron syncs that started well before the
+// upload.
+const CLOCK_SKEW_TOLERANCE_MS = 2 * 60_000
 
 // Safety net: if a sync completed but no debug pipeline row arrives within this
 // window, the matching step is presumed crashed/short-circuited rather than
@@ -46,7 +52,11 @@ function isSyncFromCsvUpload(syncStartedAt: string, csvUploadStartedAt: string |
   const csvAt = new Date(csvUploadStartedAt).getTime()
   const syncAt = new Date(syncStartedAt).getTime()
   if (Number.isNaN(csvAt) || Number.isNaN(syncAt)) return false
-  return Math.abs(syncAt - csvAt) <= CSV_UPLOAD_PROXIMITY_MS
+  // Sync must have started at or after the upload (allowing for bounded clock
+  // skew). A pre-existing cron sync that started >tolerance before the upload
+  // is rejected even if it falls within the proximity window.
+  const delta = syncAt - csvAt
+  return delta >= -CLOCK_SKEW_TOLERANCE_MS && delta <= CSV_UPLOAD_PROXIMITY_MS
 }
 
 export function derivePhase(

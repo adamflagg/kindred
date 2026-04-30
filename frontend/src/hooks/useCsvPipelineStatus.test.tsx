@@ -160,12 +160,45 @@ describe('useCsvPipelineStatus', () => {
   })
 
   it.each([
-    ['idle', false],
-    ['importing', 2000],
-    ['matching', 2000],
-    ['done', false],
-    ['error', false],
-  ] as const)('pollIntervalForPhase(%s) returns %s', (phase, expected) => {
+    ['idle (no marker)', 'idle', false],
+    ['importing', 'importing', 2000],
+    ['matching', 'matching', 2000],
+    ['done (marker irrelevant)', 'done', false],
+    ['error (marker irrelevant)', 'error', false],
+  ] as const)('pollIntervalForPhase(%s) returns %s', (_label, phase, expected) => {
     expect(pollIntervalForPhase(phase)).toBe(expected)
+  })
+
+  describe('pollIntervalForPhase with CSV upload marker', () => {
+    it('polls actively when phase is idle and a recent upload marker is present (sync not yet started)', () => {
+      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, new Date().toISOString())
+      expect(pollIntervalForPhase('idle')).toBe(2000)
+    })
+
+    it('continues polling between 5 and 10 minutes after upload (poll window matches proximity window)', () => {
+      // 7 min old marker — outside the old 5-min POST_UPLOAD_POLL_WINDOW_MS but
+      // inside the 10-min CSV_UPLOAD_PROXIMITY_MS. Polling should still be active
+      // so we don't miss a slow-starting backend sync that derivePhase would
+      // still attribute correctly.
+      const marker = new Date(Date.now() - 7 * 60_000).toISOString()
+      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, marker)
+      expect(pollIntervalForPhase('idle')).toBe(2000)
+    })
+
+    it('stops polling once the upload marker exceeds the proximity window', () => {
+      const marker = new Date(Date.now() - 11 * 60_000).toISOString()
+      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, marker)
+      expect(pollIntervalForPhase('idle')).toBe(false)
+    })
+
+    it('does not poll on done even with a recent marker (avoids wasted polling after success)', () => {
+      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, new Date().toISOString())
+      expect(pollIntervalForPhase('done')).toBe(false)
+    })
+
+    it('does not poll on error even with a recent marker', () => {
+      localStorage.setItem(CSV_UPLOAD_STORAGE_KEY, new Date().toISOString())
+      expect(pollIntervalForPhase('error')).toBe(false)
+    })
   })
 })
