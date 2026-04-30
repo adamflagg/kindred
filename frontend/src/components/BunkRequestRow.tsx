@@ -33,6 +33,10 @@ export interface BunkRequestRowProps {
    * camper-requests panel to inject the "Current request" chip.
    */
   badge?: ReactNode | undefined
+  /** When true: applies sparkle-material class to the Sparkles icon and renders an amber "P" badge. */
+  isMaterialAgePreference?: boolean
+  /** When true: renders an indigo "S" badge next to the Sparkles icon. */
+  staffAgeBadge?: boolean
 }
 
 function ClickableRow({
@@ -116,6 +120,8 @@ export function BunkRequestRow({
   satisfactionDetail,
   onSelect,
   badge,
+  isMaterialAgePreference = false,
+  staffAgeBadge = false,
 }: BunkRequestRowProps) {
   const rowClass = clsx(
     'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors',
@@ -129,7 +135,26 @@ export function BunkRequestRow({
     const prefersOlder = request.age_preference_target === 'older'
     const ageChildren = (
       <>
-        <Sparkles className="h-3 w-3 flex-shrink-0 text-amber-500" />
+        <span className="inline-flex items-center gap-1">
+          <Sparkles
+            className={clsx(
+              'h-3 w-3 flex-shrink-0',
+              isMaterialAgePreference
+                ? 'sparkle-material text-amber-600 dark:text-amber-400'
+                : 'text-amber-500'
+            )}
+          />
+          {isMaterialAgePreference && (
+            <span className="rounded bg-amber-100 px-1.5 text-[10px] leading-4 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              P
+            </span>
+          )}
+          {staffAgeBadge && (
+            <span className="rounded bg-indigo-100 px-1.5 text-[10px] leading-4 font-bold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+              S
+            </span>
+          )}
+        </span>
         <span>
           Prefers bunking with{' '}
           <span className="text-foreground font-medium">{prefersOlder ? 'older' : 'younger'}</span>{' '}
