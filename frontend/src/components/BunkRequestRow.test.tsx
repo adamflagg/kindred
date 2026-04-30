@@ -443,3 +443,56 @@ describe('BunkRequestRow', () => {
     })
   })
 })
+
+describe('BunkRequestRow — material age preference marker', () => {
+  function ageReq(overrides: Partial<BunkRequestsResponse> = {}): BunkRequestsResponse {
+    return makeRequest({
+      request_type: 'age_preference',
+      age_preference_target: 'older',
+      source_field: 'bunk_with',
+      source: 'family',
+      status: 'resolved',
+      ...overrides,
+    })
+  }
+
+  it('applies sparkle-material class when isMaterialAgePreference=true', () => {
+    const { container } = render(
+      <BunkRequestRow request={ageReq()} isMaterialAgePreference={true} />
+    )
+    const sparkle = container.querySelector('.sparkle-material')
+    expect(sparkle).not.toBeNull()
+  })
+
+  it('does NOT apply sparkle-material class when isMaterialAgePreference=false', () => {
+    const { container } = render(
+      <BunkRequestRow
+        request={ageReq({ source_field: 'socialize_with' })}
+        isMaterialAgePreference={false}
+      />
+    )
+    const sparkle = container.querySelector('.sparkle-material')
+    expect(sparkle).toBeNull()
+  })
+
+  it('renders P badge when isMaterialAgePreference=true', () => {
+    render(<BunkRequestRow request={ageReq()} isMaterialAgePreference={true} />)
+    expect(screen.getByText('P')).toBeInTheDocument()
+  })
+
+  it('renders S badge when staffAgeBadge=true', () => {
+    render(
+      <BunkRequestRow
+        request={ageReq({ source_field: 'bunking_notes', source: 'staff' })}
+        staffAgeBadge={true}
+      />
+    )
+    expect(screen.getByText('S')).toBeInTheDocument()
+  })
+
+  it('renders neither badge for plain best-effort age row', () => {
+    render(<BunkRequestRow request={ageReq({ source_field: 'socialize_with' })} />)
+    expect(screen.queryByText('P')).toBeNull()
+    expect(screen.queryByText('S')).toBeNull()
+  })
+})
