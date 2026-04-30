@@ -10,8 +10,7 @@ export interface GraphNode {
   centrality: number
   clustering: number
   community: number | null
-  // Backend may still emit 'partial' for older cached graphs; frontend treats it as 'satisfied'.
-  satisfaction_status?: 'satisfied' | 'partial' | 'unsatisfied' | 'no_requests'
+  satisfaction_status?: 'satisfied' | 'unsatisfied' | 'no_requests'
   // Stage 2 parent-paramount split. Both fields drive 3b's parent/staff edge
   // filter checkbox; in 3a, only parent_satisfaction_status is rendered as the
   // node border color.

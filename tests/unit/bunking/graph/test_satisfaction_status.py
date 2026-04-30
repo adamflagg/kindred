@@ -16,6 +16,7 @@ nomenclature (sidebar alerts, frontend display labels).
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 
 import networkx as nx
@@ -249,6 +250,140 @@ def test_session_graph_request_edges_only_query_resolved_rows() -> None:
     assert 'status != "removed"' not in filter_str, (
         f"session-graph filter must not use legacy 'status != removed'; got: {filter_str!r}"
     )
+
+
+def test_session_graph_includes_not_bunk_with_edges() -> None:
+    """Spec §5.1 + audit-pass-3: the session-graph fetch must include
+    `not_bunk_with` rows so staff edges render as red lines on the graph.
+    Earlier passes scoped the filter to `bunk_with` only, dropping every
+    staff edge from the graph. The legend already advertises a red staff
+    edge — restoring the data is overdue.
+    """
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = []
+    builder = SocialGraphBuilder(pb=pb)
+    builder.graph = nx.Graph()
+    builder._add_request_edges(year=2026, session_cm_id=999)
+
+    filter_str = pb.collection.return_value.get_full_list.call_args.kwargs["query_params"]["filter"]
+    assert 'request_type = "bunk_with"' in filter_str, filter_str
+    assert 'request_type = "not_bunk_with"' in filter_str, filter_str
+    assert 'status = "resolved"' in filter_str, filter_str
+
+
+def test_bunk_graph_includes_not_bunk_with_edges() -> None:
+    """Spec §5.2 + audit-pass-3: bunk-graph fetch must include `not_bunk_with`
+    so violations between bunkmates render as red lines, not silently dropped.
+    """
+    pb = MagicMock()
+    bunk = MagicMock()
+    bunk.name = "TestBunk"
+    pb.collection.return_value.get_first_list_item.return_value = bunk
+
+    # Mock at least one bunk member so build_bunk_graph reaches the
+    # bunk_requests fetch (early-returns on empty membership).
+    member_assignment = MagicMock()
+    member_assignment.expand = {"person": MagicMock(cm_id=1)}
+    person_record = MagicMock(cm_id=1, first_name="A", last_name="B", grade=6, gender="M")
+
+    def _full_list(query_params: dict[str, str] | None = None, **_: Any) -> list[Any]:
+        f = (query_params or {}).get("filter", "")
+        if "bunk.cm_id" in f or "bunk_assignments" in f:
+            return [member_assignment]
+        if "request_type" in f:
+            return []  # no requests; we only care that this fetch was issued
+        if "cm_id = 1" in f and "request_type" not in f:
+            return [person_record]
+        return []
+
+    pb.collection.return_value.get_full_list.side_effect = _full_list
+    builder = SocialGraphBuilder(pb=pb)
+    builder.build_bunk_graph(year=2026, bunk_cm_id=100, session_cm_id=999)
+
+    fetch_calls = [
+        c
+        for c in pb.collection.return_value.get_full_list.call_args_list
+        if "request_type" in c.kwargs.get("query_params", {}).get("filter", "")
+    ]
+    assert fetch_calls, "expected a bunk_requests fetch with request_type filter"
+    filter_str = fetch_calls[0].kwargs["query_params"]["filter"]
+    assert 'request_type = "bunk_with"' in filter_str, filter_str
+    assert 'request_type = "not_bunk_with"' in filter_str, filter_str
+    assert 'status = "resolved"' in filter_str, filter_str
+
+
+def test_request_edges_carry_request_type_attribute() -> None:
+    """Each request edge tags its request_type so the frontend cytoscape
+    style can color bunk_with vs not_bunk_with differently (red for the
+    latter). Required by audit-pass-3 staff-edge rendering."""
+    pb = MagicMock()
+    pb.collection.return_value.get_full_list.return_value = [
+        _fake_request(1, 2, source="family", request_type="bunk_with"),
+        _fake_request(3, 4, source="staff", request_type="not_bunk_with"),
+    ]
+    builder = SocialGraphBuilder(pb=pb)
+    builder.graph = nx.Graph()
+    for nid in (1, 2, 3, 4):
+        builder.graph.add_node(nid, bunk_cm_id=100)
+    builder._add_request_edges(year=2026, session_cm_id=999)
+    edge_bw = builder.graph[1].get(2) or builder.graph[2].get(1)
+    edge_nbw = builder.graph[3].get(4) or builder.graph[4].get(3)
+    assert edge_bw is not None
+    assert edge_bw.get("request_type") == "bunk_with"
+    assert edge_nbw is not None
+    assert edge_nbw.get("request_type") == "not_bunk_with"
+
+
+def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
+    """Spec §2.1 + audit-pass-3: a not_bunk_with edge between bunkmates is a
+    violation. The satisfaction bucket must invert vs bunk_with."""
+    builder = _make_builder()
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=100)
+    builder.graph.add_node(2, bunk_cm_id=100)
+    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder._calculate_node_metrics()
+    # Both endpoints view this as a violation; staff_satisfaction_status reflects it.
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
+    assert builder.graph.nodes[2]["staff_satisfaction_status"] == "unsatisfied"
+
+
+def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
+    """A not_bunk_with edge where the target is in a different bunk satisfies
+    the requester."""
+    builder = _make_builder()
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=100)
+    builder.graph.add_node(2, bunk_cm_id=200)
+    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
+
+
+def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
+    """A not_bunk_with where the target is unbunked is satisfied."""
+    builder = _make_builder()
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=100)
+    builder.graph.add_node(2, bunk_cm_id=None)
+    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
+
+
+def test_unbunked_requester_skips_satisfaction() -> None:
+    """Spec §2.1: an unbunked requester is skipped; their satisfaction status
+    reads `no_requests` regardless of how many edges they have."""
+    builder = _make_builder()
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=None)  # unbunked requester
+    builder.graph.add_node(2, bunk_cm_id=100)
+    builder.graph.add_node(3, bunk_cm_id=100)
+    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="bunk_with")
+    builder.graph.add_edge(1, 3, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder._calculate_node_metrics()
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
 
 
 def test_request_edges_carry_source_attribute() -> None:
@@ -493,16 +628,14 @@ def _make_typed_request_record(
     )
 
 
-def test_build_bunk_graph_excludes_not_bunk_with_from_satisfaction() -> None:
-    """A not_bunk_with row between same-bunk people must NOT bucket as satisfied.
+def test_build_bunk_graph_includes_not_bunk_with_as_violation() -> None:
+    """A not_bunk_with row between same-bunk people IS a violation — it must
+    enter the graph as a request edge AND drive staff_satisfaction_status to
+    "unsatisfied" so the frontend renders the relationship as a red line.
 
     Setup: Emma and Liam are in bunk 555. The only request between them is a
-    not_bunk_with row from staff (the camp's "do not bunk together" tracking).
-    This is a VIOLATION — they should not be bunkmates. The satisfaction
-    bucketer must not be fed this row.
-
-    Pre-fix bug: build_bunk_graph fetched without a request_type filter, so the
-    not_bunk_with edge entered the graph and same-bunk → "satisfied".
+    not_bunk_with row from staff. They should not be bunkmates, so the staff
+    bucketer must mark them unsatisfied (NOT no_requests).
     """
     pb = MagicMock()
 
@@ -534,11 +667,10 @@ def test_build_bunk_graph_excludes_not_bunk_with_from_satisfaction() -> None:
                 qp = kwargs.get("query_params") or (args[0] if args else {})
                 flt = str(qp.get("filter", "")) if isinstance(qp, dict) else ""
                 captured_filters.append(flt)
-                # Simulate the DB: only return the not_bunk_with row when the
-                # query does NOT scope to bunk_with. This mirrors what would
-                # happen against a real PocketBase collection.
-                if 'request_type = "bunk_with"' in flt:
-                    return []
+                # Audit-pass-3: the bunk_graph fetch now includes both
+                # request_type values; the DB returns whatever matches.
+                # The not_bunk_with row should come back and produce a
+                # red-line edge in the graph.
                 return [not_bunk_request]
 
             col.get_full_list.side_effect = _capture_filter
@@ -562,20 +694,23 @@ def test_build_bunk_graph_excludes_not_bunk_with_from_satisfaction() -> None:
     builder = SocialGraphBuilder(pb=pb)
     bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
 
-    # The DB query for bunk_requests must scope to bunk_with so the bucketer
-    # never sees not_bunk_with / age_preference rows.
-    assert any('request_type = "bunk_with"' in f for f in captured_filters), (
-        f"build_bunk_graph must filter request_type = 'bunk_with' at the DB. "
-        f"Captured bunk_requests filters: {captured_filters!r}"
-    )
+    # The DB query for bunk_requests must include both request_types so
+    # not_bunk_with violations land as red-line edges.
+    request_filters = [f for f in captured_filters if "request_type" in f]
+    assert any('request_type = "bunk_with"' in f for f in request_filters), request_filters
+    assert any('request_type = "not_bunk_with"' in f for f in request_filters), request_filters
 
-    # No request edges should be added from the not_bunk_with row.
-    request_edges = [(u, v) for u, v, d in bunk_graph.edges(data=True) if d.get("edge_type") == "request"]
-    assert request_edges == [], (
-        f"not_bunk_with rows must not become request edges in the bunk_graph; got {request_edges!r}"
-    )
+    # The not_bunk_with row should produce a request edge tagged with its type.
+    request_edges = [(u, v, d) for u, v, d in bunk_graph.edges(data=True) if d.get("edge_type") == "request"]
+    assert len(request_edges) >= 1, f"expected a request edge from the not_bunk_with row; got {request_edges!r}"
+    nbw_edges = [e for e in request_edges if e[2].get("request_type") == "not_bunk_with"]
+    assert nbw_edges, f"expected a not_bunk_with-tagged edge; got {request_edges!r}"
 
-    # Both campers have no bunk_with request edges → no_requests, NOT satisfied.
-    assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"
+    # Same-bunk not_bunk_with is a violation → the REQUESTER's
+    # staff_satisfaction_status flips to unsatisfied. The requestee made no
+    # request of their own, so their status stays at no_requests (each
+    # camper's status reflects their own requests; bunk_graph is a DiGraph).
+    # parent_satisfaction_status remains no_requests for both (no bunk_with rows).
+    assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "unsatisfied"
     assert bunk_graph.nodes[person_b_id]["staff_satisfaction_status"] == "no_requests"
     assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "no_requests"

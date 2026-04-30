@@ -13,6 +13,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 
+// NOTE: invalidateQueries({ queryKey: ['x'] }) does prefix matching by default,
+// so passing the bare prefix (no trailing args) catches every query keyed
+// ['x', ...]. Do NOT add `exact: true` to the production handlers — these
+// contract tests assume prefix-matching is intentional and would silently
+// stop catching prefix-keyed staleness if exact matching is ever added.
+
 /**
  * Build a fresh QueryClient with a pre-populated 'all-bunk-requests' cache
  * so we can verify whether invalidation marks it stale.
