@@ -180,10 +180,6 @@ export interface ValidationStatistics {
   total_requests: number
   satisfied_requests: number
   request_satisfaction_rate: number
-  // Legacy aggregate fields, kept until Stage 4 retires them.
-  explicit_csv_requests: number
-  satisfied_explicit_csv_requests: number
-  explicit_csv_request_satisfaction_rate: number
   // Stage 3a material (hard) parent requests — tiles read these.
   material_parent_requests: number
   satisfied_material_parent_requests: number

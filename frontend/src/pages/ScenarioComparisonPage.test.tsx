@@ -15,9 +15,6 @@ function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationSta
     total_requests: 0,
     satisfied_requests: 0,
     request_satisfaction_rate: 0,
-    explicit_csv_requests: 0,
-    satisfied_explicit_csv_requests: 0,
-    explicit_csv_request_satisfaction_rate: 0,
     material_parent_requests: 0,
     satisfied_material_parent_requests: 0,
     material_parent_request_satisfaction_rate: 0,
@@ -165,15 +162,27 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
   })
 })
 
+// ─── Stage 3a §3.3: explicit_csv_* legacy fields are deleted ─────────────────
+// Audit 2026-04-29 found the frontend type still declared the three legacy
+// aggregate fields even though the backend validator no longer emits them.
+// Spec §3.3 says delete entirely; this test guards against accidental
+// re-introduction.
+
+describe('Stage 3a §3.3 — explicit_csv_* fields are removed', () => {
+  it('makeStats does not produce legacy explicit_csv_* keys', () => {
+    const stats = makeStats()
+    const keys = Object.keys(stats)
+    expect(keys).not.toContain('explicit_csv_requests')
+    expect(keys).not.toContain('satisfied_explicit_csv_requests')
+    expect(keys).not.toContain('explicit_csv_request_satisfaction_rate')
+  })
+})
+
 // ─── Stage 3a parent-paramount: ValidationScoreCard — material + best-effort tiles ──
 
 describe('ValidationScoreCard parent-paramount stats', () => {
   it('renders Material Parent tile from material_parent_request_satisfaction_rate', () => {
     const stats = makeStats({
-      // Legacy values — tile should NOT read these
-      explicit_csv_requests: 100,
-      satisfied_explicit_csv_requests: 50,
-      explicit_csv_request_satisfaction_rate: 0.5,
       // Stage 3a material-parent values (what the tile SHOULD read)
       material_parent_requests: 10,
       satisfied_material_parent_requests: 9,
