@@ -62,6 +62,29 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
   )
 }
 
+interface RenderPanelOptions {
+  allBunkRequests: EnhancedBunkRequest[]
+  satisfactionData: Record<
+    string,
+    { status: 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'; detail?: string }
+  >
+}
+
+function renderPanelWith({ allBunkRequests, satisfactionData }: RenderPanelOptions) {
+  return render(
+    <MemoryRouter>
+      <BunkingStatusPanel
+        camper={makeCamper()}
+        sessionShortName="S1"
+        allBunkRequests={allBunkRequests}
+        agePreferenceRequests={[]}
+        satisfactionData={satisfactionData}
+        satisfactionLoading={false}
+      />
+    </MemoryRouter>
+  )
+}
+
 describe('BunkingStatusPanel — resolved-only request list', () => {
   it('does not render pending bunk_with rows in the per-camper request list', () => {
     const requests: EnhancedBunkRequest[] = [
@@ -128,5 +151,92 @@ describe('BunkingStatusPanel — resolved-only request list', () => {
     expect(screen.getByText(/no bunk requests on file/i)).toBeTruthy()
     expect(screen.queryByText('Olivia Chen')).toBeNull()
     expect(screen.queryByText('Riley Sam')).toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
+  it('renders two columns when both materialParent and staff have requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+      makeRequest({
+        id: 's1',
+        request_type: 'not_bunk_with',
+        source_field: 'not_bunk_with',
+        source: 'staff',
+      }),
+    ]
+    const satisfactionData = {
+      p1: { status: 'satisfied' as const, detail: '' },
+      s1: { status: 'satisfied' as const, detail: '' },
+    }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('renders single Parent line when only parent material requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+    ]
+    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+
+  it('renders single Staff line when only staff requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 's1',
+        request_type: 'not_bunk_with',
+        source_field: 'not_bunk_with',
+        source: 'staff',
+      }),
+    ]
+    const satisfactionData = { s1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+  })
+
+  it('hides summary entirely when only best-effort parent (no material, no staff)', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'b1',
+        request_type: 'age_preference',
+        source_field: 'socialize_with',
+        source: 'family',
+        age_preference_target: 'older',
+      }),
+    ]
+    const satisfactionData = { b1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+    expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+
+  it('shows green check when ratio is 1.0', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+    ]
+    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
+    const greenCheck = container.querySelector('.text-green-500, .text-green-400, .text-green-600')
+    expect(greenCheck).not.toBeNull()
   })
 })
