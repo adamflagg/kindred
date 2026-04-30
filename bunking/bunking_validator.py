@@ -608,15 +608,12 @@ class BunkingValidator:
                                 )
                             )
 
-        # Update statistics
+        # Update statistics.
+        # Spec §3.4: total_requests / satisfied_requests narrow to
+        # material_parent + staff. Best-effort socialize_with is reported
+        # only in its own slice and does NOT contribute to the aggregate.
         total_valid_requests = sum(len(reqs) for reqs in valid_requests_by_person.values())
         total_satisfied_valid_requests = sum(len(reqs) for reqs in satisfied_requests_by_person.values())
-
-        stats.total_requests = total_valid_requests
-        stats.satisfied_requests = total_satisfied_valid_requests
-
-        if stats.total_requests > 0:
-            stats.request_satisfaction_rate = stats.satisfied_requests / stats.total_requests
 
         # Material parent (bunk_with source_field) stats.
         stats.material_parent_requests = sum(len(reqs) for reqs in material_parent_by_person.values())
@@ -651,6 +648,15 @@ class BunkingValidator:
         stats.campers_with_unsatisfied_staff_requests = sum(
             1 for requester_id in staff_requests_by_person if not satisfied_staff_by_person.get(requester_id)
         )
+
+        # Spec §3.4: total_requests / satisfied_requests = material_parent + staff.
+        # Best-effort socialize_with is reported only in its own slice; an
+        # aggregate that included it would surface unactionable noise on
+        # the orange-triangle and amber-dot tiles.
+        stats.total_requests = stats.material_parent_requests + stats.staff_requests
+        stats.satisfied_requests = stats.satisfied_material_parent_requests + stats.satisfied_staff_requests
+        if stats.total_requests > 0:
+            stats.request_satisfaction_rate = stats.satisfied_requests / stats.total_requests
 
         # Add summary issue if there are campers with unsatisfied valid requests
         if campers_with_unsatisfied_valid_requests:

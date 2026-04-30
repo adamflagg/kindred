@@ -200,6 +200,10 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
                 status="resolved",
+                # Bin into material_parent so total_requests reflects this row
+                # per §3.4 (total = material + staff).
+                source_field=SourceField.BUNK_WITH,
+                source="family",
             )
         ]
 
@@ -258,6 +262,10 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
                 status="resolved",
+                # Staff source so the row bins into staff_requests and
+                # contributes to total_requests under §3.4.
+                source_field=SourceField.NOT_BUNK_WITH,
+                source="staff",
             )
         ]
 
@@ -871,9 +879,9 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
 
 
 def test_validator_skips_binning_for_requests_with_null_source_field():
-    """Requests with source_field=None (legacy records or unset) count toward
-    total_requests but fall through all parent and staff bins. Only the source_field
-    determines material vs best-effort vs staff bucketing."""
+    """Requests with source_field=None (legacy records or unset) fall through all
+    parent and staff bins. Per spec §3.4, total_requests = material + staff, so
+    a null-source-field request also does NOT contribute to total_requests."""
     session = _mock_session()
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
@@ -903,8 +911,9 @@ def test_validator_skips_binning_for_requests_with_null_source_field():
     )
     stats = result.statistics
 
-    assert stats.total_requests == 1
-    assert stats.satisfied_requests == 1
+    # §3.4: total = material + staff = 0 (null-source request bins nowhere)
+    assert stats.total_requests == 0
+    assert stats.satisfied_requests == 0
     assert stats.material_parent_requests == 0
     assert stats.best_effort_parent_requests == 0
     assert stats.staff_requests == 0
@@ -950,6 +959,60 @@ def test_validator_source_field_drives_binning_regardless_of_source_enum():
 # ---------------------------------------------------------------------------
 # Stage 3a: material_parent_* and best_effort_parent_* field tests
 # ---------------------------------------------------------------------------
+
+
+def test_total_requests_excludes_best_effort_per_spec_3_4():
+    """Spec §3.4: aggregate total_requests / satisfied_requests narrow to
+    material_parent + staff. A best_effort socialize_with row is reported
+    in best_effort_parent_requests only, NOT in total_requests.
+
+    Audit 2026-04-29 found total_requests aggregated over valid_requests_by_person
+    which included best_effort. This test pins the §3.4 contract.
+    """
+    session = _mock_session(cm_id="10000001", name="Test Session")
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30001"),
+    ]
+    requests = [
+        # Material parent: 20001 wants to bunk with 20002 (bunk_with) — satisfied
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        # Best-effort parent: 20001 wants to socialize with 20003 — satisfied (same bunk)
+        _mock_request("20001", "20003", SourceField.SOCIALIZE_WITH, "family"),
+        # Staff: 20002 has internal note bunk_with 20003 — satisfied (same bunk)
+        _mock_request("20002", "20003", SourceField.INTERNAL_NOTES, "staff"),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,
+        requests=requests,
+    )
+    stats = result.statistics
+
+    # Slice counts: material=1, best_effort=1, staff=1.
+    assert stats.material_parent_requests == 1
+    assert stats.satisfied_material_parent_requests == 1
+    assert stats.best_effort_parent_requests == 1
+    assert stats.satisfied_best_effort_parent_requests == 1
+    assert stats.staff_requests == 1
+    assert stats.satisfied_staff_requests == 1
+
+    # §3.4: total_requests = material_parent + staff (best_effort is excluded).
+    assert stats.total_requests == 2, (
+        f"§3.4: total_requests must be material_parent + staff = 1 + 1 = 2, "
+        f"got {stats.total_requests}. Best-effort must NOT contribute."
+    )
+    assert stats.satisfied_requests == 2, (
+        f"§3.4: satisfied_requests must be material_parent + staff satisfied = "
+        f"1 + 1 = 2, got {stats.satisfied_requests}."
+    )
 
 
 def test_validation_statistics_no_legacy_parent_fields():
@@ -1216,5 +1279,7 @@ def test_three_grade_bunk_age_preference_evaluation():
     # Distribution 8/2/2 with tied second place → satisfied
     assert stats.best_effort_parent_requests == 1
     assert stats.satisfied_best_effort_parent_requests == 1
-    assert stats.request_satisfaction_rate == 1.0
+    # §3.4: aggregate request_satisfaction_rate excludes best-effort. Verify
+    # the slice-specific rate instead.
+    assert stats.best_effort_parent_request_satisfaction_rate == 1.0
     assert stats.material_parent_requests == 0
