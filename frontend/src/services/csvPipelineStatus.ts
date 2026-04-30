@@ -30,11 +30,38 @@ export type PipelinePhase =
 
 const GRACE_WINDOW_MS = 30 * 60_000
 
+// CSV upload marker must be within this window of the sync's startedAt for the
+// indicator to attribute the sync to a CSV upload (vs a nightly cron run).
+const CSV_UPLOAD_PROXIMITY_MS = 10 * 60_000
+
+// Safety net: if a sync completed but no debug pipeline row arrives within this
+// window, the matching step is presumed crashed/short-circuited rather than
+// still running. Surface as error instead of spinning forever.
+const MATCHING_MAX_AGE_MS = 10 * 60_000
+
+export const CSV_UPLOAD_STORAGE_KEY = 'csvUploadStartedAt'
+
+function isSyncFromCsvUpload(syncStartedAt: string, csvUploadStartedAt: string | null): boolean {
+  if (!csvUploadStartedAt) return false
+  const csvAt = new Date(csvUploadStartedAt).getTime()
+  const syncAt = new Date(syncStartedAt).getTime()
+  if (Number.isNaN(csvAt) || Number.isNaN(syncAt)) return false
+  return Math.abs(syncAt - csvAt) <= CSV_UPLOAD_PROXIMITY_MS
+}
+
 export function derivePhase(
   sync: SyncJobStatus | null,
-  debug: DebugPipelineRun | null
+  debug: DebugPipelineRun | null,
+  csvUploadStartedAt: string | null
 ): PipelinePhase {
   if (!sync) return { phase: 'idle' }
+
+  // Gate every non-idle phase on evidence the sync was triggered by a CSV upload
+  // from this browser. Nightly cron also runs `bunk_requests`, but the indicator
+  // is a CSV-pipeline UI — surfacing cron progress/results here is wrong.
+  if (!isSyncFromCsvUpload(sync.startedAt, csvUploadStartedAt)) {
+    return { phase: 'idle' }
+  }
 
   const debugIsFresh =
     debug !== null && new Date(debug.created).getTime() >= new Date(sync.startedAt).getTime()
@@ -43,6 +70,21 @@ export function derivePhase(
 
   if (sync.status === 'completed') {
     if (debugIsFresh && debug) return doneFromDebug(debug)
+
+    // No debug row yet. If matching has been pending too long, the trace
+    // collector likely never wrote a row (empty traces, crash, or processor
+    // never ran). Fall through to error rather than spin forever.
+    const finishedMs = sync.finishedAt
+      ? new Date(sync.finishedAt).getTime()
+      : new Date(sync.startedAt).getTime()
+    if (Date.now() - finishedMs > MATCHING_MAX_AGE_MS) {
+      return {
+        phase: 'error',
+        finishedAt: sync.finishedAt ?? sync.startedAt,
+        message: 'Matching step did not complete — check server logs',
+      }
+    }
+
     return { phase: 'matching', startedAt: sync.startedAt }
   }
 

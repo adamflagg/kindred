@@ -71,13 +71,13 @@ describe('CsvPipelineIndicator', () => {
   it('renders importing label with spinner', () => {
     setData({ phase: 'importing', startedAt: new Date().toISOString() })
     render(<CsvPipelineIndicator />)
-    expect(screen.getByText(/Loading new or updated requests from CSV/i)).toBeInTheDocument()
+    expect(screen.getByText(/Importing CSV/i)).toBeInTheDocument()
   })
 
   it('renders matching label with spinner', () => {
     setData({ phase: 'matching', startedAt: new Date().toISOString() })
     render(<CsvPipelineIndicator />)
-    expect(screen.getByText(/Resolving camper names and calculating requests/i)).toBeInTheDocument()
+    expect(screen.getByText(/Matching CSV requests/i)).toBeInTheDocument()
   })
 
   it('renders done state with mapped counts', () => {

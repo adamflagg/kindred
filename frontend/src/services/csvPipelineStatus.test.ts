@@ -11,170 +11,265 @@ const ago = (mins: number) => new Date(Date.now() - mins * 60_000).toISOString()
 
 describe('derivePhase', () => {
   it('returns idle when nothing has ever run', () => {
-    expect(derivePhase(null, null)).toEqual({ phase: 'idle' })
+    expect(derivePhase(null, null, null)).toEqual({ phase: 'idle' })
   })
 
-  it('returns importing when bunk_requests sync is running', () => {
-    const sync: SyncJobStatus = { name: 'bunk_requests', status: 'running', startedAt: ago(1) }
-    expect(derivePhase(sync, null).phase).toBe('importing')
-  })
+  describe('CSV upload gating', () => {
+    it('returns idle for a running sync when no CSV upload context exists (nightly cron)', () => {
+      const sync: SyncJobStatus = { name: 'bunk_requests', status: 'running', startedAt: ago(1) }
+      expect(derivePhase(sync, null, null).phase).toBe('idle')
+    })
 
-  it('returns matching when sync completed but no debug row yet', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'completed',
-      startedAt: ago(5),
-      finishedAt: ago(2),
-    }
-    expect(derivePhase(sync, null).phase).toBe('matching')
-  })
+    it('returns idle for a completed sync with no debug row when no CSV upload context (nightly cron)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(2),
+      }
+      expect(derivePhase(sync, null, null).phase).toBe('idle')
+    })
 
-  it('returns matching when debug row exists but is older than current sync', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'completed',
-      startedAt: ago(5),
-      finishedAt: ago(2),
-    }
-    const stale: DebugPipelineRun = {
-      run_id: 'old',
-      created: ago(60),
-      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
-    }
-    expect(derivePhase(sync, stale).phase).toBe('matching')
-  })
+    it('returns idle when CSV upload is too far from sync.startedAt (> 10 min apart)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(2),
+        finishedAt: ago(1),
+      }
+      const csvUploadStartedAt = ago(30) // upload was 28 min before sync started
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('idle')
+    })
 
-  it('returns done with counts when fresh debug row exists', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'completed',
-      startedAt: ago(5),
-      finishedAt: ago(3),
-    }
-    const fresh: DebugPipelineRun = {
-      run_id: 'r1',
-      created: ago(1),
-      status_breakdown: { status_resolved: 20, status_pending: 6, status_declined: 2 },
-    }
-    const result = derivePhase(sync, fresh)
-    expect(result.phase).toBe('done')
-    expect(result).toMatchObject({
-      counts: { total: 28, autoMatched: 22, needReview: 6 },
-      runId: 'r1',
+    it('returns idle for a completed cron sync with a fresh debug row but no CSV upload context', () => {
+      // Cron also runs process_requests in IS_DOCKER, which writes a debug row.
+      // Without a CSV upload from this browser, the user shouldn't see "Done at 3am" notifications.
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(3),
+      }
+      const fresh: DebugPipelineRun = {
+        run_id: 'r-cron',
+        created: ago(1),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      expect(derivePhase(sync, fresh, null).phase).toBe('idle')
+    })
+
+    it('returns idle for a failed sync with no CSV upload context (cron failure invisible to user)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(60),
+        finishedAt: ago(40),
+        error: 'context deadline exceeded',
+      }
+      expect(derivePhase(sync, null, null).phase).toBe('idle')
     })
   })
 
-  it('returns error on failed sync with no orphan grace recovery', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(60),
-      finishedAt: ago(40),
-      error: 'context deadline exceeded',
-    }
-    expect(derivePhase(sync, null).phase).toBe('error')
+  describe('CSV upload flow phases', () => {
+    it('returns importing when sync is running and CSV upload context exists', () => {
+      const startedAt = ago(1)
+      const sync: SyncJobStatus = { name: 'bunk_requests', status: 'running', startedAt }
+      const csvUploadStartedAt = ago(2) // upload kicked off the sync 1 min before it started
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('importing')
+    })
+
+    it('returns matching when sync completed but no debug row yet, with CSV context', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(2),
+      }
+      const csvUploadStartedAt = ago(6)
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('matching')
+    })
+
+    it('returns matching when debug row exists but is older than current sync, with CSV context', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(2),
+      }
+      const stale: DebugPipelineRun = {
+        run_id: 'old',
+        created: ago(60),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(6)
+      expect(derivePhase(sync, stale, csvUploadStartedAt).phase).toBe('matching')
+    })
+
+    it('returns done with counts when fresh debug row exists, with CSV context', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(3),
+      }
+      const fresh: DebugPipelineRun = {
+        run_id: 'r1',
+        created: ago(1),
+        status_breakdown: { status_resolved: 20, status_pending: 6, status_declined: 2 },
+      }
+      const csvUploadStartedAt = ago(6)
+      const result = derivePhase(sync, fresh, csvUploadStartedAt)
+      expect(result.phase).toBe('done')
+      expect(result).toMatchObject({
+        counts: { total: 28, autoMatched: 22, needReview: 6 },
+        runId: 'r1',
+      })
+    })
+
+    it('returns error on failed sync when CSV context exists', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(8),
+        finishedAt: ago(2),
+        error: 'context deadline exceeded',
+      }
+      const csvUploadStartedAt = ago(9)
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('error')
+    })
+
+    it('keeps error when debug row predates finishedAt (negative grace delta is rejected)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(60),
+        finishedAt: ago(40),
+        error: 'context deadline exceeded',
+      }
+      const stale: DebugPipelineRun = {
+        run_id: 'r-stale',
+        created: ago(50),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(61)
+      expect(derivePhase(sync, stale, csvUploadStartedAt).phase).toBe('error')
+    })
+
+    it('keeps error when debug row is outside the 30-min grace window', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(120),
+        finishedAt: ago(100),
+        error: 'context deadline exceeded',
+      }
+      const tooLate: DebugPipelineRun = {
+        run_id: 'r3',
+        created: ago(50),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(121)
+      expect(derivePhase(sync, tooLate, csvUploadStartedAt).phase).toBe('error')
+    })
+
+    it('treats exactly 30-min delta as done (inclusive boundary)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(90),
+        finishedAt: ago(60),
+        error: 'context deadline exceeded',
+      }
+      const debug: DebugPipelineRun = {
+        run_id: 'r-boundary',
+        created: ago(30),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(91)
+      expect(derivePhase(sync, debug, csvUploadStartedAt).phase).toBe('done')
+    })
+
+    it('treats just past 30-min delta as error (exclusive past boundary)', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(90),
+        finishedAt: ago(60),
+        error: 'context deadline exceeded',
+      }
+      const debug: DebugPipelineRun = {
+        run_id: 'r-just-past',
+        created: new Date(Date.now() - 29.99 * 60_000).toISOString(),
+        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(91)
+      expect(derivePhase(sync, debug, csvUploadStartedAt).phase).toBe('error')
+    })
+
+    it('recovers as done when orphan python finishes within 30-min grace window', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'failed',
+        startedAt: ago(60),
+        finishedAt: ago(40),
+        error: 'context deadline exceeded',
+      }
+      const orphan: DebugPipelineRun = {
+        run_id: 'r2',
+        created: ago(20),
+        status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+      }
+      // Long-running uploads can outlast the upload marker — proximity is checked, but
+      // orphan grace recovery is itself evidence the upload's matching ran. Pass a
+      // CSV upload context near startedAt to satisfy gating.
+      const csvUploadStartedAt = ago(61)
+      expect(derivePhase(sync, orphan, csvUploadStartedAt).phase).toBe('done')
+    })
+
+    it('handles all-zeros (csv-history dedup re-upload) as done', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(2),
+        finishedAt: ago(1),
+      }
+      const dedup: DebugPipelineRun = {
+        run_id: 'r4',
+        created: ago(0.5),
+        status_breakdown: { status_resolved: 0, status_pending: 0, status_declined: 0 },
+      }
+      const csvUploadStartedAt = ago(3)
+      const result = derivePhase(sync, dedup, csvUploadStartedAt)
+      expect(result.phase).toBe('done')
+      expect(result).toMatchObject({ counts: { total: 0, autoMatched: 0, needReview: 0 } })
+    })
   })
 
-  it('recovers as done when orphan python finishes within 30-min grace window', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(60),
-      finishedAt: ago(40),
-      error: 'context deadline exceeded',
-    }
-    const orphan: DebugPipelineRun = {
-      run_id: 'r2',
-      created: ago(20),
-      status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
-    }
-    expect(derivePhase(sync, orphan).phase).toBe('done')
-  })
+  describe('stuck-matching safety net', () => {
+    it('transitions matching to error when sync finished long ago and no debug row arrived', () => {
+      // Sync finished 15 min ago with CSV context, but matching never wrote a debug row.
+      // Without this safety net, the indicator would spin forever.
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(20),
+        finishedAt: ago(15),
+      }
+      const csvUploadStartedAt = ago(21)
+      const result = derivePhase(sync, null, csvUploadStartedAt)
+      expect(result.phase).toBe('error')
+    })
 
-  it('keeps error when debug row predates finishedAt (negative grace delta is rejected)', () => {
-    // Sync started 60 min ago, debug created at 50 min ago, sync finished 40 min ago.
-    // debugIsFresh is true (debug.created >= startedAt) but debug.created < finishedAt,
-    // so delta is negative — must NOT be treated as orphan recovery.
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(60),
-      finishedAt: ago(40),
-      error: 'context deadline exceeded',
-    }
-    const stale: DebugPipelineRun = {
-      run_id: 'r-stale',
-      created: ago(50),
-      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
-    }
-    expect(derivePhase(sync, stale).phase).toBe('error')
-  })
-
-  it('keeps error when debug row is outside the 30-min grace window', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(120),
-      finishedAt: ago(100),
-      error: 'context deadline exceeded',
-    }
-    const tooLate: DebugPipelineRun = {
-      run_id: 'r3',
-      created: ago(50),
-      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
-    }
-    expect(derivePhase(sync, tooLate).phase).toBe('error')
-  })
-
-  it('treats exactly 30-min delta as done (inclusive boundary)', () => {
-    // finishedAt 60 min ago, debug created 30 min ago → delta = 30 min
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(90),
-      finishedAt: ago(60),
-      error: 'context deadline exceeded',
-    }
-    const debug: DebugPipelineRun = {
-      run_id: 'r-boundary',
-      created: ago(30),
-      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
-    }
-    expect(derivePhase(sync, debug).phase).toBe('done')
-  })
-
-  it('treats just past 30-min delta as error (exclusive past boundary)', () => {
-    // finishedAt 60 min ago, debug created 29.99 min ago → delta = 30.01 min
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'failed',
-      startedAt: ago(90),
-      finishedAt: ago(60),
-      error: 'context deadline exceeded',
-    }
-    const debug: DebugPipelineRun = {
-      run_id: 'r-just-past',
-      created: new Date(Date.now() - 29.99 * 60_000).toISOString(),
-      status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
-    }
-    expect(derivePhase(sync, debug).phase).toBe('error')
-  })
-
-  it('handles all-zeros (csv-history dedup re-upload) as done', () => {
-    const sync: SyncJobStatus = {
-      name: 'bunk_requests',
-      status: 'completed',
-      startedAt: ago(2),
-      finishedAt: ago(1),
-    }
-    const dedup: DebugPipelineRun = {
-      run_id: 'r4',
-      created: ago(0.5),
-      status_breakdown: { status_resolved: 0, status_pending: 0, status_declined: 0 },
-    }
-    const result = derivePhase(sync, dedup)
-    expect(result.phase).toBe('done')
-    expect(result).toMatchObject({ counts: { total: 0, autoMatched: 0, needReview: 0 } })
+    it('keeps matching when sync finished within MATCHING_MAX_AGE_MS', () => {
+      const sync: SyncJobStatus = {
+        name: 'bunk_requests',
+        status: 'completed',
+        startedAt: ago(5),
+        finishedAt: ago(2),
+      }
+      const csvUploadStartedAt = ago(6)
+      expect(derivePhase(sync, null, csvUploadStartedAt).phase).toBe('matching')
+    })
   })
 })
 

@@ -56,24 +56,24 @@ export default function CsvPipelineIndicator() {
       <button
         type="button"
         onClick={() => setPopoverOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-gray-100"
+        className="flex items-center gap-1.5 rounded px-2 py-1 text-xs whitespace-nowrap hover:bg-gray-100"
         aria-label="CSV pipeline status"
       >
         {data.phase === 'importing' && (
           <>
-            <Loader2 className="h-4 w-4 animate-spin text-blue-600" aria-hidden="true" />
-            <span>Loading new or updated requests from CSV</span>
+            <Loader2 className="h-3 w-3 animate-spin text-blue-600" aria-hidden="true" />
+            <span>Importing CSV…</span>
           </>
         )}
         {data.phase === 'matching' && (
           <>
-            <Loader2 className="h-4 w-4 animate-spin text-blue-600" aria-hidden="true" />
-            <span>Resolving camper names and calculating requests</span>
+            <Loader2 className="h-3 w-3 animate-spin text-blue-600" aria-hidden="true" />
+            <span>Matching CSV requests…</span>
           </>
         )}
         {data.phase === 'done' && (
           <>
-            <CheckCircle className="h-4 w-4 text-green-600" aria-hidden="true" />
+            <CheckCircle className="h-3 w-3 text-green-600" aria-hidden="true" />
             <span>
               Done {formatTimestamp(data.finishedAt)}: {data.counts.total} new or updated requests,{' '}
               {data.counts.autoMatched} auto-matched
@@ -83,7 +83,7 @@ export default function CsvPipelineIndicator() {
         )}
         {data.phase === 'error' && (
           <>
-            <AlertCircle className="h-4 w-4 text-red-600" aria-hidden="true" />
+            <AlertCircle className="h-3 w-3 text-red-600" aria-hidden="true" />
             <span>Import failed. Click for details.</span>
           </>
         )}
