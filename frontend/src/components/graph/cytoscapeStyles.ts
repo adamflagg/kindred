@@ -176,6 +176,26 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
+      selector: '.scope-hidden',
+      style: {
+        opacity: 0,
+        events: 'no',
+        'transition-property': 'opacity',
+        'transition-duration': 180,
+        'transition-timing-function': 'ease-out',
+      },
+    },
+    {
+      selector: '.scope-ghost',
+      style: {
+        opacity: 0.35,
+        events: 'no',
+        'transition-property': 'opacity',
+        'transition-duration': 180,
+        'transition-timing-function': 'ease-out',
+      },
+    },
+    {
       selector: '.hide-label',
       style: {
         label: '',

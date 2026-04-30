@@ -42,6 +42,25 @@ describe('getCytoscapeStyles', () => {
     const parentStyle = styles.find((s) => s.selector === 'node[isBunkParent]')
     expect(parentStyle).toBeDefined()
   })
+
+  it('includes scope-hidden class selector with opacity 0', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const hidden = styles.find((s) => s.selector === '.scope-hidden')
+    expect(hidden).toBeDefined()
+    const style = hidden?.style as Record<string, unknown> | undefined
+    expect(style?.['opacity']).toBe(0)
+    expect(style?.['events']).toBe('no')
+    expect(style?.['transition-property']).toContain('opacity')
+  })
+
+  it('includes scope-ghost class selector with reduced opacity', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const ghost = styles.find((s) => s.selector === '.scope-ghost')
+    expect(ghost).toBeDefined()
+    const style = ghost?.style as Record<string, unknown> | undefined
+    expect(style?.['opacity']).toBe(0.35)
+    expect(style?.['events']).toBe('no')
+  })
 })
 
 describe('createGraphElements', () => {
