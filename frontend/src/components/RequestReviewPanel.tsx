@@ -216,7 +216,12 @@ export default function RequestReviewPanel({
     [filters.requestTypes, filters.statuses]
   )
 
-  // Fetch bunk requests
+  // Spec §15.1 staff-review exemption: this fetch intentionally does NOT
+  // hard-pin status = "resolved". RequestReviewPanel exists explicitly
+  // to surface pending and declined rows for staff approval; the status
+  // filter is dynamically driven by `filters.statuses` below. Per §15.3
+  // the exemption requires this inline comment naming the staff-workflow
+  // reason.
   const { data: requests = [], isLoading } = useQuery({
     queryKey: ['bunk-requests', sessionId, relatedSessionIds, year, queryKeyFilters],
     queryFn: async () => {
@@ -288,8 +293,11 @@ export default function RequestReviewPanel({
     return new Map(persons.map((p: PersonsResponse) => [p.cm_id, p]))
   }, [persons])
 
-  // Fetch absorbed requests for split modal when a request is selected for splitting
-  // These are soft-deleted requests that were merged into the selected request
+  // Spec §15.1 staff-review exemption: absorbed-request lookup for the
+  // split modal. These are merged-away rows scoped by merged_into, used
+  // by staff to undo a merge — they are by definition not part of any
+  // satisfaction view and never feed alerts/badges/dots. Per §15.3 the
+  // exemption requires this inline comment naming the staff-workflow reason.
   const { data: absorbedRequestsData = [], isLoading: isLoadingAbsorbedRequests } = useQuery({
     queryKey: ['absorbed-requests', requestToSplit?.id],
     queryFn: async () => {

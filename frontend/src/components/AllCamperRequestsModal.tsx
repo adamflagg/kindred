@@ -189,6 +189,11 @@ export function AllCamperRequestsModal({
     updateRequestMutation.mutate({ id: requestId, updates })
   }
 
+  // Spec §15.1 staff-review exemption: this fetch intentionally does NOT
+  // filter status = "resolved". The modal renders every request with
+  // status-colored dots and offers approve/decline actions, functioning
+  // as a per-camper staff-review surface. Per §15.3 the exemption
+  // requires this inline comment naming the staff-workflow reason.
   const {
     data: requests = [],
     isLoading,
