@@ -1,4 +1,5 @@
 import { UNIT_NAMES, getUnitForBunk } from '../../utils/unitMapping'
+import type { GraphNode } from '../../types/graph'
 
 export type FilterEdgeMode = 'strict' | 'cross-scope'
 
@@ -93,4 +94,38 @@ export function normalizeFilter(
     return true
   })
   return { units: [...input.units], bunks }
+}
+
+/**
+ * Build a `bunk_cm_id → unit name` map from a bunk roster. Bunks whose
+ * names don't map to a unit (via `getUnitForBunk`) are omitted from the
+ * map — the caller treats them as "no unit."
+ */
+export function buildBunkUnitMap(bunks: BunkSummary[]): Map<number, string> {
+  const map = new Map<number, string>()
+  for (const bunk of bunks) {
+    const unit = getUnitForBunk(bunk.name)
+    if (unit) map.set(bunk.cmId, unit)
+  }
+  return map
+}
+
+/**
+ * Pure-function in-scope test. Empty filter (no units, no bunks) → always
+ * true. Otherwise: the node is in scope iff its bunk's unit is included
+ * OR its bunk_cm_id is included. Nodes without a bunk_cm_id are out of
+ * scope whenever the filter is active.
+ */
+export function isNodeInScope(
+  node: GraphNode,
+  filter: FilterState,
+  bunkUnitMap: Map<number, string>
+): boolean {
+  const isActive = filter.units.length > 0 || filter.bunks.length > 0
+  if (!isActive) return true
+  if (node.bunk_cm_id == null) return false
+  if (filter.bunks.includes(node.bunk_cm_id)) return true
+  const unit = bunkUnitMap.get(node.bunk_cm_id)
+  if (unit && filter.units.includes(unit)) return true
+  return false
 }

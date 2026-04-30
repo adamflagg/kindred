@@ -148,3 +148,78 @@ describe('normalizeFilter', () => {
     expect(result.bunks).toEqual([999])
   })
 })
+
+import { buildBunkUnitMap, isNodeInScope } from './graphFilter'
+import type { GraphNode } from '../../types/graph'
+
+const NODE_GALIL: GraphNode = {
+  id: 100,
+  name: 'Emma Johnson',
+  grade: 6,
+  bunk_cm_id: 1,
+  centrality: 0.5,
+  clustering: 0.3,
+  community: 0,
+}
+const NODE_EILAT: GraphNode = {
+  id: 101,
+  name: 'Liam Garcia',
+  grade: 7,
+  bunk_cm_id: 5,
+  centrality: 0.5,
+  clustering: 0.3,
+  community: 0,
+}
+const NODE_NO_BUNK: GraphNode = {
+  id: 102,
+  name: 'Olivia Chen',
+  grade: 8,
+  bunk_cm_id: null,
+  centrality: 0.5,
+  clustering: 0.3,
+  community: 0,
+}
+
+const BUNK_UNIT_MAP = buildBunkUnitMap([
+  { cmId: 1, name: 'B-3' },
+  { cmId: 5, name: 'B-5' },
+  { cmId: 9, name: 'B-9' },
+])
+
+describe('buildBunkUnitMap', () => {
+  it('maps bunk_cm_id → unit name', () => {
+    expect(BUNK_UNIT_MAP.get(1)).toBe('Galil')
+    expect(BUNK_UNIT_MAP.get(5)).toBe('Eilat')
+    expect(BUNK_UNIT_MAP.get(9)).toBe('Chalutzim 1')
+  })
+
+  it('omits bunks whose name does not map to a unit', () => {
+    const map = buildBunkUnitMap([{ cmId: 99, name: 'Unknown-99' }])
+    expect(map.has(99)).toBe(false)
+  })
+})
+
+describe('isNodeInScope', () => {
+  it('returns true when filter is empty (full session)', () => {
+    const filter = { units: [], bunks: [], edgeMode: 'strict' as const }
+    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(true)
+    expect(isNodeInScope(NODE_NO_BUNK, filter, BUNK_UNIT_MAP)).toBe(true)
+  })
+
+  it("returns true when node's unit is in scope", () => {
+    const filter = { units: ['Galil'], bunks: [], edgeMode: 'strict' as const }
+    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(true)
+    expect(isNodeInScope(NODE_EILAT, filter, BUNK_UNIT_MAP)).toBe(false)
+  })
+
+  it("returns true when node's bunk is in scope", () => {
+    const filter = { units: [], bunks: [5], edgeMode: 'strict' as const }
+    expect(isNodeInScope(NODE_EILAT, filter, BUNK_UNIT_MAP)).toBe(true)
+    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(false)
+  })
+
+  it('returns false for node without bunk_cm_id when filter is active', () => {
+    const filter = { units: ['Galil'], bunks: [], edgeMode: 'strict' as const }
+    expect(isNodeInScope(NODE_NO_BUNK, filter, BUNK_UNIT_MAP)).toBe(false)
+  })
+})
