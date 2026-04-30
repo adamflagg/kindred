@@ -46,8 +46,13 @@ export function BunkingStatusPanel({
   ).length
   const hasSatisfactionData = !satisfactionLoading && Object.keys(satisfactionData).length > 0
 
-  // Filter person-based requests (not age preference)
-  const personRequests = allBunkRequests.filter((r) => r.request_type !== 'age_preference')
+  // Spec §15.1 (resolved-only): the per-camper request list must filter to
+  // status === 'resolved' so pending and declined rows do not leak into the
+  // rendered list with status-colored dots — the "X/Y met" summary above
+  // uses countableRequests (resolved-only) and the two views must agree.
+  const personRequests = allBunkRequests.filter(
+    (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
+  )
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
