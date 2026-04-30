@@ -6,7 +6,7 @@ import { pb } from '../lib/pocketbase'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import clsx from 'clsx'
 import { Modal } from './ui/Modal'
-import { queryKeys } from '../utils/queryKeys'
+import { invalidateRequestQueries, queryKeys } from '../utils/queryKeys'
 import { useSessionCamperPersons } from '../hooks/useSessionCamperPersons'
 
 interface CreateRequestModalProps {
@@ -92,13 +92,7 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
       return pb.collection<BunkRequestsResponse>('bunk_requests').create(newRequest)
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       void queryClient.invalidateQueries({ queryKey: queryKeys.sessionCampers(sessionId, year) })
       toast.success('Request created successfully')
       onClose()

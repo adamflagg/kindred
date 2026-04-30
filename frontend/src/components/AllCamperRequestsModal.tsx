@@ -7,7 +7,7 @@ import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { RequestEditableHeader } from './RequestEditableHeader'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
-import { queryKeys } from '../utils/queryKeys'
+import { invalidateRequestQueries, queryKeys } from '../utils/queryKeys'
 import { formatSourceField } from '../utils/formatSourceField'
 import { formatReason } from '../utils/dispositionColors'
 import { highlightSourceText } from '../utils/highlightSourceText'
@@ -166,13 +166,7 @@ export function AllCamperRequestsModal({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
       })
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       toast.success('Request updated')
       setConfirmPopover(null)
     },

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { formatSourceField } from '../utils/formatSourceField'
+import { invalidateRequestQueries } from '../utils/queryKeys'
 import { highlightSourceText } from '../utils/highlightSourceText'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
@@ -518,13 +519,7 @@ export default function RequestReviewPanel({
       return pb.collection('bunk_requests').update(id, updates)
     },
     onSuccess: (_data, variables) => {
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       if (!variables.suppressToast) {
         toast.success('Request updated')
       }
@@ -545,13 +540,7 @@ export default function RequestReviewPanel({
       return Promise.all(ids.map((id) => pb.collection('bunk_requests').update(id, updates)))
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      invalidateRequestQueries(queryClient)
       toast.success('Requests updated')
       setSelectedRequests(new Set())
     },
@@ -591,15 +580,7 @@ export default function RequestReviewPanel({
                 await pb
                   .collection('bunk_requests')
                   .update(id, { status: priorStatus, request_locked: priorLocked })
-                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-                void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-                void queryClient.invalidateQueries({
-                  queryKey: ['cohort-request-relations'],
-                })
+                invalidateRequestQueries(queryClient)
               },
             })
           },
@@ -652,15 +633,7 @@ export default function RequestReviewPanel({
                       .update(p.id, { status: p.status, request_locked: p.request_locked })
                   )
                 )
-                void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-                void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-                void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-                void queryClient.invalidateQueries({
-                  queryKey: ['cohort-request-relations'],
-                })
+                invalidateRequestQueries(queryClient)
               },
             })
           },

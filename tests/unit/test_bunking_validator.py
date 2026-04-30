@@ -233,6 +233,12 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
                 status="resolved",
+                # scan-it 2026-04-30 #4: alerting bucket requires the row to
+                # bin into material_parent (source_field=bunk_with) or staff.
+                # Production CSV import always sets source_field, so the test
+                # mirrors real data.
+                source_field=SourceField.BUNK_WITH,
+                source="family",
             )
         ]
 
@@ -293,6 +299,11 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
                 status="resolved",
+                # scan-it 2026-04-30 #4: alerting bucket needs the row to bin
+                # into staff (source_field=not_bunk_with, source=staff). In
+                # production the CSV/sync path always sets these.
+                source_field=SourceField.NOT_BUNK_WITH,
+                source="staff",
             )
         ]
 
@@ -739,6 +750,57 @@ class TestNormalizeSourceField:
         for field_data in result.statistics.field_stats.values():
             assert field_data["total"] == 0
 
+    def test_canonical_bunk_with_increments_material_parent_counters(
+        self, validator, session, bunks, persons, assignments
+    ):
+        """scan-it 2026-04-30 #16: extend normalization coverage to the Stage 3a
+        counters. A canonical SourceField.BUNK_WITH input must populate
+        material_parent_requests (in addition to field_stats['share_bunk_with'])."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.BUNK_WITH,
+                source="family",
+            )
+        ]
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+        assert result.statistics.material_parent_requests == 1, (
+            f"canonical BUNK_WITH must increment material_parent_requests; "
+            f"got {result.statistics.material_parent_requests}"
+        )
+        assert result.statistics.satisfied_material_parent_requests == 1
+        assert result.statistics.best_effort_parent_requests == 0
+
+    def test_canonical_socialize_with_increments_best_effort_counters(
+        self, validator, session, bunks, persons, assignments
+    ):
+        """scan-it 2026-04-30 #16: canonical SourceField.SOCIALIZE_WITH must
+        populate best_effort_parent_requests, NOT material_parent_requests."""
+        requests = [
+            MockBunkRequest(
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                source_field=SourceField.SOCIALIZE_WITH,
+                source="family",
+            )
+        ]
+        result = validator.validate_bunking(
+            session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
+        )
+        assert result.statistics.best_effort_parent_requests == 1, (
+            f"canonical SOCIALIZE_WITH must increment best_effort_parent_requests; "
+            f"got {result.statistics.best_effort_parent_requests}"
+        )
+        assert result.statistics.material_parent_requests == 0, (
+            f"SOCIALIZE_WITH must NOT bin to material_parent (best-effort only); "
+            f"got material_parent_requests={result.statistics.material_parent_requests}"
+        )
+
 
 def test_validation_statistics_has_parent_staff_breakdown_fields():
     """ValidationStatistics declares material_parent/best_effort_parent/staff breakdown fields defaulting to 0/0.0."""
@@ -1153,6 +1215,58 @@ def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
     assert stats.best_effort_parent_requests == 1
     assert stats.satisfied_best_effort_parent_requests == 0
     assert stats.campers_with_unsatisfied_material_parent_requests == 0
+
+
+def test_best_effort_only_camper_does_not_trigger_unsatisfied_valid_requests_warning():
+    """scan-it 2026-04-30 #4 (CodeRabbit outside-diff at validator:546-676):
+    A camper whose only resolved requests are best-effort socialize_with rows
+    must NOT appear in the `campers_with_unsatisfied_valid_requests` summary
+    issue, because best-effort drives no alarms per spec §2.4. The previous
+    iteration walked `valid_requests_by_person` (which includes best-effort)
+    and produced spurious warnings for socialize_with-only campers."""
+    session = _mock_session(cm_id="10000005", name="Test Session 5")
+    persons = [
+        MockPerson(campminder_id="3501", name="Riley Sam", grade=5),
+    ]
+    bunks = [_mock_bunk("9501")]
+    assignments = [
+        _mock_assignment("3501", "9501"),  # Riley alone — age preference cannot satisfy
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="3501",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.SOCIALIZE_WITH,
+            source="family",
+            age_preference_target="older",
+        )
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=persons,  # type: ignore[arg-type]
+        requests=requests,  # type: ignore[arg-type]
+    )
+
+    summary_issue = next(
+        (i for i in result.issues if i.type == "campers_with_unsatisfied_valid_requests"),
+        None,
+    )
+    assert summary_issue is None, (
+        "best-effort-only camper must not trigger the unsatisfied-valid-requests "
+        f"summary; got issue with details={summary_issue.details if summary_issue else None}"
+    )
+
+    valid_request_issues = [i for i in result.issues if i.type == "valid_request_unsatisfied"]
+    assert valid_request_issues == [], (
+        f"best-effort-only camper must not produce valid_request_unsatisfied "
+        f"WARNINGs; got {[i.details for i in valid_request_issues]}"
+    )
 
 
 def test_unassigned_requester_excluded_from_all_buckets():

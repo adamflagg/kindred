@@ -7,6 +7,7 @@ import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
 import { pb } from '../lib/pocketbase'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { invalidateRequestQueries } from '../utils/queryKeys'
 
 interface MergeRequestsModalProps {
   isOpen: boolean
@@ -147,17 +148,10 @@ export default function MergeRequestsModal({
       return response.json() as Promise<MergeResponse>
     },
     onSuccess: () => {
-      // Spec §15.3: every request-mutation handler MUST invalidate all 7 keys.
-      void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
-      // Source-link queries are merge/split-specific (not part of §15.3).
-      void queryClient.invalidateQueries({ queryKey: ['source-links'] })
-      void queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] })
+      // Spec §15.3 + scan-it 2026-04-30 #9: invalidate every key in the
+      // boundary inventory. Merge additionally rewrites source linkages, so
+      // pass `includeSourceLinks: true` to also invalidate the auxiliary keys.
+      invalidateRequestQueries(queryClient, { includeSourceLinks: true })
       onMergeComplete()
       onClose()
     },

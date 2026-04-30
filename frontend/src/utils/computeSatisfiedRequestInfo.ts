@@ -80,7 +80,17 @@ export function computeSatisfiedRequestInfo(
     if (req.status !== 'resolved') continue
     const sat = isSatisfied(req)
     if (sat) satisfiedRequests.push(req)
-    if (req.source_field === 'bunk_with') {
+    // scan-it 2026-04-30 #5: classify defensively. A row with request_type
+    // `not_bunk_with` belongs in the staff bucket by definition (the type
+    // IS the staff classification — see RequestSource enum, `not_bunk_with`
+    // → STAFF). The earlier implementation used `req.source === 'staff'` as
+    // the only staff predicate and would silently drop a FAMILY-source
+    // not_bunk_with from every slice. Mirror the graph builder, which now
+    // classifies on request_type as the authoritative bucket key.
+    if (req.request_type === 'not_bunk_with') {
+      staffTotal += 1
+      if (sat) staffSat += 1
+    } else if (req.source_field === 'bunk_with') {
       materialTotal += 1
       if (sat) materialSat += 1
     } else if (req.source_field === 'socialize_with') {

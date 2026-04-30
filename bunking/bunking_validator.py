@@ -543,20 +543,34 @@ class BunkingValidator:
             if field_data["total"] > 0:
                 field_data["satisfaction_rate"] = field_data["satisfied"] / field_data["total"]
 
-        # Find campers with valid requests but NONE satisfied
+        # Find campers with valid alerting requests (material parent or staff)
+        # but NONE satisfied. scan-it 2026-04-30 #4: best-effort socialize_with
+        # rows must NOT contribute here per spec §2.4 — best-effort drives no
+        # alarms. The previous implementation walked `valid_requests_by_person`
+        # (which includes best-effort) and produced spurious WARNINGs for
+        # socialize_with-only campers.
         campers_with_unsatisfied_valid_requests = []
+        alerting_requests_by_person: dict[Any, list[Any]] = defaultdict(list)
+        satisfied_alerting_by_person: dict[Any, list[Any]] = defaultdict(list)
+        for pid, reqs in material_parent_by_person.items():
+            alerting_requests_by_person[pid].extend(reqs)
+        for pid, reqs in staff_requests_by_person.items():
+            alerting_requests_by_person[pid].extend(reqs)
+        for pid, reqs in satisfied_material_parent_by_person.items():
+            satisfied_alerting_by_person[pid].extend(reqs)
+        for pid, reqs in satisfied_staff_by_person.items():
+            satisfied_alerting_by_person[pid].extend(reqs)
 
-        for person_id, valid_requests in valid_requests_by_person.items():
-            if len(valid_requests) > 0 and len(satisfied_requests_by_person[person_id]) == 0:
-                # This person has valid requests but none are satisfied
+        for person_id, alerting_requests in alerting_requests_by_person.items():
+            if len(alerting_requests) > 0 and len(satisfied_alerting_by_person[person_id]) == 0:
                 campers_with_unsatisfied_valid_requests.append(person_id)
 
                 # Get person info for reporting
                 person = person_by_id.get(person_id)
                 person_name = person.name if person else f"Person {person_id}"
 
-                # Report each unsatisfied valid request for this person
-                for request in valid_requests:
+                # Report each unsatisfied alerting request for this person
+                for request in alerting_requests:
                     source_fields = get_source_fields(request)
                     if request.request_type == "bunk_with" and request.requested_person_cm_id:
                         requested_person = person_by_id.get(request.requested_person_cm_id)
@@ -612,8 +626,11 @@ class BunkingValidator:
         # Spec §3.4: total_requests / satisfied_requests narrow to
         # material_parent + staff. Best-effort socialize_with is reported
         # only in its own slice and does NOT contribute to the aggregate.
-        total_valid_requests = sum(len(reqs) for reqs in valid_requests_by_person.values())
-        total_satisfied_valid_requests = sum(len(reqs) for reqs in satisfied_requests_by_person.values())
+        # scan-it 2026-04-30 #4: the alerting totals reported in the summary
+        # issue must mirror the alerting bucket (material + staff), not the
+        # broader valid_requests_by_person which still includes best-effort.
+        total_alerting_requests = sum(len(reqs) for reqs in alerting_requests_by_person.values())
+        total_satisfied_alerting_requests = sum(len(reqs) for reqs in satisfied_alerting_by_person.values())
 
         # Material parent (bunk_with source_field) stats.
         stats.material_parent_requests = sum(len(reqs) for reqs in material_parent_by_person.values())
@@ -668,8 +685,8 @@ class BunkingValidator:
                     message=f"{len(campers_with_unsatisfied_valid_requests)} campers have valid requests but NONE are satisfied",
                     details={
                         "count": len(campers_with_unsatisfied_valid_requests),
-                        "total_valid_requests": total_valid_requests,
-                        "total_satisfied": total_satisfied_valid_requests,
+                        "total_valid_requests": total_alerting_requests,
+                        "total_satisfied": total_satisfied_alerting_requests,
                     },
                     affected_ids=campers_with_unsatisfied_valid_requests[:10],  # First 10 for UI
                 ),

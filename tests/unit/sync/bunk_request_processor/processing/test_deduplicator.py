@@ -1290,9 +1290,13 @@ class TestConflictTargetDemotion:
         # Merged row stays resolved
         assert result.kept_requests[0].status == RequestStatus.RESOLVED
 
-    def test_null_age_target_both_rows_preserved_no_crash(self, deduplicator):
-        """Edge case: if either row has age_preference=None (parse failure),
-        the conflict check must not crash and should fall back to existing merge behavior.
+    def test_null_age_target_falls_back_to_same_target_merge(self, deduplicator):
+        """scan-it 2026-04-30 #14: pin the documented fallback behavior, not
+        just "no crash." When the bunk_with row's age_preference is None
+        (parse failure), the conflict-target check returns False (no
+        conflict), so the same-target merge path runs and produces ONE
+        surviving row — the bunk_with row, which beats socialize_with under
+        the standard preference order. Status stays resolved.
         """
         bunk_with_row = self._age_pref(
             source_field=SourceField.BUNK_WITH,
@@ -1308,12 +1312,21 @@ class TestConflictTargetDemotion:
             confidence=1.0,
         )
 
-        # Must not raise
         result = deduplicator.deduplicate_batch([bunk_with_row, socialize_row])
 
-        # Fallback to merge (None != "younger" but we treat None as unknown → merge)
-        # OR preserve both — either is acceptable. Key requirement: no crash.
-        assert len(result.kept_requests) >= 1
+        assert len(result.kept_requests) == 1, (
+            f"None target falls back to same-target merge → exactly 1 row; "
+            f"got {len(result.kept_requests)}: "
+            f"{[(r.source_field, r.status) for r in result.kept_requests]}"
+        )
+        survivor = result.kept_requests[0]
+        assert survivor.source_field == SourceField.BUNK_WITH, (
+            f"bunk_with must beat socialize_with in fallback merge; got source_field={survivor.source_field}"
+        )
+        assert survivor.status == RequestStatus.RESOLVED, (
+            f"fallback merge must NOT promote to pending (only conflicting "
+            f"non-null targets do); got status={survivor.status}"
+        )
 
 
 if __name__ == "__main__":

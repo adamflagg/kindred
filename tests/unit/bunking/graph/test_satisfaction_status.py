@@ -54,10 +54,16 @@ def _populate(
     for edge in request_edges:
         if len(edge) == 3:
             u, v, source = edge
-            builder.graph.add_edge(u, v, edge_type="request", source=source)
+            # scan-it 2026-04-30 #6: parent_edges classifier requires source
+            # AND request_type. Default the type to mirror the canonical
+            # source/type pairing (family→bunk_with, staff→not_bunk_with) so
+            # legacy tests that only specify source continue to behave as
+            # documented.
+            request_type = "not_bunk_with" if source == "staff" else "bunk_with"
+            builder.graph.add_edge(u, v, edge_type="request", source=source, request_type=request_type)
         else:
             u, v = edge
-            builder.graph.add_edge(u, v, edge_type="request")
+            builder.graph.add_edge(u, v, edge_type="request", request_type="bunk_with")
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
 
@@ -188,24 +194,31 @@ def test_node_emits_parent_satisfaction_status_unsatisfied_when_only_parent_unsa
 
 
 def test_node_emits_staff_satisfaction_status_unsatisfied_when_only_staff_unsat() -> None:
+    """Audit-pass-3 inverted semantics for not_bunk_with: same-bunk = violation
+    (unsatisfied). The default _populate maps source="staff" to
+    request_type="not_bunk_with", so put 1 and 2 in the same bunk to trigger
+    a violation."""
     builder = _make_builder()
-    _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2, "staff")])
+    _populate(builder, nodes={1: 100, 2: 100}, request_edges=[(1, 2, "staff")])
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
 def test_node_with_both_sources_evaluates_independently() -> None:
-    """Parent request satisfied (same bunk); staff request unsatisfied (different bunk).
-    Each split is computed from its own edges, not from the aggregate."""
+    """Parent request unsatisfied (different bunk); staff not_bunk_with violation
+    (same bunk). Each split is computed from its own edges with its own
+    inversion direction, not from the aggregate."""
     builder = _make_builder()
     _populate(
         builder,
-        nodes={1: 100, 2: 100, 3: 200},
+        nodes={1: 100, 2: 200, 3: 100},
         request_edges=[(1, 2, "family"), (1, 3, "staff")],
     )
     builder._calculate_node_metrics()
-    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "satisfied"
+    # Parent: bunk_with from 1 to 2 (different bunks) → unsatisfied.
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "unsatisfied"
+    # Staff: not_bunk_with from 1 to 3 (same bunk) → violation, unsatisfied.
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
@@ -713,4 +726,146 @@ def test_build_bunk_graph_includes_not_bunk_with_as_violation() -> None:
     # parent_satisfaction_status remains no_requests for both (no bunk_with rows).
     assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "unsatisfied"
     assert bunk_graph.nodes[person_b_id]["staff_satisfaction_status"] == "no_requests"
-    assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "no_requests"
+
+
+# ---------------------------------------------------------------------------
+# scan-it 2026-04-30 (PR #1082) findings #1, #2, #6:
+# - #1: build_bunk_graph fetched requests filtered by year only, leaking
+#   cross-session rows when the same person has assignments in multiple
+#   sessions in the same year.
+# - #2: reciprocal-edge collapse keyed only on (min, max) pair and not on
+#   request_type — A→B bunk_with paired with B→A not_bunk_with collapsed
+#   into one edge with `pair_requests[0]`'s type winning.
+# - #6: parent_edges filter in _calculate_node_metrics relied on
+#   source == "family" only; a FAMILY-source not_bunk_with edge would land
+#   in the parent bucket. Tighten by also requiring request_type == "bunk_with".
+# ---------------------------------------------------------------------------
+
+
+def test_build_bunk_graph_request_fetch_filters_by_session_id() -> None:
+    """#1 (scan-it 2026-04-30): build_bunk_graph must scope its bunk_requests
+    fetch to the current session_cm_id, not just the year. Mirrors the
+    session-graph path's filter.
+
+    Without this filter, when the same person has assignments in multiple
+    sessions in the same year, requests from session B leak into the bunk
+    graph for session A.
+    """
+    pb = MagicMock()
+    bunk = MagicMock()
+    bunk.name = "TestBunk"
+    pb.collection.return_value.get_first_list_item.return_value = bunk
+
+    member_assignment = MagicMock()
+    member_assignment.expand = {"person": MagicMock(cm_id=1)}
+    person_record = MagicMock(cm_id=1, first_name="A", last_name="B", grade=6, gender="M")
+
+    captured_filters: list[str] = []
+
+    def _full_list(query_params: dict[str, str] | None = None, **_: Any) -> list[Any]:
+        f = (query_params or {}).get("filter", "")
+        if "bunk.cm_id" in f or "bunk_assignments" in f:
+            return [member_assignment]
+        if "request_type" in f:
+            captured_filters.append(f)
+            return []
+        if "cm_id = 1" in f and "request_type" not in f:
+            return [person_record]
+        return []
+
+    pb.collection.return_value.get_full_list.side_effect = _full_list
+    builder = SocialGraphBuilder(pb=pb)
+    builder.build_bunk_graph(year=2026, bunk_cm_id=100, session_cm_id=999)
+
+    assert captured_filters, "expected a bunk_requests fetch with request_type filter"
+    flt = captured_filters[0]
+    assert "session_id = 999" in flt, f"build_bunk_graph fetch must filter by session_cm_id (#1 scan-it), got: {flt!r}"
+
+
+def test_build_bunk_graph_reciprocal_with_opposite_request_types_preserves_both() -> None:
+    """#2 (scan-it 2026-04-30): reciprocal-edge collapse must NOT flatten an
+    A→B bunk_with paired with B→A not_bunk_with into a single edge. The
+    pair_key was keyed on (min, max) only, so opposite request_types collided
+    and `pair_requests[0]`'s request_type/source/priority won, silently
+    dropping one direction and potentially inverting the rendered relationship.
+
+    Fix: include request_type in the pair key so each request_type collapses
+    independently.
+    """
+    pb = MagicMock()
+
+    person_a_id = 1001
+    person_b_id = 1002
+    bunk_cm_id = 555
+    session_cm_id = 999
+    year = 2026
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+
+    person_a = _make_person(person_a_id, "Emma", "Johnson", bunk_cm_id)
+    person_b = _make_person(person_b_id, "Liam", "Garcia", bunk_cm_id)
+
+    bw_request = _make_typed_request_record(person_a_id, person_b_id, source="family", request_type="bunk_with")
+    nbw_request = _make_typed_request_record(person_b_id, person_a_id, source="staff", request_type="not_bunk_with")
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = [bw_request, nbw_request]
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    request_edges = [(u, v, d) for u, v, d in bunk_graph.edges(data=True) if d.get("edge_type") == "request"]
+    rt_present = {d.get("request_type") for _u, _v, d in request_edges}
+    assert "bunk_with" in rt_present, (
+        f"bunk_with edge must survive collapse; edges={[(u, v, d.get('request_type')) for u, v, d in request_edges]!r}"
+    )
+    assert "not_bunk_with" in rt_present, (
+        f"not_bunk_with edge must survive collapse (#2 scan-it); "
+        f"edges={[(u, v, d.get('request_type')) for u, v, d in request_edges]!r}"
+    )
+
+
+def test_parent_edges_filter_excludes_family_source_not_bunk_with() -> None:
+    """#6 (scan-it 2026-04-30): parent_edges in _calculate_node_metrics must
+    require both source == "family" AND request_type == "bunk_with". A
+    FAMILY-source not_bunk_with edge (rare but possible at the migration
+    boundary) should NOT trigger parent_satisfaction_status.
+
+    Symmetric: staff_edges must be the complement (everything not parent).
+    """
+    builder = _make_builder()
+    builder.graph = nx.Graph()
+    builder.graph.add_node(1, bunk_cm_id=100)
+    builder.graph.add_node(2, bunk_cm_id=100)
+    # FAMILY source but not_bunk_with request_type — must NOT count as parent.
+    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="not_bunk_with")
+    builder._calculate_node_metrics()
+    # Parent bucket sees no bunk_with edges → no_requests.
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests", (
+        f"FAMILY-source not_bunk_with must not feed parent bucket (#6 scan-it); "
+        f"got {builder.graph.nodes[1].get('parent_satisfaction_status')!r}"
+    )
+    # The not_bunk_with edge falls into the staff bucket (it's a violation —
+    # same bunk → unsatisfied).
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"

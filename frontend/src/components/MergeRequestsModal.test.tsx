@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import MergeRequestsModal from './MergeRequestsModal'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 import { BunkRequestsRequestTypeOptions } from '../types/pocketbase-types'
+import { queryKeys } from '../utils/queryKeys'
 
 // Mock the useApiWithAuth hook
 const mockFetchWithAuth = vi.fn()
@@ -82,12 +83,14 @@ function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, yea
   })
   // Seed every §15.3 React Query key so we can assert each one is invalidated.
   queryClient.setQueryData(['bunk-requests'], [])
-  queryClient.setQueryData(['all-bunk-requests', 1000001, year], [])
-  queryClient.setQueryData(['person-bunk-requests', requesterId, year], [])
-  queryClient.setQueryData(['person-all-bunk-requests', requesterId, year], [])
-  queryClient.setQueryData(['bunk_requests_tooltip', requesterId, year], [])
-  queryClient.setQueryData(['request-satisfaction', requesterId], {})
-  queryClient.setQueryData(['cohort-request-relations'], [])
+  // scan-it 2026-04-30 #9: use centralized prefix factories so the test
+  // mirrors the canonical key shape the modal invalidates.
+  queryClient.setQueryData([...queryKeys.allBunkRequestsPrefix(), 1000001, year], [])
+  queryClient.setQueryData([...queryKeys.personBunkRequestsPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.personAllBunkRequestsPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.bunkRequestsTooltipPrefix(), requesterId, year], [])
+  queryClient.setQueryData([...queryKeys.requestSatisfactionPrefix(), requesterId], {})
+  queryClient.setQueryData(queryKeys.cohortRequestRelationsPrefix(), [])
   return {
     queryClient,
     ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
@@ -431,12 +434,18 @@ describe('MergeRequestsModal', () => {
         expect(isStale(queryClient, ['bunk-requests'])).toBe(true)
       })
 
-      expect(isStale(queryClient, ['all-bunk-requests', 1000001, 2025])).toBe(true)
-      expect(isStale(queryClient, ['person-bunk-requests', 12345, 2025])).toBe(true)
-      expect(isStale(queryClient, ['person-all-bunk-requests', 12345, 2025])).toBe(true)
-      expect(isStale(queryClient, ['bunk_requests_tooltip', 12345, 2025])).toBe(true)
-      expect(isStale(queryClient, ['request-satisfaction', 12345])).toBe(true)
-      expect(isStale(queryClient, ['cohort-request-relations'])).toBe(true)
+      expect(isStale(queryClient, [...queryKeys.allBunkRequestsPrefix(), 1000001, 2025])).toBe(true)
+      expect(isStale(queryClient, [...queryKeys.personBunkRequestsPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.personAllBunkRequestsPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.bunkRequestsTooltipPrefix(), 12345, 2025])).toBe(
+        true
+      )
+      expect(isStale(queryClient, [...queryKeys.requestSatisfactionPrefix(), 12345])).toBe(true)
+      expect(isStale(queryClient, queryKeys.cohortRequestRelationsPrefix())).toBe(true)
     })
   })
 

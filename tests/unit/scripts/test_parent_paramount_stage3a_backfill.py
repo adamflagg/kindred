@@ -42,8 +42,25 @@ def test_backfill_updates_only_socialize_with_wrong_priority(tmp_path):
 
 
 def test_backfill_idempotent(tmp_path):
+    """scan-it 2026-04-30 #13: idempotency = a second run is a no-op AND row
+    state is identical between runs (not just `updated == 0`). Pin both."""
     db_path = tmp_path / "test.db"
     _create_test_db(db_path)
-    backfill(db_path)
+    first = backfill(db_path)
+
+    def _snapshot() -> dict[str, tuple[str, int]]:
+        conn = sqlite3.connect(db_path)
+        rows = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT id, source_field, priority FROM bunk_requests")}
+        conn.close()
+        return rows
+
+    after_first = _snapshot()
     second = backfill(db_path)
-    assert second["updated"] == 0  # nothing left to do
+    after_second = _snapshot()
+
+    assert second["updated"] == 0, "second run must be a no-op"
+    assert second["scanned"] == first["scanned"], "scan count must be stable across runs (same rows in source)"
+    assert second["skipped"] == first["scanned"], "every scanned row should now be skipped (already at priority 1)"
+    assert after_first == after_second, (
+        f"row state diverged between runs: first={after_first!r} second={after_second!r}"
+    )

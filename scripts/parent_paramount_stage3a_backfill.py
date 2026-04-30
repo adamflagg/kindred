@@ -50,8 +50,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Stage 3a parent-paramount backfill")
     parser.add_argument("db_path", type=Path, help="Path to PocketBase SQLite file")
     args = parser.parse_args()
-    if not args.db_path.exists():
-        print(f"Error: {args.db_path} does not exist", file=sys.stderr)
+    # scan-it 2026-04-30 #8: validate that the path is a regular file. A
+    # directory passes `exists()` but trips sqlite3.connect with an obscure
+    # error; `is_file()` rejects it up-front with a clearer message.
+    if not args.db_path.is_file():
+        print(f"Error: {args.db_path} is not a file", file=sys.stderr)
         return 1
     result = backfill(args.db_path)
     print(f"Scanned: {result['scanned']}")
