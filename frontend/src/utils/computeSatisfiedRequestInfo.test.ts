@@ -161,3 +161,43 @@ describe('computeSatisfiedRequestInfo Shape A', () => {
     expect(result.staffUnsatisfiedAlert).toBe(true)
   })
 })
+
+describe('Stage 3b.1 bug fix — request_type=not_bunk_with with source_field=bunk_with', () => {
+  it('routes to materialParent, not staff (was buggy pre-3b.1)', () => {
+    const personRequests = [
+      {
+        id: 'bug-fix-case',
+        requester_id: 1000001,
+        requestee_id: 1000002,
+        request_type: 'not_bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        status: 'resolved',
+        priority: 1,
+      } as BunkRequest,
+    ]
+    const personSet = new Set<number>() // requestee NOT in bunk → not_bunk_with satisfied
+    const result = computeSatisfiedRequestInfo(personRequests, 1000001, personSet, [], null)
+    expect(result.materialParent).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
+    expect(result.staff.total).toBe(0)
+  })
+
+  it('parent bunk_with-derived not_bunk_with with target IN bunk → materialParent unsatisfied', () => {
+    const personRequests = [
+      {
+        id: 'unsatisfied-case',
+        requester_id: 1000001,
+        requestee_id: 1000002,
+        request_type: 'not_bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        status: 'resolved',
+        priority: 1,
+      } as BunkRequest,
+    ]
+    const personSet = new Set<number>([1000002]) // requestee IS in bunk → not_bunk_with violated
+    const result = computeSatisfiedRequestInfo(personRequests, 1000001, personSet, [], null)
+    expect(result.materialParent).toEqual({ total: 1, satisfied: 0, satisfactionRate: 0 })
+    expect(result.parentMinOneViolation).toBe(true)
+  })
+})
