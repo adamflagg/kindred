@@ -16,7 +16,9 @@ export type SatisfactionPredicate = (req: BunkRequest) => boolean
  * short-circuited on `request_type === 'not_bunk_with'` and routed those rows
  * to `staff`, even when the row was a parent's bunk_with text that the AI had
  * parsed into a not_bunk_with. This function uses source_field-first
- * classification with `req.source === 'staff'` as the catch-all.
+ * classification; the `else` catch-all covers staff source fields
+ * (`not_bunk_with`, `bunking_notes`, `internal_notes`). By upstream invariant,
+ * all rows reaching the catch-all have `req.source === 'staff'`.
  */
 export function computeSlicesFromPredicate(
   personRequests: BunkRequest[],
@@ -48,8 +50,9 @@ export function computeSlicesFromPredicate(
       bestTotal++
       if (sat) bestSat++
     } else {
-      // Catch-all: not_bunk_with / bunking_notes / internal_notes / any
-      // future staff source_field. Upstream invariant: req.source === 'staff'.
+      // socialize_with is handled in the branch above; this catches:
+      // not_bunk_with / bunking_notes / internal_notes / any future staff
+      // source_field. Upstream invariant: req.source === 'staff'.
       staffTotal++
       if (sat) staffSat++
     }
@@ -61,6 +64,10 @@ export function computeSlicesFromPredicate(
     satisfactionRate: total === 0 ? 0 : satisfied / total,
   })
 
+  // NOTE: topPriority is computed from the UNFILTERED personRequests (any
+  // status), while satisfiedRequests holds only resolved+satisfied rows. This
+  // preserves Stage 3a's verbatim behavior — see #1090 for follow-up on whether
+  // this should be resolved-only.
   const topPriority = personRequests.reduce((m, r) => Math.max(m, r.priority ?? 0), 0)
   const topPrioritySatisfied = satisfiedRequests.some((r) => (r.priority ?? 0) === topPriority)
   const priorityLevels = [...new Set(satisfiedRequests.map((r) => r.priority ?? 0))].sort(
