@@ -1,14 +1,38 @@
 /**
  * Panel showing bunking status, assignments, and request satisfaction
  */
+import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Heart, Home, Clock, CheckCircle, Sparkles } from 'lucide-react'
 import CamperLink from '../CamperLink'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { MUTUAL_BADGE_CLASSES } from '../../utils/dispositionColors'
+import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
+import type { RequestSlice } from '../../contexts/BunkRequestContext'
+
+function ratioColor(slice: RequestSlice): string {
+  if (slice.total === 0) return ''
+  if (slice.satisfied === slice.total) return 'text-green-600 dark:text-green-400'
+  if (slice.satisfied === 0) return 'text-red-600 dark:text-red-400'
+  return 'text-amber-600 dark:text-amber-400'
+}
+
+function SliceLine({ label, slice }: { label: string; slice: RequestSlice }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground text-sm">{label}</span>
+      <span className={`text-sm font-semibold ${ratioColor(slice)}`}>
+        {slice.satisfied}/{slice.total} met
+      </span>
+      {slice.total > 0 && slice.satisfied === slice.total && (
+        <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" aria-hidden="true" />
+      )}
+    </div>
+  )
+}
 
 interface BunkingStatusPanelProps {
   camper: Camper
@@ -29,28 +53,22 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // Calculate satisfaction summary. Use the affirmative resolved-only
-  // filter; an earlier `status !== 'pending'` form silently admitted
-  // declined rows.
-  const countableRequests = allBunkRequests.filter(
-    (r) =>
-      r.status === 'resolved' &&
-      (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
-        ? r.requestee_id && r.requestee_id > 0
-        : !!r.age_preference_target)
-  )
-  const totalCount = countableRequests.length
-  const satisfiedCount = countableRequests.filter(
-    (r) => satisfactionData[r.id]?.status === 'satisfied'
-  ).length
-  const hasSatisfactionData = !satisfactionLoading && Object.keys(satisfactionData).length > 0
-
-  // The per-camper list must agree with the "X/Y met" summary above —
+  // The per-camper list must agree with the summary above —
   // both filter to status === 'resolved' so pending and declined rows
   // don't render here with status-colored dots.
   const personRequests = allBunkRequests.filter(
     (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
   )
+
+  const slices = useMemo(
+    () => deriveSlicesFromSatisfactionMap(personRequests, satisfactionData),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allBunkRequests, satisfactionData]
+  )
+
+  const showParent = slices.materialParent.total > 0
+  const showStaff = slices.staff.total > 0
+  const showSummary = showParent || showStaff
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
@@ -128,22 +146,22 @@ export function BunkingStatusPanel({
 
       <div className="space-y-4 p-6">
         {/* Request Satisfaction Summary */}
-        {totalCount > 0 && hasSatisfactionData && (
-          <div className="bg-muted/40 flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Request satisfaction:</span>
-            <span
-              className={`font-semibold ${
-                satisfiedCount === totalCount
-                  ? 'text-green-600 dark:text-green-400'
-                  : satisfiedCount > 0
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-red-600 dark:text-red-400'
-              }`}
-            >
-              {satisfiedCount}/{totalCount} met
-            </span>
-            {satisfiedCount === totalCount && totalCount > 0 && (
-              <CheckCircle className="h-4 w-4 text-green-500" />
+        {showSummary && (
+          <div className="bg-muted/40 border-border mt-3 rounded-lg border px-4 py-3">
+            {showParent && showStaff ? (
+              <div className="grid grid-cols-[1fr_1px_1fr] items-center">
+                <div className="px-4">
+                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+                </div>
+                <div className="bg-border self-stretch" />
+                <div className="px-4">
+                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+                </div>
+              </div>
+            ) : showParent ? (
+              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+            ) : (
+              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
             )}
           </div>
         )}
