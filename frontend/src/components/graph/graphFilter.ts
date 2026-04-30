@@ -1,4 +1,4 @@
-import { UNIT_NAMES } from '../../utils/unitMapping'
+import { UNIT_NAMES, getUnitForBunk } from '../../utils/unitMapping'
 
 export type FilterEdgeMode = 'strict' | 'cross-scope'
 
@@ -6,6 +6,11 @@ export interface FilterState {
   units: string[]
   bunks: number[]
   edgeMode: FilterEdgeMode
+}
+
+export interface BunkSummary {
+  cmId: number
+  name: string
 }
 
 export function unitToSlug(unit: string): string {
@@ -64,4 +69,28 @@ export function serializeFilterToSearchParams(
     next.set('edges', 'cross')
   }
   return next
+}
+
+/**
+ * Drop any bunk whose unit is already in the included units list.
+ * Unknown bunks (no matching unit, or not present in `allBunks`) are kept
+ * — the caller decides whether unknown bunks should ever land in state.
+ */
+export function normalizeFilter(
+  input: { units: string[]; bunks: number[] },
+  allBunks: BunkSummary[]
+): { units: string[]; bunks: number[] } {
+  const includedUnits = new Set(input.units)
+  if (includedUnits.size === 0) {
+    return { units: [...input.units], bunks: [...input.bunks] }
+  }
+  const bunkById = new Map(allBunks.map((b) => [b.cmId, b]))
+  const bunks = input.bunks.filter((cmId) => {
+    const bunk = bunkById.get(cmId)
+    if (!bunk) return true // unknown bunk: keep
+    const unit = getUnitForBunk(bunk.name)
+    if (unit && includedUnits.has(unit)) return false // absorbed
+    return true
+  })
+  return { units: [...input.units], bunks }
 }

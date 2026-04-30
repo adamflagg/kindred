@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { parseFilterFromSearchParams, serializeFilterToSearchParams } from './graphFilter'
+import {
+  parseFilterFromSearchParams,
+  serializeFilterToSearchParams,
+  normalizeFilter,
+  type BunkSummary,
+} from './graphFilter'
 import type { FilterState } from './graphFilter'
 
 describe('parseFilterFromSearchParams', () => {
@@ -101,5 +106,45 @@ describe('serializeFilterToSearchParams', () => {
     const serialized = serializeFilterToSearchParams(original, new URLSearchParams())
     const parsed = parseFilterFromSearchParams(serialized)
     expect(parsed).toEqual(original)
+  })
+})
+
+const ALL_BUNKS: BunkSummary[] = [
+  { cmId: 1, name: 'B-3' }, // Galil
+  { cmId: 2, name: 'G-3' }, // Galil
+  { cmId: 3, name: 'B-4' }, // Galil
+  { cmId: 4, name: 'G-4' }, // Galil
+  { cmId: 5, name: 'B-5' }, // Eilat
+  { cmId: 6, name: 'G-5' }, // Eilat
+  { cmId: 9, name: 'B-9' }, // Chalutzim 1
+]
+
+describe('normalizeFilter', () => {
+  it('drops bunks already covered by an included unit', () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: [1, 9] }, ALL_BUNKS)
+    expect(result.units).toEqual(['Galil'])
+    expect(result.bunks).toEqual([9])
+  })
+
+  it('keeps bunks whose unit is not included', () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: [9] }, ALL_BUNKS)
+    expect(result.bunks).toEqual([9])
+  })
+
+  it("drops all of a unit's bunks when the unit is added", () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: [1, 2, 3, 4, 9] }, ALL_BUNKS)
+    expect(result.bunks).toEqual([9])
+  })
+
+  it('is a no-op when filter is empty', () => {
+    expect(normalizeFilter({ units: [], bunks: [] }, ALL_BUNKS)).toEqual({
+      units: [],
+      bunks: [],
+    })
+  })
+
+  it('preserves unknown bunk ids (not in roster) as-is', () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: [999] }, ALL_BUNKS)
+    expect(result.bunks).toEqual([999])
   })
 })
