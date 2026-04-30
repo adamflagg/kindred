@@ -458,3 +458,124 @@ def test_build_bunk_graph_emits_satisfaction_fields() -> None:
         f"{bunk_graph.nodes[person_a_id].get('parent_satisfaction_status')!r}, expected 'satisfied'"
     )
     assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"
+
+
+# ---------------------------------------------------------------------------
+# Audit 2026-04-29 finding: build_bunk_graph fetched all request types.
+# A not_bunk_with row between two campers placed in the same bunk produced an
+# edge that the satisfaction bucketer treated as "satisfied" (bunk == bunk),
+# but the request is in fact VIOLATED — those two campers should not be
+# bunkmates. The session-graph path filters request_type = "bunk_with" at
+# the DB; the bunk-graph path must do the same.
+# ---------------------------------------------------------------------------
+
+
+def _make_typed_request_record(
+    requester_id: int,
+    requestee_id: int,
+    source: str,
+    request_type: str,
+) -> object:
+    """Same as _make_request_record but with explicit request_type."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"r-{requester_id}-{requestee_id}-{request_type}",
+        requester_id=requester_id,
+        requestee_id=requestee_id,
+        request_type=request_type,
+        priority=4,
+        confidence_score=0.95,
+        is_reciprocal=False,
+        status="resolved",
+        year=2026,
+        source=source,
+    )
+
+
+def test_build_bunk_graph_excludes_not_bunk_with_from_satisfaction() -> None:
+    """A not_bunk_with row between same-bunk people must NOT bucket as satisfied.
+
+    Setup: Emma and Liam are in bunk 555. The only request between them is a
+    not_bunk_with row from staff (the camp's "do not bunk together" tracking).
+    This is a VIOLATION — they should not be bunkmates. The satisfaction
+    bucketer must not be fed this row.
+
+    Pre-fix bug: build_bunk_graph fetched without a request_type filter, so the
+    not_bunk_with edge entered the graph and same-bunk → "satisfied".
+    """
+    pb = MagicMock()
+
+    person_a_id = 1001
+    person_b_id = 1002
+    bunk_cm_id = 555
+    session_cm_id = 999
+    year = 2026
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+
+    person_a = _make_person(person_a_id, "Emma", "Johnson", bunk_cm_id)
+    person_b = _make_person(person_b_id, "Liam", "Garcia", bunk_cm_id)
+
+    not_bunk_request = _make_typed_request_record(
+        person_a_id, person_b_id, source="staff", request_type="not_bunk_with"
+    )
+
+    captured_filters: list[str] = []
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+
+            def _capture_filter(*args: object, **kwargs: object) -> list[object]:
+                qp = kwargs.get("query_params") or (args[0] if args else {})
+                flt = str(qp.get("filter", "")) if isinstance(qp, dict) else ""
+                captured_filters.append(flt)
+                # Simulate the DB: only return the not_bunk_with row when the
+                # query does NOT scope to bunk_with. This mirrors what would
+                # happen against a real PocketBase collection.
+                if 'request_type = "bunk_with"' in flt:
+                    return []
+                return [not_bunk_request]
+
+            col.get_full_list.side_effect = _capture_filter
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    # The DB query for bunk_requests must scope to bunk_with so the bucketer
+    # never sees not_bunk_with / age_preference rows.
+    assert any('request_type = "bunk_with"' in f for f in captured_filters), (
+        f"build_bunk_graph must filter request_type = 'bunk_with' at the DB. "
+        f"Captured bunk_requests filters: {captured_filters!r}"
+    )
+
+    # No request edges should be added from the not_bunk_with row.
+    request_edges = [(u, v) for u, v, d in bunk_graph.edges(data=True) if d.get("edge_type") == "request"]
+    assert request_edges == [], (
+        f"not_bunk_with rows must not become request edges in the bunk_graph; got {request_edges!r}"
+    )
+
+    # Both campers have no bunk_with request edges → no_requests, NOT satisfied.
+    assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"
+    assert bunk_graph.nodes[person_b_id]["staff_satisfaction_status"] == "no_requests"
+    assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "no_requests"

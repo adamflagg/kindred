@@ -281,9 +281,14 @@ class SocialGraphBuilder:
 
         # Add ONLY request edges between bunk members
         try:
-            # Get all requests for members of this bunk
+            # Get all requests for members of this bunk.
+            # Spec §15.1 (resolved-only) + spec §2.1: only bunk_with rows feed
+            # the satisfaction bucketer. not_bunk_with rows between bunkmates
+            # are violations, not satisfactions; age_preference rows have no
+            # paired requestee. The session-graph path filters identically
+            # at line 612-613 — keep these two paths in sync.
             requests = self.pb.collection(BUNK_REQUESTS).get_full_list(
-                query_params={"filter": f'year = {year} && status = "resolved"'}
+                query_params={"filter": f'year = {year} && request_type = "bunk_with" && status = "resolved"'}
             )
 
             logger.info(f"Processing {len(requests)} total resolved requests for year {year}")
