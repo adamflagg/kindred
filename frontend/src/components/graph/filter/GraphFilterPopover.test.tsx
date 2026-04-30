@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -76,5 +77,69 @@ describe('GraphFilterPopover', () => {
   it('hides clear link when filter is empty', () => {
     renderPopover({ selectedUnits: [], selectedBunkIds: [] })
     expect(screen.queryByText(/Clear filter/i)).not.toBeInTheDocument()
+  })
+
+  it('outside-click on triggerRef does NOT call onClose', () => {
+    const onClose = vi.fn()
+    function Harness() {
+      const triggerRef = React.useRef<HTMLButtonElement>(null)
+      return (
+        <div>
+          <button ref={triggerRef}>Trigger</button>
+          <GraphFilterPopover
+            open={true}
+            onClose={onClose}
+            triggerRef={triggerRef}
+            selectedUnits={[]}
+            selectedBunkIds={[]}
+            allBunks={ALL_BUNKS}
+            edgeMode="strict"
+            onAddUnit={vi.fn()}
+            onRemoveUnit={vi.fn()}
+            onAddBunk={vi.fn()}
+            onRemoveBunk={vi.fn()}
+            onSetEdgeMode={vi.fn()}
+            onClear={vi.fn()}
+          />
+        </div>
+      )
+    }
+    render(<Harness />)
+    fireEvent.mouseDown(screen.getByText('Trigger'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('focuses the combobox input on open', () => {
+    renderPopover({ open: true })
+    expect(document.activeElement).toBe(screen.getByRole('combobox'))
+  })
+
+  it('restores focus to triggerRef on close', () => {
+    function Harness({ open }: { open: boolean }) {
+      const triggerRef = React.useRef<HTMLButtonElement>(null)
+      return (
+        <div>
+          <button ref={triggerRef}>Trigger</button>
+          <GraphFilterPopover
+            open={open}
+            onClose={vi.fn()}
+            triggerRef={triggerRef}
+            selectedUnits={[]}
+            selectedBunkIds={[]}
+            allBunks={ALL_BUNKS}
+            edgeMode="strict"
+            onAddUnit={vi.fn()}
+            onRemoveUnit={vi.fn()}
+            onAddBunk={vi.fn()}
+            onRemoveBunk={vi.fn()}
+            onSetEdgeMode={vi.fn()}
+            onClear={vi.fn()}
+          />
+        </div>
+      )
+    }
+    const { rerender } = render(<Harness open={true} />)
+    rerender(<Harness open={false} />)
+    expect(document.activeElement).toBe(screen.getByText('Trigger'))
   })
 })

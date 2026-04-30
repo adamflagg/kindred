@@ -15,6 +15,7 @@ interface GraphFilterPopoverProps {
   onRemoveBunk: (cmId: number) => void
   onSetEdgeMode: (mode: FilterEdgeMode) => void
   onClear: () => void
+  triggerRef?: React.RefObject<HTMLElement | null>
 }
 
 export default function GraphFilterPopover({
@@ -30,6 +31,7 @@ export default function GraphFilterPopover({
   onRemoveBunk,
   onSetEdgeMode,
   onClear,
+  triggerRef,
 }: GraphFilterPopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -39,7 +41,10 @@ export default function GraphFilterPopover({
       if (e.key === 'Escape') onClose()
     }
     const onMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+      const target = e.target as Node
+      if (ref.current?.contains(target)) return
+      if (triggerRef?.current?.contains(target)) return
+      onClose()
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('mousedown', onMouseDown)
@@ -47,7 +52,17 @@ export default function GraphFilterPopover({
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('mousedown', onMouseDown)
     }
-  }, [open, onClose])
+  }, [open, onClose, triggerRef])
+
+  useEffect(() => {
+    if (!open) return
+    const trigger = triggerRef?.current
+    const input = ref.current?.querySelector<HTMLInputElement>('input[role="combobox"]')
+    input?.focus()
+    return () => {
+      trigger?.focus()
+    }
+  }, [open, triggerRef])
 
   if (!open) return null
 
