@@ -1,5 +1,6 @@
 import { UNIT_NAMES, getUnitForBunk } from '../../utils/unitMapping'
 import type { GraphNode } from '../../types/graph'
+import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
 
 export type FilterEdgeMode = 'strict' | 'cross-scope'
 
@@ -126,6 +127,116 @@ export function isNodeInScope(
   if (node.bunk_cm_id == null) return false
   if (filter.bunks.includes(node.bunk_cm_id)) return true
   const unit = bunkUnitMap.get(node.bunk_cm_id)
+  if (unit && filter.units.includes(unit)) return true
+  return false
+}
+
+export interface ApplyFilterOptions {
+  filter: FilterState
+  /** cm_id of the camper currently selected in the detail panel; this node
+   *  is kept visible even if it falls out of scope. Pass null when none. */
+  selectedNodeId: number | null
+  bunkUnitMap: Map<number, string>
+  /** When true, the caller has decided animations are off — applyFilterToGraph
+   *  doesn't read this directly today (transition is in the CSS class) but
+   *  callers may use it elsewhere in the orchestration. */
+  prefersReducedMotion: boolean
+}
+
+export interface ApplyFilterResult {
+  inScopeNodeIds: Set<string>
+}
+
+const SCOPE_CLASSES = ['scope-hidden', 'scope-ghost']
+
+/**
+ * Apply scope classes to nodes and edges based on `filter`. Pure mutator;
+ * does NOT trigger a cytoscape layout. The caller sequences fade → relayout
+ * → fit after this call. Idempotent: stale scope classes are cleared first.
+ *
+ * Rules:
+ *   - Empty filter → clear all scope classes, return all node ids.
+ *   - Active filter, strict edges:
+ *       in-scope nodes:        no scope class
+ *       out-of-scope nodes:    scope-hidden (except selectedNodeId)
+ *       both-endpoints in:     no scope class
+ *       any endpoint out:      scope-hidden
+ *   - Active filter, cross-scope edges:
+ *       same node rules, except an out-of-scope node that has at least one
+ *       in-scope neighbor along a kept edge gets scope-ghost (not -hidden).
+ *       Edges with both endpoints out: scope-hidden.
+ *   - selectedNodeId is always kept visible (no scope class) regardless of
+ *     filter. This is the "selection survival" behavior.
+ */
+export function applyFilterToGraph(cy: Core, options: ApplyFilterOptions): ApplyFilterResult {
+  const { filter, selectedNodeId, bunkUnitMap } = options
+  const isActive = filter.units.length > 0 || filter.bunks.length > 0
+  const inScopeNodeIds = new Set<string>()
+
+  cy.batch(() => {
+    if (!isActive) {
+      cy.nodes().forEach((n: NodeSingular) => {
+        for (const c of SCOPE_CLASSES) n.removeClass(c)
+        inScopeNodeIds.add(n.id())
+      })
+      cy.edges().forEach((e: EdgeSingular) => {
+        for (const c of SCOPE_CLASSES) e.removeClass(c)
+      })
+      return
+    }
+
+    // First pass: classify nodes.
+    cy.nodes().forEach((n: NodeSingular) => {
+      const idNum = Number(n.id())
+      const bunkCmId = n.data('bunk_cm_id') as number | null | undefined
+      const inScope = _nodeMatchesFilter(bunkCmId, filter, bunkUnitMap)
+      const isSelected = selectedNodeId != null && idNum === selectedNodeId
+      for (const c of SCOPE_CLASSES) n.removeClass(c)
+      if (inScope || isSelected) {
+        inScopeNodeIds.add(n.id())
+      } else {
+        // Will be ghosted in cross-scope mode if it has a kept edge to an
+        // in-scope partner — that decision is made in the edge pass below.
+        n.addClass('scope-hidden')
+      }
+    })
+
+    // Second pass: classify edges and (in cross-scope mode) promote
+    // hidden out-of-scope nodes to ghosts when they're a kept-edge partner.
+    cy.edges().forEach((e: EdgeSingular) => {
+      for (const c of SCOPE_CLASSES) e.removeClass(c)
+      const src = e.source()
+      const tgt = e.target()
+      const sIn = inScopeNodeIds.has(src.id())
+      const tIn = inScopeNodeIds.has(tgt.id())
+      if (sIn && tIn) return // both in: edge stays
+      if (filter.edgeMode === 'strict') {
+        e.addClass('scope-hidden')
+        return
+      }
+      // cross-scope: keep edge if at least one endpoint is in-scope.
+      if (sIn || tIn) {
+        const ghost = sIn ? tgt : src
+        ghost.removeClass('scope-hidden')
+        ghost.addClass('scope-ghost')
+        return
+      }
+      // both endpoints out-of-scope: hide.
+      e.addClass('scope-hidden')
+    })
+  })
+
+  return { inScopeNodeIds }
+}
+
+function _nodeMatchesFilter(
+  bunkCmId: number | null | undefined,
+  filter: FilterState,
+  bunkUnitMap: Map<number, string>
+): boolean {
+  if (bunkCmId == null) return false
+  if (filter.bunks.includes(bunkCmId)) return true
+  const unit = bunkUnitMap.get(bunkCmId)
   if (unit && filter.units.includes(unit)) return true
   return false
 }

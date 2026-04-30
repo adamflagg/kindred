@@ -149,7 +149,7 @@ describe('normalizeFilter', () => {
   })
 })
 
-import { buildBunkUnitMap, isNodeInScope } from './graphFilter'
+import { buildBunkUnitMap, isNodeInScope, applyFilterToGraph } from './graphFilter'
 import type { GraphNode } from '../../types/graph'
 
 const NODE_GALIL: GraphNode = {
@@ -221,5 +221,138 @@ describe('isNodeInScope', () => {
   it('returns false for node without bunk_cm_id when filter is active', () => {
     const filter = { units: ['Galil'], bunks: [], edgeMode: 'strict' as const }
     expect(isNodeInScope(NODE_NO_BUNK, filter, BUNK_UNIT_MAP)).toBe(false)
+  })
+})
+
+interface MockEle {
+  id: string
+  classes: Set<string>
+  data: Record<string, unknown>
+  source?: MockEle
+  target?: MockEle
+}
+function makeNode(id: string, data: Record<string, unknown>): MockEle {
+  return { id, classes: new Set(), data: { id, ...data } }
+}
+function makeEdge(id: string, source: MockEle, target: MockEle): MockEle {
+  return {
+    id,
+    classes: new Set(),
+    data: { id, source: source.id, target: target.id },
+    source,
+    target,
+  }
+}
+
+function makeMockCy(nodes: MockEle[], edges: MockEle[]) {
+  function ele(e: MockEle) {
+    return {
+      id: () => e.id,
+      addClass: (cls: string) => {
+        e.classes.add(cls)
+        return ele(e)
+      },
+      removeClass: (cls: string) => {
+        e.classes.delete(cls)
+        return ele(e)
+      },
+      data: (k: string) => e.data[k],
+      source: () => ele(e.source!),
+      target: () => ele(e.target!),
+      isNode: () => !e.source,
+      isEdge: () => !!e.source,
+    }
+  }
+  return {
+    nodes: () => ({
+      forEach: (fn: (n: ReturnType<typeof ele>) => void) => nodes.forEach((n) => fn(ele(n))),
+      filter: (pred: (n: ReturnType<typeof ele>) => boolean) => nodes.map(ele).filter(pred),
+    }),
+    edges: () => ({
+      forEach: (fn: (e: ReturnType<typeof ele>) => void) => edges.forEach((e) => fn(ele(e))),
+    }),
+    batch: (fn: () => void) => fn(),
+    _nodes: nodes,
+    _edges: edges,
+  }
+}
+
+describe('applyFilterToGraph', () => {
+  const bunkUnitMap = new Map<number, string>([
+    [1, 'Galil'],
+    [2, 'Galil'],
+    [5, 'Eilat'],
+    [9, 'Chalutzim 1'],
+  ])
+
+  it('clears classes when filter is empty', () => {
+    const a = makeNode('a', { bunk_cm_id: 1 })
+    a.classes.add('scope-hidden')
+    const cy = makeMockCy([a], [])
+    applyFilterToGraph(cy as never, {
+      filter: { units: [], bunks: [], edgeMode: 'strict' },
+      selectedNodeId: null,
+      bunkUnitMap,
+      prefersReducedMotion: false,
+    })
+    expect(a.classes.has('scope-hidden')).toBe(false)
+  })
+
+  it('hides out-of-scope nodes when filter is active', () => {
+    const a = makeNode('100', { bunk_cm_id: 1, id: 100 }) // Galil — in scope
+    const b = makeNode('200', { bunk_cm_id: 5, id: 200 }) // Eilat — out
+    const cy = makeMockCy([a, b], [])
+    applyFilterToGraph(cy as never, {
+      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
+      selectedNodeId: null,
+      bunkUnitMap,
+      prefersReducedMotion: false,
+    })
+    expect(a.classes.has('scope-hidden')).toBe(false)
+    expect(b.classes.has('scope-hidden')).toBe(true)
+  })
+
+  it('hides cross-scope edges in strict mode', () => {
+    const a = makeNode('100', { bunk_cm_id: 1, id: 100 })
+    const b = makeNode('200', { bunk_cm_id: 5, id: 200 })
+    const e = makeEdge('e1', a, b)
+    const cy = makeMockCy([a, b], [e])
+    applyFilterToGraph(cy as never, {
+      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
+      selectedNodeId: null,
+      bunkUnitMap,
+      prefersReducedMotion: false,
+    })
+    expect(e.classes.has('scope-hidden')).toBe(true)
+  })
+
+  it('keeps cross-scope edges and ghosts the partner in cross-scope mode', () => {
+    const a = makeNode('100', { bunk_cm_id: 1, id: 100 }) // in
+    const b = makeNode('200', { bunk_cm_id: 5, id: 200 }) // out
+    const e = makeEdge('e1', a, b)
+    const cy = makeMockCy([a, b], [e])
+    applyFilterToGraph(cy as never, {
+      filter: { units: ['Galil'], bunks: [], edgeMode: 'cross-scope' },
+      selectedNodeId: null,
+      bunkUnitMap,
+      prefersReducedMotion: false,
+    })
+    expect(e.classes.has('scope-hidden')).toBe(false)
+    expect(b.classes.has('scope-ghost')).toBe(true)
+    expect(b.classes.has('scope-hidden')).toBe(false)
+  })
+
+  it('keeps the selected node visible even when out of scope', () => {
+    const a = makeNode('100', { bunk_cm_id: 1, id: 100 })
+    const b = makeNode('200', { bunk_cm_id: 5, id: 200 })
+    const cy = makeMockCy([a, b], [])
+    applyFilterToGraph(cy as never, {
+      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
+      selectedNodeId: 200,
+      bunkUnitMap,
+      prefersReducedMotion: false,
+    })
+    expect(b.classes.has('scope-hidden')).toBe(false)
+    expect(b.classes.has('scope-ghost')).toBe(false)
   })
 })
