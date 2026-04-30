@@ -147,10 +147,15 @@ export default function MergeRequestsModal({
       return response.json() as Promise<MergeResponse>
     },
     onSuccess: () => {
-      // Invalidate all related queries to refresh data
+      // Spec §15.3: every request-mutation handler MUST invalidate all 7 keys.
       void queryClient.invalidateQueries({ queryKey: ['bunk-requests'] })
       void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void queryClient.invalidateQueries({ queryKey: ['request-satisfaction'] })
       void queryClient.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+      // Source-link queries are merge/split-specific (not part of §15.3).
       void queryClient.invalidateQueries({ queryKey: ['source-links'] })
       void queryClient.invalidateQueries({ queryKey: ['expanded-source-links'] })
       onMergeComplete()

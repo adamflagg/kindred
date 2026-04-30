@@ -83,6 +83,28 @@ function renderWithProviders(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
+// Render with a pre-seeded QueryClient so tests can verify §15.3 invalidation.
+function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, year = 2025) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  // Seed every §15.3 React Query key so we can assert each one is invalidated.
+  queryClient.setQueryData(['bunk-requests'], [])
+  queryClient.setQueryData(['all-bunk-requests', 1000001, year], [])
+  queryClient.setQueryData(['person-bunk-requests', requesterId, year], [])
+  queryClient.setQueryData(['person-all-bunk-requests', requesterId, year], [])
+  queryClient.setQueryData(['bunk_requests_tooltip', requesterId, year], [])
+  queryClient.setQueryData(['request-satisfaction', requesterId], {})
+  queryClient.setQueryData(['cohort-request-relations'], [])
+  return {
+    queryClient,
+    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+  }
+}
+
 describe('SplitRequestModal', () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -429,6 +451,63 @@ describe('SplitRequestModal', () => {
       fireEvent.click(cancelButton)
 
       expect(onClose).toHaveBeenCalled()
+    })
+  })
+
+  // Spec §15.3: every request-mutation handler MUST invalidate all 7 keys.
+  // Audit 2026-04-29 found Split invalidated only 5 — the 4 per-camper keys
+  // (person-bunk-requests, person-all-bunk-requests, bunk_requests_tooltip,
+  // request-satisfaction) plus cohort-request-relations went stale on the
+  // sidebar, full-page CamperDetail, tooltip, and satisfaction badges after
+  // a split.
+  describe('§15.3 cache invalidation contract', () => {
+    function isStale(qc: QueryClient, key: readonly unknown[]) {
+      return qc.getQueryState(key)?.isInvalidated === true
+    }
+
+    it('invalidates all 7 §15.3 React Query keys after a successful split', async () => {
+      const sourceLinks: SourceLinkData[] = [
+        { original_request_id: 'orig_1', source_field: 'share_bunk_with' },
+        { original_request_id: 'orig_2', source_field: 'bunking_notes' },
+      ]
+
+      mockFetchWithAuth.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          original_request_id: 'req_merged',
+          created_request_ids: ['new_req_1'],
+          updated_source_fields: ['share_bunk_with'],
+        }),
+      })
+
+      const { queryClient } = renderWithSeededClient(
+        <SplitRequestModal
+          isOpen={true}
+          onClose={() => {}}
+          request={createMergedMockRequest({ requester_id: 12345, year: 2025 })}
+          sourceLinks={sourceLinks}
+          onSplitComplete={() => {}}
+        />
+      )
+
+      const checkboxes = screen.getAllByRole('checkbox')
+      const firstCheckbox = checkboxes[0]
+      expect(firstCheckbox).toBeDefined()
+      if (firstCheckbox) fireEvent.click(firstCheckbox)
+
+      const splitButton = screen.getByRole('button', { name: /split/i })
+      fireEvent.click(splitButton)
+
+      await waitFor(() => {
+        expect(isStale(queryClient, ['bunk-requests'])).toBe(true)
+      })
+
+      expect(isStale(queryClient, ['all-bunk-requests', 1000001, 2025])).toBe(true)
+      expect(isStale(queryClient, ['person-bunk-requests', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['person-all-bunk-requests', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['bunk_requests_tooltip', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['request-satisfaction', 12345])).toBe(true)
+      expect(isStale(queryClient, ['cohort-request-relations'])).toBe(true)
     })
   })
 

@@ -72,6 +72,28 @@ function renderWithQueryClient(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
+// Render with a pre-seeded QueryClient so tests can verify §15.3 invalidation.
+function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, year = 2025) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  // Seed every §15.3 React Query key so we can assert each one is invalidated.
+  queryClient.setQueryData(['bunk-requests'], [])
+  queryClient.setQueryData(['all-bunk-requests', 1000001, year], [])
+  queryClient.setQueryData(['person-bunk-requests', requesterId, year], [])
+  queryClient.setQueryData(['person-all-bunk-requests', requesterId, year], [])
+  queryClient.setQueryData(['bunk_requests_tooltip', requesterId, year], [])
+  queryClient.setQueryData(['request-satisfaction', requesterId], {})
+  queryClient.setQueryData(['cohort-request-relations'], [])
+  return {
+    queryClient,
+    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+  }
+}
+
 describe('MergeRequestsModal', () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -363,6 +385,58 @@ describe('MergeRequestsModal', () => {
       fireEvent.click(cancelButton)
 
       expect(onClose).toHaveBeenCalled()
+    })
+  })
+
+  // Spec §15.3: every request-mutation handler MUST invalidate all 7 keys.
+  // Audit 2026-04-29 found Merge invalidated only 5 — the 4 per-camper keys
+  // (person-bunk-requests, person-all-bunk-requests, bunk_requests_tooltip,
+  // request-satisfaction) plus cohort-request-relations went stale on the
+  // sidebar, full-page CamperDetail, tooltip, and satisfaction badges after
+  // a merge.
+  describe('§15.3 cache invalidation contract', () => {
+    function isStale(qc: QueryClient, key: readonly unknown[]) {
+      return qc.getQueryState(key)?.isInvalidated === true
+    }
+
+    it('invalidates all 7 §15.3 React Query keys after a successful merge', async () => {
+      const requests = [
+        createMockRequest({ id: 'req_1', requester_id: 12345, year: 2025 }),
+        createMockRequest({ id: 'req_2', requester_id: 12345, year: 2025 }),
+      ]
+
+      mockFetchWithAuth.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          merged_request_id: 'req_1',
+          deleted_request_ids: ['req_2'],
+          source_fields: [],
+          confidence_score: 0.95,
+        }),
+      })
+
+      const { queryClient } = renderWithSeededClient(
+        <MergeRequestsModal
+          isOpen={true}
+          onClose={() => {}}
+          requests={requests}
+          onMergeComplete={() => {}}
+        />
+      )
+
+      const mergeButton = screen.getByRole('button', { name: /merge/i })
+      fireEvent.click(mergeButton)
+
+      await waitFor(() => {
+        expect(isStale(queryClient, ['bunk-requests'])).toBe(true)
+      })
+
+      expect(isStale(queryClient, ['all-bunk-requests', 1000001, 2025])).toBe(true)
+      expect(isStale(queryClient, ['person-bunk-requests', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['person-all-bunk-requests', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['bunk_requests_tooltip', 12345, 2025])).toBe(true)
+      expect(isStale(queryClient, ['request-satisfaction', 12345])).toBe(true)
+      expect(isStale(queryClient, ['cohort-request-relations'])).toBe(true)
     })
   })
 

@@ -214,22 +214,53 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
   })
 })
 
-describe('Already-correct paths — regression guard', () => {
+describe('Merge / Split mutation contract — must invalidate all 7 §15.3 keys', () => {
+  // Audit 2026-04-29 found Merge and Split invalidated only 5 of the 7 keys.
+  // The 4 per-camper keys went stale on the sidebar, full-page CamperDetail,
+  // tooltip, and satisfaction badges after a merge or split.
   let queryClient: QueryClient
 
   beforeEach(() => {
     queryClient = buildQueryClient()
   })
 
-  it('MergeRequestsModal pattern correctly invalidates both bunk-requests and all-bunk-requests', () => {
-    // This is the CORRECT pattern already in MergeRequestsModal
+  function assertAllSeededKeysStale(qc: QueryClient) {
+    expect(isAllBunkRequestsStale(qc)).toBe(true)
+    expect(isPersonBunkRequestsStale(qc)).toBe(true)
+    expect(isPersonAllBunkRequestsStale(qc)).toBe(true)
+    expect(isTooltipStale(qc)).toBe(true)
+    expect(isSatisfactionStale(qc)).toBe(true)
+  }
+
+  it('MergeRequestsModal onSuccess invalidates every §15.3 key', () => {
     const onSuccess = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
     }
 
     onSuccess(queryClient)
 
-    expect(isAllBunkRequestsStale(queryClient)).toBe(true)
+    assertAllSeededKeysStale(queryClient)
+  })
+
+  it('SplitRequestModal onSuccess invalidates every §15.3 key', () => {
+    const onSuccess = (qc: QueryClient) => {
+      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
+      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
+      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
+      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
+    }
+
+    onSuccess(queryClient)
+
+    assertAllSeededKeysStale(queryClient)
   })
 })
