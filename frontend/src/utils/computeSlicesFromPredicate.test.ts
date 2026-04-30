@@ -124,7 +124,7 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
   it('age_preference × null × family → bestEffortParent (legacy fallback, #1086)', () => {
     const req = makeReq({
       request_type: 'age_preference',
-      source_field: undefined,
+      source_field: null as any, // null as any: tsconfig has exactOptionalPropertyTypes; null models real DB null state
       source: 'family',
       age_preference_target: 'older',
     })
