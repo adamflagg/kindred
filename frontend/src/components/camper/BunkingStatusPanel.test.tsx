@@ -14,7 +14,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
 import { BunkingStatusPanel } from './BunkingStatusPanel'
-import type { Camper, BunkRequest } from '../../types/app-types'
+import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 
 function makeCamper(): Camper {
@@ -43,8 +43,8 @@ function makeRequest(overrides: Partial<EnhancedBunkRequest>): EnhancedBunkReque
     created: '2025-01-01T00:00:00Z',
     updated: '2025-01-01T00:00:00Z',
     requestedPersonName: 'Liam Garcia',
-    ...(overrides as Partial<BunkRequest>),
-  } as EnhancedBunkRequest
+    ...overrides,
+  }
 }
 
 function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
