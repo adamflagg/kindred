@@ -54,11 +54,10 @@ def _populate(
     for edge in request_edges:
         if len(edge) == 3:
             u, v, source = edge
-            # scan-it 2026-04-30 #6: parent_edges classifier requires source
-            # AND request_type. Default the type to mirror the canonical
-            # source/type pairing (family→bunk_with, staff→not_bunk_with) so
-            # legacy tests that only specify source continue to behave as
-            # documented.
+            # parent_edges/staff_edges classify on request_type. Default the
+            # type to mirror the canonical source/type pairing
+            # (family→bunk_with, staff→not_bunk_with) so legacy tests that only
+            # specify source continue to behave as documented.
             request_type = "not_bunk_with" if source == "staff" else "bunk_with"
             builder.graph.add_edge(u, v, edge_type="request", source=source, request_type=request_type)
         else:
@@ -241,13 +240,10 @@ def test_legacy_satisfaction_status_still_emitted_for_backwards_compat() -> None
 
 
 def test_session_graph_request_edges_only_query_resolved_rows() -> None:
-    """Spec §2.1 + Stage 3a sweep: _add_request_edges (session-graph path) must
-    query bunk_requests with `status = "resolved"`, NOT `status != "removed"`.
-
-    The legacy filter `status != "removed"` was permissive — pending and
-    declined rows leaked into the graph as phantom edges. The bunk-graph path
-    (line 286) was already correct; this regression-locks the session-graph
-    path to the same rule.
+    """_add_request_edges must query bunk_requests with the affirmative
+    `status = "resolved"` filter, never the permissive
+    `status != "removed"` form (pending and declined rows would otherwise
+    leak in as phantom edges).
     """
     pb = MagicMock()
     pb.collection.return_value.get_full_list.return_value = []
@@ -266,11 +262,10 @@ def test_session_graph_request_edges_only_query_resolved_rows() -> None:
 
 
 def test_session_graph_includes_not_bunk_with_edges() -> None:
-    """Spec §5.1 + audit-pass-3: the session-graph fetch must include
-    `not_bunk_with` rows so staff edges render as red lines on the graph.
-    Earlier passes scoped the filter to `bunk_with` only, dropping every
-    staff edge from the graph. The legend already advertises a red staff
-    edge — restoring the data is overdue.
+    """The session-graph fetch must include `not_bunk_with` rows so staff
+    edges render as red lines. An earlier iteration scoped the filter to
+    `bunk_with` only, dropping every staff edge from the graph despite the
+    legend advertising a red staff edge.
     """
     pb = MagicMock()
     pb.collection.return_value.get_full_list.return_value = []
@@ -285,8 +280,8 @@ def test_session_graph_includes_not_bunk_with_edges() -> None:
 
 
 def test_bunk_graph_includes_not_bunk_with_edges() -> None:
-    """Spec §5.2 + audit-pass-3: bunk-graph fetch must include `not_bunk_with`
-    so violations between bunkmates render as red lines, not silently dropped.
+    """Bunk-graph fetch must include `not_bunk_with` so violations between
+    bunkmates render as red lines instead of being silently dropped.
     """
     pb = MagicMock()
     bunk = MagicMock()
@@ -328,7 +323,7 @@ def test_bunk_graph_includes_not_bunk_with_edges() -> None:
 def test_request_edges_carry_request_type_attribute() -> None:
     """Each request edge tags its request_type so the frontend cytoscape
     style can color bunk_with vs not_bunk_with differently (red for the
-    latter). Required by audit-pass-3 staff-edge rendering."""
+    latter)."""
     pb = MagicMock()
     pb.collection.return_value.get_full_list.return_value = [
         _fake_request(1, 2, source="family", request_type="bunk_with"),
@@ -348,8 +343,8 @@ def test_request_edges_carry_request_type_attribute() -> None:
 
 
 def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
-    """Spec §2.1 + audit-pass-3: a not_bunk_with edge between bunkmates is a
-    violation. The satisfaction bucket must invert vs bunk_with."""
+    """A not_bunk_with edge between bunkmates is a violation — satisfaction
+    bucket inverts vs bunk_with."""
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
@@ -385,8 +380,8 @@ def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
 
 
 def test_unbunked_requester_skips_satisfaction() -> None:
-    """Spec §2.1: an unbunked requester is skipped; their satisfaction status
-    reads `no_requests` regardless of how many edges they have."""
+    """An unbunked requester is skipped; their satisfaction status reads
+    `no_requests` regardless of how many edges they have."""
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=None)  # unbunked requester
@@ -729,27 +724,16 @@ def test_build_bunk_graph_includes_not_bunk_with_as_violation() -> None:
 
 
 # ---------------------------------------------------------------------------
-# scan-it 2026-04-30 (PR #1082) findings #1, #2, #6:
-# - #1: build_bunk_graph fetched requests filtered by year only, leaking
-#   cross-session rows when the same person has assignments in multiple
-#   sessions in the same year.
-# - #2: reciprocal-edge collapse keyed only on (min, max) pair and not on
-#   request_type — A→B bunk_with paired with B→A not_bunk_with collapsed
-#   into one edge with `pair_requests[0]`'s type winning.
-# - #6: parent_edges filter in _calculate_node_metrics relied on
-#   source == "family" only; a FAMILY-source not_bunk_with edge would land
-#   in the parent bucket. Tighten by also requiring request_type == "bunk_with".
+# bunk_graph regression tests for cross-session leak, reciprocal-collapse
+# request_type collisions, and the parent/staff classifier.
 # ---------------------------------------------------------------------------
 
 
 def test_build_bunk_graph_request_fetch_filters_by_session_id() -> None:
-    """#1 (scan-it 2026-04-30): build_bunk_graph must scope its bunk_requests
-    fetch to the current session_cm_id, not just the year. Mirrors the
-    session-graph path's filter.
-
-    Without this filter, when the same person has assignments in multiple
-    sessions in the same year, requests from session B leak into the bunk
-    graph for session A.
+    """build_bunk_graph must scope its bunk_requests fetch to the current
+    session_cm_id, not just the year. Without this filter, when the same
+    person has assignments in multiple sessions in the same year, requests
+    from session B leak into the bunk graph for session A.
     """
     pb = MagicMock()
     bunk = MagicMock()
@@ -783,14 +767,9 @@ def test_build_bunk_graph_request_fetch_filters_by_session_id() -> None:
 
 
 def test_build_bunk_graph_reciprocal_with_opposite_request_types_preserves_both() -> None:
-    """#2 (scan-it 2026-04-30): reciprocal-edge collapse must NOT flatten an
-    A→B bunk_with paired with B→A not_bunk_with into a single edge. The
-    pair_key was keyed on (min, max) only, so opposite request_types collided
-    and `pair_requests[0]`'s request_type/source/priority won, silently
-    dropping one direction and potentially inverting the rendered relationship.
-
-    Fix: include request_type in the pair key so each request_type collapses
-    independently.
+    """Reciprocal-edge collapse must NOT flatten an A→B bunk_with paired with
+    B→A not_bunk_with into one edge. The pair_key includes request_type so
+    each type collapses independently and both directions survive.
     """
     pb = MagicMock()
 
@@ -841,18 +820,16 @@ def test_build_bunk_graph_reciprocal_with_opposite_request_types_preserves_both(
         f"bunk_with edge must survive collapse; edges={[(u, v, d.get('request_type')) for u, v, d in request_edges]!r}"
     )
     assert "not_bunk_with" in rt_present, (
-        f"not_bunk_with edge must survive collapse (#2 scan-it); "
+        f"not_bunk_with edge must survive collapse alongside bunk_with; "
         f"edges={[(u, v, d.get('request_type')) for u, v, d in request_edges]!r}"
     )
 
 
 def test_parent_edges_filter_excludes_family_source_not_bunk_with() -> None:
-    """#6 (scan-it 2026-04-30): parent_edges in _calculate_node_metrics must
-    require both source == "family" AND request_type == "bunk_with". A
-    FAMILY-source not_bunk_with edge (rare but possible at the migration
-    boundary) should NOT trigger parent_satisfaction_status.
-
-    Symmetric: staff_edges must be the complement (everything not parent).
+    """parent_edges in _calculate_node_metrics classifies on request_type, not
+    source. A FAMILY-source not_bunk_with edge (rare boundary case at the
+    migration boundary) must NOT trigger parent_satisfaction_status — the
+    bucket _bucket inverts on must match the request_type _bucket reads.
     """
     builder = _make_builder()
     builder.graph = nx.Graph()

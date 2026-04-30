@@ -1,12 +1,12 @@
 /**
- * Tests for BunkingStatusPanel — focused on the §15.1 resolved-only rule
- * for the per-camper request list.
+ * Tests for BunkingStatusPanel — pin the resolved-only filter on the
+ * per-camper request list.
  *
- * Audit 2026-04-29 found that personRequests was filtered only by
- * `r.request_type !== 'age_preference'`, so pending and declined rows
- * leaked into the rendered list with amber/red status dots while the
- * "X/Y met" summary used countableRequests (resolved-only). A user
- * with 3 pending + 1 resolved saw "1/1 met" alongside 4 row dots.
+ * Earlier iterations filtered only by `r.request_type !== 'age_preference'`,
+ * so pending and declined rows leaked into the rendered list with amber/red
+ * status dots while the "X/Y met" summary used countableRequests
+ * (resolved-only). A user with 3 pending + 1 resolved saw "1/1 met" next to
+ * 4 row dots.
  */
 
 import { MemoryRouter } from 'react-router'
@@ -62,7 +62,7 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
   )
 }
 
-describe('BunkingStatusPanel — §15.1 resolved-only request list', () => {
+describe('BunkingStatusPanel — resolved-only request list', () => {
   it('does not render pending bunk_with rows in the per-camper request list', () => {
     const requests: EnhancedBunkRequest[] = [
       makeRequest({

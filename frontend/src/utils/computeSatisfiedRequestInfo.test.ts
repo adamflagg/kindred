@@ -104,7 +104,7 @@ describe('computeSatisfiedRequestInfo Shape A', () => {
   })
 
   it('skips non-resolved rows (pending/declined) across all three slices', () => {
-    // Spec §2.1: only status === 'resolved' rows are evaluated.
+    // Only status === 'resolved' rows are evaluated.
     // Regression: SAME_AGE-target age_preference rows land as status=pending
     // for staff review and were leaking into materialParent unsatisfied counts.
     const pendingMaterial = baseReq({

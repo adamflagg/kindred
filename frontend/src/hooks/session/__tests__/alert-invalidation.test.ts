@@ -1,13 +1,17 @@
 /**
- * TDD tests for camper-card alert invalidation after request mutations.
+ * Contract tests for camper-card alert invalidation after request mutations.
  *
  * The "none satisfied" alert is derived client-side from
- * `['all-bunk-requests', sessionCmId, year]`. As of Stage 3a the satisfaction
- * filter ALSO honors `status === 'resolved'` (spec §2.1), so pure status
- * mutations (approve/decline/delete-via-status) DO change the alert and must
- * invalidate the cache. Mutations that mutate the row set (create/merge/split)
- * also need to invalidate. Drag-drop and solver-apply still need to invalidate
- * because they change bunk membership.
+ * `['all-bunk-requests', sessionCmId, year]`. The satisfaction filter honors
+ * `status === 'resolved'`, so pure status mutations (approve/decline/
+ * delete-via-status) DO change the alert and must invalidate the cache.
+ * Row-set mutations (create/merge/split) and bunk-membership mutations
+ * (drag-drop/solver-apply) also invalidate.
+ *
+ * This file is the canonical contract for the request-key invalidation
+ * inventory — every entry is also wired through `invalidateRequestQueries`
+ * in `frontend/src/utils/queryKeys.ts`. Adding a new key requires updating
+ * both.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -33,7 +37,7 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
   // Seed every per-camper-derived key that surfaces request data, so we can
-  // verify status mutations propagate to ALL of them. See spec §15.4.
+  // verify status mutations propagate to ALL of them.
   qc.setQueryData(
     ['person-bunk-requests', 1001, year],
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
@@ -220,10 +224,10 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
   })
 })
 
-describe('Merge / Split mutation contract — must invalidate all 7 §15.3 keys', () => {
-  // Audit 2026-04-29 found Merge and Split invalidated only 5 of the 7 keys.
-  // The 4 per-camper keys went stale on the sidebar, full-page CamperDetail,
-  // tooltip, and satisfaction badges after a merge or split.
+describe('Merge / Split mutation contract — must invalidate all 7 keys', () => {
+  // Earlier iterations of Merge and Split invalidated only 5 of the 7 keys,
+  // leaving the sidebar / full-page CamperDetail / tooltip / satisfaction
+  // badges showing stale data after a merge or split.
   let queryClient: QueryClient
 
   beforeEach(() => {
@@ -238,7 +242,7 @@ describe('Merge / Split mutation contract — must invalidate all 7 §15.3 keys'
     expect(isSatisfactionStale(qc)).toBe(true)
   }
 
-  it('MergeRequestsModal onSuccess invalidates every §15.3 key', () => {
+  it('MergeRequestsModal onSuccess invalidates every request-derived key', () => {
     const onSuccess = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
@@ -254,7 +258,7 @@ describe('Merge / Split mutation contract — must invalidate all 7 §15.3 keys'
     assertAllSeededKeysStale(queryClient)
   })
 
-  it('SplitRequestModal onSuccess invalidates every §15.3 key', () => {
+  it('SplitRequestModal onSuccess invalidates every request-derived key', () => {
     const onSuccess = (qc: QueryClient) => {
       void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
       void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })

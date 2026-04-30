@@ -42,8 +42,8 @@ def test_backfill_updates_only_socialize_with_wrong_priority(tmp_path):
 
 
 def test_backfill_idempotent(tmp_path):
-    """scan-it 2026-04-30 #13: idempotency = a second run is a no-op AND row
-    state is identical between runs (not just `updated == 0`). Pin both."""
+    """Idempotency means a second run is a no-op AND row state is identical
+    between runs — not just `updated == 0`. Pin both."""
     db_path = tmp_path / "test.db"
     _create_test_db(db_path)
     first = backfill(db_path)

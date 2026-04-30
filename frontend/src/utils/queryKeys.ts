@@ -299,12 +299,7 @@ export const queryKeys = {
       duration,
     ] as const,
 
-  // Request system — prefix factories for broad invalidation. The §15.3
-  // boundary inventory pins these as the keys every request-mutation
-  // handler must invalidate. scan-it 2026-04-30 #9: handlers were
-  // hardcoding string literals; these factories keep them aligned with
-  // the canonical keys in this file. See `invalidateRequestQueries`
-  // below for the standard mutation-handler call site.
+  // Prefix factories for broad invalidation of bunk_request data.
   bunkRequestsPrefix: () => ['bunk-requests'] as const,
   allBunkRequestsPrefix: () => ['all-bunk-requests'] as const,
   personBunkRequestsPrefix: () => ['person-bunk-requests'] as const,
@@ -312,24 +307,23 @@ export const queryKeys = {
   bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
-  // Auxiliary keys — only the merge/split paths invalidate these (they
-  // mutate source linkages between rows). NOT part of the §15.3
-  // satisfaction inventory. Pass `includeSourceLinks: true` to
-  // `invalidateRequestQueries` to include them.
+  // Source-link keys are auxiliary — only merge/split mutations rewrite
+  // source linkages. Pass `includeSourceLinks: true` to invalidate these.
   sourceLinksPrefix: () => ['source-links'] as const,
   expandedSourceLinksPrefix: () => ['expanded-source-links'] as const,
 }
 
 /**
- * Invalidate every React Query key in the §15.3 boundary inventory for
- * `bunk_requests` data. Use from request-mutation handlers (RequestReviewPanel,
- * AllCamperRequestsModal, CreateRequestModal, MergeRequestsModal,
- * SplitRequestModal). Pass `includeSourceLinks: true` from merge/split paths
- * which additionally rewrite source linkages.
+ * Invalidate every React Query key consumed by request-derived UI
+ * (alerts, badges, satisfaction marks, graph borders). Call from any
+ * mutation handler that changes a `bunk_requests` row.
  *
- * Pinned by `frontend/src/hooks/session/__tests__/alert-invalidation.test.ts`
- * — adding a new key to the inventory requires adding it here AND to that
- * contract test.
+ * The full inventory of keys is pinned by
+ * `frontend/src/hooks/session/__tests__/alert-invalidation.test.ts` —
+ * adding a new key requires updating both this helper and that contract.
+ *
+ * Pass `includeSourceLinks: true` from merge/split handlers, which
+ * additionally rewrite source linkages between rows.
  */
 export interface InvalidateRequestQueriesOptions {
   includeSourceLinks?: boolean

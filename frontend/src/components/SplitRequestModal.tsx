@@ -207,9 +207,7 @@ export default function SplitRequestModal({
       return response.json() as Promise<SplitResponse>
     },
     onSuccess: () => {
-      // Spec §15.3 + scan-it 2026-04-30 #9: invalidate every key in the
-      // boundary inventory. Split additionally rewrites source linkages, so
-      // pass `includeSourceLinks: true` to also invalidate the auxiliary keys.
+      // Split rewrites source linkages between rows — invalidate aux keys too.
       invalidateRequestQueries(queryClient, { includeSourceLinks: true })
       onSplitComplete()
       onClose()

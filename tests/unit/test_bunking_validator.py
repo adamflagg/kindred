@@ -201,7 +201,7 @@ class TestBunkingValidator:
                 request_type="bunk_with",
                 status="resolved",
                 # Bin into material_parent so total_requests reflects this row
-                # per §3.4 (total = material + staff).
+                # (total = material + staff).
                 source_field=SourceField.BUNK_WITH,
                 source="family",
             )
@@ -233,10 +233,9 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
                 status="resolved",
-                # scan-it 2026-04-30 #4: alerting bucket requires the row to
-                # bin into material_parent (source_field=bunk_with) or staff.
-                # Production CSV import always sets source_field, so the test
-                # mirrors real data.
+                # alerting bucket requires the row to bin into material_parent
+                # (source_field=bunk_with) or staff. Production CSV import
+                # always sets source_field, so the test mirrors real data.
                 source_field=SourceField.BUNK_WITH,
                 source="family",
             )
@@ -269,7 +268,7 @@ class TestBunkingValidator:
                 request_type="not_bunk_with",
                 status="resolved",
                 # Staff source so the row bins into staff_requests and
-                # contributes to total_requests under §3.4.
+                # contributes to total_requests (= material + staff).
                 source_field=SourceField.NOT_BUNK_WITH,
                 source="staff",
             )
@@ -299,9 +298,9 @@ class TestBunkingValidator:
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
                 status="resolved",
-                # scan-it 2026-04-30 #4: alerting bucket needs the row to bin
-                # into staff (source_field=not_bunk_with, source=staff). In
-                # production the CSV/sync path always sets these.
+                # alerting bucket needs the row to bin into staff
+                # (source_field=not_bunk_with, source=staff). In production the
+                # CSV/sync path always sets these.
                 source_field=SourceField.NOT_BUNK_WITH,
                 source="staff",
             )
@@ -753,8 +752,7 @@ class TestNormalizeSourceField:
     def test_canonical_bunk_with_increments_material_parent_counters(
         self, validator, session, bunks, persons, assignments
     ):
-        """scan-it 2026-04-30 #16: extend normalization coverage to the Stage 3a
-        counters. A canonical SourceField.BUNK_WITH input must populate
+        """A canonical SourceField.BUNK_WITH input must populate
         material_parent_requests (in addition to field_stats['share_bunk_with'])."""
         requests = [
             MockBunkRequest(
@@ -778,8 +776,8 @@ class TestNormalizeSourceField:
     def test_canonical_socialize_with_increments_best_effort_counters(
         self, validator, session, bunks, persons, assignments
     ):
-        """scan-it 2026-04-30 #16: canonical SourceField.SOCIALIZE_WITH must
-        populate best_effort_parent_requests, NOT material_parent_requests."""
+        """Canonical SourceField.SOCIALIZE_WITH must populate
+        best_effort_parent_requests, NOT material_parent_requests."""
         requests = [
             MockBunkRequest(
                 requester_person_cm_id="10001",
@@ -942,8 +940,8 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
 
 def test_validator_skips_binning_for_requests_with_null_source_field():
     """Requests with source_field=None (legacy records or unset) fall through all
-    parent and staff bins. Per spec §3.4, total_requests = material + staff, so
-    a null-source-field request also does NOT contribute to total_requests."""
+    parent and staff bins. Since total_requests = material + staff, a
+    null-source-field request also does NOT contribute to total_requests."""
     session = _mock_session()
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
@@ -973,7 +971,7 @@ def test_validator_skips_binning_for_requests_with_null_source_field():
     )
     stats = result.statistics
 
-    # §3.4: total = material + staff = 0 (null-source request bins nowhere)
+    # total = material + staff = 0 (null-source request bins nowhere)
     assert stats.total_requests == 0
     assert stats.satisfied_requests == 0
     assert stats.material_parent_requests == 0
@@ -1023,13 +1021,13 @@ def test_validator_source_field_drives_binning_regardless_of_source_enum():
 # ---------------------------------------------------------------------------
 
 
-def test_total_requests_excludes_best_effort_per_spec_3_4():
-    """Spec §3.4: aggregate total_requests / satisfied_requests narrow to
-    material_parent + staff. A best_effort socialize_with row is reported
+def test_total_requests_excludes_best_effort():
+    """Aggregate total_requests / satisfied_requests narrow to
+    material_parent + staff. A best-effort socialize_with row is reported
     in best_effort_parent_requests only, NOT in total_requests.
 
-    Audit 2026-04-29 found total_requests aggregated over valid_requests_by_person
-    which included best_effort. This test pins the §3.4 contract.
+    Earlier iterations aggregated over valid_requests_by_person which
+    included best-effort.
     """
     session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
@@ -1066,14 +1064,13 @@ def test_total_requests_excludes_best_effort_per_spec_3_4():
     assert stats.staff_requests == 1
     assert stats.satisfied_staff_requests == 1
 
-    # §3.4: total_requests = material_parent + staff (best_effort is excluded).
+    # total_requests = material_parent + staff (best-effort is excluded).
     assert stats.total_requests == 2, (
-        f"§3.4: total_requests must be material_parent + staff = 1 + 1 = 2, "
+        f"total_requests must be material_parent + staff = 1 + 1 = 2, "
         f"got {stats.total_requests}. Best-effort must NOT contribute."
     )
     assert stats.satisfied_requests == 2, (
-        f"§3.4: satisfied_requests must be material_parent + staff satisfied = "
-        f"1 + 1 = 2, got {stats.satisfied_requests}."
+        f"satisfied_requests must be material_parent + staff satisfied = 1 + 1 = 2, got {stats.satisfied_requests}."
     )
 
 
@@ -1218,12 +1215,10 @@ def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
 
 
 def test_best_effort_only_camper_does_not_trigger_unsatisfied_valid_requests_warning():
-    """scan-it 2026-04-30 #4 (CodeRabbit outside-diff at validator:546-676):
-    A camper whose only resolved requests are best-effort socialize_with rows
-    must NOT appear in the `campers_with_unsatisfied_valid_requests` summary
-    issue, because best-effort drives no alarms per spec §2.4. The previous
-    iteration walked `valid_requests_by_person` (which includes best-effort)
-    and produced spurious warnings for socialize_with-only campers."""
+    """A camper whose only resolved requests are best-effort socialize_with
+    rows must NOT appear in `campers_with_unsatisfied_valid_requests` — the
+    alerting bucket excludes best-effort. Otherwise socialize_with-only
+    campers trip a spurious warning whenever the request can't be honored."""
     session = _mock_session(cm_id="10000005", name="Test Session 5")
     persons = [
         MockPerson(campminder_id="3501", name="Riley Sam", grade=5),
@@ -1393,7 +1388,7 @@ def test_three_grade_bunk_age_preference_evaluation():
     # Distribution 8/2/2 with tied second place → satisfied
     assert stats.best_effort_parent_requests == 1
     assert stats.satisfied_best_effort_parent_requests == 1
-    # §3.4: aggregate request_satisfaction_rate excludes best-effort. Verify
+    # Aggregate request_satisfaction_rate excludes best-effort, so verify
     # the slice-specific rate instead.
     assert stats.best_effort_parent_request_satisfaction_rate == 1.0
     assert stats.material_parent_requests == 0

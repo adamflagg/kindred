@@ -73,7 +73,7 @@ function renderWithQueryClient(ui: React.ReactElement) {
   return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
 }
 
-// Render with a pre-seeded QueryClient so tests can verify §15.3 invalidation.
+// Render with a pre-seeded QueryClient so tests can verify invalidation.
 function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, year = 2025) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -81,10 +81,8 @@ function renderWithSeededClient(ui: React.ReactElement, requesterId = 12345, yea
       mutations: { retry: false },
     },
   })
-  // Seed every §15.3 React Query key so we can assert each one is invalidated.
-  queryClient.setQueryData(['bunk-requests'], [])
-  // scan-it 2026-04-30 #9: use centralized prefix factories so the test
-  // mirrors the canonical key shape the modal invalidates.
+  // Seed every request-derived React Query key so we can assert invalidation.
+  queryClient.setQueryData(queryKeys.bunkRequestsPrefix(), [])
   queryClient.setQueryData([...queryKeys.allBunkRequestsPrefix(), 1000001, year], [])
   queryClient.setQueryData([...queryKeys.personBunkRequestsPrefix(), requesterId, year], [])
   queryClient.setQueryData([...queryKeys.personAllBunkRequestsPrefix(), requesterId, year], [])
@@ -391,18 +389,17 @@ describe('MergeRequestsModal', () => {
     })
   })
 
-  // Spec §15.3: every request-mutation handler MUST invalidate all 7 keys.
-  // Audit 2026-04-29 found Merge invalidated only 5 — the 4 per-camper keys
-  // (person-bunk-requests, person-all-bunk-requests, bunk_requests_tooltip,
-  // request-satisfaction) plus cohort-request-relations went stale on the
-  // sidebar, full-page CamperDetail, tooltip, and satisfaction badges after
-  // a merge.
-  describe('§15.3 cache invalidation contract', () => {
+  // Earlier iterations of Merge invalidated only 5 of the 7 request keys —
+  // the 4 per-camper keys (person-bunk-requests, person-all-bunk-requests,
+  // bunk_requests_tooltip, request-satisfaction) plus cohort-request-relations
+  // went stale on the sidebar, full-page CamperDetail, tooltip, and
+  // satisfaction badges after a merge.
+  describe('cache invalidation contract', () => {
     function isStale(qc: QueryClient, key: readonly unknown[]) {
       return qc.getQueryState(key)?.isInvalidated === true
     }
 
-    it('invalidates all 7 §15.3 React Query keys after a successful merge', async () => {
+    it('invalidates all 7 request-derived React Query keys after a successful merge', async () => {
       const requests = [
         createMockRequest({ id: 'req_1', requester_id: 12345, year: 2025 }),
         createMockRequest({ id: 'req_2', requester_id: 12345, year: 2025 }),

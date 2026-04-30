@@ -364,9 +364,8 @@ export default function CamperDetailsPanel({
     queryFn: async (): Promise<PanelBunkRequest[]> => {
       if (!camper?.person_cm_id) throw new Error('No camper person ID')
 
-      // Spec §2.1: only resolved rows are user-visible in the panel.
-      // Pending (e.g. SAME_AGE staff-review) and declined rows do not belong
-      // here — they're surfaced via RequestReviewPanel instead.
+      // Panel surfaces only resolved rows. Pending (e.g. SAME_AGE
+      // staff-review) and declined rows are shown via RequestReviewPanel.
       const filter = `requester_id = ${camper.person_cm_id} && year = ${currentYear} && status = "resolved"`
       const requests = await pb.collection('bunk_requests').getFullList<BunkRequestsResponse>({
         filter,
@@ -947,8 +946,7 @@ export default function CamperDetailsPanel({
                   <div className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}>
                     <BunkRequestRow
                       request={agePreferenceRequest}
-                      // Spec §2.1: only resolved rows evaluate to satisfaction.
-                      // Pending (e.g. SAME_AGE staff-review) or declined age
+                      // Pending (e.g. SAME_AGE staff-review) and declined age
                       // preferences must not render a "fulfilled" indicator.
                       showSatisfaction={agePreferenceRequest.status === 'resolved'}
                       satisfaction={ageSatisfaction?.status ?? null}

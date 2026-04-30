@@ -162,13 +162,10 @@ describe('FriendGroupPopover (CamperPill hover)', () => {
   })
 })
 
-// ─── Stage 3a §3.3: explicit_csv_* legacy fields are deleted ─────────────────
-// Audit 2026-04-29 found the frontend type still declared the three legacy
-// aggregate fields even though the backend validator no longer emits them.
-// Spec §3.3 says delete entirely; this test guards against accidental
-// re-introduction.
+// Legacy explicit_csv_* aggregate fields were removed from
+// ValidationStatistics. Guard against accidental re-introduction.
 
-describe('Stage 3a §3.3 — explicit_csv_* fields are removed', () => {
+describe('explicit_csv_* fields are removed', () => {
   it('makeStats does not produce legacy explicit_csv_* keys', () => {
     const stats = makeStats()
     const keys = Object.keys(stats)

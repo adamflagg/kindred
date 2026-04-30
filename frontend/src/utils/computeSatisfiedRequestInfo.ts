@@ -74,19 +74,15 @@ export function computeSatisfiedRequestInfo(
   const satisfiedRequests: BunkRequest[] = []
 
   for (const req of personRequests) {
-    // Spec §2.1: only resolved rows count toward satisfaction stats.
+    // Only resolved rows count toward satisfaction stats.
     // Pending (e.g. SAME_AGE staff-review path) and declined must not leak
     // into any of the three slices.
     if (req.status !== 'resolved') continue
     const sat = isSatisfied(req)
     if (sat) satisfiedRequests.push(req)
-    // scan-it 2026-04-30 #5: classify defensively. A row with request_type
-    // `not_bunk_with` belongs in the staff bucket by definition (the type
-    // IS the staff classification — see RequestSource enum, `not_bunk_with`
-    // → STAFF). The earlier implementation used `req.source === 'staff'` as
-    // the only staff predicate and would silently drop a FAMILY-source
-    // not_bunk_with from every slice. Mirror the graph builder, which now
-    // classifies on request_type as the authoritative bucket key.
+    // not_bunk_with is the staff classification by definition (see
+    // RequestSource enum). Match on request_type first so a FAMILY-source
+    // not_bunk_with still bins to staff instead of falling through.
     if (req.request_type === 'not_bunk_with') {
       staffTotal += 1
       if (sat) staffSat += 1

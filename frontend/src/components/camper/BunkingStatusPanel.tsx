@@ -29,10 +29,9 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // Calculate satisfaction summary.
-  // Spec §2.1: only resolved rows are evaluated. The legacy filter
-  // `status !== 'pending'` admitted declined rows; tighten to the
-  // affirmative resolved-only rule.
+  // Calculate satisfaction summary. Use the affirmative resolved-only
+  // filter; an earlier `status !== 'pending'` form silently admitted
+  // declined rows.
   const countableRequests = allBunkRequests.filter(
     (r) =>
       r.status === 'resolved' &&
@@ -46,10 +45,9 @@ export function BunkingStatusPanel({
   ).length
   const hasSatisfactionData = !satisfactionLoading && Object.keys(satisfactionData).length > 0
 
-  // Spec §15.1 (resolved-only): the per-camper request list must filter to
-  // status === 'resolved' so pending and declined rows do not leak into the
-  // rendered list with status-colored dots — the "X/Y met" summary above
-  // uses countableRequests (resolved-only) and the two views must agree.
+  // The per-camper list must agree with the "X/Y met" summary above —
+  // both filter to status === 'resolved' so pending and declined rows
+  // don't render here with status-colored dots.
   const personRequests = allBunkRequests.filter(
     (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
   )

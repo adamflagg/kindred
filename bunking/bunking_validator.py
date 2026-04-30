@@ -366,6 +366,10 @@ class BunkingValidator:
         satisfied_best_effort_parent_by_person = defaultdict(list)
         staff_requests_by_person = defaultdict(list)
         satisfied_staff_by_person = defaultdict(list)
+        # Alerting bucket = material parent ∪ staff. Best-effort drives no
+        # alarms, so socialize_with rows are intentionally absent.
+        alerting_requests_by_person: dict[Any, list[Any]] = defaultdict(list)
+        satisfied_alerting_by_person: dict[Any, list[Any]] = defaultdict(list)
 
         def normalize_source_field(raw_field: str) -> str | None:
             """Normalize database source_field values to consistent snake_case keys.
@@ -512,10 +516,12 @@ class BunkingValidator:
                 )
                 if raw_source_field == SourceField.BUNK_WITH:
                     material_parent_by_person[requester_id].append(request)
+                    alerting_requests_by_person[requester_id].append(request)
                 elif is_best_effort:
                     best_effort_parent_by_person[requester_id].append(request)
                 elif is_staff:
                     staff_requests_by_person[requester_id].append(request)
+                    alerting_requests_by_person[requester_id].append(request)
 
                 # Update field stats (only for known fields)
                 for field in source_fields:
@@ -528,10 +534,12 @@ class BunkingValidator:
                     satisfied_requests_by_person[requester_id].append(request)
                     if raw_source_field == SourceField.BUNK_WITH:
                         satisfied_material_parent_by_person[requester_id].append(request)
+                        satisfied_alerting_by_person[requester_id].append(request)
                     elif is_best_effort:
                         satisfied_best_effort_parent_by_person[requester_id].append(request)
                     elif is_staff:
                         satisfied_staff_by_person[requester_id].append(request)
+                        satisfied_alerting_by_person[requester_id].append(request)
 
                     # Update satisfied field stats (only for known fields)
                     for field in source_fields:
@@ -544,22 +552,9 @@ class BunkingValidator:
                 field_data["satisfaction_rate"] = field_data["satisfied"] / field_data["total"]
 
         # Find campers with valid alerting requests (material parent or staff)
-        # but NONE satisfied. scan-it 2026-04-30 #4: best-effort socialize_with
-        # rows must NOT contribute here per spec §2.4 — best-effort drives no
-        # alarms. The previous implementation walked `valid_requests_by_person`
-        # (which includes best-effort) and produced spurious WARNINGs for
-        # socialize_with-only campers.
+        # but NONE satisfied. Best-effort socialize_with rows are excluded
+        # because best-effort drives no alarms.
         campers_with_unsatisfied_valid_requests = []
-        alerting_requests_by_person: dict[Any, list[Any]] = defaultdict(list)
-        satisfied_alerting_by_person: dict[Any, list[Any]] = defaultdict(list)
-        for pid, reqs in material_parent_by_person.items():
-            alerting_requests_by_person[pid].extend(reqs)
-        for pid, reqs in staff_requests_by_person.items():
-            alerting_requests_by_person[pid].extend(reqs)
-        for pid, reqs in satisfied_material_parent_by_person.items():
-            satisfied_alerting_by_person[pid].extend(reqs)
-        for pid, reqs in satisfied_staff_by_person.items():
-            satisfied_alerting_by_person[pid].extend(reqs)
 
         for person_id, alerting_requests in alerting_requests_by_person.items():
             if len(alerting_requests) > 0 and len(satisfied_alerting_by_person[person_id]) == 0:
@@ -622,13 +617,9 @@ class BunkingValidator:
                                 )
                             )
 
-        # Update statistics.
-        # Spec §3.4: total_requests / satisfied_requests narrow to
-        # material_parent + staff. Best-effort socialize_with is reported
-        # only in its own slice and does NOT contribute to the aggregate.
-        # scan-it 2026-04-30 #4: the alerting totals reported in the summary
-        # issue must mirror the alerting bucket (material + staff), not the
-        # broader valid_requests_by_person which still includes best-effort.
+        # Aggregate totals narrow to material_parent + staff (the alerting
+        # bucket). Best-effort socialize_with is reported only in its own
+        # slice and never contributes to the aggregate or the summary issue.
         total_alerting_requests = sum(len(reqs) for reqs in alerting_requests_by_person.values())
         total_satisfied_alerting_requests = sum(len(reqs) for reqs in satisfied_alerting_by_person.values())
 
@@ -666,7 +657,7 @@ class BunkingValidator:
             1 for requester_id in staff_requests_by_person if not satisfied_staff_by_person.get(requester_id)
         )
 
-        # Spec §3.4: total_requests / satisfied_requests = material_parent + staff.
+        # total_requests / satisfied_requests = material_parent + staff.
         # Best-effort socialize_with is reported only in its own slice; an
         # aggregate that included it would surface unactionable noise on
         # the orange-triangle and amber-dot tiles.

@@ -203,10 +203,8 @@ describe('CamperAlertSection', () => {
   // ─── 6. Materiality rule: best-effort (socialize_with) doesn't trip parent alert ─
 
   describe('materiality gating in buildCamperAlerts', () => {
-    // scan-it 2026-04-30 #15: gate the test on the materiality logic rather
-    // than on an empty alerts array. The alert section is a transparent
-    // renderer — testing it with `alerts=[]` is a tautology. The real gate
-    // lives in `buildCamperAlerts`, so exercise that directly.
+    // The materiality gate lives in buildCamperAlerts, not in this renderer.
+    // Exercise the gate directly so the test fails if the gate flips.
     const baseRequestInfo = {
       materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
       bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },

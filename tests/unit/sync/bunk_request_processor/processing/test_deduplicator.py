@@ -1291,12 +1291,11 @@ class TestConflictTargetDemotion:
         assert result.kept_requests[0].status == RequestStatus.RESOLVED
 
     def test_null_age_target_falls_back_to_same_target_merge(self, deduplicator):
-        """scan-it 2026-04-30 #14: pin the documented fallback behavior, not
-        just "no crash." When the bunk_with row's age_preference is None
-        (parse failure), the conflict-target check returns False (no
-        conflict), so the same-target merge path runs and produces ONE
-        surviving row — the bunk_with row, which beats socialize_with under
-        the standard preference order. Status stays resolved.
+        """When the bunk_with row's age_preference is None (parse failure),
+        the conflict-target check returns False, so the same-target merge
+        path runs and produces ONE surviving row — the bunk_with row,
+        which beats socialize_with under the standard preference order.
+        Status stays resolved.
         """
         bunk_with_row = self._age_pref(
             source_field=SourceField.BUNK_WITH,

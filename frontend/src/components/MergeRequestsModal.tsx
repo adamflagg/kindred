@@ -148,9 +148,7 @@ export default function MergeRequestsModal({
       return response.json() as Promise<MergeResponse>
     },
     onSuccess: () => {
-      // Spec §15.3 + scan-it 2026-04-30 #9: invalidate every key in the
-      // boundary inventory. Merge additionally rewrites source linkages, so
-      // pass `includeSourceLinks: true` to also invalidate the auxiliary keys.
+      // Merge rewrites source linkages between rows — invalidate aux keys too.
       invalidateRequestQueries(queryClient, { includeSourceLinks: true })
       onMergeComplete()
       onClose()
