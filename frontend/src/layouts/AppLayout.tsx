@@ -711,7 +711,7 @@ export const AppLayout = () => {
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     {syncStatus.bunk_assignments?.end_time && (
                       <span
-                        className="flex items-center gap-1.5"
+                        className="flex items-center gap-1.5 whitespace-nowrap"
                         title={buildSyncTooltip('bunk assignments', syncStatus.bunk_assignments)}
                       >
                         <Home className="h-3 w-3" />
@@ -723,7 +723,7 @@ export const AppLayout = () => {
                     )}
                     {syncStatus.bunk_requests?.end_time && (
                       <span
-                        className="flex items-center gap-1.5"
+                        className="flex items-center gap-1.5 whitespace-nowrap"
                         title={buildSyncTooltip('bunk requests', syncStatus.bunk_requests)}
                       >
                         <Clock className="h-3 w-3" />
