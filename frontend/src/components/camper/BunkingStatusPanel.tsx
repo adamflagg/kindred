@@ -206,12 +206,30 @@ export function BunkingStatusPanel({
       </div>
 
       <div className="space-y-4 p-6">
-        {/* Bunk Requests - partitioned into parent / staff / age sections.
-            Rendered BEFORE the summary so that DOM text order matches the
-            visual grouping (parent rows → Staff sub-divider → staff rows →
-            age rows). The summary "Staff request satisfaction:" label would
-            otherwise appear before the row list in text() content, breaking
-            ordering assertions in tests. */}
+        {/* Request Satisfaction Summary — rendered above the row list, matching
+            the spec design. Summary appears first so staff can immediately see
+            overall satisfaction before scanning individual rows. */}
+        {showSummary && (
+          <div className="bg-muted/40 border-border rounded-lg border px-4 py-3">
+            {showParent && showStaff ? (
+              <div className="grid grid-cols-[1fr_1px_1fr] items-center">
+                <div className="px-4">
+                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+                </div>
+                <div className="bg-border self-stretch" />
+                <div className="px-4">
+                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+                </div>
+              </div>
+            ) : showParent ? (
+              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+            ) : (
+              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+            )}
+          </div>
+        )}
+
+        {/* Bunk Requests - partitioned into parent / staff / age sections. */}
         {parentRows.length > 0 || staffRows.length > 0 || ageRows.length > 0 ? (
           <div className="space-y-1">
             {parentRows.map((req) => {
@@ -273,30 +291,6 @@ export function BunkingStatusPanel({
         ) : (
           <div className="py-4 text-center">
             <p className="text-muted-foreground text-sm">No bunk requests on file</p>
-          </div>
-        )}
-
-        {/* Request Satisfaction Summary — rendered after the row list so that
-            DOM text order (rows first, summary below) aligns with the visual
-            scan order and avoids "Staff request satisfaction:" appearing before
-            the Staff sub-divider in text() content. */}
-        {showSummary && (
-          <div className="bg-muted/40 border-border mt-3 rounded-lg border px-4 py-3">
-            {showParent && showStaff ? (
-              <div className="grid grid-cols-[1fr_1px_1fr] items-center">
-                <div className="px-4">
-                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
-                </div>
-                <div className="bg-border self-stretch" />
-                <div className="px-4">
-                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
-                </div>
-              </div>
-            ) : showParent ? (
-              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
-            ) : (
-              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
-            )}
           </div>
         )}
       </div>

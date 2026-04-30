@@ -273,13 +273,48 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       s1: { status: 'satisfied' as const, detail: '' },
     }
     const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
-    const text = container.textContent ?? ''
-    const emmaIdx = text.indexOf('Emma')
-    const staffIdx = text.indexOf('Staff')
-    const rileyIdx = text.indexOf('Riley')
+
+    // Assert using document-order positions of key elements.
+    //
+    // The Staff sub-divider renders a <span> whose trimmed textContent is
+    // exactly "Staff" — no children (text-only span). The summary line
+    // "Staff request satisfaction:" contains "Staff" as a substring but does
+    // NOT trim to exactly "Staff", so this selector targets only the divider.
+    const allElements = Array.from(container.querySelectorAll('*'))
+    const dividerEl = allElements.find(
+      (el) => el.textContent?.trim() === 'Staff' && el.children.length === 0
+    )
+    expect(dividerEl).not.toBeNull()
+    const dividerIdx = allElements.indexOf(dividerEl as Element)
+
+    // Emma and Riley's names appear in a <Link> (rendered as <a>) or <span>
+    // with the full "First Last" string and possibly a nested SVG icon. We
+    // find the closest ancestor element that (a) contains the name, and (b)
+    // does NOT contain the other name, so we stay within the individual row.
+    const emmaEl = allElements.find(
+      (el) =>
+        el.textContent?.includes('Emma') &&
+        !el.textContent?.includes('Riley') &&
+        el.tagName !== 'BODY' &&
+        el.tagName !== 'HTML'
+    )
+    const rileyEl = allElements.find(
+      (el) =>
+        el.textContent?.includes('Riley') &&
+        !el.textContent?.includes('Emma') &&
+        el.tagName !== 'BODY' &&
+        el.tagName !== 'HTML'
+    )
+
+    expect(emmaEl).not.toBeNull()
+    expect(rileyEl).not.toBeNull()
+
+    const emmaIdx = allElements.indexOf(emmaEl as Element)
+    const rileyIdx = allElements.indexOf(rileyEl as Element)
+
     expect(emmaIdx).toBeGreaterThan(-1)
-    expect(staffIdx).toBeGreaterThan(emmaIdx)
-    expect(rileyIdx).toBeGreaterThan(staffIdx)
+    expect(emmaIdx).toBeLessThan(dividerIdx)
+    expect(dividerIdx).toBeLessThan(rileyIdx)
   })
 
   it('omits Staff sub-divider when no staff rows exist', () => {
