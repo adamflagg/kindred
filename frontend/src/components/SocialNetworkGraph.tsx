@@ -138,6 +138,11 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   // Cache full-session positions on first layout, so clearing the filter
   // can restore them without re-running the worker.
   const originalPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null)
+  // Boolean signal that flips when the snapshot above is taken. The filter
+  // orchestration effect needs this to gate on layout readiness — a ref
+  // write alone doesn't re-trigger React, so a URL with a pre-existing
+  // filter would otherwise never apply on first load.
+  const [layoutSnapshotted, setLayoutSnapshotted] = useState(false)
 
   const prefersReducedMotion =
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -199,6 +204,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // rebuild + worker re-run when bunk names finish loading after the
     // graph data — a major source of stale-token spinner stalls under
     // StrictMode (where each effect already double-invokes).
+
+    // New cy instance is about to be built — invalidate any stale position
+    // snapshot from the previous graphData so the filter "clear" path
+    // re-snapshots after the next layout completes.
+    originalPositionsRef.current = null
+    setLayoutSnapshotted(false)
 
     // Destroy existing instance when switching views
     if (cyRef.current) {
@@ -269,6 +280,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             snap[n.id()] = { ...n.position() }
           })
           originalPositionsRef.current = snap
+          setLayoutSnapshotted(true)
         }
         if ((showBubbles || showUnits) && bunksData) {
           // RAF lets cy emit its final pan/zoom events before bubbles snapshot
@@ -470,7 +482,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   useEffect(() => {
     const cy = cyRef.current
     if (!cy || cy.destroyed() || !bunksData) return
-    if (!originalPositionsRef.current) return // initial layout not done yet
+    if (!layoutSnapshotted) return // initial layout not done yet
 
     const result = applyFilterToGraph(cy, {
       filter,
@@ -484,6 +496,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     if (!isFilterActive) {
       // Restore path: animate full-session positions back, no worker.
       const snap = originalPositionsRef.current
+      if (!snap) return // defensive: layoutSnapshotted guards this above
       cy.batch(() => {
         cy.nodes(':childless').forEach((n) => {
           const pos = snap[n.id()]
@@ -548,6 +561,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     showBubbles,
     showUnits,
     prefersReducedMotion,
+    layoutSnapshotted,
   ])
 
   // Resize+fit the graph whenever the user toggles fullscreen. The init
