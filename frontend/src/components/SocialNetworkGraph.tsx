@@ -4,6 +4,8 @@ import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
 import fcose from 'cytoscape-fcose'
 import BubbleSets from 'cytoscape-bubblesets'
+// @ts-expect-error - No types available for cytoscape-svg
+import cytoscapeSvg from 'cytoscape-svg'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
@@ -38,6 +40,9 @@ if (!(globalThis as Record<symbol, boolean>)[EXTENSIONS_REGISTERED]) {
   }
   if (!cytoscape.prototype.bubbleSets) {
     cytoscape.use(BubbleSets)
+  }
+  if (!cytoscape.prototype.svg) {
+    cytoscape.use(cytoscapeSvg)
   }
   ;(globalThis as Record<symbol, boolean>)[EXTENSIONS_REGISTERED] = true
 }
@@ -523,13 +528,17 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current?.fit(undefined, 50)
   }
 
-  // Mirrors the bunk-graph download: rasterizes the cytoscape canvas at 2x
-  // on a white background and triggers a save dialog via a transient anchor.
-  const handleDownload = () => {
+  // Composite the cytoscape canvas, bubbleset SVG, and popper labels into
+  // one PNG. exportGraphPng keeps each layer sharp at 2x — naive whole-DOM
+  // rasterization would blur the cytoscape canvas because it gets grabbed as
+  // a 1x bitmap and then upscaled.
+  const handleDownload = async () => {
     const cy = cyRef.current
-    if (!cy || cy.destroyed()) return
-    const png = cy.png({ output: 'blob', bg: 'white', scale: 2, full: true })
-    const url = URL.createObjectURL(png)
+    const container = containerRef.current
+    if (!cy || cy.destroyed() || !container) return
+    const { exportSessionGraphPng } = await import('./graph/graphPngExport')
+    const blob = await exportSessionGraphPng(cy, container)
+    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
     link.download = `social_network_session_${sessionCmId}.png`
