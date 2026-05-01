@@ -42,6 +42,7 @@ class SocialGraphEdge(BaseModel):
     priority: int | None = None  # Priority level for request edges
     request_type: str | None = None  # 'bunk_with' | 'not_bunk_with' for type='request' edges
     metadata: dict[str, Any] = {}  # Additional edge metadata (e.g., location for classmate edges)
+    cross_scope: bool = False  # True for edges crossing the active scope boundary
 
 
 class SocialGraphResponse(BaseModel):
@@ -54,6 +55,10 @@ class SocialGraphResponse(BaseModel):
     warnings: list[str] = []  # Warnings about isolated campers, split groups, etc.
     layout_positions: dict[int, tuple[float, float]] | None = None  # node_id -> (x, y)
     edge_type_counts: dict[str, int] = {}  # edge_type -> count
+    cross_scope_edges: list[SocialGraphEdge] = []  # Edges crossing the scope boundary (when ?cross_scope=true)
+    cross_scope_nodes: list[
+        SocialGraphNode
+    ] = []  # Out-of-scope endpoints of cross_scope_edges (when ?cross_scope=true)
 
 
 class BunkGraphMetrics(BaseModel):

@@ -1,0 +1,48 @@
+{
+  "_doc": "Contract fixture: bunk-name → unit-name mapping. Consumed by both bunking/utils/units.py (Python) and frontend/src/utils/unitMapping.ts (TypeScript) via parallel contract tests. If you change the mapping in either implementation, you MUST update this fixture and both contract tests will be re-run; CI will fail if drift exists.",
+  "cases": [
+    { "bunk": "B-1", "unit": "Carmel" },
+    { "bunk": "G-1", "unit": "Carmel" },
+    { "bunk": "AG-1", "unit": "Carmel" },
+    { "bunk": "B-2", "unit": "Carmel" },
+    { "bunk": "B-3", "unit": "Galil" },
+    { "bunk": "G-4", "unit": "Galil" },
+    { "bunk": "AG-3", "unit": "Galil" },
+    { "bunk": "B-5", "unit": "Eilat" },
+    { "bunk": "G-6", "unit": "Eilat" },
+    { "bunk": "B-7", "unit": "Haifa" },
+    { "bunk": "G-8", "unit": "Haifa" },
+    { "bunk": "B-9", "unit": "Chalutzim 1" },
+    { "bunk": "G-10", "unit": "Chalutzim 1" },
+    { "bunk": "B-11", "unit": "Chalutzim 2" },
+    { "bunk": "G-12", "unit": "Chalutzim 2" },
+    { "bunk": "B-5A", "unit": "Eilat" },
+    { "bunk": "g-12b", "unit": "Chalutzim 2" },
+    { "bunk": "Aleph", "unit": "Nitzanim" },
+    { "bunk": "ALEPH", "unit": "Nitzanim" },
+    { "bunk": "Bet", "unit": "Nitzanim" },
+    { "bunk": "B-Aleph", "unit": "Nitzanim" },
+    { "bunk": "g-bet", "unit": "Nitzanim" },
+    { "bunk": "Z-99", "unit": null },
+    { "bunk": "Counselor", "unit": null },
+    { "bunk": "B-99", "unit": null },
+    { "bunk": "Galil", "unit": null },
+    { "bunk": "", "unit": null }
+  ],
+  "unit_names": [
+    "Nitzanim",
+    "Carmel",
+    "Galil",
+    "Eilat",
+    "Haifa",
+    "Chalutzim 1",
+    "Chalutzim 2"
+  ],
+  "unit_slugs": {
+    "Galil": "galil",
+    "Carmel": "carmel",
+    "Chalutzim 1": "chalutzim-1",
+    "Chalutzim 2": "chalutzim-2",
+    "Nitzanim": "nitzanim"
+  }
+}

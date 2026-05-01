@@ -57,4 +57,17 @@ export interface GraphData {
   warnings?: string[]
   layout_positions?: Record<number, [number, number]>
   edge_type_counts?: Record<string, number>
+  /** Edges crossing the scope boundary when ?cross_scope=true. Frontend
+   *  renders these as ghosted to show context without polluting the layout. */
+  cross_scope_edges?: Array<{
+    source: number
+    target: number
+    weight: number
+    type: string
+    cross_scope: true
+  }>
+  /** Out-of-scope endpoints of cross_scope_edges. Frontend renders these as
+   *  ghosted-but-clickable nodes so users can click through to a potential
+   *  connection, while the layout still treats the in-scope set as the focus. */
+  cross_scope_nodes?: GraphNode[]
 }

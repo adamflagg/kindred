@@ -3,6 +3,7 @@
  * Extracted from SocialNetworkGraph.tsx - handles zoom and toggle controls
  */
 
+import type { ReactNode } from 'react'
 import {
   Download,
   Eye,
@@ -37,6 +38,8 @@ export interface GraphControlsProps {
   onFit: () => void
   /** Optional download-as-PNG handler. Receives the mode the user picked. */
   onDownload?: (mode: 'fit' | 'viewport') => void
+  /** Optional filter button slot */
+  filterButton?: ReactNode
 }
 
 export default function GraphControls({
@@ -50,6 +53,7 @@ export default function GraphControls({
   onZoomOut,
   onFit,
   onDownload,
+  filterButton,
 }: GraphControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -80,6 +84,9 @@ export default function GraphControls({
       >
         <HelpCircle className="h-5 w-5 sm:h-4 sm:w-4" />
       </button>
+
+      {/* Filter Button Slot */}
+      {filterButton}
 
       {/* Zoom Controls - Grouped for better touch targets */}
       <div className="border-border bg-background flex items-center rounded-xl border">

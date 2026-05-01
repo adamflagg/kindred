@@ -8,7 +8,6 @@ import BubbleSets from 'cytoscape-bubblesets'
 import cytoscapeSvg from 'cytoscape-svg'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
-import { useSocialGraphData } from '../hooks/useSocialGraphData'
 import { Network } from 'lucide-react'
 import { QueryGuard } from './QueryGuard'
 import CamperDetailsPanel from './CamperDetailsPanel'
@@ -30,6 +29,10 @@ import {
   type PopperRef,
 } from './graph'
 import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
+import { useGraphFilter } from '../hooks/useGraphFilter'
+import { useScopedGraphData } from '../hooks/useScopedGraphData'
+import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
+import { type BunkSummary } from './graph/graphFilter'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -94,8 +97,33 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
 
-  // Fetch graph and bunk data using custom hooks
-  const { data: graphData, isLoading, error } = useSocialGraphData(sessionCmId)
+  // Bunk roster (used by the filter picker and as a label fallback). Fetched
+  // independently of the scoped graph so the picker stays populated even when
+  // the graph is mid-fetch.
+  const { data: bunksData } = useBunkNames(sessionCmId, true)
+  const allBunks: BunkSummary[] = useMemo(() => {
+    if (!bunksData) return []
+    return Object.entries(bunksData).map(([id, name]) => ({
+      cmId: Number(id),
+      name: String(name),
+    }))
+  }, [bunksData])
+
+  // Filter state from URL.
+  const {
+    filter,
+    addUnit,
+    removeUnit,
+    addBunk,
+    removeBunk,
+    setEdgeMode,
+    clear: clearFilter,
+  } = useGraphFilter(allBunks)
+
+  // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
+  // same unscoped path as before. When filter is active, server returns a
+  // subgraph and runs fresh fcose layout on just the in-scope nodes.
+  const { data: graphData, isLoading, error } = useScopedGraphData(sessionCmId, filter)
 
   // Compute the set of grades present in the current data for the legend
   const existingGrades = useMemo(() => {
@@ -106,7 +134,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }
     return grades.size > 0 ? grades : undefined
   }, [graphData])
-  const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
+
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
 
   // selectedNodeId drives the camper detail panel (#35)
 
@@ -173,12 +203,19 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     cyRef.current = cy
 
-    // Create graph elements using extracted utility
+    // Create graph elements using extracted utility. When the user has
+    // toggled "Show cross-scope edges", the API returns the boundary edges
+    // and their out-of-scope endpoint nodes as separate lists — thread both
+    // through so the renderer can ghost them (edge[?cross_scope] for edges,
+    // node[?cross_scope] for nodes), and the ghost campers stay clickable
+    // so users can open the detail panel for potential connections.
     const { parentNodes, nodes, edges } = createGraphElements(
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      SHOW_EDGES
+      SHOW_EDGES,
+      graphData.cross_scope_edges as Parameters<typeof createGraphElements>[4],
+      graphData.cross_scope_nodes as Parameters<typeof createGraphElements>[5]
     )
 
     // Single-shot batched add. The previous RAF-chunked staging approach added
@@ -575,7 +612,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 : 'card-lodge'
             )}
           >
-            <div className="border-border relative z-20 border-b px-4 py-2">
+            <div className="border-border relative z-30 border-b px-4 py-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-display text-foreground flex min-w-0 shrink items-center gap-2 font-semibold">
                   <Network className="text-primary h-5 w-5 shrink-0" />
@@ -622,6 +659,31 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   onZoomOut={handleZoomOut}
                   onFit={handleFit}
                   onDownload={handleDownload}
+                  filterButton={
+                    <div className="relative">
+                      <GraphFilterButton
+                        ref={filterButtonRef}
+                        count={filter.units.length + filter.bunks.length}
+                        open={filterOpen}
+                        onToggle={() => setFilterOpen((v) => !v)}
+                      />
+                      <GraphFilterPopover
+                        open={filterOpen}
+                        onClose={() => setFilterOpen(false)}
+                        triggerRef={filterButtonRef}
+                        selectedUnits={filter.units}
+                        selectedBunks={filter.bunks}
+                        allBunks={allBunks}
+                        edgeMode={filter.edgeMode}
+                        onAddUnit={addUnit}
+                        onRemoveUnit={removeUnit}
+                        onAddBunk={addBunk}
+                        onRemoveBunk={removeBunk}
+                        onSetEdgeMode={setEdgeMode}
+                        onClear={clearFilter}
+                      />
+                    </div>
+                  }
                 />
               </div>
             </div>
@@ -651,13 +713,19 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 </div>
               )}
 
+              <GraphFilterStatus
+                unitCount={filter.units.length}
+                bunkCount={filter.bunks.length}
+                onClick={() => setFilterOpen(true)}
+              />
+
               <GraphLegend {...(existingGrades ? { existingGrades } : {})} />
             </div>
 
             {showHelp && <GraphHelp />}
           </div>
 
-          {/* Camper detail panel — opens when a node is tapped (#35) */}
+          {/* Camper detail panel — opens when a node is tapped (#35). */}
           {selectedNodeId != null && (
             <CamperDetailsPanel
               camperId={selectedNodeId.toString()}

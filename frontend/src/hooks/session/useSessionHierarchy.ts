@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { pb } from '../../lib/pocketbase'
 import { useAuth } from '../../contexts/AuthContext'
 import { useYear } from '../useCurrentYear'
@@ -98,6 +98,22 @@ export function shouldShowAgArea(agSessions: Session[], isViewingMainSession: bo
   return agSessions.length > 0 && isViewingMainSession
 }
 
+/**
+ * Build the redirect target when normalizing a numeric session id to a friendly
+ * URL slug. Preserves the current location.search so deep-linked filter state
+ * (e.g. ?units=galil&bunks=b-9) survives the replace-redirect.
+ */
+export function buildFriendlyRedirectTarget(args: {
+  friendlyUrl: string
+  tabPath: string
+  search: string
+}): string {
+  const { friendlyUrl, tabPath, search } = args
+  const tail = tabPath ? `/${tabPath}` : '/board'
+  const query = search && search !== '?' ? search : ''
+  return `/summer/session/${friendlyUrl}${tail}${query}`
+}
+
 export interface UseSessionHierarchyOptions {
   /** Session ID from URL (can be friendly URL or numeric ID) */
   sessionId: string | undefined
@@ -131,6 +147,7 @@ export function useSessionHierarchy(
 ): UseSessionHierarchyResult {
   const { sessionId, tabPath, enableRedirects = true } = options
   const navigate = useNavigate()
+  const location = useLocation()
   const currentYear = useYear()
   const { isLoading } = useAuth()
   const [selectedSession, setSelectedSession] = useState<string>('')
@@ -231,15 +248,19 @@ export function useSessionHierarchy(
     }
   }
 
-  // Redirect numeric IDs to friendly URLs
+  // Redirect numeric IDs to friendly URLs. Preserve location.search so
+  // deep-linked filter state (e.g. ?units=...&bunks=...) survives the replace.
   useEffect(() => {
     if (enableRedirects && session && sessionId && isNumericSessionId(sessionId)) {
       const friendlyUrl = sessionNameToUrl(session.name)
-      void navigate(`/summer/session/${friendlyUrl}${tabPath ? `/${tabPath}` : '/board'}`, {
-        replace: true,
+      const target = buildFriendlyRedirectTarget({
+        friendlyUrl,
+        tabPath: tabPath ?? '',
+        search: location.search,
       })
+      void navigate(target, { replace: true })
     }
-  }, [enableRedirects, session, sessionId, tabPath, navigate])
+  }, [enableRedirects, session, sessionId, tabPath, location.search, navigate])
 
   // Redirect to default tab if no tab specified
   useEffect(() => {

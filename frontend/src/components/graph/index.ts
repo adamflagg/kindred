@@ -52,3 +52,6 @@ export {
   type FcoseOptionsParams,
   type SetupEventHandlersOptions,
 } from './graphLayout'
+
+// Filter components
+export * from './filter'

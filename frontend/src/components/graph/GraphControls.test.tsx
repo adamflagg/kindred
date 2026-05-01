@@ -98,6 +98,24 @@ describe('GraphControls rendering', () => {
     expect(screen.queryByText(/all connections/i)).not.toBeInTheDocument()
   })
 
+  it('renders filterButton slot when provided', () => {
+    render(
+      <GraphControls
+        showLabels={true}
+        onToggleLabels={() => {}}
+        showHelp={false}
+        onToggleHelp={() => {}}
+        isExpanded={false}
+        onToggleExpand={() => {}}
+        onZoomIn={() => {}}
+        onZoomOut={() => {}}
+        onFit={() => {}}
+        filterButton={<button>FilterSlot</button>}
+      />
+    )
+    expect(screen.getByRole('button', { name: /FilterSlot/i })).toBeInTheDocument()
+  })
+
   describe('download dropdown', () => {
     it('renders the download trigger when onDownload is provided', () => {
       render(<GraphControls {...baseProps} onDownload={vi.fn()} />)

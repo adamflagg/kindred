@@ -42,6 +42,48 @@ describe('getCytoscapeStyles', () => {
     const parentStyle = styles.find((s) => s.selector === 'node[isBunkParent]')
     expect(parentStyle).toBeDefined()
   })
+
+  it('includes scope-hidden class selector with opacity 0', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const hidden = styles.find((s) => s.selector === '.scope-hidden')
+    expect(hidden).toBeDefined()
+    const style = hidden?.style as Record<string, unknown> | undefined
+    expect(style?.['opacity']).toBe(0)
+    expect(style?.['events']).toBe('no')
+    expect(style?.['transition-property']).toContain('opacity')
+  })
+
+  it('includes scope-ghost class selector with reduced opacity', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const ghost = styles.find((s) => s.selector === '.scope-ghost')
+    expect(ghost).toBeDefined()
+    const style = ghost?.style as Record<string, unknown> | undefined
+    expect(style?.['opacity']).toBe(0.35)
+    expect(style?.['events']).toBe('no')
+  })
+
+  it('renders edges with cross_scope=true as ghosted (reduced opacity, dashed line)', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const ghostEdge = styles.find((s) => s.selector === 'edge[?cross_scope]')
+    expect(ghostEdge).toBeDefined()
+    const style = ghostEdge?.style as Record<string, unknown> | undefined
+    expect(style?.['opacity']).toBeLessThan(1)
+    // events: 'no' so cross-scope edges aren't selectable / hoverable, matching .scope-ghost.
+    expect(style?.['events']).toBe('no')
+  })
+
+  it('renders ghost nodes (cross_scope=true) at reduced background-opacity but still clickable', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const ghostNode = styles.find((s) => s.selector === 'node[?cross_scope]:childless')
+    expect(ghostNode).toBeDefined()
+    const style = ghostNode?.style as Record<string, unknown> | undefined
+    // background-opacity (not opacity) is what the rule sets — keeps the
+    // node body ghosted while leaving the label/border at full strength.
+    expect(style?.['background-opacity']).toBeLessThan(1)
+    // events must NOT be 'no' — these nodes need to remain clickable so users
+    // can open the detail panel for potential connections.
+    expect(style?.['events']).not.toBe('no')
+  })
 })
 
 describe('createGraphElements', () => {
@@ -286,6 +328,68 @@ describe('createGraphElements', () => {
     expect(out).toHaveLength(1)
     expect(out[0]?.data.is_reciprocal).toBe(false)
     expect(out[0]?.data.multi).toBeUndefined()
+  })
+
+  it('emits cross-scope edges + ghost nodes with cross_scope=true so the renderer can ghost them', () => {
+    const inScope: GraphEdgeData[] = [
+      { source: 1, target: 2, type: 'request', priority: 1, confidence: 0.9, reciprocal: false },
+    ]
+    const cross = [
+      { source: 1, target: 99, type: 'request', weight: 1, cross_scope: true as const },
+    ]
+    const ghostNodes: GraphNodeData[] = [
+      {
+        id: 99,
+        name: 'Riley Sam',
+        grade: 6,
+        centrality: 0,
+        clustering: 0,
+        satisfaction_status: 'no_requests',
+        bunk_cm_id: 999,
+        community: 0,
+      },
+    ]
+    const { edges } = createGraphElements(mockNodes, inScope, mockBunksData, {
+      request: true,
+      historical: true,
+      sibling: true,
+      school: true,
+      cross_scope: true,
+    })
+    // Without cross-scope edges threaded through, only in-scope ones show.
+    expect(edges).toHaveLength(1)
+
+    const result = createGraphElements(
+      mockNodes,
+      inScope,
+      mockBunksData,
+      { request: true, historical: true, sibling: true, school: true, cross_scope: true },
+      cross,
+      ghostNodes
+    )
+    expect(result.edges).toHaveLength(2)
+    const ghostEdge = expectDefined(
+      result.edges.find((e) => e.data.target === '99'),
+      'cross-scope edge'
+    )
+    expect(ghostEdge.data.cross_scope).toBe(true)
+    expect(ghostEdge.data.edge_type).toBe('request')
+
+    // The ghost camper node is present and tagged cross_scope so it can be styled
+    // as a ghost — but it's still a normal node so clicks open the detail panel.
+    const ghostCamper = expectDefined(
+      result.nodes.find((n) => n.data.id === '99'),
+      'ghost camper node'
+    )
+    expect(ghostCamper.data.cross_scope).toBe(true)
+    expect(ghostCamper.data.name).toBe('Riley Sam')
+
+    // Their bunk gets a parent compound too, also tagged cross_scope.
+    const ghostParent = expectDefined(
+      result.parentNodes.find((p) => p.data.id === 'bunk-999'),
+      'ghost bunk parent'
+    )
+    expect(ghostParent.data.cross_scope).toBe(true)
   })
 
   it('passes request_type from edge data to EdgeElement so styles can color negative requests differently', () => {
