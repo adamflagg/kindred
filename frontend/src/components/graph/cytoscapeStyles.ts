@@ -339,8 +339,12 @@ export function createGraphElements(
     },
   }))
 
-  // Filter and create edges based on visibility settings
+  // Filter and create edges based on visibility settings.
+  // Sibling edges are stripped client-side as a defensive measure — the
+  // sibling edge type is being removed end-to-end (see follow-up issue);
+  // this filter unblocks the visual change while the API is updated.
   const visibleEdges = edgeData.filter((edge) => {
+    if (edge.type === 'sibling') return false
     const edgeType = edge.type as keyof ShowEdgesSettings
     return showEdges[edgeType] !== false
   })

@@ -316,6 +316,27 @@ describe('createGraphElements', () => {
     expect(out[0]?.data.request_type).toBe('not_bunk_with')
   })
 
+  it('filters out sibling edges defensively even if the API still emits them', () => {
+    const edges: GraphEdgeData[] = [
+      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'bunk_with',
+      },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      sibling: true,
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.edge_type).toBe('request')
+  })
+
   it('keeps a single one-way edge unflagged (is_reciprocal falsy, no multi)', () => {
     // Cytoscape's edge[?is_reciprocal] selector matches truthy values; either
     // false or undefined skips the bold-solid override. We forward the
