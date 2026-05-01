@@ -523,6 +523,20 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current?.fit(undefined, 50)
   }
 
+  // Mirrors the bunk-graph download: rasterizes the cytoscape canvas at 2x
+  // on a white background and triggers a save dialog via a transient anchor.
+  const handleDownload = () => {
+    const cy = cyRef.current
+    if (!cy || cy.destroyed()) return
+    const png = cy.png({ output: 'blob', bg: 'white', scale: 2, full: true })
+    const url = URL.createObjectURL(png)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `social_network_session_${sessionCmId}.png`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleExpandToggle = () => {
     setIsExpanded(!isExpanded)
   }
@@ -602,6 +616,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   onZoomIn={handleZoomIn}
                   onZoomOut={handleZoomOut}
                   onFit={handleFit}
+                  onDownload={handleDownload}
                 />
               </div>
             </div>

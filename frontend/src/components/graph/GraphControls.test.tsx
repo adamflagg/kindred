@@ -97,4 +97,25 @@ describe('GraphControls rendering', () => {
     expect(screen.queryByText(/ego network/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/all connections/i)).not.toBeInTheDocument()
   })
+
+  describe('download button', () => {
+    it('renders a download button when onDownload is provided', () => {
+      render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
+      expect(screen.getByTitle(/download as png/i)).toBeInTheDocument()
+    })
+
+    it('does not render a download button when onDownload is omitted', () => {
+      render(<GraphControls {...baseProps} />)
+      expect(screen.queryByTitle(/download as png/i)).not.toBeInTheDocument()
+    })
+
+    it('invokes onDownload when the download button is clicked', async () => {
+      const onDownload = vi.fn()
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      render(<GraphControls {...baseProps} onDownload={onDownload} />)
+      await user.click(screen.getByTitle(/download as png/i))
+      expect(onDownload).toHaveBeenCalledTimes(1)
+    })
+  })
 })

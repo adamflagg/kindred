@@ -3,7 +3,16 @@
  * Extracted from SocialNetworkGraph.tsx - handles zoom and toggle controls
  */
 
-import { Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Minimize2, HelpCircle } from 'lucide-react'
+import {
+  Download,
+  Eye,
+  EyeOff,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  HelpCircle,
+} from 'lucide-react'
 import clsx from 'clsx'
 
 export interface GraphControlsProps {
@@ -25,6 +34,8 @@ export interface GraphControlsProps {
   onZoomOut: () => void
   /** Fit graph to container */
   onFit: () => void
+  /** Optional download-as-PNG handler. When omitted, the download button is hidden. */
+  onDownload?: () => void
 }
 
 export default function GraphControls({
@@ -37,6 +48,7 @@ export default function GraphControls({
   onZoomIn,
   onZoomOut,
   onFit,
+  onDownload,
 }: GraphControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -92,6 +104,17 @@ export default function GraphControls({
           <ZoomIn className="h-5 w-5 sm:h-4 sm:w-4" />
         </button>
       </div>
+
+      {/* Download as PNG — only rendered when a handler is wired in */}
+      {onDownload && (
+        <button
+          onClick={onDownload}
+          className="bg-muted hover:bg-muted/80 flex min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-xl p-2.5 transition-colors sm:p-2"
+          title="Download as PNG"
+        >
+          <Download className="h-5 w-5 sm:h-4 sm:w-4" />
+        </button>
+      )}
 
       {/* Expand Toggle */}
       <button
