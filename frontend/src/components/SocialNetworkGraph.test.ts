@@ -61,10 +61,10 @@ describe('SocialNetworkGraph safety guards', () => {
 describe('SocialNetworkGraph header layout — slim single row', () => {
   const source = readFileSync(resolve(__dirname, './SocialNetworkGraph.tsx'), 'utf-8')
 
-  it('initialises showEdges with request and sibling both true (always-on)', () => {
-    // request and sibling must be present and default to true
+  it('initialises showEdges with request true (always-on)', () => {
+    // request must be present and default to true. Sibling has been removed.
     expect(source).toContain('request: true')
-    expect(source).toContain('sibling: true')
+    expect(source).not.toContain('sibling: true')
   })
 
   it('does NOT render <EdgeFilters> (edge filter section removed)', () => {

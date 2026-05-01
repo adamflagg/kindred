@@ -35,7 +35,6 @@ export interface GraphEdgeData {
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
   request: boolean
-  sibling: boolean
   [key: string]: boolean
 }
 

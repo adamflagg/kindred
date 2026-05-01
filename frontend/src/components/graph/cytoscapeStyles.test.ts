@@ -104,9 +104,6 @@ describe('createGraphElements', () => {
   it('creates parent nodes for bunks', () => {
     const { parentNodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     const bunkParent = expectDefined(
       parentNodes.find((p) => p.data.id === 'bunk-100'),
@@ -136,7 +133,7 @@ describe('createGraphElements', () => {
       [camper(1, 100), camper(2, 101), camper(3, 102), camper(4, 103)],
       [],
       { 100: 'B-1', 101: 'B-2', 102: 'G-1', 103: 'G-2' },
-      { request: true, historical: true, sibling: true, school: true }
+      { request: true }
     )
     expect(parentNodes.every((p) => p.data.isBunkParent)).toBe(true)
     expect(parentNodes.every((p) => p.data.id.startsWith('bunk-'))).toBe(true)
@@ -145,9 +142,6 @@ describe('createGraphElements', () => {
   it('creates camper nodes with correct data', () => {
     const { nodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     expect(nodes).toHaveLength(3)
 
@@ -163,9 +157,6 @@ describe('createGraphElements', () => {
   it('assigns parent to nodes with bunk_cm_id', () => {
     const { nodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     const alice = expectDefined(
@@ -181,25 +172,20 @@ describe('createGraphElements', () => {
     expect(charlie.data.parent).toBeUndefined()
   })
 
-  it('filters edges based on showEdges settings', () => {
+  it('filters out request edges when showEdges.request is false', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
-      request: true,
-      historical: false,
-      sibling: true,
-      school: true,
+      request: false,
     })
 
+    // The fixture has one 'request' edge (filtered out) and one 'historical'
+    // edge (passes through — type isn't in showEdges, so it isn't filtered).
     expect(edges).toHaveLength(1)
-    const edge = expectDefined(edges[0], 'first edge')
-    expect(edge.data.edge_type).toBe('request')
+    expect(edges[0]?.data.edge_type).toBe('historical')
   })
 
   it('includes all edges when all types are enabled', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     expect(edges).toHaveLength(2)
@@ -208,9 +194,6 @@ describe('createGraphElements', () => {
   it('creates edges with correct data mapping', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     const requestEdge = expectDefined(
@@ -248,7 +231,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      sibling: true,
     })
     expect(out).toHaveLength(2)
     expect(out.every((e) => e.data.multi === true)).toBe(true)
@@ -277,7 +259,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      sibling: true,
     })
     expect(out).toHaveLength(1)
     const edge = expectDefined(out[0], 'collapsed edge')
@@ -309,7 +290,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      sibling: true,
     })
     expect(out).toHaveLength(1)
     expect(out[0]?.data.is_reciprocal).toBe(true)
@@ -331,7 +311,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      sibling: true,
     })
     expect(out).toHaveLength(1)
     expect(out[0]?.data.edge_type).toBe('request')
@@ -355,7 +334,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      sibling: true,
     })
     expect(out).toHaveLength(1)
     expect(out[0]?.data.is_reciprocal).toBeFalsy()
@@ -385,9 +363,6 @@ describe('createGraphElements', () => {
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     expect(out).toHaveLength(2)
     const negative = expectDefined(
@@ -419,9 +394,6 @@ describe('createGraphElements', () => {
     ]
     const { nodes } = createGraphElements(nodesWithSplits, [], mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     const alice = expectDefined(
       nodes.find((n) => n.data.id === '1'),
