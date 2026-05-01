@@ -212,6 +212,104 @@ describe('readLabelLayer', () => {
   })
 })
 
+describe('composite SVG layer order', () => {
+  /**
+   * Bubble layer (bunk + unit boundaries) must paint *behind* cyInner (camper
+   * nodes/edges/labels) so unit bubble strokes don't cut through camper names.
+   * This matches the live view, where cytoscape-bubblesets renders below
+   * cytoscape's canvas. SVG paints back-to-front, so order in the document =
+   * order in paint.
+   */
+  let container: HTMLElement
+  let capturedSvg: string
+
+  beforeEach(() => {
+    capturedSvg = ''
+    container = document.createElement('div')
+    Object.defineProperty(container, 'getBoundingClientRect', {
+      value: () =>
+        ({
+          left: 0,
+          top: 0,
+          right: 800,
+          bottom: 600,
+          width: 800,
+          height: 600,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    })
+    // Add a bubblesets-style wrapper svg with one identifiable child path so
+    // the bubble layer in the composite is non-empty and detectable.
+    const bubbleSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    bubbleSvg.innerHTML = '<path data-bubble-marker="1" d="M0 0"/>'
+    container.appendChild(bubbleSvg)
+    document.body.appendChild(container)
+
+    if (typeof URL.createObjectURL !== 'function') {
+      Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:test') })
+      Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn() })
+    }
+    // Capture the composite SVG by intercepting the Blob constructor input.
+    const OriginalBlob = global.Blob
+    Object.defineProperty(global, 'Blob', {
+      writable: true,
+      value: class FakeBlob extends OriginalBlob {
+        constructor(parts: BlobPart[], opts?: BlobPropertyBag) {
+          super(parts, opts)
+          if (opts?.type?.includes('svg')) {
+            capturedSvg = parts.map(String).join('')
+          }
+        }
+      },
+    })
+    Object.defineProperty(global, 'Image', {
+      writable: true,
+      value: class FakeImage {
+        onload: (() => void) | null = null
+        onerror: (() => void) | null = null
+        set src(_v: string) {
+          queueMicrotask(() => this.onload?.())
+        }
+      },
+    })
+    HTMLCanvasElement.prototype.toBlob = function (cb: BlobCallback) {
+      cb(new Blob(['fake-png'], { type: 'image/png' }))
+    }
+    HTMLCanvasElement.prototype.getContext = function (contextId: string) {
+      if (contextId === '2d') {
+        return { drawImage: vi.fn() } as unknown as CanvasRenderingContext2D
+      }
+      return null
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
+
+  function makeFakeCy(svg: string) {
+    return {
+      svg: vi.fn(() => svg),
+      fit: vi.fn(),
+      zoom: vi.fn(() => 1),
+      pan: vi.fn(() => ({ x: 0, y: 0 })),
+      destroyed: vi.fn(() => false),
+    } as unknown as Parameters<typeof exportSessionGraphPng>[0]
+  }
+
+  it('places bubble layer before cyInner so bubbles paint behind camper names', async () => {
+    const cyMarker = '<circle data-cy-marker="1" r="5"/>'
+    const cy = makeFakeCy(`<svg width="100" height="100">${cyMarker}</svg>`)
+    await exportSessionGraphPng(cy, container, 'viewport')
+
+    const bubbleIdx = capturedSvg.indexOf('data-bubble-marker')
+    const cyIdx = capturedSvg.indexOf('data-cy-marker')
+
+    expect(bubbleIdx).toBeGreaterThan(-1)
+    expect(cyIdx).toBeGreaterThan(-1)
+    // Bubble layer must appear earlier in the document than cytoscape content.
+    expect(bubbleIdx).toBeLessThan(cyIdx)
+  })
+})
+
 describe('exportSessionGraphPng - viewport mode', () => {
   let container: HTMLElement
 

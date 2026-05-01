@@ -1,11 +1,15 @@
 /**
  * PNG export for the session social network graph.
  *
- * Composes three layers — cytoscape (camper nodes + edges), the
- * cytoscape-bubblesets <svg> overlay (bunk + unit boundaries), and the
- * popper-positioned bunk/unit label divs — into a single SVG document, then
- * rasterizes that document to PNG. The intermediate is vector, so the final
- * raster step stays sharp at any chosen scale.
+ * Composes three layers — the cytoscape-bubblesets <svg> overlay (bunk + unit
+ * boundaries), cytoscape (camper nodes + edges), and the popper-positioned
+ * bunk/unit label divs — into a single SVG document, then rasterizes that
+ * document to PNG. The intermediate is vector, so the final raster step stays
+ * sharp at any chosen scale.
+ *
+ * Paint order (back → front): white bg, bubbles, cytoscape nodes/edges,
+ * unit/bunk labels. Bubbles render *behind* camper nodes so their stroked
+ * edges don't cut through camper names — matching how the live view stacks.
  */
 import type { Core } from 'cytoscape'
 
@@ -214,7 +218,10 @@ export async function exportSessionGraphPng(
     const width = Math.round(containerRect.width)
     const height = Math.round(containerRect.height)
 
-    const cyInner = stripSvgWrapper(cyWithSvg.svg({ full: false, bg: 'white' }))
+    // No `bg` here: cytoscape-svg paints `bg` as a full-bleed rect inside its
+    // SVG output, which would cover the bubble layer beneath. The composite's
+    // own white background rect handles the backdrop.
+    const cyInner = stripSvgWrapper(cyWithSvg.svg({ full: false }))
 
     const bubbleTransform = readBubbleTransform(container)
     const bubbleSvg = container.querySelector('svg')
@@ -225,12 +232,15 @@ export async function exportSessionGraphPng(
 
     const labelLayer = readLabelLayer(container)
 
+    // Bubbles paint before cyInner so unit/bunk boundary strokes sit *behind*
+    // camper names rather than cutting through them. Label boxes paint last
+    // so they remain readable on top.
     const composite =
       `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" ` +
       `viewBox="0 0 ${width} ${height}">` +
       `<rect x="0" y="0" width="${width}" height="${height}" fill="white"/>` +
-      cyInner +
       bubbleLayer +
+      cyInner +
       labelLayer +
       `</svg>`
 
