@@ -4,6 +4,8 @@ import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
 import fcose from 'cytoscape-fcose'
 import BubbleSets from 'cytoscape-bubblesets'
+// @ts-expect-error - No types available for cytoscape-svg
+import cytoscapeSvg from 'cytoscape-svg'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
 import { useSocialGraphData } from '../hooks/useSocialGraphData'
@@ -38,6 +40,9 @@ if (!(globalThis as Record<symbol, boolean>)[EXTENSIONS_REGISTERED]) {
   }
   if (!cytoscape.prototype.bubbleSets) {
     cytoscape.use(BubbleSets)
+  }
+  if (!cytoscape.prototype.svg) {
+    cytoscape.use(cytoscapeSvg)
   }
   ;(globalThis as Record<symbol, boolean>)[EXTENSIONS_REGISTERED] = true
 }
@@ -523,6 +528,20 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current?.fit(undefined, 50)
   }
 
+  const handleDownload = async (mode: 'fit' | 'viewport') => {
+    const cy = cyRef.current
+    const container = containerRef.current
+    if (!cy || cy.destroyed() || !container) return
+    const { exportSessionGraphPng } = await import('./graph/graphPngExport')
+    const blob = await exportSessionGraphPng(cy, container, mode)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `social_network_session_${sessionCmId}.png`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleExpandToggle = () => {
     setIsExpanded(!isExpanded)
   }
@@ -602,6 +621,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   onZoomIn={handleZoomIn}
                   onZoomOut={handleZoomOut}
                   onFit={handleFit}
+                  onDownload={handleDownload}
                 />
               </div>
             </div>

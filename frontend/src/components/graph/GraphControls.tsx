@@ -3,8 +3,18 @@
  * Extracted from SocialNetworkGraph.tsx - handles zoom and toggle controls
  */
 
-import { Eye, EyeOff, ZoomIn, ZoomOut, Maximize2, Minimize2, HelpCircle } from 'lucide-react'
+import {
+  Download,
+  Eye,
+  EyeOff,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Minimize2,
+  HelpCircle,
+} from 'lucide-react'
 import clsx from 'clsx'
+import { useEffect, useRef, useState } from 'react'
 
 export interface GraphControlsProps {
   /** Whether labels are visible */
@@ -25,6 +35,8 @@ export interface GraphControlsProps {
   onZoomOut: () => void
   /** Fit graph to container */
   onFit: () => void
+  /** Optional download-as-PNG handler. Receives the mode the user picked. */
+  onDownload?: (mode: 'fit' | 'viewport') => void
 }
 
 export default function GraphControls({
@@ -37,6 +49,7 @@ export default function GraphControls({
   onZoomIn,
   onZoomOut,
   onFit,
+  onDownload,
 }: GraphControlsProps) {
   return (
     <div className="flex flex-wrap items-center gap-1 sm:gap-2">
@@ -93,6 +106,9 @@ export default function GraphControls({
         </button>
       </div>
 
+      {/* Download as PNG — only rendered when a handler is wired in */}
+      {onDownload && <DownloadMenu onSelect={onDownload} />}
+
       {/* Expand Toggle */}
       <button
         onClick={onToggleExpand}
@@ -110,6 +126,63 @@ export default function GraphControls({
           <Maximize2 className="h-5 w-5 sm:h-4 sm:w-4" />
         )}
       </button>
+    </div>
+  )
+}
+
+function DownloadMenu({ onSelect }: { onSelect: (mode: 'fit' | 'viewport') => void }) {
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e: MouseEvent) {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  function pick(mode: 'fit' | 'viewport') {
+    setOpen(false)
+    onSelect(mode)
+  }
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="bg-muted hover:bg-muted/80 flex min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-xl p-2.5 transition-colors sm:p-2"
+        title="Download as PNG"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Download className="h-5 w-5 sm:h-4 sm:w-4" />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="border-border bg-card shadow-lodge-md absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-xl border"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => pick('fit')}
+            className="hover:bg-muted text-foreground block w-full px-3 py-2 text-left text-sm"
+          >
+            Fit to graph
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => pick('viewport')}
+            className="hover:bg-muted text-foreground block w-full px-3 py-2 text-left text-sm"
+          >
+            Current view
+          </button>
+        </div>
+      )}
     </div>
   )
 }
