@@ -1494,7 +1494,7 @@ def test_validator_slice_classification(
         bunks=bunks,
         assignments=assignments,
         persons=persons,  # type: ignore[arg-type]
-        requests=[request],  # type: ignore[arg-type]
+        requests=[request],  # type: ignore[list-item]
     )
     stats = result.statistics
 
