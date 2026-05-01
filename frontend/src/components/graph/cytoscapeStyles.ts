@@ -369,11 +369,22 @@ export function createGraphElements(
   let edgeIndex = 0
 
   pairBuckets.forEach((bucket) => {
-    if (bucket.length === 2 && sameKind(bucket[0]!, bucket[1]!)) {
+    const [first, second] = bucket
+    // Only collapse when the two edges genuinely point opposite directions —
+    // guards against backend duplicates (e.g., two A→B edges) being misread
+    // as a mutual pair.
+    const isOppositeDirections =
+      bucket.length === 2 &&
+      first !== undefined &&
+      second !== undefined &&
+      first.source === second.target &&
+      first.target === second.source
+
+    if (isOppositeDirections && sameKind(first, second)) {
       // Same-type reciprocal pair — emit one edge with is_reciprocal: true.
       // Source/target come from the first edge; arrowheads are symmetric in
       // the stylesheet so the choice does not affect rendering.
-      const e = bucket[0]!
+      const e = first
       edges.push({
         data: {
           id: `edge-${edgeIndex++}`,

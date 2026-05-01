@@ -267,6 +267,39 @@ describe('createGraphElements', () => {
     expect(edge.data.request_type).toBe('bunk_with')
   })
 
+  it('does NOT collapse two same-direction duplicate edges (defensive against API bugs)', () => {
+    // Two A→B edges of the same kind aren't a mutual pair — only opposite
+    // directions count. Without this guard, backend duplicates would render
+    // as a phantom mutual relationship.
+    const edges: GraphEdgeData[] = [
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'bunk_with',
+      },
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'bunk_with',
+      },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+    })
+    expect(out).toHaveLength(2)
+    expect(out.every((e) => e.data.is_reciprocal !== true)).toBe(true)
+    // Both edges land in the multi branch since the bucket has 2 entries.
+    expect(out.every((e) => e.data.multi === true)).toBe(true)
+  })
+
   it('collapses a same-type reciprocal not_bunk_with pair', () => {
     const edges: GraphEdgeData[] = [
       {
@@ -336,7 +369,7 @@ describe('createGraphElements', () => {
       request: true,
     })
     expect(out).toHaveLength(1)
-    expect(out[0]?.data.is_reciprocal).toBeFalsy()
+    expect(out[0]?.data.is_reciprocal).toBe(false)
     expect(out[0]?.data.multi).toBeUndefined()
   })
 

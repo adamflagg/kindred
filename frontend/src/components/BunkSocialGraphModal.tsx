@@ -365,12 +365,17 @@ export default function BunkSocialGraphModal({
 
     cyRef.current = cy
 
-    // Convert graph data to Cytoscape format
+    // Convert graph data to Cytoscape format. Sibling edges no longer
+    // render here (see follow-up issue) — filter once and use the result
+    // for both the degree calculation and the edge rendering pass so the
+    // node status agrees with the visible graph.
+    const visibleGraphEdges = graphData.edges.filter((edge) => edge.type !== 'sibling')
+
     const elements: cytoscape.ElementDefinition[] = []
     const nodeDegrees: Record<string, number> = {}
 
     // Calculate node degrees first
-    graphData.edges.forEach((edge) => {
+    visibleGraphEdges.forEach((edge) => {
       const sourceId = `node-${edge.source}`
       const targetId = `node-${edge.target}`
       nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
@@ -438,43 +443,10 @@ export default function BunkSocialGraphModal({
       })
     })
 
-    // Process request edges. Sibling edges are filtered out — the sibling
-    // edge type is being removed end-to-end (see follow-up issue).
-
+    // Process request edges. The backend sends both directions of mutual
+    // requests; we keep both so reciprocal source-arrows render.
     let edgeIndex = 0
-
-    // First pass: Build complete edge map and detect edge types per pair
-    const edgesByKey: Record<string, GraphEdge> = {}
-    const nodePairEdgeTypes: Record<string, Set<string>> = {}
-
-    // Build complete edge map first
-    graphData.edges.forEach((edge) => {
-      if (edge.type === 'sibling') return
-      const directionalKey = `${edge.source}-${edge.target}-${edge.type}`
-      edgesByKey[directionalKey] = edge
-
-      // Track edge types per node pair
-      const pairKey = [edge.source, edge.target].sort().join('-')
-      nodePairEdgeTypes[pairKey] ??= new Set()
-      nodePairEdgeTypes[pairKey].add(edge.type)
-    })
-
-    // Note: We don't need to detect reciprocals - the backend already provides this information
-
-    // Third pass: Process edges
-    graphData.edges.forEach((edge) => {
-      // Sibling edges removed — defensive filter in case the API still emits them.
-      if (edge.type === 'sibling') return
-
-      // Note: We're NOT skipping duplicate request edges anymore
-      // The backend sends both directions of mutual requests and we need both
-      // to show reciprocal arrows
-
-      // Check if this node pair has multiple edge types
-      const pairKey = [edge.source, edge.target].sort().join('-')
-      const edgeTypes = nodePairEdgeTypes[pairKey]
-      const hasMultipleTypes = edgeTypes ? edgeTypes.size > 1 : false
-
+    visibleGraphEdges.forEach((edge) => {
       elements.push({
         group: 'edges',
         data: {
@@ -482,10 +454,8 @@ export default function BunkSocialGraphModal({
           id: `edge-${edgeIndex++}`, // Override with string version
           source: `node-${edge.source}`, // Override with string version
           target: `node-${edge.target}`, // Override with string version
-          // Use bezier curves when there are multiple edge types between nodes
-          curveStyle: hasMultipleTypes ? 'bezier' : 'straight',
+          curveStyle: 'straight',
           type: edge.type, // Ensure type is explicitly set
-          // Don't override reciprocal - it's already in ...edge
         },
       })
     })
