@@ -440,11 +440,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     })
   }, [bunksData])
 
-  // Filter orchestration was an in-place fade-and-fit pass; #30 replaces it
-  // with a server-driven scoped graph reload (fresh fcose layout on the
-  // subgraph). Until that lands, the picker is still wired but the graph
-  // doesn't react to filter changes.
-
   // Resize+fit the graph whenever the user toggles fullscreen. The init
   // effect's worker handler already does the initial resize+fit on first
   // load, so we skip the very first run of THIS effect (which fires on

@@ -18,7 +18,7 @@ from typing import Any, cast
 
 import networkx as nx
 
-from bunking.utils.units import get_bunks_in_unit
+from bunking.utils.units import UNIT_NAMES, get_bunks_in_unit, unit_to_slug
 
 
 def parse_scope_query(
@@ -51,11 +51,9 @@ def resolve_scope_bunk_ids(
     """
     in_scope: set[int] = set()
     bunk_names = [str(b.get("name", "")) for b in bunks]
+    bunk_by_name = {str(b.get("name", "")).lower(): b for b in bunks}
 
     for unit_slug in units:
-        # Find the canonical unit name whose slug matches
-        from bunking.utils.units import UNIT_NAMES, unit_to_slug
-
         unit_name = next(
             (u for u in UNIT_NAMES if unit_to_slug(u) == unit_slug),
             None,
@@ -70,11 +68,11 @@ def resolve_scope_bunk_ids(
                     in_scope.add(int(cm_id))
 
     for code in bunk_codes:
-        for bunk in bunks:
-            if str(bunk.get("name", "")).lower() == code:
-                cm_id = bunk.get("cm_id")
-                if cm_id is not None:
-                    in_scope.add(int(cm_id))
+        matched = bunk_by_name.get(code)
+        if matched is not None:
+            cm_id = matched.get("cm_id")
+            if cm_id is not None:
+                in_scope.add(int(cm_id))
 
     return in_scope
 

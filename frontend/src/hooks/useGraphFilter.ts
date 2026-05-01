@@ -82,13 +82,7 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
 
   const clear = useCallback(() => {
     setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('units')
-        next.delete('bunks')
-        next.delete('edges')
-        return next
-      },
+      (prev) => serializeFilterToSearchParams({ units: [], bunks: [], edgeMode: 'strict' }, prev),
       { replace: false }
     )
   }, [setSearchParams])

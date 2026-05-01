@@ -154,10 +154,7 @@ async def get_session_social_graph(
         unit_slugs, bunk_codes = parse_scope_query(units, bunks)
         scoped_cross_edges: list[dict[str, Any]] = []
         cross_scope_node_ids: set[int] = set()
-        # Hold the pre-scope graph reference so we can look up node data for
-        # out-of-scope endpoints below (graph itself gets replaced by the
-        # subgraph copy when scope is active).
-        full_graph = graph
+        pre_scope_graph = graph
         if unit_slugs or bunk_codes:
             session_bunks_resp = await asyncio.to_thread(
                 pb.collection(BUNKS).get_full_list,
@@ -217,29 +214,18 @@ async def get_session_social_graph(
                 )
             )
 
-        # Build cross-scope ghost nodes: out-of-scope endpoints of cross_scope_edges,
-        # returned so the frontend can render them as ghosted-but-clickable context.
-        # Sourced from the pre-scope graph so node data (bunk_cm_id, centrality, etc.)
-        # is available — the in-scope subgraph above strips them.
+        # Ghost nodes: out-of-scope endpoints of cross-scope edges. Node attrs
+        # (name, grade, bunk_cm_id, etc.) are stored in the graph by the builder.
         cross_nodes: list[SocialGraphNode] = []
         for node_id in cross_scope_node_ids:
-            if node_id not in full_graph.nodes:
+            if node_id not in pre_scope_graph.nodes:
                 continue
-            node_data = full_graph.nodes[node_id]
-            try:
-                person = await asyncio.to_thread(
-                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
-                )
-                name = f"{person.first_name} {person.last_name}"
-                grade = getattr(person, "grade", None)
-            except Exception:
-                name = f"Person {node_id}"
-                grade = None
+            node_data = pre_scope_graph.nodes[node_id]
             cross_nodes.append(
                 SocialGraphNode(
                     id=node_id,
-                    name=name,
-                    grade=grade,
+                    name=node_data.get("name", f"Person {node_id}"),
+                    grade=node_data.get("grade"),
                     bunk_cm_id=node_data.get("bunk_cm_id"),
                     centrality=node_data.get("centrality", 0.0),
                     clustering=node_data.get("clustering", 0.0),
