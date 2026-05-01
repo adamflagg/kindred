@@ -8,7 +8,6 @@ import BubbleSets from 'cytoscape-bubblesets'
 import cytoscapeSvg from 'cytoscape-svg'
 import { useYear } from '../hooks/useCurrentYear'
 import { useBunkNames } from '../hooks/useBunkNames'
-import { useSocialGraphData } from '../hooks/useSocialGraphData'
 import { Network } from 'lucide-react'
 import { QueryGuard } from './QueryGuard'
 import CamperDetailsPanel from './CamperDetailsPanel'
@@ -31,8 +30,9 @@ import {
 } from './graph'
 import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
 import { useGraphFilter } from '../hooks/useGraphFilter'
+import { useScopedGraphData } from '../hooks/useScopedGraphData'
 import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
-import { applyFilterToGraph, buildBunkUnitMap, type BunkSummary } from './graph/graphFilter'
+import { type BunkSummary } from './graph/graphFilter'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -97,8 +97,33 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
 
-  // Fetch graph and bunk data using custom hooks
-  const { data: graphData, isLoading, error } = useSocialGraphData(sessionCmId)
+  // Bunk roster (used by the filter picker and as a label fallback). Fetched
+  // independently of the scoped graph so the picker stays populated even when
+  // the graph is mid-fetch.
+  const { data: bunksData } = useBunkNames(sessionCmId, true)
+  const allBunks: BunkSummary[] = useMemo(() => {
+    if (!bunksData) return []
+    return Object.entries(bunksData).map(([id, name]) => ({
+      cmId: Number(id),
+      name: String(name),
+    }))
+  }, [bunksData])
+
+  // Filter state from URL.
+  const {
+    filter,
+    addUnit,
+    removeUnit,
+    addBunk,
+    removeBunk,
+    setEdgeMode,
+    clear: clearFilter,
+  } = useGraphFilter(allBunks)
+
+  // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
+  // same unscoped path as before. When filter is active, server returns a
+  // subgraph and runs fresh fcose layout on just the in-scope nodes.
+  const { data: graphData, isLoading, error } = useScopedGraphData(sessionCmId, filter)
 
   // Compute the set of grades present in the current data for the legend
   const existingGrades = useMemo(() => {
@@ -109,43 +134,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }
     return grades.size > 0 ? grades : undefined
   }, [graphData])
-  const { data: bunksData } = useBunkNames(sessionCmId, !!graphData)
-
-  // Build a stable bunk roster for the filter (cmId + name pairs).
-  const allBunks: BunkSummary[] = useMemo(() => {
-    if (!bunksData) return []
-    return Object.entries(bunksData).map(([id, name]) => ({
-      cmId: Number(id),
-      name: String(name),
-    }))
-  }, [bunksData])
-
-  const {
-    filter,
-    isFilterActive,
-    addUnit,
-    removeUnit,
-    addBunk,
-    removeBunk,
-    setEdgeMode,
-    clear: clearFilter,
-  } = useGraphFilter(allBunks)
 
   const [filterOpen, setFilterOpen] = useState(false)
   const filterButtonRef = useRef<HTMLButtonElement>(null)
-  const bunkUnitMap = useMemo(() => buildBunkUnitMap(allBunks), [allBunks])
-
-  // Cache full-session positions on first layout, so clearing the filter
-  // can restore them without re-running the worker.
-  const originalPositionsRef = useRef<Record<string, { x: number; y: number }> | null>(null)
-  // Boolean signal that flips when the snapshot above is taken. The filter
-  // orchestration effect needs this to gate on layout readiness — a ref
-  // write alone doesn't re-trigger React, so a URL with a pre-existing
-  // filter would otherwise never apply on first load.
-  const [layoutSnapshotted, setLayoutSnapshotted] = useState(false)
-
-  const prefersReducedMotion =
-    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   // selectedNodeId drives the camper detail panel (#35)
 
@@ -160,23 +151,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       .filter((n) => n.bunk_cm_id === selectedNode.bunk_cm_id)
       .map((n) => ({ cmId: n.id, grade: n.grade }))
   }, [graphData, selectedNodeId])
-
-  const selectedNode = useMemo(
-    () =>
-      selectedNodeId != null && graphData
-        ? graphData.nodes.find((n) => n.id === selectedNodeId)
-        : null,
-    [graphData, selectedNodeId]
-  )
-  const selectedOutOfScope = useMemo(() => {
-    if (!selectedNode || !isFilterActive) return null
-    const inScope =
-      (selectedNode.bunk_cm_id != null && filter.bunks.includes(selectedNode.bunk_cm_id)) ||
-      (selectedNode.bunk_cm_id != null &&
-        filter.units.includes(bunkUnitMap.get(selectedNode.bunk_cm_id) ?? ''))
-    if (inScope) return null
-    return { camperName: selectedNode.name, onClearFilter: clearFilter }
-  }, [selectedNode, isFilterActive, filter, bunkUnitMap, clearFilter])
 
   // Handle escape key for expanded mode
   useEffect(() => {
@@ -205,12 +179,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // graph data — a major source of stale-token spinner stalls under
     // StrictMode (where each effect already double-invokes).
 
-    // New cy instance is about to be built — invalidate any stale position
-    // snapshot from the previous graphData so the filter "clear" path
-    // re-snapshots after the next layout completes.
-    originalPositionsRef.current = null
-    setLayoutSnapshotted(false)
-
     // Destroy existing instance when switching views
     if (cyRef.current) {
       if (layoutRef.current && typeof layoutRef.current.stop === 'function') {
@@ -235,12 +203,19 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
     cyRef.current = cy
 
-    // Create graph elements using extracted utility
+    // Create graph elements using extracted utility. When the user has
+    // toggled "Show cross-scope edges", the API returns the boundary edges
+    // and their out-of-scope endpoint nodes as separate lists — thread both
+    // through so the renderer can ghost them (edge[?cross_scope] for edges,
+    // node[?cross_scope] for nodes), and the ghost campers stay clickable
+    // so users can open the detail panel for potential connections.
     const { parentNodes, nodes, edges } = createGraphElements(
       graphData.nodes as Parameters<typeof createGraphElements>[0],
       graphData.edges as Parameters<typeof createGraphElements>[1],
       bunksData,
-      SHOW_EDGES
+      SHOW_EDGES,
+      graphData.cross_scope_edges as Parameters<typeof createGraphElements>[4],
+      graphData.cross_scope_nodes as Parameters<typeof createGraphElements>[5]
     )
 
     // Single-shot batched add. The previous RAF-chunked staging approach added
@@ -272,16 +247,6 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       // don't visibly shift after the initial paint.
       const onLayoutComplete = () => {
         setIsComputingLayout(false)
-        // Snapshot full-session positions once so the "clear filter" path
-        // can restore them without re-running the worker.
-        if (!originalPositionsRef.current) {
-          const snap: Record<string, { x: number; y: number }> = {}
-          cy.nodes(':childless').forEach((n) => {
-            snap[n.id()] = { ...n.position() }
-          })
-          originalPositionsRef.current = snap
-          setLayoutSnapshotted(true)
-        }
         if ((showBubbles || showUnits) && bunksData) {
           // RAF lets cy emit its final pan/zoom events before bubbles snapshot
           // node positions, avoiding a stale draw.
@@ -475,94 +440,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     })
   }, [bunksData])
 
-  // Filter orchestration: fade out-of-scope → relayout in-scope → fit → bubbles.
-  // Runs ONLY when the cytoscape instance and bunksData are ready and the
-  // initial layout has snapshotted positions. Empty-filter runs the
-  // restore path (no worker re-run).
-  useEffect(() => {
-    const cy = cyRef.current
-    if (!cy || cy.destroyed() || !bunksData) return
-    if (!layoutSnapshotted) return // initial layout not done yet
-
-    const result = applyFilterToGraph(cy, {
-      filter,
-      selectedNodeId,
-      bunkUnitMap,
-      prefersReducedMotion,
-    })
-
-    const fitDuration = prefersReducedMotion ? 0 : 350
-
-    if (!isFilterActive) {
-      // Restore path: animate full-session positions back, no worker.
-      const snap = originalPositionsRef.current
-      if (!snap) return // defensive: layoutSnapshotted guards this above
-      cy.batch(() => {
-        cy.nodes(':childless').forEach((n) => {
-          const pos = snap[n.id()]
-          if (pos) n.position(pos)
-        })
-      })
-      cy.resize()
-      if (fitDuration === 0) {
-        cy.fit(undefined, 50)
-      } else {
-        cy.animate({ fit: { eles: cy.nodes(), padding: 50 } }, { duration: fitDuration })
-      }
-      // Redraw bubbles for full session
-      requestAnimationFrame(() => {
-        if (cy.destroyed()) return
-        clearBubbles(bubbleRefs)
-        if (showBubbles || showUnits) {
-          drawBunkBubbles(cy, bunksData, bubbleRefs, undefined, showUnits, showBubbles)
-        }
-      })
-      return
-    }
-
-    // Active filter: fade is handled by the .scope-hidden CSS transition (180ms).
-    // After the fade settles, animated fit onto in-scope subset.
-    const fadeDuration = prefersReducedMotion ? 0 : 180
-    const timer = setTimeout(() => {
-      if (cy.destroyed()) return
-      const inScope = cy.nodes(':childless').filter((n) => result.inScopeNodeIds.has(n.id()))
-      cy.resize()
-      if (fitDuration === 0) {
-        cy.fit(inScope, 50)
-      } else {
-        cy.animate({ fit: { eles: inScope, padding: 50 } }, { duration: fitDuration })
-      }
-      requestAnimationFrame(() => {
-        if (cy.destroyed()) return
-        clearBubbles(bubbleRefs)
-        if (showBubbles || showUnits) {
-          // Filter to bunks that have at least one in-scope camper
-          const inScopeBunkIds = new Set<number>()
-          inScope.forEach((n) => {
-            const bid = n.data('bunk_cm_id') as number | null | undefined
-            if (bid != null) inScopeBunkIds.add(bid)
-          })
-          const filteredBunksData: typeof bunksData = Object.fromEntries(
-            Object.entries(bunksData).filter(([id]) => inScopeBunkIds.has(Number(id)))
-          )
-          drawBunkBubbles(cy, filteredBunksData, bubbleRefs, undefined, showUnits, showBubbles)
-        }
-      })
-    }, fadeDuration)
-
-    return () => clearTimeout(timer)
-  }, [
-    filter,
-    isFilterActive,
-    bunkUnitMap,
-    bunksData,
-    bubbleRefs,
-    selectedNodeId,
-    showBubbles,
-    showUnits,
-    prefersReducedMotion,
-    layoutSnapshotted,
-  ])
+  // Filter orchestration was an in-place fade-and-fit pass; #30 replaces it
+  // with a server-driven scoped graph reload (fresh fcose layout on the
+  // subgraph). Until that lands, the picker is still wired but the graph
+  // doesn't react to filter changes.
 
   // Resize+fit the graph whenever the user toggles fullscreen. The init
   // effect's worker handler already does the initial resize+fit on first
@@ -796,7 +677,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                         onClose={() => setFilterOpen(false)}
                         triggerRef={filterButtonRef}
                         selectedUnits={filter.units}
-                        selectedBunkIds={filter.bunks}
+                        selectedBunks={filter.bunks}
                         allBunks={allBunks}
                         edgeMode={filter.edgeMode}
                         onAddUnit={addUnit}
@@ -849,13 +730,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
             {showHelp && <GraphHelp />}
           </div>
 
-          {/* Camper detail panel — opens when a node is tapped (#35) */}
+          {/* Camper detail panel — opens when a node is tapped (#35). */}
           {selectedNodeId != null && (
             <CamperDetailsPanel
               camperId={selectedNodeId.toString()}
               onClose={() => setSelectedNodeId(null)}
               {...(bunkCampers != null && { bunkCampers })}
-              {...(selectedOutOfScope && { outOfScope: selectedOutOfScope })}
             />
           )}
         </>

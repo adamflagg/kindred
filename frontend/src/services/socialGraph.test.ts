@@ -50,6 +50,56 @@ describe('socialGraphService', () => {
       const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
       expect(calledUrl).not.toContain('scenario_id')
     })
+
+    describe('scope params', () => {
+      it('appends units= when scope.units is non-empty', async () => {
+        const fetchWithAuth = makeFetchMock()
+        await socialGraphService.getSessionSocialGraph(123, 2026, fetchWithAuth, null, {
+          units: ['galil', 'eilat'],
+        })
+        const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
+        expect(calledUrl).toContain('units=galil%2Ceilat')
+      })
+
+      it('appends bunks= when scope.bunks is non-empty', async () => {
+        const fetchWithAuth = makeFetchMock()
+        await socialGraphService.getSessionSocialGraph(123, 2026, fetchWithAuth, null, {
+          bunks: ['b-9', 'g-10'],
+        })
+        const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
+        expect(calledUrl).toContain('bunks=b-9%2Cg-10')
+      })
+
+      it('appends cross_scope=true when scope.crossScope is true', async () => {
+        const fetchWithAuth = makeFetchMock()
+        await socialGraphService.getSessionSocialGraph(123, 2026, fetchWithAuth, null, {
+          units: ['galil'],
+          crossScope: true,
+        })
+        const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
+        expect(calledUrl).toContain('cross_scope=true')
+      })
+
+      it('does NOT append scope params when scope is omitted', async () => {
+        const fetchWithAuth = makeFetchMock()
+        await socialGraphService.getSessionSocialGraph(123, 2026, fetchWithAuth)
+        const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
+        expect(calledUrl).not.toContain('units=')
+        expect(calledUrl).not.toContain('bunks=')
+        expect(calledUrl).not.toContain('cross_scope=')
+      })
+
+      it('does NOT append empty scope arrays', async () => {
+        const fetchWithAuth = makeFetchMock()
+        await socialGraphService.getSessionSocialGraph(123, 2026, fetchWithAuth, null, {
+          units: [],
+          bunks: [],
+        })
+        const calledUrl = String(fetchWithAuth.mock.calls[0]?.[0])
+        expect(calledUrl).not.toContain('units=')
+        expect(calledUrl).not.toContain('bunks=')
+      })
+    })
   })
 
   describe('getBunkSocialGraph', () => {

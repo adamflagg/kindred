@@ -196,6 +196,42 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
+      // Edges spanning the active scope boundary (one endpoint outside the
+      // selected units/bunks). Rendered ghosted so they're visible as context
+      // without competing with the in-scope graph.
+      selector: 'edge[?cross_scope]',
+      style: {
+        opacity: 0.35,
+        events: 'no',
+        'line-style': 'dashed',
+      },
+    },
+    {
+      // Out-of-scope endpoints rendered as ghosted nodes. Body opacity is
+      // reduced so they read as secondary; the high z-index keeps node +
+      // name visible above any unit/bunk bubble strokes that pass through
+      // them. Border + text styling inherits from the base node selector
+      // so ghosts read identically to non-ghosts at the type level. Events
+      // stay on (default 'yes') so users can click through to the camper
+      // detail panel for potential connections.
+      selector: 'node[?cross_scope]:childless',
+      style: {
+        'background-opacity': 0.55,
+        'z-index': 100,
+      },
+    },
+    {
+      // Bunk parent compounds whose only members are ghost campers. Faded
+      // so they recede behind the in-scope bunks visually, but z-index is
+      // still bumped above default so the dashed border draws on top of
+      // any cross-cutting unit bubble strokes.
+      selector: 'node[?cross_scope]:parent',
+      style: {
+        opacity: 0.7,
+        'z-index': 50,
+      },
+    },
+    {
       selector: '.hide-label',
       style: {
         label: '',
@@ -256,6 +292,8 @@ export interface ParentNodeElement {
     label: string
     isBunkParent?: boolean
     bunk_cm_id?: number
+    /** Set on parent compounds whose only members are out-of-scope ghost campers. */
+    cross_scope?: boolean
   }
 }
 
@@ -271,6 +309,9 @@ export interface CamperNodeElement {
     satisfaction_status: string
     parent_satisfaction_status: string | undefined
     staff_satisfaction_status: string | undefined
+    /** Set on out-of-scope endpoints of cross-scope edges. Renders ghosted
+     *  but stays clickable so the user can open the detail panel. */
+    cross_scope?: boolean
     bunk_cm_id: number | undefined
     community: number
     parent: string | undefined
@@ -284,14 +325,34 @@ export interface EdgeElement {
     source: string
     target: string
     edge_type: string
-    priority: number
-    confidence: number
-    is_reciprocal: boolean
+    priority?: number
+    confidence?: number
+    is_reciprocal?: boolean
     request_type?: string
     /** True when a pair has two opposing-direction request edges of mixed
      *  request_type (bunk_with vs not_bunk_with). Drives the curved bezier. */
     multi?: boolean
+    /** True for edges that cross the active scope boundary. Picked up by the
+     *  `edge[?cross_scope]` selector to render them ghosted. */
+    cross_scope?: boolean
   }
+}
+
+/** Edge straddling the active scope (one endpoint in scope, one outside).
+ *  Returned as a distinct list by the API so we can ghost them visually
+ *  without polluting the layout's edge weight. */
+export interface CrossScopeEdgeData {
+  source: number
+  target: number
+  type: string
+  weight?: number
+  /** Same-shape metadata as in-scope edges so cross-scope edges can run
+   *  through the bucket-collapse / multi-curve algorithm identically. */
+  request_type?: string
+  priority?: number
+  confidence?: number
+  reciprocal?: boolean
+  cross_scope: true
 }
 
 /** Result of createGraphElements */
@@ -302,22 +363,53 @@ export interface GraphElements {
 }
 
 /**
- * Create Cytoscape elements from graph data
+ * Create Cytoscape elements from graph data.
+ *
+ * `crossScopeEdges` and `crossScopeNodes` (both optional) are returned
+ * separately by the server when `?cross_scope=true`. The nodes are the
+ * out-of-scope endpoints of those edges — they're appended as normal camper
+ * nodes (compound-grouped under their bunk) but tagged `cross_scope: true`
+ * so the `node[?cross_scope]` selector ghosts them visually. They stay
+ * clickable so users can open the detail panel for potential connections.
+ *
+ * Edges are tagged the same way so `edge[?cross_scope]` can ghost them, and
+ * they participate in pair-counts so a same-pair in-scope + cross-scope
+ * combination still renders as a multi-curve.
  */
 export function createGraphElements(
   nodeData: GraphNodeData[],
   edgeData: GraphEdgeData[],
   bunksData: Record<number, string> | null | undefined,
-  showEdges: ShowEdgesSettings
+  showEdges: ShowEdgesSettings,
+  crossScopeEdges?: CrossScopeEdgeData[],
+  crossScopeNodes?: GraphNodeData[]
 ): GraphElements {
-  // Group nodes by bunk
+  // Group nodes by bunk. In-scope bunks always exist, even when a cross-scope
+  // ghost camper happens to share a bunk_cm_id with an in-scope camper (rare
+  // but possible) — the in-scope side wins so the parent compound isn't
+  // mistakenly tagged cross_scope.
   const bunkGroups: Record<number, GraphNodeData[]> = {}
+  const crossScopeBunkIds = new Set<number>()
 
   nodeData.forEach((node) => {
     if (node.bunk_cm_id) {
       const bunkId = node.bunk_cm_id
       bunkGroups[bunkId] ??= []
       bunkGroups[bunkId].push(node)
+    }
+  })
+
+  const ghostNodes = crossScopeNodes ?? []
+  ghostNodes.forEach((node) => {
+    if (node.bunk_cm_id && !bunkGroups[node.bunk_cm_id]) {
+      // No in-scope camper in this bunk — register it as a ghost bunk so the
+      // ghost camper still gets a parent compound (otherwise fcose floats it
+      // free of any unit bubble and the layout looks broken).
+      crossScopeBunkIds.add(node.bunk_cm_id)
+      bunkGroups[node.bunk_cm_id] = []
+    }
+    if (node.bunk_cm_id) {
+      bunkGroups[node.bunk_cm_id]!.push(node)
     }
   })
 
@@ -336,12 +428,14 @@ export function createGraphElements(
         label: bunkName,
         isBunkParent: true,
         bunk_cm_id: bunkId,
+        ...(crossScopeBunkIds.has(bunkId) ? { cross_scope: true } : {}),
       },
     }
   })
 
   // Create camper nodes with parent property for compound grouping
-  const nodes: CamperNodeElement[] = nodeData.map((node) => ({
+  const ghostIds = new Set(ghostNodes.map((n) => n.id))
+  const nodes: CamperNodeElement[] = [...nodeData, ...ghostNodes].map((node) => ({
     data: {
       id: node.id.toString(),
       label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
@@ -355,6 +449,7 @@ export function createGraphElements(
       bunk_cm_id: node.bunk_cm_id,
       community: node.community,
       parent: node.bunk_cm_id ? `bunk-${node.bunk_cm_id}` : undefined,
+      ...(ghostIds.has(node.id) ? { cross_scope: true } : {}),
     },
   }))
 
@@ -382,8 +477,12 @@ export function createGraphElements(
 
   // Helper: are two edges the "same kind" — same edge_type and same
   // request_type? Used to decide whether a 2-edge pair collapses or splays.
-  const sameKind = (a: GraphEdgeData, b: GraphEdgeData) =>
-    a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
+  // Works on both GraphEdgeData and CrossScopeEdgeData (the relevant fields
+  // are identically named on both shapes).
+  const sameKind = (
+    a: GraphEdgeData | CrossScopeEdgeData,
+    b: GraphEdgeData | CrossScopeEdgeData
+  ) => a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
 
   const edges: EdgeElement[] = []
   let edgeIndex = 0
@@ -402,6 +501,29 @@ export function createGraphElements(
       is_reciprocal: flags.is_reciprocal,
       ...(e.request_type ? { request_type: e.request_type } : {}),
       ...(flags.multi ? { multi: true } : {}),
+    },
+  })
+
+  // Cross-scope edges run through the same bucket → collapse → multi algorithm
+  // as in-scope edges, just tagged `cross_scope: true` so the cytoscape
+  // stylesheet ghosts them. Buckets are homogeneous: an edge between A and B
+  // is either entirely in-scope (both endpoints in scope) or entirely
+  // cross-scope (one endpoint outside scope), never mixed on the same pair.
+  const buildCrossEdge = (
+    e: CrossScopeEdgeData,
+    flags: { is_reciprocal: boolean; multi?: boolean }
+  ): EdgeElement => ({
+    data: {
+      id: `cross-edge-${edgeIndex++}`,
+      source: e.source.toString(),
+      target: e.target.toString(),
+      edge_type: e.type,
+      ...(e.priority != null ? { priority: e.priority } : {}),
+      ...(e.confidence != null ? { confidence: e.confidence } : {}),
+      is_reciprocal: flags.is_reciprocal,
+      ...(e.request_type ? { request_type: e.request_type } : {}),
+      ...(flags.multi ? { multi: true } : {}),
+      cross_scope: true,
     },
   })
 
@@ -426,6 +548,37 @@ export function createGraphElements(
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
       edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal, multi: isMulti }))
+    })
+  })
+
+  // Same algorithm, parallel pass over cross-scope edges. The buckets are
+  // disjoint from pairBuckets by construction (an edge can't be both in-scope
+  // and cross-scope on the same pair), so we don't need to coordinate counts
+  // between the two passes.
+  const crossEdges = crossScopeEdges ?? []
+  const crossPairBuckets = new Map<string, CrossScopeEdgeData[]>()
+  crossEdges.forEach((e) => {
+    const k = pairKey(e.source, e.target)
+    const bucket = crossPairBuckets.get(k) ?? []
+    bucket.push(e)
+    crossPairBuckets.set(k, bucket)
+  })
+
+  crossPairBuckets.forEach((bucket) => {
+    if (bucket.length === 2) {
+      const [first, second] = bucket as [CrossScopeEdgeData, CrossScopeEdgeData]
+      if (
+        first.source === second.target &&
+        first.target === second.source &&
+        sameKind(first, second)
+      ) {
+        edges.push(buildCrossEdge(first, { is_reciprocal: true }))
+        return
+      }
+    }
+    const isMulti = bucket.length >= 2
+    bucket.forEach((edge) => {
+      edges.push(buildCrossEdge(edge, { is_reciprocal: edge.reciprocal ?? false, multi: isMulti }))
     })
   })
 

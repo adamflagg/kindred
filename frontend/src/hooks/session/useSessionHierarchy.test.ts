@@ -4,7 +4,12 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { getSubSessions, getAgSessions, shouldShowAgArea } from './useSessionHierarchy'
+import {
+  getSubSessions,
+  getAgSessions,
+  shouldShowAgArea,
+  buildFriendlyRedirectTarget,
+} from './useSessionHierarchy'
 import type { Session } from '../../types/app-types'
 
 // Mock sessions for testing — cast partial objects as Session
@@ -160,5 +165,47 @@ describe('shouldShowAgArea', () => {
   it('should return true when AG sessions exist and viewing main session', () => {
     const agSession = createMockSession('s1', 'Session 1 AG', 1002, 'ag', 1001)
     expect(shouldShowAgArea([agSession], true)).toBe(true)
+  })
+})
+
+describe('buildFriendlyRedirectTarget', () => {
+  it('preserves search params when redirecting numeric session id to friendly URL', () => {
+    expect(
+      buildFriendlyRedirectTarget({
+        friendlyUrl: 'session-2',
+        tabPath: 'friends',
+        search: '?units=galil&bunks=g-6a,b-5&edges=cross',
+      })
+    ).toBe('/summer/session/session-2/friends?units=galil&bunks=g-6a,b-5&edges=cross')
+  })
+
+  it('falls back to /board when no tab is given', () => {
+    expect(
+      buildFriendlyRedirectTarget({
+        friendlyUrl: 'session-2',
+        tabPath: '',
+        search: '',
+      })
+    ).toBe('/summer/session/session-2/board')
+  })
+
+  it('returns target without query string when search is empty', () => {
+    expect(
+      buildFriendlyRedirectTarget({
+        friendlyUrl: 'session-2',
+        tabPath: 'friends',
+        search: '',
+      })
+    ).toBe('/summer/session/session-2/friends')
+  })
+
+  it('treats a literal "?" as empty (no leading ? in stored search)', () => {
+    expect(
+      buildFriendlyRedirectTarget({
+        friendlyUrl: 'session-2',
+        tabPath: 'friends',
+        search: '?',
+      })
+    ).toBe('/summer/session/session-2/friends')
   })
 })

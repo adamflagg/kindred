@@ -64,30 +64,30 @@ describe('useGraphFilter', () => {
     expect(lastSearch).toContain('units=galil')
   })
 
-  it('addBunk writes the cm_id to the URL', () => {
+  it('addBunk writes the lowercased code to the URL', () => {
     const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
       wrapper: makeWrapper('/'),
     })
-    act(() => result.current.addBunk(9))
-    expect(lastSearch).toContain('bunks=9')
+    act(() => result.current.addBunk('B-9'))
+    expect(lastSearch).toContain('bunks=b-9')
   })
 
   it('addBunk is absorbed when its unit is already included', () => {
     const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
       wrapper: makeWrapper('/?units=galil'),
     })
-    act(() => result.current.addBunk(1)) // B-3, in Galil
+    act(() => result.current.addBunk('b-3')) // in Galil
     expect(lastSearch).not.toContain('bunks=')
   })
 
   it('addUnit removes its bunks from the bunks list', () => {
     const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
-      wrapper: makeWrapper('/?bunks=1,9'),
+      wrapper: makeWrapper('/?bunks=b-3,b-9'),
     })
     act(() => result.current.addUnit('Galil'))
     expect(lastSearch).toContain('units=galil')
-    expect(lastSearch).toContain('bunks=9') // 1 absorbed, 9 kept
-    expect(lastSearch).not.toMatch(/bunks=1\b/)
+    expect(lastSearch).toContain('bunks=b-9') // b-3 absorbed, b-9 kept
+    expect(lastSearch).not.toMatch(/bunks=b-3\b/)
   })
 
   it('removeUnit drops the unit', () => {
@@ -101,10 +101,10 @@ describe('useGraphFilter', () => {
 
   it('removeBunk drops the bunk', () => {
     const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
-      wrapper: makeWrapper('/?bunks=9,17'),
+      wrapper: makeWrapper('/?bunks=b-9,g-10'),
     })
-    act(() => result.current.removeBunk(9))
-    expect(lastSearch).toContain('bunks=17')
+    act(() => result.current.removeBunk('b-9'))
+    expect(lastSearch).toContain('bunks=g-10')
   })
 
   it('setEdgeMode writes edges=cross', () => {

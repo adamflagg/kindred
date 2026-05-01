@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
+from bunking.graph.scope_filter import apply_scope, parse_scope_query, resolve_scope_bunk_ids
 from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
@@ -63,6 +64,18 @@ async def get_session_social_graph(
         str | None,
         Query(description="Scenario ID — when set, source bunk assignments from bunk_assignments_draft"),
     ] = None,
+    units: Annotated[
+        str | None,
+        Query(description="Comma-separated unit slugs to scope to (e.g. galil,carmel)"),
+    ] = None,
+    bunks: Annotated[
+        str | None,
+        Query(description="Comma-separated bunk codes to scope to (e.g. b-9,g-10). Lowercase bunk names."),
+    ] = None,
+    cross_scope: Annotated[
+        bool,
+        Query(description="When true and scope is active, include cross-scope edges as ghosted"),
+    ] = False,
     user: AuthUser = Depends(get_current_user),
 ) -> SocialGraphResponse:
     """Get the full social graph for a session using NetworkX analysis.
@@ -137,6 +150,42 @@ async def get_session_social_graph(
             # graphs are stored independently.
             graph_cache.cache_session_graph(session_cm_id, year, graph, scenario_id=scenario_id)
 
+        # Apply scope filter if units/bunks params are present
+        unit_slugs, bunk_codes = parse_scope_query(units, bunks)
+        scoped_cross_edges: list[dict[str, Any]] = []
+        cross_scope_node_ids: set[int] = set()
+        # Hold the pre-scope graph reference so we can look up node data for
+        # out-of-scope endpoints below (graph itself gets replaced by the
+        # subgraph copy when scope is active).
+        full_graph = graph
+        if unit_slugs or bunk_codes:
+            session_bunks_resp = await asyncio.to_thread(
+                pb.collection(BUNKS).get_full_list,
+                query_params={"filter": f"year = {year}"},
+            )
+            bunk_records = [
+                {"cm_id": b.cm_id, "name": b.name}  # type: ignore[attr-defined]
+                for b in session_bunks_resp
+            ]
+            in_scope_bunk_cm_ids = resolve_scope_bunk_ids(
+                units=unit_slugs,
+                bunk_codes=bunk_codes,
+                bunks=bunk_records,
+            )
+            graph, scoped_cross_edges, cross_scope_node_ids = apply_scope(
+                graph,
+                in_scope_bunk_cm_ids=in_scope_bunk_cm_ids,
+                include_cross_scope=cross_scope,
+            )
+            logger.info(
+                f"Scope filter: units={unit_slugs} bunks={bunk_codes} "
+                f"→ {len(in_scope_bunk_cm_ids)} bunks, "
+                f"{graph.number_of_nodes()} nodes, "
+                f"{graph.number_of_edges()} edges, "
+                f"{len(scoped_cross_edges)} cross-scope edges, "
+                f"{len(cross_scope_node_ids)} cross-scope ghost nodes"
+            )
+
         # Convert to response format
         nodes = []
         for node_id in graph.nodes():
@@ -154,6 +203,39 @@ async def get_session_social_graph(
                 grade = None
 
             nodes.append(
+                SocialGraphNode(
+                    id=node_id,
+                    name=name,
+                    grade=grade,
+                    bunk_cm_id=node_data.get("bunk_cm_id"),
+                    centrality=node_data.get("centrality", 0.0),
+                    clustering=node_data.get("clustering", 0.0),
+                    community=node_data.get("community"),
+                    satisfaction_status=node_data.get("satisfaction_status"),
+                    parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
+                    staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
+                )
+            )
+
+        # Build cross-scope ghost nodes: out-of-scope endpoints of cross_scope_edges,
+        # returned so the frontend can render them as ghosted-but-clickable context.
+        # Sourced from the pre-scope graph so node data (bunk_cm_id, centrality, etc.)
+        # is available — the in-scope subgraph above strips them.
+        cross_nodes: list[SocialGraphNode] = []
+        for node_id in cross_scope_node_ids:
+            if node_id not in full_graph.nodes:
+                continue
+            node_data = full_graph.nodes[node_id]
+            try:
+                person = await asyncio.to_thread(
+                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
+                )
+                name = f"{person.first_name} {person.last_name}"
+                grade = getattr(person, "grade", None)
+            except Exception:
+                name = f"Person {node_id}"
+                grade = None
+            cross_nodes.append(
                 SocialGraphNode(
                     id=node_id,
                     name=name,
@@ -263,13 +345,13 @@ async def get_session_social_graph(
             for comm_id, members in communities.items():
                 if len(members) > 2:
                     # Get bunk assignments for community members
-                    bunks = set()
+                    member_bunk_ids: set[int] = set()
                     for member in members:
                         bunk_id = graph.nodes[member].get("bunk_cm_id")
                         if bunk_id:
-                            bunks.add(bunk_id)
-                    if len(bunks) > 1:
-                        warnings.append(f"Friend group {comm_id} is split across {len(bunks)} bunks")
+                            member_bunk_ids.add(bunk_id)
+                    if len(member_bunk_ids) > 1:
+                        warnings.append(f"Friend group {comm_id} is split across {len(member_bunk_ids)} bunks")
 
         # Calculate layout positions if requested
         import networkx as nx
@@ -303,6 +385,8 @@ async def get_session_social_graph(
             warnings=warnings,
             layout_positions=layout_positions,
             edge_type_counts=edge_type_counts,
+            cross_scope_edges=scoped_cross_edges,
+            cross_scope_nodes=cross_nodes,
         )
 
     except Exception as e:

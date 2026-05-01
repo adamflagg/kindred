@@ -1,11 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import {
+  bunkToCode,
   parseFilterFromSearchParams,
   serializeFilterToSearchParams,
   normalizeFilter,
   type BunkSummary,
 } from './graphFilter'
 import type { FilterState } from './graphFilter'
+
+describe('bunkToCode', () => {
+  it('lowercases the bunk name', () => {
+    expect(bunkToCode('B-9')).toBe('b-9')
+    expect(bunkToCode('AG-3')).toBe('ag-3')
+    expect(bunkToCode('B-Aleph')).toBe('b-aleph')
+  })
+
+  it('preserves hyphens already in the name', () => {
+    expect(bunkToCode('B-12A')).toBe('b-12a')
+  })
+})
 
 describe('parseFilterFromSearchParams', () => {
   it('returns empty filter when no params present', () => {
@@ -25,9 +38,9 @@ describe('parseFilterFromSearchParams', () => {
     expect(result.edgeMode).toBe('strict')
   })
 
-  it('parses bunks as numeric cm_ids', () => {
-    const params = new URLSearchParams('bunks=9,17')
-    expect(parseFilterFromSearchParams(params).bunks).toEqual([9, 17])
+  it('parses bunks as lowercase codes', () => {
+    const params = new URLSearchParams('bunks=b-9,g-10')
+    expect(parseFilterFromSearchParams(params).bunks).toEqual(['b-9', 'g-10'])
   })
 
   it('parses edges=cross to edgeMode cross-scope', () => {
@@ -40,9 +53,14 @@ describe('parseFilterFromSearchParams', () => {
     expect(parseFilterFromSearchParams(params).units).toEqual(['Galil', 'Eilat'])
   })
 
-  it('drops malformed bunk ids', () => {
-    const params = new URLSearchParams('bunks=9,abc,17')
-    expect(parseFilterFromSearchParams(params).bunks).toEqual([9, 17])
+  it('lowercases incoming bunk codes for consistent matching', () => {
+    const params = new URLSearchParams('bunks=B-9,G-10')
+    expect(parseFilterFromSearchParams(params).bunks).toEqual(['b-9', 'g-10'])
+  })
+
+  it('drops empty bunk segments', () => {
+    const params = new URLSearchParams('bunks=b-9,,g-10')
+    expect(parseFilterFromSearchParams(params).bunks).toEqual(['b-9', 'g-10'])
   })
 
   it('handles multi-word unit slugs (Chalutzim 1)', () => {
@@ -66,12 +84,12 @@ describe('serializeFilterToSearchParams', () => {
     expect(out.get('units')).toBe('galil,chalutzim-1')
   })
 
-  it('encodes bunks as comma-separated cm_ids', () => {
+  it('encodes bunks as comma-separated codes', () => {
     const out = serializeFilterToSearchParams(
-      { units: [], bunks: [9, 17], edgeMode: 'strict' },
+      { units: [], bunks: ['b-9', 'g-10'], edgeMode: 'strict' },
       new URLSearchParams()
     )
-    expect(out.get('bunks')).toBe('9,17')
+    expect(out.get('bunks')).toBe('b-9,g-10')
   })
 
   it('emits edges=cross only for cross-scope mode', () => {
@@ -90,7 +108,7 @@ describe('serializeFilterToSearchParams', () => {
   it('preserves unrelated query params', () => {
     const base = new URLSearchParams('year=2026&scenario=abc')
     const out = serializeFilterToSearchParams(
-      { units: ['Galil'], bunks: [9], edgeMode: 'cross-scope' },
+      { units: ['Galil'], bunks: ['b-9'], edgeMode: 'cross-scope' },
       base
     )
     expect(out.get('year')).toBe('2026')
@@ -100,7 +118,7 @@ describe('serializeFilterToSearchParams', () => {
   it('round-trips with parseFilterFromSearchParams', () => {
     const original: FilterState = {
       units: ['Galil', 'Eilat'],
-      bunks: [9],
+      bunks: ['b-9'],
       edgeMode: 'cross-scope',
     }
     const serialized = serializeFilterToSearchParams(original, new URLSearchParams())
@@ -121,19 +139,22 @@ const ALL_BUNKS: BunkSummary[] = [
 
 describe('normalizeFilter', () => {
   it('drops bunks already covered by an included unit', () => {
-    const result = normalizeFilter({ units: ['Galil'], bunks: [1, 9] }, ALL_BUNKS)
+    const result = normalizeFilter({ units: ['Galil'], bunks: ['b-3', 'b-9'] }, ALL_BUNKS)
     expect(result.units).toEqual(['Galil'])
-    expect(result.bunks).toEqual([9])
+    expect(result.bunks).toEqual(['b-9'])
   })
 
   it('keeps bunks whose unit is not included', () => {
-    const result = normalizeFilter({ units: ['Galil'], bunks: [9] }, ALL_BUNKS)
-    expect(result.bunks).toEqual([9])
+    const result = normalizeFilter({ units: ['Galil'], bunks: ['b-9'] }, ALL_BUNKS)
+    expect(result.bunks).toEqual(['b-9'])
   })
 
   it("drops all of a unit's bunks when the unit is added", () => {
-    const result = normalizeFilter({ units: ['Galil'], bunks: [1, 2, 3, 4, 9] }, ALL_BUNKS)
-    expect(result.bunks).toEqual([9])
+    const result = normalizeFilter(
+      { units: ['Galil'], bunks: ['b-3', 'g-3', 'b-4', 'g-4', 'b-9'] },
+      ALL_BUNKS
+    )
+    expect(result.bunks).toEqual(['b-9'])
   })
 
   it('is a no-op when filter is empty', () => {
@@ -143,216 +164,14 @@ describe('normalizeFilter', () => {
     })
   })
 
-  it('preserves unknown bunk ids (not in roster) as-is', () => {
-    const result = normalizeFilter({ units: ['Galil'], bunks: [999] }, ALL_BUNKS)
-    expect(result.bunks).toEqual([999])
-  })
-})
-
-import { buildBunkUnitMap, isNodeInScope, applyFilterToGraph } from './graphFilter'
-import type { GraphNode } from '../../types/graph'
-
-const NODE_GALIL: GraphNode = {
-  id: 100,
-  name: 'Emma Johnson',
-  grade: 6,
-  bunk_cm_id: 1,
-  centrality: 0.5,
-  clustering: 0.3,
-  community: 0,
-}
-const NODE_EILAT: GraphNode = {
-  id: 101,
-  name: 'Liam Garcia',
-  grade: 7,
-  bunk_cm_id: 5,
-  centrality: 0.5,
-  clustering: 0.3,
-  community: 0,
-}
-const NODE_NO_BUNK: GraphNode = {
-  id: 102,
-  name: 'Olivia Chen',
-  grade: 8,
-  bunk_cm_id: null,
-  centrality: 0.5,
-  clustering: 0.3,
-  community: 0,
-}
-
-const BUNK_UNIT_MAP = buildBunkUnitMap([
-  { cmId: 1, name: 'B-3' },
-  { cmId: 5, name: 'B-5' },
-  { cmId: 9, name: 'B-9' },
-])
-
-describe('buildBunkUnitMap', () => {
-  it('maps bunk_cm_id → unit name', () => {
-    expect(BUNK_UNIT_MAP.get(1)).toBe('Galil')
-    expect(BUNK_UNIT_MAP.get(5)).toBe('Eilat')
-    expect(BUNK_UNIT_MAP.get(9)).toBe('Chalutzim 1')
+  it('preserves unknown bunk codes (not in roster) as-is', () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: ['q-99'] }, ALL_BUNKS)
+    expect(result.bunks).toEqual(['q-99'])
   })
 
-  it('omits bunks whose name does not map to a unit', () => {
-    const map = buildBunkUnitMap([{ cmId: 99, name: 'Unknown-99' }])
-    expect(map.has(99)).toBe(false)
-  })
-})
-
-describe('isNodeInScope', () => {
-  it('returns true when filter is empty (full session)', () => {
-    const filter = { units: [], bunks: [], edgeMode: 'strict' as const }
-    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(true)
-    expect(isNodeInScope(NODE_NO_BUNK, filter, BUNK_UNIT_MAP)).toBe(true)
-  })
-
-  it("returns true when node's unit is in scope", () => {
-    const filter = { units: ['Galil'], bunks: [], edgeMode: 'strict' as const }
-    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(true)
-    expect(isNodeInScope(NODE_EILAT, filter, BUNK_UNIT_MAP)).toBe(false)
-  })
-
-  it("returns true when node's bunk is in scope", () => {
-    const filter = { units: [], bunks: [5], edgeMode: 'strict' as const }
-    expect(isNodeInScope(NODE_EILAT, filter, BUNK_UNIT_MAP)).toBe(true)
-    expect(isNodeInScope(NODE_GALIL, filter, BUNK_UNIT_MAP)).toBe(false)
-  })
-
-  it('returns false for node without bunk_cm_id when filter is active', () => {
-    const filter = { units: ['Galil'], bunks: [], edgeMode: 'strict' as const }
-    expect(isNodeInScope(NODE_NO_BUNK, filter, BUNK_UNIT_MAP)).toBe(false)
-  })
-})
-
-interface MockEle {
-  id: string
-  classes: Set<string>
-  data: Record<string, unknown>
-  source?: MockEle
-  target?: MockEle
-}
-function makeNode(id: string, data: Record<string, unknown>): MockEle {
-  return { id, classes: new Set(), data: { id, ...data } }
-}
-function makeEdge(id: string, source: MockEle, target: MockEle): MockEle {
-  return {
-    id,
-    classes: new Set(),
-    data: { id, source: source.id, target: target.id },
-    source,
-    target,
-  }
-}
-
-function makeMockCy(nodes: MockEle[], edges: MockEle[]) {
-  function ele(e: MockEle) {
-    return {
-      id: () => e.id,
-      addClass: (cls: string) => {
-        e.classes.add(cls)
-        return ele(e)
-      },
-      removeClass: (cls: string) => {
-        e.classes.delete(cls)
-        return ele(e)
-      },
-      data: (k: string) => e.data[k],
-      source: () => ele(e.source!),
-      target: () => ele(e.target!),
-      isNode: () => !e.source,
-      isEdge: () => !!e.source,
-    }
-  }
-  return {
-    nodes: () => ({
-      forEach: (fn: (n: ReturnType<typeof ele>) => void) => nodes.forEach((n) => fn(ele(n))),
-      filter: (pred: (n: ReturnType<typeof ele>) => boolean) => nodes.map(ele).filter(pred),
-    }),
-    edges: () => ({
-      forEach: (fn: (e: ReturnType<typeof ele>) => void) => edges.forEach((e) => fn(ele(e))),
-    }),
-    batch: (fn: () => void) => fn(),
-    _nodes: nodes,
-    _edges: edges,
-  }
-}
-
-describe('applyFilterToGraph', () => {
-  const bunkUnitMap = new Map<number, string>([
-    [1, 'Galil'],
-    [2, 'Galil'],
-    [5, 'Eilat'],
-    [9, 'Chalutzim 1'],
-  ])
-
-  it('clears classes when filter is empty', () => {
-    const a = makeNode('a', { bunk_cm_id: 1 })
-    a.classes.add('scope-hidden')
-    const cy = makeMockCy([a], [])
-    applyFilterToGraph(cy as never, {
-      filter: { units: [], bunks: [], edgeMode: 'strict' },
-      selectedNodeId: null,
-      bunkUnitMap,
-      prefersReducedMotion: false,
-    })
-    expect(a.classes.has('scope-hidden')).toBe(false)
-  })
-
-  it('hides out-of-scope nodes when filter is active', () => {
-    const a = makeNode('100', { bunk_cm_id: 1, id: 100 }) // Galil — in scope
-    const b = makeNode('200', { bunk_cm_id: 5, id: 200 }) // Eilat — out
-    const cy = makeMockCy([a, b], [])
-    applyFilterToGraph(cy as never, {
-      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
-      selectedNodeId: null,
-      bunkUnitMap,
-      prefersReducedMotion: false,
-    })
-    expect(a.classes.has('scope-hidden')).toBe(false)
-    expect(b.classes.has('scope-hidden')).toBe(true)
-  })
-
-  it('hides cross-scope edges in strict mode', () => {
-    const a = makeNode('100', { bunk_cm_id: 1, id: 100 })
-    const b = makeNode('200', { bunk_cm_id: 5, id: 200 })
-    const e = makeEdge('e1', a, b)
-    const cy = makeMockCy([a, b], [e])
-    applyFilterToGraph(cy as never, {
-      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
-      selectedNodeId: null,
-      bunkUnitMap,
-      prefersReducedMotion: false,
-    })
-    expect(e.classes.has('scope-hidden')).toBe(true)
-  })
-
-  it('keeps cross-scope edges and ghosts the partner in cross-scope mode', () => {
-    const a = makeNode('100', { bunk_cm_id: 1, id: 100 }) // in
-    const b = makeNode('200', { bunk_cm_id: 5, id: 200 }) // out
-    const e = makeEdge('e1', a, b)
-    const cy = makeMockCy([a, b], [e])
-    applyFilterToGraph(cy as never, {
-      filter: { units: ['Galil'], bunks: [], edgeMode: 'cross-scope' },
-      selectedNodeId: null,
-      bunkUnitMap,
-      prefersReducedMotion: false,
-    })
-    expect(e.classes.has('scope-hidden')).toBe(false)
-    expect(b.classes.has('scope-ghost')).toBe(true)
-    expect(b.classes.has('scope-hidden')).toBe(false)
-  })
-
-  it('keeps the selected node visible even when out of scope', () => {
-    const a = makeNode('100', { bunk_cm_id: 1, id: 100 })
-    const b = makeNode('200', { bunk_cm_id: 5, id: 200 })
-    const cy = makeMockCy([a, b], [])
-    applyFilterToGraph(cy as never, {
-      filter: { units: ['Galil'], bunks: [], edgeMode: 'strict' },
-      selectedNodeId: 200,
-      bunkUnitMap,
-      prefersReducedMotion: false,
-    })
-    expect(b.classes.has('scope-hidden')).toBe(false)
-    expect(b.classes.has('scope-ghost')).toBe(false)
+  it('matches bunk codes case-insensitively against roster names', () => {
+    const result = normalizeFilter({ units: ['Galil'], bunks: ['B-3'] }, ALL_BUNKS)
+    // Even though input is 'B-3' uppercase, it matches roster 'B-3' under unit Galil and is dropped
+    expect(result.bunks).toEqual([])
   })
 })

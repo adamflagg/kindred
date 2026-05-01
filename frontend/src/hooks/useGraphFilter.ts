@@ -14,8 +14,8 @@ export interface UseGraphFilterResult {
   isFilterActive: boolean
   addUnit: (unitName: string) => void
   removeUnit: (unitName: string) => void
-  addBunk: (bunkCmId: number) => void
-  removeBunk: (bunkCmId: number) => void
+  addBunk: (bunkCode: string) => void
+  removeBunk: (bunkCode: string) => void
   setEdgeMode: (mode: FilterEdgeMode) => void
   clear: () => void
 }
@@ -55,18 +55,20 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
   )
 
   const addBunk = useCallback(
-    (bunkCmId: number) => {
-      if (filter.bunks.includes(bunkCmId)) return
-      writeFilter({ ...filter, bunks: [...filter.bunks, bunkCmId] })
+    (bunkCode: string) => {
+      const code = bunkCode.toLowerCase()
+      if (filter.bunks.includes(code)) return
+      writeFilter({ ...filter, bunks: [...filter.bunks, code] })
     },
     [filter, writeFilter]
   )
 
   const removeBunk = useCallback(
-    (bunkCmId: number) => {
+    (bunkCode: string) => {
+      const code = bunkCode.toLowerCase()
       writeFilter({
         ...filter,
-        bunks: filter.bunks.filter((b) => b !== bunkCmId),
+        bunks: filter.bunks.filter((b) => b !== code),
       })
     },
     [filter, writeFilter]

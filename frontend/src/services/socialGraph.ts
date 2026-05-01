@@ -16,7 +16,12 @@ export const socialGraphService = {
     sessionCmId: number,
     year: number,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    scenarioId?: string | null
+    scenarioId?: string | null,
+    scope?: {
+      units?: string[]
+      bunks?: string[]
+      crossScope?: boolean
+    }
   ): Promise<GraphData> {
     const params = new URLSearchParams({
       year: String(year),
@@ -24,6 +29,15 @@ export const socialGraphService = {
     })
     if (scenarioId) {
       params.set('scenario_id', scenarioId)
+    }
+    if (scope?.units && scope.units.length > 0) {
+      params.set('units', scope.units.join(','))
+    }
+    if (scope?.bunks && scope.bunks.length > 0) {
+      params.set('bunks', scope.bunks.join(','))
+    }
+    if (scope?.crossScope) {
+      params.set('cross_scope', 'true')
     }
     const response = await fetchWithAuth(
       `${API_BASE}/sessions/${sessionCmId}/social-graph?${params.toString()}`
