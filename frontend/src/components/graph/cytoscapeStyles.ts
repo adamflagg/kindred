@@ -117,23 +117,39 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       style: {
         width: 2,
         'line-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+        'line-style': 'dashed',
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
-        // Default: a single relationship between two campers renders as a
-        // plain straight directional arrow. Pairs with 2+ relationships
-        // (mutual same-type, asymmetric, or sibling+request combinations)
-        // pick up the `multi` data flag in createGraphElements and switch
-        // to unbundled-bezier below so each direction is its own curve.
+        // Default: a single one-way request renders as a dashed straight
+        // arrow. Same-type reciprocal pairs are collapsed upstream in
+        // createGraphElements and tagged is_reciprocal — they're picked up
+        // by the rule below for bold solid + source arrowhead. Mixed-type
+        // pairs (true conflict) keep multi:true and inherit dashed straight
+        // here, then get curved by the multi rule.
         'curve-style': 'straight',
         'overlay-padding': '2px',
       },
     },
     {
+      selector: 'edge[?is_reciprocal]',
+      style: {
+        // Bold solid double-headed line for collapsed mutual-request pairs.
+        // line-color and target-arrow-color inherit from the base 'edge'
+        // rule; source-arrow-color must mirror them so a recip not_bunk_with
+        // doesn't render with a blue source arrow.
+        width: 4,
+        'line-style': 'solid',
+        'source-arrow-shape': 'triangle',
+        'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+    {
       selector: 'edge[?multi]',
       style: {
-        // Splay each edge of a multi-relationship pair onto its own curve.
-        // Distance/weight are intentionally moderate so two curves don't
-        // overlap each other yet stay close enough to read as a related pair.
+        // Splay each edge of a true-conflict pair onto its own curve. Width
+        // and line-style inherit from the base rule (regular dashed) — these
+        // are still one-way requests, just visually separated so both
+        // colors read.
         'curve-style': 'unbundled-bezier',
         'control-point-distances': [40],
         'control-point-weights': [0.5],

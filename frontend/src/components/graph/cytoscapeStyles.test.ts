@@ -426,17 +426,27 @@ describe('EDGE_COLORS constant', () => {
 })
 
 describe('edge curve rendering', () => {
-  it('renders single relationships as straight lines (not curved)', () => {
-    // A pair with only one edge between them gets a plain directional
-    // arrow — easier to read than a slight curve. Curving is reserved for
-    // pairs with 2+ relationships.
+  it('renders single relationships as straight dashed lines (regular weight, single arrow)', () => {
     const styles = getCytoscapeStyles({ showLabels: true })
     const edgeStyle = styles.find((s) => s.selector === 'edge')
     expect(edgeStyle).toBeDefined()
     const styleObj = edgeStyle?.style as unknown as Record<string, unknown>
     expect(styleObj['curve-style']).toBe('straight')
-    // No double-headed arrowing — each edge owns its own one-way arrow.
+    expect(styleObj['line-style']).toBe('dashed')
+    expect(styleObj['width']).toBe(2)
+    expect(styleObj['target-arrow-shape']).toBe('triangle')
+    // No source arrowhead at the base — that's reserved for is_reciprocal.
     expect(styleObj['source-arrow-shape']).toBeUndefined()
+  })
+
+  it('overrides edge[?is_reciprocal] to bold solid with a source arrow', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const reciprocalStyle = styles.find((s) => s.selector === 'edge[?is_reciprocal]')
+    expect(reciprocalStyle).toBeDefined()
+    const styleObj = reciprocalStyle?.style as unknown as Record<string, unknown>
+    expect(styleObj['width']).toBe(4)
+    expect(styleObj['line-style']).toBe('solid')
+    expect(styleObj['source-arrow-shape']).toBe('triangle')
   })
 
   it('overrides curve-style to unbundled-bezier on edges flagged with multi', () => {
@@ -447,9 +457,22 @@ describe('edge curve rendering', () => {
     expect(styleObj['curve-style']).toBe('unbundled-bezier')
   })
 
-  it('does not register a legacy edge[?is_reciprocal] override (per-edge rendering, not per-pair)', () => {
+  it('source-arrow-color on edge[?is_reciprocal] resolves like the line color', () => {
+    // The reciprocal source arrow must match the line color (same
+    // resolveEdgeColor function), otherwise a recip not_bunk_with would
+    // render with a blue source arrow.
     const styles = getCytoscapeStyles({ showLabels: true })
-    expect(styles.find((s) => s.selector === 'edge[?is_reciprocal]')).toBeUndefined()
+    const reciprocalStyle = styles.find((s) => s.selector === 'edge[?is_reciprocal]')
+    expect(reciprocalStyle).toBeDefined()
+    const styleObj = reciprocalStyle?.style as unknown as Record<string, unknown>
+    const sourceColor = styleObj['source-arrow-color']
+    expect(typeof sourceColor).toBe('function')
+    const fakeEdge = {
+      data: (key: string) =>
+        key === 'edge_type' ? 'request' : key === 'request_type' ? 'not_bunk_with' : null,
+    }
+    const color = (sourceColor as (e: unknown) => string)(fakeEdge)
+    expect(color).toBe('#e74c3c')
   })
 
   it('colors not_bunk_with request edges using EDGE_COLORS["not_bunk_with"]', () => {
