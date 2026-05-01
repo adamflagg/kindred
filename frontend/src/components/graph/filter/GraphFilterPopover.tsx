@@ -19,6 +19,8 @@ export default function GraphFilterPopover(props: GraphFilterPopoverProps) {
   const { open, onClose, triggerRef, ...treeProps } = props
   const ref = useRef<HTMLDivElement>(null)
 
+  // Event listeners — depend on onClose; no focus side effects so onClose identity
+  // changes while open don't accidentally steal focus from the search input.
   useEffect(() => {
     if (!open) return
     const trigger = triggerRef?.current ?? null
@@ -37,18 +39,23 @@ export default function GraphFilterPopover(props: GraphFilterPopoverProps) {
 
     window.addEventListener('keydown', onKeyDown)
     document.addEventListener('mousedown', onMouseDown)
-
-    // Focus search input on open
-    const search = ref.current?.querySelector<HTMLInputElement>('input[role="searchbox"]')
-    search?.focus()
-
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('mousedown', onMouseDown)
-      // Restore focus to the trigger when closing
-      trigger?.focus()
     }
   }, [open, onClose, triggerRef])
+
+  // Focus management — isolated from onClose so its identity changes don't trigger
+  // a premature focus restore while the popover is still open.
+  useEffect(() => {
+    if (!open) return
+    const trigger = triggerRef?.current ?? null
+    const search = ref.current?.querySelector<HTMLInputElement>('input[role="searchbox"]')
+    search?.focus()
+    return () => {
+      trigger?.focus()
+    }
+  }, [open, triggerRef])
 
   if (!open) return null
 

@@ -12,34 +12,36 @@ describe('GraphFilterStatus', () => {
 
   it('renders singular labels for count of 1', () => {
     render(<GraphFilterStatus unitCount={1} bunkCount={1} onClick={() => {}} />)
-    expect(screen.getByText(/1 unit, 1 bunk/i)).toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveTextContent(/1 unit, 1 bunk/i)
   })
 
   it('renders plural labels for count > 1', () => {
     render(<GraphFilterStatus unitCount={2} bunkCount={3} onClick={() => {}} />)
-    expect(screen.getByText(/2 units, 3 bunks/i)).toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveTextContent(/2 units, 3 bunks/i)
   })
 
   it('drops "0 bunks" when only units are selected', () => {
     render(<GraphFilterStatus unitCount={2} bunkCount={0} onClick={() => {}} />)
-    expect(screen.getByText(/Filtered: 2 units$/)).toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveTextContent(/Filtered: 2 units/)
   })
 
   it('drops "0 units" when only bunks are selected', () => {
     render(<GraphFilterStatus unitCount={0} bunkCount={1} onClick={() => {}} />)
-    expect(screen.getByText(/Filtered: 1 bunk$/)).toBeInTheDocument()
+    expect(screen.getByRole('button')).toHaveTextContent(/Filtered: 1 bunk/)
   })
 
-  it('uses aria-live=polite for screen reader announcements', () => {
+  it('uses an aria-live=polite region for screen reader announcements', () => {
     render(<GraphFilterStatus unitCount={1} bunkCount={0} onClick={() => {}} />)
-    const pill = screen.getByRole('status')
-    expect(pill).toHaveAttribute('aria-live', 'polite')
+    const liveRegion = screen.getByRole('status')
+    expect(liveRegion).toHaveAttribute('aria-live', 'polite')
+    // live region is separate from the interactive button
+    expect(liveRegion.tagName).not.toBe('BUTTON')
   })
 
   it('calls onClick when clicked', () => {
     const onClick = vi.fn()
     render(<GraphFilterStatus unitCount={1} bunkCount={0} onClick={onClick} />)
-    fireEvent.click(screen.getByRole('status'))
+    fireEvent.click(screen.getByRole('button'))
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 })

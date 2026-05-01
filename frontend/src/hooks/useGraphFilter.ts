@@ -30,10 +30,9 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     (next: FilterState) => {
       const normalized = normalizeFilter({ units: next.units, bunks: next.bunks }, allBunks)
       const final: FilterState = { ...normalized, edgeMode: next.edgeMode }
-      const params = serializeFilterToSearchParams(final, searchParams)
-      setSearchParams(params, { replace: false })
+      setSearchParams((prev) => serializeFilterToSearchParams(final, prev), { replace: false })
     },
-    [allBunks, searchParams, setSearchParams]
+    [allBunks, setSearchParams]
   )
 
   const addUnit = useCallback(
@@ -82,12 +81,17 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
   )
 
   const clear = useCallback(() => {
-    const next = new URLSearchParams(searchParams)
-    next.delete('units')
-    next.delete('bunks')
-    next.delete('edges')
-    setSearchParams(next, { replace: false })
-  }, [searchParams, setSearchParams])
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('units')
+        next.delete('bunks')
+        next.delete('edges')
+        return next
+      },
+      { replace: false }
+    )
+  }, [setSearchParams])
 
   return { filter, isFilterActive, addUnit, removeUnit, addBunk, removeBunk, setEdgeMode, clear }
 }
