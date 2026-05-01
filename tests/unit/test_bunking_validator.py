@@ -1408,7 +1408,7 @@ def test_three_grade_bunk_age_preference_evaluation():
 
 
 @pytest.mark.parametrize(
-    "request_type, source_field, source, expected_slice",
+    ("request_type", "source_field", "source", "expected_slice"),
     [
         # row 1: bunk_with / bunk_with / family → materialParent
         ("bunk_with", SourceField.BUNK_WITH, "family", "material"),
