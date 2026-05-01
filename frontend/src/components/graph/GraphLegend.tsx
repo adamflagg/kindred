@@ -15,6 +15,22 @@ export interface GraphLegendProps {
   existingGrades?: Set<number>
 }
 
+function DashedLine({ color }: { color: string }) {
+  return (
+    <svg width="20" height="6" className="flex-shrink-0">
+      <line x1="0" y1="3" x2="20" y2="3" stroke={color} strokeWidth="2" strokeDasharray="4 2" />
+    </svg>
+  )
+}
+
+function SolidLine({ color }: { color: string }) {
+  return (
+    <svg width="20" height="8" className="flex-shrink-0">
+      <line x1="0" y1="4" x2="20" y2="4" stroke={color} strokeWidth="3" />
+    </svg>
+  )
+}
+
 export default function GraphLegend({
   edgeColors = EDGE_COLORS,
   gradeColors = GRADE_COLORS,
@@ -27,37 +43,15 @@ export default function GraphLegend({
         <div className="mb-1 font-medium">Edge Types</div>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <svg width="20" height="6" className="flex-shrink-0">
-              <line
-                x1="0"
-                y1="3"
-                x2="20"
-                y2="3"
-                stroke={edgeColors['request']}
-                strokeWidth="2"
-                strokeDasharray="4 2"
-              />
-            </svg>
+            <DashedLine color={edgeColors['request'] ?? '#000'} />
             <span>Bunk Request</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg width="20" height="6" className="flex-shrink-0">
-              <line
-                x1="0"
-                y1="3"
-                x2="20"
-                y2="3"
-                stroke={edgeColors['not_bunk_with']}
-                strokeWidth="2"
-                strokeDasharray="4 2"
-              />
-            </svg>
+            <DashedLine color={edgeColors['not_bunk_with'] ?? '#000'} />
             <span>Don't Bunk With</span>
           </div>
           <div className="flex items-center gap-2">
-            <svg width="20" height="8" className="flex-shrink-0">
-              <line x1="0" y1="4" x2="20" y2="4" stroke={edgeColors['request']} strokeWidth="3" />
-            </svg>
+            <SolidLine color={edgeColors['request'] ?? '#000'} />
             <span>Mutual request</span>
           </div>
         </div>

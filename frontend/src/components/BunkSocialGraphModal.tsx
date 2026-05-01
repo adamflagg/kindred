@@ -349,9 +349,7 @@ export default function BunkSocialGraphModal({
               // Opacity based on confidence: 0.3 to 0.9
               return Math.max(0.3, Math.min(0.9, confidence))
             },
-            'curve-style': (ele: EdgeSingular) => {
-              return ele.data('curveStyle') ?? 'straight'
-            },
+            'curve-style': 'straight',
             'control-point-step-size': 40,
             'overlay-padding': '3px',
           },
@@ -450,12 +448,11 @@ export default function BunkSocialGraphModal({
       elements.push({
         group: 'edges',
         data: {
-          ...edge, // Spread first to include all edge properties (including reciprocal from backend)
-          id: `edge-${edgeIndex++}`, // Override with string version
-          source: `node-${edge.source}`, // Override with string version
-          target: `node-${edge.target}`, // Override with string version
-          curveStyle: 'straight',
-          type: edge.type, // Ensure type is explicitly set
+          ...edge,
+          id: `edge-${edgeIndex++}`,
+          source: `node-${edge.source}`,
+          target: `node-${edge.target}`,
+          type: edge.type,
         },
       })
     })

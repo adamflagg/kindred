@@ -268,8 +268,8 @@ export interface EdgeElement {
     confidence: number
     is_reciprocal: boolean
     request_type?: string
-    /** True when this pair of campers has 2+ relationships (any combination
-     *  of bunk_with, not_bunk_with, sibling). Drives the curved-bezier style. */
+    /** True when a pair has two opposing-direction request edges of mixed
+     *  request_type (bunk_with vs not_bunk_with). Drives the curved bezier. */
     multi?: boolean
   }
 }
@@ -368,55 +368,44 @@ export function createGraphElements(
   const edges: EdgeElement[] = []
   let edgeIndex = 0
 
-  pairBuckets.forEach((bucket) => {
-    const [first, second] = bucket
-    // Only collapse when the two edges genuinely point opposite directions —
-    // guards against backend duplicates (e.g., two A→B edges) being misread
-    // as a mutual pair.
-    const isOppositeDirections =
-      bucket.length === 2 &&
-      first !== undefined &&
-      second !== undefined &&
-      first.source === second.target &&
-      first.target === second.source
+  const buildEdge = (
+    e: GraphEdgeData,
+    flags: { is_reciprocal: boolean; multi?: boolean }
+  ): EdgeElement => ({
+    data: {
+      id: `edge-${edgeIndex++}`,
+      source: e.source.toString(),
+      target: e.target.toString(),
+      edge_type: e.type,
+      priority: e.priority,
+      confidence: e.confidence,
+      is_reciprocal: flags.is_reciprocal,
+      ...(e.request_type ? { request_type: e.request_type } : {}),
+      ...(flags.multi ? { multi: true } : {}),
+    },
+  })
 
-    if (isOppositeDirections && sameKind(first, second)) {
-      // Same-type reciprocal pair — emit one edge with is_reciprocal: true.
-      // Source/target come from the first edge; arrowheads are symmetric in
-      // the stylesheet so the choice does not affect rendering.
-      const e = first
-      edges.push({
-        data: {
-          id: `edge-${edgeIndex++}`,
-          source: e.source.toString(),
-          target: e.target.toString(),
-          edge_type: e.type,
-          priority: e.priority,
-          confidence: e.confidence,
-          is_reciprocal: true,
-          ...(e.request_type ? { request_type: e.request_type } : {}),
-        },
-      })
-      return
+  pairBuckets.forEach((bucket) => {
+    if (bucket.length === 2) {
+      // Only collapse when the two edges genuinely point opposite directions —
+      // guards against backend duplicates (e.g., two A→B edges) being misread
+      // as a mutual pair.
+      const [first, second] = bucket as [GraphEdgeData, GraphEdgeData]
+      if (
+        first.source === second.target &&
+        first.target === second.source &&
+        sameKind(first, second)
+      ) {
+        edges.push(buildEdge(first, { is_reciprocal: true }))
+        return
+      }
     }
 
     // Otherwise, emit each edge separately. Pairs with 2+ edges get the
     // multi flag so the stylesheet curves them (true conflicts).
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
-      edges.push({
-        data: {
-          id: `edge-${edgeIndex++}`,
-          source: edge.source.toString(),
-          target: edge.target.toString(),
-          edge_type: edge.type,
-          priority: edge.priority,
-          confidence: edge.confidence,
-          is_reciprocal: edge.reciprocal,
-          ...(edge.request_type ? { request_type: edge.request_type } : {}),
-          ...(isMulti ? { multi: true } : {}),
-        },
-      })
+      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal, multi: isMulti }))
     })
   })
 
