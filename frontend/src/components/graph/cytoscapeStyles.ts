@@ -329,30 +329,66 @@ export function createGraphElements(
     return showEdges[edgeType] !== false
   })
 
-  // Count relationships per unordered pair so the renderer can curve only
-  // when there are 2+ edges between the same two campers (mutuals, mixed
-  // bunk_with/not_bunk_with, sibling-and-request combinations). Single-
-  // edge pairs stay straight, which the user finds easier to read.
-  const pairCounts = new Map<string, number>()
+  // Group edges by unordered pair so we can detect same-type reciprocal pairs
+  // (collapse to one bold double-headed line) vs mixed-type pairs (keep two
+  // curved edges as today).
   const pairKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`)
+  const pairBuckets = new Map<string, GraphEdgeData[]>()
   visibleEdges.forEach((e) => {
     const k = pairKey(e.source, e.target)
-    pairCounts.set(k, (pairCounts.get(k) ?? 0) + 1)
+    const bucket = pairBuckets.get(k) ?? []
+    bucket.push(e)
+    pairBuckets.set(k, bucket)
   })
 
-  const edges: EdgeElement[] = visibleEdges.map((edge, index) => ({
-    data: {
-      id: `edge-${index}`,
-      source: edge.source.toString(),
-      target: edge.target.toString(),
-      edge_type: edge.type,
-      priority: edge.priority,
-      confidence: edge.confidence,
-      is_reciprocal: edge.reciprocal,
-      ...(edge.request_type ? { request_type: edge.request_type } : {}),
-      ...((pairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2 ? { multi: true } : {}),
-    },
-  }))
+  // Helper: are two edges the "same kind" — same edge_type and same
+  // request_type? Used to decide whether a 2-edge pair collapses or splays.
+  const sameKind = (a: GraphEdgeData, b: GraphEdgeData) =>
+    a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
+
+  const edges: EdgeElement[] = []
+  let edgeIndex = 0
+
+  pairBuckets.forEach((bucket) => {
+    if (bucket.length === 2 && sameKind(bucket[0]!, bucket[1]!)) {
+      // Same-type reciprocal pair — emit one edge with is_reciprocal: true.
+      // Source/target come from the first edge; arrowheads are symmetric in
+      // the stylesheet so the choice does not affect rendering.
+      const e = bucket[0]!
+      edges.push({
+        data: {
+          id: `edge-${edgeIndex++}`,
+          source: e.source.toString(),
+          target: e.target.toString(),
+          edge_type: e.type,
+          priority: e.priority,
+          confidence: e.confidence,
+          is_reciprocal: true,
+          ...(e.request_type ? { request_type: e.request_type } : {}),
+        },
+      })
+      return
+    }
+
+    // Otherwise, emit each edge separately. Pairs with 2+ edges get the
+    // multi flag so the stylesheet curves them (true conflicts).
+    const isMulti = bucket.length >= 2
+    bucket.forEach((edge) => {
+      edges.push({
+        data: {
+          id: `edge-${edgeIndex++}`,
+          source: edge.source.toString(),
+          target: edge.target.toString(),
+          edge_type: edge.type,
+          priority: edge.priority,
+          confidence: edge.confidence,
+          is_reciprocal: edge.reciprocal,
+          ...(edge.request_type ? { request_type: edge.request_type } : {}),
+          ...(isMulti ? { multi: true } : {}),
+        },
+      })
+    })
+  })
 
   return { parentNodes, nodes, edges }
 }

@@ -223,9 +223,39 @@ describe('createGraphElements', () => {
     expect(requestEdge.data.is_reciprocal).toBe(true)
   })
 
-  it('flags edges as multi when the unordered pair has 2+ relationships', () => {
+  it('flags multi only on mixed-type pairs (different request_types still counts)', () => {
+    // After the same-type-collapse change, two edges of the same request_type
+    // collapse to one is_reciprocal edge. Multi only fires when types differ.
     const edges: GraphEdgeData[] = [
-      // pair (1,2): one bunk_with each direction → 2 edges → multi
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'bunk_with',
+      },
+      {
+        source: 2,
+        target: 1,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+        request_type: 'not_bunk_with',
+      },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      sibling: true,
+    })
+    expect(out).toHaveLength(2)
+    expect(out.every((e) => e.data.multi === true)).toBe(true)
+  })
+
+  it('collapses a same-type reciprocal bunk_with pair into one edge tagged is_reciprocal', () => {
+    const edges: GraphEdgeData[] = [
       {
         source: 1,
         target: 2,
@@ -244,31 +274,53 @@ describe('createGraphElements', () => {
         reciprocal: true,
         request_type: 'bunk_with',
       },
-      // pair (2,3): single sibling edge → 1 edge → not multi
-      { source: 2, target: 3, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      historical: true,
       sibling: true,
-      school: true,
     })
-    const between12 = out.filter(
-      (e) =>
-        (e.data.source === '1' && e.data.target === '2') ||
-        (e.data.source === '2' && e.data.target === '1')
-    )
-    expect(between12).toHaveLength(2)
-    expect(between12.every((e) => e.data.multi === true)).toBe(true)
-
-    const between23 = expectDefined(
-      out.find((e) => e.data.source === '2' && e.data.target === '3'),
-      '2-3 edge'
-    )
-    expect(between23.data.multi).toBeUndefined()
+    expect(out).toHaveLength(1)
+    const edge = expectDefined(out[0], 'collapsed edge')
+    expect(edge.data.is_reciprocal).toBe(true)
+    expect(edge.data.multi).toBeUndefined()
+    expect(edge.data.request_type).toBe('bunk_with')
   })
 
-  it('treats sibling+request between the same pair as multi (different types still counts)', () => {
+  it('collapses a same-type reciprocal not_bunk_with pair', () => {
+    const edges: GraphEdgeData[] = [
+      {
+        source: 1,
+        target: 2,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: true,
+        request_type: 'not_bunk_with',
+      },
+      {
+        source: 2,
+        target: 1,
+        type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: true,
+        request_type: 'not_bunk_with',
+      },
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
+      request: true,
+      sibling: true,
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.is_reciprocal).toBe(true)
+    expect(out[0]?.data.request_type).toBe('not_bunk_with')
+  })
+
+  it('keeps a single one-way edge unflagged (is_reciprocal falsy, no multi)', () => {
+    // Cytoscape's edge[?is_reciprocal] selector matches truthy values; either
+    // false or undefined skips the bold-solid override. We forward the
+    // original edge.reciprocal value (false here) for any downstream
+    // consumer that read it before.
     const edges: GraphEdgeData[] = [
       {
         source: 1,
@@ -279,16 +331,14 @@ describe('createGraphElements', () => {
         reciprocal: false,
         request_type: 'bunk_with',
       },
-      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
     ]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
       request: true,
-      historical: true,
       sibling: true,
-      school: true,
     })
-    expect(out).toHaveLength(2)
-    expect(out.every((e) => e.data.multi === true)).toBe(true)
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.is_reciprocal).toBeFalsy()
+    expect(out[0]?.data.multi).toBeUndefined()
   })
 
   it('passes request_type from edge data to EdgeElement so styles can color negative requests differently', () => {
