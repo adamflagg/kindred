@@ -617,7 +617,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                 : 'card-lodge'
             )}
           >
-            <div className="border-border relative z-20 border-b px-4 py-2">
+            <div className="border-border relative z-30 border-b px-4 py-2">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="font-display text-foreground flex min-w-0 shrink items-center gap-2 font-semibold">
                   <Network className="text-primary h-5 w-5 shrink-0" />
