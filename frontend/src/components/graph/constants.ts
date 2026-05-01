@@ -23,14 +23,10 @@ export const GRADE_COLORS: Record<number, string> = {
 //
 // `request` is the positive bunk-with edge (blue). `not_bunk_with` is the
 // negative request keyed off `request_type` since the API ships both as
-// type='request' (the negative edge differs only by request_type). Sibling
-// is intentionally green so it doesn't share a hue with the negative
-// request — when both render in the same graph they need to be visually
-// distinct at a glance.
+// type='request' (the negative edge differs only by request_type).
 export const EDGE_COLORS: Record<string, string> = {
   request: '#3498db',
   not_bunk_with: '#e74c3c',
-  sibling: '#2ecc71',
   bundled: '#9b59b6',
 }
 
@@ -50,7 +46,6 @@ export const STATUS_COLORS: Record<string, string> = {
 // Edge type display labels
 export const EDGE_LABELS: Record<string, string> = {
   request: 'Requests',
-  sibling: 'Siblings',
 }
 
 /**

@@ -440,10 +440,6 @@ describe('EDGE_COLORS constant', () => {
   it('uses red for not_bunk_with (negative) requests', () => {
     expect(EDGE_COLORS['not_bunk_with']).toBe('#e74c3c')
   })
-
-  it('uses green for sibling edges (was previously red)', () => {
-    expect(EDGE_COLORS['sibling']).toBe('#2ecc71')
-  })
 })
 
 describe('edge curve rendering', () => {
