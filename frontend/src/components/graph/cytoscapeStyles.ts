@@ -35,7 +35,6 @@ export interface GraphEdgeData {
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
   request: boolean
-  sibling: boolean
   [key: string]: boolean
 }
 
@@ -117,23 +116,39 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       style: {
         width: 2,
         'line-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+        'line-style': 'dashed',
         'target-arrow-shape': 'triangle',
         'target-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
-        // Default: a single relationship between two campers renders as a
-        // plain straight directional arrow. Pairs with 2+ relationships
-        // (mutual same-type, asymmetric, or sibling+request combinations)
-        // pick up the `multi` data flag in createGraphElements and switch
-        // to unbundled-bezier below so each direction is its own curve.
+        // Default: a single one-way request renders as a dashed straight
+        // arrow. Same-type reciprocal pairs are collapsed upstream in
+        // createGraphElements and tagged is_reciprocal — they're picked up
+        // by the rule below for bold solid + source arrowhead. Mixed-type
+        // pairs (true conflict) keep multi:true and inherit dashed straight
+        // here, then get curved by the multi rule.
         'curve-style': 'straight',
         'overlay-padding': '2px',
       },
     },
     {
+      selector: 'edge[?is_reciprocal]',
+      style: {
+        // Bold solid double-headed line for collapsed mutual-request pairs.
+        // line-color and target-arrow-color inherit from the base 'edge'
+        // rule; source-arrow-color must mirror them so a recip not_bunk_with
+        // doesn't render with a blue source arrow.
+        width: 4,
+        'line-style': 'solid',
+        'source-arrow-shape': 'triangle',
+        'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+    {
       selector: 'edge[?multi]',
       style: {
-        // Splay each edge of a multi-relationship pair onto its own curve.
-        // Distance/weight are intentionally moderate so two curves don't
-        // overlap each other yet stay close enough to read as a related pair.
+        // Splay each edge of a true-conflict pair onto its own curve. Width
+        // and line-style inherit from the base rule (regular dashed) — these
+        // are still one-way requests, just visually separated so both
+        // colors read.
         'curve-style': 'unbundled-bezier',
         'control-point-distances': [40],
         'control-point-weights': [0.5],
@@ -253,8 +268,8 @@ export interface EdgeElement {
     confidence: number
     is_reciprocal: boolean
     request_type?: string
-    /** True when this pair of campers has 2+ relationships (any combination
-     *  of bunk_with, not_bunk_with, sibling). Drives the curved-bezier style. */
+    /** True when a pair has two opposing-direction request edges of mixed
+     *  request_type (bunk_with vs not_bunk_with). Drives the curved bezier. */
     multi?: boolean
   }
 }
@@ -323,36 +338,76 @@ export function createGraphElements(
     },
   }))
 
-  // Filter and create edges based on visibility settings
+  // Filter and create edges based on visibility settings.
+  // Sibling edges are stripped client-side as a defensive measure — the
+  // sibling edge type is being removed end-to-end (see follow-up issue);
+  // this filter unblocks the visual change while the API is updated.
   const visibleEdges = edgeData.filter((edge) => {
+    if (edge.type === 'sibling') return false
     const edgeType = edge.type as keyof ShowEdgesSettings
     return showEdges[edgeType] !== false
   })
 
-  // Count relationships per unordered pair so the renderer can curve only
-  // when there are 2+ edges between the same two campers (mutuals, mixed
-  // bunk_with/not_bunk_with, sibling-and-request combinations). Single-
-  // edge pairs stay straight, which the user finds easier to read.
-  const pairCounts = new Map<string, number>()
+  // Group edges by unordered pair so we can detect same-type reciprocal pairs
+  // (collapse to one bold double-headed line) vs mixed-type pairs (keep two
+  // curved edges as today).
   const pairKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`)
+  const pairBuckets = new Map<string, GraphEdgeData[]>()
   visibleEdges.forEach((e) => {
     const k = pairKey(e.source, e.target)
-    pairCounts.set(k, (pairCounts.get(k) ?? 0) + 1)
+    const bucket = pairBuckets.get(k) ?? []
+    bucket.push(e)
+    pairBuckets.set(k, bucket)
   })
 
-  const edges: EdgeElement[] = visibleEdges.map((edge, index) => ({
+  // Helper: are two edges the "same kind" — same edge_type and same
+  // request_type? Used to decide whether a 2-edge pair collapses or splays.
+  const sameKind = (a: GraphEdgeData, b: GraphEdgeData) =>
+    a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
+
+  const edges: EdgeElement[] = []
+  let edgeIndex = 0
+
+  const buildEdge = (
+    e: GraphEdgeData,
+    flags: { is_reciprocal: boolean; multi?: boolean }
+  ): EdgeElement => ({
     data: {
-      id: `edge-${index}`,
-      source: edge.source.toString(),
-      target: edge.target.toString(),
-      edge_type: edge.type,
-      priority: edge.priority,
-      confidence: edge.confidence,
-      is_reciprocal: edge.reciprocal,
-      ...(edge.request_type ? { request_type: edge.request_type } : {}),
-      ...((pairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2 ? { multi: true } : {}),
+      id: `edge-${edgeIndex++}`,
+      source: e.source.toString(),
+      target: e.target.toString(),
+      edge_type: e.type,
+      priority: e.priority,
+      confidence: e.confidence,
+      is_reciprocal: flags.is_reciprocal,
+      ...(e.request_type ? { request_type: e.request_type } : {}),
+      ...(flags.multi ? { multi: true } : {}),
     },
-  }))
+  })
+
+  pairBuckets.forEach((bucket) => {
+    if (bucket.length === 2) {
+      // Only collapse when the two edges genuinely point opposite directions —
+      // guards against backend duplicates (e.g., two A→B edges) being misread
+      // as a mutual pair.
+      const [first, second] = bucket as [GraphEdgeData, GraphEdgeData]
+      if (
+        first.source === second.target &&
+        first.target === second.source &&
+        sameKind(first, second)
+      ) {
+        edges.push(buildEdge(first, { is_reciprocal: true }))
+        return
+      }
+    }
+
+    // Otherwise, emit each edge separately. Pairs with 2+ edges get the
+    // multi flag so the stylesheet curves them (true conflicts).
+    const isMulti = bucket.length >= 2
+    bucket.forEach((edge) => {
+      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal, multi: isMulti }))
+    })
+  })
 
   return { parentNodes, nodes, edges }
 }

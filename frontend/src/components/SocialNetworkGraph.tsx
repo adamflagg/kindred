@@ -50,10 +50,10 @@ interface SocialNetworkGraphProps {
 import type { LayoutWorkerOutput } from '../workers/layoutWorker'
 import { makeLayoutToken, isStaleLayoutMessage } from '../workers/layoutWorkerGuards'
 
-// Module-level constant: request + sibling edges are always-on (not user-toggleable).
+// Module-level constant: request edges are always-on (not user-toggleable).
 // Hoisted outside the component so the reference is stable across renders —
 // passing a fresh object literal in deps arrays causes infinite re-renders.
-const SHOW_EDGES = { request: true, sibling: true } as const
+const SHOW_EDGES = { request: true } as const
 
 export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null)

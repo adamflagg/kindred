@@ -12,11 +12,12 @@ import { getEdgeLabel } from './constants'
 describe('getEdgeLabel utility', () => {
   it('maps known edge types to display labels', () => {
     expect(getEdgeLabel('request')).toBe('Requests')
-    expect(getEdgeLabel('sibling')).toBe('Siblings')
   })
 
   it('falls back to the raw type for unknown edge types', () => {
     expect(getEdgeLabel('unknown')).toBe('unknown')
     expect(getEdgeLabel('custom')).toBe('custom')
+    // Sibling is intentionally not labeled — the type is removed.
+    expect(getEdgeLabel('sibling')).toBe('sibling')
   })
 })

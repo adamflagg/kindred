@@ -101,12 +101,24 @@ describe('createGraphElements', () => {
     100: 'Cabin A',
   }
 
+  const reqEdge = (
+    source: number,
+    target: number,
+    request_type: 'bunk_with' | 'not_bunk_with',
+    reciprocal = false
+  ): GraphEdgeData => ({
+    source,
+    target,
+    type: 'request',
+    priority: 1,
+    confidence: 0.9,
+    reciprocal,
+    request_type,
+  })
+
   it('creates parent nodes for bunks', () => {
     const { parentNodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     const bunkParent = expectDefined(
       parentNodes.find((p) => p.data.id === 'bunk-100'),
@@ -136,7 +148,7 @@ describe('createGraphElements', () => {
       [camper(1, 100), camper(2, 101), camper(3, 102), camper(4, 103)],
       [],
       { 100: 'B-1', 101: 'B-2', 102: 'G-1', 103: 'G-2' },
-      { request: true, historical: true, sibling: true, school: true }
+      { request: true }
     )
     expect(parentNodes.every((p) => p.data.isBunkParent)).toBe(true)
     expect(parentNodes.every((p) => p.data.id.startsWith('bunk-'))).toBe(true)
@@ -145,9 +157,6 @@ describe('createGraphElements', () => {
   it('creates camper nodes with correct data', () => {
     const { nodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     expect(nodes).toHaveLength(3)
 
@@ -163,9 +172,6 @@ describe('createGraphElements', () => {
   it('assigns parent to nodes with bunk_cm_id', () => {
     const { nodes } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     const alice = expectDefined(
@@ -181,25 +187,20 @@ describe('createGraphElements', () => {
     expect(charlie.data.parent).toBeUndefined()
   })
 
-  it('filters edges based on showEdges settings', () => {
+  it('filters out request edges when showEdges.request is false', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
-      request: true,
-      historical: false,
-      sibling: true,
-      school: true,
+      request: false,
     })
 
+    // The fixture has one 'request' edge (filtered out) and one 'historical'
+    // edge (passes through — type isn't in showEdges, so it isn't filtered).
     expect(edges).toHaveLength(1)
-    const edge = expectDefined(edges[0], 'first edge')
-    expect(edge.data.edge_type).toBe('request')
+    expect(edges[0]?.data.edge_type).toBe('historical')
   })
 
   it('includes all edges when all types are enabled', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     expect(edges).toHaveLength(2)
@@ -208,9 +209,6 @@ describe('createGraphElements', () => {
   it('creates edges with correct data mapping', () => {
     const { edges } = createGraphElements(mockNodes, mockEdges, mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
 
     const requestEdge = expectDefined(
@@ -223,101 +221,79 @@ describe('createGraphElements', () => {
     expect(requestEdge.data.is_reciprocal).toBe(true)
   })
 
-  it('flags edges as multi when the unordered pair has 2+ relationships', () => {
-    const edges: GraphEdgeData[] = [
-      // pair (1,2): one bunk_with each direction → 2 edges → multi
-      {
-        source: 1,
-        target: 2,
-        type: 'request',
-        priority: 1,
-        confidence: 0.9,
-        reciprocal: true,
-        request_type: 'bunk_with',
-      },
-      {
-        source: 2,
-        target: 1,
-        type: 'request',
-        priority: 1,
-        confidence: 0.9,
-        reciprocal: true,
-        request_type: 'bunk_with',
-      },
-      // pair (2,3): single sibling edge → 1 edge → not multi
-      { source: 2, target: 3, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
-    ]
-    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
-      request: true,
-      historical: true,
-      sibling: true,
-      school: true,
-    })
-    const between12 = out.filter(
-      (e) =>
-        (e.data.source === '1' && e.data.target === '2') ||
-        (e.data.source === '2' && e.data.target === '1')
-    )
-    expect(between12).toHaveLength(2)
-    expect(between12.every((e) => e.data.multi === true)).toBe(true)
-
-    const between23 = expectDefined(
-      out.find((e) => e.data.source === '2' && e.data.target === '3'),
-      '2-3 edge'
-    )
-    expect(between23.data.multi).toBeUndefined()
-  })
-
-  it('treats sibling+request between the same pair as multi (different types still counts)', () => {
-    const edges: GraphEdgeData[] = [
-      {
-        source: 1,
-        target: 2,
-        type: 'request',
-        priority: 1,
-        confidence: 0.9,
-        reciprocal: false,
-        request_type: 'bunk_with',
-      },
-      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
-    ]
-    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
-      request: true,
-      historical: true,
-      sibling: true,
-      school: true,
-    })
+  it('flags multi only on mixed-type pairs (different request_types still counts)', () => {
+    // After the same-type-collapse change, two edges of the same request_type
+    // collapse to one is_reciprocal edge. Multi only fires when types differ.
+    const edges: GraphEdgeData[] = [reqEdge(1, 2, 'bunk_with'), reqEdge(2, 1, 'not_bunk_with')]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
     expect(out).toHaveLength(2)
     expect(out.every((e) => e.data.multi === true)).toBe(true)
   })
 
+  it('collapses a same-type reciprocal bunk_with pair into one edge tagged is_reciprocal', () => {
+    const edges: GraphEdgeData[] = [
+      reqEdge(1, 2, 'bunk_with', true),
+      reqEdge(2, 1, 'bunk_with', true),
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(1)
+    const edge = expectDefined(out[0], 'collapsed edge')
+    expect(edge.data.is_reciprocal).toBe(true)
+    expect(edge.data.multi).toBeUndefined()
+    expect(edge.data.request_type).toBe('bunk_with')
+  })
+
+  it('does NOT collapse two same-direction duplicate edges (defensive against API bugs)', () => {
+    // Two A→B edges of the same kind aren't a mutual pair — only opposite
+    // directions count. Without this guard, backend duplicates would render
+    // as a phantom mutual relationship.
+    const edges: GraphEdgeData[] = [reqEdge(1, 2, 'bunk_with'), reqEdge(1, 2, 'bunk_with')]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(2)
+    expect(out.every((e) => e.data.is_reciprocal !== true)).toBe(true)
+    // Both edges land in the multi branch since the bucket has 2 entries.
+    expect(out.every((e) => e.data.multi === true)).toBe(true)
+  })
+
+  it('collapses a same-type reciprocal not_bunk_with pair', () => {
+    const edges: GraphEdgeData[] = [
+      reqEdge(1, 2, 'not_bunk_with', true),
+      reqEdge(2, 1, 'not_bunk_with', true),
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.is_reciprocal).toBe(true)
+    expect(out[0]?.data.request_type).toBe('not_bunk_with')
+  })
+
+  it('filters out sibling edges defensively even if the API still emits them', () => {
+    const edges: GraphEdgeData[] = [
+      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
+      reqEdge(1, 2, 'bunk_with'),
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.edge_type).toBe('request')
+  })
+
+  it('keeps a single one-way edge unflagged (is_reciprocal falsy, no multi)', () => {
+    // Cytoscape's edge[?is_reciprocal] selector matches truthy values; either
+    // false or undefined skips the bold-solid override. We forward the
+    // original edge.reciprocal value (false here) for any downstream
+    // consumer that read it before.
+    const edges: GraphEdgeData[] = [reqEdge(1, 2, 'bunk_with')]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(1)
+    expect(out[0]?.data.is_reciprocal).toBe(false)
+    expect(out[0]?.data.multi).toBeUndefined()
+  })
+
   it('passes request_type from edge data to EdgeElement so styles can color negative requests differently', () => {
     const edges: GraphEdgeData[] = [
-      {
-        source: 1,
-        target: 2,
-        type: 'request',
-        priority: 1,
-        confidence: 0.9,
-        reciprocal: false,
-        request_type: 'not_bunk_with',
-      },
-      {
-        source: 2,
-        target: 3,
-        type: 'request',
-        priority: 1,
-        confidence: 0.9,
-        reciprocal: true,
-        request_type: 'bunk_with',
-      },
+      reqEdge(1, 2, 'not_bunk_with'),
+      reqEdge(2, 3, 'bunk_with', true),
     ]
-    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, {
-      request: true,
-      historical: true,
-      sibling: true,
-      school: true,
-    })
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
     expect(out).toHaveLength(2)
     const negative = expectDefined(
       out.find((e) => e.data.source === '1' && e.data.target === '2'),
@@ -348,9 +324,6 @@ describe('createGraphElements', () => {
     ]
     const { nodes } = createGraphElements(nodesWithSplits, [], mockBunksData, {
       request: true,
-      historical: true,
-      sibling: true,
-      school: true,
     })
     const alice = expectDefined(
       nodes.find((n) => n.data.id === '1'),
@@ -369,24 +342,30 @@ describe('EDGE_COLORS constant', () => {
   it('uses red for not_bunk_with (negative) requests', () => {
     expect(EDGE_COLORS['not_bunk_with']).toBe('#e74c3c')
   })
-
-  it('uses green for sibling edges (was previously red)', () => {
-    expect(EDGE_COLORS['sibling']).toBe('#2ecc71')
-  })
 })
 
 describe('edge curve rendering', () => {
-  it('renders single relationships as straight lines (not curved)', () => {
-    // A pair with only one edge between them gets a plain directional
-    // arrow — easier to read than a slight curve. Curving is reserved for
-    // pairs with 2+ relationships.
+  it('renders single relationships as straight dashed lines (regular weight, single arrow)', () => {
     const styles = getCytoscapeStyles({ showLabels: true })
     const edgeStyle = styles.find((s) => s.selector === 'edge')
     expect(edgeStyle).toBeDefined()
     const styleObj = edgeStyle?.style as unknown as Record<string, unknown>
     expect(styleObj['curve-style']).toBe('straight')
-    // No double-headed arrowing — each edge owns its own one-way arrow.
+    expect(styleObj['line-style']).toBe('dashed')
+    expect(styleObj['width']).toBe(2)
+    expect(styleObj['target-arrow-shape']).toBe('triangle')
+    // No source arrowhead at the base — that's reserved for is_reciprocal.
     expect(styleObj['source-arrow-shape']).toBeUndefined()
+  })
+
+  it('overrides edge[?is_reciprocal] to bold solid with a source arrow', () => {
+    const styles = getCytoscapeStyles({ showLabels: true })
+    const reciprocalStyle = styles.find((s) => s.selector === 'edge[?is_reciprocal]')
+    expect(reciprocalStyle).toBeDefined()
+    const styleObj = reciprocalStyle?.style as unknown as Record<string, unknown>
+    expect(styleObj['width']).toBe(4)
+    expect(styleObj['line-style']).toBe('solid')
+    expect(styleObj['source-arrow-shape']).toBe('triangle')
   })
 
   it('overrides curve-style to unbundled-bezier on edges flagged with multi', () => {
@@ -397,9 +376,22 @@ describe('edge curve rendering', () => {
     expect(styleObj['curve-style']).toBe('unbundled-bezier')
   })
 
-  it('does not register a legacy edge[?is_reciprocal] override (per-edge rendering, not per-pair)', () => {
+  it('source-arrow-color on edge[?is_reciprocal] resolves like the line color', () => {
+    // The reciprocal source arrow must match the line color (same
+    // resolveEdgeColor function), otherwise a recip not_bunk_with would
+    // render with a blue source arrow.
     const styles = getCytoscapeStyles({ showLabels: true })
-    expect(styles.find((s) => s.selector === 'edge[?is_reciprocal]')).toBeUndefined()
+    const reciprocalStyle = styles.find((s) => s.selector === 'edge[?is_reciprocal]')
+    expect(reciprocalStyle).toBeDefined()
+    const styleObj = reciprocalStyle?.style as unknown as Record<string, unknown>
+    const sourceColor = styleObj['source-arrow-color']
+    expect(typeof sourceColor).toBe('function')
+    const fakeEdge = {
+      data: (key: string) =>
+        key === 'edge_type' ? 'request' : key === 'request_type' ? 'not_bunk_with' : null,
+    }
+    const color = (sourceColor as (e: unknown) => string)(fakeEdge)
+    expect(color).toBe('#e74c3c')
   })
 
   it('colors not_bunk_with request edges using EDGE_COLORS["not_bunk_with"]', () => {

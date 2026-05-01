@@ -97,7 +97,6 @@ const getNodeColor = (degree: number): string => {
 // Edge type colors (matching main graph)
 const EDGE_COLORS: Record<string, string> = {
   request: '#3498db', // Blue for all request edges
-  sibling: '#e74c3c', // Red for all sibling edges
 }
 
 export default function BunkSocialGraphModal({
@@ -328,11 +327,7 @@ export default function BunkSocialGraphModal({
               return EDGE_COLORS[type] ?? '#95a5a6'
             },
             'target-arrow-shape': (ele: EdgeSingular) => {
-              // Show arrows for request edges, none for sibling edges
               const type = ele.data('type')
-              // Sibling edges never have arrows (they're always bidirectional)
-              if (type === 'sibling') return 'none'
-              // Request edges have arrows
               return type === 'request' ? 'triangle' : 'none'
             },
             'target-arrow-color': (ele: EdgeSingular) => {
@@ -343,10 +338,6 @@ export default function BunkSocialGraphModal({
               // Show arrow at source for reciprocal requests
               const type = ele.data('type')
               const reciprocal = ele.data('reciprocal')
-
-              // Sibling edges never have arrows
-              if (type === 'sibling') return 'none'
-              // Request edges have source arrow only if reciprocal
               return type === 'request' && reciprocal ? 'triangle' : 'none'
             },
             'source-arrow-color': (ele: EdgeSingular) => {
@@ -358,9 +349,7 @@ export default function BunkSocialGraphModal({
               // Opacity based on confidence: 0.3 to 0.9
               return Math.max(0.3, Math.min(0.9, confidence))
             },
-            'curve-style': (ele: EdgeSingular) => {
-              return ele.data('curveStyle') ?? 'straight'
-            },
+            'curve-style': 'straight',
             'control-point-step-size': 40,
             'overlay-padding': '3px',
           },
@@ -374,12 +363,17 @@ export default function BunkSocialGraphModal({
 
     cyRef.current = cy
 
-    // Convert graph data to Cytoscape format
+    // Convert graph data to Cytoscape format. Sibling edges no longer
+    // render here (see follow-up issue) — filter once and use the result
+    // for both the degree calculation and the edge rendering pass so the
+    // node status agrees with the visible graph.
+    const visibleGraphEdges = graphData.edges.filter((edge) => edge.type !== 'sibling')
+
     const elements: cytoscape.ElementDefinition[] = []
     const nodeDegrees: Record<string, number> = {}
 
     // Calculate node degrees first
-    graphData.edges.forEach((edge) => {
+    visibleGraphEdges.forEach((edge) => {
       const sourceId = `node-${edge.source}`
       const targetId = `node-${edge.target}`
       nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
@@ -447,59 +441,18 @@ export default function BunkSocialGraphModal({
       })
     })
 
-    // Process edges - backend sends separate edges for sibling and request relationships
-
+    // Process request edges. The backend sends both directions of mutual
+    // requests; we keep both so reciprocal source-arrows render.
     let edgeIndex = 0
-    const processedSiblingPairs = new Set<string>()
-
-    // First pass: Build complete edge map and detect edge types per pair
-    const edgesByKey: Record<string, GraphEdge> = {}
-    const nodePairEdgeTypes: Record<string, Set<string>> = {}
-
-    // Build complete edge map first
-    graphData.edges.forEach((edge) => {
-      const directionalKey = `${edge.source}-${edge.target}-${edge.type}`
-      edgesByKey[directionalKey] = edge
-
-      // Track edge types per node pair
-      const pairKey = [edge.source, edge.target].sort().join('-')
-      nodePairEdgeTypes[pairKey] ??= new Set()
-      nodePairEdgeTypes[pairKey].add(edge.type)
-    })
-
-    // Note: We don't need to detect reciprocals - the backend already provides this information
-
-    // Third pass: Process edges
-    graphData.edges.forEach((edge) => {
-      // Skip duplicate sibling edges (they're bidirectional)
-      if (edge.type === 'sibling') {
-        const siblingKey = [edge.source, edge.target].sort().join('-')
-        if (processedSiblingPairs.has(siblingKey)) {
-          return
-        }
-        processedSiblingPairs.add(siblingKey)
-      }
-
-      // Note: We're NOT skipping duplicate request edges anymore
-      // The backend sends both directions of mutual requests and we need both
-      // to show reciprocal arrows
-
-      // Check if this node pair has multiple edge types
-      const pairKey = [edge.source, edge.target].sort().join('-')
-      const edgeTypes = nodePairEdgeTypes[pairKey]
-      const hasMultipleTypes = edgeTypes ? edgeTypes.size > 1 : false
-
+    visibleGraphEdges.forEach((edge) => {
       elements.push({
         group: 'edges',
         data: {
-          ...edge, // Spread first to include all edge properties (including reciprocal from backend)
-          id: `edge-${edgeIndex++}`, // Override with string version
-          source: `node-${edge.source}`, // Override with string version
-          target: `node-${edge.target}`, // Override with string version
-          // Use bezier curves when there are multiple edge types between nodes
-          curveStyle: hasMultipleTypes ? 'bezier' : 'straight',
-          type: edge.type, // Ensure type is explicitly set
-          // Don't override reciprocal - it's already in ...edge
+          ...edge,
+          id: `edge-${edgeIndex++}`,
+          source: `node-${edge.source}`,
+          target: `node-${edge.target}`,
+          type: edge.type,
         },
       })
     })
@@ -881,10 +834,6 @@ export default function BunkSocialGraphModal({
                               />
                             </svg>
                             <span>Request</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="h-0.5 w-6 bg-red-500"></div>
-                            <span>Siblings</span>
                           </div>
                         </div>
                       </div>
