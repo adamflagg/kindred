@@ -528,16 +528,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     cyRef.current?.fit(undefined, 50)
   }
 
-  // Composite the cytoscape canvas, bubbleset SVG, and popper labels into
-  // one PNG. exportGraphPng keeps each layer sharp at 2x — naive whole-DOM
-  // rasterization would blur the cytoscape canvas because it gets grabbed as
-  // a 1x bitmap and then upscaled.
-  const handleDownload = async () => {
+  const handleDownload = async (mode: 'fit' | 'viewport') => {
     const cy = cyRef.current
     const container = containerRef.current
     if (!cy || cy.destroyed() || !container) return
     const { exportSessionGraphPng } = await import('./graph/graphPngExport')
-    const blob = await exportSessionGraphPng(cy, container)
+    const blob = await exportSessionGraphPng(cy, container, mode)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url

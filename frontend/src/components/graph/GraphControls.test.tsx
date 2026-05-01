@@ -98,24 +98,69 @@ describe('GraphControls rendering', () => {
     expect(screen.queryByText(/all connections/i)).not.toBeInTheDocument()
   })
 
-  describe('download button', () => {
-    it('renders a download button when onDownload is provided', () => {
+  describe('download dropdown', () => {
+    it('renders the download trigger when onDownload is provided', () => {
       render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
       expect(screen.getByTitle(/download as png/i)).toBeInTheDocument()
     })
 
-    it('does not render a download button when onDownload is omitted', () => {
+    it('does not render the download trigger when onDownload is omitted', () => {
       render(<GraphControls {...baseProps} />)
       expect(screen.queryByTitle(/download as png/i)).not.toBeInTheDocument()
     })
 
-    it('invokes onDownload when the download button is clicked', async () => {
+    it('opens a menu with "Fit to graph" and "Current view" on click', async () => {
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
+      await user.click(screen.getByTitle(/download as png/i))
+      expect(screen.getByRole('menuitem', { name: /fit to graph/i })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: /current view/i })).toBeInTheDocument()
+    })
+
+    it('invokes onDownload("fit") when "Fit to graph" is clicked', async () => {
       const onDownload = vi.fn()
       const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(<GraphControls {...baseProps} onDownload={onDownload} />)
       await user.click(screen.getByTitle(/download as png/i))
+      await user.click(screen.getByRole('menuitem', { name: /fit to graph/i }))
       expect(onDownload).toHaveBeenCalledTimes(1)
+      expect(onDownload).toHaveBeenCalledWith('fit')
+    })
+
+    it('invokes onDownload("viewport") when "Current view" is clicked', async () => {
+      const onDownload = vi.fn()
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      render(<GraphControls {...baseProps} onDownload={onDownload} />)
+      await user.click(screen.getByTitle(/download as png/i))
+      await user.click(screen.getByRole('menuitem', { name: /current view/i }))
+      expect(onDownload).toHaveBeenCalledWith('viewport')
+    })
+
+    it('closes the menu after a selection', async () => {
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
+      await user.click(screen.getByTitle(/download as png/i))
+      await user.click(screen.getByRole('menuitem', { name: /fit to graph/i }))
+      expect(screen.queryByRole('menuitem', { name: /fit to graph/i })).not.toBeInTheDocument()
+    })
+
+    it('closes the menu when clicking outside', async () => {
+      const { default: userEvent } = await import('@testing-library/user-event')
+      const user = userEvent.setup()
+      render(
+        <div>
+          <GraphControls {...baseProps} onDownload={vi.fn()} />
+          <button data-testid="outside">outside</button>
+        </div>
+      )
+      await user.click(screen.getByTitle(/download as png/i))
+      expect(screen.getByRole('menuitem', { name: /fit to graph/i })).toBeInTheDocument()
+      await user.click(screen.getByTestId('outside'))
+      expect(screen.queryByRole('menuitem', { name: /fit to graph/i })).not.toBeInTheDocument()
     })
   })
 })

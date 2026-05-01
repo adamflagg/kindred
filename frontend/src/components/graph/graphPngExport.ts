@@ -200,7 +200,6 @@ export async function exportSessionGraphPng(
         cy.fit(undefined, 30)
       } catch (err) {
         // Zero-node graph — fall through to a viewport-mode-equivalent export.
-        // eslint-disable-next-line no-console
         console.warn('cy.fit() threw during export; falling back to viewport mode', err)
       }
       // Two rAFs: first lets cytoscape commit the new pan/zoom and fire its
