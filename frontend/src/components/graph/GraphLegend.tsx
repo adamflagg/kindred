@@ -27,16 +27,38 @@ export default function GraphLegend({
         <div className="mb-1 font-medium">Edge Types</div>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['request'] }} />
+            <svg width="20" height="6" className="flex-shrink-0">
+              <line
+                x1="0"
+                y1="3"
+                x2="20"
+                y2="3"
+                stroke={edgeColors['request']}
+                strokeWidth="2"
+                strokeDasharray="4 2"
+              />
+            </svg>
             <span>Bunk Request</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['not_bunk_with'] }} />
+            <svg width="20" height="6" className="flex-shrink-0">
+              <line
+                x1="0"
+                y1="3"
+                x2="20"
+                y2="3"
+                stroke={edgeColors['not_bunk_with']}
+                strokeWidth="2"
+                strokeDasharray="4 2"
+              />
+            </svg>
             <span>Don't Bunk With</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="h-0.5 w-4" style={{ backgroundColor: edgeColors['sibling'] }} />
-            <span>Sibling</span>
+            <svg width="20" height="8" className="flex-shrink-0">
+              <line x1="0" y1="4" x2="20" y2="4" stroke={edgeColors['request']} strokeWidth="3" />
+            </svg>
+            <span>Mutual request</span>
           </div>
         </div>
       </div>

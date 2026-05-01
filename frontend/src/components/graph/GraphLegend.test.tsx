@@ -95,8 +95,14 @@ describe('GraphLegend rendering', () => {
     expect(screen.getByText("Don't Bunk With")).toBeInTheDocument()
   })
 
-  it('renders a "Sibling" edge entry', () => {
+  it('does NOT render a Sibling edge entry', () => {
     render(<GraphLegend />)
-    expect(screen.getByText('Sibling')).toBeInTheDocument()
+    expect(screen.queryByText('Sibling')).not.toBeInTheDocument()
+    expect(screen.queryByText('Siblings')).not.toBeInTheDocument()
+  })
+
+  it('renders a "Mutual request" indicator showing the new bold-solid style', () => {
+    render(<GraphLegend />)
+    expect(screen.getByText('Mutual request')).toBeInTheDocument()
   })
 })
