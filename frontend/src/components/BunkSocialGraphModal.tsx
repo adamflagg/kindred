@@ -97,7 +97,6 @@ const getNodeColor = (degree: number): string => {
 // Edge type colors (matching main graph)
 const EDGE_COLORS: Record<string, string> = {
   request: '#3498db', // Blue for all request edges
-  sibling: '#e74c3c', // Red for all sibling edges
 }
 
 export default function BunkSocialGraphModal({
@@ -328,11 +327,7 @@ export default function BunkSocialGraphModal({
               return EDGE_COLORS[type] ?? '#95a5a6'
             },
             'target-arrow-shape': (ele: EdgeSingular) => {
-              // Show arrows for request edges, none for sibling edges
               const type = ele.data('type')
-              // Sibling edges never have arrows (they're always bidirectional)
-              if (type === 'sibling') return 'none'
-              // Request edges have arrows
               return type === 'request' ? 'triangle' : 'none'
             },
             'target-arrow-color': (ele: EdgeSingular) => {
@@ -343,10 +338,6 @@ export default function BunkSocialGraphModal({
               // Show arrow at source for reciprocal requests
               const type = ele.data('type')
               const reciprocal = ele.data('reciprocal')
-
-              // Sibling edges never have arrows
-              if (type === 'sibling') return 'none'
-              // Request edges have source arrow only if reciprocal
               return type === 'request' && reciprocal ? 'triangle' : 'none'
             },
             'source-arrow-color': (ele: EdgeSingular) => {
@@ -447,10 +438,10 @@ export default function BunkSocialGraphModal({
       })
     })
 
-    // Process edges - backend sends separate edges for sibling and request relationships
+    // Process request edges. Sibling edges are filtered out — the sibling
+    // edge type is being removed end-to-end (see follow-up issue).
 
     let edgeIndex = 0
-    const processedSiblingPairs = new Set<string>()
 
     // First pass: Build complete edge map and detect edge types per pair
     const edgesByKey: Record<string, GraphEdge> = {}
@@ -458,6 +449,7 @@ export default function BunkSocialGraphModal({
 
     // Build complete edge map first
     graphData.edges.forEach((edge) => {
+      if (edge.type === 'sibling') return
       const directionalKey = `${edge.source}-${edge.target}-${edge.type}`
       edgesByKey[directionalKey] = edge
 
@@ -471,14 +463,8 @@ export default function BunkSocialGraphModal({
 
     // Third pass: Process edges
     graphData.edges.forEach((edge) => {
-      // Skip duplicate sibling edges (they're bidirectional)
-      if (edge.type === 'sibling') {
-        const siblingKey = [edge.source, edge.target].sort().join('-')
-        if (processedSiblingPairs.has(siblingKey)) {
-          return
-        }
-        processedSiblingPairs.add(siblingKey)
-      }
+      // Sibling edges removed — defensive filter in case the API still emits them.
+      if (edge.type === 'sibling') return
 
       // Note: We're NOT skipping duplicate request edges anymore
       // The backend sends both directions of mutual requests and we need both
@@ -881,10 +867,6 @@ export default function BunkSocialGraphModal({
                               />
                             </svg>
                             <span>Request</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="h-0.5 w-6 bg-red-500"></div>
-                            <span>Siblings</span>
                           </div>
                         </div>
                       </div>
