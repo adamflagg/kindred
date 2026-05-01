@@ -479,10 +479,8 @@ export function createGraphElements(
   // request_type? Used to decide whether a 2-edge pair collapses or splays.
   // Works on both GraphEdgeData and CrossScopeEdgeData (the relevant fields
   // are identically named on both shapes).
-  const sameKind = (
-    a: GraphEdgeData | CrossScopeEdgeData,
-    b: GraphEdgeData | CrossScopeEdgeData
-  ) => a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
+  const sameKind = (a: GraphEdgeData | CrossScopeEdgeData, b: GraphEdgeData | CrossScopeEdgeData) =>
+    a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
 
   const edges: EdgeElement[] = []
   let edgeIndex = 0

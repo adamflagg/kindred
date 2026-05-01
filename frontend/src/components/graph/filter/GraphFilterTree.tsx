@@ -15,7 +15,7 @@
  * by the parent via `selectedUnits` / `selectedBunks` props.
  */
 import { useMemo, useState } from 'react'
-import { ChevronRight, X, Check } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
 import clsx from 'clsx'
 import { UNIT_NAMES, getUnitForBunk } from '../../../utils/unitMapping'
 import { bunkToCode, type BunkSummary, type FilterEdgeMode } from '../graphFilter'
@@ -322,7 +322,7 @@ export default function GraphFilterTree({
             onClick={onClear}
             className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs font-medium"
           >
-            <Check className="h-3 w-3" />
+            <X className="h-3 w-3" />
             Clear filter
           </button>
         )}
