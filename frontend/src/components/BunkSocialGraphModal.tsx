@@ -24,6 +24,13 @@ import {
 import clsx from 'clsx'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getSessionShorthand } from '../utils/sessionDisplay'
+import {
+  BUNK_NODE_COLORS,
+  FIRST_YEAR_RING_COLOR,
+  FIRST_YEAR_RING_WIDTH,
+  getBunkGradeColors,
+  getNodeColor,
+} from './bunkGraphStyles'
 import { socialGraphService } from '../services/socialGraph'
 import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
@@ -85,13 +92,6 @@ interface BunkGraphData {
   edges: GraphEdge[]
   metrics: BunkGraphMetrics
   health_score: number
-}
-
-// Node colors based on connection status
-const getNodeColor = (degree: number): string => {
-  if (degree === 0) return '#e74c3c' // Red - isolated
-  if (degree <= 2) return '#f39c12' // Yellow - weak connections
-  return '#2ecc71' // Green - well connected
 }
 
 // Edge type colors (matching main graph)
@@ -313,8 +313,12 @@ export default function BunkSocialGraphModal({
         {
           selector: 'node.first-year',
           style: {
-            'border-width': 3,
-            'border-color': '#9b59b6', // Purple border for first-year campers
+            // The amber ring is the entire first-year signal — making it
+            // thicker than the default node border keeps the marker centered
+            // by geometry (no SVG badge to drift at fractional zooms) while
+            // still clearly distinguishing first-year campers.
+            'border-width': FIRST_YEAR_RING_WIDTH,
+            'border-color': FIRST_YEAR_RING_COLOR,
             'border-style': 'solid',
           },
         },
@@ -380,33 +384,12 @@ export default function BunkSocialGraphModal({
       nodeDegrees[targetId] = (nodeDegrees[targetId] ?? 0) + 1
     })
 
-    // Calculate grade colors based on bunk structure (lower/upper grades)
-    // For camp bunks, typically lower grades are the younger campers
+    // Light → mid → dark grade ramp (younger to older). Logic lives in
+    // bunkGraphStyles so the mapping is unit-tested.
     const grades = [
       ...new Set(graphData.nodes.map((n) => n.grade).filter((g) => g !== null)),
     ] as number[]
-    grades.sort((a, b) => a - b)
-    const gradeColors: Record<number, string> = {}
-
-    if (grades.length > 0) {
-      // In camp bunks, lower number grades are younger (e.g., 3rd grade < 5th grade)
-      if (grades.length === 2) {
-        // 2-grade bunk: youngest = blue, oldest = red
-        const [grade0, grade1] = grades
-        if (grade0 !== undefined) gradeColors[grade0] = '#3498db' // Youngest - blue
-        if (grade1 !== undefined) gradeColors[grade1] = '#e74c3c' // Oldest - red
-      } else if (grades.length === 3) {
-        // 3-grade bunk: youngest = blue, middle = red, oldest = dark teal
-        const [grade0, grade1, grade2] = grades
-        if (grade0 !== undefined) gradeColors[grade0] = '#3498db' // Youngest - blue
-        if (grade1 !== undefined) gradeColors[grade1] = '#e74c3c' // Middle - red
-        if (grade2 !== undefined) gradeColors[grade2] = '#16a085' // Oldest - dark teal
-      } else {
-        // Single grade - just use blue
-        const grade0 = grades[0]
-        if (grade0 !== undefined) gradeColors[grade0] = '#3498db'
-      }
-    }
+    const gradeColors = getBunkGradeColors(grades)
 
     // Add nodes with vertical randomization
     graphData.nodes.forEach((node, index) => {
@@ -425,8 +408,11 @@ export default function BunkSocialGraphModal({
         data: {
           ...node,
           id: nodeId, // Override node.id with string version
-          // Display full name with grade and historical info
-          label: `${node.name} (${formatGradeOrdinal(node.grade)})${node.first_year ? ' ①' : ''}${
+          // Display full name with grade and historical info. The first-year
+          // marker is rendered as a centered badge inside the node (see the
+          // 'node.first-year' style) — appending "①" to the label was pushing
+          // longer names onto a third line.
+          label: `${node.name} (${formatGradeOrdinal(node.grade)})${
             node.last_year_bunk && node.last_year_session
               ? `\n${getSessionShorthand(node.last_year_session)}: ${node.last_year_bunk}`
               : ''
@@ -721,7 +707,7 @@ export default function BunkSocialGraphModal({
                     <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-3">
                       <div className="text-muted-foreground flex items-center gap-2 text-sm">
                         <AlertTriangle className="h-4 w-4" />
-                        Isolated
+                        No Connections
                       </div>
                       <div
                         className={clsx(
@@ -740,8 +726,11 @@ export default function BunkSocialGraphModal({
                   <div className="bg-parchment-50/50 dark:bg-forest-950/20 border-border relative rounded-xl border">
                     <div ref={containerRef} className="h-[50vh] w-full sm:h-[70vh]" />
 
-                    {/* Mobile Controls */}
-                    <div className="absolute top-2 right-2 flex flex-col gap-2 sm:hidden">
+                    {/* Zoom/fit controls — visible on every breakpoint so
+                        desktop users can fit and zoom without a wheel. The
+                        legend toggle stays mobile-only since the legend is
+                        always rendered on desktop. */}
+                    <div className="absolute top-2 right-2 flex flex-col gap-2">
                       <button
                         onClick={handleZoomIn}
                         className="bg-card/95 shadow-lodge-sm touch-manipulation rounded-xl p-2 backdrop-blur-sm"
@@ -765,7 +754,7 @@ export default function BunkSocialGraphModal({
                       </button>
                       <button
                         onClick={() => setShowLegend(!showLegend)}
-                        className="bg-card/95 shadow-lodge-sm touch-manipulation rounded-xl p-2 backdrop-blur-sm"
+                        className="bg-card/95 shadow-lodge-sm touch-manipulation rounded-xl p-2 backdrop-blur-sm sm:hidden"
                         title="Toggle legend"
                       >
                         <Info className="h-5 w-5" />
@@ -782,58 +771,25 @@ export default function BunkSocialGraphModal({
                     >
                       <div className="text-foreground mb-2 font-semibold">Graph Legend</div>
 
-                      {/* Node Status */}
+                      {/* Node Status — binary: any connection → green, none → red */}
                       <div className="mb-2">
                         <div className="text-muted-foreground mb-1 text-[11px] font-medium">
                           Connections
                         </div>
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full border border-gray-600 bg-red-500 dark:border-gray-400 dark:bg-red-600"></div>
-                            <span>Isolated (0)</span>
+                            <div
+                              className="h-3 w-3 rounded-full border border-gray-600 dark:border-gray-400"
+                              style={{ backgroundColor: BUNK_NODE_COLORS.noConnections }}
+                            ></div>
+                            <span>No connections</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full border border-gray-600 bg-yellow-500 dark:border-gray-400 dark:bg-yellow-600"></div>
-                            <span>Few (1-2)</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full border border-gray-600 bg-green-500 dark:border-gray-400 dark:bg-green-600"></div>
-                            <span>Good (3+)</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Edge Types */}
-                      <div className="mb-2">
-                        <div className="text-muted-foreground mb-1 text-[11px] font-medium">
-                          Relationships
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <svg width="24" height="10" className="flex-shrink-0">
-                              <defs>
-                                <marker
-                                  id="arrowhead"
-                                  markerWidth="10"
-                                  markerHeight="7"
-                                  refX="9"
-                                  refY="3.5"
-                                  orient="auto"
-                                >
-                                  <polygon points="0 0, 10 3.5, 0 7" fill="#3498db" />
-                                </marker>
-                              </defs>
-                              <line
-                                x1="0"
-                                y1="5"
-                                x2="20"
-                                y2="5"
-                                stroke="#3498db"
-                                strokeWidth="2"
-                                markerEnd="url(#arrowhead)"
-                              />
-                            </svg>
-                            <span>Request</span>
+                            <div
+                              className="h-3 w-3 rounded-full border border-gray-600 dark:border-gray-400"
+                              style={{ backgroundColor: BUNK_NODE_COLORS.hasConnections }}
+                            ></div>
+                            <span>Has connections</span>
                           </div>
                         </div>
                       </div>
@@ -876,67 +832,30 @@ export default function BunkSocialGraphModal({
 
                             if (uniqueGrades.length === 0) return null
 
-                            if (uniqueGrades.length === 1) {
-                              return (
-                                <div className="flex items-center gap-2">
-                                  <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
-                                  <span>
-                                    {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
-                                    {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
-                                  </span>
-                                </div>
-                              )
-                            } else if (uniqueGrades.length === 2) {
-                              return (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
-                                    <span>
-                                      {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
-                                      {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full border-2 border-red-500"></div>
-                                    <span>
-                                      {formatGradeOrdinal(uniqueGrades[1] ?? 0)} (
-                                      {gradeCounts[uniqueGrades[1] ?? 0] ?? 0})
-                                    </span>
-                                  </div>
-                                </>
-                              )
-                            } else if (uniqueGrades.length === 3) {
-                              return (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full border-2 border-blue-500"></div>
-                                    <span>
-                                      {formatGradeOrdinal(uniqueGrades[0] ?? 0)} (
-                                      {gradeCounts[uniqueGrades[0] ?? 0] ?? 0})
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full border-2 border-red-500"></div>
-                                    <span>
-                                      {formatGradeOrdinal(uniqueGrades[1] ?? 0)} (
-                                      {gradeCounts[uniqueGrades[1] ?? 0] ?? 0})
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full border-2 border-teal-600"></div>
-                                    <span>
-                                      {formatGradeOrdinal(uniqueGrades[2] ?? 0)} (
-                                      {gradeCounts[uniqueGrades[2] ?? 0] ?? 0})
-                                    </span>
-                                  </div>
-                                </>
-                              )
-                            }
+                            // Grade swatches reuse the same light/mid/dark
+                            // ramp the cytoscape nodes draw their text from,
+                            // so the legend matches the graph regardless of
+                            // how many grades the bunk happens to contain.
+                            const legendGradeColors = getBunkGradeColors(uniqueGrades)
+                            return uniqueGrades.map((grade) => (
+                              <div key={grade} className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full"
+                                  style={{ backgroundColor: legendGradeColors[grade] }}
+                                ></div>
+                                <span>
+                                  {formatGradeOrdinal(grade)} ({gradeCounts[grade] ?? 0})
+                                </span>
+                              </div>
+                            ))
                           })()}
                           {graphData.nodes.some((n) => n.first_year) && (
                             <div className="flex items-center gap-2">
-                              <div className="h-3 w-3 rounded-full border-[3px] border-purple-500"></div>
-                              <span>First year ①</span>
+                              <div
+                                className="h-3 w-3 rounded-full border-[3px]"
+                                style={{ borderColor: FIRST_YEAR_RING_COLOR }}
+                              ></div>
+                              <span>First year</span>
                             </div>
                           )}
                         </div>
