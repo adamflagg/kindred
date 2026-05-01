@@ -8,7 +8,7 @@
  * raster step stays sharp at any chosen scale.
  */
 import type { Core } from 'cytoscape'
-import { toSvg } from 'html-to-image'
+import { toPng } from 'html-to-image'
 
 const EXPORT_SCALE = 2
 
@@ -53,45 +53,54 @@ export async function exportSessionGraphPng(cy: Core, container: HTMLElement): P
   const bubbleSvg = container.querySelector('svg')
   const bubbleInner = bubbleSvg ? bubbleSvg.innerHTML : ''
 
-  const labels = Array.from(container.querySelectorAll<HTMLElement>(LABEL_SELECTORS))
-  const labelFragments = await Promise.all(
-    labels.map(async (label) => {
-      const rect = label.getBoundingClientRect()
-      if (rect.width === 0 || rect.height === 0) return ''
-      const x = Math.round(rect.left - containerRect.left)
-      const y = Math.round(rect.top - containerRect.top)
-      const w = Math.round(rect.width)
-      const h = Math.round(rect.height)
-      const dataUrl = await toSvg(label, { pixelRatio: EXPORT_SCALE, cacheBust: true })
-      return `<image x="${x}" y="${y}" width="${w}" height="${h}" href="${dataUrl}" />`
-    })
-  )
-
+  // Compose the vector layers (cytoscape + bubblesets) into one SVG. Labels
+  // are NOT embedded here — inlining each label as a foreignObject with
+  // computed styles would produce data URLs in the hundreds of KB, and a
+  // graph with hundreds of labels overflows V8's string length limit.
   const composite =
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
     `<rect x="0" y="0" width="${width}" height="${height}" fill="white" />` +
     cyInner +
     `<svg width="${width}" height="${height}">${bubbleInner}</svg>` +
-    labelFragments.join('') +
     `</svg>`
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width * EXPORT_SCALE
+  canvas.height = height * EXPORT_SCALE
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('failed to acquire 2d context for graph export')
 
   const svgBlob = new Blob([composite], { type: 'image/svg+xml;charset=utf-8' })
   const svgUrl = URL.createObjectURL(svgBlob)
   try {
-    const img = await loadImage(svgUrl)
-    const canvas = document.createElement('canvas')
-    canvas.width = width * EXPORT_SCALE
-    canvas.height = height * EXPORT_SCALE
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('failed to acquire 2d context for graph export')
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    return await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error('canvas.toBlob returned null'))),
-        'image/png'
-      )
-    })
+    const baseImg = await loadImage(svgUrl)
+    ctx.drawImage(baseImg, 0, 0, canvas.width, canvas.height)
   } finally {
     URL.revokeObjectURL(svgUrl)
   }
+
+  // Layer the popper-positioned labels on top, one rasterized PNG per label.
+  // Each PNG is small (a single text pill at 2x), so this scales to graphs
+  // with hundreds of labels without blowing memory.
+  const labels = Array.from(container.querySelectorAll<HTMLElement>(LABEL_SELECTORS))
+  for (const label of labels) {
+    const rect = label.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) continue
+    const dataUrl = await toPng(label, {
+      pixelRatio: EXPORT_SCALE,
+      cacheBust: true,
+      backgroundColor: 'transparent',
+    })
+    const img = await loadImage(dataUrl)
+    const x = (rect.left - containerRect.left) * EXPORT_SCALE
+    const y = (rect.top - containerRect.top) * EXPORT_SCALE
+    ctx.drawImage(img, x, y, rect.width * EXPORT_SCALE, rect.height * EXPORT_SCALE)
+  }
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('canvas.toBlob returned null'))),
+      'image/png'
+    )
+  })
 }
