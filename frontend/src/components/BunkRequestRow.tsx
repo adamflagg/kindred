@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import clsx from 'clsx'
 import CamperLink from './CamperLink'
 import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
@@ -71,21 +71,23 @@ function ClickableRow({
   )
 }
 
-function statusIcon(status: string) {
-  if (status === 'resolved')
-    return <CheckCircle className="text-forest-600 dark:text-forest-400 h-4 w-4 flex-shrink-0" />
-  if (status === 'declined')
-    return <XCircle className="text-bark-600 dark:text-bark-400 h-4 w-4 flex-shrink-0" />
-  return <Clock className="h-4 w-4 flex-shrink-0 text-amber-500" />
+// Type-keyed dot: green for bunk_with (and age_preference fallback), red for
+// not_bunk_with. We only render resolved rows here, so there is no pending /
+// declined branching — the dot color reflects the request's intent.
+function typeDot(requestType: string) {
+  const isNotWith = requestType === 'not_bunk_with'
+  return (
+    <span
+      className={clsx(
+        'h-2 w-2 flex-shrink-0 rounded-full',
+        isNotWith ? 'bg-red-500' : 'bg-green-500'
+      )}
+      aria-hidden="true"
+    />
+  )
 }
 
-const SATISFACTION_ICONS = {
-  satisfied: <span className="sat-icon sat-icon-met">✓</span>,
-  not_satisfied: <span className="sat-icon sat-icon-unmet">✗</span>,
-  unknown: <span className="sat-icon sat-icon-unknown">?</span>,
-}
-
-function SatisfactionIcon({
+function MetPill({
   satisfaction,
   satisfactionLoading,
   satisfactionDetail,
@@ -94,15 +96,32 @@ function SatisfactionIcon({
   satisfactionLoading: boolean
   satisfactionDetail?: string | undefined
 }) {
-  return (
-    <span className="ml-auto" title={satisfactionDetail}>
-      {satisfactionLoading ? (
-        <span className="sat-spinner" />
-      ) : satisfaction ? (
-        (SATISFACTION_ICONS[satisfaction as keyof typeof SATISFACTION_ICONS] ?? null)
-      ) : null}
-    </span>
-  )
+  if (satisfactionLoading) {
+    return (
+      <span className="ml-auto" title={satisfactionDetail}>
+        <span className="border-muted-foreground/30 border-t-primary inline-block h-3 w-3 animate-spin rounded-full border" />
+      </span>
+    )
+  }
+  if (satisfaction === 'satisfied') {
+    return (
+      <span className="ml-auto" title={satisfactionDetail}>
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
+          Met
+        </span>
+      </span>
+    )
+  }
+  if (satisfaction === 'not_satisfied') {
+    return (
+      <span className="ml-auto" title={satisfactionDetail}>
+        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+          Unmet
+        </span>
+      </span>
+    )
+  }
+  return null
 }
 
 /**
@@ -135,26 +154,32 @@ export function BunkRequestRow({
     const prefersOlder = request.age_preference_target === 'older'
     const ageChildren = (
       <>
-        <span className="inline-flex items-center gap-1">
+        {/* Wrap the SVG in a span so the animation has a reliable inline-flex
+            container — applying CSS animations directly to <svg> is fragile
+            across browsers and the `transform-origin` interacts oddly with
+            SVG default rendering boxes. The span owns the animation; the SVG
+            inherits the transform via the parent. */}
+        <span
+          className={clsx('inline-flex', isMaterialAgePreference && 'sparkle-material')}
+          aria-hidden="true"
+        >
           <Sparkles
             className={clsx(
               'h-3 w-3 flex-shrink-0',
-              isMaterialAgePreference
-                ? 'sparkle-material text-amber-600 dark:text-amber-400'
-                : 'text-amber-500'
+              isMaterialAgePreference ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500'
             )}
           />
-          {isMaterialAgePreference && (
-            <span className="rounded bg-amber-100 px-1.5 text-[10px] leading-4 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-              P
-            </span>
-          )}
-          {staffAgeBadge && (
-            <span className="rounded bg-indigo-100 px-1.5 text-[10px] leading-4 font-bold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
-              S
-            </span>
-          )}
         </span>
+        {isMaterialAgePreference && (
+          <span className="rounded bg-amber-100 px-1.5 text-[10px] leading-4 font-bold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+            P
+          </span>
+        )}
+        {staffAgeBadge && (
+          <span className="rounded bg-indigo-100 px-1.5 text-[10px] leading-4 font-bold text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+            S
+          </span>
+        )}
         <span>
           Prefers bunking with{' '}
           <span className="text-foreground font-medium">{prefersOlder ? 'older' : 'younger'}</span>{' '}
@@ -162,7 +187,7 @@ export function BunkRequestRow({
         </span>
         {badge}
         {showSatisfaction && (
-          <SatisfactionIcon
+          <MetPill
             satisfaction={satisfaction}
             satisfactionLoading={satisfactionLoading}
             satisfactionDetail={satisfactionDetail}
@@ -171,13 +196,7 @@ export function BunkRequestRow({
       </>
     )
     return (
-      <ClickableRow
-        className={clsx(
-          rowClass,
-          'text-muted-foreground text-xs ring-1 ring-amber-300/60 dark:ring-amber-700/40'
-        )}
-        onSelect={onSelect}
-      >
+      <ClickableRow className={clsx(rowClass, 'text-muted-foreground')} onSelect={onSelect}>
         {ageChildren}
       </ClickableRow>
     )
@@ -200,18 +219,21 @@ export function BunkRequestRow({
 
   const children = (
     <>
-      {/* Status indicator */}
-      {statusIcon(request.status)}
+      {/* Type-keyed dot: green for bunk_with, red for not_with. */}
+      {typeDot(request.request_type)}
 
-      {/* Type label */}
+      {/* Type label — colored to match the dot. */}
       <span
-        className={clsx('text-muted-foreground', !isBunkWith && 'text-red-600 dark:text-red-400')}
+        className={clsx(
+          'font-medium',
+          isBunkWith ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'
+        )}
       >
-        {isBunkWith ? 'Bunk with' : 'Not bunk with'}
+        {isBunkWith ? 'Bunk with' : 'Not with'}
       </span>
 
       {/* Arrow */}
-      <span className="text-muted-foreground">→</span>
+      <span className="text-muted-foreground/60">→</span>
 
       {/* Target - clickable when we have a real requestee match (resolved OR
           declined-but-matched, e.g. cross-session). Unresolved italic fallback
@@ -238,9 +260,9 @@ export function BunkRequestRow({
       {/* Optional badge slot (e.g. "Current request", "Pinned") */}
       {badge}
 
-      {/* Satisfaction - concise icon only */}
+      {/* "Met" pill on right when satisfied (nothing for unmet/unknown). */}
       {showSatisfaction && (
-        <SatisfactionIcon
+        <MetPill
           satisfaction={satisfaction}
           satisfactionLoading={satisfactionLoading}
           satisfactionDetail={satisfactionDetail}

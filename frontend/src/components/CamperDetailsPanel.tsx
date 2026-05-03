@@ -7,6 +7,7 @@ import {
   Heart,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   FileText,
   MapPin,
   TreePine,
@@ -928,14 +929,24 @@ export default function CamperDetailsPanel({
             {expandedSections.requests &&
               (parentRows.length > 0 || staffRows.length > 0 || ageRows.length > 0) && (
                 <div className="mt-2 space-y-1">
-                  {/* Reusable source sub-divider — matches Age preference divider style */}
+                  {/* Parent ↑ │ ⬇ Staff divider between the two peer groups, plus a
+                      quieter "Age preference" divider above the age tail section. */}
                   {(() => {
-                    const SubDivider = ({ label }: { label: string }) => (
-                      <div className="text-muted-foreground/60 my-3 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.18em] uppercase">
+                    const ParentStaffDivider = () => (
+                      <div className="text-muted-foreground/70 my-3 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] uppercase">
                         <span className="border-border/60 flex-1 border-t" />
-                        <span>{label}</span>
+                        <span className="inline-flex items-center gap-1">
+                          Parent <ChevronUp className="h-3 w-3" aria-hidden="true" />
+                        </span>
+                        <span className="border-border/60 h-3 border-l" aria-hidden="true" />
+                        <span className="inline-flex items-center gap-1">
+                          <ChevronDown className="h-3 w-3" aria-hidden="true" /> Staff
+                        </span>
                         <span className="border-border/60 flex-1 border-t" />
                       </div>
+                    )
+                    const AgePreferenceDivider = () => (
+                      <div className="border-border/60 my-2 border-t" aria-hidden="true" />
                     )
                     return (
                       <>
@@ -954,7 +965,7 @@ export default function CamperDetailsPanel({
                           )
                         })}
 
-                        {staffRows.length > 0 && <SubDivider label="Staff" />}
+                        {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
                         {staffRows.map((req) => {
                           const satisfaction = satisfactionData[req.id]
                           return (
@@ -970,7 +981,9 @@ export default function CamperDetailsPanel({
                           )
                         })}
 
-                        {ageRows.length > 0 && <SubDivider label="Age preference" />}
+                        {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
+                          <AgePreferenceDivider />
+                        )}
                         {ageRows.map((req) => {
                           const satisfaction = satisfactionData[req.id]
                           return (

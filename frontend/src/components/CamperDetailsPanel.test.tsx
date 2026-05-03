@@ -709,11 +709,11 @@ describe('CamperDetailsPanel', () => {
         expect(container.textContent).toContain('Riley')
       })
 
-      // Find the Staff sub-divider: leaf element whose trimmed text === "Staff"
-      const dividerEl = Array.from(container.querySelectorAll('*')).find(
-        (el) => el.textContent?.trim() === 'Staff' && el.children.length === 0
-      )
+      // The combined Parent ↑ │ ⬇ Staff divider is the only element with the
+      // `font-mono` utility on its container <div>.
+      const dividerEl = container.querySelector('div.font-mono')
       expect(dividerEl).not.toBeNull()
+      expect(dividerEl?.textContent).toMatch(/Parent.*Staff/)
 
       const allElements = Array.from(container.querySelectorAll('*'))
       const dividerIdx = allElements.indexOf(dividerEl as Element)
@@ -769,11 +769,8 @@ describe('CamperDetailsPanel', () => {
         expect(container.textContent).toContain('Riley')
       })
 
-      // No leaf element with text strictly "Staff" (the divider label)
-      const staffDivider = Array.from(container.querySelectorAll('*')).find(
-        (el) => el.textContent?.trim() === 'Staff' && el.children.length === 0
-      )
-      expect(staffDivider).toBeFalsy()
+      // No combined Parent/Staff divider when only parent rows exist.
+      expect(container.querySelector('div.font-mono')).toBeNull()
     })
 
     it('renders P badge on bunk_with-derived age preference (family source)', async () => {

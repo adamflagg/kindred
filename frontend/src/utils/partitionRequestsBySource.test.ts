@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { partitionRequestsBySource } from './partitionRequestsBySource'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function row(
   overrides: Partial<EnhancedBunkRequest> & Record<string, any> = {}
 ): EnhancedBunkRequest {

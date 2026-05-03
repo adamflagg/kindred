@@ -276,15 +276,13 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
 
     // Assert using document-order positions of key elements.
     //
-    // The Staff sub-divider renders a <span> whose trimmed textContent is
-    // exactly "Staff" — no children (text-only span). The summary line
-    // "Staff request satisfaction:" contains "Staff" as a substring but does
-    // NOT trim to exactly "Staff", so this selector targets only the divider.
+    // The combined Parent ↑ │ ⬇ Staff divider is the only element on the
+    // panel with the `font-mono` utility on its container <div>. The summary
+    // and row text don't use font-mono.
     const allElements = Array.from(container.querySelectorAll('*'))
-    const dividerEl = allElements.find(
-      (el) => el.textContent?.trim() === 'Staff' && el.children.length === 0
-    )
+    const dividerEl = container.querySelector('div.font-mono')
     expect(dividerEl).not.toBeNull()
+    expect(dividerEl?.textContent).toMatch(/Parent.*Staff/)
     const dividerIdx = allElements.indexOf(dividerEl as Element)
 
     // Emma and Riley's names appear in a <Link> (rendered as <a>) or <span>
@@ -331,14 +329,10 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
     ]
     const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
     const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
-    // The bare word "Staff" should not appear as a divider label.
-    // Note: this is a heuristic — if the existing UI uses "Staff" in some other
-    // context (e.g. an alert label), the assertion may need refining. For now
-    // assert no divider element with the literal text "Staff" exists.
-    const dividers = Array.from(container.querySelectorAll('*')).filter(
-      (el) => el.textContent?.trim() === 'Staff'
-    )
-    expect(dividers.length).toBe(0)
+    // The Parent ↑ │ ⬇ Staff divider only renders when both groups exist.
+    // With only parent rows present, the font-mono divider container should
+    // not be in the DOM.
+    expect(container.querySelector('div.font-mono')).toBeNull()
   })
 
   it('sorts Parent rows alphabetically by requestee first_name', () => {

@@ -3,7 +3,7 @@
  */
 import { useMemo } from 'react'
 import { Link } from 'react-router'
-import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
+import { Heart, Home, Clock, CheckCircle, ChevronUp, ChevronDown } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
@@ -45,17 +45,29 @@ interface BunkingStatusPanelProps {
   satisfactionLoading: boolean
 }
 
-// Sub-divider between parent rows and staff rows (and before age rows).
-// Styled to match the existing age-preference divider style used elsewhere
-// in this panel family.
-function SubDivider({ label }: { label: string }) {
+// Single divider between parent and staff sections — labeled on both sides
+// with directional chevrons so staff can read which group is above and which
+// is below at a glance. Renders only when BOTH groups have rows.
+function ParentStaffDivider() {
   return (
-    <div className="text-muted-foreground/60 my-3 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.18em] uppercase">
+    <div className="text-muted-foreground/70 my-3 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] uppercase">
       <span className="border-border/60 flex-1 border-t" />
-      <span>{label}</span>
+      <span className="inline-flex items-center gap-1">
+        Parent <ChevronUp className="h-3 w-3" aria-hidden="true" />
+      </span>
+      <span className="border-border/60 h-3 border-l" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1">
+        <ChevronDown className="h-3 w-3" aria-hidden="true" /> Staff
+      </span>
       <span className="border-border/60 flex-1 border-t" />
     </div>
   )
+}
+
+// Subtle hairline above the age-preference tail section — no label, just a
+// quiet visual break so age rows don't bleed into the staff/parent rows above.
+function AgePreferenceDivider() {
+  return <div className="border-border/60 my-2 border-t" aria-hidden="true" />
 }
 
 export function BunkingStatusPanel({
@@ -99,7 +111,6 @@ export function BunkingStatusPanel({
       ...personRequests,
       ...(agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [personRequests, agePreferenceRequests]
   )
 
@@ -210,7 +221,7 @@ export function BunkingStatusPanel({
             the spec design. Summary appears first so staff can immediately see
             overall satisfaction before scanning individual rows. */}
         {showSummary && (
-          <div className="bg-muted/40 border-border rounded-lg border px-4 py-3">
+          <div className="bg-muted/20 border-border rounded-lg border px-4 py-3">
             {showParent && showStaff ? (
               <div className="grid grid-cols-[1fr_1px_1fr] items-center">
                 <div className="px-4">
@@ -252,7 +263,7 @@ export function BunkingStatusPanel({
               )
             })}
 
-            {staffRows.length > 0 && <SubDivider label="Staff" />}
+            {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
             {staffRows.map((req) => {
               const sat = satisfactionData[req.id]
               return (
@@ -270,7 +281,9 @@ export function BunkingStatusPanel({
               )
             })}
 
-            {ageRows.length > 0 && <SubDivider label="Age preference" />}
+            {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
+              <AgePreferenceDivider />
+            )}
             {ageRows.map((req) => {
               const sat = satisfactionData[req.id]
               return (

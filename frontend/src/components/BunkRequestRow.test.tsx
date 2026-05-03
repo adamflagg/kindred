@@ -33,55 +33,49 @@ function makePerson(overrides: Partial<PersonsResponse> = {}): PersonsResponse {
 }
 
 describe('BunkRequestRow', () => {
-  it('renders a resolved status with a green check icon', () => {
+  it('renders a green dot for bunk_with rows', () => {
     const { container } = render(
       <BunkRequestRow
-        request={makeRequest({ status: 'resolved', requestee_id: 200 })}
+        request={makeRequest({ request_type: 'bunk_with', requestee_id: 200 })}
         targetPerson={makePerson()}
       />
     )
-    // CheckCircle for resolved - forest-600
-    expect(container.querySelector('.text-forest-600')).toBeTruthy()
+    // Type-keyed dot — green for bunk_with regardless of status
+    expect(container.querySelector('.bg-green-500')).toBeTruthy()
   })
 
-  it('renders a pending status with an amber clock icon', () => {
+  it('renders a red dot for not_bunk_with rows', () => {
     const { container } = render(
       <BunkRequestRow
-        request={makeRequest({ status: 'pending', requested_person_name: 'Liam Garcia' })}
+        request={makeRequest({ request_type: 'not_bunk_with', requestee_id: 200 })}
+        targetPerson={makePerson()}
       />
     )
-    expect(container.querySelector('.text-amber-500')).toBeTruthy()
+    expect(container.querySelector('.bg-red-500')).toBeTruthy()
   })
 
-  it('renders a declined status with a bark X icon', () => {
-    const { container } = render(
-      <BunkRequestRow
-        request={makeRequest({ status: 'declined', requested_person_name: 'Noah Smith' })}
-      />
-    )
-    expect(container.querySelector('.text-bark-600')).toBeTruthy()
-  })
-
-  it('renders "Bunk with" label for bunk_with requests', () => {
+  it('renders "Bunk with" label in green for bunk_with requests', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ request_type: 'bunk_with', requestee_id: 200 })}
         targetPerson={makePerson()}
       />
     )
-    expect(screen.getByText('Bunk with')).toBeInTheDocument()
+    const label = screen.getByText('Bunk with')
+    expect(label).toBeInTheDocument()
+    expect(label.className).toMatch(/text-green-700/)
   })
 
-  it('renders "Not bunk with" label in red for not_bunk_with requests', () => {
+  it('renders "Not with" label in red for not_bunk_with requests', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ request_type: 'not_bunk_with', requestee_id: 200 })}
         targetPerson={makePerson()}
       />
     )
-    const label = screen.getByText('Not bunk with')
+    const label = screen.getByText('Not with')
     expect(label).toBeInTheDocument()
-    expect(label.className).toMatch(/text-red-600/)
+    expect(label.className).toMatch(/text-red-700/)
   })
 
   it('renders target name via CamperLink when requestee_id set and resolved', () => {
@@ -129,7 +123,7 @@ describe('BunkRequestRow', () => {
     expect(screen.queryByText('mutual')).not.toBeInTheDocument()
   })
 
-  it('renders satisfaction check when showSatisfaction and satisfied', () => {
+  it('renders "Met" pill when showSatisfaction and satisfied', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
@@ -138,10 +132,10 @@ describe('BunkRequestRow', () => {
         satisfaction="satisfied"
       />
     )
-    expect(screen.getByText('✓')).toBeInTheDocument()
+    expect(screen.getByText('Met')).toBeInTheDocument()
   })
 
-  it('renders satisfaction X when showSatisfaction and not_satisfied', () => {
+  it('renders red "Unmet" pill when showSatisfaction and not_satisfied', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
@@ -150,10 +144,13 @@ describe('BunkRequestRow', () => {
         satisfaction="not_satisfied"
       />
     )
-    expect(screen.getByText('✗')).toBeInTheDocument()
+    const pill = screen.getByText('Unmet')
+    expect(pill).toBeInTheDocument()
+    expect(pill.className).toMatch(/bg-red-100/)
+    expect(pill.className).toMatch(/text-red-700/)
   })
 
-  it('renders satisfaction ? when showSatisfaction and unknown', () => {
+  it('renders nothing on the right when showSatisfaction and unknown', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
@@ -162,10 +159,11 @@ describe('BunkRequestRow', () => {
         satisfaction="unknown"
       />
     )
-    expect(screen.getByText('?')).toBeInTheDocument()
+    expect(screen.queryByText('Met')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unmet')).not.toBeInTheDocument()
   })
 
-  it('does not render satisfaction icons when showSatisfaction is false', () => {
+  it('does not render Met/Unmet pill when showSatisfaction is false', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
@@ -174,7 +172,8 @@ describe('BunkRequestRow', () => {
         satisfaction="satisfied"
       />
     )
-    expect(screen.queryByText('✓')).not.toBeInTheDocument()
+    expect(screen.queryByText('Met')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unmet')).not.toBeInTheDocument()
   })
 
   it('renders "Prefers bunking with older campers" for age_preference request', () => {
