@@ -34,7 +34,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import aiohttp
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -506,17 +505,13 @@ class TestSessionSocialGraphExcInfoLogged:
 
 
 def _make_client_response_error(
-    status: int = 404, data: str = "sensitive PocketBase internal details"
-) -> aiohttp.ClientResponseError:
-    """Build an aiohttp.ClientResponseError with sensitive data for testing."""
-    pb_error = aiohttp.ClientResponseError(
-        request_info=None,
-        history=(),
-        status=status,
-        message="Not Found",
-    )
-    pb_error.data = data
-    return pb_error
+    status: int = 404,
+    data: str = "sensitive PocketBase internal details",
+) -> Any:
+    """Build a pocketbase ClientResponseError with sensitive data for testing."""
+    from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
+    return ClientResponseError(url="http://pb/test", status=status, data={"message": data})
 
 
 class TestPreValidateSolverClientResponseErrorNoLeak:
@@ -547,7 +542,7 @@ class TestPreValidateSolverClientResponseErrorNoLeak:
         assert body == INTERNAL_ERROR_BODY, f"ClientResponseError branch leaked PocketBase details. Got: {body!r}"
         detail = body.get("detail", "")
         assert "PocketBase error" not in detail
-        assert "sensitive PocketBase internal details" not in detail
+        assert "sensitive PocketBase" not in detail
 
     def test_logger_error_called_with_exc_info(self) -> None:
         from api.routers.solver import router
