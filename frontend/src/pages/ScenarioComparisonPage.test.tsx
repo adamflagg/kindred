@@ -410,3 +410,37 @@ describe('ValidationScoreCard — no longer shows Loading placeholder', () => {
     expect(screen.queryByText('Loading validation...')).toBeNull()
   })
 })
+
+// ─── Asymmetric data: left resolves, right is null ────────────────────────────
+
+describe('ValidationSection — asymmetric data (left valid, right null)', () => {
+  it('shows Validation Details heading and "Not available" placeholder for the right card', () => {
+    const stats = makeStats({
+      material_parent_requests: 5,
+      satisfied_material_parent_requests: 5,
+      material_parent_request_satisfaction_rate: 1.0,
+    })
+    const leftValidation = makeValidation(stats)
+
+    render(
+      <ValidationSection
+        isLoading={false}
+        error={null}
+        leftValidation={leftValidation}
+        rightValidation={null}
+        leftScenarioName="Left"
+        rightScenarioName="Right"
+      />
+    )
+
+    // Success branch must be entered (heading visible)
+    expect(screen.getByText('Validation Details')).toBeInTheDocument()
+
+    // Right card should show "Not available" placeholder, not "Loading validation..."
+    expect(screen.getByText('Not available')).toBeInTheDocument()
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+
+    // Left scenario name should be visible
+    expect(screen.getByText('Left')).toBeInTheDocument()
+  })
+})

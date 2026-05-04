@@ -385,9 +385,9 @@ export default function ScenarioComparisonPage() {
     data: leftValidation,
     isLoading: isLeftValidationLoading,
     error: leftValidationError,
-  } = useQuery<ValidationResult | null>({
+  } = useQuery<ValidationResult>({
     queryKey: queryKeys.scenarioValidation(leftScenarioId, sessionCmId, currentYear),
-    queryFn: async (): Promise<ValidationResult | null> => {
+    queryFn: async (): Promise<ValidationResult> => {
       const scenarioId = leftScenarioId === 'production' ? undefined : leftScenarioId
       const result = await solverService.validateBunking(
         sessionCmId.toString(),
@@ -405,9 +405,9 @@ export default function ScenarioComparisonPage() {
     data: rightValidation,
     isLoading: isRightValidationLoading,
     error: rightValidationError,
-  } = useQuery<ValidationResult | null>({
+  } = useQuery<ValidationResult>({
     queryKey: queryKeys.scenarioValidation(rightScenarioId, sessionCmId, currentYear),
-    queryFn: async (): Promise<ValidationResult | null> => {
+    queryFn: async (): Promise<ValidationResult> => {
       const scenarioId = rightScenarioId === 'production' ? undefined : rightScenarioId
       const result = await solverService.validateBunking(
         sessionCmId.toString(),
