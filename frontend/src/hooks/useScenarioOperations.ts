@@ -31,7 +31,9 @@ export function useUpdateScenario() {
         throw new Error('No fields to update')
       }
 
-      return await pb.collection<SavedScenario>('saved_scenarios').update(scenarioId, updateData)
+      return await pb
+        .collection<SavedScenario>('saved_scenarios')
+        .update(scenarioId, updateData, { expand: 'session' })
     },
     onSuccess: () => {
       // Invalidate scenarios query to refetch
