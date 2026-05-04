@@ -752,19 +752,6 @@ export default function PostValidationResultsModal({
         </div>
       </div>
 
-      {/* Best-effort parent preferences — Stage 3a minimal display */}
-      {(statistics.best_effort_parent_requests ?? 0) > 0 && (
-        <div className="border-border/50 border-t px-5 py-3">
-          <p className="text-muted-foreground text-xs">
-            Best-effort preferences honored:{' '}
-            <span className="text-foreground font-medium">
-              {statistics.satisfied_best_effort_parent_requests ?? 0} of{' '}
-              {statistics.best_effort_parent_requests}
-            </span>
-          </p>
-        </div>
-      )}
-
       {/* Issues List (if any) */}
       {hasIssues && (
         <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">

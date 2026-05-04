@@ -66,8 +66,8 @@ function makeResults(statsOverrides: Record<string, unknown> = {}) {
   }
 }
 
-describe('PostValidationResultsModal — material_parent + best_effort fields', () => {
-  it('renders best-effort preferences line showing X of Y', () => {
+describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)', () => {
+  it('does not render the best-effort one-liner even when best_effort_parent_requests > 0', () => {
     render(
       <PostValidationResultsModal
         isOpen={true}
@@ -77,12 +77,10 @@ describe('PostValidationResultsModal — material_parent + best_effort fields', 
       />
     )
 
-    // Should display "Best-effort preferences honored: 5 of 8"
-    expect(screen.getByText(/best-effort preferences honored/i)).toBeInTheDocument()
-    expect(screen.getByText(/5 of 8/i)).toBeInTheDocument()
+    expect(screen.queryByText(/best-effort preferences honored/i)).not.toBeInTheDocument()
   })
 
-  it('does not render best-effort line when best_effort_parent_requests is 0', () => {
+  it('does not render the best-effort one-liner when best_effort_parent_requests is 0', () => {
     render(
       <PostValidationResultsModal
         isOpen={true}
