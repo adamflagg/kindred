@@ -2,7 +2,13 @@
 package campminder
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestParseRateLimitSeconds_StandardFormat(t *testing.T) {
@@ -218,4 +224,197 @@ func TestGetDivisions_MethodSignature(t *testing.T) {
 	// This will fail at compile time if signature is wrong
 	// Assigning to a variable confirms the method exists and has the expected type
 	var _ = client.GetDivisions
+}
+
+// ---------------------------------------------------------------------------
+// #1078 — authenticate() retry cap
+// ---------------------------------------------------------------------------
+
+// TestAuthenticate_RetryCapOnPersistent429 verifies that authenticate()
+// returns an error after maxRequestRetries attempts rather than recursing
+// indefinitely when CampMinder sustains a 429 storm on the auth endpoint.
+// sleepFn is overridden to a no-op so the test finishes instantly.
+func TestAuthenticate_RetryCapOnPersistent429(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	origSleep := sleepFn
+	sleepFn = func(time.Duration) {}
+	t.Cleanup(func() { sleepFn = origSleep })
+
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = fmt.Fprint(w, "Rate limit is exceeded. Try again in 1 seconds.")
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	// authenticateAtURL is the internal helper that accepts a configurable
+	// auth URL. Without it we cannot inject a test server.
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err == nil {
+		t.Fatal("expected an error after exhausting retries, got nil")
+	}
+
+	// The cap is exactly maxRequestRetries+1 total attempts (1 initial + maxRequestRetries retries).
+	// Tightened from <= maxRequestRetries+2 to == maxRequestRetries+1 so an off-by-one
+	// regression that drives 12 calls is caught.
+	want := int32(maxRequestRetries + 1)
+	got := callCount.Load()
+	if got != want {
+		t.Errorf("authenticate() made %d HTTP calls, want exactly %d", got, want)
+	}
+}
+
+// TestAuthenticate_RetryCapErrorMessage verifies that when all retries are
+// exhausted on persistent 429s the returned error contains the cap-exceeded
+// sentinel message — not the generic "auth failed with status 429" message.
+// This is a regression test for the unreachable-post-loop-return bug (#1134 finding #1).
+func TestAuthenticate_RetryCapErrorMessage(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	// sleepFn is overridden to a no-op so the test finishes instantly.
+	origSleep := sleepFn
+	sleepFn = func(time.Duration) {}
+	t.Cleanup(func() { sleepFn = origSleep })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = fmt.Fprint(w, "Rate limit is exceeded. Try again in 1 seconds.")
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err == nil {
+		t.Fatal("expected an error after exhausting retries, got nil")
+	}
+
+	wantSubstr := fmt.Sprintf("auth rate limit exceeded after %d retries", maxRequestRetries)
+	if !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("error message = %q, want it to contain %q", err.Error(), wantSubstr)
+	}
+}
+
+// TestAuthenticate_RetryCapExactCallCount verifies that exactly
+// maxRequestRetries+1 HTTP calls are made (1 initial + maxRequestRetries
+// retries) — no more, no fewer.
+// This is a regression test for the loose <=maxRequestRetries+2 bound (#1134 finding #3).
+func TestAuthenticate_RetryCapExactCallCount(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	// Override sleep so the test finishes instantly.
+	origSleep := sleepFn
+	sleepFn = func(time.Duration) {}
+	t.Cleanup(func() { sleepFn = origSleep })
+
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = fmt.Fprint(w, "Rate limit is exceeded. Try again in 1 seconds.")
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	_ = client.authenticateAtURL(srv.URL + "/auth/apikey")
+
+	want := int32(maxRequestRetries + 1) // exactly 11 calls: attempts 0..10
+	got := callCount.Load()
+	if got != want {
+		t.Errorf("authenticate() made %d HTTP calls, want exactly %d", got, want)
+	}
+}
+
+// TestAuthenticate_NoRetryOnNon429Error verifies that a non-429 non-200
+// response (e.g. 500 Internal Server Error) causes an immediate return on
+// the first attempt — no retry, no sleep.
+// This pins the spec for short-circuit behavior (#1134 finding #5).
+func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	// Track sleep calls — must remain zero.
+	origSleep := sleepFn
+	var sleepCalled atomic.Int32
+	sleepFn = func(time.Duration) { sleepCalled.Add(1) }
+	t.Cleanup(func() { sleepFn = origSleep })
+
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprint(w, "internal server error")
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err == nil {
+		t.Fatal("expected an error on 500 response, got nil")
+	}
+
+	if got := callCount.Load(); got != 1 {
+		t.Errorf("authenticate() made %d HTTP calls, want exactly 1 (no retry on 500)", got)
+	}
+	if got := sleepCalled.Load(); got != 0 {
+		t.Errorf("sleep was called %d time(s), want 0 (no retry delay on non-429)", got)
+	}
+}
+
+// TestAuthenticate_SucceedsOnFirstAttempt verifies authenticate() succeeds
+// and returns nil when the server responds 200 on the first try.
+func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Minimal JWT: header.payload.signature where payload is base64({}).
+		// The fallback path sets a 1-hour expiry when exp claim is missing.
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err != nil {
+		t.Fatalf("expected nil error on 200 response, got: %v", err)
+	}
+	if client.accessToken == "" {
+		t.Error("expected accessToken to be set after successful auth")
+	}
 }
