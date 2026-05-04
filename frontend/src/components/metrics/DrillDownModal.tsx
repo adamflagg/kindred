@@ -14,6 +14,7 @@ import { X, Download, Search, ArrowUpDown, Loader2 } from 'lucide-react'
 import { SortIcon } from './SortIcon'
 import { useDrilldownAttendees } from '../../hooks/useDrilldownAttendees'
 import { shortenSessionName } from '../../utils/sessionDisplay'
+import { buildCsvContent, downloadCsv as triggerCsvDownload } from '../../utils/csvExport'
 import type { DrilldownAttendee, DrilldownFilter } from '../../types/metrics'
 
 /** Get display session name: comma-joined if multi-session, fallback to single session_name. */
@@ -358,22 +359,10 @@ export function DrillDownModal({
               ]
     )
 
-    const csv = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${filter?.label.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`
-    a.style.display = 'none'
-    // Firefox requires the anchor to be attached to the DOM before click()
-    // triggers a file download. Chrome/Safari work without it, masking this bug.
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    const stringRows = rows.map((row) => row.map((cell) => String(cell)))
+    const csv = buildCsvContent(headers, stringRows)
+    const filename = `${filter?.label.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`
+    triggerCsvDownload(csv, filename)
   }
 
   if (!filter) return null
