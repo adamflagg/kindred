@@ -8,6 +8,7 @@ from bunking.sync.bunk_request_processor.integration.ai_schemas import (
     AIDisambiguationCandidate,
     AIDisambiguationResponse,
     AIFullParseRequestItem,
+    TemporalInfo,
 )
 
 
@@ -137,7 +138,5 @@ class TestExtraForbidOnAllAISchemas:
             AIDisambiguationCandidate(**{"person_id": 1, "unknown_field": "x"})
 
     def test_temporal_info_rejects_unknown_field(self) -> None:
-        from bunking.sync.bunk_request_processor.integration.ai_schemas import TemporalInfo
-
         with pytest.raises(ValidationError):
             TemporalInfo(**{"unknown_field": "x"})
