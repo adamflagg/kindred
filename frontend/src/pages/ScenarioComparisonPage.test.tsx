@@ -297,6 +297,46 @@ describe('ValidationScoreCard parent-paramount stats', () => {
   })
 })
 
+// ─── CamperPill friend-group dot (Issue #1060 contract) ──────────────────────
+//
+// Locked groups are scenario-specific — production side has no locked groups
+// by design. These tests pin the exact rendering contract so the "no dot on
+// production" behaviour is never mistaken for a bug.
+describe('CamperPill friend-group dot rendering (Issue #1060)', () => {
+  it('renders no dot when group prop is undefined (production side)', () => {
+    render(
+      <CamperPill camper={liam} status="unchanged" group={undefined} camperById={camperById} />
+    )
+    expect(screen.queryByRole('img', { hidden: true })).toBeNull()
+    // Mirror the presence assertion's role+name+hidden pattern (line 318) so
+    // both ends of the contract use the same accessibility tree query.
+    // `queryByRole('generic')` filters non-interactive generics by default;
+    // the dot is a bare <span aria-label="..."> with role="generic", so the
+    // hidden:true escape is required to match the presence query strategy
+    // (scan-it Finding #5).
+    expect(screen.queryByRole('generic', { hidden: true, name: /friend group/i })).toBeNull()
+  })
+
+  it('renders a coloured dot when group has a color (saved-scenario side)', () => {
+    render(
+      <CamperPill camper={liam} status="unchanged" group={palsGroup} camperById={camperById} />
+    )
+    const dot = screen.getByRole('generic', { hidden: true, name: /friend group: pals/i })
+    expect(dot).toBeInTheDocument()
+    expect(dot).toHaveStyle({ backgroundColor: '#ff0000' })
+  })
+
+  it('renders no dot when group.color is empty string', () => {
+    const groupNoColor: LockGroupSummary = { ...palsGroup, color: '' }
+    render(
+      <CamperPill camper={liam} status="unchanged" group={groupNoColor} camperById={camperById} />
+    )
+    // Mirror the presence assertion's role+name+hidden pattern (line 318).
+    // See note on the previous absence assertion (Finding #5).
+    expect(screen.queryByRole('generic', { hidden: true, name: /friend group/i })).toBeNull()
+  })
+})
+
 // ─── #1003: Export button label/title should reflect the active changeFilter ──
 
 describe('getExportButtonLabel', () => {

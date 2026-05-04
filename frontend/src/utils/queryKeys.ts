@@ -263,6 +263,24 @@ export const queryKeys = {
     year: number,
     scenarioId: string | null = null
   ) => ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId] as const,
+  /**
+   * Scoped social graph keyed by useScopedGraphData (the hook actually used by
+   * SocialNetworkGraph.tsx). Lives under the same `'social-graph'` root as the
+   * unscoped variant so a single `socialGraphPrefix()` invalidation covers both
+   * — see the prefix factory below for rationale.
+   *
+   * `unitsKey`/`bunksKey` are the comma-joined sorted filter signatures emitted
+   * by useScopedGraphData; the caller is responsible for stable sorting.
+   */
+  scopedSocialGraph: (
+    sessionCmId: number,
+    year: number,
+    scenarioId: string | null,
+    unitsKey: string,
+    bunksKey: string,
+    cross: boolean
+  ) =>
+    ['social-graph', 'scoped', sessionCmId, year, scenarioId, unitsKey, bunksKey, cross] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,
@@ -313,6 +331,16 @@ export const queryKeys = {
   bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
+  // Prefix factories for social-graph invalidation (Issue #1040).
+  // Passing the bare prefix catches every keyed variant under each root:
+  //   ['social-graph', sessionCmId, year, scenarioId]                — unscoped
+  //   ['social-graph', 'scoped', sessionCmId, year, ...filterSig]    — scoped (live graph)
+  //   ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId] — bunk subgraph
+  // The `'scoped'` variant lives under the same root so a single
+  // `socialGraphPrefix()` invalidation refreshes both useSocialGraphData and
+  // useScopedGraphData. SocialNetworkGraph.tsx renders from the latter.
+  socialGraphPrefix: () => ['social-graph'] as const,
+  bunkSocialGraphPrefix: () => ['bunk-social-graph'] as const,
 
   // Parameterized fetch-site factories (Issue #1023, #1084)
   allBunkRequests: (sessionCmId: number, year: number) =>
@@ -408,6 +436,10 @@ export function invalidateRequestQueries(
   void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsTooltipPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.requestSatisfactionPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.cohortRequestRelationsPrefix() })
+  // Issue #1040 — social-graph node borders reflect request satisfaction; invalidate
+  // so approve/decline/merge/split immediately update the graph's node colours.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
   if (options.includeSourceLinks) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
