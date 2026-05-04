@@ -837,6 +837,10 @@ async def update_camper_position(
     person_cm_id: int,
     update: CamperPositionUpdate,
     year: int | None = None,
+    scenario_id: Annotated[
+        str | None,
+        Query(description="Scenario ID — when set, source bunk assignments from bunk_assignments_draft"),
+    ] = None,
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> IncrementalUpdateResponse:
     """Update a camper's bunk position and return incremental changes.
@@ -848,6 +852,7 @@ async def update_camper_position(
         person_cm_id: CampMinder person ID
         update: New bunk assignment
         year: Year (defaults to current year)
+        scenario_id: Optional scenario ID — cache reads/writes use the scenario-scoped slot
 
     Returns:
         Incremental update data with only affected nodes/edges
@@ -861,12 +866,15 @@ async def update_camper_position(
         # Use optimized builder for incremental update with centralized random seed
         builder = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
 
-        # First ensure we have the graph built (will use cache if available)
-        cached_graph = graph_cache.get_session_graph(session_cm_id, year)
+        # First ensure we have the graph built (will use cache if available).
+        # Pass scenario_id so we read/write the scenario-scoped cache slot — without
+        # this the re-cache lands in the "prod" slot while reads look in the scenario
+        # slot, making the re-cache wasted work.
+        cached_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id)
         if not cached_graph:
             # Build it if not cached
             graph = builder.build_social_network(year, session_cm_id)
-            graph_cache.cache_session_graph(session_cm_id, year, graph)
+            graph_cache.cache_session_graph(session_cm_id, year, graph, scenario_id=scenario_id)
         else:
             # Use the builder's graph
             builder.graph = cached_graph
