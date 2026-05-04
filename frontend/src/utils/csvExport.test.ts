@@ -140,32 +140,33 @@ describe('downloadCsv', () => {
     })
   })
 
-  it('creates an anchor element and triggers click', () => {
-    const clickSpy = vi.fn()
+  /** Helper: returns a mock anchor + stubs body.appendChild/removeChild to accept it */
+  function makeMockAnchor(clickImpl?: () => void) {
     const mockAnchor = {
       href: '',
       download: '',
-      click: clickSpy,
+      style: { display: '' },
+      click: vi.fn(clickImpl),
     }
+    vi.spyOn(document.body, 'appendChild').mockReturnValue(mockAnchor as unknown as Node)
+    vi.spyOn(document.body, 'removeChild').mockReturnValue(mockAnchor as unknown as Node)
     vi.spyOn(document, 'createElement').mockReturnValueOnce(
       mockAnchor as unknown as HTMLAnchorElement
     )
+    return mockAnchor
+  }
+
+  it('creates an anchor element and triggers click', () => {
+    const mockAnchor = makeMockAnchor()
 
     downloadCsv('test content', 'test-file.csv')
 
-    expect(clickSpy).toHaveBeenCalledOnce()
+    expect(mockAnchor.click).toHaveBeenCalledOnce()
     expect(mockAnchor.download).toBe('test-file.csv')
   })
 
   it('revokes the object URL after triggering download', () => {
-    const mockAnchor = {
-      href: '',
-      download: '',
-      click: vi.fn(),
-    }
-    vi.spyOn(document, 'createElement').mockReturnValueOnce(
-      mockAnchor as unknown as HTMLAnchorElement
-    )
+    makeMockAnchor()
 
     downloadCsv('test content', 'test-file.csv')
 
@@ -174,13 +175,44 @@ describe('downloadCsv', () => {
 
   it('uses text/csv MIME type', () => {
     const blobSpy = vi.spyOn(globalThis, 'Blob')
-    const mockAnchor = { href: '', download: '', click: vi.fn() }
-    vi.spyOn(document, 'createElement').mockReturnValueOnce(
-      mockAnchor as unknown as HTMLAnchorElement
-    )
+    makeMockAnchor()
 
     downloadCsv('a,b', 'file.csv')
 
     expect(blobSpy).toHaveBeenCalledWith(['a,b'], { type: 'text/csv;charset=utf-8;' })
+  })
+
+  // #996 — Firefox requires anchor to be in the DOM before click()
+  it('appends anchor to document.body before click (Firefox compatibility)', () => {
+    const callOrder: string[] = []
+    const mockAnchor = {
+      href: '',
+      download: '',
+      style: { display: '' },
+      click: vi.fn(() => callOrder.push('click')),
+    }
+    const appendChildSpy = vi
+      .spyOn(document.body, 'appendChild')
+      .mockImplementation((node: Node) => {
+        callOrder.push('appendChild')
+        return node
+      })
+    const removeChildSpy = vi
+      .spyOn(document.body, 'removeChild')
+      .mockImplementation((node: Node) => {
+        callOrder.push('removeChild')
+        return node
+      })
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(
+      mockAnchor as unknown as HTMLAnchorElement
+    )
+
+    downloadCsv('test', 'file.csv')
+
+    // appendChild must happen before click, removeChild after
+    expect(appendChildSpy).toHaveBeenCalledWith(mockAnchor)
+    expect(removeChildSpy).toHaveBeenCalledWith(mockAnchor)
+    expect(callOrder.indexOf('appendChild')).toBeLessThan(callOrder.indexOf('click'))
+    expect(callOrder.indexOf('click')).toBeLessThan(callOrder.indexOf('removeChild'))
   })
 })

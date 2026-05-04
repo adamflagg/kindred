@@ -921,7 +921,7 @@ describe('RequestReviewPanel', () => {
       // BUG FIX: requestee_id must be null, not 0, when changing to age_preference
       // Setting requestee_id = 0 causes a unique constraint violation (400 error)
       const updates: Partial<BunkRequestsResponse> = {
-        request_type: 'age_preference' as BunkRequestsResponse['request_type'],
+        request_type: 'age_preference',
       }
       const newType: string = 'age_preference'
       if (newType === 'age_preference') {
@@ -935,7 +935,7 @@ describe('RequestReviewPanel', () => {
 
     it('includes age_preference_target: "" when switching to bunk_with', () => {
       const updates: Partial<BunkRequestsResponse> = {
-        request_type: 'bunk_with' as BunkRequestsResponse['request_type'],
+        request_type: 'bunk_with',
       }
       const newType: string = 'bunk_with'
       if (newType === 'age_preference') {
@@ -1211,7 +1211,7 @@ describe('RequestReviewPanel', () => {
         // The bug: requestee_id = 0 caused unique constraint violation (400 error)
         // The fix: requestee_id = null clears the field properly
         const updates: Partial<BunkRequestsResponse> = {
-          request_type: 'age_preference' as BunkRequestsResponse['request_type'],
+          request_type: 'age_preference',
         }
 
         // CORRECT: use null
@@ -1725,9 +1725,9 @@ describe('RequestReviewPanel', () => {
       )
 
       // Click Reject → Confirm
-      const rejectButton = (await waitFor(() => screen.getAllByTitle('Reject')[0]!, {
+      const rejectButton = await waitFor(() => screen.getAllByTitle('Reject')[0]!, {
         timeout: 3000,
-      })) as HTMLElement
+      })
       fireEvent.click(rejectButton)
       const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
       await user.click(confirmButton)
@@ -1865,10 +1865,10 @@ describe('RequestReviewPanel', () => {
       // Simpler: use toggleRequestSelection by clicking checkboxes one at
       // a time and waiting for selectedRequests.size to grow (proxied by
       // the sticky toolbar's "{N} selected" text).
-      const allCheckboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      const allCheckboxes = screen.getAllByRole('checkbox')
       // Click checkboxes until we reach 2 selected (skipping select-all toggles).
       for (const cb of allCheckboxes) {
-        if (cb.checked) continue
+        if ((cb as HTMLInputElement).checked) continue
         fireEvent.click(cb)
         const toolbar = screen.queryByRole('toolbar', { name: /bulk actions/i })
         if (toolbar && within(toolbar).queryByText(/^2 selected$/)) break
@@ -1975,5 +1975,54 @@ describe('RequestReviewPanel', () => {
         { timeout: 3000 }
       )
     }, 15000)
+  })
+
+  // #1092 — RequestReviewPanel in SessionView.tsx Requests tab must be wrapped in BunkRequestProvider
+  describe('BunkRequestProvider requirement in SessionView (#1092)', () => {
+    /**
+     * When a camper name is clicked in RequestReviewPanel (rendered from the Requests tab),
+     * it mounts CamperDetailsPanel which calls useBunkRequestContext() unconditionally.
+     * Without BunkRequestProvider above it in the tree, this throws:
+     *   "useBunkRequestContext must be used within BunkRequestProvider"
+     *
+     * Regression guard: verify that SessionView.tsx wraps the Requests-tab
+     * RequestReviewPanel in BunkRequestProvider — the same pattern used in
+     * the Bunks tab and Friends tab.
+     */
+    it('SessionView Requests tab wraps RequestReviewPanel in BunkRequestProvider', () => {
+      const sessionViewSource = readFileSync(resolve(__dirname, 'SessionView.tsx'), 'utf-8')
+
+      // Find the Requests tab Activity block and assert BunkRequestProvider wraps it.
+      // The Friends tab (correct) looks like:
+      //   <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>
+      //     <BunkRequestProvider sessionCmId={...}>
+      //       <FriendGroupsView .../>
+      //     </BunkRequestProvider>
+      //   </Activity>
+      //
+      // The Requests tab (broken) only has:
+      //   <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
+      //     <RequestReviewPanel .../>
+      //   </Activity>
+      //
+      // We verify that within the requests-tab Activity, BunkRequestProvider appears
+      // before RequestReviewPanel (i.e., BunkRequestProvider wraps it).
+
+      // Extract the requests tab block: from "requests tab" comment to the closing </Activity>
+      const requestsTabMatch = sessionViewSource.match(
+        /Requests Tab[\s\S]*?<Activity mode=\{activeTab === 'requests'[\s\S]*?<\/Activity>/
+      )
+      expect(requestsTabMatch).not.toBeNull()
+
+      const requestsTabBlock = requestsTabMatch![0]
+
+      // BunkRequestProvider must appear in the requests tab block
+      expect(requestsTabBlock).toContain('BunkRequestProvider')
+
+      // BunkRequestProvider must appear BEFORE RequestReviewPanel (wraps it)
+      const providerPos = requestsTabBlock.indexOf('BunkRequestProvider')
+      const panelPos = requestsTabBlock.indexOf('RequestReviewPanel')
+      expect(providerPos).toBeLessThan(panelPos)
+    })
   })
 })

@@ -275,4 +275,30 @@ describe('DrillDownModal', () => {
       expect(screen.queryByText('DNR')).not.toBeInTheDocument()
     })
   })
+
+  // #996 — Firefox download: DOM attachment is tested in csvExport.test.ts
+  // (downloadCsv unit tests cover the appendChild-before-click contract).
+  // Here we verify that clicking Download CSV calls through to the shared utility
+  // (i.e. the button is enabled and clickable when attendees are present).
+  describe('CSV download button', () => {
+    it('Download CSV button is enabled when attendees are present', () => {
+      mockAttendees = [
+        {
+          person_id: 101,
+          first_name: 'Emma',
+          last_name: 'Johnson',
+          grade: 6,
+          gender: 'F',
+          session_name: 'Session 1',
+          session_cm_id: 1001,
+          status: 'enrolled',
+        } as DrilldownAttendee,
+      ]
+
+      renderWithClient(<DrillDownModal {...defaultProps} />)
+
+      const downloadBtn = screen.getByRole('button', { name: /download csv/i })
+      expect(downloadBtn).not.toBeDisabled()
+    })
+  })
 })

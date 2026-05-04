@@ -250,6 +250,8 @@ export default function SessionView() {
     return <div>Session not found</div>
   }
 
+  const selectedSessionCmId = parseInt(selectedSession ?? '', 10)
+
   return (
     <div>
       {/* Header */}
@@ -344,19 +346,25 @@ export default function SessionView() {
         {/* Requests Tab - only mounted for canManage users; non-manage users are redirected away */}
         {canManage && (
           <Activity mode={activeTab === 'requests' ? 'visible' : 'hidden'}>
-            {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-              <RequestReviewPanel
-                sessionId={parseInt(selectedSession, 10)}
-                relatedSessionIds={
-                  selectedSession === session.cm_id.toString()
-                    ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
-                    : []
-                }
-                year={currentYear}
-                sessionName={
-                  allSessionsForLookup.find((s) => s.cm_id === parseInt(selectedSession, 10))?.name
-                }
-              />
+            {selectedSession && !isNaN(selectedSessionCmId) ? (
+              // #1092 — BunkRequestProvider required: CamperDetailsPanel calls
+              // useBunkRequestContext() unconditionally. Use selectedSession (not
+              // session.cm_id) to match whichever sub-session is active, same as
+              // the Friends tab pattern.
+              <BunkRequestProvider sessionCmId={selectedSessionCmId}>
+                <RequestReviewPanel
+                  sessionId={selectedSessionCmId}
+                  relatedSessionIds={
+                    selectedSession === session.cm_id.toString()
+                      ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
+                      : []
+                  }
+                  year={currentYear}
+                  sessionName={
+                    allSessionsForLookup.find((s) => s.cm_id === selectedSessionCmId)?.name
+                  }
+                />
+              </BunkRequestProvider>
             ) : (
               <div className="text-muted-foreground text-center">Loading session data...</div>
             )}
@@ -365,9 +373,9 @@ export default function SessionView() {
 
         {/* Friends Tab - preserves group selection state */}
         <Activity mode={activeTab === 'friends' ? 'visible' : 'hidden'}>
-          {selectedSession && !isNaN(parseInt(selectedSession, 10)) ? (
-            <BunkRequestProvider sessionCmId={parseInt(selectedSession, 10)}>
-              <FriendGroupsView sessionCmId={parseInt(selectedSession, 10)} />
+          {selectedSession && !isNaN(selectedSessionCmId) ? (
+            <BunkRequestProvider sessionCmId={selectedSessionCmId}>
+              <FriendGroupsView sessionCmId={selectedSessionCmId} />
             </BunkRequestProvider>
           ) : (
             <div className="text-muted-foreground text-center">Loading session data...</div>
