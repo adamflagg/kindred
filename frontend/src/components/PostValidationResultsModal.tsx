@@ -679,14 +679,34 @@ export default function PostValidationResultsModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
-              <Heart className="text-forest-600 h-4 w-4" />
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                parentTotal === 0
+                  ? 'bg-forest-500/10'
+                  : (statistics.material_parent_request_satisfaction_rate ?? 0) >= 0.85
+                    ? 'bg-forest-500/10'
+                    : 'bg-amber-500/10'
+              }`}
+            >
+              <Heart
+                className={`h-4 w-4 ${
+                  parentTotal === 0
+                    ? 'text-forest-600'
+                    : (statistics.material_parent_request_satisfaction_rate ?? 0) >= 0.85
+                      ? 'text-forest-600'
+                      : 'text-amber-600'
+                }`}
+              />
             </div>
             <div>
               <p className="text-foreground text-lg leading-tight font-semibold">
-                {statistics.satisfied_requests}/{statistics.total_requests}
+                {parentTotal > 0
+                  ? `${statistics.satisfied_material_parent_requests ?? 0}/${parentTotal}`
+                  : `${statistics.satisfied_requests}/${statistics.total_requests}`}
               </p>
-              <p className="text-muted-foreground text-xs">requests met</p>
+              <p className="text-muted-foreground text-xs">
+                {parentTotal > 0 ? 'parent requests met' : 'requests met'}
+              </p>
             </div>
           </div>
 

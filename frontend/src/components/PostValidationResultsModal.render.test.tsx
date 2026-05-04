@@ -264,3 +264,99 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
     expect(screen.queryByText(/looking good/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => {
+  it('renders parent-only fraction in the second stats tile', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          campers_with_unsatisfied_material_parent_requests: 6,
+          request_satisfaction_rate: 0.9,
+          satisfied_requests: 27,
+          total_requests: 30,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    expect(screen.getByText('18/30')).toBeInTheDocument()
+    expect(screen.getByText(/parent requests met/i)).toBeInTheDocument()
+    // Should NOT show the all-up "27/30" anywhere
+    expect(screen.queryByText('27/30')).not.toBeInTheDocument()
+  })
+
+  it('uses amber styling on the parent tile when rate < 0.85', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          campers_with_unsatisfied_material_parent_requests: 6,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    // Find the parent tile by its caption, walk up to the tile container,
+    // and assert it has amber-toned classes.
+    const caption = screen.getByText(/parent requests met/i)
+    const tile = caption.closest('.flex.items-center')
+    expect(tile).not.toBeNull()
+    // Amber icon-background class should be present in the tile
+    expect(tile!.querySelector('.bg-amber-500\\/10')).not.toBeNull()
+  })
+
+  it('uses green styling on the parent tile when rate >= 0.85', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 20,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.9,
+          campers_with_unsatisfied_material_parent_requests: 0,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    const caption = screen.getByText(/parent requests met/i)
+    const tile = caption.closest('.flex.items-center')
+    expect(tile).not.toBeNull()
+    expect(tile!.querySelector('.bg-forest-500\\/10')).not.toBeNull()
+    expect(tile!.querySelector('.bg-amber-500\\/10')).toBeNull()
+  })
+
+  it('falls back to all-up fraction when zero material parent requests', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 0,
+          satisfied_material_parent_requests: 0,
+          material_parent_request_satisfaction_rate: 0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+          request_satisfaction_rate: 0.9,
+          satisfied_requests: 18,
+          total_requests: 20,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    // No parent requests this session — show "18/20" with the original
+    // "requests met" caption (graceful degradation).
+    expect(screen.getByText('18/20')).toBeInTheDocument()
+    expect(screen.getByText(/^requests met$/i)).toBeInTheDocument()
+  })
+})
