@@ -20,8 +20,8 @@ import (
 const (
 	baseURL = "https://api.campminder.com"
 
-	// maxRequestRetries caps retries on HTTP 429 responses for non-auth requests.
-	// Auth retries are currently uncapped — see issue #1079.
+	// maxRequestRetries caps retries on HTTP 429 responses for both regular
+	// requests (makeRequestWithURLRetry) and auth requests (authenticateAtURL).
 	maxRequestRetries = 10
 )
 
@@ -66,78 +66,94 @@ func NewClient(cfg *Config) (*Client, error) {
 	return client, nil
 }
 
-// authenticate gets a new JWT token from CampMinder
+// authenticate gets a new JWT token from CampMinder.
+// Delegates to authenticateAtURL using the production endpoint.
 func (c *Client) authenticate() error {
-	authURL := fmt.Sprintf("%s/auth/apikey", baseURL)
+	return c.authenticateAtURL(fmt.Sprintf("%s/auth/apikey", baseURL))
+}
+
+// authenticateAtURL gets a new JWT token from the given auth URL.
+// Retries on HTTP 429 up to maxRequestRetries times (matching the cap used by
+// makeRequestWithURLRetry). Unbounded recursion on 429 is fixed here (#1078).
+func (c *Client) authenticateAtURL(authURL string) error {
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
-	req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
-	if err != nil {
-		return fmt.Errorf("create auth request: %w", err)
-	}
-
-	// Get primary key from environment
+	// Get primary key from environment once; fail fast if missing.
 	primaryKey := os.Getenv("CAMPMINDER_PRIMARY_KEY")
 	if primaryKey == "" {
 		return fmt.Errorf("CAMPMINDER_PRIMARY_KEY not set in environment")
 	}
 
-	// Set headers as per Python implementation
-	req.Header.Set("Authorization", c.apiKey) // API key without Bearer prefix
-	req.Header.Set("Ocp-Apim-Subscription-Key", primaryKey)
-	req.Header.Set("X-Request-ID", fmt.Sprintf("AUTH-%d", time.Now().Unix()))
+	for attempt := range maxRequestRetries + 1 {
+		req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
+		if err != nil {
+			return fmt.Errorf("create auth request: %w", err)
+		}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("auth request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
+		// Set headers as per Python implementation
+		req.Header.Set("Authorization", c.apiKey) // API key without Bearer prefix
+		req.Header.Set("Ocp-Apim-Subscription-Key", primaryKey)
+		req.Header.Set("X-Request-ID", fmt.Sprintf("AUTH-%d", time.Now().Unix()))
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("auth request failed: %w", err)
+		}
 
-		// Handle rate limiting
-		if resp.StatusCode == http.StatusTooManyRequests {
-			waitTime := c.parseRateLimitSeconds(string(body))
-			if waitTime > 0 {
-				slog.Warn("CampMinder rate limited during auth", "wait_seconds", waitTime)
-				time.Sleep(time.Duration(waitTime) * time.Second)
-				// Retry authentication
-				return c.authenticate()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+
+			// Handle rate limiting — sleep and retry, capped at maxRequestRetries.
+			if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRequestRetries {
+				waitTime := c.parseRateLimitSeconds(string(body))
+				if waitTime > 0 {
+					slog.Warn("CampMinder rate limited during auth",
+						"wait_seconds", waitTime,
+						"attempt", attempt+1,
+						"max_retries", maxRequestRetries,
+					)
+					time.Sleep(time.Duration(waitTime) * time.Second)
+					continue
+				}
 			}
+
+			return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(body))
 		}
 
-		return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(body))
-	}
+		slog.Debug("CampMinder authentication successful")
 
-	slog.Debug("CampMinder authentication successful")
-
-	var authResp struct {
-		Token string `json:"Token"` // Capital T as per Python response
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
-		return fmt.Errorf("decode auth response: %w", err)
-	}
-
-	c.accessToken = authResp.Token
-
-	// Parse token expiry from JWT if possible, otherwise default to 1 hour
-	// Try to decode JWT to get expiry
-	parts := strings.Split(authResp.Token, ".")
-	if len(parts) == 3 {
-		// Decode payload (base64)
-		payload := parts[1]
-		// Add padding if needed
-		if m := len(payload) % 4; m != 0 {
-			payload += strings.Repeat("=", 4-m)
+		var authResp struct {
+			Token string `json:"Token"` // Capital T as per Python response
 		}
 
-		if decoded, err := base64.StdEncoding.DecodeString(payload); err == nil {
-			var claims map[string]any
-			if err := json.Unmarshal(decoded, &claims); err == nil {
-				if exp, ok := claims["exp"].(float64); ok {
-					c.tokenExpiry = time.Unix(int64(exp), 0)
+		if err := json.NewDecoder(resp.Body).Decode(&authResp); err != nil {
+			_ = resp.Body.Close()
+			return fmt.Errorf("decode auth response: %w", err)
+		}
+		_ = resp.Body.Close()
+
+		c.accessToken = authResp.Token
+
+		// Parse token expiry from JWT if possible, otherwise default to 1 hour
+		// Try to decode JWT to get expiry
+		parts := strings.Split(authResp.Token, ".")
+		if len(parts) == 3 {
+			// Decode payload (base64)
+			payload := parts[1]
+			// Add padding if needed
+			if m := len(payload) % 4; m != 0 {
+				payload += strings.Repeat("=", 4-m)
+			}
+
+			if decoded, err := base64.StdEncoding.DecodeString(payload); err == nil {
+				var claims map[string]any
+				if err := json.Unmarshal(decoded, &claims); err == nil {
+					if exp, ok := claims["exp"].(float64); ok {
+						c.tokenExpiry = time.Unix(int64(exp), 0)
+					} else {
+						c.tokenExpiry = time.Now().Add(time.Hour)
+					}
 				} else {
 					c.tokenExpiry = time.Now().Add(time.Hour)
 				}
@@ -147,11 +163,11 @@ func (c *Client) authenticate() error {
 		} else {
 			c.tokenExpiry = time.Now().Add(time.Hour)
 		}
-	} else {
-		c.tokenExpiry = time.Now().Add(time.Hour)
+
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 }
 
 // ensureAuthenticated ensures we have a valid token

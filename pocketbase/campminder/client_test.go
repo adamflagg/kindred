@@ -2,7 +2,12 @@
 package campminder
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestParseRateLimitSeconds_StandardFormat(t *testing.T) {
@@ -218,4 +223,81 @@ func TestGetDivisions_MethodSignature(t *testing.T) {
 	// This will fail at compile time if signature is wrong
 	// Assigning to a variable confirms the method exists and has the expected type
 	var _ = client.GetDivisions
+}
+
+// ---------------------------------------------------------------------------
+// #1078 — authenticate() retry cap
+// ---------------------------------------------------------------------------
+
+// TestAuthenticate_RetryCapOnPersistent429 verifies that authenticate()
+// returns an error after maxRequestRetries attempts rather than recursing
+// indefinitely when CampMinder sustains a 429 storm on the auth endpoint.
+func TestAuthenticate_RetryCapOnPersistent429(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	var callCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		// Return a short wait time (1 second) so the test completes quickly.
+		_, _ = fmt.Fprint(w, "Rate limit is exceeded. Try again in 1 seconds.")
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	// authenticateAtURL is the internal helper that accepts a configurable
+	// auth URL. Without it we cannot inject a test server.
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err == nil {
+		t.Fatal("expected an error after exhausting retries, got nil")
+	}
+
+	// The cap is maxRequestRetries+1 total attempts (1 initial + maxRequestRetries retries).
+	// Must be finite and well below an infinite-recursion depth.
+	maxExpectedCalls := int32(maxRequestRetries + 2)
+	got := callCount.Load()
+	if got > maxExpectedCalls {
+		t.Errorf("authenticate() made %d HTTP calls, want at most %d (cap not enforced)",
+			got, maxExpectedCalls)
+	}
+	if got == 0 {
+		t.Error("authenticate() made no HTTP calls at all")
+	}
+}
+
+// TestAuthenticate_SucceedsOnFirstAttempt verifies authenticate() succeeds
+// and returns nil when the server responds 200 on the first try.
+func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Minimal JWT: header.payload.signature where payload is base64({}).
+		// The fallback path sets a 1-hour expiry when exp claim is missing.
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		apiKey:     "test-key",
+		clientID:   "test-client",
+		seasonID:   2025,
+		httpClient: &http.Client{Timeout: 5 * time.Second},
+	}
+
+	err := client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err != nil {
+		t.Fatalf("expected nil error on 200 response, got: %v", err)
+	}
+	if client.accessToken == "" {
+		t.Error("expected accessToken to be set after successful auth")
+	}
 }
