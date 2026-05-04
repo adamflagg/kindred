@@ -1172,6 +1172,7 @@ export default function RequestReviewPanel({
                       <div key={request.id} data-request-row-id={request.id}>
                         <div
                           className="request-card-mobile hover:bg-muted/50 cursor-pointer transition-colors"
+                          data-testid="request-card-mobile"
                           onClick={() => toggleRowExpansion(request.id, request)}
                         >
                           {/* Checkbox */}
@@ -1332,6 +1333,7 @@ export default function RequestReviewPanel({
                         {isExpanded && (
                           <div
                             className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-b px-4 py-3"
+                            data-testid="request-row-expanded-content"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="space-y-2 text-sm">

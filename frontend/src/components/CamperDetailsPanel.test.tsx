@@ -530,7 +530,7 @@ describe('CamperDetailsPanel', () => {
       })
     })
 
-    it('does NOT surface alert when bunkCampers prop is omitted (self-only fallback, legacy baseline)', async () => {
+    it('calls getSatisfiedRequestInfo with self-only roster when bunkCampers prop is omitted (legacy fallback)', async () => {
       // Without bunkCampers, the panel uses a self-only roster [Emma].
       // The getSatisfiedRequestInfo mock returns parentMinOneViolation: true
       // ONLY when the roster lacks Olivia — which it does when self-only.

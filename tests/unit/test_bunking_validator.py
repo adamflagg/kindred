@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, cast, runtime_checkable
 
 import pytest
 
@@ -14,13 +14,63 @@ from bunking.bunking_validator import (
     ValidationSeverity,
     ValidationStatistics,
 )
+from bunking.models import BunkRequest, Person
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+# ---------------------------------------------------------------------------
+# Protocols — structural interfaces that validate_bunking actually needs.
+# Mock dataclasses below implement these protocols, allowing them to be passed
+# without type suppressions.
+# ---------------------------------------------------------------------------
+
+
+@runtime_checkable
+class PersonLike(Protocol):
+    campminder_id: str
+    name: str
+    grade: int | None
+    age: float | None
+
+
+@runtime_checkable
+class BunkLike(Protocol):
+    campminder_id: str
+    name: str
+    max_size: int
+    is_locked: bool
+    gender: str
+
+
+@runtime_checkable
+class BunkAssignmentLike(Protocol):
+    person_cm_id: str
+    bunk_cm_id: str
+    session_cm_id: str | None
+
+
+@runtime_checkable
+class BunkRequestLike(Protocol):
+    requester_person_cm_id: str
+    requested_person_cm_id: str | None
+    request_type: str
+    status: str
+    priority: int
+    source_field: str | None
+    source: str | None
+    ai_p1_reasoning: dict[str, Any] | None
+    age_preference_target: str | None
+
+
+@runtime_checkable
+class SessionLike(Protocol):
+    campminder_id: str
+    name: str
 
 
 # Test fixtures
 @dataclass
 class MockPerson:
-    """Mock Person object for testing."""
+    """Mock Person object for testing. Structurally satisfies PersonLike."""
 
     campminder_id: str  # Use numeric string IDs like "10001"
     name: str
@@ -30,7 +80,7 @@ class MockPerson:
 
 @dataclass
 class MockBunk:
-    """Mock Bunk object for testing."""
+    """Mock Bunk object for testing. Structurally satisfies BunkLike."""
 
     campminder_id: str  # Use numeric string IDs like "20001"
     name: str
@@ -41,7 +91,7 @@ class MockBunk:
 
 @dataclass
 class MockBunkAssignment:
-    """Mock BunkAssignment object for testing."""
+    """Mock BunkAssignment object for testing. Structurally satisfies BunkAssignmentLike."""
 
     person_cm_id: str  # Use numeric string IDs
     bunk_cm_id: str
@@ -50,7 +100,7 @@ class MockBunkAssignment:
 
 @dataclass
 class MockBunkRequest:
-    """Mock BunkRequest object for testing."""
+    """Mock BunkRequest object for testing. Structurally satisfies BunkRequestLike."""
 
     requester_person_cm_id: str  # Use numeric string IDs
     requested_person_cm_id: str | None
@@ -65,7 +115,7 @@ class MockBunkRequest:
 
 @dataclass
 class MockSession:
-    """Mock Session object for testing."""
+    """Mock Session object for testing. Structurally satisfies SessionLike."""
 
     campminder_id: str  # Use numeric string IDs
     name: str
@@ -967,7 +1017,7 @@ def test_validator_skips_binning_for_requests_with_null_source_field():
         bunks=bunks,
         assignments=assignments,
         persons=persons,
-        requests=requests,  # type: ignore[arg-type]
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1122,8 +1172,8 @@ def test_bunk_with_request_counts_as_material_parent():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1164,8 +1214,8 @@ def test_socialize_with_request_counts_as_best_effort():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1203,8 +1253,8 @@ def test_camper_with_only_best_effort_does_not_appear_in_min_one_violators():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1244,8 +1294,8 @@ def test_best_effort_only_camper_does_not_trigger_unsatisfied_valid_requests_war
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
 
     summary_issue = next(
@@ -1298,8 +1348,8 @@ def test_unassigned_requester_excluded_from_all_buckets():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1380,8 +1430,8 @@ def test_three_grade_bunk_age_preference_evaluation():
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=requests,  # type: ignore[arg-type]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
     )
     stats = result.statistics
 
@@ -1493,8 +1543,8 @@ def test_validator_slice_classification(
         session=session,
         bunks=bunks,
         assignments=assignments,
-        persons=persons,  # type: ignore[arg-type]
-        requests=[request],  # type: ignore[list-item]
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], [request]),
     )
     stats = result.statistics
 
