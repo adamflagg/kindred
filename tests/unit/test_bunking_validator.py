@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast
 
 import pytest
 
@@ -24,7 +24,6 @@ from bunking.sync.bunk_request_processor.shared.constants import SourceField
 # ---------------------------------------------------------------------------
 
 
-@runtime_checkable
 class PersonLike(Protocol):
     campminder_id: str
     name: str
@@ -32,7 +31,6 @@ class PersonLike(Protocol):
     age: float | None
 
 
-@runtime_checkable
 class BunkLike(Protocol):
     campminder_id: str
     name: str
@@ -41,14 +39,12 @@ class BunkLike(Protocol):
     gender: str
 
 
-@runtime_checkable
 class BunkAssignmentLike(Protocol):
     person_cm_id: str
     bunk_cm_id: str
     session_cm_id: str | None
 
 
-@runtime_checkable
 class BunkRequestLike(Protocol):
     requester_person_cm_id: str
     requested_person_cm_id: str | None
@@ -61,7 +57,6 @@ class BunkRequestLike(Protocol):
     age_preference_target: str | None
 
 
-@runtime_checkable
 class SessionLike(Protocol):
     campminder_id: str
     name: str

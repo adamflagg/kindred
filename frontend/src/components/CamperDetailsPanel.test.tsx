@@ -541,16 +541,13 @@ describe('CamperDetailsPanel', () => {
         (
           _personCmId: number,
           _bunkCmId: number,
-          campersInBunk: { cmId: number; grade: number | null }[],
+          _campersInBunk: { cmId: number; grade: number | null }[],
           _requesterGrade: number | null
         ) => {
           // With self-only roster [1001], Olivia (1002) is absent → would fire alert.
           // But the INTENT of this test is to assert behaviour is unchanged when
           // no bunkCampers prop is passed (self-only fallback). The mock confirms
           // getSatisfiedRequestInfo is called with [1001]-only when prop is omitted.
-          const cmIds = campersInBunk.map((c) => c.cmId)
-          // If Emma is the only member (self-only), campersInBunk.length === 1
-          const isSelfOnly = cmIds.length === 1 && cmIds[0] === 1001
           return {
             materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
             bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
@@ -562,8 +559,7 @@ describe('CamperDetailsPanel', () => {
             staffUnsatisfiedAlert: false,
             topPrioritySatisfied: false,
             priorityLevels: [1],
-            _isSelfOnly: isSelfOnly, // captured for assertion below
-          } as ReturnType<typeof mockGetSatisfiedRequestInfo>
+          }
         }
       )
 
