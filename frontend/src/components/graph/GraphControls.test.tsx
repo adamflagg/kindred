@@ -172,4 +172,21 @@ describe('GraphControls rendering', () => {
       expect(screen.queryByRole('menuitem', { name: /fit to graph/i })).not.toBeInTheDocument()
     })
   })
+
+  describe('icon disambiguation (#1026)', () => {
+    it('"Fit to screen" and "Expand graph" buttons use visually distinct icons (different SVG paths)', () => {
+      render(<GraphControls {...baseProps} isExpanded={false} />)
+      const fitBtn = screen.getByTitle('Fit to screen')
+      const expandBtn = screen.getByTitle('Expand graph')
+
+      // Each button should contain exactly one SVG icon
+      const fitSvg = fitBtn.querySelector('svg')
+      const expandSvg = expandBtn.querySelector('svg')
+      expect(fitSvg).not.toBeNull()
+      expect(expandSvg).not.toBeNull()
+
+      // The two SVGs must not be identical — if they are, the icons are ambiguous
+      expect(fitSvg!.innerHTML).not.toBe(expandSvg!.innerHTML)
+    })
+  })
 })
