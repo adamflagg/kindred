@@ -59,7 +59,6 @@ interface PostValidationResultsModalProps {
   isOpen: boolean
   onClose: () => void
   results: ValidationResults
-  sessionId: string
   scenarioId?: string
 }
 

@@ -169,13 +169,6 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
-      selector: '.faded',
-      style: {
-        opacity: 0.1,
-        events: 'no',
-      },
-    },
-    {
       selector: '.scope-hidden',
       style: {
         opacity: 0,

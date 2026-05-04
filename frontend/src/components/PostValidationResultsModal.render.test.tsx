@@ -68,14 +68,7 @@ function makeResults(statsOverrides: Record<string, unknown> = {}) {
 
 describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)', () => {
   it('does not render the best-effort one-liner even when best_effort_parent_requests > 0', () => {
-    render(
-      <PostValidationResultsModal
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        sessionId="1000001"
-      />
-    )
+    render(<PostValidationResultsModal isOpen={true} onClose={() => {}} results={makeResults()} />)
 
     expect(screen.queryByText(/best-effort preferences honored/i)).not.toBeInTheDocument()
   })
@@ -89,7 +82,6 @@ describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)',
           best_effort_parent_requests: 0,
           satisfied_best_effort_parent_requests: 0,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -109,7 +101,6 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
           material_parent_request_satisfaction_rate: 0.6,
           campers_with_unsatisfied_material_parent_requests: 6,
         })}
-        sessionId="1000001"
       />
     )
     expect(screen.getByText(/6 kids missed a parent request/i)).toBeInTheDocument()
@@ -126,7 +117,6 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
           material_parent_request_satisfaction_rate: 0.9,
           campers_with_unsatisfied_material_parent_requests: 1,
         })}
-        sessionId="1000001"
       />
     )
     expect(screen.getByText(/1 kid missed a parent request/i)).toBeInTheDocument()
@@ -144,7 +134,6 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
           material_parent_request_satisfaction_rate: 1.0,
           campers_with_unsatisfied_material_parent_requests: 0,
         })}
-        sessionId="1000001"
       />
     )
     expect(screen.getByText(/all 12 parent requests fulfilled/i)).toBeInTheDocument()
@@ -161,7 +150,6 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
           material_parent_request_satisfaction_rate: 1.0,
           campers_with_unsatisfied_material_parent_requests: 0,
         })}
-        sessionId="1000001"
       />
     )
     expect(screen.getByText(/all 1 parent request fulfilled/i)).toBeInTheDocument()
@@ -182,7 +170,6 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
           satisfied_requests: 19,
           total_requests: 20,
         })}
-        sessionId="1000001"
       />
     )
     // Expect existing per-tier copy ("Bunking looks great" for Excellent tier)
@@ -208,7 +195,6 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
           satisfied_requests: 27,
           total_requests: 30,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -232,7 +218,6 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
           satisfied_requests: 17,
           total_requests: 20,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -253,7 +238,6 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
           satisfied_requests: 27,
           total_requests: 30,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -278,7 +262,6 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
           satisfied_requests: 27,
           total_requests: 30,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -299,7 +282,6 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
           material_parent_request_satisfaction_rate: 0.6,
           campers_with_unsatisfied_material_parent_requests: 6,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -323,7 +305,6 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
           material_parent_request_satisfaction_rate: 0.9,
           campers_with_unsatisfied_material_parent_requests: 0,
         })}
-        sessionId="1000001"
       />
     )
 
@@ -348,7 +329,6 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
           satisfied_requests: 18,
           total_requests: 20,
         })}
-        sessionId="1000001"
       />
     )
 

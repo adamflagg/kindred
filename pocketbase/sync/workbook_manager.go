@@ -468,7 +468,7 @@ func BuildIndexSheetData(workbooks []WorkbookRecord) [][]any {
 	return data
 }
 
-// safeInt safely converts an interface{} to int
+// safeInt safely converts any to int
 func safeInt(v any) int {
 	if v == nil {
 		return 0

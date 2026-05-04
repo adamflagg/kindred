@@ -31,12 +31,6 @@ describe('getCytoscapeStyles', () => {
     expect(edgeStyle).toBeDefined()
   })
 
-  it('includes faded class selector', () => {
-    const styles = getCytoscapeStyles({ showLabels: true })
-    const fadedStyle = styles.find((s) => s.selector === '.faded')
-    expect(fadedStyle).toBeDefined()
-  })
-
   it('includes bunk parent node selector', () => {
     const styles = getCytoscapeStyles({ showLabels: true })
     const parentStyle = styles.find((s) => s.selector === 'node[isBunkParent]')
