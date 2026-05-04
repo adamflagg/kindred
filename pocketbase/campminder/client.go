@@ -25,6 +25,10 @@ const (
 	maxRequestRetries = 10
 )
 
+// sleepFn is the sleep function used by retry loops. Override in tests to
+// skip real delays.
+var sleepFn = time.Sleep
+
 // Client wraps CampMinder API interactions
 type Client struct {
 	apiKey          string
@@ -105,17 +109,23 @@ func (c *Client) authenticateAtURL(authURL string) error {
 			_ = resp.Body.Close()
 
 			// Handle rate limiting — sleep and retry, capped at maxRequestRetries.
-			if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRequestRetries {
-				waitTime := c.parseRateLimitSeconds(string(body))
-				if waitTime > 0 {
-					slog.Warn("CampMinder rate limited during auth",
-						"wait_seconds", waitTime,
-						"attempt", attempt+1,
-						"max_retries", maxRequestRetries,
-					)
-					time.Sleep(time.Duration(waitTime) * time.Second)
-					continue
+			if resp.StatusCode == http.StatusTooManyRequests {
+				// Cap exhausted on this attempt: return the sentinel error so
+				// callers can distinguish "rate-limited too many times" from a
+				// generic auth failure.
+				if attempt == maxRequestRetries {
+					return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 				}
+				waitTime := c.parseRateLimitSeconds(string(body))
+				// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60;
+				// the guard is unnecessary, but we sleep unconditionally for clarity.
+				slog.Warn("CampMinder rate limited during auth",
+					"wait_seconds", waitTime,
+					"attempt", attempt+1,
+					"max_retries", maxRequestRetries,
+				)
+				sleepFn(time.Duration(waitTime) * time.Second)
+				continue
 			}
 
 			return fmt.Errorf("auth failed with status %d: %s", resp.StatusCode, string(body))
@@ -167,6 +177,9 @@ func (c *Client) authenticateAtURL(authURL string) error {
 		return nil
 	}
 
+	// The loop covers attempts 0..maxRequestRetries (maxRequestRetries+1 total).
+	// The cap-exceeded sentinel is returned inside the loop on attempt==maxRequestRetries,
+	// so this line is only reached if maxRequestRetries+1 is somehow zero (impossible).
 	return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 }
 
@@ -222,16 +235,15 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 	// Handle rate limiting
 	if resp.StatusCode == http.StatusTooManyRequests && retryCount < maxRequestRetries {
 		waitTime := c.parseRateLimitSeconds(string(body))
-		if waitTime > 0 {
-			slog.Warn("CampMinder rate limited",
-				"wait_seconds", waitTime,
-				"retry", retryCount+1,
-				"max_retries", maxRequestRetries,
-			)
-			time.Sleep(time.Duration(waitTime) * time.Second)
-			// Retry the request
-			return c.makeRequestWithURLRetry(method, fullURL, retryCount+1)
-		}
+		// parseRateLimitSeconds always returns >= 5 (5s buffer) or fallback 60.
+		slog.Warn("CampMinder rate limited",
+			"wait_seconds", waitTime,
+			"retry", retryCount+1,
+			"max_retries", maxRequestRetries,
+		)
+		sleepFn(time.Duration(waitTime) * time.Second)
+		// Retry the request
+		return c.makeRequestWithURLRetry(method, fullURL, retryCount+1)
 	}
 
 	if resp.StatusCode != http.StatusOK {
