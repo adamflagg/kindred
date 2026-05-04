@@ -286,7 +286,6 @@ export type BunkRequestsStatusOptions =
 export const BunkRequestsSourceOptions = {
   family: 'family',
   staff: 'staff',
-  notes: 'notes',
 } as const
 export type BunkRequestsSourceOptions =
   (typeof BunkRequestsSourceOptions)[keyof typeof BunkRequestsSourceOptions]

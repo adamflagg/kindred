@@ -511,9 +511,20 @@ class BunkingValidator:
                 # Staff binning uses RequestSource enum as before.
                 is_staff = request.source == RequestSource.STAFF.value
                 raw_source_field = getattr(request, "source_field", None)
-                is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH or (
-                    raw_source_field is None and request.request_type == "age_preference"
-                )
+
+                # Warn when a resolved age_preference row has no source_field.
+                # The legacy fallback that treated these as best_effort has been removed (#1086).
+                # Such rows should not exist in current data; the warning helps surface data gaps.
+                if raw_source_field is None and request.request_type == "age_preference":
+                    logger.warning(
+                        "resolved age_preference request has null source_field — "
+                        "not binned (requester_id=%s, status=%s); "
+                        "legacy best_effort fallback removed in #1086",
+                        requester_id,
+                        request.status,
+                    )
+
+                is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH
                 if raw_source_field == SourceField.BUNK_WITH:
                     material_parent_by_person[requester_id].append(request)
                     alerting_requests_by_person[requester_id].append(request)

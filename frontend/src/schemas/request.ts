@@ -20,7 +20,7 @@ export const BunkRequestsRequestTypeSchema = z.enum([
 export const BunkRequestsStatusSchema = z.enum(['resolved', 'pending', 'declined'])
 
 // Bunk request source enum
-export const BunkRequestsSourceSchema = z.enum(['family', 'staff', 'notes'])
+export const BunkRequestsSourceSchema = z.enum(['family', 'staff'])
 
 // Bunk requests record schema
 export const BunkRequestsRecordSchema = z.object({

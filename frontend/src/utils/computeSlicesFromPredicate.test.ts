@@ -121,7 +121,9 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
     expect(slices.materialParent.total).toBe(0)
   })
 
-  it('age_preference × null × family → bestEffortParent (legacy fallback, #1086)', () => {
+  it('age_preference × null × family → not binned (#1086 fallback removed)', () => {
+    // After removing the legacy fallback (issue #1086), a resolved age_preference
+    // row with no source_field falls through all branches and is not counted.
     const req = makeReq({
       request_type: 'age_preference',
       source_field: null as any, // null as any: tsconfig has exactOptionalPropertyTypes; null models real DB null state
@@ -129,7 +131,9 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
       age_preference_target: 'older',
     })
     const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.bestEffortParent).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
+    expect(slices.bestEffortParent.total).toBe(0)
+    expect(slices.materialParent.total).toBe(0)
+    expect(slices.staff.total).toBe(0)
   })
 
   it('age_preference × bunking_notes × staff → staff', () => {
@@ -166,21 +170,10 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
     expect(slices.staff.total).toBe(0)
   })
 
-  it('not_bunk_with × not_bunk_with × notes (legacy notes source) → not binned', () => {
-    // Upstream openai_provider maps 'notes' → STAFF before write, so this
-    // schema-allowed source value should never appear in production. Catch-all
-    // now requires source === 'staff'; legacy 'notes' rows are excluded
-    // rather than silently binned as staff.
-    const req = makeReq({
-      request_type: 'not_bunk_with',
-      source_field: 'bunking_notes',
-      source: 'notes',
-    })
-    const slices = computeSlicesFromPredicate([req], allSatisfied)
-    expect(slices.staff.total).toBe(0)
-    expect(slices.materialParent.total).toBe(0)
-    expect(slices.bestEffortParent.total).toBe(0)
-  })
+  // NOTE: The test for 'notes' source value was removed in #1102 because
+  // 'notes' is no longer a valid schema value — the type system now prevents it.
+  // The openai_provider maps incoming 'notes' → 'staff' before write, and
+  // the PB migration 1500000099 removed 'notes' from the select enum.
 })
 
 describe('computeSlicesFromPredicate — flag derivation', () => {
