@@ -745,7 +745,7 @@ dev = [
     { name = "radon", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.15.10" },
     { name = "types-psutil", specifier = ">=7.2.2.20260408" },
-    { name = "types-pyyaml", specifier = ">=6.0.0" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-requests", specifier = ">=2.32.0" },
 ]
 
