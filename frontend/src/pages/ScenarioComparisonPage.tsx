@@ -1187,12 +1187,6 @@ export interface ValidationSectionProps {
   rightScenarioName: string
 }
 
-// Combined payload passed down once both queries have settled.
-interface ValidationPair {
-  left: ValidationResult | null | undefined
-  right: ValidationResult | null | undefined
-}
-
 export function ValidationSection({
   isLoading,
   error,
@@ -1201,20 +1195,15 @@ export function ValidationSection({
   leftScenarioName,
   rightScenarioName,
 }: ValidationSectionProps) {
-  const hasSomeData = leftValidation != null || rightValidation != null
-  const pair: ValidationPair | undefined = hasSomeData
-    ? { left: leftValidation, right: rightValidation }
-    : undefined
-
   return (
     <QueryGuard
       isLoading={isLoading}
       error={error}
-      data={pair}
+      data={leftValidation ?? rightValidation}
       label="validation"
       emptyMessage="No validation data available"
     >
-      {({ left, right }) => (
+      {() => (
         <div className="card-lodge mb-6 overflow-hidden">
           {/* Tinted header band — matches SolverProgressModal pattern */}
           <div className="border-border bg-forest-50 dark:bg-forest-900/20 flex items-center gap-2 border-b px-4 py-3">
@@ -1225,9 +1214,13 @@ export function ValidationSection({
           </div>
           <div className="bg-muted/20 grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
             {/* Left Scenario Score */}
-            <ValidationScoreCard label={leftScenarioName} validation={left} side="left" />
+            <ValidationScoreCard label={leftScenarioName} validation={leftValidation} side="left" />
             {/* Right Scenario Score */}
-            <ValidationScoreCard label={rightScenarioName} validation={right} side="right" />
+            <ValidationScoreCard
+              label={rightScenarioName}
+              validation={rightValidation}
+              side="right"
+            />
           </div>
         </div>
       )}
@@ -1249,12 +1242,7 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
   // a neutral placeholder within the already-visible success card.
   if (!validation) {
     return (
-      <div
-        className={clsx(
-          'rounded-xl border-2 border-dashed p-4',
-          side === 'left' ? 'border-muted' : 'border-muted'
-        )}
-      >
+      <div className="border-muted rounded-xl border-2 border-dashed p-4">
         <div className="text-muted-foreground mb-2 truncate text-sm font-medium">{label}</div>
         <div className="text-muted-foreground/60 text-sm">Not available</div>
       </div>
