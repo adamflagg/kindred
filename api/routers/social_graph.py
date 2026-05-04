@@ -19,7 +19,6 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.scope_filter import apply_scope, parse_scope_query, resolve_scope_bunk_ids
-from bunking.graph.social_graph_builder import SocialGraphBuilder
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
@@ -30,7 +29,6 @@ from ..schemas import (
     BunkGraphMetrics,
     BunkGraphResponse,
     CamperPositionUpdate,
-    EgoNetworkResponse,
     IncrementalUpdateResponse,
     SocialGraphEdge,
     SocialGraphNode,
@@ -677,152 +675,6 @@ async def get_bunk_social_graph(
         raise
     except Exception:
         logger.error("Error building bunk social graph", exc_info=True)
-        raise
-
-
-# ========================================
-# Ego Network Endpoint
-# ========================================
-
-
-@router.get("/api/persons/{person_cm_id}/ego-network")
-async def get_person_ego_network(
-    person_cm_id: int,
-    session_cm_id: int | None = None,
-    radius: int = 2,
-    include_historical: bool = False,
-    user: AuthUser = Depends(get_current_user),
-) -> EgoNetworkResponse:
-    """Get an individual's ego network.
-
-    Args:
-        person_cm_id: CampMinder person ID
-        session_cm_id: Optional session filter
-        radius: Network radius (default 2)
-        include_historical: Include historical connections
-
-    Returns:
-        Ego network with person's social metrics
-    """
-    try:
-        year = datetime.now(tz=UTC).year
-
-        logger.info(f"Building ego network for person {person_cm_id}, radius {radius}")
-
-        # Create builder instance with centralized random seed setting
-        builder = SocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
-
-        # Build the appropriate graph
-        if session_cm_id:
-            full_graph = builder.build_session_graph(year, session_cm_id)
-        else:
-            # Build a cross-session graph for this year
-            # This would need to be implemented in SocialGraphBuilder
-            raise HTTPException(status_code=400, detail="Cross-session ego networks not yet implemented")
-
-        # Check if person is in graph
-        if person_cm_id not in full_graph:
-            raise HTTPException(status_code=404, detail=f"Person {person_cm_id} not found in session")
-
-        # Get ego network
-        import networkx as nx
-
-        ego_graph = nx.ego_graph(full_graph, person_cm_id, radius=radius)
-
-        # Get center person details - must filter by year to get correct grade
-        try:
-            person = await asyncio.to_thread(
-                pb.collection(PERSONS).get_first_list_item, f"cm_id = {person_cm_id} && year = {year}"
-            )
-            center_name = f"{person.first_name} {person.last_name}"
-            center_grade = getattr(person, "grade", None)
-        except Exception:
-            center_name = f"Person {person_cm_id}"
-            center_grade = None
-
-        center_node = SocialGraphNode(
-            id=person_cm_id,
-            name=center_name,
-            grade=center_grade,
-            bunk_cm_id=full_graph.nodes[person_cm_id].get("bunk_cm_id"),
-            centrality=full_graph.nodes[person_cm_id].get("centrality", 0.0),
-            clustering=full_graph.nodes[person_cm_id].get("clustering", 0.0),
-            community=full_graph.nodes[person_cm_id].get("community"),
-        )
-
-        # Convert nodes
-        nodes = []
-        for node_id in ego_graph.nodes():
-            node_data = ego_graph.nodes[node_id]
-
-            # Get person details - must filter by year to get correct grade
-            try:
-                person = await asyncio.to_thread(
-                    pb.collection(PERSONS).get_first_list_item, f"cm_id = {node_id} && year = {year}"
-                )
-                name = f"{person.first_name} {person.last_name}"
-                grade = getattr(person, "grade", None)
-            except Exception:
-                name = f"Person {node_id}"
-                grade = None
-
-            nodes.append(
-                SocialGraphNode(
-                    id=node_id,
-                    name=name,
-                    grade=grade,
-                    bunk_cm_id=node_data.get("bunk_cm_id"),
-                    centrality=node_data.get("centrality", 0.0),
-                    clustering=node_data.get("clustering", 0.0),
-                    community=node_data.get("community"),
-                    satisfaction_status=node_data.get("satisfaction_status"),
-                    parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
-                    staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
-                )
-            )
-
-        # Convert edges
-        edges = []
-        for source, target, data in ego_graph.edges(data=True):
-            edges.append(
-                SocialGraphEdge(
-                    source=source,
-                    target=target,
-                    weight=data.get("weight", 1.0),
-                    type=data.get("edge_type", "request"),
-                    reciprocal=ego_graph.has_edge(target, source),
-                    confidence=data.get("confidence"),
-                    priority=data.get("priority"),
-                    request_type=data.get("request_type"),
-                )
-            )
-
-        # Calculate person-specific metrics
-        metrics = {
-            "degree": full_graph.degree(person_cm_id),
-            "degree_centrality": nx.degree_centrality(full_graph)[person_cm_id],
-            "clustering_coefficient": nx.clustering(full_graph)[person_cm_id],
-            "friends_count": ego_graph.degree(person_cm_id),
-            "network_size": len(ego_graph) - 1,  # Exclude self
-        }
-
-        # Add betweenness centrality if graph is small enough
-        if len(full_graph) < 200:
-            betweenness = nx.betweenness_centrality(full_graph)
-            metrics["betweenness_centrality"] = betweenness[person_cm_id]
-
-        return EgoNetworkResponse(
-            center_node=center_node,
-            nodes=nodes,
-            edges=edges,
-            radius=radius,
-            metrics=metrics,
-        )
-
-    except HTTPException:
-        raise
-    except Exception:
-        logger.error("Error building ego network", exc_info=True)
         raise
 
 

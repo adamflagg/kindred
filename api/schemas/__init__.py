@@ -40,7 +40,6 @@ from .social_graph import (
     BunkGraphMetrics,
     BunkGraphResponse,
     CamperPositionUpdate,
-    EgoNetworkResponse,
     IncrementalUpdateResponse,
     SocialGraphEdge,
     SocialGraphNode,
@@ -70,7 +69,6 @@ __all__ = [
     # Metrics
     "ComparisonDelta",
     "ComparisonMetricsResponse",
-    "EgoNetworkResponse",
     "GenderBreakdown",
     "GradeBreakdown",
     "IncrementalUpdateResponse",

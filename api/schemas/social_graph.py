@@ -82,16 +82,6 @@ class BunkGraphResponse(BaseModel):
     health_score: float  # Overall health score 0-1
 
 
-class EgoNetworkResponse(BaseModel):
-    """Individual's ego network"""
-
-    center_node: SocialGraphNode
-    nodes: list[SocialGraphNode]  # Includes center node
-    edges: list[SocialGraphEdge]
-    radius: int
-    metrics: dict[str, Any]  # degree, betweenness_centrality, etc.
-
-
 class CamperPositionUpdate(BaseModel):
     """Request body for updating a camper's position"""
 
