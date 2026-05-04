@@ -97,7 +97,6 @@ export default function ValidateBunkingButton({
           isOpen={showResults}
           onClose={() => setShowResults(false)}
           results={validationResults}
-          sessionId={sessionCmId.toString()}
           {...(currentScenario?.id && { scenarioId: currentScenario.id })}
         />
       )}

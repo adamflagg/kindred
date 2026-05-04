@@ -346,13 +346,13 @@ func (s *StaffSkillsSync) loadSkillDefinitions(_ context.Context) ([]skillDefini
 
 // containsStaffPartitionFromRaw checks if partition contains "Staff".
 // PocketBase stores select fields as JSON arrays, so record.Get() returns
-// []interface{} or []string, not a comma-separated string.
+// []any, not a comma-separated string.
 func (s *StaffSkillsSync) containsStaffPartitionFromRaw(rawValue any) bool {
 	if rawValue == nil {
 		return false
 	}
 
-	// Handle as []interface{} (JSON array from record.Get())
+	// Handle as []any (JSON array from record.Get())
 	if arr, ok := rawValue.([]any); ok {
 		for _, v := range arr {
 			if str, ok := v.(string); ok && str == partitionStaff {

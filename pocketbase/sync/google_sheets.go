@@ -340,7 +340,7 @@ type PersonInfo struct {
 	Grade     int
 }
 
-// safeString safely converts an interface{} to string
+// safeString safely converts any to string
 func safeString(v any) string {
 	if v == nil {
 		return ""

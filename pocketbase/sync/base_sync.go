@@ -1109,9 +1109,9 @@ func normalizeDateString(dateStr string) string {
 	return result
 }
 
-// normalizeToStringSlice converts various slice types to []string for comparison
-// Handles: []string, []interface{} with string elements, []any with string elements
-// Returns nil if the value is not a slice or cannot be converted
+// normalizeToStringSlice converts various types to []string for comparison
+// Handles: string, []string, []any (== []interface{}) with string elements
+// Returns nil if the value is not a string/slice or cannot be converted
 func normalizeToStringSlice(value any) []string {
 	if value == nil {
 		return nil
@@ -1132,27 +1132,14 @@ func normalizeToStringSlice(value any) []string {
 		return result
 	}
 
-	// []interface{} (common from JSON unmarshaling)
-	if ifaceSlice, ok := value.([]any); ok {
-		result := make([]string, 0, len(ifaceSlice))
-		for _, v := range ifaceSlice {
-			if s, ok := v.(string); ok {
-				result = append(result, s)
-			} else {
-				// Non-string element, can't normalize
-				return nil
-			}
-		}
-		return result
-	}
-
-	// []any (alias for []interface{})
+	// []any (== []interface{}) — common from JSON unmarshaling
 	if anySlice, ok := value.([]any); ok {
 		result := make([]string, 0, len(anySlice))
 		for _, v := range anySlice {
 			if s, ok := v.(string); ok {
 				result = append(result, s)
 			} else {
+				// Non-string element, can't normalize
 				return nil
 			}
 		}

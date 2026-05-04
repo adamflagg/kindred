@@ -31,9 +31,11 @@ export default function CsvPipelineIndicator() {
   useEffect(() => {
     if (data?.phase === 'done' && data.runId !== lastSeenRef.current) {
       const review = data.counts.needReview
-      const reviewLabel = review > 0 ? `, ${review} need review` : ''
+      const reviewLabel = review > 0 ? `, ${review} need${review === 1 ? 's' : ''} review` : ''
+      const total = data.counts.total
+      const matched = data.counts.autoMatched
       toast.success(
-        `Import complete: ${data.counts.total} new or updated requests, ${data.counts.autoMatched} auto-matched${reviewLabel}.`,
+        `Import complete: ${total} new or updated ${total === 1 ? 'request' : 'requests'}, ${matched} auto-matched${reviewLabel}.`,
         { duration: 6000 }
       )
       lastSeenRef.current = data.runId
@@ -75,9 +77,12 @@ export default function CsvPipelineIndicator() {
           <>
             <CheckCircle className="h-3 w-3 text-green-600" aria-hidden="true" />
             <span>
-              Done {formatTimestamp(data.finishedAt)}: {data.counts.total} new or updated requests,{' '}
-              {data.counts.autoMatched} auto-matched
-              {data.counts.needReview > 0 ? `, ${data.counts.needReview} need review` : ''}
+              Done {formatTimestamp(data.finishedAt)}: {data.counts.total} new or updated{' '}
+              {data.counts.total === 1 ? 'request' : 'requests'}, {data.counts.autoMatched}{' '}
+              auto-matched
+              {data.counts.needReview > 0
+                ? `, ${data.counts.needReview} need${data.counts.needReview === 1 ? 's' : ''} review`
+                : ''}
             </span>
           </>
         )}
@@ -116,9 +121,17 @@ export default function CsvPipelineIndicator() {
             <div className="space-y-2 text-sm">
               <p className="font-medium">Import complete</p>
               <ul className="list-disc pl-5">
-                <li>{data.counts.total} new or updated requests</li>
+                <li>
+                  {data.counts.total} new or updated{' '}
+                  {data.counts.total === 1 ? 'request' : 'requests'}
+                </li>
                 <li>{data.counts.autoMatched} auto-matched</li>
-                {data.counts.needReview > 0 && <li>{data.counts.needReview} need review</li>}
+                {data.counts.needReview > 0 && (
+                  <li>
+                    {data.counts.needReview} {data.counts.needReview === 1 ? 'needs' : 'need'}{' '}
+                    review
+                  </li>
+                )}
               </ul>
               <p className="text-xs text-gray-600">{formatTimestamp(data.finishedAt)}</p>
             </div>

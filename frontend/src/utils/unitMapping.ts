@@ -50,17 +50,6 @@ const BUNK_NUMBER_REGEX = /^(B|G|AG)-(\d+)[A-Za-z]?$/i
 /** Regex to extract prefix from prefixed Nitzanim names (B-Aleph, G-Bet) */
 const PREFIXED_NITZANIM_REGEX = /^(B|G)-(?:aleph|bet)$/i
 
-/** Muted colors for unit-level grouping (distinct from bunk bubble colors) */
-export const UNIT_COLORS: Record<string, string> = {
-  Nitzanim: '#7c8a5e',
-  Carmel: '#6b7b94',
-  Galil: '#8b7355',
-  Eilat: '#7a6b8a',
-  Haifa: '#5e8a7c',
-  'Chalutzim 1': '#8a6b6b',
-  'Chalutzim 2': '#6b7b6b',
-}
-
 /** All unit names in age order (youngest to oldest) */
 export const UNIT_NAMES = [
   'Nitzanim',

@@ -1,4 +1,4 @@
-export type SyncJobStatus = {
+export interface SyncJobStatus {
   name: string
   status: 'running' | 'completed' | 'failed' | 'queued'
   startedAt: string
@@ -6,7 +6,7 @@ export type SyncJobStatus = {
   error?: string
 }
 
-export type DebugPipelineRun = {
+export interface DebugPipelineRun {
   run_id: string
   created: string
   status_breakdown: {
@@ -207,6 +207,16 @@ export async function fetchLatestDebugRun(
   const data = (await res.json()) as RawDebugListResponse
   const first = data.items[0]
   if (!first) return null
+  // Guard against malformed rows (schema mismatch, partial write). Without
+  // this, doneFromDebug would throw a TypeError when destructuring the counts.
+  if (
+    !first.status_breakdown ||
+    typeof first.status_breakdown.status_resolved !== 'number' ||
+    typeof first.status_breakdown.status_pending !== 'number' ||
+    typeof first.status_breakdown.status_declined !== 'number'
+  ) {
+    return null
+  }
   return {
     run_id: first.run_id,
     created: first.created,

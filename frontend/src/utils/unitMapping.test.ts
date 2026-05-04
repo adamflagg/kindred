@@ -3,7 +3,7 @@
  * Maps bunk names (e.g. "B-1", "G-12", "Aleph") to unit names
  */
 import { describe, it, expect } from 'vitest'
-import { getUnitForBunk, getUnitSideForBunk, UNIT_COLORS } from './unitMapping'
+import { getUnitForBunk, getUnitSideForBunk } from './unitMapping'
 
 describe('getUnitForBunk', () => {
   describe('Nitzanim unit (Aleph, Bet)', () => {
@@ -203,29 +203,5 @@ describe('getUnitSideForBunk', () => {
     expect(getUnitSideForBunk('Unknown')).toBeNull()
     expect(getUnitSideForBunk('')).toBeNull()
     expect(getUnitSideForBunk('Bunk 12345')).toBeNull()
-  })
-})
-
-describe('UNIT_COLORS', () => {
-  it('has a color for every unit', () => {
-    const expectedUnits = [
-      'Nitzanim',
-      'Carmel',
-      'Galil',
-      'Eilat',
-      'Haifa',
-      'Chalutzim 1',
-      'Chalutzim 2',
-    ]
-    for (const unit of expectedUnits) {
-      expect(UNIT_COLORS[unit]).toBeDefined()
-      expect(typeof UNIT_COLORS[unit]).toBe('string')
-    }
-  })
-
-  it('colors are unique', () => {
-    const colors = Object.values(UNIT_COLORS)
-    const unique = new Set(colors)
-    expect(unique.size).toBe(colors.length)
   })
 })
