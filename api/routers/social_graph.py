@@ -375,9 +375,11 @@ async def get_session_social_graph(
             cross_scope_nodes=cross_nodes,
         )
 
-    except Exception as e:
-        logger.error(f"Error building social graph: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.error("Error building social graph", exc_info=True)
+        raise
 
 
 # ========================================
@@ -673,9 +675,9 @@ async def get_bunk_social_graph(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error building bunk social graph: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Error building bunk social graph", exc_info=True)
+        raise
 
 
 # ========================================
@@ -819,9 +821,9 @@ async def get_person_ego_network(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error building ego network: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Error building ego network", exc_info=True)
+        raise
 
 
 # ========================================
@@ -885,6 +887,6 @@ async def update_camper_position(
     except ValueError as e:
         logger.error(f"Invalid update request: {e}")
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error updating camper position: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update camper position")
+    except Exception:
+        logger.error("Error updating camper position", exc_info=True)
+        raise
