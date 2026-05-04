@@ -143,6 +143,9 @@ export function useSolverOperations({
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
+                  // Issue #1040 — solver re-assigns campers; graph borders must refresh.
+                  queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
@@ -179,6 +182,9 @@ export function useSolverOperations({
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
+                  // Issue #1040 — solver re-assigns campers; graph borders must refresh.
+                  queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)

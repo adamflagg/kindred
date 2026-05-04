@@ -313,6 +313,12 @@ export const queryKeys = {
   bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
+  // Prefix factories for social-graph invalidation (Issue #1040).
+  // Passing the bare prefix catches every keyed variant:
+  //   ['social-graph', sessionCmId, year, scenarioId]
+  //   ['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId]
+  socialGraphPrefix: () => ['social-graph'] as const,
+  bunkSocialGraphPrefix: () => ['bunk-social-graph'] as const,
 
   // Parameterized fetch-site factories (Issue #1023, #1084)
   allBunkRequests: (sessionCmId: number, year: number) =>
@@ -408,6 +414,10 @@ export function invalidateRequestQueries(
   void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestsTooltipPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.requestSatisfactionPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.cohortRequestRelationsPrefix() })
+  // Issue #1040 — social-graph node borders reflect request satisfaction; invalidate
+  // so approve/decline/merge/split immediately update the graph's node colours.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
   if (options.includeSourceLinks) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
