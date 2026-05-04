@@ -729,7 +729,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.67.3" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "tzdata", specifier = ">=2026.1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
 ]
 
 [package.metadata.requires-dev]
