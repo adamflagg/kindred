@@ -9,6 +9,7 @@ import { computeRequestSatisfaction } from '../../utils/requestSatisfaction'
 import type { BunkAssignmentsResponse } from '../../types/pocketbase-types'
 import type { SatisfactionMap } from './types'
 import type { EnhancedBunkRequest } from './useAllBunkRequests'
+import { queryKeys } from '../../utils/queryKeys'
 
 export interface UseSatisfactionDataResult {
   satisfactionData: SatisfactionMap
@@ -29,15 +30,17 @@ export function useSatisfactionData(
     isLoading,
     error,
   } = useQuery<SatisfactionMap>({
-    queryKey: [
-      'request-satisfaction',
+    queryKey: queryKeys.requestSatisfaction(
       personCmId,
       assignedBunkCmId,
       sessionCmId,
       camperGrade,
       currentYear,
-      allBunkRequests.map((r) => r.id).join(','),
-    ],
+      allBunkRequests
+        .map((r) => r.id)
+        .sort()
+        .join(',')
+    ),
     queryFn: async () => {
       const results: SatisfactionMap = {}
 

@@ -14,6 +14,7 @@ import type {
   PersonsResponse,
   BunkAssignmentsResponse,
 } from '../../types/pocketbase-types'
+import { queryKeys } from '../../utils/queryKeys'
 
 /**
  * Parsed camper ID result
@@ -341,8 +342,8 @@ export function useCamperMovement({
         void queryClient.invalidateQueries({
           queryKey: ['campers', selectedSession],
         })
-        void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
-        void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
+        void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
         onPendingMoveCleared?.()
         toast.success('Camper moved successfully')
         return
@@ -353,8 +354,8 @@ export function useCamperMovement({
 
       // Always invalidate queries to keep UI in sync
       void queryClient.invalidateQueries({ queryKey: ['campers', selectedSession] })
-      void queryClient.invalidateQueries({ queryKey: ['bunk-request-status'] })
-      void queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
       onPendingMoveCleared?.()
 
       // Invalidate graph cache for the session

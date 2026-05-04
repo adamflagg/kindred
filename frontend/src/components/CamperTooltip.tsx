@@ -9,6 +9,7 @@ import { getDisplayAgeForYear } from '../utils/displayAge'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import type { Camper } from '../types/app-types'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
+import { queryKeys } from '../utils/queryKeys'
 
 interface CamperTooltipProps {
   camper: Camper
@@ -31,7 +32,7 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
 
   // Query for age preference social requests
   const { data: agePreferenceRequests = [] } = useQuery<BunkRequestsResponse[]>({
-    queryKey: ['bunk_requests_tooltip', camper.person_cm_id, currentYear],
+    queryKey: queryKeys.bunkRequestsTooltip(camper.person_cm_id, currentYear),
     queryFn: async () => {
       if (!camper.person_cm_id) return []
 
@@ -49,7 +50,7 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
 
   // Fetch camper history from bunk_assignments table
   const { data: history = [] } = useQuery<CamperHistory[]>({
-    queryKey: ['camper-history', camper.person_cm_id, currentYear],
+    queryKey: queryKeys.camperHistory(String(camper.person_cm_id), currentYear),
     queryFn: async () => {
       if (!camper.person_cm_id) return []
 

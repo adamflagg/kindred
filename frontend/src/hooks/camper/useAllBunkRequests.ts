@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import type { BunkRequest } from '../../types/app-types'
 import type { PersonsResponse } from '../../types/pocketbase-types'
+import { queryKeys } from '../../utils/queryKeys'
 
 // Extended bunk request with optional person name
 export type EnhancedBunkRequest = BunkRequest & {
@@ -28,7 +29,7 @@ export function useAllBunkRequests(
     isLoading,
     error,
   } = useQuery<EnhancedBunkRequest[]>({
-    queryKey: ['person-all-bunk-requests', personCmId, currentYear],
+    queryKey: queryKeys.personAllBunkRequests(personCmId, currentYear),
     queryFn: async () => {
       if (!personCmId) {
         throw new Error('No camper person ID')

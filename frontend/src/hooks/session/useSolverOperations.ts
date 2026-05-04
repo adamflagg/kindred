@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { solverService } from '../../services/solver'
 import { graphCacheService } from '../../services/GraphCacheService'
+import { queryKeys } from '../../utils/queryKeys'
 
 /** Type for fetchWithAuth function from useApiWithAuth */
 export type FetchWithAuthFn = (
@@ -138,10 +139,10 @@ export function useSolverOperations({
                     queryKey: ['bunks', selectedSession],
                   }),
                   queryClient.invalidateQueries({
-                    queryKey: ['bunk-request-status'],
+                    queryKey: queryKeys.bunkRequestStatus(),
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
-                  queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
@@ -174,10 +175,10 @@ export function useSolverOperations({
                     queryKey: ['bunks', selectedSession],
                   }),
                   queryClient.invalidateQueries({
-                    queryKey: ['bunk-request-status'],
+                    queryKey: queryKeys.bunkRequestStatus(),
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
-                  queryClient.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
+                  queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)

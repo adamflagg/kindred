@@ -33,7 +33,7 @@ export const queryKeys = {
   // Historical data (Tier 1 - sync data)
   historicalBunking: (personCmId: number, year: number) =>
     ['historical-bunking', personCmId, year] as const,
-  camperHistory: (personId: string) => ['camper-history', personId] as const,
+  camperHistory: (personId: string, year: number) => ['camper-history', personId, year] as const,
 
   // Statistics (Tier 1 - sync data)
   sessionStats: (sessionId: string) => ['session-stats', sessionId] as const,
@@ -55,6 +55,8 @@ export const queryKeys = {
   // automatically invalidates the tab-badge count without additional call sites.
   bunkRequestsCount: (selectedSession: string, year: number, ...rest: unknown[]) =>
     ['bunk-requests', 'count', selectedSession, year, ...rest] as const,
+  // Solver/movement status derived from bunk requests (no parameters — global flag).
+  bunkRequestStatus: () => ['bunk-request-status'] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
@@ -307,6 +309,68 @@ export const queryKeys = {
   bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
+
+  // Parameterized fetch-site factories (Issue #1023, #1084)
+  allBunkRequests: (sessionCmId: number, year: number) =>
+    ['all-bunk-requests', sessionCmId, year] as const,
+  // All three factories below require the caller to gate with enabled: !!cmId.
+  // Caller must gate the consuming query with `enabled: !!cmId`. Passing
+  // `undefined` produces a key like `['person-bunk-requests', undefined, year]`
+  // which is fine as long as the query never actually runs.
+  personBunkRequests: (cmId: number | undefined, year: number) =>
+    ['person-bunk-requests', cmId, year] as const,
+  personAllBunkRequests: (cmId: number | undefined, year: number) =>
+    ['person-all-bunk-requests', cmId, year] as const,
+  bunkRequestsTooltip: (cmId: number | undefined, year: number) =>
+    ['bunk_requests_tooltip', cmId, year] as const,
+  /**
+   * Cache key for client-derived satisfaction snapshots.
+   *
+   * `requestIdsKey` is the caller's responsibility to compute as a stable,
+   * sort-stable stringification of the request IDs that feed the snapshot —
+   * conventionally `[...ids].sort().join(',')`. Without sort stability the
+   * cache slot churns across renders even when the inputs are the same.
+   *
+   * Caller should also gate the consuming query with `enabled: !!personCmId`
+   * (or similar) to avoid running with undefined ids.
+   */
+  requestSatisfaction: (
+    personCmId: number | undefined,
+    assignedBunkCmId: number | undefined,
+    sessionCmId: number | undefined,
+    camperGrade: number | undefined,
+    year: number,
+    requestIdsKey: string
+  ) =>
+    [
+      'request-satisfaction',
+      personCmId,
+      assignedBunkCmId,
+      sessionCmId,
+      camperGrade,
+      year,
+      requestIdsKey,
+    ] as const,
+
+  // Parameterized fetch-site factories for CamperDetailsPanel (Issue #1025)
+  camperDetails: (camperId: string, year: number) => ['camper-details', camperId, year] as const,
+  personForSiblings: (camperId: string, year: number) =>
+    ['person-for-siblings', camperId, year] as const,
+  camperSiblingsPanel: (householdId: number | undefined, camperId: string, year: number) =>
+    ['camper-siblings-panel', householdId, camperId, year] as const,
+  // Two callers query `original_bunk_requests` with different filter columns
+  // and shape the result differently — a single shared cache key would cause
+  // a collision. Split into two distinct factories.
+  //
+  // Filter: `person_id = {cmId}`. Returns first row as raw OriginalBunkData
+  // (used by CamperDetailsPanel). Caller must gate with `enabled: !!cmId`.
+  originalBunkRequestsByPersonId: (cmId: number | undefined, year: number) =>
+    ['original-bunk-requests-by-person-id', cmId, year] as const,
+  // Filter: `requester.cm_id = {cmId}`. Returns denormalized
+  // OriginalBunkData[] (used by useOriginalBunkData). Caller must gate
+  // with `enabled: !!cmId`.
+  originalBunkRequestsByRequesterCmId: (cmId: number | undefined, year: number) =>
+    ['original-bunk-requests-by-requester-cm-id', cmId, year] as const,
   // Source-link keys are auxiliary — only merge/split mutations rewrite
   // source linkages. Pass `includeSourceLinks: true` to invalidate these.
   sourceLinksPrefix: () => ['source-links'] as const,
