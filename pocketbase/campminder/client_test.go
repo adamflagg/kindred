@@ -350,7 +350,7 @@ func TestAuthenticate_RetryCapExactCallCount(t *testing.T) {
 // TestAuthenticate_NoRetryOnNon429Error verifies that a non-429 non-200
 // response (e.g. 500 Internal Server Error) causes an immediate return on
 // the first attempt — no retry, no sleep.
-// This pins the spec for short-circuit behaviour (#1134 finding #5).
+// This pins the spec for short-circuit behavior (#1134 finding #5).
 func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
 	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
 
