@@ -147,14 +147,14 @@ describe('CamperRequestSummary', () => {
     expect(inner.className).not.toMatch(/ring-primary\/40/)
   })
 
-  it('shows "Not bunk with" label in red for not_bunk_with requests', async () => {
+  it('shows "Not with" label in red for not_bunk_with requests', async () => {
     mockFetch()
     render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req1" />)
     await waitFor(() => {
       expect(screen.getByText('Olivia Chen')).toBeInTheDocument()
     })
-    const notBunk = screen.getByText('Not bunk with')
-    expect(notBunk.className).toMatch(/text-red-600/)
+    const notBunk = screen.getByText('Not with')
+    expect(notBunk.className).toMatch(/text-red-700/)
   })
 
   it('shows a loading indicator while requests load', () => {

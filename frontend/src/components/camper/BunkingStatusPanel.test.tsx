@@ -62,6 +62,34 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
   )
 }
 
+interface RenderPanelOptions {
+  allBunkRequests: EnhancedBunkRequest[]
+  agePreferenceRequests?: EnhancedBunkRequest[]
+  satisfactionData: Record<
+    string,
+    { status: 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'; detail?: string }
+  >
+}
+
+function renderPanelWith({
+  allBunkRequests,
+  agePreferenceRequests = [],
+  satisfactionData,
+}: RenderPanelOptions) {
+  return render(
+    <MemoryRouter>
+      <BunkingStatusPanel
+        camper={makeCamper()}
+        sessionShortName="S1"
+        allBunkRequests={allBunkRequests}
+        agePreferenceRequests={agePreferenceRequests}
+        satisfactionData={satisfactionData}
+        satisfactionLoading={false}
+      />
+    </MemoryRouter>
+  )
+}
+
 describe('BunkingStatusPanel — resolved-only request list', () => {
   it('does not render pending bunk_with rows in the per-camper request list', () => {
     const requests: EnhancedBunkRequest[] = [
@@ -128,5 +156,298 @@ describe('BunkingStatusPanel — resolved-only request list', () => {
     expect(screen.getByText(/no bunk requests on file/i)).toBeTruthy()
     expect(screen.queryByText('Olivia Chen')).toBeNull()
     expect(screen.queryByText('Riley Sam')).toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
+  it('renders two columns when both materialParent and staff have requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+      makeRequest({
+        id: 's1',
+        request_type: 'not_bunk_with',
+        source_field: 'not_bunk_with',
+        source: 'staff',
+      }),
+    ]
+    const satisfactionData = {
+      p1: { status: 'satisfied' as const, detail: '' },
+      s1: { status: 'satisfied' as const, detail: '' },
+    }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('renders single Parent line when only parent material requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+    ]
+    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+
+  it('renders single Staff line when only staff requests', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 's1',
+        request_type: 'not_bunk_with',
+        source_field: 'not_bunk_with',
+        source: 'staff',
+      }),
+    ]
+    const satisfactionData = { s1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+  })
+
+  it('hides summary entirely when only best-effort parent (no material, no staff)', () => {
+    const bestEffortAgePref = makeRequest({
+      id: 'b1',
+      request_type: 'age_preference',
+      source_field: 'socialize_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const satisfactionData = { b1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({
+      allBunkRequests: [bestEffortAgePref],
+      agePreferenceRequests: [bestEffortAgePref],
+      satisfactionData,
+    })
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+    expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+
+  it('shows Parent line for material parent age preference (source_field=bunk_with)', () => {
+    const materialAgePref = makeRequest({
+      id: 'a1',
+      request_type: 'age_preference',
+      source_field: 'bunk_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({
+      allBunkRequests: [materialAgePref],
+      agePreferenceRequests: [materialAgePref],
+      satisfactionData,
+    })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('shows Staff line for staff age preference (source=staff)', () => {
+    const staffAgePref = makeRequest({
+      id: 'a2',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    const satisfactionData = { a2: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({
+      allBunkRequests: [staffAgePref],
+      agePreferenceRequests: [staffAgePref],
+      satisfactionData,
+    })
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('shows green check when ratio is 1.0', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+      }),
+    ]
+    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    // Scope to the parent-summary block so unrelated green elements (e.g. the
+    // satisfied-row "Met" pill) can't false-pass the assertion.
+    const parentSummary = screen.getByText(/Parent request satisfaction:/i).closest('div')
+    expect(parentSummary).not.toBeNull()
+    const greenCheck = parentSummary?.querySelector(
+      '.text-green-500, .text-green-400, .text-green-600'
+    )
+    expect(greenCheck).not.toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
+  it('renders Parent rows before Staff sub-divider before Staff rows', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        ...({
+          targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 100 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+      makeRequest({
+        id: 's1',
+        request_type: 'not_bunk_with',
+        source_field: 'not_bunk_with',
+        source: 'staff',
+        ...({
+          targetPerson: { first_name: 'Riley', last_name: 'Sam', cm_id: 200 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+    ]
+    const satisfactionData = {
+      p1: { status: 'satisfied' as const, detail: '' },
+      s1: { status: 'satisfied' as const, detail: '' },
+    }
+    const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
+
+    // Assert using document-order positions of key elements.
+    //
+    // The combined Parent ↑ │ ⬇ Staff divider is the only element on the
+    // panel with the `font-mono` utility on its container <div>. The summary
+    // and row text don't use font-mono.
+    const allElements = Array.from(container.querySelectorAll('*'))
+    const dividerEl = container.querySelector('div.font-mono')
+    expect(dividerEl).not.toBeNull()
+    expect(dividerEl?.textContent).toMatch(/Parent.*Staff/)
+    const dividerIdx = allElements.indexOf(dividerEl as Element)
+
+    // Emma and Riley's names appear in a <Link> (rendered as <a>) or <span>
+    // with the full "First Last" string and possibly a nested SVG icon. We
+    // find the closest ancestor element that (a) contains the name, and (b)
+    // does NOT contain the other name, so we stay within the individual row.
+    const emmaEl = allElements.find(
+      (el) =>
+        el.textContent?.includes('Emma') &&
+        !el.textContent?.includes('Riley') &&
+        el.tagName !== 'BODY' &&
+        el.tagName !== 'HTML'
+    )
+    const rileyEl = allElements.find(
+      (el) =>
+        el.textContent?.includes('Riley') &&
+        !el.textContent?.includes('Emma') &&
+        el.tagName !== 'BODY' &&
+        el.tagName !== 'HTML'
+    )
+
+    expect(emmaEl).not.toBeNull()
+    expect(rileyEl).not.toBeNull()
+
+    const emmaIdx = allElements.indexOf(emmaEl as Element)
+    const rileyIdx = allElements.indexOf(rileyEl as Element)
+
+    expect(emmaIdx).toBeGreaterThan(-1)
+    expect(emmaIdx).toBeLessThan(dividerIdx)
+    expect(dividerIdx).toBeLessThan(rileyIdx)
+  })
+
+  it('omits Staff sub-divider when no staff rows exist', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        ...({
+          targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 100 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+    ]
+    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
+    // The Parent ↑ │ ⬇ Staff divider only renders when both groups exist.
+    // With only parent rows present, the font-mono divider container should
+    // not be in the DOM.
+    expect(container.querySelector('div.font-mono')).toBeNull()
+  })
+
+  it('sorts Parent rows alphabetically by requestee first_name', () => {
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p-olivia',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        ...({
+          targetPerson: { first_name: 'Olivia', last_name: 'Chen', cm_id: 100 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+      makeRequest({
+        id: 'p-emma',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        ...({
+          targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 101 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+      makeRequest({
+        id: 'p-liam',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        ...({
+          targetPerson: { first_name: 'Liam', last_name: 'Garcia', cm_id: 102 },
+        } as unknown as Partial<EnhancedBunkRequest>),
+      }),
+    ]
+    const satisfactionData = Object.fromEntries(
+      allBunkRequests.map((r) => [r.id, { status: 'satisfied' as const, detail: '' }])
+    )
+    const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
+    const text = container.textContent ?? ''
+    expect(text.indexOf('Emma')).toBeLessThan(text.indexOf('Liam'))
+    expect(text.indexOf('Liam')).toBeLessThan(text.indexOf('Olivia'))
+  })
+
+  it('renders animated sparkle + P badge on material age preference', () => {
+    const ageReq = makeRequest({
+      id: 'a1',
+      request_type: 'age_preference',
+      source_field: 'bunk_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const allBunkRequests = [ageReq]
+    const agePreferenceRequests = [ageReq]
+    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    const { container } = renderPanelWith({
+      allBunkRequests,
+      agePreferenceRequests,
+      satisfactionData,
+    })
+    expect(container.querySelector('.sparkle-material')).not.toBeNull()
+    expect(screen.getByText('P')).toBeInTheDocument()
+  })
+
+  it('renders S badge on staff-source age preference', () => {
+    const ageReq = makeRequest({
+      id: 'a1',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    const allBunkRequests = [ageReq]
+    const agePreferenceRequests = [ageReq]
+    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({ allBunkRequests, agePreferenceRequests, satisfactionData })
+    expect(screen.getByText('S')).toBeInTheDocument()
   })
 })

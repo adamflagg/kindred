@@ -117,13 +117,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
       }
     }
 
-    return computeSatisfiedRequestInfo(
-      personRequests,
-      personCmId,
-      personSet,
-      bunkmateGrades,
-      requesterGrade
-    )
+    return computeSatisfiedRequestInfo(personRequests, personSet, bunkmateGrades, requesterGrade)
   }
 
   const value = {
