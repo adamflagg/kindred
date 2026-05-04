@@ -208,9 +208,7 @@ export interface ValidationResult {
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
 
-/** Returns the export button label that matches the active change filter.
- *  Only 'moved' and 'all' are reachable — the button is not rendered for
- *  'newly-assigned' or 'newly-unassigned'. */
+/** Returns the export button label that matches the active change filter. */
 // eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
 export function getExportButtonLabel(filter: 'moved' | 'all'): string {
   return filter === 'moved' ? 'Export Moved' : 'Export All'
