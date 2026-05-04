@@ -8,6 +8,8 @@ from bunking.sync.bunk_request_processor.integration.ai_schemas import (
     AIDisambiguationCandidate,
     AIDisambiguationResponse,
     AIFullParseRequestItem,
+    AIFullParseResponse,
+    AIParseResponse,
     TemporalInfo,
 )
 
@@ -52,9 +54,6 @@ class TestAIFullParseRequestItemSourceFragment:
 
 class TestSourceFragmentMaxLength:
     def test_bunk_request_item_rejects_fragment_over_2000_chars(self) -> None:
-        import pytest
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             AIBunkRequestItem(
                 request_type="bunk_with",
@@ -63,9 +62,6 @@ class TestSourceFragmentMaxLength:
             )
 
     def test_full_parse_request_item_rejects_fragment_over_2000_chars(self) -> None:
-        import pytest
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             AIFullParseRequestItem(
                 request_type="bunk_with",
@@ -140,3 +136,11 @@ class TestExtraForbidOnAllAISchemas:
     def test_temporal_info_rejects_unknown_field(self) -> None:
         with pytest.raises(ValidationError):
             TemporalInfo(**{"unknown_field": "x"})
+
+    def test_parse_response_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIParseResponse(**{"unknown_field": "x"})
+
+    def test_full_parse_response_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIFullParseResponse(**{"unknown_field": "x"})
