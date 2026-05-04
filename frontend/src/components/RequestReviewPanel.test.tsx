@@ -1334,19 +1334,23 @@ describe('RequestReviewPanel', () => {
    * decline, the just-processed row MUST collapse.
    */
   describe('Row collapse after approve/decline (feedback #11)', () => {
-    // Expand a request row by ID. The mobile layout's expanded block renders
-    // the "Priority:" label — used as the visible-only-when-expanded signal.
+    // Expand a request row by ID. Uses data-testid attributes to locate the
+    // clickable mobile row element and the expanded content block.
     async function expandRowById(requestId: string) {
       const rowContainers = await waitFor(() => {
         const found = document.querySelectorAll(`[data-request-row-id="${requestId}"]`)
         if (found.length === 0) throw new Error('row not yet rendered')
         return found
       })
-      const mobileRow = rowContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      const mobileRow = rowContainers[0]?.querySelector(
+        '[data-testid="request-card-mobile"]'
+      ) as HTMLElement
       expect(mobileRow).toBeTruthy()
       fireEvent.click(mobileRow)
       await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+        expect(
+          rowContainers[0]?.querySelector('[data-testid="request-row-expanded-content"]')
+        ).toBeTruthy()
       })
     }
 
@@ -1373,9 +1377,9 @@ describe('RequestReviewPanel', () => {
       const confirmButton = await screen.findByRole('button', { name: 'Confirm' })
       await user.click(confirmButton)
 
-      // After confirming, the row should collapse — "Priority:" label disappears
+      // After confirming, the row should collapse — expanded content block disappears
       await waitFor(() => {
-        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+        expect(document.querySelector('[data-testid="request-row-expanded-content"]')).toBeNull()
       })
     }, 10000)
 
@@ -1402,7 +1406,7 @@ describe('RequestReviewPanel', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(screen.queryByText('Priority:')).not.toBeInTheDocument()
+        expect(document.querySelector('[data-testid="request-row-expanded-content"]')).toBeNull()
       })
     }, 10000)
 
@@ -1463,13 +1467,17 @@ describe('RequestReviewPanel', () => {
         if (found.length === 0) throw new Error('row A not yet rendered')
         return found
       })
-      const mobileRowA = rowAContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      const mobileRowA = rowAContainers[0]?.querySelector(
+        '[data-testid="request-card-mobile"]'
+      ) as HTMLElement
       expect(mobileRowA).toBeTruthy()
       fireEvent.click(mobileRowA)
 
       // Confirm row A is expanded
       await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBeGreaterThan(0)
+        expect(
+          rowAContainers[0]?.querySelector('[data-testid="request-row-expanded-content"]')
+        ).toBeTruthy()
       })
 
       // Also expand row B so both rows are expanded simultaneously
@@ -1478,13 +1486,17 @@ describe('RequestReviewPanel', () => {
         if (found.length === 0) throw new Error('row B not yet rendered')
         return found
       })
-      const mobileRowB = rowBContainers[0]?.querySelector('.request-card-mobile') as HTMLElement
+      const mobileRowB = rowBContainers[0]?.querySelector(
+        '[data-testid="request-card-mobile"]'
+      ) as HTMLElement
       expect(mobileRowB).toBeTruthy()
       fireEvent.click(mobileRowB)
 
-      // Both rows expanded — two "Priority:" labels visible
+      // Both rows expanded — two expanded-content blocks visible
       await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBeGreaterThanOrEqual(2)
+        expect(
+          document.querySelectorAll('[data-testid="request-row-expanded-content"]').length
+        ).toBeGreaterThanOrEqual(2)
       })
 
       // Now approve row B via its Approve button
@@ -1500,9 +1512,11 @@ describe('RequestReviewPanel', () => {
         expect(updateSpy).toHaveBeenCalledTimes(1)
       })
 
-      // Row B must collapse — total "Priority:" count drops back to 1 (only row A's)
+      // Row B must collapse — only row A's expanded-content block remains
       await waitFor(() => {
-        expect(screen.getAllByText('Priority:').length).toBe(1)
+        expect(
+          document.querySelectorAll('[data-testid="request-row-expanded-content"]').length
+        ).toBe(1)
       })
     }, 15000)
   })

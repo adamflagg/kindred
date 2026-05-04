@@ -4,94 +4,85 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 
 import GraphControls from './GraphControls'
 
+const baseProps = {
+  showLabels: true,
+  onToggleLabels: vi.fn(),
+  showHelp: false,
+  onToggleHelp: vi.fn(),
+  isExpanded: false,
+  onToggleExpand: vi.fn(),
+  onZoomIn: vi.fn(),
+  onZoomOut: vi.fn(),
+  onFit: vi.fn(),
+}
+
 describe('GraphControls', () => {
   describe('label toggle', () => {
-    it('should toggle label visibility', () => {
-      const mockToggleLabels = vi.fn()
-
-      mockToggleLabels()
-
-      expect(mockToggleLabels).toHaveBeenCalled()
+    it('calls onToggleLabels when the label button is clicked', () => {
+      const onToggleLabels = vi.fn()
+      render(<GraphControls {...baseProps} onToggleLabels={onToggleLabels} showLabels={true} />)
+      fireEvent.click(screen.getByTitle('Hide labels'))
+      expect(onToggleLabels).toHaveBeenCalledTimes(1)
     })
 
-    it('should show different icons for show/hide state', () => {
-      const showLabels = true as boolean
-      const iconName = showLabels ? 'Eye' : 'EyeOff'
+    it('shows Hide-labels title when showLabels is true and Show-labels when false', () => {
+      const { rerender } = render(<GraphControls {...baseProps} showLabels={true} />)
+      expect(screen.getByTitle('Hide labels')).toBeInTheDocument()
 
-      expect(iconName).toBe('Eye')
+      rerender(<GraphControls {...baseProps} showLabels={false} />)
+      expect(screen.getByTitle('Show labels')).toBeInTheDocument()
     })
   })
 
   describe('zoom controls', () => {
-    it('should have zoom in, zoom out, and fit functions', () => {
-      const handleZoomIn = vi.fn()
-      const handleZoomOut = vi.fn()
-      const handleFit = vi.fn()
-
-      handleZoomIn()
-      handleZoomOut()
-      handleFit()
-
-      expect(handleZoomIn).toHaveBeenCalled()
-      expect(handleZoomOut).toHaveBeenCalled()
-      expect(handleFit).toHaveBeenCalled()
-    })
-
-    it('should apply zoom multipliers correctly', () => {
-      const currentZoom = 1.0
-      const zoomInMultiplier = 1.2
-      const zoomOutMultiplier = 0.8
-
-      expect(currentZoom * zoomInMultiplier).toBe(1.2)
-      expect(currentZoom * zoomOutMultiplier).toBe(0.8)
+    it('calls onZoomIn, onZoomOut, and onFit when their buttons are clicked', () => {
+      const onZoomIn = vi.fn()
+      const onZoomOut = vi.fn()
+      const onFit = vi.fn()
+      render(
+        <GraphControls {...baseProps} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onFit={onFit} />
+      )
+      fireEvent.click(screen.getByTitle('Zoom in'))
+      fireEvent.click(screen.getByTitle('Zoom out'))
+      fireEvent.click(screen.getByTitle('Fit to screen'))
+      expect(onZoomIn).toHaveBeenCalledTimes(1)
+      expect(onZoomOut).toHaveBeenCalledTimes(1)
+      expect(onFit).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('expand toggle', () => {
-    it('should toggle expanded state', () => {
-      const mockToggleExpand = vi.fn()
-
-      mockToggleExpand()
-
-      expect(mockToggleExpand).toHaveBeenCalled()
+    it('calls onToggleExpand when the expand button is clicked', () => {
+      const onToggleExpand = vi.fn()
+      render(<GraphControls {...baseProps} onToggleExpand={onToggleExpand} isExpanded={false} />)
+      fireEvent.click(screen.getByTitle('Expand graph'))
+      expect(onToggleExpand).toHaveBeenCalledTimes(1)
     })
 
-    it('should show different icons for expanded/collapsed', () => {
-      const isExpanded = true as boolean
-      const iconName = isExpanded ? 'Minimize2' : 'Maximize2'
+    it('shows "Exit expanded view" title when isExpanded is true and "Expand graph" when false', () => {
+      const { rerender } = render(<GraphControls {...baseProps} isExpanded={false} />)
+      expect(screen.getByTitle('Expand graph')).toBeInTheDocument()
 
-      expect(iconName).toBe('Minimize2')
+      rerender(<GraphControls {...baseProps} isExpanded={true} />)
+      expect(screen.getByTitle('Exit expanded view')).toBeInTheDocument()
     })
   })
 
   describe('help toggle', () => {
-    it('should toggle help visibility', () => {
-      const mockToggleHelp = vi.fn()
-
-      mockToggleHelp()
-
-      expect(mockToggleHelp).toHaveBeenCalled()
+    it('calls onToggleHelp when the help button is clicked', () => {
+      const onToggleHelp = vi.fn()
+      render(<GraphControls {...baseProps} onToggleHelp={onToggleHelp} />)
+      fireEvent.click(screen.getByTitle('Toggle help information'))
+      expect(onToggleHelp).toHaveBeenCalledTimes(1)
     })
   })
 })
 
 describe('GraphControls rendering', () => {
-  const baseProps = {
-    showLabels: true,
-    onToggleLabels: vi.fn(),
-    showHelp: false,
-    onToggleHelp: vi.fn(),
-    isExpanded: false,
-    onToggleExpand: vi.fn(),
-    onZoomIn: vi.fn(),
-    onZoomOut: vi.fn(),
-    onFit: vi.fn(),
-  }
-
   it('does not render an Ego Network control', () => {
     render(<GraphControls {...baseProps} />)
     expect(screen.queryByText(/ego network/i)).not.toBeInTheDocument()
