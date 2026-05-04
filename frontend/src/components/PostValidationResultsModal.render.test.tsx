@@ -193,3 +193,74 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
     expect(screen.queryByText(/parent requests fulfilled/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
+  it('passes parent satisfaction rate to SatisfactionRing when parent requests exist', () => {
+    const { container } = render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          campers_with_unsatisfied_material_parent_requests: 6,
+          // Diverging all-up rate to prove we're reading the parent one
+          request_satisfaction_rate: 0.9,
+          satisfied_requests: 27,
+          total_requests: 30,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    // SatisfactionRing renders the rate as a percentage; expect 60% somewhere
+    // in the rendered output (NOT 90%).
+    expect(container.textContent).toMatch(/60%/)
+    expect(container.textContent).not.toMatch(/90%/)
+  })
+
+  it('falls back to all-up rate when zero material parent requests in session', () => {
+    const { container } = render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 0,
+          satisfied_material_parent_requests: 0,
+          material_parent_request_satisfaction_rate: 0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+          request_satisfaction_rate: 0.85,
+          satisfied_requests: 17,
+          total_requests: 20,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    expect(container.textContent).toMatch(/85%/)
+  })
+
+  it('drives status tier from parent rate (parent at 60% lands in Needs Attention even when all-up is 90%)', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          campers_with_unsatisfied_material_parent_requests: 6,
+          request_satisfaction_rate: 0.9,
+          satisfied_requests: 27,
+          total_requests: 30,
+        })}
+        sessionId="1000001"
+      />
+    )
+
+    // Parent-rate 0.6 is in [0.5, 0.7) → Needs Attention tier.
+    expect(screen.getByText(/needs attention/i)).toBeInTheDocument()
+    expect(screen.queryByText(/looking good/i)).not.toBeInTheDocument()
+  })
+})

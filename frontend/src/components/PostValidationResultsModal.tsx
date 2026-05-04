@@ -517,7 +517,15 @@ export default function PostValidationResultsModal({
   const statistics = results.statistics
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
-  const satisfactionRate = statistics.request_satisfaction_rate
+  // Stage 3b.2: parent-paramount lens. Use parent satisfaction as the primary
+  // signal driving the donut, status tier, and close-button styling. Fall back
+  // to all-up rate when no material parent requests exist (rare — staff-only
+  // scenarios or empty sessions).
+  const parentTotal = statistics.material_parent_requests ?? 0
+  const satisfactionRate =
+    parentTotal > 0
+      ? (statistics.material_parent_request_satisfaction_rate ?? 0)
+      : statistics.request_satisfaction_rate
 
   // Group issues by type and severity
   const groupedIssues = useMemo(() => {
