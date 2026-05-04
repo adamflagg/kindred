@@ -6,6 +6,7 @@ import {
   CamperPill,
   ValidationScoreCard,
   getExportButtonLabel,
+  getExportButtonTitle,
   type ValidationResult,
   type ValidationStatistics,
 } from './ScenarioComparisonPage'
@@ -295,22 +296,24 @@ describe('ValidationScoreCard parent-paramount stats', () => {
   })
 })
 
-// ─── #1003: Export button label should reflect the active changeFilter ───────
+// ─── #1003: Export button label/title should reflect the active changeFilter ──
 
 describe('getExportButtonLabel', () => {
   it('returns "Export Moved" when changeFilter is "moved"', () => {
     expect(getExportButtonLabel('moved')).toBe('Export Moved')
   })
 
-  it('returns "Export All Changes" when changeFilter is "all"', () => {
-    expect(getExportButtonLabel('all')).toBe('Export All Changes')
+  it('returns "Export All" when changeFilter is "all"', () => {
+    expect(getExportButtonLabel('all')).toBe('Export All')
+  })
+})
+
+describe('getExportButtonTitle', () => {
+  it('returns moved tooltip when changeFilter is "moved"', () => {
+    expect(getExportButtonTitle('moved')).toBe('Export moved campers to CSV')
   })
 
-  it('returns "Export Newly Assigned" when changeFilter is "newly-assigned"', () => {
-    expect(getExportButtonLabel('newly-assigned')).toBe('Export Newly Assigned')
-  })
-
-  it('returns "Export Newly Unassigned" when changeFilter is "newly-unassigned"', () => {
-    expect(getExportButtonLabel('newly-unassigned')).toBe('Export Newly Unassigned')
+  it('returns all tooltip when changeFilter is "all"', () => {
+    expect(getExportButtonTitle('all')).toBe('Export all campers to CSV')
   })
 })

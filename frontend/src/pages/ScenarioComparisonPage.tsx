@@ -208,19 +208,18 @@ export interface ValidationResult {
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
 
-/** Returns the export button label that matches the active change filter. */
+/** Returns the export button label that matches the active change filter.
+ *  Only 'moved' and 'all' are reachable — the button is not rendered for
+ *  'newly-assigned' or 'newly-unassigned'. */
 // eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
-export function getExportButtonLabel(filter: ChangeFilter): string {
-  switch (filter) {
-    case 'moved':
-      return 'Export Moved'
-    case 'newly-assigned':
-      return 'Export Newly Assigned'
-    case 'newly-unassigned':
-      return 'Export Newly Unassigned'
-    default:
-      return 'Export All Changes'
-  }
+export function getExportButtonLabel(filter: 'moved' | 'all'): string {
+  return filter === 'moved' ? 'Export Moved' : 'Export All'
+}
+
+/** Returns the export button tooltip that matches the active change filter. */
+// eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
+export function getExportButtonTitle(filter: 'moved' | 'all'): string {
+  return filter === 'moved' ? 'Export moved campers to CSV' : 'Export all campers to CSV'
 }
 
 function useGroupMap(
@@ -1009,10 +1008,10 @@ export default function ScenarioComparisonPage() {
                         )
                       }}
                       className="bg-muted/50 text-muted-foreground hover:bg-muted ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
-                      title="Export moved campers to CSV"
+                      title={getExportButtonTitle(changeFilter as 'moved' | 'all')}
                     >
                       <Download className="h-4 w-4" />
-                      <span>{getExportButtonLabel(changeFilter)}</span>
+                      <span>{getExportButtonLabel(changeFilter as 'moved' | 'all')}</span>
                     </button>
                   )}
               </div>
