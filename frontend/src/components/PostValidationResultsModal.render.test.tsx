@@ -98,3 +98,98 @@ describe('PostValidationResultsModal — material_parent + best_effort fields', 
     expect(screen.queryByText(/best-effort preferences honored/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
+  it('shows kid-count copy when ≥1 kid has an unmet parent request', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          campers_with_unsatisfied_material_parent_requests: 6,
+        })}
+        sessionId="1000001"
+      />
+    )
+    expect(screen.getByText(/6 kids missed a parent request/i)).toBeInTheDocument()
+  })
+
+  it('uses singular "kid" when exactly 1 kid is unmet', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 10,
+          satisfied_material_parent_requests: 9,
+          material_parent_request_satisfaction_rate: 0.9,
+          campers_with_unsatisfied_material_parent_requests: 1,
+        })}
+        sessionId="1000001"
+      />
+    )
+    expect(screen.getByText(/1 kid missed a parent request/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 kids missed/i)).not.toBeInTheDocument()
+  })
+
+  it('shows "All N parent requests fulfilled" when zero kids unmet but parent requests exist', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 12,
+          satisfied_material_parent_requests: 12,
+          material_parent_request_satisfaction_rate: 1.0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+        })}
+        sessionId="1000001"
+      />
+    )
+    expect(screen.getByText(/all 12 parent requests fulfilled/i)).toBeInTheDocument()
+  })
+
+  it('uses singular "request" when exactly 1 parent request exists and is fulfilled', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 1,
+          satisfied_material_parent_requests: 1,
+          material_parent_request_satisfaction_rate: 1.0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+        })}
+        sessionId="1000001"
+      />
+    )
+    expect(screen.getByText(/all 1 parent request fulfilled/i)).toBeInTheDocument()
+  })
+
+  it('falls back to per-tier generic sub when zero parent requests in session', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 0,
+          satisfied_material_parent_requests: 0,
+          material_parent_request_satisfaction_rate: 0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+          // Force "Excellent" tier via all-up rate
+          request_satisfaction_rate: 0.95,
+          satisfied_requests: 19,
+          total_requests: 20,
+        })}
+        sessionId="1000001"
+      />
+    )
+    // Expect existing per-tier copy ("Bunking looks great" for Excellent tier)
+    expect(screen.getByText(/bunking looks great/i)).toBeInTheDocument()
+    expect(screen.queryByText(/missed a parent request/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/parent requests fulfilled/i)).not.toBeInTheDocument()
+  })
+})

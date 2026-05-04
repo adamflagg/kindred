@@ -547,42 +547,61 @@ export default function PostValidationResultsModal({
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
 
-  // Determine overall status
+  // Determine overall status — tier from rate + errors, sub-text overridden
+  // by parent-paramount logic when material parent data is available (Stage 3b.2).
   const getOverallStatus = () => {
+    let base: {
+      label: string
+      sublabel: string
+      icon: typeof Sparkles
+      gradient: string
+      iconBg: string
+    }
     if (satisfactionRate >= 0.85 && errorCount === 0) {
-      return {
+      base = {
         label: 'Excellent!',
         sublabel: 'Bunking looks great',
         icon: Sparkles,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    }
-    if (satisfactionRate >= 0.7 && errorCount === 0) {
-      return {
+    } else if (satisfactionRate >= 0.7 && errorCount === 0) {
+      base = {
         label: 'Looking Good',
         sublabel: `${Math.round(satisfactionRate * 100)}% requests satisfied`,
         icon: CheckCircle2,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    }
-    if (satisfactionRate >= 0.5) {
-      return {
+    } else if (satisfactionRate >= 0.5) {
+      base = {
         label: 'Needs Attention',
         sublabel: `${hasIssues ? issues.length : 0} issue${issues.length !== 1 ? 's' : ''} to review`,
         icon: AlertCircle,
         gradient: 'from-amber-500/15 to-amber-400/5',
         iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
       }
+    } else {
+      base = {
+        label: 'Needs Work',
+        sublabel: 'Consider re-running the solver',
+        icon: AlertTriangle,
+        gradient: 'from-red-500/15 to-red-400/5',
+        iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
+      }
     }
-    return {
-      label: 'Needs Work',
-      sublabel: 'Consider re-running the solver',
-      icon: AlertTriangle,
-      gradient: 'from-red-500/15 to-red-400/5',
-      iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
+
+    // Parent-paramount sub-text override.
+    const unmetKids = statistics.campers_with_unsatisfied_material_parent_requests ?? 0
+    const parentTotal = statistics.material_parent_requests ?? 0
+    if (unmetKids > 0) {
+      base.sublabel = `${unmetKids} kid${unmetKids === 1 ? '' : 's'} missed a parent request`
+    } else if (parentTotal > 0) {
+      base.sublabel = `All ${parentTotal} parent request${parentTotal === 1 ? '' : 's'} fulfilled`
     }
+    // else: keep per-tier generic sub-text
+
+    return base
   }
 
   const status = getOverallStatus()
