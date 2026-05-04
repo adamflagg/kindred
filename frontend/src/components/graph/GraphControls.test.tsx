@@ -83,18 +83,6 @@ describe('GraphControls', () => {
 })
 
 describe('GraphControls rendering', () => {
-  const baseProps = {
-    showLabels: true,
-    onToggleLabels: vi.fn(),
-    showHelp: false,
-    onToggleHelp: vi.fn(),
-    isExpanded: false,
-    onToggleExpand: vi.fn(),
-    onZoomIn: vi.fn(),
-    onZoomOut: vi.fn(),
-    onFit: vi.fn(),
-  }
-
   it('does not render an Ego Network control', () => {
     render(<GraphControls {...baseProps} />)
     expect(screen.queryByText(/ego network/i)).not.toBeInTheDocument()

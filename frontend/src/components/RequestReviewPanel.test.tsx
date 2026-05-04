@@ -1379,9 +1379,7 @@ describe('RequestReviewPanel', () => {
 
       // After confirming, the row should collapse — expanded content block disappears
       await waitFor(() => {
-        expect(
-          document.querySelector('[data-testid="request-row-expanded-content"]')
-        ).not.toBeTruthy()
+        expect(document.querySelector('[data-testid="request-row-expanded-content"]')).toBeNull()
       })
     }, 10000)
 
@@ -1408,9 +1406,7 @@ describe('RequestReviewPanel', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(
-          document.querySelector('[data-testid="request-row-expanded-content"]')
-        ).not.toBeTruthy()
+        expect(document.querySelector('[data-testid="request-row-expanded-content"]')).toBeNull()
       })
     }, 10000)
 
