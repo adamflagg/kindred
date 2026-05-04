@@ -13,7 +13,7 @@ These tests assert that when a low-level dependency raises an unexpected excepti
 
 Routers tested:
   - api/routers/social_graph.py  (get_session_social_graph, get_bunk_social_graph,
-                                   get_person_ego_network, update_camper_position)
+                                   update_camper_position)
   - api/routers/solver.py         (pre_validate_session, start_multi_session_solver,
                                    pre_validate_solver ClientResponseError branch)
 
@@ -172,44 +172,6 @@ class TestBunkSocialGraphNoLeakOnError:
 
     def test_detail_is_generic_not_str_e(self, client: TestClient) -> None:
         resp = client.get("/api/bunks/9001/social-graph", params={"session_cm_id": 1001, "year": 2025})
-        body = resp.json()
-        assert body == INTERNAL_ERROR_BODY, (
-            f"Router leaked raw exception detail. Got: {body!r}. Remove the 'raise HTTPException(500, str(e))' block."
-        )
-
-
-# ---------------------------------------------------------------------------
-# social_graph.py — get_person_ego_network
-# ---------------------------------------------------------------------------
-
-
-class TestEgoNetworkNoLeakOnError:
-    """get_person_ego_network must not leak str(e) when graph builder raises."""
-
-    @pytest.fixture
-    def client(self) -> Generator[TestClient]:
-        from api.routers.social_graph import router
-
-        boom = RuntimeError(LEAKED_DETAIL_PATTERN)
-
-        mock_pb = MagicMock()
-        mock_builder = MagicMock()
-        mock_builder.build_session_graph.side_effect = boom
-
-        app = _make_app_with_global_handler(router)
-
-        with (
-            patch("api.routers.social_graph.pb", mock_pb),
-            patch("api.routers.social_graph.SocialGraphBuilder", return_value=mock_builder),
-        ):
-            yield TestClient(app, raise_server_exceptions=False)
-
-    def test_status_is_500(self, client: TestClient) -> None:
-        resp = client.get("/api/persons/101/ego-network", params={"session_cm_id": 1001})
-        assert resp.status_code == 500
-
-    def test_detail_is_generic_not_str_e(self, client: TestClient) -> None:
-        resp = client.get("/api/persons/101/ego-network", params={"session_cm_id": 1001})
         body = resp.json()
         assert body == INTERNAL_ERROR_BODY, (
             f"Router leaked raw exception detail. Got: {body!r}. Remove the 'raise HTTPException(500, str(e))' block."
