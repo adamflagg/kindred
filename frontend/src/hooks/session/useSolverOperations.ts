@@ -247,6 +247,12 @@ export function useSolverOperations({
         queryClient.invalidateQueries({
           queryKey: ['bunks', selectedSession],
         }),
+        // Issue #1040 — clearing assignments rewires bunk membership; the
+        // graph node borders + scoped subgraphs must refresh. Without these
+        // the rendered SocialNetworkGraph stays at the pre-clear state until
+        // the user navigates away and back (scan-it Finding #2).
+        queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
 
       const message = result.message || 'Assignments cleared successfully'

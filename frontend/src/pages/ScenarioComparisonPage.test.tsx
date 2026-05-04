@@ -308,7 +308,13 @@ describe('CamperPill friend-group dot rendering (Issue #1060)', () => {
       <CamperPill camper={liam} status="unchanged" group={undefined} camperById={camperById} />
     )
     expect(screen.queryByRole('img', { hidden: true })).toBeNull()
-    expect(screen.queryByLabelText(/friend group/i)).toBeNull()
+    // Mirror the presence assertion's role+name+hidden pattern (line 318) so
+    // both ends of the contract use the same accessibility tree query.
+    // `queryByRole('generic')` filters non-interactive generics by default;
+    // the dot is a bare <span aria-label="..."> with role="generic", so the
+    // hidden:true escape is required to match the presence query strategy
+    // (scan-it Finding #5).
+    expect(screen.queryByRole('generic', { hidden: true, name: /friend group/i })).toBeNull()
   })
 
   it('renders a coloured dot when group has a color (saved-scenario side)', () => {
@@ -325,7 +331,9 @@ describe('CamperPill friend-group dot rendering (Issue #1060)', () => {
     render(
       <CamperPill camper={liam} status="unchanged" group={groupNoColor} camperById={camperById} />
     )
-    expect(screen.queryByLabelText(/friend group/i)).toBeNull()
+    // Mirror the presence assertion's role+name+hidden pattern (line 318).
+    // See note on the previous absence assertion (Finding #5).
+    expect(screen.queryByRole('generic', { hidden: true, name: /friend group/i })).toBeNull()
   })
 })
 

@@ -19,29 +19,76 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
-import { invalidateRequestQueries } from '../../../utils/queryKeys'
+import { invalidateRequestQueries, queryKeys } from '../../../utils/queryKeys'
 
 const SESSION_CM_ID = 1001
 const BUNK_CM_ID = 5001
 const SCENARIO_ID = 'scenario-abc'
 const YEAR = 2025
+// Mirrors the scoped-graph filter signature emitted by useScopedGraphData
+// (units, bunks, cross). Empty values represent the "no filter active" case
+// — i.e. the same data SocialNetworkGraph caches when no filter is applied.
+const SCOPED_FILTER_UNITS = ''
+const SCOPED_FILTER_BUNKS = ''
+const SCOPED_FILTER_CROSS = false
 
 /**
- * Build a QueryClient pre-seeded with both social-graph cache entries so we
+ * Build a QueryClient pre-seeded with the social-graph cache entries so we
  * can assert they become stale after invalidation.
+ *
+ * Three keys are seeded:
+ *  - session-level social graph for an active scenario
+ *  - session-level social graph for production (null scenario)
+ *  - bunk-level subgraph for an active scenario
+ *  - bunk-level subgraph for production (null scenario)
+ *  - the scoped session graph emitted by useScopedGraphData (the actual hook
+ *    used by SocialNetworkGraph.tsx — without invalidating this key the
+ *    rendered graph stays stale; see Finding #1)
  */
 function buildQcWithGraphCache() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
   })
   // Session-level graph (the node-border colours that are reported stale in #1040)
-  qc.setQueryData(['social-graph', SESSION_CM_ID, YEAR, SCENARIO_ID], { nodes: [], edges: [] })
-  qc.setQueryData(['social-graph', SESSION_CM_ID, YEAR, null], { nodes: [], edges: [] })
-  // Bunk-level subgraph (same issue, same fix)
-  qc.setQueryData(['bunk-social-graph', BUNK_CM_ID, SESSION_CM_ID, YEAR, SCENARIO_ID], {
+  qc.setQueryData(queryKeys.socialGraph(SESSION_CM_ID, YEAR, SCENARIO_ID), {
     nodes: [],
     edges: [],
   })
+  qc.setQueryData(queryKeys.socialGraph(SESSION_CM_ID, YEAR, null), { nodes: [], edges: [] })
+  // Bunk-level subgraph (same issue, same fix)
+  qc.setQueryData(queryKeys.bunkSocialGraph(BUNK_CM_ID, SESSION_CM_ID, YEAR, SCENARIO_ID), {
+    nodes: [],
+    edges: [],
+  })
+  qc.setQueryData(queryKeys.bunkSocialGraph(BUNK_CM_ID, SESSION_CM_ID, YEAR, null), {
+    nodes: [],
+    edges: [],
+  })
+  // Scoped session-level graph keyed by useScopedGraphData — this is what
+  // SocialNetworkGraph.tsx actually renders. The invalidation prefix MUST
+  // prefix-match this key, otherwise the live graph never refreshes.
+  qc.setQueryData(
+    queryKeys.scopedSocialGraph(
+      SESSION_CM_ID,
+      YEAR,
+      SCENARIO_ID,
+      SCOPED_FILTER_UNITS,
+      SCOPED_FILTER_BUNKS,
+      SCOPED_FILTER_CROSS
+    ),
+    { nodes: [], edges: [] }
+  )
+  qc.setQueryData(
+    queryKeys.scopedSocialGraph(
+      SESSION_CM_ID,
+      YEAR,
+      null,
+      SCOPED_FILTER_UNITS,
+      SCOPED_FILTER_BUNKS,
+      SCOPED_FILTER_CROSS
+    ),
+    { nodes: [], edges: [] }
+  )
   return qc
 }
 
@@ -51,7 +98,7 @@ function isSocialGraphStale(
   year = YEAR,
   scenarioId: string | null = SCENARIO_ID
 ) {
-  const state = qc.getQueryState(['social-graph', sessionCmId, year, scenarioId])
+  const state = qc.getQueryState(queryKeys.socialGraph(sessionCmId, year, scenarioId))
   return state?.isInvalidated === true
 }
 
@@ -62,7 +109,26 @@ function isBunkSocialGraphStale(
   year = YEAR,
   scenarioId: string | null = SCENARIO_ID
 ) {
-  const state = qc.getQueryState(['bunk-social-graph', bunkCmId, sessionCmId, year, scenarioId])
+  const state = qc.getQueryState(queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId))
+  return state?.isInvalidated === true
+}
+
+function isScopedSocialGraphStale(
+  qc: QueryClient,
+  sessionCmId = SESSION_CM_ID,
+  year = YEAR,
+  scenarioId: string | null = SCENARIO_ID
+) {
+  const state = qc.getQueryState(
+    queryKeys.scopedSocialGraph(
+      sessionCmId,
+      year,
+      scenarioId,
+      SCOPED_FILTER_UNITS,
+      SCOPED_FILTER_BUNKS,
+      SCOPED_FILTER_CROSS
+    )
+  )
   return state?.isInvalidated === true
 }
 
@@ -94,6 +160,29 @@ describe('invalidateRequestQueries — must also invalidate social-graph', () =>
 
     expect(isBunkSocialGraphStale(qc)).toBe(true)
   })
+
+  it('marks bunk-social-graph (null scenario) stale after invalidateRequestQueries', () => {
+    // Finding #4 — null-scenario bunk-social-graph is its own cache slot;
+    // without an explicit assertion the prefix-match coverage is unverified.
+    invalidateRequestQueries(qc)
+
+    expect(isBunkSocialGraphStale(qc, BUNK_CM_ID, SESSION_CM_ID, YEAR, null)).toBe(true)
+  })
+
+  it('marks scoped social-graph stale after invalidateRequestQueries (Finding #1)', () => {
+    // SocialNetworkGraph.tsx uses useScopedGraphData. Without prefix-match
+    // coverage of the scoped key, the rendered graph stays stale — defeating
+    // the purpose of the entire invalidation chain.
+    invalidateRequestQueries(qc)
+
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
+  })
+
+  it('marks scoped social-graph (null scenario) stale after invalidateRequestQueries', () => {
+    invalidateRequestQueries(qc)
+
+    expect(isScopedSocialGraphStale(qc, SESSION_CM_ID, YEAR, null)).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -111,30 +200,33 @@ describe('useCamperMovement — onSuccess must invalidate social-graph', () => {
     // social-graph invalidation alongside the existing allBunkRequestsPrefix one.
     const onSuccess = (client: QueryClient, selectedSession: string) => {
       void client.invalidateQueries({ queryKey: ['campers', selectedSession] })
-      void client.invalidateQueries({ queryKey: ['bunk-request-status'] })
-      void client.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void client.invalidateQueries({ queryKey: ['social-graph'] })
-      void client.invalidateQueries({ queryKey: ['bunk-social-graph'] })
+      void client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
+      void client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
+      void client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
+      void client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
     }
 
     onSuccess(qc, String(SESSION_CM_ID))
 
     expect(isSocialGraphStale(qc)).toBe(true)
     expect(isBunkSocialGraphStale(qc)).toBe(true)
+    // Finding #1 — the rendered graph uses useScopedGraphData; assert it too.
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
   })
 
   it('marks social-graph stale even when the move response signals no change', () => {
     const onSuccessNoChange = (client: QueryClient, selectedSession: string) => {
       void client.invalidateQueries({ queryKey: ['campers', selectedSession] })
-      void client.invalidateQueries({ queryKey: ['bunk-request-status'] })
-      void client.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void client.invalidateQueries({ queryKey: ['social-graph'] })
-      void client.invalidateQueries({ queryKey: ['bunk-social-graph'] })
+      void client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
+      void client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
+      void client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
+      void client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
     }
 
     onSuccessNoChange(qc, String(SESSION_CM_ID))
 
     expect(isSocialGraphStale(qc)).toBe(true)
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
   })
 })
 
@@ -153,11 +245,11 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
       await Promise.all([
         client.invalidateQueries({ queryKey: ['campers', selectedSession] }),
         client.invalidateQueries({ queryKey: ['bunks', selectedSession] }),
-        client.invalidateQueries({ queryKey: ['bunk-request-status'] }),
+        client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() }),
         client.invalidateQueries({ queryKey: ['all-sessions'] }),
-        client.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
-        client.invalidateQueries({ queryKey: ['social-graph'] }),
-        client.invalidateQueries({ queryKey: ['bunk-social-graph'] }),
+        client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
+        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
     }
 
@@ -165,6 +257,7 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
 
     expect(isSocialGraphStale(qc)).toBe(true)
     expect(isBunkSocialGraphStale(qc)).toBe(true)
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
   })
 
   it('marks social-graph stale after solver results are applied (legacy-confirm path)', async () => {
@@ -172,11 +265,11 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
       await Promise.all([
         client.invalidateQueries({ queryKey: ['campers', selectedSession] }),
         client.invalidateQueries({ queryKey: ['bunks', selectedSession] }),
-        client.invalidateQueries({ queryKey: ['bunk-request-status'] }),
+        client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() }),
         client.invalidateQueries({ queryKey: ['all-sessions'] }),
-        client.invalidateQueries({ queryKey: ['all-bunk-requests'] }),
-        client.invalidateQueries({ queryKey: ['social-graph'] }),
-        client.invalidateQueries({ queryKey: ['bunk-social-graph'] }),
+        client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
+        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
     }
 
@@ -184,5 +277,26 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
 
     expect(isSocialGraphStale(qc)).toBe(true)
     expect(isBunkSocialGraphStale(qc)).toBe(true)
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
+  })
+
+  it('marks social-graph stale after handleClearAssignments (Finding #2)', async () => {
+    // useSolverOperations.handleClearAssignments invalidates campers/bunks
+    // but currently misses social-graph keys — making cleared assignments
+    // visible in the rendered graph requires the same invalidation set.
+    const clearAssignments = async (client: QueryClient, selectedSession: string) => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['campers', selectedSession] }),
+        client.invalidateQueries({ queryKey: ['bunks', selectedSession] }),
+        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
+        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
+      ])
+    }
+
+    await clearAssignments(qc, String(SESSION_CM_ID))
+
+    expect(isSocialGraphStale(qc)).toBe(true)
+    expect(isBunkSocialGraphStale(qc)).toBe(true)
+    expect(isScopedSocialGraphStale(qc)).toBe(true)
   })
 })
