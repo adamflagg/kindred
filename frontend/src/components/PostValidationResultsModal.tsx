@@ -32,12 +32,10 @@ interface ValidationStatistics {
   bunks_at_capacity: number
   bunks_under_capacity: number
   bunks_over_capacity: number
-  // Stage 3a: material (hard) parent requests
   material_parent_requests?: number
   satisfied_material_parent_requests?: number
   material_parent_request_satisfaction_rate?: number
   campers_with_unsatisfied_material_parent_requests?: number
-  // Stage 3a: best-effort (soft) parent requests
   best_effort_parent_requests?: number
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
@@ -517,7 +515,15 @@ export default function PostValidationResultsModal({
   const statistics = results.statistics
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
-  const satisfactionRate = statistics.request_satisfaction_rate
+  const parentTotal = statistics.material_parent_requests ?? 0
+  // When parent requests exist, use parent satisfaction as the primary signal;
+  // fall back to all-up rate for staff-only sessions without parent requests.
+  const satisfactionRate =
+    parentTotal > 0
+      ? (statistics.material_parent_request_satisfaction_rate ?? 0)
+      : statistics.request_satisfaction_rate
+  const PARENT_SATISFACTION_TARGET = 0.85
+  const parentUnderTarget = parentTotal > 0 && satisfactionRate < PARENT_SATISFACTION_TARGET
 
   // Group issues by type and severity
   const groupedIssues = useMemo(() => {
@@ -547,42 +553,56 @@ export default function PostValidationResultsModal({
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
 
-  // Determine overall status
   const getOverallStatus = () => {
-    if (satisfactionRate >= 0.85 && errorCount === 0) {
-      return {
+    let base: {
+      label: string
+      sublabel: string
+      icon: typeof Sparkles
+      gradient: string
+      iconBg: string
+    }
+    if (satisfactionRate >= PARENT_SATISFACTION_TARGET && errorCount === 0) {
+      base = {
         label: 'Excellent!',
         sublabel: 'Bunking looks great',
         icon: Sparkles,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    }
-    if (satisfactionRate >= 0.7 && errorCount === 0) {
-      return {
+    } else if (satisfactionRate >= 0.7 && errorCount === 0) {
+      base = {
         label: 'Looking Good',
         sublabel: `${Math.round(satisfactionRate * 100)}% requests satisfied`,
         icon: CheckCircle2,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    }
-    if (satisfactionRate >= 0.5) {
-      return {
+    } else if (satisfactionRate >= 0.5) {
+      base = {
         label: 'Needs Attention',
         sublabel: `${hasIssues ? issues.length : 0} issue${issues.length !== 1 ? 's' : ''} to review`,
         icon: AlertCircle,
         gradient: 'from-amber-500/15 to-amber-400/5',
         iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
       }
+    } else {
+      base = {
+        label: 'Needs Work',
+        sublabel: 'Consider re-running the solver',
+        icon: AlertTriangle,
+        gradient: 'from-red-500/15 to-red-400/5',
+        iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
+      }
     }
-    return {
-      label: 'Needs Work',
-      sublabel: 'Consider re-running the solver',
-      icon: AlertTriangle,
-      gradient: 'from-red-500/15 to-red-400/5',
-      iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
+
+    const unmetKids = statistics.campers_with_unsatisfied_material_parent_requests ?? 0
+    if (unmetKids > 0) {
+      base.sublabel = `${unmetKids} kid${unmetKids === 1 ? '' : 's'} missed a parent request`
+    } else if (parentTotal > 0) {
+      base.sublabel = `All ${parentTotal} parent request${parentTotal === 1 ? '' : 's'} fulfilled`
     }
+
+    return base
   }
 
   const status = getOverallStatus()
@@ -652,14 +672,24 @@ export default function PostValidationResultsModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
-              <Heart className="text-forest-600 h-4 w-4" />
+            <div
+              className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                parentUnderTarget ? 'bg-amber-500/10' : 'bg-forest-500/10'
+              }`}
+            >
+              <Heart
+                className={`h-4 w-4 ${parentUnderTarget ? 'text-amber-600' : 'text-forest-600'}`}
+              />
             </div>
             <div>
               <p className="text-foreground text-lg leading-tight font-semibold">
-                {statistics.satisfied_requests}/{statistics.total_requests}
+                {parentTotal > 0
+                  ? `${statistics.satisfied_material_parent_requests ?? 0}/${parentTotal}`
+                  : `${statistics.satisfied_requests}/${statistics.total_requests}`}
               </p>
-              <p className="text-muted-foreground text-xs">requests met</p>
+              <p className="text-muted-foreground text-xs">
+                {parentTotal > 0 ? 'parent requests met' : 'requests met'}
+              </p>
             </div>
           </div>
 
@@ -704,19 +734,6 @@ export default function PostValidationResultsModal({
           </div>
         </div>
       </div>
-
-      {/* Best-effort parent preferences — Stage 3a minimal display */}
-      {(statistics.best_effort_parent_requests ?? 0) > 0 && (
-        <div className="border-border/50 border-t px-5 py-3">
-          <p className="text-muted-foreground text-xs">
-            Best-effort preferences honored:{' '}
-            <span className="text-foreground font-medium">
-              {statistics.satisfied_best_effort_parent_requests ?? 0} of{' '}
-              {statistics.best_effort_parent_requests}
-            </span>
-          </p>
-        </div>
-      )}
 
       {/* Issues List (if any) */}
       {hasIssues && (
