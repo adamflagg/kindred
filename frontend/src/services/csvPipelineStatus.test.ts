@@ -481,4 +481,36 @@ describe('fetchLatestDebugRun', () => {
     const mock = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
     await expect(fetchLatestDebugRun(mock)).rejects.toThrow()
   })
+
+  it('returns null when status_breakdown is missing from the row', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'run-malformed',
+            created: '2026-04-27T19:05:00Z',
+            // status_breakdown intentionally absent (schema mismatch / partial write)
+          },
+        ],
+      }),
+    } as Response)
+    expect(await fetchLatestDebugRun(mock)).toBeNull()
+  })
+
+  it('returns null when status_breakdown.status_resolved is non-numeric', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'run-bad-type',
+            created: '2026-04-27T19:05:00Z',
+            status_breakdown: { status_resolved: 'five', status_pending: 0, status_declined: 0 },
+          },
+        ],
+      }),
+    } as Response)
+    expect(await fetchLatestDebugRun(mock)).toBeNull()
+  })
 })

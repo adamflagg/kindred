@@ -1109,9 +1109,9 @@ func normalizeDateString(dateStr string) string {
 	return result
 }
 
-// normalizeToStringSlice converts various slice types to []string for comparison
-// Handles: []string, []any (== []interface{}) with string elements
-// Returns nil if the value is not a slice or cannot be converted
+// normalizeToStringSlice converts various types to []string for comparison
+// Handles: string, []string, []any (== []interface{}) with string elements
+// Returns nil if the value is not a string/slice or cannot be converted
 func normalizeToStringSlice(value any) []string {
 	if value == nil {
 		return nil
