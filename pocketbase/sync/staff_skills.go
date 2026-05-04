@@ -537,7 +537,10 @@ func (s *StaffSkillsSync) loadStaffDemographics(
 		ids = append(ids, cmID)
 	}
 
-	// Process in batches
+	// Process in batches.
+	// batchSize bounds PocketBase filter-string length — each ID concatenates
+	// into a `cm_id = X || ...` filter, so keep small to avoid SQLite filter
+	// overflow. Distinct from the larger CampMinder API batches (500).
 	const batchSize = 100
 	for batch := range slices.Chunk(ids, batchSize) {
 		select {
