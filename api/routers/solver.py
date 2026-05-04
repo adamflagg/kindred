@@ -49,6 +49,7 @@ from ..schemas import (
 )
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
+from ..utils.pb_error import pb_error_to_http
 from ..utils.session_metrics import get_session_from_expand
 
 logger = get_logger(__name__)
@@ -448,7 +449,7 @@ async def pre_validate_solver(
         raise
     except ClientResponseError as e:
         logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}", exc_info=True)
-        raise
+        raise pb_error_to_http(e)
     except Exception:
         logger.error("Pre-validation failed", exc_info=True)
         raise

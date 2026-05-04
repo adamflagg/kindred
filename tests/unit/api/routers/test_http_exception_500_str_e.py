@@ -477,7 +477,13 @@ def _make_client_response_error(
 
 
 class TestPreValidateSolverClientResponseErrorNoLeak:
-    """pre_validate_solver ClientResponseError branch must not surface PocketBase details to client."""
+    """pre_validate_solver ClientResponseError branch must not surface PocketBase details to client.
+
+    After #1121, ClientResponseError.status is mapped to an appropriate HTTPException
+    rather than re-raised as-is (which would fall through to the global 500 handler).
+    The important invariant — no PocketBase-internal details in the response body —
+    is still enforced.
+    """
 
     @pytest.fixture
     def client(self) -> Generator[TestClient]:
@@ -494,17 +500,19 @@ class TestPreValidateSolverClientResponseErrorNoLeak:
         ):
             yield TestClient(app, raise_server_exceptions=False)
 
-    def test_status_is_500_not_pb_status(self, client: TestClient) -> None:
+    def test_status_is_mapped_not_500(self, client: TestClient) -> None:
+        # After #1121 a 404 from PocketBase maps to 404 at the API boundary.
         resp = client.post("/api/solver/pre-validate", json={"session_cm_id": 1001, "year": 2025})
-        assert resp.status_code == 500, f"Expected 500 from global handler, got {resp.status_code}"
+        assert resp.status_code == 404, (
+            f"Expected 404 when PocketBase returned 404 (status mapped via pb_error_to_http), got {resp.status_code}"
+        )
 
-    def test_detail_is_generic_not_pb_data(self, client: TestClient) -> None:
+    def test_detail_does_not_leak_pb_data(self, client: TestClient) -> None:
         resp = client.post("/api/solver/pre-validate", json={"session_cm_id": 1001, "year": 2025})
         body = resp.json()
-        assert body == INTERNAL_ERROR_BODY, f"ClientResponseError branch leaked PocketBase details. Got: {body!r}"
         detail = body.get("detail", "")
-        assert "PocketBase error" not in detail
-        assert "sensitive PocketBase" not in detail
+        assert "PocketBase error" not in detail, f"ClientResponseError leaked PocketBase label. Got: {body!r}"
+        assert "sensitive PocketBase" not in detail, f"Leaked sensitive data. Got: {body!r}"
 
     def test_logger_error_called_with_exc_info(self) -> None:
         from api.routers.solver import router
