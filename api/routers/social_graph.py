@@ -375,6 +375,8 @@ async def get_session_social_graph(
             cross_scope_nodes=cross_nodes,
         )
 
+    except HTTPException:
+        raise
     except Exception:
         logger.error("Error building social graph", exc_info=True)
         raise

@@ -444,8 +444,10 @@ async def pre_validate_solver(
             "related_sessions": ctx.related_session_ids,
         }
 
+    except HTTPException:
+        raise
     except ClientResponseError as e:
-        logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}")
+        logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}", exc_info=True)
         raise
     except Exception:
         logger.error("Pre-validation failed", exc_info=True)
