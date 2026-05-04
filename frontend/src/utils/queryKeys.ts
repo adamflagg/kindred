@@ -58,6 +58,10 @@ export const queryKeys = {
   // Solver/movement status derived from bunk requests (no parameters — global flag).
   bunkRequestStatus: () => ['bunk-request-status'] as const,
 
+  // Scenario Validation (Tier 2 - user data, computed from solver)
+  scenarioValidation: (scenarioId: string, sessionCmId: number, year: number) =>
+    ['scenario-validation', scenarioId, sessionCmId, year] as const,
+
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
     ['locked-groups', scenarioId, sessionId, year] as const,
