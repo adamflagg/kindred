@@ -139,7 +139,7 @@ export function useSolverOperations({
                     queryKey: ['bunks', selectedSession],
                   }),
                   queryClient.invalidateQueries({
-                    queryKey: ['bunk-request-status'],
+                    queryKey: queryKeys.bunkRequestStatus(),
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
@@ -175,7 +175,7 @@ export function useSolverOperations({
                     queryKey: ['bunks', selectedSession],
                   }),
                   queryClient.invalidateQueries({
-                    queryKey: ['bunk-request-status'],
+                    queryKey: queryKeys.bunkRequestStatus(),
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),

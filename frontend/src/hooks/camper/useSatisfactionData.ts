@@ -36,7 +36,10 @@ export function useSatisfactionData(
       sessionCmId,
       camperGrade,
       currentYear,
-      allBunkRequests.map((r) => r.id).join(',')
+      allBunkRequests
+        .map((r) => r.id)
+        .sort()
+        .join(',')
     ),
     queryFn: async () => {
       const results: SatisfactionMap = {}

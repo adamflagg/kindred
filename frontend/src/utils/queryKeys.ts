@@ -55,6 +55,8 @@ export const queryKeys = {
   // automatically invalidates the tab-badge count without additional call sites.
   bunkRequestsCount: (selectedSession: string, year: number, ...rest: unknown[]) =>
     ['bunk-requests', 'count', selectedSession, year, ...rest] as const,
+  // Solver/movement status derived from bunk requests (no parameters — global flag).
+  bunkRequestStatus: () => ['bunk-request-status'] as const,
 
   // Locked Groups (Tier 2 - user data)
   lockedGroups: (scenarioId: string, sessionId: string, year: number) =>
@@ -311,15 +313,14 @@ export const queryKeys = {
   // Parameterized fetch-site factories (Issue #1023, #1084)
   allBunkRequests: (sessionCmId: number, year: number) =>
     ['all-bunk-requests', sessionCmId, year] as const,
+  // All three factories below require the caller to gate with enabled: !!cmId.
   // Caller must gate the consuming query with `enabled: !!cmId`. Passing
   // `undefined` produces a key like `['person-bunk-requests', undefined, year]`
   // which is fine as long as the query never actually runs.
   personBunkRequests: (cmId: number | undefined, year: number) =>
     ['person-bunk-requests', cmId, year] as const,
-  // Caller must gate the consuming query with `enabled: !!cmId`.
   personAllBunkRequests: (cmId: number | undefined, year: number) =>
     ['person-all-bunk-requests', cmId, year] as const,
-  // Caller must gate the consuming query with `enabled: !!cmId`.
   bunkRequestsTooltip: (cmId: number | undefined, year: number) =>
     ['bunk_requests_tooltip', cmId, year] as const,
   /**
