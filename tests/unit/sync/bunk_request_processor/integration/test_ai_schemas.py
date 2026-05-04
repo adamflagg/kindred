@@ -8,6 +8,9 @@ from bunking.sync.bunk_request_processor.integration.ai_schemas import (
     AIDisambiguationCandidate,
     AIDisambiguationResponse,
     AIFullParseRequestItem,
+    AIFullParseResponse,
+    AIParseResponse,
+    TemporalInfo,
 )
 
 
@@ -51,9 +54,6 @@ class TestAIFullParseRequestItemSourceFragment:
 
 class TestSourceFragmentMaxLength:
     def test_bunk_request_item_rejects_fragment_over_2000_chars(self) -> None:
-        import pytest
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             AIBunkRequestItem(
                 request_type="bunk_with",
@@ -62,9 +62,6 @@ class TestSourceFragmentMaxLength:
             )
 
     def test_full_parse_request_item_rejects_fragment_over_2000_chars(self) -> None:
-        import pytest
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError):
             AIFullParseRequestItem(
                 request_type="bunk_with",
@@ -119,3 +116,31 @@ class TestAIDisambiguationResponseValidator:
     def test_schema_has_no_selected_person_id_field(self) -> None:
         """#944: selected_person_id was removed from the schema as dead legacy."""
         assert "selected_person_id" not in AIDisambiguationResponse.model_fields
+
+
+class TestExtraForbidOnAllAISchemas:
+    """#949: All AI boundary schemas must reject unknown fields (extra='forbid').
+
+    Silently-ignored extra fields cause stale cached responses or provider swaps to
+    pass validation while dropping data the pipeline no longer understands.
+    """
+
+    def test_disambiguation_response_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIDisambiguationResponse(**{"unknown_field": "x"})
+
+    def test_disambiguation_candidate_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIDisambiguationCandidate(**{"person_id": 1, "unknown_field": "x"})
+
+    def test_temporal_info_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            TemporalInfo(**{"unknown_field": "x"})
+
+    def test_parse_response_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIParseResponse(**{"unknown_field": "x"})
+
+    def test_full_parse_response_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError):
+            AIFullParseResponse(**{"unknown_field": "x"})

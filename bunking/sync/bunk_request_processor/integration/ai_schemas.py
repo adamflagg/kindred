@@ -20,7 +20,7 @@ class _ForbidExtraModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TemporalInfo(BaseModel):
+class TemporalInfo(_ForbidExtraModel):
     """Temporal metadata for tracking superseded requests.
 
     Used to handle temporal conflicts in bunk requests, such as:
@@ -134,7 +134,7 @@ class AIFullParseResponse(_ForbidExtraModel):
     requests: list[AIFullParseRequestItem] = Field(default_factory=list)
 
 
-class AIDisambiguationCandidate(BaseModel):
+class AIDisambiguationCandidate(_ForbidExtraModel):
     """A single ranked candidate from AI disambiguation."""
 
     person_id: int
@@ -147,7 +147,7 @@ class AIDisambiguationCandidate(BaseModel):
     """Why the AI ranked this candidate here."""
 
 
-class AIDisambiguationResponse(BaseModel):
+class AIDisambiguationResponse(_ForbidExtraModel):
     """Response from disambiguation request (Phase 3).
 
     Used when Phase 2 local resolution found multiple candidates.
