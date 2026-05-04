@@ -1,14 +1,48 @@
 /**
  * Panel showing bunking status, assignments, and request satisfaction
  */
+import { useMemo } from 'react'
 import { Link } from 'react-router'
-import { Heart, Home, Clock, CheckCircle, Sparkles } from 'lucide-react'
-import CamperLink from '../CamperLink'
+import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
-import { MUTUAL_BADGE_CLASSES } from '../../utils/dispositionColors'
+import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
+import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
+import { isConfirmedRequest } from '../../utils/bunkRequest'
+import { BunkRequestRow } from '../BunkRequestRow'
+import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
+import type { RequestSlice } from '../../contexts/BunkRequestContext'
+import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
+
+/** Augments a request with the resolved targetPerson used for sort + display.
+ *  EnhancedBunkRequest itself doesn't declare targetPerson — we attach it in
+ *  partitionInput below. */
+type WithTargetPerson<T> = T & {
+  targetPerson?: { first_name?: string; last_name?: string } | null
+}
+
+function ratioColor(slice: RequestSlice): string {
+  if (slice.total === 0) return ''
+  if (slice.satisfied === slice.total) return 'text-green-600 dark:text-green-400'
+  if (slice.satisfied === 0) return 'text-red-600 dark:text-red-400'
+  return 'text-amber-600 dark:text-amber-400'
+}
+
+function SliceLine({ label, slice }: { label: string; slice: RequestSlice }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-muted-foreground text-sm">{label}</span>
+      <span className={`text-sm font-semibold ${ratioColor(slice)}`}>
+        {slice.satisfied}/{slice.total} met
+      </span>
+      {slice.total > 0 && slice.satisfied === slice.total && (
+        <CheckCircle className="h-4 w-4 text-green-500 dark:text-green-400" aria-hidden="true" />
+      )}
+    </div>
+  )
+}
 
 interface BunkingStatusPanelProps {
   camper: Camper
@@ -29,28 +63,71 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // Calculate satisfaction summary. Use the affirmative resolved-only
-  // filter; an earlier `status !== 'pending'` form silently admitted
-  // declined rows.
-  const countableRequests = allBunkRequests.filter(
-    (r) =>
-      r.status === 'resolved' &&
-      (r.request_type === 'bunk_with' || r.request_type === 'not_bunk_with'
-        ? r.requestee_id && r.requestee_id > 0
-        : !!r.age_preference_target)
+  // The per-camper list must agree with the summary above — both filter to
+  // status === 'resolved' so pending and declined rows don't render with
+  // status-colored dots. `personRequests` covers non-age_preference resolved
+  // rows; resolved age prefs flow in via `agePreferenceRequests` and are
+  // merged into `summaryRequests` for both the slice summary and the row list.
+  const personRequests = useMemo(
+    () =>
+      allBunkRequests.filter((r) => r.status === 'resolved' && r.request_type !== 'age_preference'),
+    [allBunkRequests]
   )
-  const totalCount = countableRequests.length
-  const satisfiedCount = countableRequests.filter(
-    (r) => satisfactionData[r.id]?.status === 'satisfied'
-  ).length
-  const hasSatisfactionData = !satisfactionLoading && Object.keys(satisfactionData).length > 0
 
-  // The per-camper list must agree with the "X/Y met" summary above —
-  // both filter to status === 'resolved' so pending and declined rows
-  // don't render here with status-colored dots.
-  const personRequests = allBunkRequests.filter(
-    (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
+  const resolvedAgePrefs = useMemo(
+    () => (agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
+    [agePreferenceRequests]
   )
+
+  // Used for both the summary slices and the row partition so material parent
+  // age prefs (source_field='bunk_with') and staff age prefs (source='staff')
+  // contribute to "X/Y met" instead of only rendering as rows below.
+  const summaryRequests = useMemo(
+    () => [...personRequests, ...resolvedAgePrefs],
+    [personRequests, resolvedAgePrefs]
+  )
+
+  const slices = useMemo(
+    () => deriveSlicesFromSatisfactionMap(summaryRequests, satisfactionData),
+    [summaryRequests, satisfactionData]
+  )
+
+  const showParent = slices.materialParent.total > 0
+  const showStaff = slices.staff.total > 0
+  const showSummary = showParent || showStaff
+
+  // R3: targetPerson enrichment strategy (Case b): EnhancedBunkRequest carries
+  // `requestedPersonName` (a pre-built "First Last" string) for production
+  // data. The partition utility sorts by `targetPerson.{first_name,last_name}`.
+  // We split the string here so the sort works; if the string is absent (rare
+  // edge case) the row gets a no-op sort key of '' which is acceptable.
+  // In tests, `targetPerson` is supplied directly via the WithTargetPerson type
+  // and takes precedence via the `?? parsedFallback` below.
+  const partitionInput = useMemo(
+    () =>
+      summaryRequests.map((r) => {
+        // r may carry targetPerson directly (test injection or future enrichment).
+        const existing = (r as WithTargetPerson<EnhancedBunkRequest>).targetPerson
+        if (existing) return { ...r, targetPerson: existing }
+        // Fall back: split requestedPersonName "First Last" into parts
+        const name = r.requestedPersonName ?? ''
+        const spaceIdx = name.indexOf(' ')
+        const parsedFallback = name
+          ? {
+              first_name: spaceIdx >= 0 ? name.slice(0, spaceIdx) : name,
+              last_name: spaceIdx >= 0 ? name.slice(spaceIdx + 1) : '',
+            }
+          : undefined
+        return { ...r, targetPerson: parsedFallback }
+      }),
+    [summaryRequests]
+  )
+
+  const {
+    parent: parentRows,
+    staff: staffRows,
+    age: ageRows,
+  } = useMemo(() => partitionRequestsBySource(partitionInput), [partitionInput])
 
   return (
     <div className="bg-card border-border overflow-hidden rounded-2xl border shadow-sm">
@@ -127,106 +204,83 @@ export function BunkingStatusPanel({
       </div>
 
       <div className="space-y-4 p-6">
-        {/* Request Satisfaction Summary */}
-        {totalCount > 0 && hasSatisfactionData && (
-          <div className="bg-muted/40 flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Request satisfaction:</span>
-            <span
-              className={`font-semibold ${
-                satisfiedCount === totalCount
-                  ? 'text-green-600 dark:text-green-400'
-                  : satisfiedCount > 0
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-red-600 dark:text-red-400'
-              }`}
-            >
-              {satisfiedCount}/{totalCount} met
-            </span>
-            {satisfiedCount === totalCount && totalCount > 0 && (
-              <CheckCircle className="h-4 w-4 text-green-500" />
+        {/* Request Satisfaction Summary — rendered above the row list, matching
+            the spec design. Summary appears first so staff can immediately see
+            overall satisfaction before scanning individual rows. */}
+        {showSummary && (
+          <div className="bg-muted/20 border-border rounded-lg border px-4 py-3">
+            {showParent && showStaff ? (
+              <div className="grid grid-cols-[1fr_1px_1fr] items-center">
+                <div className="px-4">
+                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+                </div>
+                <div className="bg-border self-stretch" />
+                <div className="px-4">
+                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+                </div>
+              </div>
+            ) : showParent ? (
+              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+            ) : (
+              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
             )}
           </div>
         )}
 
-        {/* Bunk Requests - Compact list */}
-        {personRequests.length > 0 ? (
-          <div className="space-y-1.5">
-            {personRequests.map((request, idx) => {
-              const isBunkWith = request.request_type === 'bunk_with'
-              const isConfirmed =
-                request.status === 'resolved' && request.requestee_id && request.requestee_id > 0
-
-              // Determine display name
-              const displayName =
-                request.requestedPersonName ??
-                (request as unknown as { requested_person_name?: string }).requested_person_name ??
-                (request.requestee_id && request.requestee_id < 0
-                  ? `Person ${request.requestee_id}`
-                  : 'Unknown')
-
-              // Get satisfaction status
-              const satisfaction = satisfactionData[request.id]
-              const showSatisfaction =
-                request.status === 'resolved' && request.requestee_id && request.requestee_id > 0
-
+        {/* Bunk Requests - partitioned into parent / staff / age sections. */}
+        {parentRows.length > 0 || staffRows.length > 0 || ageRows.length > 0 ? (
+          <div className="space-y-1">
+            {parentRows.map((req) => {
+              const sat = satisfactionData[req.id]
               return (
-                <div
-                  key={request.id || idx}
-                  className="hover:bg-muted/50 hover:border-border/50 flex items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-sm transition-colors"
-                >
-                  {/* Status indicator */}
-                  <div
-                    className={`h-2 w-2 flex-shrink-0 rounded-full ${
-                      request.status === 'resolved'
-                        ? 'bg-green-500'
-                        : request.status === 'declined'
-                          ? 'bg-red-500'
-                          : 'bg-amber-500'
-                    }`}
-                  />
+                <BunkRequestRow
+                  key={req.id}
+                  request={req as unknown as BunkRequestsResponse}
+                  // targetPerson drives displayName in BunkRequestRow. EnhancedBunkRequest
+                  // uses camelCase requestedPersonName (not the PB snake_case field), so
+                  // we pass the targetPerson we already computed in partitionInput.
+                  targetPerson={req.targetPerson as unknown as PersonsResponse | null}
+                  satisfaction={sat?.status ?? null}
+                  showSatisfaction={isConfirmedRequest(req)}
+                  satisfactionLoading={satisfactionLoading}
+                  satisfactionDetail={sat?.detail}
+                />
+              )
+            })}
 
-                  {/* Request type */}
-                  <span
-                    className={`font-medium ${isBunkWith ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}
-                  >
-                    {isBunkWith ? 'Bunk with' : 'Not with'}
-                  </span>
+            {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
+            {staffRows.map((req) => {
+              const sat = satisfactionData[req.id]
+              return (
+                <BunkRequestRow
+                  key={req.id}
+                  request={req as unknown as BunkRequestsResponse}
+                  targetPerson={req.targetPerson as unknown as PersonsResponse | null}
+                  satisfaction={sat?.status ?? null}
+                  showSatisfaction={isConfirmedRequest(req)}
+                  satisfactionLoading={satisfactionLoading}
+                  satisfactionDetail={sat?.detail}
+                />
+              )
+            })}
 
-                  <span className="text-muted-foreground/60">→</span>
-
-                  {/* Target camper link */}
-                  <CamperLink
-                    personCmId={request.requestee_id}
-                    displayName={displayName}
-                    isConfirmed={!!isConfirmed}
-                  />
-
-                  {/* Mutual badge */}
-                  {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
-
-                  {/* Satisfaction status */}
-                  {showSatisfaction && (
-                    <span className="ml-auto flex items-center">
-                      {satisfactionLoading ? (
-                        <span className="border-muted-foreground/30 border-t-primary inline-block h-3 w-3 animate-spin rounded-full border" />
-                      ) : satisfaction?.status === 'satisfied' ? (
-                        <span
-                          className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                          title={satisfaction.detail}
-                        >
-                          Met
-                        </span>
-                      ) : satisfaction?.status === 'not_satisfied' ? (
-                        <span
-                          className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                          title={satisfaction.detail}
-                        >
-                          Unmet
-                        </span>
-                      ) : null}
-                    </span>
-                  )}
-                </div>
+            {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
+              <AgePreferenceDivider />
+            )}
+            {ageRows.map((req) => {
+              const sat = satisfactionData[req.id]
+              return (
+                <BunkRequestRow
+                  key={req.id}
+                  request={req as unknown as BunkRequestsResponse}
+                  targetPerson={req.targetPerson as unknown as PersonsResponse | null}
+                  satisfaction={sat?.status ?? null}
+                  showSatisfaction={true}
+                  satisfactionLoading={satisfactionLoading}
+                  satisfactionDetail={sat?.detail}
+                  isMaterialAgePreference={req.source_field === 'bunk_with'}
+                  staffAgeBadge={req.source === 'staff'}
+                />
               )
             })}
           </div>
@@ -235,54 +289,7 @@ export function BunkingStatusPanel({
             <p className="text-muted-foreground text-sm">No bunk requests on file</p>
           </div>
         )}
-
-        {/* Age Preference */}
-        {agePreferenceRequests.length > 0 && agePreferenceRequests[0]?.age_preference_target && (
-          <AgePreferenceNote
-            request={agePreferenceRequests[0]}
-            satisfaction={satisfactionData[agePreferenceRequests[0].id]}
-            satisfactionLoading={satisfactionLoading}
-          />
-        )}
       </div>
-    </div>
-  )
-}
-
-function AgePreferenceNote({
-  request,
-  satisfaction,
-  satisfactionLoading,
-}: {
-  request: EnhancedBunkRequest
-  satisfaction: { status: string; detail?: string } | undefined
-  satisfactionLoading: boolean
-}) {
-  const prefersOlder = request.age_preference_target === 'older'
-
-  return (
-    <div className="border-border flex items-center gap-2 border-t px-3 pt-3 text-sm">
-      <Sparkles className="h-4 w-4 flex-shrink-0 text-amber-500" />
-      <span className="text-muted-foreground">
-        Prefers bunking with{' '}
-        <span className="text-foreground font-medium">{prefersOlder ? 'older' : 'younger'}</span>{' '}
-        campers
-      </span>
-
-      {/* Satisfaction status */}
-      <span className="ml-auto" title={satisfaction?.detail}>
-        {satisfactionLoading ? (
-          <span className="border-muted-foreground/30 border-t-primary inline-block h-3 w-3 animate-spin rounded-full border" />
-        ) : satisfaction?.status === 'satisfied' ? (
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            Met
-          </span>
-        ) : satisfaction?.status === 'not_satisfied' ? (
-          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-            Unmet
-          </span>
-        ) : null}
-      </span>
     </div>
   )
 }

@@ -1350,3 +1350,28 @@
   stroke-width: 3px;
   stroke-linejoin: round;
 }
+
+/* Material age preference sparkle animation. Kept outside @layer utilities so
+   the @keyframes rule isn't subject to Tailwind v4's layer tree-shaking. */
+@keyframes sparkle-anim {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.18) rotate(8deg);
+    opacity: 0.85;
+  }
+}
+
+.sparkle-material {
+  animation: sparkle-anim 1.6s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sparkle-material {
+    animation: none;
+  }
+}

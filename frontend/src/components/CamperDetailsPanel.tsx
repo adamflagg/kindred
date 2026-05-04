@@ -14,6 +14,7 @@ import {
   Users,
   ExternalLink,
 } from 'lucide-react'
+import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import { pb } from '../lib/pocketbase'
 import { StatusBadge } from './StatusBadge'
 import {
@@ -36,6 +37,7 @@ import type {
 import { Collections } from '../types/pocketbase-types'
 import { toAppCamper } from '../utils/transforms'
 import { isConfirmedRequest } from '../utils/bunkRequest'
+import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
 import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
 import type { SatisfactionMap } from '../hooks/camper/types'
@@ -579,9 +581,6 @@ export default function CamperDetailsPanel({
     return enrollment.sessionName || 'Unknown'
   }
 
-  // Get age preference request for socializes best with
-  const agePreferenceRequest = bunkRequests.find((r) => r.request_type === 'age_preference')
-
   // Lock group context — used to compute friend-group alert
   const { getCamperLockState, getCamperLockGroup, getGroupMembers } = useLockGroupContext()
 
@@ -612,11 +611,17 @@ export default function CamperDetailsPanel({
     bunkRequests.map(pbToEnhanced)
   )
 
-  // Derived request lists — declared here so renderContent() (defined below)
+  // Derived request partitions — declared here so renderContent() (defined below)
   // and the embedded early-return both see them. Previously these were declared
   // after the embedded-mode return, causing a TDZ ReferenceError in that path.
-  const nonAgeRequests = bunkRequests.filter((r) => r.request_type !== 'age_preference')
-  const hasOtherRequests = nonAgeRequests.length > 0
+  // Partition the PanelBunkRequest objects directly (they satisfy PartitionableRequest
+  // and are what BunkRequestRow expects). pbToEnhanced is only used for the
+  // satisfaction-computation hooks which accept EnhancedBunkRequest.
+  const {
+    parent: parentRows,
+    staff: staffRows,
+    age: ageRows,
+  } = useMemo(() => partitionRequestsBySource(bunkRequests), [bunkRequests])
 
   // ── Build alert catalog from the SAME source CamperCard uses ───────────────
   // Placed before early returns so useMemo is called unconditionally (Rules of Hooks).
@@ -669,9 +674,6 @@ export default function CamperDetailsPanel({
 
   const satisfactionData: SatisfactionMap = clientSatisfactionData ?? pbSatisfaction
   const satisfactionLoading: boolean = clientSatisfactionData ? false : pbLoading
-  const ageSatisfaction = agePreferenceRequest
-    ? satisfactionData[agePreferenceRequest.id]
-    : undefined
 
   // Prefer scenario-aware assignment from the parent (e.g. BunkingBoardByArea
   // passes the active scenario's bunk). Falls back to the live PB assignment
@@ -913,7 +915,7 @@ export default function CamperDetailsPanel({
           />
         )}
 
-        {/* Bunking Preferences - Compact view */}
+        {/* Bunking Preferences - Compact view (R3: Parent → Staff → Age partition) */}
         {bunkRequests.length > 0 && (
           <section>
             <SectionHeader
@@ -924,39 +926,62 @@ export default function CamperDetailsPanel({
               badge={bunkRequests.length}
               accentColor="forest"
             />
-            {expandedSections.requests && (
-              <div className="mt-2 space-y-1">
-                {nonAgeRequests.map((request) => {
-                  const satisfaction = satisfactionData[request.id]
-                  return (
-                    <BunkRequestRow
-                      key={request.id}
-                      request={request}
-                      targetPerson={request.targetPerson ?? null}
-                      showSatisfaction={isConfirmedRequest(request)}
-                      satisfaction={satisfaction?.status ?? null}
-                      satisfactionLoading={satisfactionLoading}
-                      satisfactionDetail={satisfaction?.detail}
-                    />
-                  )
-                })}
+            {expandedSections.requests &&
+              (parentRows.length > 0 || staffRows.length > 0 || ageRows.length > 0) && (
+                <div className="mt-2 space-y-1">
+                  {/* Parent ↑ │ ⬇ Staff divider between the two peer groups, plus a
+                      quieter "Age preference" divider above the age tail section. */}
+                  {parentRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
+                    return (
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        targetPerson={req.targetPerson ?? null}
+                        showSatisfaction={isConfirmedRequest(req)}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                      />
+                    )
+                  })}
 
-                {/* Age preference - subtle at bottom with satisfaction */}
-                {agePreferenceRequest?.age_preference_target && (
-                  <div className={hasOtherRequests ? 'border-border/50 mt-3 border-t pt-2' : ''}>
-                    <BunkRequestRow
-                      request={agePreferenceRequest}
-                      // Pending (e.g. SAME_AGE staff-review) and declined age
-                      // preferences must not render a "fulfilled" indicator.
-                      showSatisfaction={agePreferenceRequest.status === 'resolved'}
-                      satisfaction={ageSatisfaction?.status ?? null}
-                      satisfactionLoading={satisfactionLoading}
-                      satisfactionDetail={ageSatisfaction?.detail}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+                  {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
+                  {staffRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
+                    return (
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        targetPerson={req.targetPerson ?? null}
+                        showSatisfaction={isConfirmedRequest(req)}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                      />
+                    )
+                  })}
+
+                  {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
+                    <AgePreferenceDivider />
+                  )}
+                  {ageRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
+                    return (
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        showSatisfaction={true}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                        isMaterialAgePreference={req.source_field === 'bunk_with'}
+                        staffAgeBadge={req.source === 'staff'}
+                      />
+                    )
+                  })}
+                </div>
+              )}
           </section>
         )}
 

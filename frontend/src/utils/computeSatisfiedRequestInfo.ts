@@ -12,6 +12,10 @@
  * Derived flags:
  *   - parentMinOneViolation: materialParent.total >= 1 && satisfied === 0
  *   - staffUnsatisfiedAlert: staff.total >= 1 && satisfied === 0
+ *
+ * Stage 3b.1 refactor: delegates all slice math + source classification to
+ * computeSlicesFromPredicate. Public signature preserved — existing callers
+ * work unchanged.
  */
 import type { BunkRequest } from '../types/app-types'
 import type {
@@ -19,6 +23,10 @@ import type {
   RequestSlice,
   SatisfiedRequestInfo,
 } from '../contexts/BunkRequestContext'
+import {
+  computeSlicesFromPredicate,
+  type SatisfactionPredicate,
+} from './computeSlicesFromPredicate'
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 
 const EMPTY_SLICE: RequestSlice = Object.freeze({
@@ -39,18 +47,18 @@ export const EMPTY_SATISFIED_INFO: SatisfiedRequestInfo = Object.freeze({
   priorityLevels: Object.freeze([]) as readonly number[] as number[],
 }) as SatisfiedRequestInfo
 
+/**
+ * Scenario-aware slice computation. Builds an in-memory satisfaction predicate
+ * from the bunk roster (personSet) and bunkmate grades, then delegates to the
+ * shared aggregator for source classification + slice math.
+ */
 export function computeSatisfiedRequestInfo(
   personRequests: BunkRequest[],
-  personCmId: number,
   personSet: Set<number>,
   bunkmateGrades: number[],
   requesterGrade: number | null
 ): SatisfiedRequestInfo {
-  if (personRequests.length === 0) {
-    return EMPTY_SATISFIED_INFO
-  }
-
-  const isSatisfied = (req: BunkRequest): boolean => {
+  const isSatisfied: SatisfactionPredicate = (req) => {
     if (req.request_type === 'bunk_with' && req.requestee_id) {
       return personSet.has(req.requestee_id)
     }
@@ -59,74 +67,13 @@ export function computeSatisfiedRequestInfo(
     }
     if (req.request_type === 'age_preference' && req.age_preference_target) {
       if (requesterGrade === null || bunkmateGrades.length === 0) return false
-      const preference = req.age_preference_target as 'older' | 'younger'
-      return isAgePreferenceSatisfied(requesterGrade, bunkmateGrades, preference).satisfied
+      const target = req.age_preference_target as 'older' | 'younger'
+      return isAgePreferenceSatisfied(requesterGrade, bunkmateGrades, target).satisfied
     }
     return false
   }
 
-  let materialTotal = 0
-  let materialSat = 0
-  let bestTotal = 0
-  let bestSat = 0
-  let staffTotal = 0
-  let staffSat = 0
-  const satisfiedRequests: BunkRequest[] = []
-
-  for (const req of personRequests) {
-    // Only resolved rows count toward satisfaction stats.
-    // Pending (e.g. SAME_AGE staff-review path) and declined must not leak
-    // into any of the three slices.
-    if (req.status !== 'resolved') continue
-    const sat = isSatisfied(req)
-    if (sat) satisfiedRequests.push(req)
-    // not_bunk_with is the staff classification by definition (see
-    // RequestSource enum). Match on request_type first so a FAMILY-source
-    // not_bunk_with still bins to staff instead of falling through.
-    if (req.request_type === 'not_bunk_with') {
-      staffTotal += 1
-      if (sat) staffSat += 1
-    } else if (req.source_field === 'bunk_with') {
-      materialTotal += 1
-      if (sat) materialSat += 1
-    } else if (req.source_field === 'socialize_with') {
-      bestTotal += 1
-      if (sat) bestSat += 1
-    } else if (req.source === 'staff') {
-      staffTotal += 1
-      if (sat) staffSat += 1
-    }
-  }
-
-  const slice = (total: number, satisfied: number): RequestSlice => ({
-    total,
-    satisfied,
-    satisfactionRate: total === 0 ? 0 : satisfied / total,
-  })
-
-  const sortedSatisfied = [...satisfiedRequests].sort(
-    (a, b) => (b.priority ?? 0) - (a.priority ?? 0)
-  )
-  const topPriority = personRequests.reduce((max, req) => Math.max(max, req.priority ?? 0), 0)
-  const topPrioritySatisfied = sortedSatisfied.some((req) => (req.priority ?? 0) === topPriority)
-  const priorityLevels = [...new Set(sortedSatisfied.map((r) => r.priority ?? 0))].sort(
-    (a, b) => b - a
-  )
-
-  // Surface personCmId so future tests can confirm wiring without breaking
-  // existing callers (param is otherwise unused — kept so the call shape mirrors
-  // the provider's getSatisfiedRequestInfo and so renaming/refactoring is local).
-  void personCmId
-
-  return {
-    materialParent: slice(materialTotal, materialSat),
-    bestEffortParent: slice(bestTotal, bestSat),
-    staff: slice(staffTotal, staffSat),
-    parentMinOneViolation: materialTotal >= 1 && materialSat === 0,
-    staffUnsatisfiedAlert: staffTotal >= 1 && staffSat === 0,
-    topPrioritySatisfied,
-    priorityLevels,
-  }
+  return computeSlicesFromPredicate(personRequests, isSatisfied)
 }
 
 // Re-export BunkmateInfo for tests that import from this module so they don't

@@ -587,6 +587,285 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // ---------------------------------------------------------------------------
+  // Stage 3b.1 — R3 row list: Parent rows → Staff sub-divider → Staff rows
+  // → age preference divider → age rows (with P/S badges).
+  // ---------------------------------------------------------------------------
+  describe('CamperDetailsPanel — Stage 3b.1 R3 row list in Bunking Preferences section', () => {
+    /** Person record for Emma Johnson (parent request source) */
+    const EMMA_R3 = mockPerson({
+      id: 'pb-emma-r3',
+      cm_id: 100,
+      first_name: 'Emma',
+      last_name: 'Johnson',
+      grade: 6,
+      year: 2025,
+      household_id: 0,
+    })
+
+    /** Person record for Riley Sam (target of the parent request) */
+    const RILEY_PERSON = mockPerson({
+      id: 'pb-riley-r3',
+      cm_id: 200,
+      first_name: 'Riley',
+      last_name: 'Sam',
+      grade: 6,
+      year: 2025,
+      household_id: 0,
+    })
+
+    /** Attendee record for Emma in session sess-r3 */
+    const EMMA_R3_ATTENDEE: Record<string, unknown> = {
+      id: 'att-emma-r3',
+      person: 'pb-emma-r3',
+      person_id: 100,
+      session: 'sess-r3',
+      status: 'enrolled',
+      status_id: 2,
+      year: 2025,
+      collectionId: 'attendees',
+      collectionName: 'attendees',
+      created: '2025-01-01T00:00:00Z',
+      updated: '2025-01-01T00:00:00Z',
+      expand: {
+        session: {
+          id: 'sess-r3',
+          cm_id: 3001,
+          name: 'Session R3',
+          session_type: 'main',
+        },
+      },
+    }
+
+    /**
+     * Set up mocks for a given set of bunk requests.
+     * Persons lookup resolves requestee_id=200 to Riley, otherwise returns Emma.
+     */
+    function setupR3Mocks(bunkRequests: Record<string, unknown>[]) {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('cm_id = 200')) return Promise.resolve([RILEY_PERSON])
+        return Promise.resolve([EMMA_R3])
+      })
+      mockGetFullListAttendees.mockResolvedValue([EMMA_R3_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue(bunkRequests)
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+    }
+
+    it('renders Parent rows before Staff sub-divider before Staff rows', async () => {
+      // Two requests: one parent (bunk_with Emma→Riley), one staff (not_bunk_with)
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-p1',
+          requester_id: 100,
+          requestee_id: 200,
+          request_type: 'bunk_with',
+          source_field: 'bunk_with',
+          source: 'family',
+          status: 'resolved',
+          priority: 1,
+          requested_person_name: 'Riley Sam',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.95,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+        {
+          id: 'r3-s1',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'not_bunk_with',
+          source_field: 'not_bunk_with',
+          source: 'staff',
+          status: 'resolved',
+          priority: 1,
+          requested_person_name: 'Olivia Chen',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+
+      const { container } = render(
+        <CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />
+      )
+
+      // Wait for requests to load (Riley Sam appears as a target name)
+      await waitFor(() => {
+        expect(container.textContent).toContain('Riley')
+      })
+
+      // The combined Parent ↑ │ ⬇ Staff divider is the only element with the
+      // `font-mono` utility on its container <div>.
+      const dividerEl = container.querySelector('div.font-mono')
+      expect(dividerEl).not.toBeNull()
+      expect(dividerEl?.textContent).toMatch(/Parent.*Staff/)
+
+      const allElements = Array.from(container.querySelectorAll('*'))
+      const dividerIdx = allElements.indexOf(dividerEl as Element)
+
+      // Leaf element containing "Riley" but not "Olivia"
+      const rileyEl = Array.from(container.querySelectorAll('*')).find(
+        (el) => el.textContent?.includes('Riley') && !el.textContent?.includes('Olivia')
+      )
+      // Leaf element containing "Olivia" but not "Riley"
+      const oliviaEl = Array.from(container.querySelectorAll('*')).find(
+        (el) => el.textContent?.includes('Olivia') && !el.textContent?.includes('Riley')
+      )
+      const rileyIdx = allElements.indexOf(rileyEl as Element)
+      const oliviaIdx = allElements.indexOf(oliviaEl as Element)
+
+      expect(rileyIdx).toBeGreaterThan(-1)
+      expect(oliviaIdx).toBeGreaterThan(-1)
+      // Parent request (Riley) appears BEFORE the Staff divider
+      expect(rileyIdx).toBeLessThan(dividerIdx)
+      // Staff request (Olivia) appears AFTER the Staff divider
+      expect(dividerIdx).toBeLessThan(oliviaIdx)
+    })
+
+    it('omits Staff sub-divider when there are no staff rows', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-p1-only',
+          requester_id: 100,
+          requestee_id: 200,
+          request_type: 'bunk_with',
+          source_field: 'bunk_with',
+          source: 'family',
+          status: 'resolved',
+          priority: 1,
+          requested_person_name: 'Riley Sam',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.95,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+
+      const { container } = render(
+        <CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />
+      )
+      await waitFor(() => {
+        expect(container.textContent).toContain('Riley')
+      })
+
+      // No combined Parent/Staff divider when only parent rows exist.
+      expect(container.querySelector('div.font-mono')).toBeNull()
+    })
+
+    it('renders P badge on bunk_with-derived age preference (family source)', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-age-p',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunk_with',
+          source: 'family',
+          age_preference_target: 'older',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('P')).toBeInTheDocument()
+    })
+
+    it('renders S badge on staff-source age preference', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-age-s',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunking_notes',
+          source: 'staff',
+          age_preference_target: 'younger',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('S')).toBeInTheDocument()
+    })
+
+    it('does NOT render any new "Parent request satisfaction:" summary line in the sidebar', async () => {
+      // The sidebar conveys source-aware satisfaction via CamperAlertSection,
+      // not a separate summary label. Spec §2.4 explicitly forbids adding one.
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-no-summary',
+          requester_id: 100,
+          requestee_id: 200,
+          request_type: 'bunk_with',
+          source_field: 'bunk_with',
+          source: 'family',
+          status: 'resolved',
+          priority: 1,
+          requested_person_name: 'Riley Sam',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.95,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      // Wait for the row to render before asserting the summary lines are absent.
+      await screen.findByText('Riley Sam')
+      expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+      expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+    })
+  })
+
   describe('Bunk request display in embedded (sidebar) mode', () => {
     it('renders the target camper name (not "Unknown") for a declined request in embedded mode', async () => {
       setupDeclinedRequestMocks()
