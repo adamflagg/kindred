@@ -15,11 +15,9 @@ These tests assert that:
 from __future__ import annotations
 
 import sys
-from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 test_dir = Path(__file__).resolve().parent
@@ -28,7 +26,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import ALL_PERMISSIONS
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,7 +47,8 @@ def _mock_admin_user() -> AuthUser:
 def _make_position_client(
     scenario_id: str | None,
     cache_hit: bool = False,
-) -> TestClient:
+) -> MagicMock:
+    """Run a position PATCH request through a test app and return the mock cache."""
     from fastapi import FastAPI
 
     from api.routers.social_graph import router
@@ -84,15 +82,15 @@ def _make_position_client(
         patch("api.routers.social_graph.graph_cache", mock_cache),
         patch("api.routers.social_graph.OptimizedSocialGraphBuilder", return_value=mock_builder_instance),
     ):
-        params: dict[str, object] = {"year": 2025}
+        req_params: dict[str, str | int] = {"year": 2025}
         if scenario_id is not None:
-            params["scenario_id"] = scenario_id
+            req_params["scenario_id"] = scenario_id
 
         client = TestClient(app)
         resp = client.patch(
             "/api/sessions/1001/campers/2001/position",
             json={"new_bunk_cm_id": 9001},
-            params=params,
+            params=req_params,
         )
         assert resp.status_code == 200, f"Unexpected status: {resp.status_code} — {resp.text}"
 
