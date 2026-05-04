@@ -722,10 +722,13 @@ async def update_camper_position(
         # Pass scenario_id so we read/write the scenario-scoped cache slot — without
         # this the re-cache lands in the "prod" slot while reads look in the scenario
         # slot, making the re-cache wasted work.
-        cached_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id)
+        cached_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id=scenario_id)
         if not cached_graph:
-            # Build it if not cached
-            graph = builder.build_social_network(year, session_cm_id)
+            # Build it if not cached — pass scenario_id so bunk assignments are sourced
+            # from bunk_assignments_draft when a scenario is active.  Without this the
+            # graph is built from production data and then stored under the scenario-scoped
+            # cache key, poisoning that slot with stale production data.
+            graph = builder.build_social_network(year, session_cm_id, scenario_id=scenario_id)
             graph_cache.cache_session_graph(session_cm_id, year, graph, scenario_id=scenario_id)
         else:
             # Use the builder's graph

@@ -47,8 +47,13 @@ def _mock_admin_user() -> AuthUser:
 def _make_position_client(
     scenario_id: str | None,
     cache_hit: bool = False,
-) -> MagicMock:
-    """Run a position PATCH request through a test app and return the mock cache."""
+) -> tuple[MagicMock, MagicMock]:
+    """Run a position PATCH request through a test app.
+
+    Returns:
+        (mock_cache, mock_builder_instance) — both exposed so tests can assert on
+        cache methods *and* on build_social_network call arguments.
+    """
     from fastapi import FastAPI
 
     from api.routers.social_graph import router
@@ -94,7 +99,7 @@ def _make_position_client(
         )
         assert resp.status_code == 200, f"Unexpected status: {resp.status_code} — {resp.text}"
 
-        return mock_cache
+        return mock_cache, mock_builder_instance
 
 
 # ---------------------------------------------------------------------------
@@ -107,18 +112,17 @@ class TestUpdateCamperPositionPassesScenarioIdToCache:
 
     def test_get_session_graph_called_with_scenario_id_on_miss(self) -> None:
         """On a cache miss the get_session_graph call must include the scenario_id."""
-        mock_cache = _make_position_client(scenario_id="scenario-abc123", cache_hit=False)
+        mock_cache, _ = _make_position_client(scenario_id="scenario-abc123", cache_hit=False)
         mock_cache.get_session_graph.assert_called_once()
-        _, _, call_kwargs = mock_cache.get_session_graph.call_args_list[0].args, None, None  # noqa: F841
         # Extract positional call
         call_args = mock_cache.get_session_graph.call_args
-        assert call_args == call(1001, 2025, "scenario-abc123"), (
-            f"Expected get_session_graph(1001, 2025, 'scenario-abc123') but got {call_args}"
+        assert call_args == call(1001, 2025, scenario_id="scenario-abc123"), (
+            f"Expected get_session_graph(1001, 2025, scenario_id='scenario-abc123') but got {call_args}"
         )
 
     def test_cache_session_graph_called_with_scenario_id_on_miss(self) -> None:
         """After a rebuild, cache_session_graph must store under the scenario-keyed slot."""
-        mock_cache = _make_position_client(scenario_id="scenario-abc123", cache_hit=False)
+        mock_cache, _ = _make_position_client(scenario_id="scenario-abc123", cache_hit=False)
         cache_call = mock_cache.cache_session_graph.call_args
         assert cache_call is not None, "cache_session_graph was never called on a cache miss"
         # Signature: cache_session_graph(session_cm_id, year, graph, scenario_id=...)
@@ -126,22 +130,34 @@ class TestUpdateCamperPositionPassesScenarioIdToCache:
             len(cache_call.args) >= 4 and cache_call.args[3] == "scenario-abc123"
         ), f"scenario_id not forwarded to cache_session_graph: {cache_call}"
 
+    def test_build_social_network_called_with_scenario_id_on_miss(self) -> None:
+        """On a cache miss build_social_network must receive scenario_id as a keyword arg.
+
+        Without this the graph is built from production bunk_assignments even when a
+        scenario is active, then stored under the scenario-scoped cache key — poisoning
+        that slot with stale production data (finding #1 from PR #1131 scan-it review).
+        """
+        _, mock_builder = _make_position_client(scenario_id="scenario-abc123", cache_hit=False)
+        mock_builder.build_social_network.assert_called_once_with(2025, 1001, scenario_id="scenario-abc123")
+
     def test_get_session_graph_uses_none_when_no_scenario(self) -> None:
         """Without scenario_id the call must use None (production cache slot)."""
-        mock_cache = _make_position_client(scenario_id=None, cache_hit=False)
+        mock_cache, _ = _make_position_client(scenario_id=None, cache_hit=False)
         call_args = mock_cache.get_session_graph.call_args
         # None scenario_id → production slot
-        assert call_args == call(1001, 2025, None), f"Expected get_session_graph(1001, 2025, None) but got {call_args}"
+        assert call_args == call(1001, 2025, scenario_id=None), (
+            f"Expected get_session_graph(1001, 2025, scenario_id=None) but got {call_args}"
+        )
 
     def test_get_session_graph_called_with_scenario_id_on_hit(self) -> None:
         """On a cache hit the get_session_graph lookup must still use scenario_id."""
-        mock_cache = _make_position_client(scenario_id="scenario-xyz789", cache_hit=True)
+        mock_cache, _ = _make_position_client(scenario_id="scenario-xyz789", cache_hit=True)
         call_args = mock_cache.get_session_graph.call_args
-        assert call_args == call(1001, 2025, "scenario-xyz789"), (
-            f"Expected get_session_graph(1001, 2025, 'scenario-xyz789') but got {call_args}"
+        assert call_args == call(1001, 2025, scenario_id="scenario-xyz789"), (
+            f"Expected get_session_graph(1001, 2025, scenario_id='scenario-xyz789') but got {call_args}"
         )
 
     def test_cache_session_graph_not_called_on_hit(self) -> None:
         """When the graph is already cached, cache_session_graph must NOT be called again."""
-        mock_cache = _make_position_client(scenario_id="scenario-xyz789", cache_hit=True)
+        mock_cache, _ = _make_position_client(scenario_id="scenario-xyz789", cache_hit=True)
         mock_cache.cache_session_graph.assert_not_called()
