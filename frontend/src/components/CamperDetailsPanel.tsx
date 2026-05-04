@@ -331,7 +331,7 @@ export default function CamperDetailsPanel({
 
   // Fetch historical bunking data
   const { data: historicalData = [] } = useQuery({
-    queryKey: queryKeys.camperHistory(camperId),
+    queryKey: queryKeys.camperHistory(camperId, currentYear),
     queryFn: async () => {
       const personCmId = parseInt(camperId)
       const filter = `person.cm_id = ${personCmId} && year < ${currentYear}`
@@ -511,7 +511,7 @@ export default function CamperDetailsPanel({
   }
 
   const { data: originalBunkData } = useQuery({
-    queryKey: queryKeys.originalBunkRequests(camper?.person_cm_id, currentYear),
+    queryKey: queryKeys.originalBunkRequestsByPersonId(camper?.person_cm_id, currentYear),
     queryFn: async (): Promise<OriginalBunkData | null> => {
       if (!camper?.person_cm_id) throw new Error('No camper person ID')
       try {

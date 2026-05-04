@@ -50,7 +50,7 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
 
   // Fetch camper history from bunk_assignments table
   const { data: history = [] } = useQuery<CamperHistory[]>({
-    queryKey: ['camper-history', camper.person_cm_id, currentYear],
+    queryKey: queryKeys.camperHistory(String(camper.person_cm_id), currentYear),
     queryFn: async () => {
       if (!camper.person_cm_id) return []
 

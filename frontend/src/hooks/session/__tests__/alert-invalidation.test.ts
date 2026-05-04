@@ -16,6 +16,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
+import { invalidateRequestQueries } from '../../../utils/queryKeys'
 
 // NOTE: invalidateQueries({ queryKey: ['x'] }) does prefix matching by default,
 // so passing the bare prefix (no trailing args) catches every query keyed
@@ -167,16 +168,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     // After Stage 3a Bug A fix, the alert filters by status === 'resolved',
     // so flipping a row pending → resolved (or resolved → declined) WILL
     // change the satisfaction count and the alert must refresh.
-    const onSuccessAfterFix = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
-    }
-
-    onSuccessAfterFix(queryClient)
+    invalidateRequestQueries(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
@@ -186,16 +178,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
   })
 
   it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
-    const onSuccessAfterFix = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
-    }
-
-    onSuccessAfterFix(queryClient)
+    invalidateRequestQueries(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
@@ -205,16 +188,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
   })
 
   it('CreateRequestModal create invalidates all-bunk-requests', () => {
-    const onSuccessAfterFix = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
-    }
-
-    onSuccessAfterFix(queryClient)
+    invalidateRequestQueries(queryClient)
 
     expect(isAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isPersonBunkRequestsStale(queryClient)).toBe(true)
@@ -243,33 +217,13 @@ describe('Merge / Split mutation contract — must invalidate all 7 keys', () =>
   }
 
   it('MergeRequestsModal onSuccess invalidates every request-derived key', () => {
-    const onSuccess = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
-    }
-
-    onSuccess(queryClient)
+    invalidateRequestQueries(queryClient)
 
     assertAllSeededKeysStale(queryClient)
   })
 
   it('SplitRequestModal onSuccess invalidates every request-derived key', () => {
-    const onSuccess = (qc: QueryClient) => {
-      void qc.invalidateQueries({ queryKey: ['bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['person-all-bunk-requests'] })
-      void qc.invalidateQueries({ queryKey: ['bunk_requests_tooltip'] })
-      void qc.invalidateQueries({ queryKey: ['request-satisfaction'] })
-      void qc.invalidateQueries({ queryKey: ['cohort-request-relations'] })
-    }
-
-    onSuccess(queryClient)
+    invalidateRequestQueries(queryClient)
 
     assertAllSeededKeysStale(queryClient)
   })

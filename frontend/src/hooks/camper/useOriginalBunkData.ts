@@ -31,7 +31,7 @@ export function useOriginalBunkData(
     isLoading,
     error,
   } = useQuery({
-    queryKey: queryKeys.originalBunkRequests(personCmId, currentYear),
+    queryKey: queryKeys.originalBunkRequestsByRequesterCmId(personCmId, currentYear),
     queryFn: async (): Promise<OriginalBunkData | null> => {
       if (!personCmId) {
         throw new Error('No camper person ID')
