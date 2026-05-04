@@ -446,10 +446,10 @@ async def pre_validate_solver(
 
     except ClientResponseError as e:
         logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}")
-        raise HTTPException(status_code=500, detail=f"PocketBase error: {e.status} - {e.data}")
-    except Exception as e:
-        logger.error(f"Pre-validation failed: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise
+    except Exception:
+        logger.error("Pre-validation failed", exc_info=True)
+        raise
 
 
 @router.post("/solver/run/{run_id}/analyze")
@@ -752,9 +752,9 @@ async def run_multi_session_solver(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Multi-session solver failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.error("Multi-session solver failed", exc_info=True)
+        raise
 
 
 # ========================================
