@@ -66,24 +66,30 @@ function renderHeader(
 }
 
 describe('computeTypeUpdate', () => {
-  it('switching to age_preference clears requestee_id', () => {
+  it('switching to age_preference clears requestee_id and resets resolution state', () => {
     expect(computeTypeUpdate('age_preference')).toEqual({
       request_type: 'age_preference',
       requestee_id: null,
+      status: 'pending',
+      confidence_score: 0,
     })
   })
 
-  it('switching to bunk_with clears age_preference_target', () => {
+  it('switching to bunk_with clears age_preference_target and resets resolution state', () => {
     expect(computeTypeUpdate('bunk_with')).toEqual({
       request_type: 'bunk_with',
       age_preference_target: '',
+      status: 'pending',
+      confidence_score: 0,
     })
   })
 
-  it('switching to not_bunk_with clears age_preference_target', () => {
+  it('switching to not_bunk_with clears age_preference_target and resets resolution state', () => {
     expect(computeTypeUpdate('not_bunk_with')).toEqual({
       request_type: 'not_bunk_with',
       age_preference_target: '',
+      status: 'pending',
+      confidence_score: 0,
     })
   })
 })
@@ -97,9 +103,11 @@ describe('computeTargetUpdate', () => {
     })
   })
 
-  it('clearing requestee_id (null) does not set status/confidence', () => {
+  it('clearing requestee_id (null) resets status to pending and confidence to 0 (#997)', () => {
     expect(computeTargetUpdate({ requestee_id: null })).toEqual({
       requestee_id: null,
+      status: 'pending',
+      confidence_score: 0,
     })
   })
 
@@ -148,6 +156,8 @@ describe('RequestEditableHeader rendering', () => {
     expect(onUpdate).toHaveBeenCalledWith({
       request_type: 'age_preference',
       requestee_id: null,
+      status: 'pending',
+      confidence_score: 0,
     })
   })
 
