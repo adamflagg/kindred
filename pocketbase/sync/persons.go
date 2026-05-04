@@ -280,6 +280,9 @@ func (s *PersonsSync) processPersonBatches(
 		personHouseholdMap:    make(map[int]personHouseholdIDs),
 	}
 
+	// batchSize bounds CampMinder GetPersons API calls — CM enforces a request
+	// size limit, so keep at 500. Different from the smaller PocketBase filter
+	// batches used elsewhere in this package.
 	const batchSize = 500
 	processed := 0
 	for batch := range slices.Chunk(personIDs, batchSize) {

@@ -100,7 +100,10 @@ func (s *HouseholdsSync) Sync(ctx context.Context) error {
 	// Track unique households across all batches
 	allHouseholds := make(map[int]map[string]any)
 
-	// Process persons in batches to extract households
+	// Process persons in batches to extract households.
+	// batchSize bounds CampMinder GetPersons API calls — CM enforces a request
+	// size limit, so keep at 500. Different from the smaller PocketBase filter
+	// batches used elsewhere in this package.
 	const batchSize = 500
 	processed := 0
 	for batch := range slices.Chunk(personIDs, batchSize) {

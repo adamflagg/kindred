@@ -184,7 +184,11 @@ func (r *SessionResolver) GetHouseholdIDsForSession(session string, year int) ([
 
 	// Query persons to get their household IDs
 	householdIDSet := make(map[int]bool)
-	// Process in batches to avoid long queries
+	// Process in batches to avoid long queries.
+	// batchSize bounds PocketBase filter-string length — each ID concatenates
+	// into an `id = X || ...` filter, so keep small to avoid SQLite filter
+	// overflow. More conservative than the 100 used in staff_skills.go; reduce
+	// further if filter-overflow errors appear in logs.
 	const batchSize = 50
 	for batch := range slices.Chunk(personPBIDs, batchSize) {
 		// Build ID filter
