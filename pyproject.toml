@@ -49,7 +49,7 @@ dependencies = [
     # Auth
     "PyJWT[crypto]>=2.12.1",
     # CLI & utilities
-    "typer>=0.12.0",
+    "typer>=0.25.1",
     "rich>=13.0.0",
     "tqdm>=4.67.3",
     # Scheduling
