@@ -17,6 +17,7 @@ statuses because the global handler catches the re-raised exception.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -32,7 +33,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import ALL_PERMISSIONS
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -129,7 +129,7 @@ class TestPreValidateSolverMaps404:
     """pre_validate_solver must return 404 when PocketBase returns 404 on session lookup."""
 
     @pytest.fixture
-    def client(self) -> TestClient:
+    def client(self) -> Iterator[TestClient]:
         from api.routers.solver import router
 
         pb_error = _make_client_response_error(status=404)
