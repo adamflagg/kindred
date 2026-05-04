@@ -192,7 +192,7 @@ describe('CsvPipelineIndicator', () => {
       counts: { total: 1, autoMatched: 1, needReview: 0 },
     })
     render(<CsvPipelineIndicator />)
-    expect(screen.getByText(/Done .*: 1 new or updated requests/)).toBeInTheDocument()
+    expect(screen.getByText(/Done .*: 1 new or updated request/)).toBeInTheDocument()
   })
 
   it('clicking × stores current runId in dismissed-key and hides indicator', () => {
