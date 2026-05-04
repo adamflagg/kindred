@@ -32,12 +32,10 @@ interface ValidationStatistics {
   bunks_at_capacity: number
   bunks_under_capacity: number
   bunks_over_capacity: number
-  // Stage 3a: material (hard) parent requests
   material_parent_requests?: number
   satisfied_material_parent_requests?: number
   material_parent_request_satisfaction_rate?: number
   campers_with_unsatisfied_material_parent_requests?: number
-  // Stage 3a: best-effort (soft) parent requests
   best_effort_parent_requests?: number
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
@@ -517,15 +515,15 @@ export default function PostValidationResultsModal({
   const statistics = results.statistics
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
-  // Stage 3b.2: parent-paramount lens. Use parent satisfaction as the primary
-  // signal driving the donut, status tier, and close-button styling. Fall back
-  // to all-up rate when no material parent requests exist (rare — staff-only
-  // scenarios or empty sessions).
   const parentTotal = statistics.material_parent_requests ?? 0
+  // When parent requests exist, use parent satisfaction as the primary signal;
+  // fall back to all-up rate for staff-only sessions without parent requests.
   const satisfactionRate =
     parentTotal > 0
       ? (statistics.material_parent_request_satisfaction_rate ?? 0)
       : statistics.request_satisfaction_rate
+  const PARENT_SATISFACTION_TARGET = 0.85
+  const parentUnderTarget = parentTotal > 0 && satisfactionRate < PARENT_SATISFACTION_TARGET
 
   // Group issues by type and severity
   const groupedIssues = useMemo(() => {
@@ -555,8 +553,6 @@ export default function PostValidationResultsModal({
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
 
-  // Determine overall status — tier from rate + errors, sub-text overridden
-  // by parent-paramount logic when material parent data is available (Stage 3b.2).
   const getOverallStatus = () => {
     let base: {
       label: string
@@ -565,7 +561,7 @@ export default function PostValidationResultsModal({
       gradient: string
       iconBg: string
     }
-    if (satisfactionRate >= 0.85 && errorCount === 0) {
+    if (satisfactionRate >= PARENT_SATISFACTION_TARGET && errorCount === 0) {
       base = {
         label: 'Excellent!',
         sublabel: 'Bunking looks great',
@@ -599,14 +595,12 @@ export default function PostValidationResultsModal({
       }
     }
 
-    // Parent-paramount sub-text override.
     const unmetKids = statistics.campers_with_unsatisfied_material_parent_requests ?? 0
     if (unmetKids > 0) {
       base.sublabel = `${unmetKids} kid${unmetKids === 1 ? '' : 's'} missed a parent request`
     } else if (parentTotal > 0) {
       base.sublabel = `All ${parentTotal} parent request${parentTotal === 1 ? '' : 's'} fulfilled`
     }
-    // else: keep per-tier generic sub-text
 
     return base
   }
@@ -680,19 +674,11 @@ export default function PostValidationResultsModal({
           <div className="flex items-center gap-2">
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                parentTotal > 0 &&
-                (statistics.material_parent_request_satisfaction_rate ?? 0) < 0.85
-                  ? 'bg-amber-500/10'
-                  : 'bg-forest-500/10'
+                parentUnderTarget ? 'bg-amber-500/10' : 'bg-forest-500/10'
               }`}
             >
               <Heart
-                className={`h-4 w-4 ${
-                  parentTotal > 0 &&
-                  (statistics.material_parent_request_satisfaction_rate ?? 0) < 0.85
-                    ? 'text-amber-600'
-                    : 'text-forest-600'
-                }`}
+                className={`h-4 w-4 ${parentUnderTarget ? 'text-amber-600' : 'text-forest-600'}`}
               />
             </div>
             <div>
