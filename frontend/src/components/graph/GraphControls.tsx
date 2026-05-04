@@ -10,6 +10,7 @@ import {
   EyeOff,
   ZoomIn,
   ZoomOut,
+  Maximize,
   Maximize2,
   Minimize2,
   HelpCircle,
@@ -102,7 +103,7 @@ export default function GraphControls({
           className="hover:bg-muted border-border flex min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center border-x p-2.5 transition-colors sm:p-2"
           title="Fit to screen"
         >
-          <Maximize2 className="h-5 w-5 sm:h-4 sm:w-4" />
+          <Maximize className="h-5 w-5 sm:h-4 sm:w-4" />
         </button>
         <button
           onClick={onZoomIn}
