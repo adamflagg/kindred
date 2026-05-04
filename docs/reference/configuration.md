@@ -90,6 +90,18 @@ OIDC_USER_URL=https://auth.provider.com/application/o/userinfo/
 OIDC_SCOPES=openid,profile,email
 ```
 
+**PKCE posture:** The OIDC client is registered as **confidential + PKCE**.
+PocketBase v0.23+ supports PKCE on OAuth2 providers via the `pkce: true` field on
+the provider config. This repo enables it in both client-registration paths:
+
+- `docker/init-entrypoint.sh` (production init container)
+- `scripts/setup/configure_pocketbase_oauth.py` (dev script run by `start_dev.sh`)
+
+The IDP (Pocket ID, Authentik, Auth0, etc.) must also enforce PKCE on the client.
+Confidential + PKCE is the recommended posture for server-side apps: the client
+secret is never exposed to the browser, and PKCE adds protection against
+authorization-code interception.
+
 ### Network & Proxy Configuration
 ```bash
 # Traefik configuration (production)
