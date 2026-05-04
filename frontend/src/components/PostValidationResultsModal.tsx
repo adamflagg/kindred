@@ -601,7 +601,6 @@ export default function PostValidationResultsModal({
 
     // Parent-paramount sub-text override.
     const unmetKids = statistics.campers_with_unsatisfied_material_parent_requests ?? 0
-    const parentTotal = statistics.material_parent_requests ?? 0
     if (unmetKids > 0) {
       base.sublabel = `${unmetKids} kid${unmetKids === 1 ? '' : 's'} missed a parent request`
     } else if (parentTotal > 0) {
@@ -681,20 +680,18 @@ export default function PostValidationResultsModal({
           <div className="flex items-center gap-2">
             <div
               className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                parentTotal === 0
-                  ? 'bg-forest-500/10'
-                  : (statistics.material_parent_request_satisfaction_rate ?? 0) >= 0.85
-                    ? 'bg-forest-500/10'
-                    : 'bg-amber-500/10'
+                parentTotal > 0 &&
+                (statistics.material_parent_request_satisfaction_rate ?? 0) < 0.85
+                  ? 'bg-amber-500/10'
+                  : 'bg-forest-500/10'
               }`}
             >
               <Heart
                 className={`h-4 w-4 ${
-                  parentTotal === 0
-                    ? 'text-forest-600'
-                    : (statistics.material_parent_request_satisfaction_rate ?? 0) >= 0.85
-                      ? 'text-forest-600'
-                      : 'text-amber-600'
+                  parentTotal > 0 &&
+                  (statistics.material_parent_request_satisfaction_rate ?? 0) < 0.85
+                    ? 'text-amber-600'
+                    : 'text-forest-600'
                 }`}
               />
             </div>

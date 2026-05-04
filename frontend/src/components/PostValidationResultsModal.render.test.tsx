@@ -1,9 +1,9 @@
 /**
- * TDD render tests for PostValidationResultsModal — Stage 3a
+ * TDD render tests for PostValidationResultsModal — Stage 3a / 3b.2
  *
- * Written FIRST (red phase) to verify new field consumption:
- *   - ValidationStatistics includes material_parent_* and best_effort_parent_* fields
- *   - Best-effort display line appears: "Best-effort preferences honored: X of Y"
+ * Stage 3a: added material_parent_* and best_effort_parent_* field consumption.
+ * Stage 3b.2: removed best-effort one-liner; modal now drives banner, donut,
+ *   status tier, and stats tile from material parent satisfaction rate.
  */
 
 import { render, screen } from '@testing-library/react'
