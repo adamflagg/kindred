@@ -1473,8 +1473,8 @@ def test_three_grade_bunk_age_preference_evaluation():
         ("age_preference", SourceField.BUNK_WITH, "family", "material"),
         # row 9: age_preference / socialize_with / family → bestEffortParent
         ("age_preference", SourceField.SOCIALIZE_WITH, "family", "best_effort"),
-        # row 10: age_preference / null / family → bestEffortParent  (legacy fallback #1086)
-        ("age_preference", None, "family", "best_effort"),
+        # row 10: age_preference / null / family → not binned (#1086 fallback removed)
+        ("age_preference", None, "family", "none"),
         # row 11: age_preference / bunking_notes / staff → staff
         ("age_preference", SourceField.BUNKING_NOTES, "staff", "staff"),
         # row 12: age_preference / internal_notes / staff → staff
@@ -1571,3 +1571,62 @@ def test_validator_slice_classification(
         )
         assert material == 0
         assert best_effort == 0
+    elif expected_slice == "none":
+        # #1086: null source_field rows are never binned — fall through all buckets.
+        assert material == 0, (
+            f"Expected no material bin for (request_type={request_type!r}, "
+            f"source_field={source_field!r}, source={source!r}); got material={material}"
+        )
+        assert best_effort == 0, (
+            f"Expected no best_effort bin for (request_type={request_type!r}, "
+            f"source_field={source_field!r}, source={source!r}); got best_effort={best_effort}"
+        )
+        assert staff == 0, (
+            f"Expected no staff bin for (request_type={request_type!r}, "
+            f"source_field={source_field!r}, source={source!r}); got staff={staff}"
+        )
+
+
+def test_validator_warns_when_resolved_age_preference_has_null_source_field(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A resolved age_preference request with source_field=None must emit a WARNING.
+
+    The legacy best-effort fallback (issue #1086) is removed; callers should see
+    a warning so the data gap can be investigated.
+    """
+    import logging
+
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="20001",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=None,
+            source="family",
+            age_preference_target="older",
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="bunking.bunking_validator"):
+        validator = BunkingValidator()
+        validator.validate_bunking(
+            session=session,
+            bunks=bunks,
+            assignments=assignments,
+            persons=cast(list[Person], persons),
+            requests=cast(list[BunkRequest], requests),
+        )
+
+    warning_messages = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("source_field" in msg and "age_preference" in msg for msg in warning_messages), (
+        f"Expected warning about null source_field on resolved age_preference; got: {warning_messages}"
+    )

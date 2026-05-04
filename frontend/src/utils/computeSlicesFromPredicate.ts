@@ -44,18 +44,12 @@ export function computeSlicesFromPredicate(
     } else if (req.source_field === 'socialize_with') {
       bestTotal++
       if (sat) bestSat++
-    } else if (!req.source_field && req.request_type === 'age_preference') {
-      // Legacy fallback (mirrors backend bunking_validator.py:514-516).
-      // Tracked for removal: #1086.
-      bestTotal++
-      if (sat) bestSat++
     } else if (req.source === 'staff') {
-      // socialize_with is handled in the branch above; this catches:
-      // not_bunk_with / bunking_notes / internal_notes / any future staff
-      // source_field. The explicit `source === 'staff'` guard skips legacy
-      // or malformed rows (e.g. bunk_with × null × family, or the unreachable
-      // schema-allowed `source = 'notes'`) rather than silently binning them
-      // as staff.
+      // Catches: not_bunk_with / bunking_notes / internal_notes / any future
+      // staff source_field. Rows with no source_field and no recognized
+      // source (e.g. bunk_with × null × family) fall through and are not
+      // counted. The legacy `!source_field && age_preference → bestEffort`
+      // fallback was removed in #1086 — such rows are no longer produced.
       staffTotal++
       if (sat) staffSat++
     }
