@@ -24,6 +24,8 @@ from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from ..utils.pb_error import pb_error_to_http
+
 from bunking.auth_middleware import AuthUser
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
@@ -448,7 +450,7 @@ async def pre_validate_solver(
         raise
     except ClientResponseError as e:
         logger.error(f"PocketBase API error in pre-validation: {e.status} - {e.data}", exc_info=True)
-        raise
+        raise pb_error_to_http(e)
     except Exception:
         logger.error("Pre-validation failed", exc_info=True)
         raise
