@@ -46,10 +46,10 @@ export function computeSlicesFromPredicate(
       if (sat) bestSat++
     } else if (req.source === 'staff') {
       // Catches: not_bunk_with / bunking_notes / internal_notes / any future
-      // staff source_field. Rows with no source_field and no recognized
-      // source (e.g. bunk_with × null × family) fall through and are not
-      // counted. The legacy `!source_field && age_preference → bestEffort`
-      // fallback was removed in #1086 — such rows are no longer produced.
+      // staff source_field. This guard rejects malformed legacy rows (e.g.
+      // bunk_with × null source_field × family source) rather than silently
+      // bucketing them as staff — they fall through and are not counted.
+      // Regression lock: `bunk_with × null × family → not binned` test case.
       staffTotal++
       if (sat) staffSat++
     }
