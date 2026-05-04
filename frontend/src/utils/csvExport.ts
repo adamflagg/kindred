@@ -51,7 +51,12 @@ export function downloadCsv(csvContent: string, filename: string): void {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  a.style.display = 'none'
+  // Firefox requires the anchor to be attached to the DOM before click()
+  // triggers a file download. Chrome/Safari work without it, masking this bug.
+  document.body.appendChild(a)
   a.click()
+  document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
 
