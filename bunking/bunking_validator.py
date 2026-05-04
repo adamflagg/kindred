@@ -521,7 +521,7 @@ class BunkingValidator:
                         "not binned (requester_id=%s, status=%s); "
                         "legacy best_effort fallback removed in #1086",
                         requester_id,
-                        getattr(request, "status", "unknown"),
+                        request.status,
                     )
 
                 is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH
