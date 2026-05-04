@@ -828,9 +828,9 @@ async def clear_session_assignments(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error clearing assignments: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to clear assignments: {e!s}")
+    except Exception:
+        logger.error("Error clearing assignments", exc_info=True)
+        raise
 
 
 # ========================================
@@ -913,9 +913,9 @@ async def get_solver_logs(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error retrieving solver logs: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve solver logs")
+    except Exception:
+        logger.error("Error retrieving solver logs", exc_info=True)
+        raise
 
 
 @router.get("/solver/logs")
@@ -949,6 +949,6 @@ async def list_solver_logs(
 
         return {"logs": log_files}
 
-    except Exception as e:
-        logger.error(f"Error listing solver logs: {e}")
-        raise HTTPException(status_code=500, detail="Failed to list solver logs")
+    except Exception:
+        logger.error("Error listing solver logs", exc_info=True)
+        raise
