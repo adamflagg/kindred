@@ -208,6 +208,21 @@ export interface ValidationResult {
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
 
+/** Returns the export button label that matches the active change filter. */
+// eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
+export function getExportButtonLabel(filter: ChangeFilter): string {
+  switch (filter) {
+    case 'moved':
+      return 'Export Moved'
+    case 'newly-assigned':
+      return 'Export Newly Assigned'
+    case 'newly-unassigned':
+      return 'Export Newly Unassigned'
+    default:
+      return 'Export All Changes'
+  }
+}
+
 function useGroupMap(
   scenarioId: string,
   sessionPbId: string,
@@ -997,7 +1012,7 @@ export default function ScenarioComparisonPage() {
                       title="Export moved campers to CSV"
                     >
                       <Download className="h-4 w-4" />
-                      <span>Export Moved</span>
+                      <span>{getExportButtonLabel(changeFilter)}</span>
                     </button>
                   )}
               </div>

@@ -5,6 +5,7 @@ import { afterEach } from 'vitest'
 import {
   CamperPill,
   ValidationScoreCard,
+  getExportButtonLabel,
   type ValidationResult,
   type ValidationStatistics,
 } from './ScenarioComparisonPage'
@@ -291,5 +292,25 @@ describe('ValidationScoreCard parent-paramount stats', () => {
     const beScope = within(beSection)
     expect(beScope.getByText('63%')).toBeInTheDocument()
     expect(beScope.getByText('(5/8)')).toBeInTheDocument()
+  })
+})
+
+// ─── #1003: Export button label should reflect the active changeFilter ───────
+
+describe('getExportButtonLabel', () => {
+  it('returns "Export Moved" when changeFilter is "moved"', () => {
+    expect(getExportButtonLabel('moved')).toBe('Export Moved')
+  })
+
+  it('returns "Export All Changes" when changeFilter is "all"', () => {
+    expect(getExportButtonLabel('all')).toBe('Export All Changes')
+  })
+
+  it('returns "Export Newly Assigned" when changeFilter is "newly-assigned"', () => {
+    expect(getExportButtonLabel('newly-assigned')).toBe('Export Newly Assigned')
+  })
+
+  it('returns "Export Newly Unassigned" when changeFilter is "newly-unassigned"', () => {
+    expect(getExportButtonLabel('newly-unassigned')).toBe('Export Newly Unassigned')
   })
 })

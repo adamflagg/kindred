@@ -3,8 +3,8 @@
  * staff testing (April 2026). See ScenarioContext.test.tsx for full context.
  *
  * The modal must keep rendering the scenario cards while a delete mutation
- * is pending — only the initial query-fetch state should swap the list for
- * a "Loading scenarios..." placeholder.
+ * is pending — only the initial query-fetch (isLoading) should swap the list
+ * for a "Loading scenarios..." placeholder, not isMutating.
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -47,7 +47,6 @@ function makeContext(overrides: Partial<ScenarioContextType>): ScenarioContextTy
     currentScenario: null,
     isProductionMode: true,
     scenarios,
-    loading: false,
     isLoading: false,
     isMutating: false,
     error: null,
@@ -77,18 +76,17 @@ function renderModal(ctx: ScenarioContextType) {
 describe('ScenarioManagementModal loading state', () => {
   it('shows "Loading scenarios..." during initial query fetch', () => {
     // Matches what ScenarioContext produces when the query is first loading:
-    // loading=true AND isLoading=true (scenarios list not yet fetched).
-    renderModal(makeContext({ loading: true, isLoading: true, scenarios: [] }))
+    // isLoading=true and scenarios list not yet fetched.
+    renderModal(makeContext({ isLoading: true, scenarios: [] }))
     expect(screen.getByText('Loading scenarios...')).toBeInTheDocument()
   })
 
   it('keeps scenario cards visible while a delete mutation is pending', () => {
-    // Simulates real context state mid-delete: the combined loading flag
-    // is true (because isMutating is true), but the query has already
-    // resolved (isLoading=false). Prior to the fix, the modal consumed the
-    // combined `loading` and swapped the list for the placeholder — this
-    // test asserts the fix by requiring the cards to remain visible.
-    renderModal(makeContext({ loading: true, isLoading: false, isMutating: true }))
+    // Simulates real context state mid-delete: the query has already resolved
+    // (isLoading=false) but a mutation is pending (isMutating=true). The modal
+    // uses isLoading (not isMutating) to show the placeholder, so cards remain
+    // visible while the delete processes.
+    renderModal(makeContext({ isLoading: false, isMutating: true }))
 
     expect(screen.getByText('Dorm Cabin Plan A')).toBeInTheDocument()
     expect(screen.queryByText('Loading scenarios...')).not.toBeInTheDocument()

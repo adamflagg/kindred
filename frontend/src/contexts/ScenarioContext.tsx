@@ -55,12 +55,6 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     deleteScenarioMutation.isPending ||
     clearScenarioMutation.isPending
 
-  // Combined loading state (initial fetch OR mutation pending). Kept for
-  // backward compatibility with any consumer that just needs a unified
-  // "busy" signal. Consumers that drive empty-state/placeholder UI should
-  // read `isLoading` instead.
-  const loading = isLoading || isMutating
-
   // Load scenarios for a session
   const loadScenarios = useCallback(async (sessionId: number) => {
     setCurrentSessionId(sessionId)
@@ -238,7 +232,6 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     currentScenario,
     isProductionMode,
     scenarios,
-    loading,
     isLoading,
     isMutating,
     error,

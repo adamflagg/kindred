@@ -52,8 +52,10 @@ export default function SessionView() {
     scenarios,
     loadScenarios,
     selectScenario,
-    loading: scenarioLoading,
+    isLoading: scenarioIsLoading,
+    isMutating: scenarioIsMutating,
   } = useScenario()
+  const scenarioLoading = scenarioIsLoading || scenarioIsMutating
   const { setSessionPbId: setLockGroupSessionPbId } = useLockGroupContext()
   const { hasPermission } = usePermissions()
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
