@@ -215,19 +215,55 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
   })
 
   it('hides summary entirely when only best-effort parent (no material, no staff)', () => {
-    const allBunkRequests = [
-      makeRequest({
-        id: 'b1',
-        request_type: 'age_preference',
-        source_field: 'socialize_with',
-        source: 'family',
-        age_preference_target: 'older',
-      }),
-    ]
+    const bestEffortAgePref = makeRequest({
+      id: 'b1',
+      request_type: 'age_preference',
+      source_field: 'socialize_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
     const satisfactionData = { b1: { status: 'satisfied' as const, detail: '' } }
-    renderPanelWith({ allBunkRequests, satisfactionData })
+    renderPanelWith({
+      allBunkRequests: [bestEffortAgePref],
+      agePreferenceRequests: [bestEffortAgePref],
+      satisfactionData,
+    })
     expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
     expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+
+  it('shows Parent line for material parent age preference (source_field=bunk_with)', () => {
+    const materialAgePref = makeRequest({
+      id: 'a1',
+      request_type: 'age_preference',
+      source_field: 'bunk_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({
+      allBunkRequests: [materialAgePref],
+      agePreferenceRequests: [materialAgePref],
+      satisfactionData,
+    })
+    expect(screen.getByText(/Parent request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('shows Staff line for staff age preference (source=staff)', () => {
+    const staffAgePref = makeRequest({
+      id: 'a2',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    const satisfactionData = { a2: { status: 'satisfied' as const, detail: '' } }
+    renderPanelWith({
+      allBunkRequests: [staffAgePref],
+      agePreferenceRequests: [staffAgePref],
+      satisfactionData,
+    })
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
   })
 
   it('shows green check when ratio is 1.0', () => {
@@ -240,8 +276,14 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       }),
     ]
     const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
-    const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
-    const greenCheck = container.querySelector('.text-green-500, .text-green-400, .text-green-600')
+    renderPanelWith({ allBunkRequests, satisfactionData })
+    // Scope to the parent-summary block so unrelated green elements (e.g. the
+    // satisfied-row "Met" pill) can't false-pass the assertion.
+    const parentSummary = screen.getByText(/Parent request satisfaction:/i).closest('div')
+    expect(parentSummary).not.toBeNull()
+    const greenCheck = parentSummary?.querySelector(
+      '.text-green-500, .text-green-400, .text-green-600'
+    )
     expect(greenCheck).not.toBeNull()
   })
 })

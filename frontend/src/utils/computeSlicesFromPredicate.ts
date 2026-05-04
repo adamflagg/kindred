@@ -49,10 +49,13 @@ export function computeSlicesFromPredicate(
       // Tracked for removal: #1086.
       bestTotal++
       if (sat) bestSat++
-    } else {
+    } else if (req.source === 'staff') {
       // socialize_with is handled in the branch above; this catches:
       // not_bunk_with / bunking_notes / internal_notes / any future staff
-      // source_field. Upstream invariant: req.source === 'staff'.
+      // source_field. The explicit `source === 'staff'` guard skips legacy
+      // or malformed rows (e.g. bunk_with × null × family, or the unreachable
+      // schema-allowed `source = 'notes'`) rather than silently binning them
+      // as staff.
       staffTotal++
       if (sat) staffSat++
     }

@@ -1353,7 +1353,7 @@
 
 /* Material age preference sparkle animation. Kept outside @layer utilities so
    the @keyframes rule isn't subject to Tailwind v4's layer tree-shaking. */
-@keyframes sparkleAnim {
+@keyframes sparkle-anim {
   0%,
   100% {
     transform: scale(1) rotate(0deg);
@@ -1366,7 +1366,7 @@
 }
 
 .sparkle-material {
-  animation: sparkleAnim 1.6s ease-in-out infinite;
+  animation: sparkle-anim 1.6s ease-in-out infinite;
   transform-origin: center center;
 }
 

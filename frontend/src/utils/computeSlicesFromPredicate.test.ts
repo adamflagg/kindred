@@ -153,6 +153,34 @@ describe('computeSlicesFromPredicate — source classification truth table', () 
     const slices = computeSlicesFromPredicate([req], allSatisfied)
     expect(slices.staff).toEqual({ total: 1, satisfied: 1, satisfactionRate: 1 })
   })
+
+  it('bunk_with × null × family (malformed legacy) → not binned', () => {
+    const req = makeReq({
+      request_type: 'bunk_with',
+      source_field: null as unknown as string,
+      source: 'family',
+    })
+    const slices = computeSlicesFromPredicate([req], allSatisfied)
+    expect(slices.materialParent.total).toBe(0)
+    expect(slices.bestEffortParent.total).toBe(0)
+    expect(slices.staff.total).toBe(0)
+  })
+
+  it('not_bunk_with × not_bunk_with × notes (legacy notes source) → not binned', () => {
+    // Upstream openai_provider maps 'notes' → STAFF before write, so this
+    // schema-allowed source value should never appear in production. Catch-all
+    // now requires source === 'staff'; legacy 'notes' rows are excluded
+    // rather than silently binned as staff.
+    const req = makeReq({
+      request_type: 'not_bunk_with',
+      source_field: 'bunking_notes',
+      source: 'notes',
+    })
+    const slices = computeSlicesFromPredicate([req], allSatisfied)
+    expect(slices.staff.total).toBe(0)
+    expect(slices.materialParent.total).toBe(0)
+    expect(slices.bestEffortParent.total).toBe(0)
+  })
 })
 
 describe('computeSlicesFromPredicate — flag derivation', () => {

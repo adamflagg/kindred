@@ -7,7 +7,6 @@ import {
   Heart,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   FileText,
   MapPin,
   TreePine,
@@ -15,6 +14,7 @@ import {
   Users,
   ExternalLink,
 } from 'lucide-react'
+import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import { pb } from '../lib/pocketbase'
 import { StatusBadge } from './StatusBadge'
 import {
@@ -931,79 +931,55 @@ export default function CamperDetailsPanel({
                 <div className="mt-2 space-y-1">
                   {/* Parent ↑ │ ⬇ Staff divider between the two peer groups, plus a
                       quieter "Age preference" divider above the age tail section. */}
-                  {(() => {
-                    const ParentStaffDivider = () => (
-                      <div className="text-muted-foreground/70 my-3 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] uppercase">
-                        <span className="border-border/60 flex-1 border-t" />
-                        <span className="inline-flex items-center gap-1">
-                          Parent <ChevronUp className="h-3 w-3" aria-hidden="true" />
-                        </span>
-                        <span className="border-border/60 h-3 border-l" aria-hidden="true" />
-                        <span className="inline-flex items-center gap-1">
-                          <ChevronDown className="h-3 w-3" aria-hidden="true" /> Staff
-                        </span>
-                        <span className="border-border/60 flex-1 border-t" />
-                      </div>
-                    )
-                    const AgePreferenceDivider = () => (
-                      <div className="border-border/60 my-2 border-t" aria-hidden="true" />
-                    )
+                  {parentRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
                     return (
-                      <>
-                        {parentRows.map((req) => {
-                          const satisfaction = satisfactionData[req.id]
-                          return (
-                            <BunkRequestRow
-                              key={req.id}
-                              request={req}
-                              targetPerson={req.targetPerson ?? null}
-                              showSatisfaction={isConfirmedRequest(req)}
-                              satisfaction={satisfaction?.status ?? null}
-                              satisfactionLoading={satisfactionLoading}
-                              satisfactionDetail={satisfaction?.detail}
-                            />
-                          )
-                        })}
-
-                        {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
-                        {staffRows.map((req) => {
-                          const satisfaction = satisfactionData[req.id]
-                          return (
-                            <BunkRequestRow
-                              key={req.id}
-                              request={req}
-                              targetPerson={req.targetPerson ?? null}
-                              showSatisfaction={isConfirmedRequest(req)}
-                              satisfaction={satisfaction?.status ?? null}
-                              satisfactionLoading={satisfactionLoading}
-                              satisfactionDetail={satisfaction?.detail}
-                            />
-                          )
-                        })}
-
-                        {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
-                          <AgePreferenceDivider />
-                        )}
-                        {ageRows.map((req) => {
-                          const satisfaction = satisfactionData[req.id]
-                          return (
-                            <BunkRequestRow
-                              key={req.id}
-                              request={req}
-                              // Pending (e.g. SAME_AGE staff-review) and declined age
-                              // preferences must not render a "fulfilled" indicator.
-                              showSatisfaction={req.status === 'resolved'}
-                              satisfaction={satisfaction?.status ?? null}
-                              satisfactionLoading={satisfactionLoading}
-                              satisfactionDetail={satisfaction?.detail}
-                              isMaterialAgePreference={req.source_field === 'bunk_with'}
-                              staffAgeBadge={req.source === 'staff'}
-                            />
-                          )
-                        })}
-                      </>
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        targetPerson={req.targetPerson ?? null}
+                        showSatisfaction={isConfirmedRequest(req)}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                      />
                     )
-                  })()}
+                  })}
+
+                  {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
+                  {staffRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
+                    return (
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        targetPerson={req.targetPerson ?? null}
+                        showSatisfaction={isConfirmedRequest(req)}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                      />
+                    )
+                  })}
+
+                  {ageRows.length > 0 && (parentRows.length > 0 || staffRows.length > 0) && (
+                    <AgePreferenceDivider />
+                  )}
+                  {ageRows.map((req) => {
+                    const satisfaction = satisfactionData[req.id]
+                    return (
+                      <BunkRequestRow
+                        key={req.id}
+                        request={req}
+                        showSatisfaction={true}
+                        satisfaction={satisfaction?.status ?? null}
+                        satisfactionLoading={satisfactionLoading}
+                        satisfactionDetail={satisfaction?.detail}
+                        isMaterialAgePreference={req.source_field === 'bunk_with'}
+                        staffAgeBadge={req.source === 'staff'}
+                      />
+                    )
+                  })}
                 </div>
               )}
           </section>

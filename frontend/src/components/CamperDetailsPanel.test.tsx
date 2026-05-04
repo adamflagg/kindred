@@ -859,8 +859,8 @@ describe('CamperDetailsPanel', () => {
       setupR3Mocks(bunkRequests)
 
       render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
-      // Wait briefly for any async-rendered content
-      await new Promise((r) => setTimeout(r, 50))
+      // Wait for the row to render before asserting the summary lines are absent.
+      await screen.findByText('Riley Sam')
       expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
       expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
     })

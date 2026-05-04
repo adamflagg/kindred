@@ -51,13 +51,9 @@ export const EMPTY_SATISFIED_INFO: SatisfiedRequestInfo = Object.freeze({
  * Scenario-aware slice computation. Builds an in-memory satisfaction predicate
  * from the bunk roster (personSet) and bunkmate grades, then delegates to the
  * shared aggregator for source classification + slice math.
- *
- * Public signature preserved across the Stage 3b.1 refactor — existing
- * BunkRequestProvider callers work unchanged.
  */
 export function computeSatisfiedRequestInfo(
   personRequests: BunkRequest[],
-  personCmId: number,
   personSet: Set<number>,
   bunkmateGrades: number[],
   requesterGrade: number | null
@@ -77,7 +73,6 @@ export function computeSatisfiedRequestInfo(
     return false
   }
 
-  void personCmId // preserved param for caller compatibility, not used internally
   return computeSlicesFromPredicate(personRequests, isSatisfied)
 }
 

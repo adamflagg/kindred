@@ -3,16 +3,25 @@
  */
 import { useMemo } from 'react'
 import { Link } from 'react-router'
-import { Heart, Home, Clock, CheckCircle, ChevronUp, ChevronDown } from 'lucide-react'
+import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
+import { isConfirmedRequest } from '../../utils/bunkRequest'
 import { BunkRequestRow } from '../BunkRequestRow'
+import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
 import type { RequestSlice } from '../../contexts/BunkRequestContext'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
+
+/** Augments a request with the resolved targetPerson used for sort + display.
+ *  EnhancedBunkRequest itself doesn't declare targetPerson — we attach it in
+ *  partitionInput below. */
+type WithTargetPerson<T> = T & {
+  targetPerson?: { first_name?: string; last_name?: string } | null
+}
 
 function ratioColor(slice: RequestSlice): string {
   if (slice.total === 0) return ''
@@ -45,31 +54,6 @@ interface BunkingStatusPanelProps {
   satisfactionLoading: boolean
 }
 
-// Single divider between parent and staff sections — labeled on both sides
-// with directional chevrons so staff can read which group is above and which
-// is below at a glance. Renders only when BOTH groups have rows.
-function ParentStaffDivider() {
-  return (
-    <div className="text-muted-foreground/70 my-3 flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] uppercase">
-      <span className="border-border/60 flex-1 border-t" />
-      <span className="inline-flex items-center gap-1">
-        Parent <ChevronUp className="h-3 w-3" aria-hidden="true" />
-      </span>
-      <span className="border-border/60 h-3 border-l" aria-hidden="true" />
-      <span className="inline-flex items-center gap-1">
-        <ChevronDown className="h-3 w-3" aria-hidden="true" /> Staff
-      </span>
-      <span className="border-border/60 flex-1 border-t" />
-    </div>
-  )
-}
-
-// Subtle hairline above the age-preference tail section — no label, just a
-// quiet visual break so age rows don't bleed into the staff/parent rows above.
-function AgePreferenceDivider() {
-  return <div className="border-border/60 my-2 border-t" aria-hidden="true" />
-}
-
 export function BunkingStatusPanel({
   camper,
   enrolledCampers,
@@ -79,48 +63,51 @@ export function BunkingStatusPanel({
   satisfactionData,
   satisfactionLoading,
 }: BunkingStatusPanelProps) {
-  // The per-camper list must agree with the summary above —
-  // both filter to status === 'resolved' so pending and declined rows
-  // don't render here with status-colored dots.
-  const personRequests = allBunkRequests.filter(
-    (r) => r.status === 'resolved' && r.request_type !== 'age_preference'
+  // The per-camper list must agree with the summary above — both filter to
+  // status === 'resolved' so pending and declined rows don't render with
+  // status-colored dots. `personRequests` covers non-age_preference resolved
+  // rows; resolved age prefs flow in via `agePreferenceRequests` and are
+  // merged into `summaryRequests` for both the slice summary and the row list.
+  const personRequests = useMemo(
+    () =>
+      allBunkRequests.filter((r) => r.status === 'resolved' && r.request_type !== 'age_preference'),
+    [allBunkRequests]
+  )
+
+  const resolvedAgePrefs = useMemo(
+    () => (agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
+    [agePreferenceRequests]
+  )
+
+  // Used for both the summary slices and the row partition so material parent
+  // age prefs (source_field='bunk_with') and staff age prefs (source='staff')
+  // contribute to "X/Y met" instead of only rendering as rows below.
+  const summaryRequests = useMemo(
+    () => [...personRequests, ...resolvedAgePrefs],
+    [personRequests, resolvedAgePrefs]
   )
 
   const slices = useMemo(
-    () => deriveSlicesFromSatisfactionMap(personRequests, satisfactionData),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allBunkRequests, satisfactionData]
+    () => deriveSlicesFromSatisfactionMap(summaryRequests, satisfactionData),
+    [summaryRequests, satisfactionData]
   )
 
   const showParent = slices.materialParent.total > 0
   const showStaff = slices.staff.total > 0
   const showSummary = showParent || showStaff
 
-  // R3: Combine person + resolved age preference requests into one list,
-  // then partition into parent / staff / age buckets for ordered rendering.
-  //
-  // targetPerson enrichment strategy (Case b): EnhancedBunkRequest carries
+  // R3: targetPerson enrichment strategy (Case b): EnhancedBunkRequest carries
   // `requestedPersonName` (a pre-built "First Last" string) for production
   // data. The partition utility sorts by `targetPerson.{first_name,last_name}`.
   // We split the string here so the sort works; if the string is absent (rare
   // edge case) the row gets a no-op sort key of '' which is acceptable.
-  // In tests, `targetPerson` is supplied directly via the cast in makeRequest()
+  // In tests, `targetPerson` is supplied directly via the WithTargetPerson type
   // and takes precedence via the `?? parsedFallback` below.
-  const renderableRequests = useMemo(
-    () => [
-      ...personRequests,
-      ...(agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
-    ],
-    [personRequests, agePreferenceRequests]
-  )
-
   const partitionInput = useMemo(
     () =>
-      renderableRequests.map((r) => {
-        // r may carry targetPerson directly (test injection or future enrichment)
-        const existing = (
-          r as unknown as { targetPerson?: { first_name?: string; last_name?: string } | null }
-        ).targetPerson
+      summaryRequests.map((r) => {
+        // r may carry targetPerson directly (test injection or future enrichment).
+        const existing = (r as WithTargetPerson<EnhancedBunkRequest>).targetPerson
         if (existing) return { ...r, targetPerson: existing }
         // Fall back: split requestedPersonName "First Last" into parts
         const name = r.requestedPersonName ?? ''
@@ -133,7 +120,7 @@ export function BunkingStatusPanel({
           : undefined
         return { ...r, targetPerson: parsedFallback }
       }),
-    [renderableRequests]
+    [summaryRequests]
   )
 
   const {
@@ -254,9 +241,7 @@ export function BunkingStatusPanel({
                   // we pass the targetPerson we already computed in partitionInput.
                   targetPerson={req.targetPerson as unknown as PersonsResponse | null}
                   satisfaction={sat?.status ?? null}
-                  showSatisfaction={
-                    req.status === 'resolved' && !!req.requestee_id && req.requestee_id > 0
-                  }
+                  showSatisfaction={isConfirmedRequest(req)}
                   satisfactionLoading={satisfactionLoading}
                   satisfactionDetail={sat?.detail}
                 />
@@ -272,9 +257,7 @@ export function BunkingStatusPanel({
                   request={req as unknown as BunkRequestsResponse}
                   targetPerson={req.targetPerson as unknown as PersonsResponse | null}
                   satisfaction={sat?.status ?? null}
-                  showSatisfaction={
-                    req.status === 'resolved' && !!req.requestee_id && req.requestee_id > 0
-                  }
+                  showSatisfaction={isConfirmedRequest(req)}
                   satisfactionLoading={satisfactionLoading}
                   satisfactionDetail={sat?.detail}
                 />
