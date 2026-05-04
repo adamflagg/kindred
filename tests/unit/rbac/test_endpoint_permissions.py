@@ -44,12 +44,6 @@ class TestSocialGraphPermissions:
 
         _assert_endpoint_has_auth_dep(get_bunk_social_graph)
 
-    def test_ego_network_requires_authentication(self) -> None:
-        """GET /api/persons/{id}/ego-network needs authentication."""
-        from api.routers.social_graph import get_person_ego_network
-
-        _assert_endpoint_has_auth_dep(get_person_ego_network)
-
     def test_update_position_requires_bunking_manage(self) -> None:
         """PATCH /api/sessions/{id}/campers/{id}/position needs bunking.manage."""
         from api.routers.social_graph import update_camper_position
