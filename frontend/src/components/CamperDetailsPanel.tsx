@@ -62,6 +62,7 @@ import { buildCamperAlerts } from '../utils/camperAlertUtils'
 import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext } from '../hooks'
 import type { BunkmateInfo } from '../contexts/BunkRequestContext'
+import { queryKeys } from '../utils/queryKeys'
 
 // Panel-augmented bunk request: extends the PB `BunkRequestsResponse` (the
 // shape `BunkRequestRow` consumes) with the same `requestedPersonName`
@@ -207,7 +208,7 @@ export default function CamperDetailsPanel({
 
   // Fetch camper details + all current-year enrollments
   const { data: camperData, isLoading: camperLoading } = useQuery({
-    queryKey: ['camper-details', camperId, currentYear],
+    queryKey: queryKeys.camperDetails(camperId, currentYear),
     queryFn: async () => {
       const personId = parseInt(camperId)
       const persons = await pb.collection('persons').getFullList({
@@ -317,7 +318,7 @@ export default function CamperDetailsPanel({
 
   // Fetch person data for siblings query
   const { data: person } = useQuery({
-    queryKey: ['person-for-siblings', camperId, currentYear],
+    queryKey: queryKeys.personForSiblings(camperId, currentYear),
     queryFn: async () => {
       const personId = parseInt(camperId)
       const persons = await pb.collection<PersonsResponse>('persons').getList(1, 1, {
@@ -330,7 +331,7 @@ export default function CamperDetailsPanel({
 
   // Fetch historical bunking data
   const { data: historicalData = [] } = useQuery({
-    queryKey: ['camper-history', camperId],
+    queryKey: queryKeys.camperHistory(camperId),
     queryFn: async () => {
       const personCmId = parseInt(camperId)
       const filter = `person.cm_id = ${personCmId} && year < ${currentYear}`
@@ -362,7 +363,7 @@ export default function CamperDetailsPanel({
 
   // Fetch bunk requests
   const { data: bunkRequests = [] } = useQuery<PanelBunkRequest[]>({
-    queryKey: ['person-bunk-requests', camper?.person_cm_id, currentYear],
+    queryKey: queryKeys.personBunkRequests(camper?.person_cm_id, currentYear),
     queryFn: async (): Promise<PanelBunkRequest[]> => {
       if (!camper?.person_cm_id) throw new Error('No camper person ID')
 
@@ -413,7 +414,7 @@ export default function CamperDetailsPanel({
 
   // Fetch siblings
   const { data: siblings = [] } = useQuery({
-    queryKey: ['camper-siblings-panel', person?.household_id, camperId, currentYear],
+    queryKey: queryKeys.camperSiblingsPanel(person?.household_id, camperId, currentYear),
     queryFn: async () => {
       const personCmId = parseInt(camperId)
       if (!person?.household_id || person.household_id === 0) return []
@@ -510,7 +511,7 @@ export default function CamperDetailsPanel({
   }
 
   const { data: originalBunkData } = useQuery({
-    queryKey: ['original-bunk-requests', camper?.person_cm_id, currentYear],
+    queryKey: queryKeys.originalBunkRequests(camper?.person_cm_id, currentYear),
     queryFn: async (): Promise<OriginalBunkData | null> => {
       if (!camper?.person_cm_id) throw new Error('No camper person ID')
       try {

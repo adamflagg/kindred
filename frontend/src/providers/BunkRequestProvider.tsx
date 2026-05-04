@@ -9,6 +9,7 @@ import {
   computeSatisfiedRequestInfo,
   EMPTY_SATISFIED_INFO,
 } from '../utils/computeSatisfiedRequestInfo'
+import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestProviderProps {
   sessionCmId: number
@@ -25,7 +26,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     isLoading,
     error,
   } = useQuery<BunkRequest[]>({
-    queryKey: ['all-bunk-requests', sessionCmId, currentYear],
+    queryKey: queryKeys.allBunkRequests(sessionCmId, currentYear),
     queryFn: async () => {
       // Inline getBunkRequests
       try {

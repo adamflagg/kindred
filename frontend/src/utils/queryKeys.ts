@@ -307,6 +307,42 @@ export const queryKeys = {
   bunkRequestsTooltipPrefix: () => ['bunk_requests_tooltip'] as const,
   requestSatisfactionPrefix: () => ['request-satisfaction'] as const,
   cohortRequestRelationsPrefix: () => ['cohort-request-relations'] as const,
+
+  // Parameterized fetch-site factories (Issue #1023, #1084)
+  allBunkRequests: (sessionCmId: number, year: number) =>
+    ['all-bunk-requests', sessionCmId, year] as const,
+  personBunkRequests: (cmId: number | undefined, year: number) =>
+    ['person-bunk-requests', cmId, year] as const,
+  personAllBunkRequests: (cmId: number | undefined, year: number) =>
+    ['person-all-bunk-requests', cmId, year] as const,
+  bunkRequestsTooltip: (cmId: number | undefined, year: number) =>
+    ['bunk_requests_tooltip', cmId, year] as const,
+  requestSatisfaction: (
+    personCmId: number | undefined,
+    assignedBunkCmId: number | undefined,
+    sessionCmId: number | undefined,
+    camperGrade: number | undefined,
+    year: number,
+    requestIdsKey: string
+  ) =>
+    [
+      'request-satisfaction',
+      personCmId,
+      assignedBunkCmId,
+      sessionCmId,
+      camperGrade,
+      year,
+      requestIdsKey,
+    ] as const,
+
+  // Parameterized fetch-site factories for CamperDetailsPanel (Issue #1025)
+  camperDetails: (camperId: string, year: number) => ['camper-details', camperId, year] as const,
+  personForSiblings: (camperId: string, year: number) =>
+    ['person-for-siblings', camperId, year] as const,
+  camperSiblingsPanel: (householdId: number | string | undefined, camperId: string, year: number) =>
+    ['camper-siblings-panel', householdId, camperId, year] as const,
+  originalBunkRequests: (cmId: number | undefined, year: number) =>
+    ['original-bunk-requests', cmId, year] as const,
   // Source-link keys are auxiliary — only merge/split mutations rewrite
   // source linkages. Pass `includeSourceLinks: true` to invalidate these.
   sourceLinksPrefix: () => ['source-links'] as const,

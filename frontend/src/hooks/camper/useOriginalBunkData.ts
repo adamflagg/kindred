@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import type { OriginalBunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 import type { OriginalBunkData } from './types'
+import { queryKeys } from '../../utils/queryKeys'
 
 export interface UseOriginalBunkDataResult {
   originalBunkData: OriginalBunkData | null
@@ -30,7 +31,7 @@ export function useOriginalBunkData(
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['original-bunk-requests', personCmId, currentYear],
+    queryKey: queryKeys.originalBunkRequests(personCmId, currentYear),
     queryFn: async (): Promise<OriginalBunkData | null> => {
       if (!personCmId) {
         throw new Error('No camper person ID')
