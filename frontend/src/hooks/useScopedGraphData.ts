@@ -17,6 +17,7 @@ import { socialGraphService } from '../services/socialGraph'
 import type { GraphData } from '../types/graph'
 import type { FilterState } from '../components/graph/graphFilter'
 import { unitToSlug } from '../components/graph/graphFilter'
+import { queryKeys } from '../utils/queryKeys'
 import { useYear } from './useCurrentYear'
 import { useApiWithAuth } from './useApiWithAuth'
 import { useScenario } from './useScenario'
@@ -45,15 +46,18 @@ export function useScopedGraphData(sessionCmId: number, filter: FilterState) {
   const isFilterActive = sig.units.length > 0 || sig.bunks.length > 0
 
   return useQuery<GraphData>({
-    queryKey: [
-      'social-graph-scoped',
+    // Keyed under the shared `'social-graph'` root so a single
+    // `socialGraphPrefix()` invalidation refreshes both this hook and the
+    // legacy useSocialGraphData. Without that prefix-match, request mutations
+    // would leave the rendered graph stale (Issue #1040, scan-it Finding #1).
+    queryKey: queryKeys.scopedSocialGraph(
       sessionCmId,
       currentYear,
       scenarioId,
       sig.units.join(','),
       sig.bunks.join(','),
-      sig.cross,
-    ],
+      sig.cross
+    ),
     enabled: !isAuthLoading,
     placeholderData: keepPreviousData,
     queryFn: async () => {
