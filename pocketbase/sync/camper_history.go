@@ -10,7 +10,10 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-// personBatchSize is the number of persons to process per batch for lookups
+// personBatchSize is the number of persons per PocketBase filter-string batch.
+// Bounded by SQLite filter-string length (each cm_id concatenates into a
+// `field = X || ...` filter). Distinct from the 500-size CampMinder API batches
+// in households.go / persons.go.
 const personBatchSize = 100
 
 // serviceNameCamperHistory is the canonical name for this sync service
