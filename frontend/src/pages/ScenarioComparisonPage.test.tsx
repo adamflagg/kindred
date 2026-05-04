@@ -5,6 +5,7 @@ import { afterEach } from 'vitest'
 import {
   CamperPill,
   ValidationScoreCard,
+  ValidationSection,
   getExportButtonLabel,
   getExportButtonTitle,
   type ValidationResult,
@@ -315,5 +316,131 @@ describe('getExportButtonTitle', () => {
 
   it('returns all tooltip when changeFilter is "all"', () => {
     expect(getExportButtonTitle('all')).toBe('Export all campers to CSV')
+  })
+})
+
+// ─── Issue #1083 + #1064: ValidationSection QueryGuard four-state coverage ───
+
+describe('ValidationSection — QueryGuard four states', () => {
+  const leftStats = makeStats({
+    material_parent_requests: 10,
+    satisfied_material_parent_requests: 8,
+    material_parent_request_satisfaction_rate: 0.8,
+  })
+  const leftValidation = makeValidation(leftStats)
+
+  it('loading state: renders loading spinner, not score cards', () => {
+    render(
+      <ValidationSection
+        isLoading={true}
+        error={null}
+        leftValidation={undefined}
+        rightValidation={undefined}
+        leftScenarioName="Before"
+        rightScenarioName="After"
+      />
+    )
+    // QueryGuard loading renders a spinner; score cards must not appear
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+    expect(screen.queryByText('Validation Details')).toBeNull()
+    // Loading indicator must be present (spinner text or aria)
+    expect(document.querySelector('.animate-spin')).not.toBeNull()
+  })
+
+  it('error state: renders error message, not score cards', () => {
+    const error = new Error('Network error')
+    render(
+      <ValidationSection
+        isLoading={false}
+        error={error}
+        leftValidation={undefined}
+        rightValidation={undefined}
+        leftScenarioName="Before"
+        rightScenarioName="After"
+      />
+    )
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+    expect(screen.queryByText('Validation Details')).toBeNull()
+    expect(screen.getByText(/Failed to load/i)).toBeInTheDocument()
+  })
+
+  it('empty state: renders empty message when both validations are null', () => {
+    render(
+      <ValidationSection
+        isLoading={false}
+        error={null}
+        leftValidation={null}
+        rightValidation={null}
+        leftScenarioName="Before"
+        rightScenarioName="After"
+      />
+    )
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+    expect(screen.queryByText('Validation Details')).toBeNull()
+    expect(screen.getByText(/No validation data available/i)).toBeInTheDocument()
+  })
+
+  it('success state: renders Validation Details card with both score cards', () => {
+    render(
+      <ValidationSection
+        isLoading={false}
+        error={null}
+        leftValidation={leftValidation}
+        rightValidation={leftValidation}
+        leftScenarioName="Before"
+        rightScenarioName="After"
+      />
+    )
+    expect(screen.getByText('Validation Details')).toBeInTheDocument()
+    expect(screen.getByText('Before')).toBeInTheDocument()
+    expect(screen.getByText('After')).toBeInTheDocument()
+    // Score cards should show stat tiles, not "Loading validation..."
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+  })
+})
+
+// ─── Issue #1064: ValidationScoreCard null guard removed ─────────────────────
+
+describe('ValidationScoreCard — no longer shows Loading placeholder', () => {
+  it('does not render "Loading validation..." text when validation is valid', () => {
+    const stats = makeStats({ material_parent_request_satisfaction_rate: 0.75 })
+    render(
+      <ValidationScoreCard label="Test Scenario" validation={makeValidation(stats)} side="left" />
+    )
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+  })
+})
+
+// ─── Asymmetric data: left resolves, right is null ────────────────────────────
+
+describe('ValidationSection — asymmetric data (left valid, right null)', () => {
+  it('shows Validation Details heading and "Not available" placeholder for the right card', () => {
+    const stats = makeStats({
+      material_parent_requests: 5,
+      satisfied_material_parent_requests: 5,
+      material_parent_request_satisfaction_rate: 1.0,
+    })
+    const leftValidation = makeValidation(stats)
+
+    render(
+      <ValidationSection
+        isLoading={false}
+        error={null}
+        leftValidation={leftValidation}
+        rightValidation={null}
+        leftScenarioName="Left"
+        rightScenarioName="Right"
+      />
+    )
+
+    // Success branch must be entered (heading visible)
+    expect(screen.getByText('Validation Details')).toBeInTheDocument()
+
+    // Right card should show "Not available" placeholder, not "Loading validation..."
+    expect(screen.getByText('Not available')).toBeInTheDocument()
+    expect(screen.queryByText('Loading validation...')).toBeNull()
+
+    // Left scenario name should be visible
+    expect(screen.getByText('Left')).toBeInTheDocument()
   })
 })

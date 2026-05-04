@@ -51,6 +51,7 @@ import {
   type LockGroupSummary,
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
+import { QueryGuard } from '../components/QueryGuard'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildMovedRows, MOVED_CSV_HEADERS } from '../utils/csvExportHelpers'
@@ -380,45 +381,48 @@ export default function ScenarioComparisonPage() {
   const isReady =
     Boolean(leftScenarioId) && Boolean(rightScenarioId) && leftScenarioId !== rightScenarioId
 
-  const { data: leftValidation } = useQuery<ValidationResult | null>({
-    queryKey: ['validation', leftScenarioId, sessionCmId, currentYear],
-    queryFn: async (): Promise<ValidationResult | null> => {
-      try {
-        const scenarioId = leftScenarioId === 'production' ? undefined : leftScenarioId
-        const result = await solverService.validateBunking(
-          sessionCmId.toString(),
-          currentYear,
-          scenarioId,
-          fetchWithAuth
-        )
-        return result as unknown as ValidationResult
-      } catch {
-        return null
-      }
+  const {
+    data: leftValidation,
+    isLoading: isLeftValidationLoading,
+    error: leftValidationError,
+  } = useQuery<ValidationResult>({
+    queryKey: queryKeys.scenarioValidation(leftScenarioId, sessionCmId, currentYear),
+    queryFn: async (): Promise<ValidationResult> => {
+      const scenarioId = leftScenarioId === 'production' ? undefined : leftScenarioId
+      const result = await solverService.validateBunking(
+        sessionCmId.toString(),
+        currentYear,
+        scenarioId,
+        fetchWithAuth
+      )
+      return result as unknown as ValidationResult
     },
     ...userDataOptions,
     enabled: Boolean(user) && sessionCmId > 0 && isReady,
   })
 
-  const { data: rightValidation } = useQuery<ValidationResult | null>({
-    queryKey: ['validation', rightScenarioId, sessionCmId, currentYear],
-    queryFn: async (): Promise<ValidationResult | null> => {
-      try {
-        const scenarioId = rightScenarioId === 'production' ? undefined : rightScenarioId
-        const result = await solverService.validateBunking(
-          sessionCmId.toString(),
-          currentYear,
-          scenarioId,
-          fetchWithAuth
-        )
-        return result as unknown as ValidationResult
-      } catch {
-        return null
-      }
+  const {
+    data: rightValidation,
+    isLoading: isRightValidationLoading,
+    error: rightValidationError,
+  } = useQuery<ValidationResult>({
+    queryKey: queryKeys.scenarioValidation(rightScenarioId, sessionCmId, currentYear),
+    queryFn: async (): Promise<ValidationResult> => {
+      const scenarioId = rightScenarioId === 'production' ? undefined : rightScenarioId
+      const result = await solverService.validateBunking(
+        sessionCmId.toString(),
+        currentYear,
+        scenarioId,
+        fetchWithAuth
+      )
+      return result as unknown as ValidationResult
     },
     ...userDataOptions,
     enabled: Boolean(user) && sessionCmId > 0 && isReady,
   })
+
+  const isValidationLoading = isLeftValidationLoading || isRightValidationLoading
+  const validationError = leftValidationError ?? rightValidationError ?? null
 
   // Type for expanded assignment
   interface ExpandedAssignment {
@@ -859,31 +863,14 @@ export default function ScenarioComparisonPage() {
         ) : (
           <>
             {/* Validation Score Comparison - Detailed breakdown */}
-            {(leftValidation ?? rightValidation) && (
-              <div className="card-lodge mb-6 overflow-hidden">
-                {/* Tinted header band — matches SolverProgressModal pattern */}
-                <div className="border-border bg-forest-50 dark:bg-forest-900/20 flex items-center gap-2 border-b px-4 py-3">
-                  <CheckCircle2 className="text-forest-600 dark:text-forest-400 h-5 w-5" />
-                  <h3 className="text-forest-900 dark:text-forest-100 font-semibold">
-                    Validation Details
-                  </h3>
-                </div>
-                <div className="bg-muted/20 grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
-                  {/* Left Scenario Score */}
-                  <ValidationScoreCard
-                    label={leftScenarioName}
-                    validation={leftValidation}
-                    side="left"
-                  />
-                  {/* Right Scenario Score */}
-                  <ValidationScoreCard
-                    label={rightScenarioName}
-                    validation={rightValidation}
-                    side="right"
-                  />
-                </div>
-              </div>
-            )}
+            <ValidationSection
+              isLoading={isValidationLoading}
+              error={validationError}
+              leftValidation={leftValidation}
+              rightValidation={rightValidation}
+              leftScenarioName={leftScenarioName}
+              rightScenarioName={rightScenarioName}
+            />
 
             {/* Metrics Summary */}
             <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -1187,6 +1174,60 @@ function StatBlockMuted({
   )
 }
 
+// ValidationSection — QueryGuard boundary for validation score comparison.
+// Handles loading / error / empty / success states so that ValidationScoreCard
+// only needs to render the success case.
+
+export interface ValidationSectionProps {
+  isLoading: boolean
+  error: Error | null
+  leftValidation: ValidationResult | null | undefined
+  rightValidation: ValidationResult | null | undefined
+  leftScenarioName: string
+  rightScenarioName: string
+}
+
+export function ValidationSection({
+  isLoading,
+  error,
+  leftValidation,
+  rightValidation,
+  leftScenarioName,
+  rightScenarioName,
+}: ValidationSectionProps) {
+  return (
+    <QueryGuard
+      isLoading={isLoading}
+      error={error}
+      data={leftValidation ?? rightValidation}
+      label="validation"
+      emptyMessage="No validation data available"
+    >
+      {() => (
+        <div className="card-lodge mb-6 overflow-hidden">
+          {/* Tinted header band — matches SolverProgressModal pattern */}
+          <div className="border-border bg-forest-50 dark:bg-forest-900/20 flex items-center gap-2 border-b px-4 py-3">
+            <CheckCircle2 className="text-forest-600 dark:text-forest-400 h-5 w-5" />
+            <h3 className="text-forest-900 dark:text-forest-100 font-semibold">
+              Validation Details
+            </h3>
+          </div>
+          <div className="bg-muted/20 grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+            {/* Left Scenario Score */}
+            <ValidationScoreCard label={leftScenarioName} validation={leftValidation} side="left" />
+            {/* Right Scenario Score */}
+            <ValidationScoreCard
+              label={rightScenarioName}
+              validation={rightValidation}
+              side="right"
+            />
+          </div>
+        </div>
+      )}
+    </QueryGuard>
+  )
+}
+
 // Validation Score Card Component - detailed validation stats
 export interface ValidationScoreCardProps {
   label: string
@@ -1195,16 +1236,15 @@ export interface ValidationScoreCardProps {
 }
 
 export function ValidationScoreCard({ label, validation, side }: ValidationScoreCardProps) {
+  // Note: loading / error / empty states are handled by the parent ValidationSection
+  // (QueryGuard boundary). This component only renders in the success path.
+  // null/undefined validation means the individual side has no data yet — render
+  // a neutral placeholder within the already-visible success card.
   if (!validation) {
     return (
-      <div
-        className={clsx(
-          'rounded-xl border-2 border-dashed p-4',
-          side === 'left' ? 'border-muted' : 'border-muted'
-        )}
-      >
+      <div className="border-muted rounded-xl border-2 border-dashed p-4">
         <div className="text-muted-foreground mb-2 truncate text-sm font-medium">{label}</div>
-        <div className="text-muted-foreground/60 text-sm">Loading validation...</div>
+        <div className="text-muted-foreground/60 text-sm">Not available</div>
       </div>
     )
   }
