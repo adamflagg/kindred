@@ -16,6 +16,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import type { Camper } from '../types/app-types'
 import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { EMPTY_CAMPER_SATISFACTION } from '../types/satisfaction'
 
 interface CamperCardProps {
   camper: Camper
@@ -71,7 +72,11 @@ function CamperCard({
   const { getLastYearHistory } = useCamperHistoryContext()
 
   // Get satisfied requests information from context (fetched from /api/satisfaction)
-  const satisfiedInfo = getSatisfiedRequestInfo(camper.person_cm_id)
+  // Suppress satisfaction lookups for unassigned campers and mid-drag cards
+  const satisfiedInfo =
+    isDragging || !camper.assigned_bunk_cm_id
+      ? EMPTY_CAMPER_SATISFACTION(camper.person_cm_id)
+      : getSatisfiedRequestInfo(camper.person_cm_id)
 
   // Get last year's history from context
   const lastYearHistory = getLastYearHistory(camper.person_cm_id)

@@ -226,3 +226,55 @@ describe('CamperCard parent-paramount icons', () => {
     expect(container.querySelector('[title*="staff request"]')).toBeNull()
   })
 })
+
+describe('CamperCard satisfaction suppression', () => {
+  beforeEach(() => {
+    setSatisfiedInfo({
+      counted_totals: { material_parent: { total: 1, satisfied: 0 }, staff: EMPTY_COUNT },
+      flags: {
+        parent_min_one_violation: true,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: true,
+      },
+    })
+  })
+
+  it('hides parent triangle when camper is unassigned', () => {
+    // fakeCamper has assigned_bunk_cm_id: null
+    const { container } = render(
+      <CamperCard
+        camper={fakeCamper}
+        isDraggable={true}
+        isProductionMode={false}
+        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
+      />
+    )
+    expect(container.querySelector('[title*="parent request"]')).toBeNull()
+  })
+
+  it('hides parent triangle while dragging', () => {
+    const { container } = render(
+      <CamperCard
+        camper={assignedCamper}
+        isDraggable={true}
+        isDragging={true}
+        isProductionMode={false}
+        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
+      />
+    )
+    expect(container.querySelector('[title*="parent request"]')).toBeNull()
+  })
+
+  it('shows parent triangle for assigned non-dragging camper with violation', () => {
+    const { container } = render(
+      <CamperCard
+        camper={assignedCamper}
+        isDraggable={true}
+        isDragging={false}
+        isProductionMode={false}
+        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
+      />
+    )
+    expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
+  })
+})
