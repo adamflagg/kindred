@@ -5,7 +5,6 @@ import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
-import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
 import { isConfirmedRequest } from '../../utils/bunkRequest'
 import { BunkRequestRow } from '../BunkRequestRow'
@@ -13,7 +12,6 @@ import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDivide
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
-import type { RequestSlice } from '../../contexts/BunkRequestContext'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -23,14 +21,16 @@ type WithTargetPerson<T> = T & {
   targetPerson?: { first_name?: string; last_name?: string } | null
 }
 
-function ratioColor(slice: RequestSlice): string {
+type BucketCount = { total: number; satisfied: number }
+
+function ratioColor(slice: BucketCount): string {
   if (slice.total === 0) return ''
   if (slice.satisfied === slice.total) return 'text-green-600 dark:text-green-400'
   if (slice.satisfied === 0) return 'text-red-600 dark:text-red-400'
   return 'text-amber-600 dark:text-amber-400'
 }
 
-function SliceLine({ label, slice }: { label: string; slice: RequestSlice }) {
+function SliceLine({ label, slice }: { label: string; slice: BucketCount }) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-muted-foreground text-sm">{label}</span>
@@ -87,10 +87,31 @@ export function BunkingStatusPanel({
     [personRequests, resolvedAgePrefs]
   )
 
-  const slices = useMemo(
-    () => deriveSlicesFromSatisfactionMap(summaryRequests, satisfactionData),
-    [summaryRequests, satisfactionData]
-  )
+  // Derive per-bucket counts directly from the satisfaction map rather than
+  // the legacy deriveSlicesFromSatisfactionMap → computeSlicesFromPredicate chain.
+  // Classification mirrors computeSlicesFromPredicate: source_field='bunk_with'
+  // → materialParent; source='staff' (catch-all) → staff.
+  const slices = useMemo(() => {
+    let mpTotal = 0,
+      mpSat = 0,
+      stTotal = 0,
+      stSat = 0
+    for (const req of summaryRequests) {
+      if (req.status !== 'resolved') continue
+      const sat = satisfactionData[req.id]?.status === 'satisfied'
+      if (req.source_field === 'bunk_with') {
+        mpTotal++
+        if (sat) mpSat++
+      } else if (req.source === 'staff') {
+        stTotal++
+        if (sat) stSat++
+      }
+    }
+    return {
+      materialParent: { total: mpTotal, satisfied: mpSat },
+      staff: { total: stTotal, satisfied: stSat },
+    }
+  }, [summaryRequests, satisfactionData])
 
   const showParent = slices.materialParent.total > 0
   const showStaff = slices.staff.total > 0
