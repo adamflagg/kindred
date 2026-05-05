@@ -81,8 +81,14 @@ export function BunkingStatusPanel({
   // merged into `summaryRequests` for both the slice summary and the row list.
   const personRequests = useMemo(
     () =>
-      allBunkRequests.filter((r) => r.status === 'resolved' && r.request_type !== 'age_preference'),
-    [allBunkRequests]
+      allBunkRequests.filter(
+        (r) =>
+          r.session_id === camper.session_cm_id &&
+          r.status === 'resolved' &&
+          !r.merged_into &&
+          r.request_type !== 'age_preference'
+      ),
+    [allBunkRequests, camper.session_cm_id]
   )
 
   const resolvedAgePrefs = useMemo(

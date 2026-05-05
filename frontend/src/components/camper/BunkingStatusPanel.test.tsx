@@ -559,3 +559,50 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
     expect(screen.getByText('S')).toBeInTheDocument()
   })
 })
+
+describe('BunkingStatusPanel — session-scoped row list (#1161)', () => {
+  it('hides cross-session rows — only session_id matching camper.session_cm_id renders', () => {
+    // camper.session_cm_id === 1000001 (from makeCamper)
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'req-session-match',
+        session_id: 1000001,
+        status: 'resolved',
+        requestedPersonName: 'Liam Garcia',
+      }),
+      makeRequest({
+        id: 'req-session-other',
+        session_id: 1000006,
+        status: 'resolved',
+        requestedPersonName: 'Samuel Johnson',
+      }),
+    ]
+    renderPanelWith({ allBunkRequests: requests, satisfactionData: {} })
+
+    expect(screen.getByText('Liam Garcia')).toBeTruthy()
+    expect(screen.queryByText('Samuel Johnson')).toBeNull()
+  })
+
+  it('hides merged rows — merged_into non-empty filters out the row', () => {
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'req-non-merged',
+        session_id: 1000001,
+        status: 'resolved',
+        merged_into: '',
+        requestedPersonName: 'Liam Garcia',
+      }),
+      makeRequest({
+        id: 'req-merged',
+        session_id: 1000001,
+        status: 'resolved',
+        merged_into: 'req-non-merged',
+        requestedPersonName: 'Olivia Chen',
+      }),
+    ]
+    renderPanelWith({ allBunkRequests: requests, satisfactionData: {} })
+
+    expect(screen.getByText('Liam Garcia')).toBeTruthy()
+    expect(screen.queryByText('Olivia Chen')).toBeNull()
+  })
+})
