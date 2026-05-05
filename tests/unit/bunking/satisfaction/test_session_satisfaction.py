@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from api.constants.collections import BUNK_ASSIGNMENTS, BUNK_ASSIGNMENTS_DRAFT, BUNK_REQUESTS, PERSONS
 from bunking.satisfaction.aggregate import session_satisfaction
 from bunking.satisfaction.api_shape import SatisfactionResponse
 from bunking.satisfaction.bucket import RequestBucket
@@ -30,26 +31,30 @@ def _assignment(person_cm_id: int, bunk_cm_id: int) -> Any:
     return a
 
 
-def _build_pb_mock(persons: list[Any], assignments: list[Any], requests: list[dict[str, Any]]) -> MagicMock:
-    pb = MagicMock()
+def _build_pb_mock(
+    persons: list[Any],
+    assignments: list[Any],
+    requests: list[dict[str, Any]],
+    draft_assignments: list[Any] | None = None,
+) -> MagicMock:
+    _draft = draft_assignments if draft_assignments is not None else []
 
-    def _collection(name: str) -> Any:
+    def collection(name: str) -> Any:
         col = MagicMock()
-        # Match the constant names used in session_satisfaction.
-        # The mock returns the right list based on which collection was requested.
-        if "person" in name.lower():
+        if name == PERSONS:
             col.get_full_list.return_value = persons
-        elif "draft" in name.lower():
-            col.get_full_list.return_value = []  # empty for prod-path tests
-        elif "assignment" in name.lower():
+        elif name == BUNK_ASSIGNMENTS:
             col.get_full_list.return_value = assignments
-        elif "request" in name.lower():
+        elif name == BUNK_ASSIGNMENTS_DRAFT:
+            col.get_full_list.return_value = _draft
+        elif name == BUNK_REQUESTS:
             col.get_full_list.return_value = requests
         else:
-            col.get_full_list.return_value = []
+            raise AssertionError(f"unexpected collection: {name}")
         return col
 
-    pb.collection.side_effect = _collection
+    pb = MagicMock()
+    pb.collection.side_effect = collection
     return pb
 
 
@@ -105,8 +110,6 @@ class TestSessionSatisfactionProductionPath:
 
 class TestSessionSatisfactionScenarioPath:
     def test_scenario_id_routes_to_draft_collection(self) -> None:
-        from api.constants.collections import BUNK_ASSIGNMENTS, BUNK_ASSIGNMENTS_DRAFT
-
         persons = [_person(1)]
         assignments = [_assignment(1, 100)]
         requests: list[dict[str, Any]] = []
