@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -172,12 +173,8 @@ class TestUpdateScenarioGenericExceptionNoLeak:
         from api.routers.scenarios import router
 
         mock_pb = MagicMock()
-        # First call (get_one) succeeds, second call (update) explodes with non-PB error
-        mock_pb.collection.return_value.get_one.return_value = MagicMock(
-            id="abc",
-            session_cm_id=1,
-            year=2025,
-        )
+        # update_scenario calls pb.collection(SAVED_SCENARIOS).update(...) directly;
+        # there is no get_one preflight, so only the update side-effect needs setup.
         mock_pb.collection.return_value.update.side_effect = _generic_boom()
         app = _make_app(router)
         with patch("api.routers.scenarios.pb", mock_pb):
@@ -281,6 +278,7 @@ class TestGetPipelineTracePbError:
     """GET /api/debug/pipeline-traces/{trace_id} — explicit ClientResponseError handling."""
 
     @staticmethod
+    @contextmanager
     def _client_with_pb_side_effect(side_effect: Any) -> Iterator[TestClient]:
         from api.routers.debug import router
 
@@ -292,19 +290,25 @@ class TestGetPipelineTracePbError:
 
     @pytest.fixture
     def client_pb_404(self) -> Iterator[TestClient]:
-        yield from self._client_with_pb_side_effect(_make_pb_error(status=404))
+        with self._client_with_pb_side_effect(_make_pb_error(status=404)) as client:
+            yield client
 
     @pytest.fixture
     def client_pb_500(self) -> Iterator[TestClient]:
-        yield from self._client_with_pb_side_effect(_make_pb_error(status=500))
+        with self._client_with_pb_side_effect(_make_pb_error(status=500)) as client:
+            yield client
 
     @pytest.fixture
     def client_fake_status(self) -> Iterator[TestClient]:
-        yield from self._client_with_pb_side_effect(_FakeStatusError(status=404))
+        with self._client_with_pb_side_effect(_FakeStatusError(status=404)) as client:
+            yield client
 
     @pytest.fixture
     def client_pb_404_sensitive(self) -> Iterator[TestClient]:
-        yield from self._client_with_pb_side_effect(_make_pb_error(status=404, data="sensitive PocketBase internals"))
+        with self._client_with_pb_side_effect(
+            _make_pb_error(status=404, data="sensitive PocketBase internals")
+        ) as client:
+            yield client
 
     def test_pb_404_returns_404_with_trace_id_message(self, client_pb_404: TestClient) -> None:
         resp = client_pb_404.get("/api/debug/pipeline-traces/missing-id")
@@ -368,3 +372,145 @@ class TestLoadTraceRecordHelper:
         with patch("api.routers.debug.pb", mock_pb):
             with pytest.raises(_FakeStatusError):
                 _load_trace_record("any-id")
+
+
+# ===========================================================================
+# Additional sweep — HTTPException(500, "<hardcoded>") sites NOT covered by
+# the original PR scope. CLAUDE.md says: never use HTTPException(500, ...).
+# Always let the global handler return a generic "Internal server error".
+# ===========================================================================
+
+
+class TestGetScenarioGenericExceptionNoLeak:
+    """GET /api/scenarios/{id} — generic Exception must surface generic 500."""
+
+    @pytest.fixture
+    def client(self) -> Iterator[TestClient]:
+        from api.routers.scenarios import router
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.side_effect = _generic_boom()
+        app = _make_app(router)
+        with patch("api.routers.scenarios.pb", mock_pb):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def test_returns_500_with_generic_detail(self, client: TestClient) -> None:
+        resp = client.get("/api/scenarios/abc")
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal server error"}
+
+    def test_no_exception_text_leak(self, client: TestClient) -> None:
+        resp = client.get("/api/scenarios/abc")
+        assert SENSITIVE_MARKER not in resp.text
+
+
+class TestSolveScenarioGenericExceptionNoLeak:
+    """POST /api/scenarios/{id}/solve — generic Exception must surface generic 500."""
+
+    @pytest.fixture
+    def client(self) -> Iterator[TestClient]:
+        from api.routers.scenarios import router
+
+        mock_pb = MagicMock()
+        # solve_scenario fetches the scenario first via get_one — make that explode.
+        mock_pb.collection.return_value.get_one.side_effect = _generic_boom()
+        app = _make_app(router)
+        with patch("api.routers.scenarios.pb", mock_pb):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def test_returns_500_with_generic_detail(self, client: TestClient) -> None:
+        resp = client.post("/api/scenarios/abc/solve", json={"year": 2025})
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal server error"}
+
+    def test_no_exception_text_leak(self, client: TestClient) -> None:
+        resp = client.post("/api/scenarios/abc/solve", json={"year": 2025})
+        assert SENSITIVE_MARKER not in resp.text
+
+
+class TestClearScenarioGenericExceptionNoLeak:
+    """POST /api/scenarios/{id}/clear — generic Exception must surface generic 500."""
+
+    @pytest.fixture
+    def client(self) -> Iterator[TestClient]:
+        from api.routers.scenarios import router
+
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_one.return_value = MagicMock(id="abc")
+        mock_pb.collection.return_value.get_full_list.side_effect = _generic_boom()
+        app = _make_app(router)
+        with patch("api.routers.scenarios.pb", mock_pb):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def test_returns_500_with_generic_detail(self, client: TestClient) -> None:
+        resp = client.post("/api/scenarios/abc/clear", json={"year": 2025})
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal server error"}
+
+    def test_no_exception_text_leak(self, client: TestClient) -> None:
+        resp = client.post("/api/scenarios/abc/clear", json={"year": 2025})
+        assert SENSITIVE_MARKER not in resp.text
+
+
+class TestClearParseAnalysisSentinelNoLeak:
+    """DELETE /api/debug/parse-analysis — repository sentinel must surface generic 500.
+
+    Unlike scenario endpoints, clear_parse_analysis triggers HTTPException(500) via
+    a sentinel check (`if deleted_count < 0`) rather than an exception handler. Per
+    CLAUDE.md the same rule applies: route through the global handler instead.
+    """
+
+    @pytest.fixture
+    def client(self) -> Iterator[TestClient]:
+        from api.routers.debug import router
+
+        mock_repo = MagicMock()
+        mock_repo.clear_all.return_value = -1  # sentinel: failure
+        app = _make_app(router)
+        with patch("api.routers.debug.get_debug_parse_repository", return_value=mock_repo):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def test_returns_500_with_generic_detail(self, client: TestClient) -> None:
+        resp = client.delete("/api/debug/parse-analysis")
+        assert resp.status_code == 500
+        assert resp.json() == {"detail": "Internal server error"}
+
+
+# ===========================================================================
+# Item 3 (companion) — evaluate_score must route ClientResponseError through
+# pb_error_to_http (404 stays 404, PB 5xx → 502), like its sibling endpoints.
+# ===========================================================================
+
+
+class TestEvaluateScorePbErrorRouting:
+    """GET /api/scenarios/score — PB errors map via pb_error_to_http, not generic 500."""
+
+    @pytest.fixture
+    def client_pb_404(self) -> Iterator[TestClient]:
+        from api.routers.scenarios import router
+
+        app = _make_app(router)
+        with (
+            patch("api.routers.scenarios.build_session_context", side_effect=_make_pb_error(status=404)),
+            patch("api.routers.scenarios.pb", MagicMock()),
+        ):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    @pytest.fixture
+    def client_pb_500(self) -> Iterator[TestClient]:
+        from api.routers.scenarios import router
+
+        app = _make_app(router)
+        with (
+            patch("api.routers.scenarios.build_session_context", side_effect=_make_pb_error(status=500)),
+            patch("api.routers.scenarios.pb", MagicMock()),
+        ):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def test_pb_404_returns_404(self, client_pb_404: TestClient) -> None:
+        resp = client_pb_404.get("/api/scenarios/score?session_id=1&year=2025")
+        assert resp.status_code == 404
+
+    def test_pb_500_returns_502(self, client_pb_500: TestClient) -> None:
+        resp = client_pb_500.get("/api/scenarios/score?session_id=1&year=2025")
+        assert resp.status_code == 502

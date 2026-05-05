@@ -339,17 +339,30 @@ class TestClearParseAnalysisEndpoint:
 
     @pytest.fixture
     def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
-        """Create test client with mocked repositories."""
+        """Create test client with mocked repositories.
+
+        The global exception handler is registered here so the sentinel-failure
+        path (RuntimeError → generic 500) is exercised the same way it is in
+        production.
+        """
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             mock_get_debug_repo.return_value = mock_repos["debug_repo"]
 
             from api.routers.debug import router
 
             app = FastAPI()
+
+            @app.exception_handler(Exception)
+            async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+                return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
             app.include_router(router)
             _override_auth(app)
 
-            yield TestClient(app), mock_repos
+            yield TestClient(app, raise_server_exceptions=False), mock_repos
 
     def test_clear_deletes_all_debug_results(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that clear endpoint deletes all debug results."""
@@ -366,7 +379,12 @@ class TestClearParseAnalysisEndpoint:
         mock_repos["debug_repo"].clear_all.assert_called_once()
 
     def test_clear_returns_error_on_failure(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
-        """Test that clear endpoint returns error on failure."""
+        """Test that the sentinel `-1` from the repository surfaces as a generic 500.
+
+        The endpoint raises RuntimeError; the global exception handler maps it
+        to the standard "Internal server error" payload — no implementation
+        detail leaked.
+        """
         client, mock_repos = client_with_mocks
 
         mock_repos["debug_repo"].clear_all.return_value = -1  # Error indicator
@@ -374,6 +392,7 @@ class TestClearParseAnalysisEndpoint:
         response = client.delete("/api/debug/parse-analysis")
 
         assert response.status_code == 500
+        assert response.json() == {"detail": "Internal server error"}
 
 
 class TestListOriginalRequestsEndpoint:

@@ -375,6 +375,8 @@ async def evaluate_score(
             "grade_flow_details": breakdown.grade_flow_details,
         }
 
+    except ClientResponseError as e:
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error evaluating score: {e}", exc_info=True)
         raise
@@ -421,7 +423,7 @@ async def get_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error getting scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get scenario")
+        raise
 
 
 @router.put("/{scenario_id}")
@@ -707,7 +709,7 @@ async def solve_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error starting solver for scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to start solver")
+        raise
 
 
 @router.post("/{scenario_id}/clear")
@@ -741,4 +743,4 @@ async def clear_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error clearing scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to clear scenario")
+        raise
