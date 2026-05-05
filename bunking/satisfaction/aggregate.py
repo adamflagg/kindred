@@ -11,6 +11,7 @@ per person.
 
 from __future__ import annotations
 
+import concurrent.futures
 from collections import defaultdict
 from typing import Any, NotRequired, TypedDict
 
@@ -159,25 +160,32 @@ def session_satisfaction(
     # session_relation_filter covers bunk_assignments (relation field).
     session_relation_filter = " || ".join(f"session.cm_id = {sid}" for sid in session_cm_ids)
 
-    persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year}")
-    person_grades: dict[int, int] = {}
-    for p in persons:
-        cm_id = getattr(p, "cm_id", None)
-        grade = getattr(p, "grade", None)
-        if cm_id is not None and grade is not None:
-            person_grades[int(cm_id)] = int(grade)
-
     # scenario_id is router-validated against the PB record-id pattern (^[a-zA-Z0-9]{15}$).
     # Do not call this function directly with an unvalidated/untrusted scenario_id value.
     if scenario_id:
-        assignments = pb_client.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list(
-            filter=(f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})")
-        )
+        assignments_collection = BUNK_ASSIGNMENTS_DRAFT
+        assignments_filter = f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})"
     else:
-        assignments = pb_client.collection(BUNK_ASSIGNMENTS).get_full_list(
-            filter=f"year = {year} && ({session_relation_filter})"
-        )
+        assignments_collection = BUNK_ASSIGNMENTS
+        assignments_filter = f"year = {year} && ({session_relation_filter})"
 
+    requests_filter = (
+        f"({session_id_filter}) && year = {year} && status = \"resolved\" && (merged_into = '' || merged_into = null)"
+    )
+
+    # Task 36: fetch assignments + requests in parallel — they are independent queries.
+    # persons must come AFTER assignments because we scope it to person_to_bunk.keys().
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        assignments_future = executor.submit(
+            lambda: pb_client.collection(assignments_collection).get_full_list(filter=assignments_filter)
+        )
+        requests_future = executor.submit(
+            lambda: pb_client.collection(BUNK_REQUESTS).get_full_list(filter=requests_filter)
+        )
+        assignments = assignments_future.result()
+        raw_requests = requests_future.result()
+
+    # Build person_to_bunk from assignments so we can scope the persons fetch.
     person_to_bunk: dict[int, int] = {}
     bunk_to_persons: dict[int, list[int]] = defaultdict(list)
     for a in assignments:
@@ -189,19 +197,27 @@ def session_satisfaction(
         person_to_bunk[pid] = bid
         bunk_to_persons[bid].append(pid)
 
+    # Task 34: fetch only the persons whose cm_id appears in assignments, in chunks of 100
+    # to keep PocketBase filter strings under the practical URL length limit.
+    needed_cm_ids = sorted(person_to_bunk.keys())
+    person_grades: dict[int, int] = {}
+    if needed_cm_ids:
+        _CHUNK = 100
+        for chunk_start in range(0, len(needed_cm_ids), _CHUNK):
+            chunk = needed_cm_ids[chunk_start : chunk_start + _CHUNK]
+            cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
+            persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year} && ({cm_id_filter})")
+            for p in persons:
+                cm_id = getattr(p, "cm_id", None)
+                grade = getattr(p, "grade", None)
+                if cm_id is not None and grade is not None:
+                    person_grades[int(cm_id)] = int(grade)
+
     bunkmate_grades: dict[int, list[int]] = {}
     for pid, bid in person_to_bunk.items():
         bunkmate_grades[pid] = [
             person_grades[other] for other in bunk_to_persons[bid] if other != pid and other in person_grades
         ]
-
-    raw_requests = pb_client.collection(BUNK_REQUESTS).get_full_list(
-        filter=(
-            f"({session_id_filter}) && year = {year} "
-            f'&& status = "resolved" '
-            f"&& (merged_into = '' || merged_into = null)"
-        )
-    )
 
     requests_by_requester: dict[int, list[BunkRequestRow]] = defaultdict(list)
     for r in raw_requests:

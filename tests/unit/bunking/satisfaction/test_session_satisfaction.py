@@ -378,3 +378,54 @@ def test_unknown_source_field_raises_on_classify() -> None:
     pb = _build_pb_mock(persons, assignments, requests)
     with pytest.raises(ValueError, match="unknown source_field"):
         session_satisfaction([999], 2026, None, pb)
+
+
+# ---------------------------------------------------------------------------
+# Task 34 — Persons fetch scoped to assigned cm_ids
+# ---------------------------------------------------------------------------
+
+
+def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
+    """Persons fetch must reference only the cm_ids present in bunk assignments.
+
+    Previously the filter was the broad ``year = {year}`` which scanned all
+    persons in the year.  After Task 34 the filter must contain the specific
+    cm_ids that appear in the assignment list, not a year-wide scan.
+    """
+    from types import SimpleNamespace
+
+    captured_filters: list[str] = []
+
+    def make_collection(name: str) -> Any:
+        col = MagicMock()
+        if name == PERSONS:
+
+            def capture(filter: str = "", **_: Any) -> list[Any]:
+                captured_filters.append(filter)
+                return []
+
+            col.get_full_list.side_effect = capture
+        elif name == BUNK_ASSIGNMENTS:
+            col.get_full_list.return_value = [
+                SimpleNamespace(person_cm_id=1, bunk_cm_id=10),
+                SimpleNamespace(person_cm_id=2, bunk_cm_id=10),
+            ]
+        elif name == BUNK_REQUESTS:
+            col.get_full_list.return_value = []
+        else:
+            raise AssertionError(f"unexpected collection: {name}")
+        return col
+
+    pb = MagicMock()
+    pb.collection.side_effect = make_collection
+
+    session_satisfaction(session_cm_ids=[5], year=2026, scenario_id=None, pb_client=pb)
+
+    # At least one persons filter must have been captured (chunked loop may produce multiple).
+    assert captured_filters, "PERSONS collection was never queried"
+    # All chunks must reference cm_ids 1 and 2 (they're in the same chunk of 100).
+    persons_filter = captured_filters[0]
+    assert "cm_id = 1" in persons_filter
+    assert "cm_id = 2" in persons_filter
+    # The filter must NOT be the old broad year-only filter.
+    assert persons_filter != f"year = 2026"
