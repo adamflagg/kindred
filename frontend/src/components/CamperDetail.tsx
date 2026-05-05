@@ -14,7 +14,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
-import { EMPTY_CAMPER_SATISFACTION } from '../types/satisfaction'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 // Import extracted hooks
@@ -26,6 +26,8 @@ import {
   useAllBunkRequests,
   useSatisfactionData,
 } from '../hooks/camper'
+import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import type { SatisfactionMap } from '../hooks/camper/types'
 
 // Import extracted UI components
 import {
@@ -37,6 +39,12 @@ import {
   CampJourneyTimeline,
   SiblingsPanel,
 } from './camper'
+import type { Camper } from '../types/app-types'
+import type {
+  HistoricalRecord,
+  OriginalBunkData,
+  SiblingWithEnrollment,
+} from '../hooks/camper/types'
 
 /**
  * Format pronouns display - use actual pronouns fields from V2 schema
@@ -80,159 +88,46 @@ function getSessionShortName(
   return session.name ?? 'Unknown'
 }
 
-export default function CamperDetail() {
-  const { camperId } = useParams<{ camperId: string }>()
-  const currentYear = useYear()
-  const { hasPermission, isAdmin } = usePermissions()
-  const canManageBunking = hasPermission(Permission.BUNKING_MANAGE)
+interface CamperDetailBodyProps {
+  camper: Camper
+  enrolledCampers: Camper[]
+  currentYear: number
+  person: PersonsResponse | undefined
+  allBunkRequests: EnhancedBunkRequest[]
+  satisfactionData: SatisfactionMap
+  satisfactionLoading: boolean
+  originalBunkData: OriginalBunkData | null | undefined
+  siblings: SiblingWithEnrollment[]
+  siblingsLoading: boolean
+  siblingsError: Error | null
+  camperHistory: HistoricalRecord[]
+  canManageBunking: boolean
+  isAdmin: boolean
+}
 
-  // Parse and validate the person CampMinder ID
-  const personCmId = camperId ? parseInt(camperId, 10) : null
-  const isValidPersonId = !!personCmId && !isNaN(personCmId)
-
-  // Fetch enrolled campers using extracted hook
-  const {
-    enrolledCampers,
-    allAttendees,
-    isLoading: camperLoading,
-    error: camperError,
-  } = useCamperEnrollment(personCmId, currentYear)
-
-  // Get the person data separately for displaying even if no enrollments
-  const { data: person, error: personError } = useQuery({
-    queryKey: ['person', personCmId, currentYear],
-    queryFn: async () => {
-      if (!personCmId) throw new Error('Invalid person ID')
-      const persons = await pb.collection<PersonsResponse>('persons').getList(1, 1, {
-        filter: `cm_id = ${personCmId} && year = ${currentYear}`,
-      })
-
-      if (persons.items.length === 0) {
-        throw new Error(`Person with CampMinder ID ${personCmId} not found`)
-      }
-
-      return persons.items[0]
-    },
-    enabled: isValidPersonId,
-    retry: false,
-    staleTime: 0,
-  })
-
-  // Log person fetch error if any
-  if (personError) {
-    console.error('Error fetching person:', personError)
-  }
-
-  // Select primary camper: prefer enrolled, fall back to first attendee
-  const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
-
-  // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
-  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
-
-  // Fetch original CSV data using extracted hook
-  const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
-
-  // Fetch all bunk requests using extracted hook
-  const { allBunkRequests } = useAllBunkRequests(camper?.person_cm_id, currentYear)
-
-  // Fetch satisfaction data using extracted hook
-  const { satisfactionData, isLoading: satisfactionLoading } = useSatisfactionData(
-    camper?.person_cm_id,
-    camper?.assigned_bunk_cm_id,
-    camper?.session_cm_id,
-    camper?.grade,
-    currentYear,
-    allBunkRequests
-  )
-
-  // Authoritative per-bucket counts from /api/satisfaction (#1159). Read via
-  // useContext so the page degrades to empty-state in tests/storybook that
-  // don't wrap with BunkRequestProvider — it's already a defensive fallback.
-  const bunkRequestCtx = useContext(BunkRequestContext)
-  const camperSatisfaction =
-    bunkRequestCtx && camper?.person_cm_id
-      ? bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
-      : EMPTY_CAMPER_SATISFACTION(camper?.person_cm_id ?? 0)
-
-  // Fetch siblings using extracted hook
-  const {
-    siblings,
-    isLoading: siblingsLoading,
-    error: siblingsError,
-  } = useSiblings(person?.household_id, personCmId, currentYear)
-
-  // Loading state
-  if (camperLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="border-muted border-t-primary h-8 w-8 animate-spin rounded-full border-4"></div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (camperError) {
-    return (
-      <div className="py-12 text-center">
-        <p className="text-muted-foreground">Error loading person details</p>
-        <p className="text-muted-foreground mt-2 text-sm">
-          {camperError.message || 'Unable to load person information.'}
-        </p>
-      </div>
-    )
-  }
-
-  // Show person info even if no current enrollments
-  if ((person || allAttendees.length === 0) && !camper) {
-    const displayPerson =
-      person ??
-      (allAttendees.length === 0 && personCmId
-        ? {
-            first_name: 'Person',
-            last_name: `#${personCmId}`,
-            cm_id: personCmId,
-          }
-        : null)
-
-    if (displayPerson) {
-      return (
-        <div className="space-y-6">
-          <div className="dark:bg-card border-border rounded-2xl border bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <Link
-                  to="/campers"
-                  className="text-muted-foreground hover:text-primary mb-2 inline-block text-sm font-medium"
-                >
-                  ← Back to All Campers
-                </Link>
-                <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
-                  {displayPerson.first_name} {displayPerson.last_name}
-                </h1>
-                <p className="text-muted-foreground mt-2 text-lg">
-                  Person ID: {displayPerson.cm_id}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card border-border rounded-2xl border p-6 shadow-sm">
-            <p className="text-muted-foreground">
-              This person has no active enrollments for {currentYear}.
-            </p>
-          </div>
-        </div>
-      )
-    }
-  }
-
-  if (!camper) {
-    return (
-      <div className="py-12 text-center">
-        <p className="text-muted-foreground">Unable to load camper details</p>
-      </div>
-    )
-  }
+/**
+ * Renders the full camper detail UI. Must be mounted inside a BunkRequestProvider
+ * so that useContext(BunkRequestContext) resolves to the session-scoped context.
+ */
+function CamperDetailBody({
+  camper,
+  enrolledCampers,
+  currentYear,
+  person,
+  allBunkRequests,
+  satisfactionData,
+  satisfactionLoading,
+  originalBunkData,
+  siblings,
+  siblingsLoading,
+  siblingsError,
+  camperHistory,
+  canManageBunking,
+  isAdmin,
+}: CamperDetailBodyProps) {
+  // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
+  const bunkRequestCtx = useContext(BunkRequestContext)!
+  const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
 
   // Computed values - use discrete columns instead of JSON parsing
   const location = getLocationDisplay(
@@ -345,5 +240,177 @@ export default function CamperDetail() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function CamperDetail() {
+  const { camperId } = useParams<{ camperId: string }>()
+  const currentYear = useYear()
+  const { hasPermission, isAdmin } = usePermissions()
+  const canManageBunking = hasPermission(Permission.BUNKING_MANAGE)
+
+  // Parse and validate the person CampMinder ID
+  const personCmId = camperId ? parseInt(camperId, 10) : null
+  const isValidPersonId = !!personCmId && !isNaN(personCmId)
+
+  // Fetch enrolled campers using extracted hook
+  const {
+    enrolledCampers,
+    allAttendees,
+    isLoading: camperLoading,
+    error: camperError,
+  } = useCamperEnrollment(personCmId, currentYear)
+
+  // Get the person data separately for displaying even if no enrollments
+  const { data: person, error: personError } = useQuery({
+    queryKey: ['person', personCmId, currentYear],
+    queryFn: async () => {
+      if (!personCmId) throw new Error('Invalid person ID')
+      const persons = await pb.collection<PersonsResponse>('persons').getList(1, 1, {
+        filter: `cm_id = ${personCmId} && year = ${currentYear}`,
+      })
+
+      if (persons.items.length === 0) {
+        throw new Error(`Person with CampMinder ID ${personCmId} not found`)
+      }
+
+      return persons.items[0]
+    },
+    enabled: isValidPersonId,
+    retry: false,
+    staleTime: 0,
+  })
+
+  // Log person fetch error if any
+  if (personError) {
+    console.error('Error fetching person:', personError)
+  }
+
+  // Select primary camper: prefer enrolled, fall back to first attendee
+  const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
+
+  // Fetch camper's history using extracted hook (pass all attendees for status-aware filtering)
+  const { camperHistory } = useCamperHistory(personCmId, currentYear, camper, allAttendees)
+
+  // Fetch original CSV data using extracted hook
+  const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
+
+  // Fetch all bunk requests using extracted hook
+  const { allBunkRequests } = useAllBunkRequests(camper?.person_cm_id, currentYear)
+
+  // Fetch satisfaction data using extracted hook
+  const { satisfactionData, isLoading: satisfactionLoading } = useSatisfactionData(
+    camper?.person_cm_id,
+    camper?.assigned_bunk_cm_id,
+    camper?.session_cm_id,
+    camper?.grade,
+    currentYear,
+    allBunkRequests
+  )
+
+  // Fetch siblings using extracted hook
+  const {
+    siblings,
+    isLoading: siblingsLoading,
+    error: siblingsError,
+  } = useSiblings(person?.household_id, personCmId, currentYear)
+
+  // Loading state
+  if (camperLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="border-muted border-t-primary h-8 w-8 animate-spin rounded-full border-4"></div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (camperError) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-muted-foreground">Error loading person details</p>
+        <p className="text-muted-foreground mt-2 text-sm">
+          {camperError.message || 'Unable to load person information.'}
+        </p>
+      </div>
+    )
+  }
+
+  // Show person info even if no current enrollments
+  if ((person || allAttendees.length === 0) && !camper) {
+    const displayPerson =
+      person ??
+      (allAttendees.length === 0 && personCmId
+        ? {
+            first_name: 'Person',
+            last_name: `#${personCmId}`,
+            cm_id: personCmId,
+          }
+        : null)
+
+    if (displayPerson) {
+      return (
+        <div className="space-y-6">
+          <div className="dark:bg-card border-border rounded-2xl border bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <Link
+                  to="/campers"
+                  className="text-muted-foreground hover:text-primary mb-2 inline-block text-sm font-medium"
+                >
+                  ← Back to All Campers
+                </Link>
+                <h1 className="text-foreground text-2xl font-bold tracking-tight sm:text-3xl">
+                  {displayPerson.first_name} {displayPerson.last_name}
+                </h1>
+                <p className="text-muted-foreground mt-2 text-lg">
+                  Person ID: {displayPerson.cm_id}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border-border rounded-2xl border p-6 shadow-sm">
+            <p className="text-muted-foreground">
+              This person has no active enrollments for {currentYear}.
+            </p>
+          </div>
+        </div>
+      )
+    }
+  }
+
+  if (!camper) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-muted-foreground">Unable to load camper details</p>
+      </div>
+    )
+  }
+
+  // camper is guaranteed non-null past this point.
+  // Wrap in BunkRequestProvider so CamperDetailBody's useContext(BunkRequestContext)
+  // resolves to the session-scoped context — without this, the context is undefined
+  // and BunkingStatusPanel hides the "X/Y met" summary (EMPTY fallback gives total=0).
+  // Camp is single-session-per-camper; session_cm_id ?? 0 is safe for unassigned campers.
+  return (
+    <BunkRequestProvider sessionCmId={camper.session_cm_id ?? 0}>
+      <CamperDetailBody
+        camper={camper}
+        enrolledCampers={enrolledCampers}
+        currentYear={currentYear}
+        person={person}
+        allBunkRequests={allBunkRequests}
+        satisfactionData={satisfactionData}
+        satisfactionLoading={satisfactionLoading}
+        originalBunkData={originalBunkData}
+        siblings={siblings}
+        siblingsLoading={siblingsLoading}
+        siblingsError={siblingsError}
+        camperHistory={camperHistory}
+        canManageBunking={canManageBunking}
+        isAdmin={isAdmin}
+      />
+    </BunkRequestProvider>
   )
 }
