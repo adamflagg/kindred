@@ -90,6 +90,28 @@ class TestAgePreference:
         assert result is False
 
 
+class TestRequesterIdZero:
+    def test_requester_id_zero_is_treated_as_id(self) -> None:
+        """Regression: literal 0 must not fall through to the alternate field."""
+        p2b = {0: 10, 2: 10}
+        req = {"requester_id": 0, "requestee_id": 2, "request_type": "bunk_with"}
+        # Should NOT raise; should evaluate as a real request with id=0
+        result = is_request_satisfied(req, p2b)
+        assert result is True  # 0 and 2 in same bunk
+
+    def test_missing_requester_id_raises(self) -> None:
+        """request missing both requester_id and requester_person_cm_id raises ValueError."""
+        req = {"requestee_id": 2, "request_type": "bunk_with"}
+        with pytest.raises(ValueError, match="request missing requester_id"):
+            is_request_satisfied(req, {2: 100})
+
+    def test_requester_person_cm_id_fallback(self) -> None:
+        """Legacy field name requester_person_cm_id is accepted as fallback."""
+        p2b = {5: 100, 6: 100}
+        req = {"requester_person_cm_id": 5, "requestee_id": 6, "request_type": "bunk_with"}
+        assert is_request_satisfied(req, p2b)
+
+
 class TestUnknownRequestType:
     def test_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="unknown request_type"):

@@ -35,15 +35,20 @@ def is_request_satisfied(
             Required when request_type == 'age_preference'.
 
     Raises:
-        ValueError: if request_type is unknown, or if request_type is
+        ValueError: if request is missing requester_id (and requester_person_cm_id),
+            if request_type is unknown, or if request_type is
             'age_preference' and bunkmate_grades is None.
     """
-    requester_id_raw = request.get("requester_id") or request.get("requester_person_cm_id") or 0
-    requester_id = int(requester_id_raw)
+    raw = request.get("requester_id")
+    if raw is None:
+        raw = request.get("requester_person_cm_id")
+    if raw is None:
+        raise ValueError("request missing requester_id")
+    requester_id = int(raw)
     requestee_id_raw = request.get("requestee_id") or request.get("requested_person_cm_id")
     request_type = request.get("request_type", "")
 
-    if requester_id == 0 or requester_id not in person_to_bunk:
+    if requester_id not in person_to_bunk:
         return False
 
     if request_type == "bunk_with":
