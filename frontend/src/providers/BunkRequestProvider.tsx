@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react'
+import { useCallback, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
@@ -78,31 +78,49 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   })
 
   // Pre-compute request lookups for hasRequests / getRequestsForCamper
-  const requestsByPerson = (() => {
+  const requestsByPerson = useMemo(() => {
     const map = new Map<number, BunkRequest[]>()
     allRequests.forEach((request) => {
       const existing = map.get(request.requester_id) ?? []
       map.set(request.requester_id, [...existing, request])
     })
     return map
-  })()
+  }, [allRequests])
 
-  const hasRequests = (personCmId: number): boolean => requestsByPerson.has(personCmId)
-  const getRequestsForCamper = (personCmId: number): BunkRequest[] =>
-    requestsByPerson.get(personCmId) ?? []
+  const hasRequests = useCallback(
+    (personCmId: number) => requestsByPerson.has(personCmId),
+    [requestsByPerson]
+  )
+  const getRequestsForCamper = useCallback(
+    (personCmId: number) => requestsByPerson.get(personCmId) ?? [],
+    [requestsByPerson]
+  )
+  const getSatisfiedRequestInfo = useCallback(
+    (personCmId: number): CamperSatisfaction =>
+      satisfaction?.campers[String(personCmId)] ?? EMPTY_CAMPER_SATISFACTION(personCmId),
+    [satisfaction]
+  )
 
-  const getSatisfiedRequestInfo = (personCmId: number): CamperSatisfaction => {
-    return satisfaction?.campers[String(personCmId)] ?? EMPTY_CAMPER_SATISFACTION(personCmId)
-  }
-
-  const value = {
-    allRequests,
-    hasRequests,
-    getRequestsForCamper,
-    getSatisfiedRequestInfo,
-    isLoading: requestsLoading || satisfactionLoading,
-    error: requestsError ?? satisfactionError,
-  }
+  const value = useMemo(
+    () => ({
+      allRequests,
+      hasRequests,
+      getRequestsForCamper,
+      getSatisfiedRequestInfo,
+      isLoading: requestsLoading || satisfactionLoading,
+      error: requestsError ?? satisfactionError,
+    }),
+    [
+      allRequests,
+      hasRequests,
+      getRequestsForCamper,
+      getSatisfiedRequestInfo,
+      requestsLoading,
+      satisfactionLoading,
+      requestsError,
+      satisfactionError,
+    ]
+  )
 
   return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>
 }
