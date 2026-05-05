@@ -92,7 +92,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     requestsByPerson.get(personCmId) ?? []
 
   const getSatisfiedRequestInfo = (personCmId: number): CamperSatisfaction => {
-    return satisfaction?.campers[personCmId] ?? EMPTY_CAMPER_SATISFACTION(personCmId)
+    return satisfaction?.campers[String(personCmId)] ?? EMPTY_CAMPER_SATISFACTION(personCmId)
   }
 
   const value = {

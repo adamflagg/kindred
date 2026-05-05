@@ -37,7 +37,8 @@ export interface CamperSatisfaction {
 }
 
 export interface SatisfactionResponse {
-  campers: Record<number, CamperSatisfaction>
+  // keys are JSON-stringified cm_ids; consumers iterating must parseInt
+  campers: Record<string, CamperSatisfaction>
   session_cm_id: number
   year: number
   scenario_id: string | null
