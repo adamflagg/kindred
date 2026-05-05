@@ -480,7 +480,7 @@ jobs:
         CAMPMINDER_SEASON_ID=
         SUB_BUNKING=
         DOMAIN_NAME=
-        # Required by docker-compose.yml's caddy service (${ADMIN_ALLOWLIST:?...}).
+        # Required by docker-compose.yml's caddy service compose-fail-loud guard.
         # CI test stack runs in isolation; "0.0.0.0/0 ::/0" explicitly opts into open
         # so the gate isn't tested here (the gate is for prod, where the var is set
         # to home/VPN ranges).
