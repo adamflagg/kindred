@@ -78,7 +78,7 @@
 	# PocketBase-specific patterns (explicit)
 	# These /api/* routes go to PocketBase (port 8090)
 	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
-	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
+	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
 
 	# PocketBase routes (database, auth, sync, file uploads)
 	handle @pocketbase {
@@ -87,8 +87,49 @@
 		}
 	}
 
-	# PocketBase admin UI
+	# OAuth2 redirect handler — separate from @pocketbase so we can rewrite
+	# the upstream's Location header. PocketBase issues a 307 to
+	# /_/#/auth/oauth2-redirect-{success,failure}, which would force /_/ to
+	# stay public. We rewrite to /oauth2-complete (kindred-served static page)
+	# so /_/ can be IP-gated below.
+	#
+	# The realtime @oauth2 message carrying {state, code} is sent server-side
+	# *before* PB issues the redirect (record_auth_with_oauth2_redirect.go),
+	# so the parent window receives the auth result regardless of where the
+	# popup follows the Location header.
+	handle /api/oauth2-redirect {
+		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
+			header_up Host {host}
+			# Caddyfile gotcha: `redir /path 307` parses /path as a matcher
+			# (path-shortcut) and 307 as the redirect target. Use explicit
+			# header + respond to issue the rewrite unambiguously.
+			@oauth_success header Location *oauth2-redirect-success*
+			handle_response @oauth_success {
+				header Location "/oauth2-complete.html?status=success"
+				respond 307
+			}
+			@oauth_failure header Location *oauth2-redirect-failure*
+			handle_response @oauth_failure {
+				header Location "/oauth2-complete.html?status=failure"
+				respond 307
+			}
+		}
+	}
+
+	# PocketBase admin UI — IP-gated by ADMIN_ALLOWLIST (space-separated CIDRs).
+	# REQUIRED: must be set in .env. No default — Caddy fails to start if unset
+	# so a quoting mistake or missing var can't silently disable the gate. Use
+	# "0.0.0.0/0 ::/0" to explicitly opt into "open to all" if that's the intent.
+	# With OAuth's redirect rewritten above, gating /_/* does NOT break user login —
+	# the popup never lands at /_/ anymore; only superuser admin access does.
+	# Use client_ip (not remote_ip) so we match the real origin behind CF Tunnel
+	# / Traefik / any other trusted proxy. client_ip resolves via the
+	# trusted_proxies + client_ip_headers config in the global server block.
+	# (remote_ip would be the Docker bridge IP of whichever proxy handed off,
+	# which is the same for every real user — gate would fail open or closed.)
 	handle /_/* {
+		@admin_blocked not client_ip {$ADMIN_ALLOWLIST}
+		respond @admin_blocked 403
 		reverse_proxy {$POCKETBASE_HOST:pocketbase}:8090 {
 			header_up Host {host}
 		}
