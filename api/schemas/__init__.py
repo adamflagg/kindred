@@ -97,6 +97,7 @@ __all__ = [  # noqa: RUF022 — grouped by feature for navigability over alphabe
     # Admin / Config
     "UpdateAdminSetting",
     "UpdateSyncSchedule",
-    "ValidateBunkingRequest",
     "ValidateCronRequest",
+    # Validation
+    "ValidateBunkingRequest",
 ]

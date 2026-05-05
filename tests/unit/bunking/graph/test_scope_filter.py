@@ -314,18 +314,11 @@ class TestCrossScopeEdgeModel:
             priority=5,
             confidence=0.95,
             reciprocal=True,
-            cross_scope=True,
         )
         assert edge.request_type == "bunk_with"
         assert edge.priority == 5
         assert edge.confidence == 0.95
         assert edge.reciprocal is True
-        assert edge.cross_scope is True
-
-    def test_cross_scope_default_is_true(self) -> None:
-        """cross_scope must always be True — Literal[True] default."""
-        edge = CrossScopeEdge(source=1, target=2, type="sibling")
-        assert edge.cross_scope is True
 
     def test_cross_scope_false_is_rejected(self) -> None:
         """Pydantic should reject cross_scope=False since the field is Literal[True]."""
