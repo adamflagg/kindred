@@ -316,6 +316,30 @@ class TestAllRequestTypeVariants:
         assert camper3.counted_totals[RequestBucket.MATERIAL_PARENT].total == 0
 
 
+def test_campers_includes_assigned_with_zero_requests() -> None:
+    """Regression: assigned campers with no requests must appear with no_requests status."""
+    # Camper 1 has a request; camper 2 is assigned but silent.
+    persons = [_person(1, 10), _person(2, 10)]
+    assignments = [_assignment(1, 100), _assignment(2, 100)]
+    requests = [
+        {
+            "id": "r1",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": "bunk_with",
+            "year": 2026,
+            "session_id": 999,
+            "merged_into": "",
+        }
+    ]
+    pb = _build_pb_mock(persons, assignments, requests)
+    response = session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=None, pb_client=pb)
+    assert 1 in response.campers
+    assert 2 in response.campers  # camper 2 has no requests but is assigned
+    assert response.campers[2].flags.has_any_counted_request is False
+
+
 def test_unknown_source_field_raises_on_classify() -> None:
     """bucket.classify_request raises on any source_field not in _BUCKET_MAP.
 

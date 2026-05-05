@@ -204,7 +204,11 @@ def session_satisfaction(
             row["requester_grade"] = person_grades.get(rid)
         requests_by_requester[rid].append(row)
 
-    campers = {}
+    # Pre-populate every assigned camper so those with zero requests still appear.
+    campers: dict[int, CamperSatisfaction] = {
+        pid: camper_satisfaction(person_cm_id=pid, person_requests=[], person_to_bunk=person_to_bunk)
+        for pid in person_to_bunk
+    }
     for person_cm_id, person_requests in requests_by_requester.items():
         campers[person_cm_id] = camper_satisfaction(
             person_cm_id=person_cm_id,
