@@ -148,6 +148,8 @@ def test_graph_node_metrics_baseline(
         # per bunking.satisfaction.bucket. Set both `source` (legacy 2-axis,
         # still consumed by some UI paths) AND `source_field` (new 3-bucket
         # axis driving graph satisfaction statuses).
+        # requester_id / requestee_id are required by the per-requester filter
+        # in _calculate_node_metrics (edges without these attrs are skipped).
         g.add_edge(
             r["requester_id"],
             r["requestee_id"],
@@ -157,6 +159,8 @@ def test_graph_node_metrics_baseline(
             source=("staff" if r["source_field"] in ("not_bunk_with", "bunking_notes", "internal_notes") else "family"),
             source_field=r["source_field"],
             request_id=r["id"],
+            requester_id=r["requester_id"],
+            requestee_id=r["requestee_id"],
         )
     builder.graph = g
     builder._calculate_node_metrics()

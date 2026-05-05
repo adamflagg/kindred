@@ -74,6 +74,8 @@ def _populate(
                 source=source,
                 source_field=source_field,
                 request_type=request_type,
+                requester_id=u,
+                requestee_id=v,
             )
         else:
             u, v = edge
@@ -83,6 +85,8 @@ def _populate(
                 edge_type="request",
                 request_type="bunk_with",
                 source_field="bunk_with",
+                requester_id=u,
+                requestee_id=v,
             )
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
@@ -92,8 +96,10 @@ def test_all_requests_satisfied_marks_satisfied() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 100}, request_edges=[(1, 2)])
     builder._calculate_node_metrics()
+    # Node 1 is the requester — satisfied (same bunk).
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
-    assert builder.graph.nodes[2]["satisfaction_status"] == "satisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["satisfaction_status"] == "no_requests"
 
 
 def test_some_requests_satisfied_collapses_to_satisfied() -> None:
@@ -109,8 +115,10 @@ def test_has_requests_none_satisfied_marks_unsatisfied() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2)])
     builder._calculate_node_metrics()
+    # Node 1 is the requester — unsatisfied (different bunks).
     assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
-    assert builder.graph.nodes[2]["satisfaction_status"] == "unsatisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["satisfaction_status"] == "no_requests"
 
 
 def test_no_request_edges_marks_no_requests_even_when_connected() -> None:
@@ -372,19 +380,27 @@ def test_request_edges_carry_request_type_attribute() -> None:
 
 
 def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
-    """A not_bunk_with edge between bunkmates is a violation — satisfaction
-    bucket inverts vs bunk_with."""
+    """A not_bunk_with edge where the requester is in the same bunk as the requestee
+    is a violation — staff bucket marks unsatisfied for the requester."""
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=100)
     builder.graph.add_edge(
-        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
     )
     builder._calculate_node_metrics()
-    # Both endpoints view this as a violation; staff_satisfaction_status reflects it.
+    # Node 1 is the requester — violation (same bunk) → unsatisfied.
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
-    assert builder.graph.nodes[2]["staff_satisfaction_status"] == "unsatisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["staff_satisfaction_status"] == "no_requests"
 
 
 def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
@@ -395,7 +411,14 @@ def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=200)
     builder.graph.add_edge(
-        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
@@ -408,7 +431,14 @@ def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=None)
     builder.graph.add_edge(
-        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
     )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
@@ -431,10 +461,24 @@ def test_unbunked_requester_marks_unsatisfied() -> None:
     builder.graph.add_node(2, bunk_cm_id=100)
     builder.graph.add_node(3, bunk_cm_id=100)
     builder.graph.add_edge(
-        1, 2, edge_type="request", source="family", source_field="bunk_with", request_type="bunk_with"
+        1,
+        2,
+        edge_type="request",
+        source="family",
+        source_field="bunk_with",
+        request_type="bunk_with",
+        requester_id=1,
+        requestee_id=2,
     )
     builder.graph.add_edge(
-        1, 3, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+        1,
+        3,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=3,
     )
     builder._calculate_node_metrics()
     # Parent bucket: bunk_with → unsatisfied (requester unbunked → predicate False).
@@ -913,6 +957,8 @@ def test_parent_edges_filter_excludes_not_bunk_with_source_field() -> None:
         source="family",
         source_field="not_bunk_with",
         request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
     )
     builder._calculate_node_metrics()
     # Parent bucket sees no MATERIAL_PARENT edges → no_requests.

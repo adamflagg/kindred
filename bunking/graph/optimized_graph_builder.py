@@ -22,7 +22,7 @@ from api.constants.collections import (
 )
 from bunking.logging_config import get_logger
 
-from .social_graph_builder import SocialGraphBuilder
+from .social_graph_builder import SocialGraphBuilder, _build_request_edge_attrs
 
 logger = get_logger(__name__)
 
@@ -180,18 +180,16 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                     for r in requests_by_target.get(person_id, [])
                 )
 
-                edge_attrs = {
-                    "weight": self._calculate_edge_weight(request, reciprocal),
-                    "edge_type": "request",
-                    "request_type": request.request_type,
-                    "priority": request.priority,
-                    "reciprocal": reciprocal,
-                    "confidence": round(request.confidence_score, 2) if request.confidence_score else None,
-                    "year": request.year,
-                    "source": getattr(request, "source", None),
-                    "source_field": getattr(request, "source_field", None),
-                    "request_id": getattr(request, "id", ""),
-                }
+                edge_attrs = _build_request_edge_attrs(
+                    request,
+                    reciprocal=reciprocal,
+                    weight=self._calculate_edge_weight(request, reciprocal),
+                    # Keep year and rounded confidence as overrides — the helper
+                    # uses getattr(request, "confidence_score", 1.0) which may
+                    # differ from the rounded form stored here.
+                    year=getattr(request, "year", None),
+                    confidence=round(request.confidence_score, 2) if request.confidence_score else None,
+                )
 
                 edge_data.append((person_id, requestee, edge_attrs))
 

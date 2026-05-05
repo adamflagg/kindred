@@ -54,6 +54,61 @@ class FriendGroupDetection:
     metadata: dict[str, Any]
 
 
+def _backfill_source_field(request_type: str, source_field: str | None) -> str:
+    """Derive source_field from request_type when the row's source_field is missing.
+
+    Mapping mirrors bunking.satisfaction.bucket. Used for legacy edges whose
+    upstream PB row predates the source_field column or has it null.
+    """
+    if source_field:
+        return source_field
+    return {
+        "bunk_with": "bunk_with",
+        "not_bunk_with": "not_bunk_with",
+        "socialize_with": "socialize_with",
+        "age_preference": "age_preference",
+    }.get(request_type, "bunk_with")
+
+
+def _build_request_edge_attrs(
+    request: Any,
+    *,
+    reciprocal: bool,
+    weight: float,
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Centralize every attribute the new aggregator depends on.
+
+    All three add_edge sites in social_graph_builder and one in
+    optimized_graph_builder use this helper so that attribute drift is caught
+    in one place.
+    """
+    raw_requester = getattr(request, "requester_id", None)
+    raw_requestee = getattr(request, "requestee_id", None)
+    requester_id = int(raw_requester) if raw_requester is not None else None
+    requestee_id = int(raw_requestee) if raw_requestee is not None else None
+    sf = _backfill_source_field(
+        getattr(request, "request_type", "bunk_with") or "bunk_with",
+        getattr(request, "source_field", None),
+    )
+    attrs: dict[str, Any] = {
+        "weight": weight,
+        "edge_type": "request",
+        "edge_types": ["request"],
+        "priority": getattr(request, "priority", 5),
+        "confidence": getattr(request, "confidence_score", 1.0),
+        "reciprocal": reciprocal,
+        "source": getattr(request, "source", None),
+        "source_field": sf,
+        "request_type": getattr(request, "request_type", "bunk_with"),
+        "request_id": getattr(request, "id", ""),
+        "requester_id": requester_id,
+        "requestee_id": requestee_id,
+    }
+    attrs.update(overrides)
+    return attrs
+
+
 class SocialGraphBuilder:
     """Builds and analyzes the camp social graph using NetworkX"""
 
@@ -326,16 +381,13 @@ class SocialGraphBuilder:
                         bunk_graph.add_edge(
                             person1,
                             person2,
-                            weight=weight,
-                            edge_type="request",
-                            edge_types=["request"],
-                            priority=priority,
-                            confidence=getattr(request, "confidence_score", 1.0),
-                            reciprocal=True,
-                            source=getattr(request, "source", None),
-                            source_field=getattr(request, "source_field", None),
-                            request_type=request_type,
-                            request_id=getattr(request, "id", ""),
+                            **_build_request_edge_attrs(
+                                request,
+                                reciprocal=True,
+                                weight=weight,
+                                # pair_key request_type is authoritative
+                                request_type=request_type,
+                            ),
                         )
                         request_count += 1
                         logger.info(f"Added reciprocal request edge #{request_count}: {person1} <-> {person2}")
@@ -366,16 +418,7 @@ class SocialGraphBuilder:
                             bunk_graph.add_edge(
                                 requester,
                                 requestee,
-                                weight=weight,
-                                edge_type="request",
-                                edge_types=["request"],
-                                priority=req_priority,
-                                confidence=getattr(request, "confidence_score", 1.0),
-                                reciprocal=False,
-                                source=getattr(request, "source", None),
-                                source_field=getattr(request, "source_field", None),
-                                request_type=getattr(request, "request_type", RequestType.BUNK_WITH.value),
-                                request_id=getattr(request, "id", ""),
+                                **_build_request_edge_attrs(request, reciprocal=False, weight=weight),
                             )
                             request_count += 1
                             logger.info(f"Added request edge #{request_count}: {requester} -> {requestee}")
@@ -631,16 +674,12 @@ class SocialGraphBuilder:
                 self.graph.add_edge(
                     requester,
                     requestee,
-                    weight=weight,
-                    edge_type="request",
-                    year=year,
-                    priority=priority,
-                    confidence=confidence_score,
-                    is_reciprocal=getattr(request, "is_reciprocal", False),
-                    source=getattr(request, "source", None),
-                    source_field=getattr(request, "source_field", None),
-                    request_type=getattr(request, "request_type", RequestType.BUNK_WITH.value),
-                    request_id=getattr(request, "id", ""),
+                    **_build_request_edge_attrs(
+                        request,
+                        reciprocal=getattr(request, "is_reciprocal", False),
+                        weight=weight,
+                        year=year,
+                    ),
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
@@ -831,13 +870,23 @@ class SocialGraphBuilder:
                 # they're scored by the solver, not surfaced in graph node colors.
                 if data.get("request_type") == "age_preference":
                     continue
+                # Per-requester filter: skip edges where this node is the receiver, not
+                # the requester. Defensive: if requester_id is absent (external graph
+                # mutation or legacy edge without the attr), skip as well.
+                edge_requester_id = data.get("requester_id")
+                if edge_requester_id is None or int(node) != int(edge_requester_id):
+                    continue
+                edge_requestee_id = data.get("requestee_id")
                 person_requests.append(
                     {
-                        "id": data.get("request_id", f"{node}-{neighbor}"),
-                        "requester_id": int(node),
-                        "requestee_id": int(neighbor),
+                        "id": data.get("request_id") or "",
+                        "requester_id": int(edge_requester_id),
+                        "requestee_id": int(edge_requestee_id) if edge_requestee_id is not None else int(neighbor),
                         "request_type": data.get("request_type", "bunk_with"),
-                        "source_field": data.get("source_field") or "bunk_with",
+                        "source_field": _backfill_source_field(
+                            data.get("request_type", "bunk_with"),
+                            data.get("source_field"),
+                        ),
                         "requester_grade": self.graph.nodes[node].get("grade"),
                         "age_preference_target": data.get("age_preference_target"),
                     }
