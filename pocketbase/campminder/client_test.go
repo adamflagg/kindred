@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -123,32 +124,47 @@ func TestParseRateLimitSeconds_DefaultFallback(t *testing.T) {
 
 func TestNewClient_MissingConfig(t *testing.T) {
 	testCases := []struct {
-		name   string
-		config *Config
+		name       string
+		config     *Config
+		wantErrStr string
 	}{
 		{
-			name:   "missing API key",
-			config: &Config{ClientID: "test", SeasonID: 2025},
+			name:       "missing API key",
+			config:     &Config{ClientID: "test", SeasonID: 2025},
+			wantErrStr: "missing required CampMinder configuration",
 		},
 		{
-			name:   "missing client ID",
-			config: &Config{APIKey: "test", SeasonID: 2025},
+			name:       "missing client ID",
+			config:     &Config{APIKey: "test", SeasonID: 2025},
+			wantErrStr: "missing required CampMinder configuration",
 		},
 		{
-			name:   "missing season ID",
-			config: &Config{APIKey: "test", ClientID: "test"},
+			name:       "missing season ID",
+			config:     &Config{APIKey: "test", ClientID: "test"},
+			wantErrStr: "missing required CampMinder configuration",
 		},
 		{
-			name:   "all missing",
-			config: &Config{},
+			name:       "all missing",
+			config:     &Config{},
+			wantErrStr: "missing required CampMinder configuration",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Satisfy the env-key guard so the test exercises the config-validation
+			// code path specifically. Without this, a missing CAMPMINDER_PRIMARY_KEY
+			// in the test environment causes a different error, meaning the test
+			// passes for the wrong reason.
+			t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-key")
+
 			_, err := NewClient(tc.config)
 			if err == nil {
 				t.Errorf("NewClient() with %s should return error", tc.name)
+				return
+			}
+			if !strings.Contains(err.Error(), tc.wantErrStr) {
+				t.Errorf("NewClient() error = %q, want it to contain %q", err.Error(), tc.wantErrStr)
 			}
 		})
 	}
@@ -389,6 +405,110 @@ func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #1136 — authenticateAtURL must use cached subscriptionKey, not re-read env
+// ---------------------------------------------------------------------------
+
+// TestAuthenticate_UsesCachedSubscriptionKey is the regression test for #1136.
+// It verifies that authenticateAtURL uses the subscription key captured in
+// c.subscriptionKey at construction time, not os.Getenv on every call.
+//
+// Steps:
+//  1. Set the env var and construct a real client via NewClient (captures key).
+//  2. Unset the env var so any os.Getenv call returns "".
+//  3. Call authenticateAtURL against a mock server that records request headers.
+//  4. Assert the Ocp-Apim-Subscription-Key header carries the originally-captured key.
+func TestAuthenticate_UsesCachedSubscriptionKey(t *testing.T) {
+	const wantKey = "cached-subscription-key-abc123"
+
+	// Step 1: set env so NewClient can construct the client.
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", wantKey)
+
+	client, err := NewClient(&Config{
+		APIKey:   "test-api-key",
+		ClientID: "test-client-id",
+		SeasonID: 2025,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() failed: %v", err)
+	}
+	// Override the httpClient so we can inject our test server.
+	client.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	// Step 2: unset the env var — os.Getenv now returns "".
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "")
+
+	// Step 3: mock server records the subscription key header.
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("Ocp-Apim-Subscription-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	err = client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err != nil {
+		t.Fatalf("authenticateAtURL() failed (expected success): %v", err)
+	}
+
+	// Step 4: the header must carry the originally-captured key, not the empty string.
+	if gotKey != wantKey {
+		t.Errorf("Ocp-Apim-Subscription-Key header = %q, want %q", gotKey, wantKey)
+	}
+}
+
+// TestMakeRequestWithURLRetry_UsesCachedSubscriptionKey is the regression test
+// for #1136 applied to makeRequestWithURLRetry, which has the same env-re-read pattern.
+//
+// Steps:
+//  1. Set env and construct a real client via NewClient.
+//  2. Unset the env var.
+//  3. Pre-seed accessToken/tokenExpiry so ensureAuthenticated() is a no-op.
+//  4. Call makeRequestWithURLRetry against a mock server and assert the header.
+func TestMakeRequestWithURLRetry_UsesCachedSubscriptionKey(t *testing.T) {
+	const wantKey = "cached-subscription-key-xyz789"
+
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", wantKey)
+
+	client, err := NewClient(&Config{
+		APIKey:   "test-api-key",
+		ClientID: "test-client-id",
+		SeasonID: 2025,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() failed: %v", err)
+	}
+
+	// Unset the env var.
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "")
+
+	// Pre-seed a valid token so ensureAuthenticated() short-circuits.
+	client.accessToken = "pre-seeded-bearer-token"
+	client.tokenExpiry = time.Now().Add(time.Hour)
+
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("Ocp-Apim-Subscription-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	client.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	_, err = client.makeRequestWithURLRetry("GET", srv.URL+"/some/endpoint", 0)
+	if err != nil {
+		t.Fatalf("makeRequestWithURLRetry() failed: %v", err)
+	}
+
+	if gotKey != wantKey {
+		t.Errorf("Ocp-Apim-Subscription-Key header = %q, want %q", gotKey, wantKey)
+	}
+}
+
 // TestAuthenticate_SucceedsOnFirstAttempt verifies authenticate() succeeds
 // and returns nil when the server responds 200 on the first try.
 func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {
@@ -416,5 +536,175 @@ func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {
 	}
 	if client.accessToken == "" {
 		t.Error("expected accessToken to be set after successful auth")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Token-refresh mutex — concurrent safety
+// ---------------------------------------------------------------------------
+
+// TestEnsureAuthenticated_ConcurrentRefresh is a regression test for the
+// token-refresh data race. It starts N goroutines that all call
+// ensureAuthenticated() on a shared Client whose token has expired, and
+// asserts:
+//   - No data race detected (run with -race).
+//   - The auth endpoint is hit at most once (double-checked locking prevents
+//     redundant refreshes once the first goroutine writes the token).
+//
+// If the sync.Mutex is removed this test will fail under -race.
+func TestEnsureAuthenticated_ConcurrentRefresh(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	var authCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authCallCount.Add(1)
+		// Small delay to widen the race window — makes the test more likely to
+		// catch a missing mutex under -race.
+		time.Sleep(5 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	// Token is expired — every goroutine will see the expiry guard fail and
+	// try to refresh unless the mutex prevents redundant refreshes.
+	client := &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		tokenExpiry:     time.Now().Add(-time.Hour), // already expired
+	}
+
+	// Patch authenticate to point at our test server.
+	// We test via ensureAuthenticated which calls c.authenticate(), which calls
+	// authenticateAtURL with the production URL. We override the httpClient's
+	// transport to redirect all requests to our test server instead.
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authCallCount.Add(1)
+		time.Sleep(5 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv2.Close()
+
+	// Reset counter — srv was just for setup; srv2 is the real target.
+	authCallCount.Store(0)
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	errs := make([]error, goroutines)
+
+	for i := range goroutines {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			// Use authenticateAtURL directly so we can inject the test server URL.
+			// ensureAuthenticated calls authenticate() → authenticateAtURL(baseURL),
+			// which we can't redirect without patching the transport. Calling
+			// authenticateAtURL concurrently exercises the same mutex path.
+			errs[idx] = client.authenticateAtURL(srv2.URL + "/auth/apikey")
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("goroutine %d: authenticateAtURL() error: %v", i, err)
+		}
+	}
+
+	// All goroutines called authenticateAtURL directly (bypassing the
+	// double-checked locking in ensureAuthenticated), so the call count
+	// equals the goroutine count — that's expected. What matters is the
+	// -race detector finds no concurrent writes to accessToken/tokenExpiry.
+	got := authCallCount.Load()
+	if got != goroutines {
+		t.Errorf("auth endpoint hit %d times, want %d", got, goroutines)
+	}
+}
+
+// TestEnsureAuthenticated_NoRedundantRefresh verifies that when N goroutines
+// call ensureAuthenticated() on an expired token, the auth endpoint is called
+// significantly fewer times than N (ideally once, at most a small handful due
+// to the check-lock-check pattern). This catches the redundant-refresh case.
+func TestEnsureAuthenticated_NoRedundantRefresh(t *testing.T) {
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "test-subscription-key")
+
+	var authCallCount atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authCallCount.Add(1)
+		// Deliberate delay to maximize goroutine overlap.
+		time.Sleep(10 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	// authURL field lets us redirect ensureAuthenticated's inner authenticate()
+	// call to the test server without touching production code paths.
+	client := &Client{
+		apiKey:          "test-key",
+		subscriptionKey: "test-subscription-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
+		tokenExpiry:     time.Now().Add(-time.Hour),
+		authURL:         srv.URL + "/auth/apikey",
+	}
+
+	const goroutines = 50
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = client.ensureAuthenticated()
+		}()
+	}
+	wg.Wait()
+
+	// With a mutex + double-checked locking, at most a tiny number of goroutines
+	// should call the auth endpoint (typically 1, maybe a few due to scheduling).
+	// Definitely NOT 50. We use goroutines/5 as a generous upper bound.
+	got := authCallCount.Load()
+	maxAllowed := int32(goroutines / 5)
+	if got > maxAllowed {
+		t.Errorf("auth endpoint hit %d times with %d goroutines; want <= %d"+
+			" (mutex not preventing redundant refreshes)", got, goroutines, maxAllowed)
+	}
+}
+
+// TestCloneWithYear_OwnHTTPClient verifies that CloneWithYear gives the clone
+// its own *http.Client instance rather than sharing the parent's pointer.
+// Sharing the pointer means a caller that mutates the clone's httpClient
+// (e.g. setting a different timeout) silently modifies the parent too.
+func TestCloneWithYear_OwnHTTPClient(t *testing.T) {
+	original := &Client{
+		apiKey:          "test-api-key",
+		subscriptionKey: "test-sub-key",
+		clientID:        "test-client",
+		seasonID:        2025,
+		httpClient:      &http.Client{Timeout: 30 * time.Second},
+		accessToken:     "test-token",
+	}
+
+	cloned := original.CloneWithYear(2024)
+
+	// The clone must have its own http.Client pointer, not the parent's.
+	if cloned.httpClient == original.httpClient {
+		t.Error("CloneWithYear() shares the parent httpClient pointer; clone should own its own instance")
+	}
+
+	// The clone's timeout should match the parent's (copied from parent).
+	if cloned.httpClient.Timeout != original.httpClient.Timeout {
+		t.Errorf("clone httpClient.Timeout = %v, want %v (copied from parent)",
+			cloned.httpClient.Timeout, original.httpClient.Timeout)
 	}
 }

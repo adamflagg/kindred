@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -36,8 +37,22 @@ type Client struct {
 	clientID        string
 	seasonID        int
 	httpClient      *http.Client
+
+	// tokenMu guards accessToken, tokenExpiry, and tokenRefreshing.
+	// The mutex is NOT held during network I/O; callers read needed values,
+	// release, do HTTP, then re-acquire to write results. tokenRefreshing
+	// prevents redundant concurrent refreshes: only the goroutine that sets it
+	// to true performs the actual HTTP call; others see the updated token after
+	// the lock is re-acquired. The current call paths are single-goroutine,
+	// but the orchestrator's baseClient + CloneWithYear pattern makes a future
+	// concurrent refresh plausible; this mutex is defensive.
+	tokenMu         sync.Mutex
+	tokenRefreshing bool
 	accessToken     string
 	tokenExpiry     time.Time
+
+	// authURL overrides the production auth endpoint. Non-empty only in tests.
+	authURL string
 }
 
 // Config holds CampMinder configuration
@@ -71,9 +86,14 @@ func NewClient(cfg *Config) (*Client, error) {
 }
 
 // authenticate gets a new JWT token from CampMinder.
-// Delegates to authenticateAtURL using the production endpoint.
+// Delegates to authenticateAtURL using the production endpoint (or the
+// test-injected override stored in c.authURL).
 func (c *Client) authenticate() error {
-	return c.authenticateAtURL(fmt.Sprintf("%s/auth/apikey", baseURL))
+	target := c.authURL
+	if target == "" {
+		target = fmt.Sprintf("%s/auth/apikey", baseURL)
+	}
+	return c.authenticateAtURL(target)
 }
 
 // authenticateAtURL gets a new JWT token from the given auth URL.
@@ -82,11 +102,9 @@ func (c *Client) authenticate() error {
 func (c *Client) authenticateAtURL(authURL string) error {
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
-	// Get primary key from environment once; fail fast if missing.
-	primaryKey := os.Getenv("CAMPMINDER_PRIMARY_KEY")
-	if primaryKey == "" {
-		return fmt.Errorf("CAMPMINDER_PRIMARY_KEY not set in environment")
-	}
+	// Use the subscription key captured at client construction time (#1136).
+	// NewClient already validates this is non-empty, so no re-check needed here.
+	primaryKey := c.subscriptionKey
 
 	for attempt := range maxRequestRetries + 1 {
 		req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
@@ -143,10 +161,9 @@ func (c *Client) authenticateAtURL(authURL string) error {
 		}
 		_ = resp.Body.Close()
 
-		c.accessToken = authResp.Token
-
-		// Parse token expiry from JWT if possible, otherwise default to 1 hour
-		// Try to decode JWT to get expiry
+		// Parse token expiry from JWT before acquiring the lock so we don't
+		// hold the mutex across any non-trivial computation.
+		var expiry time.Time
 		parts := strings.Split(authResp.Token, ".")
 		if len(parts) == 3 {
 			// Decode payload (base64)
@@ -160,19 +177,25 @@ func (c *Client) authenticateAtURL(authURL string) error {
 				var claims map[string]any
 				if err := json.Unmarshal(decoded, &claims); err == nil {
 					if exp, ok := claims["exp"].(float64); ok {
-						c.tokenExpiry = time.Unix(int64(exp), 0)
+						expiry = time.Unix(int64(exp), 0)
 					} else {
-						c.tokenExpiry = time.Now().Add(time.Hour)
+						expiry = time.Now().Add(time.Hour)
 					}
 				} else {
-					c.tokenExpiry = time.Now().Add(time.Hour)
+					expiry = time.Now().Add(time.Hour)
 				}
 			} else {
-				c.tokenExpiry = time.Now().Add(time.Hour)
+				expiry = time.Now().Add(time.Hour)
 			}
 		} else {
-			c.tokenExpiry = time.Now().Add(time.Hour)
+			expiry = time.Now().Add(time.Hour)
 		}
+
+		// Acquire the mutex only to write the token fields.
+		c.tokenMu.Lock()
+		c.accessToken = authResp.Token
+		c.tokenExpiry = expiry
+		c.tokenMu.Unlock()
 
 		return nil
 	}
@@ -183,15 +206,50 @@ func (c *Client) authenticateAtURL(authURL string) error {
 	return fmt.Errorf("auth rate limit exceeded after %d retries", maxRequestRetries)
 }
 
-// ensureAuthenticated ensures we have a valid token
+// ensureAuthenticated ensures we have a valid token.
+//
+// Locking strategy: the mutex is acquired to read and update the token fields
+// and the tokenRefreshing flag. It is NOT held during the network call.
+//
+//   - If the token is valid → fast return (no network).
+//   - If a refresh is already in progress (tokenRefreshing == true) → spin-wait
+//     until the refreshing goroutine clears the flag, then re-check the token.
+//   - If no refresh is in progress → set the flag, release the lock, do the
+//     HTTP call, re-acquire the lock to write the result, clear the flag.
+//
+// This prevents redundant concurrent refreshes without holding the mutex across
+// network I/O.
 func (c *Client) ensureAuthenticated() error {
-	// Check if token is still valid
-	if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-5*time.Minute)) {
-		return nil
+	for {
+		c.tokenMu.Lock()
+		if c.accessToken != "" && time.Now().Before(c.tokenExpiry.Add(-5*time.Minute)) {
+			// Token is valid — fast path.
+			c.tokenMu.Unlock()
+			return nil
+		}
+		if c.tokenRefreshing {
+			// Another goroutine is already refreshing; release and yield.
+			c.tokenMu.Unlock()
+			// Brief yield so we don't spin-burn CPU; runtime.Gosched() is
+			// sufficient — we are not doing real-time work here.
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		// We are the goroutine responsible for refreshing.
+		c.tokenRefreshing = true
+		c.tokenMu.Unlock()
+		break
 	}
 
-	// Need to authenticate
-	return c.authenticate()
+	// Perform the refresh without holding the lock.
+	err := c.authenticate()
+
+	// Clear the refreshing flag regardless of success/failure so waiters can proceed.
+	c.tokenMu.Lock()
+	c.tokenRefreshing = false
+	c.tokenMu.Unlock()
+
+	return err
 }
 
 // makeRequestWithURL makes an authenticated API request with a pre-built URL
@@ -210,11 +268,8 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// Get primary key from environment
-	primaryKey := os.Getenv("CAMPMINDER_PRIMARY_KEY")
-	if primaryKey == "" {
-		return nil, fmt.Errorf("CAMPMINDER_PRIMARY_KEY not set in environment")
-	}
+	// Use the subscription key captured at client construction time (#1136).
+	primaryKey := c.subscriptionKey
 
 	// Set headers
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
@@ -572,17 +627,35 @@ func (c *Client) GetBunkAssignments(bunkPlanIDs, bunkIDs []int, page, pageSize i
 	return response.Results, nil
 }
 
-// CloneWithYear creates a new client instance with a different year
-// This is useful for historical syncs without affecting the original client
+// CloneWithYear creates a new client instance with a different year.
+// This is useful for historical syncs without affecting the original client.
+// The clone gets its own *http.Client (same timeout, separate pointer) so
+// mutations to one clone's transport settings don't bleed into the parent.
+// Token fields are read under the lock so the clone starts with a consistent
+// snapshot of the parent's current credentials.
 func (c *Client) CloneWithYear(year int) *Client {
+	c.tokenMu.Lock()
+	accessToken := c.accessToken
+	tokenExpiry := c.tokenExpiry
+	c.tokenMu.Unlock()
+
+	// Give the clone its own http.Client (same timeout) so mutations to
+	// one clone's transport settings don't bleed into the parent.
+	var cloneHTTPClient *http.Client
+	if c.httpClient != nil {
+		cloneHTTPClient = &http.Client{Timeout: c.httpClient.Timeout}
+	} else {
+		cloneHTTPClient = &http.Client{Timeout: 30 * time.Second}
+	}
+
 	newClient := &Client{
 		apiKey:          c.apiKey,
 		subscriptionKey: c.subscriptionKey,
 		clientID:        c.clientID,
 		seasonID:        year, // Use the provided year
-		httpClient:      c.httpClient,
-		accessToken:     c.accessToken,
-		tokenExpiry:     c.tokenExpiry,
+		httpClient:      cloneHTTPClient,
+		accessToken:     accessToken,
+		tokenExpiry:     tokenExpiry,
 	}
 	return newClient
 }
