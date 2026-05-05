@@ -119,12 +119,18 @@ APPDATA_DIR=/path/to/appdata
 # Always use 127.0.0.1, not localhost, for inter-service communication
 
 # PocketBase admin UI IP allowlist (Caddy /_/* gate)
-# Space-separated CIDRs. Default unset = open. Set to home/VPN ranges to
-# restrict admin UI access without affecting user OAuth login (Caddy rewrites
-# the OAuth completion redirect from /_/#/auth/oauth2-redirect-success to
-# the kindred-served /oauth2-complete.html, so /_/* is no longer in the user
-# login path).
-ADMIN_ALLOWLIST=10.0.0.0/8 192.168.0.0/16
+# REQUIRED. Space-separated CIDRs. No default — Caddy fails closed (403) and
+# compose refuses to start if unset, so a missing/malformed value can't
+# silently disable the gate. Use "0.0.0.0/0 ::/0" to explicitly opt into
+# "open to all". Set to home/VPN ranges to restrict admin UI access without
+# affecting user OAuth login (Caddy rewrites the OAuth completion redirect
+# from /_/#/auth/oauth2-redirect-success to the kindred-served
+# /oauth2-complete.html, so /_/* is no longer in the user login path).
+#
+# QUOTE THE VALUE: shell sources .env with `set -a`; an unquoted space breaks
+# the parse and the second CIDR is interpreted as a command (silent gate
+# bypass). Always quote.
+ADMIN_ALLOWLIST="10.0.0.0/8 192.168.0.0/16"
 ```
 
 ### Logging & Monitoring
