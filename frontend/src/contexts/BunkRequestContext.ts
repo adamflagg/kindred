@@ -1,5 +1,6 @@
 import { createContext } from 'react'
 import type { BunkRequest } from '../types/app-types'
+import type { CamperSatisfaction } from '../types/satisfaction'
 
 // Bunkmate info needed for satisfaction calculation
 export interface BunkmateInfo {
@@ -35,13 +36,8 @@ interface BunkRequestContextValue {
   hasRequests: (personCmId: number) => boolean
   // Get all requests for a specific camper
   getRequestsForCamper: (personCmId: number) => BunkRequest[]
-  // Get satisfied request info for a camper in a specific bunk
-  getSatisfiedRequestInfo: (
-    personCmId: number,
-    bunkCmId: number,
-    campersInBunk: BunkmateInfo[],
-    requesterGrade: number | null
-  ) => SatisfiedRequestInfo
+  // Get satisfied request info for a camper (fetched from /api/satisfaction)
+  getSatisfiedRequestInfo: (personCmId: number) => CamperSatisfaction
   // Loading state
   isLoading: boolean
   error: Error | null

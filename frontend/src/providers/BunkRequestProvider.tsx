@@ -1,14 +1,17 @@
-import { type ReactNode, useRef } from 'react'
+import { type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
+import { useScenario } from '../hooks/useScenario'
+import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import type { BunkRequest } from '../types/app-types'
-import { BunkRequestContext, type BunkmateInfo } from '../contexts/BunkRequestContext'
+import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import {
-  computeSatisfiedRequestInfo,
-  EMPTY_SATISFIED_INFO,
-} from '../utils/computeSatisfiedRequestInfo'
+  type CamperSatisfaction,
+  EMPTY_CAMPER_SATISFACTION,
+  type SatisfactionResponse,
+} from '../types/satisfaction'
 import { queryKeys } from '../utils/queryKeys'
 
 interface BunkRequestProviderProps {
@@ -19,106 +22,77 @@ interface BunkRequestProviderProps {
 export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProviderProps) {
   const currentYear = useYear()
   const { user } = useAuth()
+  const { currentScenario } = useScenario()
+  const { fetchWithAuth } = useApiWithAuth()
+  const scenarioId = currentScenario?.id ?? null
 
-  // Fetch ALL bunk requests for the session once
+  // Fetch ALL bunk requests for the session (for the modal/per-request rows that
+  // still need raw rows: bunk-request grid, expanded row details, etc.).
   const {
     data: allRequests = [],
-    isLoading,
-    error,
+    isLoading: requestsLoading,
+    error: requestsError,
   } = useQuery<BunkRequest[]>({
     queryKey: queryKeys.allBunkRequests(sessionCmId, currentYear),
     queryFn: async () => {
-      // Inline getBunkRequests
       try {
-        // Filter out absorbed requests (those that have been merged into another request)
         const filter = `session_id = ${sessionCmId} && year = ${currentYear} && (merged_into = "" || merged_into = null)`
-
-        // Include all requests (includeAll = true)
-        // No status filter when includeAll is true
-
-        const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
-          filter: filter,
+        return await pb.collection<BunkRequest>('bunk_requests').getFullList({
+          filter,
           sort: '-priority,requester_id',
-          // Unique request key prevents PocketBase auto-cancellation
           requestKey: `bunk-requests-${sessionCmId}-${currentYear}`,
         })
-
-        return requests
-      } catch (error) {
-        console.error('Error fetching bunk requests:', error)
+      } catch (err) {
+        console.error('Error fetching bunk requests:', err)
         return []
       }
     },
-    staleTime: 1 * 60 * 1000, // 1 minute - user-editable data
-    gcTime: 10 * 60 * 1000, // 10 minutes
-    enabled: !!user, // Only run query if user is authenticated
+    staleTime: 1 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    enabled: !!user,
   })
 
-  // Pre-compute request lookups
-  // React Compiler will optimize this computation
-  const getRequestsByPerson = () => {
+  // Fetch satisfaction state from /api/satisfaction — single source of truth
+  // for "is request X satisfied?". Replaces the deleted local predicates.
+  const {
+    data: satisfaction,
+    isLoading: satisfactionLoading,
+    error: satisfactionError,
+  } = useQuery<SatisfactionResponse>({
+    queryKey: queryKeys.satisfaction(sessionCmId, currentYear, scenarioId),
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        session: String(sessionCmId),
+        year: String(currentYear),
+      })
+      if (scenarioId) params.set('scenario', scenarioId)
+      const response = await fetchWithAuth(`/api/satisfaction?${params}`)
+      if (!response.ok) {
+        throw new Error(`/api/satisfaction failed: ${response.status}`)
+      }
+      return (await response.json()) as SatisfactionResponse
+    },
+    staleTime: 30 * 1000, // matches social-graph staleness
+    gcTime: 10 * 60 * 1000,
+    enabled: !!user,
+  })
+
+  // Pre-compute request lookups for hasRequests / getRequestsForCamper
+  const requestsByPerson = (() => {
     const map = new Map<number, BunkRequest[]>()
     allRequests.forEach((request) => {
       const existing = map.get(request.requester_id) ?? []
       map.set(request.requester_id, [...existing, request])
     })
     return map
-  }
+  })()
 
-  const requestsByPerson = getRequestsByPerson()
+  const hasRequests = (personCmId: number): boolean => requestsByPerson.has(personCmId)
+  const getRequestsForCamper = (personCmId: number): BunkRequest[] =>
+    requestsByPerson.get(personCmId) ?? []
 
-  const hasRequests = (personCmId: number): boolean => {
-    return requestsByPerson.has(personCmId)
-  }
-
-  const getRequestsForCamper = (personCmId: number): BunkRequest[] => {
-    return requestsByPerson.get(personCmId) ?? []
-  }
-
-  // Cache bunk person sets to avoid recreating for each camper in the bunk
-  // Key: bunkCmId, Value: Set of person CM IDs
-  const bunkPersonSetCache = useRef<Map<number, { set: Set<number>; size: number }>>(new Map())
-
-  const getBunkPersonSet = (bunkCmId: number, campersInBunk: BunkmateInfo[]): Set<number> => {
-    const cached = bunkPersonSetCache.current.get(bunkCmId)
-    // Invalidate if camper count changed
-    if (cached?.size === campersInBunk.length) {
-      return cached.set
-    }
-    const set = new Set(campersInBunk.map((c) => c.cmId))
-    bunkPersonSetCache.current.set(bunkCmId, {
-      set,
-      size: campersInBunk.length,
-    })
-    return set
-  }
-
-  const getSatisfiedRequestInfo = (
-    personCmId: number,
-    bunkCmId: number,
-    campersInBunk: BunkmateInfo[],
-    requesterGrade: number | null
-  ) => {
-    const personRequests = requestsByPerson.get(personCmId) ?? []
-
-    if (personRequests.length === 0 || !bunkCmId) {
-      return EMPTY_SATISFIED_INFO
-    }
-
-    // Get cached bunk person set - O(1) after first call for this bunk
-    const personSet = getBunkPersonSet(bunkCmId, campersInBunk)
-
-    // Get bunkmate grades (excluding requester) using the grade map
-    const bunkmateGrades: number[] = []
-    if (requesterGrade !== null) {
-      for (const c of campersInBunk) {
-        if (c.cmId !== personCmId && c.grade !== null) {
-          bunkmateGrades.push(c.grade)
-        }
-      }
-    }
-
-    return computeSatisfiedRequestInfo(personRequests, personSet, bunkmateGrades, requesterGrade)
+  const getSatisfiedRequestInfo = (personCmId: number): CamperSatisfaction => {
+    return satisfaction?.campers[personCmId] ?? EMPTY_CAMPER_SATISFACTION(personCmId)
   }
 
   const value = {
@@ -126,8 +100,8 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     hasRequests,
     getRequestsForCamper,
     getSatisfiedRequestInfo,
-    isLoading,
-    error,
+    isLoading: requestsLoading || satisfactionLoading,
+    error: requestsError ?? satisfactionError,
   }
 
   return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>
