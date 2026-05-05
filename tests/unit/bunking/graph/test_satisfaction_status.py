@@ -195,17 +195,24 @@ def test_parent_builder_on_digraph_still_works() -> None:
 def _fake_request(requester_id: int, requestee_id: int, source: str | None = "family", **overrides: object) -> object:
     """Build a minimal duck-typed ParsedRequest that _add_request_edges can read.
 
-    source_field defaults to mirror the canonical source/type pairing
-    (family→bunk_with, staff→not_bunk_with) for the request_type derived from
-    overrides. Pass source_field= explicitly to override.
+    source_field defaults based on (request_type, source) pairing so that
+    staff-sourced requests get the right source_field without explicit override.
+    Pass source_field= explicitly to override.
     """
-    request_type = overrides.get("request_type", "bunk_with")
-    default_source_field = "not_bunk_with" if request_type == "not_bunk_with" else "bunk_with"
+    request_type = str(overrides.get("request_type", "bunk_with"))
+    default_source_field = {
+        ("bunk_with", "parent"): "bunk_with",
+        ("bunk_with", "staff"): "not_bunk_with",
+        ("not_bunk_with", "parent"): "not_bunk_with",
+        ("not_bunk_with", "staff"): "not_bunk_with",
+        ("socialize_with", "parent"): "socialize_with",
+        ("age_preference", "parent"): "age_preference",
+    }.get((request_type, source or "parent"), "bunk_with")
     attrs: dict[str, object] = {
         "id": f"r-{requester_id}-{requestee_id}",
         "requester_id": requester_id,
         "requestee_id": requestee_id,
-        "request_type": "bunk_with",
+        "request_type": request_type,
         "priority": 4,
         "confidence_score": 0.95,
         "is_reciprocal": False,
