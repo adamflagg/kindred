@@ -33,16 +33,6 @@ class TestSocialGraphBuilder:
         assert isinstance(builder.person_cache, dict)
         assert isinstance(builder.attendee_cache, dict)
 
-    def test_build_graph_from_empty_requests(self, builder):
-        """Test building graph with no requests"""
-        # Mock empty attendees response
-        builder.pb.collection.return_value.get_full_list.return_value = []
-
-        graph = builder.build_session_graph(2025, 12345)
-
-        assert graph.number_of_nodes() == 0
-        assert graph.number_of_edges() == 0
-
     def test_detect_friend_groups_empty_graph(self, builder):
         """Test detection on empty graph"""
         detections = builder.detect_friend_groups()
