@@ -13,7 +13,7 @@ resolution pipeline. These tests only assert on the HTTP response payload.
 from __future__ import annotations
 
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -208,7 +208,9 @@ PERSON_A = 101
 PERSON_B = 102
 
 
-def _make_pb_collection_mock(bunk_record: MagicMock, person_a: MagicMock, person_b: MagicMock):
+def _make_pb_collection_mock(
+    bunk_record: MagicMock, person_a: MagicMock, person_b: MagicMock
+) -> Callable[[str], MagicMock]:
     """Build a `pb.collection(name)` side_effect that dispatches by collection name."""
 
     def _pb_collection(name: str) -> MagicMock:
