@@ -13,7 +13,6 @@ def _req(
     requestee_id: int | None = None,
     *,
     age_preference_target: str | None = None,
-    source_field: str = "bunk_with",
     requester_grade: int | None = None,
 ) -> dict:
     return {
@@ -21,7 +20,6 @@ def _req(
         "requestee_id": requestee_id,
         "request_type": request_type,
         "age_preference_target": age_preference_target,
-        "source_field": source_field,
         "requester_grade": requester_grade,
     }
 
@@ -70,6 +68,24 @@ class TestAgePreference:
                 person_to_bunk={1: 100},
                 bunkmate_grades=None,
             )
+
+    def test_older_preference_satisfied_when_bunkmates_older(self) -> None:
+        # Requester in 9th grade prefers older; bunkmates in 11th. Should be True.
+        result = is_request_satisfied(
+            _req("age_preference", 1, age_preference_target="older", requester_grade=9),
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [11, 12]},
+        )
+        assert result is True
+
+    def test_older_preference_not_satisfied_when_bunkmates_younger(self) -> None:
+        # Requester in 11th grade prefers older; bunkmates in 9th. Should be False.
+        result = is_request_satisfied(
+            _req("age_preference", 1, age_preference_target="older", requester_grade=11),
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [9, 10]},
+        )
+        assert result is False
 
 
 class TestUnknownRequestType:

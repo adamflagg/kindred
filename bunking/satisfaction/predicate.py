@@ -73,6 +73,6 @@ def is_request_satisfied(
         if requester_grade is None:
             return False
         satisfied, _ = is_age_preference_satisfied(int(requester_grade), requester_grades, str(target))
-        return bool(satisfied)
+        return satisfied
 
     raise ValueError(f"unknown request_type {request_type!r}")
