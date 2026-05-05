@@ -165,7 +165,7 @@ describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
     const alert = alerts.find((a) => a.id === 'unsatisfied-staff-requests')
     expect(alert).toBeDefined()
     expect(alert?.severity).toBe('amber')
-    expect(alert?.label).toBe('1 staff request, none satisfied')
+    expect(alert?.label).toBe('1 staff request, 1 unsatisfied')
     expect(alert?.requestRelated).toBe(true)
   })
 
@@ -182,7 +182,24 @@ describe('buildCamperAlerts — unsatisfied-staff-requests alert', () => {
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')?.label).toBe(
-      '3 staff requests, none satisfied'
+      '3 staff requests, 3 unsatisfied'
+    )
+  })
+
+  it('shows correct unsatisfied count when partially satisfied (e.g., 3 total, 1 satisfied)', () => {
+    const alerts = buildCamperAlerts({
+      ...BASE_INPUTS,
+      requestInfo: {
+        ...BASE_INPUTS.requestInfo,
+        counted_totals: {
+          ...BASE_INPUTS.requestInfo.counted_totals,
+          staff: { total: 3, satisfied: 1 },
+        },
+        flags: { ...BASE_INPUTS.requestInfo.flags, staff_unsatisfied_alert: true },
+      },
+    })
+    expect(alerts.find((a) => a.id === 'unsatisfied-staff-requests')?.label).toBe(
+      '3 staff requests, 2 unsatisfied'
     )
   })
 

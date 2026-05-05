@@ -252,7 +252,7 @@ function CamperCard({
               {satisfiedInfo.flags.staff_unsatisfied_alert && (
                 <span
                   className="text-amber-500 dark:text-amber-400"
-                  title={`${satisfiedInfo.counted_totals.staff.total} staff request${satisfiedInfo.counted_totals.staff.total > 1 ? 's' : ''}, none satisfied`}
+                  title={`${satisfiedInfo.counted_totals.staff.total} staff request${satisfiedInfo.counted_totals.staff.total > 1 ? 's' : ''}, ${satisfiedInfo.counted_totals.staff.total - satisfiedInfo.counted_totals.staff.satisfied} unsatisfied`}
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <circle cx="10" cy="10" r="7" />

@@ -39,11 +39,13 @@ export function buildCamperAlerts(inputs: CamperAlertInputs): CamperAlert[] {
       })
     }
     if (requestInfo.flags.staff_unsatisfied_alert) {
-      const count = requestInfo.counted_totals.staff.total
+      const total = requestInfo.counted_totals.staff.total
+      const satisfied = requestInfo.counted_totals.staff.satisfied
+      const unsatisfied = total - satisfied
       alerts.push({
         id: 'unsatisfied-staff-requests',
         severity: 'amber',
-        label: `${count} staff ${count === 1 ? 'request' : 'requests'}, none satisfied`,
+        label: `${total} staff ${total === 1 ? 'request' : 'requests'}, ${unsatisfied} unsatisfied`,
         requestRelated: true,
       })
     }
