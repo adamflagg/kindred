@@ -16,6 +16,8 @@ import { describe, it, expect } from 'vitest'
 import { BunkingStatusPanel } from './BunkingStatusPanel'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
+import type { CamperSatisfaction } from '../../types/satisfaction'
+import { EMPTY_CAMPER_SATISFACTION } from '../../types/satisfaction'
 
 function makeCamper(): Camper {
   return {
@@ -47,6 +49,42 @@ function makeRequest(overrides: Partial<EnhancedBunkRequest>): EnhancedBunkReque
   }
 }
 
+/**
+ * Build a CamperSatisfaction whose counted_totals match the legacy
+ * source_field/source classification so existing tests preserve their intent
+ * after #1159 (slices now read counted_totals directly). Tests that want to
+ * exercise the divergence between counted_totals and the row list pass an
+ * explicit `camperSatisfaction` to renderPanelWith.
+ */
+function buildCamperSatisfactionFromRequests(
+  requests: EnhancedBunkRequest[],
+  satisfactionData: Record<string, { status: string }>
+): CamperSatisfaction {
+  let mpTotal = 0,
+    mpSat = 0,
+    stTotal = 0,
+    stSat = 0
+  for (const req of requests) {
+    if (req.status !== 'resolved') continue
+    const sat = satisfactionData[req.id]?.status === 'satisfied'
+    if (req.source_field === 'bunk_with') {
+      mpTotal++
+      if (sat) mpSat++
+    } else if (req.source === 'staff') {
+      stTotal++
+      if (sat) stSat++
+    }
+  }
+  const empty = EMPTY_CAMPER_SATISFACTION(12345)
+  return {
+    ...empty,
+    counted_totals: {
+      material_parent: { total: mpTotal, satisfied: mpSat },
+      staff: { total: stTotal, satisfied: stSat },
+    },
+  }
+}
+
 function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
   return render(
     <MemoryRouter>
@@ -57,6 +95,7 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
         agePreferenceRequests={[]}
         satisfactionData={{}}
         satisfactionLoading={false}
+        camperSatisfaction={buildCamperSatisfactionFromRequests(allBunkRequests, {})}
       />
     </MemoryRouter>
   )
@@ -69,13 +108,23 @@ interface RenderPanelOptions {
     string,
     { status: 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'; detail?: string }
   >
+  camperSatisfaction?: CamperSatisfaction
 }
 
 function renderPanelWith({
   allBunkRequests,
   agePreferenceRequests = [],
   satisfactionData,
+  camperSatisfaction,
 }: RenderPanelOptions) {
+  // Mirror production splitting: age_preference rows are sourced from
+  // agePreferenceRequests; non-age rows from allBunkRequests. Dedupe on id in
+  // case a test passes the same row through both.
+  const personRequests = allBunkRequests.filter((r) => r.request_type !== 'age_preference')
+  const summary = [
+    ...personRequests,
+    ...agePreferenceRequests.filter((r) => !personRequests.some((p) => p.id === r.id)),
+  ]
   return render(
     <MemoryRouter>
       <BunkingStatusPanel
@@ -85,6 +134,9 @@ function renderPanelWith({
         agePreferenceRequests={agePreferenceRequests}
         satisfactionData={satisfactionData}
         satisfactionLoading={false}
+        camperSatisfaction={
+          camperSatisfaction ?? buildCamperSatisfactionFromRequests(summary, satisfactionData)
+        }
       />
     </MemoryRouter>
   )
@@ -285,6 +337,62 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       '.text-green-500, .text-green-400, .text-green-600'
     )
     expect(greenCheck).not.toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfaction', () => {
+  it('shows ratios from counted_totals.material_parent regardless of local request rows', () => {
+    // Only one resolved row in allBunkRequests, but counted_totals reports 3/5.
+    // The slice line must report "3/5 met" — proving slices come from
+    // counted_totals (centralized aggregator), not from re-bucketing rows.
+    const onlyRow = makeRequest({
+      id: 'p1',
+      request_type: 'bunk_with',
+      source_field: 'bunk_with',
+      source: 'family',
+    })
+    const camperSatisfaction: CamperSatisfaction = {
+      ...EMPTY_CAMPER_SATISFACTION(12345),
+      counted_totals: {
+        material_parent: { total: 5, satisfied: 3 },
+        staff: { total: 0, satisfied: 0 },
+      },
+    }
+    renderPanelWith({
+      allBunkRequests: [onlyRow],
+      satisfactionData: { p1: { status: 'satisfied', detail: '' } },
+      camperSatisfaction,
+    })
+    expect(screen.getByText('3/5 met')).toBeInTheDocument()
+  })
+
+  it('shows ratios from counted_totals.staff', () => {
+    const camperSatisfaction: CamperSatisfaction = {
+      ...EMPTY_CAMPER_SATISFACTION(12345),
+      counted_totals: {
+        material_parent: { total: 0, satisfied: 0 },
+        staff: { total: 4, satisfied: 1 },
+      },
+    }
+    renderPanelWith({
+      allBunkRequests: [],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    expect(screen.getByText('1/4 met')).toBeInTheDocument()
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+  })
+
+  it('hides summary entirely when both counted_totals are zero', () => {
+    const camperSatisfaction: CamperSatisfaction = EMPTY_CAMPER_SATISFACTION(12345)
+    renderPanelWith({
+      allBunkRequests: [],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+    expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
   })
 })
 

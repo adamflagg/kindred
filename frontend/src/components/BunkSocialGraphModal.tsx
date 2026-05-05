@@ -115,10 +115,6 @@ export default function BunkSocialGraphModal({
   const { currentScenario } = useScenario()
   const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
-  const [currentBunkIndex, setCurrentBunkIndex] = useState<number>(0)
-  const [sessionBunks, setSessionBunks] = useState<
-    Array<{ cm_id: number; name: string; gender: string }>
-  >([])
   const [showLegend, setShowLegend] = useState<boolean>(false)
 
   // Fetch bunk graph data. The query key and in-memory graph cache both
@@ -205,68 +201,51 @@ export default function BunkSocialGraphModal({
     enabled: isOpen,
   })
 
-  // Initialize session bunks and current index when data is loaded
-  useEffect(() => {
-    if (allBunks && allBunks.length > 0 && bunkCmId) {
-      // Determine bunk type (G, B, or AG)
-      const currentBunk = allBunks.find((b) => b.cm_id === bunkCmId)
-      const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-        if (!name) return 'B'
-        if (name.includes('AG') || name.startsWith('AG')) return 'AG'
-        if (name.startsWith('G-')) return 'G'
-        if (name.startsWith('B-')) return 'B'
-        return 'B' // Default fallback
-      }
+  // Pure derivation: same-type bunks sorted by level, plus the current
+  // bunk's index within that list. Recomputed on bunkCmId / allBunks change;
+  // navigation flows through onBunkChange → bunkCmId, which re-derives.
+  const sessionBunks = useMemo(() => {
+    if (!allBunks || allBunks.length === 0 || !bunkCmId) return []
 
-      const currentBunkType = getBunkType(currentBunk?.name ?? '')
-
-      // For AG bunks, no navigation
-      if (currentBunkType === 'AG') {
-        setSessionBunks([])
-        return
-      }
-
-      // Extract level for sorting (handles Alph, Bet, and numbers)
-      const extractSortKey = (name: string): { primary: number; secondary: string } => {
-        if (name.includes('Alph')) return { primary: -2, secondary: name }
-        if (name.includes('Bet')) return { primary: -1, secondary: name }
-
-        const match = name.match(/[GB]-(\d+)/)
-        if (match?.[1]) {
-          return { primary: parseInt(match[1], 10), secondary: name }
-        }
-        return { primary: 999, secondary: name }
-      }
-
-      // Filter bunks by type and sort
-      const sortedBunks = allBunks
-        .filter((bunk) => {
-          const bunkType = getBunkType(bunk.name || '')
-          return bunkType === currentBunkType
-        })
-        .sort((a, b) => {
-          const keyA = extractSortKey(a.name || '')
-          const keyB = extractSortKey(b.name || '')
-
-          if (keyA.primary !== keyB.primary) return keyA.primary - keyB.primary
-          // If same level, sort alphabetically (handles suffixes like G-1A, G-1B)
-          return keyA.secondary.localeCompare(keyB.secondary)
-        })
-        .map((bunk) => ({
-          cm_id: bunk.cm_id,
-          name: bunk.name || '',
-          gender: getBunkType(bunk.name || '') === 'G' ? 'F' : 'M',
-        }))
-
-      setSessionBunks(sortedBunks)
-
-      // Find current bunk index
-      const index = sortedBunks.findIndex((b) => b.cm_id === bunkCmId)
-      if (index !== -1) {
-        setCurrentBunkIndex(index)
-      }
+    const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
+      if (!name) return 'B'
+      if (name.includes('AG') || name.startsWith('AG')) return 'AG'
+      if (name.startsWith('G-')) return 'G'
+      if (name.startsWith('B-')) return 'B'
+      return 'B'
     }
+
+    const currentBunk = allBunks.find((b) => b.cm_id === bunkCmId)
+    const currentBunkType = getBunkType(currentBunk?.name ?? '')
+    if (currentBunkType === 'AG') return []
+
+    const extractSortKey = (name: string): { primary: number; secondary: string } => {
+      if (name.includes('Alph')) return { primary: -2, secondary: name }
+      if (name.includes('Bet')) return { primary: -1, secondary: name }
+      const match = name.match(/[GB]-(\d+)/)
+      if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
+      return { primary: 999, secondary: name }
+    }
+
+    return allBunks
+      .filter((bunk) => getBunkType(bunk.name || '') === currentBunkType)
+      .sort((a, b) => {
+        const keyA = extractSortKey(a.name || '')
+        const keyB = extractSortKey(b.name || '')
+        if (keyA.primary !== keyB.primary) return keyA.primary - keyB.primary
+        return keyA.secondary.localeCompare(keyB.secondary)
+      })
+      .map((bunk) => ({
+        cm_id: bunk.cm_id,
+        name: bunk.name || '',
+        gender: getBunkType(bunk.name || '') === 'G' ? 'F' : 'M',
+      }))
   }, [allBunks, bunkCmId])
+
+  const currentBunkIndex = useMemo(() => {
+    const idx = sessionBunks.findIndex((b) => b.cm_id === bunkCmId)
+    return idx === -1 ? 0 : idx
+  }, [sessionBunks, bunkCmId])
 
   // Initialize Cytoscape
   useEffect(() => {

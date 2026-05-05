@@ -688,7 +688,6 @@ export default function CamperDetailsPanel({
       lockState,
       lockGroupSize,
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effectiveAssignedBunkCmId,
     camper?.person_cm_id,

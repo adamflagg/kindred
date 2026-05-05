@@ -12,6 +12,7 @@ import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDivide
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
+import type { CamperSatisfaction } from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -55,6 +56,12 @@ interface BunkingStatusPanelProps {
   agePreferenceRequests: EnhancedBunkRequest[]
   satisfactionData: SatisfactionMap
   satisfactionLoading: boolean
+  /**
+   * Authoritative per-camper bucket counts from `/api/satisfaction`. Slice
+   * totals on this panel must read from `counted_totals` to stay aligned with
+   * the bunking board card and graph node states (#1159).
+   */
+  camperSatisfaction: CamperSatisfaction
 }
 
 export function BunkingStatusPanel({
@@ -65,6 +72,7 @@ export function BunkingStatusPanel({
   agePreferenceRequests,
   satisfactionData,
   satisfactionLoading,
+  camperSatisfaction,
 }: BunkingStatusPanelProps) {
   // The per-camper list must agree with the summary above — both filter to
   // status === 'resolved' so pending and declined rows don't render with
@@ -90,31 +98,16 @@ export function BunkingStatusPanel({
     [personRequests, resolvedAgePrefs]
   )
 
-  // Derive per-bucket counts directly from the satisfaction map rather than
-  // the legacy deriveSlicesFromSatisfactionMap → computeSlicesFromPredicate chain.
-  // Classification mirrors computeSlicesFromPredicate: source_field='bunk_with'
-  // → materialParent; source='staff' (catch-all) → staff.
-  const slices = useMemo(() => {
-    let mpTotal = 0,
-      mpSat = 0,
-      stTotal = 0,
-      stSat = 0
-    for (const req of summaryRequests) {
-      if (req.status !== 'resolved') continue
-      const sat = satisfactionData[req.id]?.status === 'satisfied'
-      if (req.source_field === 'bunk_with') {
-        mpTotal++
-        if (sat) mpSat++
-      } else if (req.source === 'staff') {
-        stTotal++
-        if (sat) stSat++
-      }
-    }
-    return {
-      materialParent: { total: mpTotal, satisfied: mpSat },
-      staff: { total: stTotal, satisfied: stSat },
-    }
-  }, [summaryRequests, satisfactionData])
+  // Slice totals come from the centralized aggregator (`/api/satisfaction`),
+  // not from re-bucketing rows here. This is the single source of truth shared
+  // with the bunking-board card and graph node states (#1159).
+  const slices = useMemo(
+    () => ({
+      materialParent: camperSatisfaction.counted_totals.material_parent,
+      staff: camperSatisfaction.counted_totals.staff,
+    }),
+    [camperSatisfaction]
+  )
 
   const showParent = slices.materialParent.total > 0
   const showStaff = slices.staff.total > 0

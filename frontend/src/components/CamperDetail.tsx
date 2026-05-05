@@ -4,6 +4,7 @@
  * This component orchestrates data fetching through hooks and
  * delegates rendering to extracted UI components.
  */
+import { useContext } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
@@ -12,6 +13,8 @@ import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
+import { BunkRequestContext } from '../contexts/BunkRequestContext'
+import { EMPTY_CAMPER_SATISFACTION } from '../types/satisfaction'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 // Import extracted hooks
@@ -141,6 +144,15 @@ export default function CamperDetail() {
     currentYear,
     allBunkRequests
   )
+
+  // Authoritative per-bucket counts from /api/satisfaction (#1159). Read via
+  // useContext so the page degrades to empty-state in tests/storybook that
+  // don't wrap with BunkRequestProvider — it's already a defensive fallback.
+  const bunkRequestCtx = useContext(BunkRequestContext)
+  const camperSatisfaction =
+    bunkRequestCtx && camper?.person_cm_id
+      ? bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
+      : EMPTY_CAMPER_SATISFACTION(camper?.person_cm_id ?? 0)
 
   // Fetch siblings using extracted hook
   const {
@@ -305,6 +317,7 @@ export default function CamperDetail() {
                 agePreferenceRequests={agePreferenceRequests}
                 satisfactionData={satisfactionData}
                 satisfactionLoading={satisfactionLoading}
+                camperSatisfaction={camperSatisfaction}
               />
 
               {/* Raw Bunking Data (admin only) */}
