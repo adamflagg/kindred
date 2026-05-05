@@ -40,6 +40,7 @@ from .social_graph import (
     BunkGraphMetrics,
     BunkGraphResponse,
     CamperPositionUpdate,
+    CrossScopeEdge,
     IncrementalUpdateResponse,
     SocialGraphEdge,
     SocialGraphNode,
@@ -53,29 +54,32 @@ from .solver import (
 )
 from .validation import ValidateBunkingRequest
 
-__all__ = [
+__all__ = [  # noqa: RUF022 — grouped by feature for navigability over alphabetical
     # Social Graph
     "BunkGraphMetrics",
     "BunkGraphResponse",
+    "CamperPositionUpdate",
+    "CrossScopeEdge",
+    "IncrementalUpdateResponse",
+    "SocialGraphEdge",
+    "SocialGraphNode",
+    "SocialGraphResponse",
     # Bunk Requests
     "BunkRequestCreate",
     "BunkRequestResponse",
     "BunkRequestUpdate",
-    # Admin
     "BunkRequestUpload",
-    "CamperPositionUpdate",
     # Solver
     "ClearAssignmentsRequest",
+    "MultiSessionSolverRequest",
+    "SolverConfigUpdate",
+    "SolverRequest",
+    "SolverResponse",
     # Metrics
     "ComparisonDelta",
     "ComparisonMetricsResponse",
     "GenderBreakdown",
     "GradeBreakdown",
-    "IncrementalUpdateResponse",
-    # Manual Review
-    "ManualReviewDecision",
-    "ManualReviewResponse",
-    "MultiSessionSolverRequest",
     "NewVsReturning",
     "RegistrationMetricsResponse",
     "RetentionByGender",
@@ -85,18 +89,15 @@ __all__ = [
     "RetentionMetricsResponse",
     "SessionBreakdown",
     "SessionLengthBreakdown",
-    "SocialGraphEdge",
-    "SocialGraphNode",
-    "SocialGraphResponse",
-    # Config
-    "SolverConfigUpdate",
-    "SolverRequest",
-    "SolverResponse",
-    "UpdateAdminSetting",
-    "UpdateSyncSchedule",
-    # Validation
-    "ValidateBunkingRequest",
-    "ValidateCronRequest",
     "YearSummary",
     "YearsAtCampBreakdown",
+    # Manual Review
+    "ManualReviewDecision",
+    "ManualReviewResponse",
+    # Admin / Config
+    "UpdateAdminSetting",
+    "UpdateSyncSchedule",
+    "ValidateCronRequest",
+    # Validation
+    "ValidateBunkingRequest",
 ]

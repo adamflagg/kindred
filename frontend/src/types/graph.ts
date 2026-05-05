@@ -47,6 +47,21 @@ export interface GraphMetrics {
   [key: string]: number
 }
 
+/** Shape of a cross-scope edge as serialized by the Python CrossScopeEdge
+ *  Pydantic model. Pydantic emits `null` for absent Optional fields (not
+ *  `undefined`), so nullable required fields are typed `T | null`. */
+export interface CrossScopeEdge {
+  source: number
+  target: number
+  type: string
+  weight: number
+  request_type: string | null
+  priority: number | null
+  confidence: number | null
+  reciprocal: boolean
+  cross_scope: true
+}
+
 export interface GraphData {
   nodes: GraphNode[]
   edges: GraphEdge[]
@@ -58,14 +73,9 @@ export interface GraphData {
   layout_positions?: Record<number, [number, number]>
   edge_type_counts?: Record<string, number>
   /** Edges crossing the scope boundary when ?cross_scope=true. Frontend
-   *  renders these as ghosted to show context without polluting the layout. */
-  cross_scope_edges?: Array<{
-    source: number
-    target: number
-    weight: number
-    type: string
-    cross_scope: true
-  }>
+   *  renders these as ghosted to show context without polluting the layout.
+   *  Shape mirrors the Python CrossScopeEdge Pydantic model. */
+  cross_scope_edges?: CrossScopeEdge[]
   /** Out-of-scope endpoints of cross_scope_edges. Frontend renders these as
    *  ghosted-but-clickable nodes so users can click through to a potential
    *  connection, while the layout still treats the in-scope set as the focus. */

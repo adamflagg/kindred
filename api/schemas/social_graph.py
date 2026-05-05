@@ -8,6 +8,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
+# CrossScopeEdge lives in bunking.graph.scope_filter (domain layer); re-exported here for symmetry with the other social-graph schemas.
+from bunking.graph.scope_filter import CrossScopeEdge as CrossScopeEdge
+
 
 class SocialGraphNode(BaseModel):
     """Node in the social graph"""
@@ -55,10 +58,8 @@ class SocialGraphResponse(BaseModel):
     warnings: list[str] = []  # Warnings about isolated campers, split groups, etc.
     layout_positions: dict[int, tuple[float, float]] | None = None  # node_id -> (x, y)
     edge_type_counts: dict[str, int] = {}  # edge_type -> count
-    cross_scope_edges: list[SocialGraphEdge] = []  # Edges crossing the scope boundary (when ?cross_scope=true)
-    cross_scope_nodes: list[
-        SocialGraphNode
-    ] = []  # Out-of-scope endpoints of cross_scope_edges (when ?cross_scope=true)
+    cross_scope_edges: list[CrossScopeEdge] = []  # Edges crossing the scope boundary (when ?cross_scope=true)
+    cross_scope_nodes: list[SocialGraphNode] = []  # Out-of-scope node endpoints (when ?cross_scope=true)
 
 
 class BunkGraphMetrics(BaseModel):
