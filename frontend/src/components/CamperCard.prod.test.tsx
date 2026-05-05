@@ -122,12 +122,7 @@ describe('CamperCard parent-paramount icons', () => {
       },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
     expect(container.querySelector('[title*="staff request"]')).toBeNull()
@@ -143,12 +138,7 @@ describe('CamperCard parent-paramount icons', () => {
       },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
@@ -167,12 +157,7 @@ describe('CamperCard parent-paramount icons', () => {
       },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
@@ -191,12 +176,7 @@ describe('CamperCard parent-paramount icons', () => {
       },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
@@ -215,12 +195,7 @@ describe('CamperCard parent-paramount icons', () => {
       },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
     expect(container.querySelector('[title*="staff request"]')).toBeNull()
@@ -242,12 +217,7 @@ describe('CamperCard satisfaction suppression', () => {
   it('hides parent triangle when camper is unassigned', () => {
     // fakeCamper has assigned_bunk_cm_id: null
     const { container } = render(
-      <CamperCard
-        camper={fakeCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={fakeCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
   })
@@ -259,7 +229,6 @@ describe('CamperCard satisfaction suppression', () => {
         isDraggable={true}
         isDragging={true}
         isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
       />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
@@ -272,7 +241,6 @@ describe('CamperCard satisfaction suppression', () => {
         isDraggable={true}
         isDragging={false}
         isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
       />
     )
     expect(container.querySelector('[title*="parent request"]')).not.toBeNull()

@@ -72,7 +72,6 @@ export default function UnassignedCampers({
                   isProductionMode={isProductionMode}
                   {...(onCamperClick && { onClick: onCamperClick })}
                   hasRequests={requestStatus[camper.person_cm_id] ?? true}
-                  bunkCampers={[]} // Unassigned campers have no bunk mates
                 />
               ))}
             </SortableContext>

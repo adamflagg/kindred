@@ -26,7 +26,6 @@ interface CamperCardProps {
   hasRequests?: boolean // Indicates if camper has bunk requests
   onLockToggle?: (camper: Camper) => void
   onUnassign?: (camper: Camper) => void // Unassign from current bunk
-  bunkCampers?: unknown[] // Roster prop kept for call-site compat; satisfaction is now server-computed
   lockState?: 'none' | 'pending' | 'locked' // Lock state
   lockGroupColor?: string | undefined // Color of the lock group
   isDraftMode?: boolean // True when viewing a draft scenario (enables lock features)
@@ -41,7 +40,6 @@ function CamperCard({
   hasRequests: _hasRequests = true, // Default to true to avoid visual noise until we have data
   onLockToggle,
   onUnassign,
-  bunkCampers: _bunkCampers = [],
   lockState = 'none',
   lockGroupColor,
   isDraftMode = false,
