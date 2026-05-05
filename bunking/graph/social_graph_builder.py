@@ -18,7 +18,6 @@ from api.constants.collections import (
     BUNK_ASSIGNMENTS_DRAFT,
     BUNK_REQUESTS,
     BUNKS,
-    CAMP_SESSIONS,
     PERSONS,
 )
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
@@ -79,47 +78,6 @@ class SocialGraphBuilder:
         if scenario_id:
             return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{scenario_id}"'
         return BUNK_ASSIGNMENTS, ""
-
-    def build_session_graph(self, year: int, session_cm_id: int) -> nx.Graph:
-        """Build complete social graph for a session
-
-        Note: Historical edges have been removed. The graph now contains:
-        - Current bunk requests (bunk_with/not_bunk_with)
-        - Sibling relationships (based on family_id)
-        - Classmate relationships (marked as informational_only)
-        """
-        logger.info(f"Building social graph for year {year}, session {session_cm_id}")
-
-        # Get session info for logging
-        session_name = "Unknown"
-        try:
-            session = self.pb.collection(CAMP_SESSIONS).get_first_list_item(f"cm_id = {session_cm_id}")
-            session_name = session.name
-            logger.info(f"Session type: {'AG' if 'all-gender' in session_name.lower() else 'Regular'} - {session_name}")
-        except Exception as e:
-            logger.warning(f"Could not get session name: {e}")
-
-        # Reset graph
-        self.graph = nx.Graph()
-
-        # 1. Add all campers as nodes
-        self._add_camper_nodes(year, session_cm_id)
-
-        # 2. Add edges from various sources
-        self._add_request_edges(year, session_cm_id)
-        # Historical edges removed - only using current requests and relationships
-        self._add_sibling_edges(year, session_cm_id)
-        self._add_classmate_edges(year, session_cm_id)
-
-        # 3. Bundle edges with multiple relationship types
-        self._bundle_edges()
-
-        # 4. Calculate graph metrics
-        self._calculate_node_metrics()
-
-        logger.info(f"Graph built with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges")
-
-        return self.graph
 
     def build_bunk_graph(
         self,
@@ -784,72 +742,6 @@ class SocialGraphBuilder:
                         )
 
         logger.info(f"Added {school_matches} school-based classmate edges")
-
-    def _bundle_edges(self) -> None:
-        """Bundle multiple edges between same nodes into a single edge with metadata"""
-        # Create a new graph to rebuild with bundled edges
-        bundled_graph = nx.Graph()
-
-        # Copy all nodes with their attributes
-        for node, attrs in self.graph.nodes(data=True):
-            bundled_graph.add_node(node, **attrs)
-
-        # Track edge types between each pair of nodes
-        edge_bundles: dict[tuple[int, int], dict[str, Any]] = defaultdict(
-            lambda: {"types": [], "weights": [], "metadata": {}}
-        )
-
-        # Collect all edges and their types
-        for u, v, data in self.graph.edges(data=True):
-            # Create a sorted tuple to ensure consistency
-            edge_key = tuple(sorted([u, v]))
-            edge_type = data.get("edge_type", "unknown")
-
-            bundle = edge_bundles[edge_key]
-            bundle["types"].append(edge_type)
-            bundle["weights"].append(data.get("weight", 1.0))
-
-            # Store type-specific metadata
-            if edge_type not in bundle["metadata"]:
-                bundle["metadata"][edge_type] = {}
-
-            # Copy relevant attributes for each edge type
-            if edge_type == "request":
-                bundle["metadata"][edge_type] = {
-                    "priority": data.get("priority"),
-                    "confidence": data.get("confidence", 0.5),
-                    "is_reciprocal": data.get("is_reciprocal", False),
-                }
-            elif edge_type == "sibling":
-                bundle["metadata"][edge_type] = {"family_id": data.get("family_id")}
-            elif edge_type == "school":
-                bundle["metadata"][edge_type] = data.get("metadata", {})
-
-        # Create bundled edges
-        bundled_count = 0
-        for (u, v), bundle in edge_bundles.items():
-            if len(bundle["types"]) > 1:
-                # Multiple relationship types - create bundled edge
-                bundled_graph.add_edge(
-                    u,
-                    v,
-                    edge_type="bundled",
-                    types=bundle["types"],
-                    weight=max(bundle["weights"]),  # Use highest weight
-                    metadata=bundle["metadata"],
-                    bundle_count=len(bundle["types"]),
-                )
-                bundled_count += 1
-            else:
-                # Single relationship type - copy as is
-                edge_type = bundle["types"][0]
-                bundled_graph.add_edge(
-                    u, v, edge_type=edge_type, weight=bundle["weights"][0], **bundle["metadata"].get(edge_type, {})
-                )
-
-        # Replace the graph with the bundled version
-        self.graph = bundled_graph
-        logger.info(f"Bundled {bundled_count} multi-relationship edges")
 
     def _calculate_node_metrics(self) -> None:
         """Calculate and store node-level metrics"""
