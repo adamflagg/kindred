@@ -376,6 +376,7 @@ async def evaluate_score(
         }
 
     except ClientResponseError as e:
+        logger.error(f"PocketBase error evaluating score: {e}", exc_info=True)
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error evaluating score: {e}", exc_info=True)

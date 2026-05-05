@@ -337,30 +337,39 @@ class TestClearParseAnalysisEndpoint:
         """Create mock repositories for testing."""
         return {"debug_repo": Mock()}
 
+    @staticmethod
+    def _make_app() -> FastAPI:
+        from api.routers.debug import router
+
+        app = FastAPI()
+        app.include_router(router)
+        _override_auth(app)
+        return app
+
     @pytest.fixture
     def client_with_mocks(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
-        """Create test client with mocked repositories.
+        """Success-path client. Default `raise_server_exceptions=True` keeps
+        tracebacks visible if the happy path regresses unexpectedly.
+        """
+        with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
+            mock_get_debug_repo.return_value = mock_repos["debug_repo"]
+            yield TestClient(self._make_app()), mock_repos
 
-        The global exception handler is registered here so the sentinel-failure
-        path (RuntimeError → generic 500) is exercised the same way it is in
-        production.
+    @pytest.fixture
+    def client_with_global_handler(self, mock_repos: dict[str, Mock]) -> Generator[tuple[TestClient, dict[str, Mock]]]:
+        """Error-path client: registers the global exception handler so the
+        sentinel `RuntimeError` surfaces as a generic 500, matching production.
         """
         from fastapi import Request
         from fastapi.responses import JSONResponse
 
         with patch("api.routers.debug.get_debug_parse_repository") as mock_get_debug_repo:
             mock_get_debug_repo.return_value = mock_repos["debug_repo"]
-
-            from api.routers.debug import router
-
-            app = FastAPI()
+            app = self._make_app()
 
             @app.exception_handler(Exception)
             async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
                 return JSONResponse(status_code=500, content={"detail": "Internal server error"})
-
-            app.include_router(router)
-            _override_auth(app)
 
             yield TestClient(app, raise_server_exceptions=False), mock_repos
 
@@ -378,14 +387,16 @@ class TestClearParseAnalysisEndpoint:
 
         mock_repos["debug_repo"].clear_all.assert_called_once()
 
-    def test_clear_returns_error_on_failure(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
-        """Test that the sentinel `-1` from the repository surfaces as a generic 500.
+    def test_clear_returns_error_on_failure(
+        self, client_with_global_handler: tuple[TestClient, dict[str, Mock]]
+    ) -> None:
+        """Sentinel `-1` from the repository surfaces as a generic 500.
 
         The endpoint raises RuntimeError; the global exception handler maps it
         to the standard "Internal server error" payload — no implementation
         detail leaked.
         """
-        client, mock_repos = client_with_mocks
+        client, mock_repos = client_with_global_handler
 
         mock_repos["debug_repo"].clear_all.return_value = -1  # Error indicator
 

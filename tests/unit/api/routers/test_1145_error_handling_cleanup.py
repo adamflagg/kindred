@@ -419,12 +419,12 @@ class TestSolveScenarioGenericExceptionNoLeak:
             yield TestClient(app, raise_server_exceptions=False)
 
     def test_returns_500_with_generic_detail(self, client: TestClient) -> None:
-        resp = client.post("/api/scenarios/abc/solve", json={"year": 2025})
+        resp = client.post("/api/scenarios/abc/solve")
         assert resp.status_code == 500
         assert resp.json() == {"detail": "Internal server error"}
 
     def test_no_exception_text_leak(self, client: TestClient) -> None:
-        resp = client.post("/api/scenarios/abc/solve", json={"year": 2025})
+        resp = client.post("/api/scenarios/abc/solve")
         assert SENSITIVE_MARKER not in resp.text
 
 
@@ -474,6 +474,12 @@ class TestClearParseAnalysisSentinelNoLeak:
         resp = client.delete("/api/debug/parse-analysis")
         assert resp.status_code == 500
         assert resp.json() == {"detail": "Internal server error"}
+
+    def test_no_sentinel_text_leak(self, client: TestClient) -> None:
+        """The RuntimeError message must not surface in the response body."""
+        resp = client.delete("/api/debug/parse-analysis")
+        assert "error sentinel" not in resp.text
+        assert "debug_repo" not in resp.text
 
 
 # ===========================================================================

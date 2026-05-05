@@ -481,9 +481,6 @@ async def clear_parse_analysis(
         deleted_count = debug_repo.clear_all()
 
     if deleted_count < 0:
-        # Sentinel from repository indicating an unexpected failure. Raise a plain
-        # exception so the global handler in api/main.py returns a generic 500
-        # without leaking implementation detail.
         logger.error("clear_parse_analysis: repository returned error sentinel (deleted_count=%d)", deleted_count)
         raise RuntimeError("debug_repo.clear returned error sentinel")
 
