@@ -345,7 +345,7 @@ export const queryKeys = {
   // Satisfaction (Tier 2 - computed from solver + bunk assignments)
   satisfaction: (sessionCmId: number, year: number, scenarioId: string | null = null) =>
     ['satisfaction', sessionCmId, year, scenarioId] as const,
-  satisfactionPrefix: ['satisfaction'] as const,
+  satisfactionPrefix: () => ['satisfaction'] as const,
 
   // Parameterized fetch-site factories (Issue #1023, #1084)
   allBunkRequests: (sessionCmId: number, year: number) =>

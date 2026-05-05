@@ -28,16 +28,8 @@ export interface SatisfactionFlags {
 export interface CamperSatisfaction {
   person_cm_id: number
   per_request: PerRequestStatus[]
-  /**
-   * Only `material_parent` and `staff` keys are present in API responses
-   * (per COUNTED_BUCKETS in bucket.py). The `immaterial_parent` key is
-   * intentionally absent from real responses — use the top-level `immaterial`
-   * field for uncounted visibility data.
-   *
-   * Typed as Partial so the factory and consumers don't need to provide or
-   * assume a meaningful `immaterial_parent` entry.
-   */
-  counted_totals: Partial<Record<RequestBucket, BucketCount>>
+  // Covers COUNTED_BUCKETS only; see top-level `immaterial` for uncounted data.
+  counted_totals: { material_parent: BucketCount; staff: BucketCount }
   immaterial: BucketCount
   flags: SatisfactionFlags
 }
