@@ -12,7 +12,7 @@ per person.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from api.constants.collections import (
     BUNK_ASSIGNMENTS,
@@ -31,9 +31,42 @@ from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify
 from bunking.satisfaction.predicate import is_request_satisfied
 
 
+class BunkRequestRow(TypedDict):
+    id: str
+    requester_id: int
+    requestee_id: NotRequired[int | None]
+    request_type: str
+    source_field: str
+    age_preference_target: NotRequired[str | None]
+    requester_grade: NotRequired[int | None]
+
+
+def _coerce_row(r: Any) -> BunkRequestRow:
+    """Coerce a PocketBase record or plain dict into a BunkRequestRow."""
+    if isinstance(r, dict):
+        return BunkRequestRow(
+            id=str(r.get("id", "")),
+            requester_id=int(r["requester_id"]),
+            requestee_id=r.get("requestee_id"),
+            request_type=str(r.get("request_type", "")),
+            source_field=str(r.get("source_field", "")),
+            age_preference_target=r.get("age_preference_target"),
+            requester_grade=r.get("requester_grade"),
+        )
+    return BunkRequestRow(
+        id=str(getattr(r, "id", "")),
+        requester_id=int(r.requester_id),
+        requestee_id=getattr(r, "requestee_id", None),
+        request_type=str(getattr(r, "request_type", "")),
+        source_field=str(getattr(r, "source_field", "")),
+        age_preference_target=getattr(r, "age_preference_target", None),
+        requester_grade=getattr(r, "requester_grade", None),
+    )
+
+
 def camper_satisfaction(
     person_cm_id: int,
-    person_requests: list[dict[str, Any]],
+    person_requests: list[BunkRequestRow],
     person_to_bunk: dict[int, int],
     *,
     bunkmate_grades: dict[int, list[int]] | None = None,
@@ -163,22 +196,11 @@ def session_satisfaction(
         )
     )
 
-    requests_by_requester: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    requests_by_requester: dict[int, list[BunkRequestRow]] = defaultdict(list)
     for r in raw_requests:
-        if isinstance(r, dict):
-            row = dict(r)
-            rid = int(row["requester_id"])
-        else:
-            rid = int(r.requester_id)
-            row = {
-                "id": getattr(r, "id", ""),
-                "requester_id": rid,
-                "requestee_id": getattr(r, "requestee_id", None),
-                "request_type": getattr(r, "request_type", ""),
-                "source_field": getattr(r, "source_field", ""),
-                "age_preference_target": getattr(r, "age_preference_target", None),
-            }
-        if "requester_grade" not in row:
+        row = _coerce_row(r)
+        rid = row["requester_id"]
+        if row.get("requester_grade") is None:
             row["requester_grade"] = person_grades.get(rid)
         requests_by_requester[rid].append(row)
 
