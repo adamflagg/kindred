@@ -1,4 +1,9 @@
 {
+  "0": {
+    "parent_satisfaction_status": "no_requests",
+    "satisfaction_status": "no_requests",
+    "staff_satisfaction_status": "no_requests"
+  },
   "1": {
     "parent_satisfaction_status": "satisfied",
     "satisfaction_status": "satisfied",
@@ -23,5 +28,10 @@
     "parent_satisfaction_status": "no_requests",
     "satisfaction_status": "satisfied",
     "staff_satisfaction_status": "satisfied"
+  },
+  "8": {
+    "parent_satisfaction_status": "no_requests",
+    "satisfaction_status": "no_requests",
+    "staff_satisfaction_status": "no_requests"
   }
 }

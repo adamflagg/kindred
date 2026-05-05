@@ -133,4 +133,18 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "year": 2026,
             "session_id": 999,
         },  # satisfied
+        # age_preference → scored by solver, skipped in graph node metrics
+        {
+            "id": "r_age",
+            "requester_id": 8,
+            "requestee_id": 0,
+            "request_type": "age_preference",
+            "source_field": "age_preference",
+            "priority": 4,
+            "year": 2026,
+            "session_id": 100,
+            "requester_grade": 7,
+            "bunkmate_grades": [7, 8],
+            "age_preference_target": "older",
+        },
     ]
