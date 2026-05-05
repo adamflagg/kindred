@@ -15,6 +15,7 @@ import { toast } from 'react-hot-toast'
 import { solverService } from '../../services/solver'
 import { graphCacheService } from '../../services/GraphCacheService'
 import { queryKeys } from '../../utils/queryKeys'
+import { invalidateAssignmentDerivedQueries } from '../../utils/queryInvalidation'
 
 /** Type for fetchWithAuth function from useApiWithAuth */
 export type FetchWithAuthFn = (
@@ -143,12 +144,9 @@ export function useSolverOperations({
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
-                  // Issue #1040 — solver re-assigns campers; graph borders must refresh.
-                  queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-                  queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
-                  // #1041 — satisfaction endpoint must refresh after solver re-assigns campers.
-                  queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
                 ])
+                // Issue #1040 / #1041 — graph borders + satisfaction must refresh after re-assign.
+                invalidateAssignmentDerivedQueries(queryClient)
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
               } finally {
@@ -184,12 +182,9 @@ export function useSolverOperations({
                   }),
                   queryClient.invalidateQueries({ queryKey: ['all-sessions'] }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
-                  // Issue #1040 — solver re-assigns campers; graph borders must refresh.
-                  queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-                  queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
-                  // #1041 — satisfaction endpoint must refresh after solver re-assigns campers.
-                  queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
                 ])
+                // Issue #1040 / #1041 — graph borders + satisfaction must refresh after re-assign.
+                invalidateAssignmentDerivedQueries(queryClient)
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
               } finally {
@@ -251,15 +246,9 @@ export function useSolverOperations({
         queryClient.invalidateQueries({
           queryKey: ['bunks', selectedSession],
         }),
-        // Issue #1040 — clearing assignments rewires bunk membership; the
-        // graph node borders + scoped subgraphs must refresh. Without these
-        // the rendered SocialNetworkGraph stays at the pre-clear state until
-        // the user navigates away and back (scan-it Finding #2).
-        queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
-        // #1041 — satisfaction endpoint must refresh after assignments are cleared.
-        queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
       ])
+      // Issue #1040 / #1041 — graph borders + satisfaction must refresh after clear.
+      invalidateAssignmentDerivedQueries(queryClient)
 
       const message = result.message || 'Assignments cleared successfully'
       toast.success(message)

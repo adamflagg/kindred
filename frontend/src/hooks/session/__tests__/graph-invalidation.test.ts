@@ -20,6 +20,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { invalidateRequestQueries, queryKeys } from '../../../utils/queryKeys'
+import { invalidateAssignmentDerivedQueries } from '../../../utils/queryInvalidation'
 
 const SESSION_CM_ID = 1001
 const BUNK_CM_ID = 5001
@@ -196,14 +197,12 @@ describe('useCamperMovement — onSuccess must invalidate social-graph', () => {
   })
 
   it('marks social-graph stale after a successful camper move', () => {
-    // Mirror the current onSuccess shape in useCamperMovement.ts — we add the
-    // social-graph invalidation alongside the existing allBunkRequestsPrefix one.
+    // Mirror the current onSuccess shape in useCamperMovement.ts.
     const onSuccess = (client: QueryClient, selectedSession: string) => {
       void client.invalidateQueries({ queryKey: ['campers', selectedSession] })
       void client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
       void client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
-      void client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
-      void client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+      invalidateAssignmentDerivedQueries(client)
     }
 
     onSuccess(qc, String(SESSION_CM_ID))
@@ -219,8 +218,7 @@ describe('useCamperMovement — onSuccess must invalidate social-graph', () => {
       void client.invalidateQueries({ queryKey: ['campers', selectedSession] })
       void client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
       void client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
-      void client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
-      void client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+      invalidateAssignmentDerivedQueries(client)
     }
 
     onSuccessNoChange(qc, String(SESSION_CM_ID))
@@ -248,9 +246,8 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
         client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() }),
         client.invalidateQueries({ queryKey: ['all-sessions'] }),
         client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
-        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
+      invalidateAssignmentDerivedQueries(client)
     }
 
     await applyResults(qc, String(SESSION_CM_ID))
@@ -268,9 +265,8 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
         client.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() }),
         client.invalidateQueries({ queryKey: ['all-sessions'] }),
         client.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() }),
-        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
+      invalidateAssignmentDerivedQueries(client)
     }
 
     await applyLegacy(qc, String(SESSION_CM_ID))
@@ -282,15 +278,13 @@ describe('useSolverOperations — apply path must invalidate social-graph', () =
 
   it('marks social-graph stale after handleClearAssignments (Finding #2)', async () => {
     // useSolverOperations.handleClearAssignments invalidates campers/bunks
-    // but currently misses social-graph keys — making cleared assignments
-    // visible in the rendered graph requires the same invalidation set.
+    // plus graph + satisfaction via the shared helper.
     const clearAssignments = async (client: QueryClient, selectedSession: string) => {
       await Promise.all([
         client.invalidateQueries({ queryKey: ['campers', selectedSession] }),
         client.invalidateQueries({ queryKey: ['bunks', selectedSession] }),
-        client.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
-        client.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
       ])
+      invalidateAssignmentDerivedQueries(client)
     }
 
     await clearAssignments(qc, String(SESSION_CM_ID))
