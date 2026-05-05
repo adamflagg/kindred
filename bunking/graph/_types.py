@@ -1,7 +1,7 @@
-"""Typed protocol definitions for PocketBase record shapes used by the graph builder.
+"""Typed PocketBase record shapes used by the graph builder.
 
 PocketBase's ``Record`` class uses ``setattr`` at load time so attribute access
-is invisible to pyright. This module defines ``TypedDict`` protocols for the
+is invisible to pyright. This module defines ``TypedDict`` shapes for the
 record shapes actually consumed by ``social_graph_builder.py`` and provides
 lightweight cast helpers that copy dynamic attributes into the typed dict.
 
@@ -54,6 +54,7 @@ class _PersonRecordRequired(TypedDict):
     gender: str
     household_id: int
     school: str
+    age: int | None
 
 
 class PersonRecord(_PersonRecordRequired, total=False):
@@ -62,8 +63,6 @@ class PersonRecord(_PersonRecordRequired, total=False):
     Required fields are in ``_PersonRecordRequired``. Optional fields are
     declared here with ``total=False``.
     """
-
-    age: int | None
 
 
 # ---------------------------------------------------------------------------
@@ -92,11 +91,7 @@ def cast_person(record: Any) -> PersonRecord:
 
 
 def cast_session(record: Any) -> CampSessionRecord:
-    """Extract ``CampSessionRecord`` fields from a PocketBase ``Record``
-    instance.
-
-    Always supplies every field with a safe default.
-    """
+    """Extract ``CampSessionRecord`` fields from a PocketBase ``Record``. Always supplies every field with a safe default."""
     return CampSessionRecord(
         id=getattr(record, "id", ""),
         cm_id=getattr(record, "cm_id", 0),

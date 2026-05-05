@@ -165,12 +165,11 @@ class TestLastYearBinding:
         person_mock.household_id = 50001
 
         def _get_first_list_item(filter_: str, **kwargs: Any) -> MagicMock:
-            if "cm_id = 111" in filter_ and "person" not in filter_:
+            if filter_ == "cm_id = 111":
                 return person_mock
             raise Exception("no historical data")
 
         assignment_mock = MagicMock()
-        assignment_mock.expand = {}
 
         expand_person = MagicMock()
         expand_person.cm_id = 111

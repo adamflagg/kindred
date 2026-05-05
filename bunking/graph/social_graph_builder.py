@@ -21,7 +21,7 @@ from api.constants.collections import (
     PERSONS,
 )
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
-from bunking.graph._types import cast_person, cast_session
+from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
@@ -387,9 +387,9 @@ class SocialGraphBuilder:
             for person_cm_id in bunk_members:
                 try:
                     _person_rec = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
-                    _typed_person = cast_person(_person_rec)
-                    if _typed_person.get("household_id"):
-                        persons_data[person_cm_id] = _typed_person["household_id"]
+                    person = cast_person(_person_rec)
+                    if person.get("household_id"):
+                        persons_data[person_cm_id] = person["household_id"]
                 except Exception:  # noqa: S110 — intentional silent handling
                     pass
 
