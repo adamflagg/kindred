@@ -43,15 +43,19 @@ vi.mock('../contexts/LockGroupContext', () => ({
 
 vi.mock('../hooks', () => ({
   useBunkRequestContext: () => ({
-    // Stage 3a Shape A — three-slice split. The pre-3a flat shape
-    // (totalRequests/parentTotal/staffTotal) silently leaves consumers
-    // reading materialParent.total / staff.total etc. as undefined.
-    getSatisfiedRequestInfo: () => ({
-      materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: false,
-      staffUnsatisfiedAlert: false,
+    getSatisfiedRequestInfo: (personCmId: number) => ({
+      person_cm_id: personCmId,
+      per_request: [],
+      counted_totals: {
+        material_parent: { satisfied: 0, total: 0 },
+        staff: { satisfied: 0, total: 0 },
+      },
+      immaterial: { satisfied: 0, total: 0 },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: false,
+      },
     }),
   }),
   useBunkRequestsFromContext: () => ({ data: {}, requestStatus: {} }),
@@ -75,19 +79,18 @@ const fakeBunk = {
   utilization: 0,
 }
 
-// Stage 3a Shape A migration — the mocked getSatisfiedRequestInfo must
-// return the new three-slice shape (materialParent / bestEffortParent /
-// staff), not the pre-Stage-3a flat shape (totalRequests, parentTotal,
-// staffTotal). Audit 2026-04-29 found three test files still returning
-// the legacy shape; consumers reading the new shape silently got
-// undefined.
-describe('mock contract — getSatisfiedRequestInfo Shape A', () => {
-  it('returns materialParent / bestEffortParent / staff slices', () => {
+describe('mock contract — getSatisfiedRequestInfo CamperSatisfaction', () => {
+  it('returns counted_totals / immaterial / flags shape', () => {
     const ctx = useBunkRequestContext()
-    const info = ctx.getSatisfiedRequestInfo(1, 2, [], null)
-    expect(info.materialParent).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
-    expect(info.bestEffortParent).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
-    expect(info.staff).toEqual({ total: 0, satisfied: 0, satisfactionRate: 0 })
+    const info = ctx.getSatisfiedRequestInfo(1)
+    expect(info.counted_totals.material_parent).toEqual({ satisfied: 0, total: 0 })
+    expect(info.counted_totals.staff).toEqual({ satisfied: 0, total: 0 })
+    expect(info.immaterial).toEqual({ satisfied: 0, total: 0 })
+    expect(info.flags).toEqual({
+      parent_min_one_violation: false,
+      staff_unsatisfied_alert: false,
+      has_any_counted_request: false,
+    })
   })
 })
 

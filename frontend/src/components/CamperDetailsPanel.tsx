@@ -59,7 +59,6 @@ import { CamperAlertSection } from './CamperAlertSection'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
-import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext } from '../hooks'
 import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 import { queryKeys } from '../utils/queryKeys'
@@ -682,14 +681,7 @@ export default function CamperDetailsPanel({
   const effectiveAssignedBunkCmId = assignedBunkCmId ?? camper?.assigned_bunk_cm_id ?? null
 
   const camperAlerts = useMemo(() => {
-    const requestInfo = effectiveAssignedBunkCmId
-      ? getSatisfiedRequestInfo(
-          camper?.person_cm_id ?? 0,
-          effectiveAssignedBunkCmId,
-          effectiveBunkCampers,
-          camper?.grade ?? null
-        )
-      : EMPTY_SATISFIED_INFO
+    const requestInfo = getSatisfiedRequestInfo(camper?.person_cm_id ?? 0)
     return buildCamperAlerts({
       assignedBunkCmId: effectiveAssignedBunkCmId,
       requestInfo,
@@ -700,8 +692,6 @@ export default function CamperDetailsPanel({
   }, [
     effectiveAssignedBunkCmId,
     camper?.person_cm_id,
-    camper?.grade,
-    bunkCampersKey,
     lockState,
     lockGroupSize,
     getSatisfiedRequestInfo,

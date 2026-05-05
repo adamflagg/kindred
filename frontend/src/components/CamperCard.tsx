@@ -14,8 +14,6 @@ import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { useYear } from '../hooks/useCurrentYear'
 import type { Camper } from '../types/app-types'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
-import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext, useCamperHistoryContext } from '../hooks'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 
@@ -27,7 +25,7 @@ interface CamperCardProps {
   hasRequests?: boolean // Indicates if camper has bunk requests
   onLockToggle?: (camper: Camper) => void
   onUnassign?: (camper: Camper) => void // Unassign from current bunk
-  bunkCampers?: BunkmateInfo[] // Campers in the same bunk with their grades
+  bunkCampers?: unknown[] // Roster prop kept for call-site compat; satisfaction is now server-computed
   lockState?: 'none' | 'pending' | 'locked' // Lock state
   lockGroupColor?: string | undefined // Color of the lock group
   isDraftMode?: boolean // True when viewing a draft scenario (enables lock features)
@@ -42,7 +40,7 @@ function CamperCard({
   hasRequests: _hasRequests = true, // Default to true to avoid visual noise until we have data
   onLockToggle,
   onUnassign,
-  bunkCampers = [],
+  bunkCampers: _bunkCampers = [],
   lockState = 'none',
   lockGroupColor,
   isDraftMode = false,
@@ -72,26 +70,8 @@ function CamperCard({
   const { getSatisfiedRequestInfo } = useBunkRequestContext()
   const { getLastYearHistory } = useCamperHistoryContext()
 
-  // Get satisfied requests information from context
-  // React Compiler will optimize this computation
-  const getSatisfiedInfo = () => {
-    if (isDragging || !camper.assigned_bunk_cm_id) {
-      return EMPTY_SATISFIED_INFO
-    }
-
-    // Use passed bunk campers or default to just the current camper
-    const campersForCalc =
-      bunkCampers.length > 0 ? bunkCampers : [{ cmId: camper.person_cm_id, grade: camper.grade }]
-
-    return getSatisfiedRequestInfo(
-      camper.person_cm_id,
-      camper.assigned_bunk_cm_id,
-      campersForCalc,
-      camper.grade
-    )
-  }
-
-  const satisfiedInfo = getSatisfiedInfo()
+  // Get satisfied requests information from context (fetched from /api/satisfaction)
+  const satisfiedInfo = getSatisfiedRequestInfo(camper.person_cm_id)
 
   // Get last year's history from context
   const lastYearHistory = getLastYearHistory(camper.person_cm_id)
@@ -247,10 +227,10 @@ function CamperCard({
             </p>
             <div className="flex flex-shrink-0 items-center gap-1">
               {/* Parent-paramount: material parent request unsatisfied (>=1 request, 0 satisfied). */}
-              {satisfiedInfo.parentMinOneViolation && (
+              {satisfiedInfo.flags.parent_min_one_violation && (
                 <span
                   className="text-orange-500 dark:text-orange-400"
-                  title={`${satisfiedInfo.materialParent.total} parent request${satisfiedInfo.materialParent.total > 1 ? 's' : ''}, none satisfied`}
+                  title={`${satisfiedInfo.counted_totals.material_parent.total} parent request${satisfiedInfo.counted_totals.material_parent.total > 1 ? 's' : ''}, none satisfied`}
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <path
@@ -261,13 +241,13 @@ function CamperCard({
                   </svg>
                 </span>
               )}
-              {/* Staff requests unsatisfied. Always shown when staffUnsatisfiedAlert is true,
+              {/* Staff requests unsatisfied. Always shown when staff_unsatisfied_alert is true,
                   independent of parent state — user wants the complete "what didn't land" picture
-                  for staff input even when parent is met (resolved Q #6 in Stage 2 spec). */}
-              {satisfiedInfo.staffUnsatisfiedAlert && (
+                  for staff input even when parent is met. */}
+              {satisfiedInfo.flags.staff_unsatisfied_alert && (
                 <span
                   className="text-amber-500 dark:text-amber-400"
-                  title={`${satisfiedInfo.staff.total} staff request${satisfiedInfo.staff.total > 1 ? 's' : ''}, none satisfied`}
+                  title={`${satisfiedInfo.counted_totals.staff.total} staff request${satisfiedInfo.counted_totals.staff.total > 1 ? 's' : ''}, none satisfied`}
                 >
                   <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <circle cx="10" cy="10" r="7" />

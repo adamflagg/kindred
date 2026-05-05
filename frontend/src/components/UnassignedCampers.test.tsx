@@ -40,15 +40,19 @@ vi.mock('@dnd-kit/sortable', async () => {
 vi.mock('../hooks', () => ({
   useBunkRequestsFromContext: () => ({ data: {}, requestStatus: {} }),
   useBunkRequestContext: () => ({
-    // Stage 3a Shape A — three-slice split. The pre-3a flat shape
-    // (totalRequests/parentTotal/staffTotal) silently leaves consumers
-    // reading materialParent.total / staff.total etc. as undefined.
-    getSatisfiedRequestInfo: () => ({
-      materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: false,
-      staffUnsatisfiedAlert: false,
+    getSatisfiedRequestInfo: (personCmId: number) => ({
+      person_cm_id: personCmId,
+      per_request: [],
+      counted_totals: {
+        material_parent: { satisfied: 0, total: 0 },
+        staff: { satisfied: 0, total: 0 },
+      },
+      immaterial: { satisfied: 0, total: 0 },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: false,
+      },
     }),
   }),
   useCamperHistoryContext: () => ({ getLastYearHistory: () => null }),
