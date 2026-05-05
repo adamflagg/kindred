@@ -16,8 +16,12 @@ schema details, internal IDs) must not be exposed to API consumers.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
+logger = logging.getLogger(__name__)
 
 
 def pb_error_to_http(error: ClientResponseError) -> HTTPException:
@@ -44,5 +48,6 @@ def pb_error_to_http(error: ClientResponseError) -> HTTPException:
     # Any PocketBase 5xx → 502 Bad Gateway (upstream failure, not our fault)
     if status >= 500:
         return HTTPException(status_code=502, detail="Upstream service error")
-    # Fallback for unexpected statuses
+    # Fallback for unexpected statuses (e.g. 429 rate-limited, other non-standard codes)
+    logger.warning("pb_error_to_http: unexpected upstream status %d", status)
     return HTTPException(status_code=502, detail="Upstream service error")

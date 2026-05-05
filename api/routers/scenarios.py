@@ -194,7 +194,7 @@ async def create_scenario(
         )
 
     except ClientResponseError as e:
-        logger.error(f"PocketBase error creating scenario: {e}")
+        logger.error(f"PocketBase error creating scenario: {e}", exc_info=True)
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error creating scenario: {e}", exc_info=True)
@@ -420,7 +420,7 @@ async def get_scenario(
     except ClientResponseError as e:
         raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error getting scenario: {e}")
+        logger.error(f"Error getting scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get scenario")
 
 
@@ -626,10 +626,17 @@ async def update_scenario_assignment(
                 }
 
     except ClientResponseError as e:
-        logger.error(
-            f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}"
-        )
-        logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
+        if 400 <= e.status < 500:
+            logger.warning(
+                f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}"
+            )
+            logger.warning(f"Scenario ID: {scenario_id}, Update: {update}")
+        else:
+            logger.error(
+                f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}",
+                exc_info=True,
+            )
+            logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
         raise pb_error_to_http(e)
     except HTTPException:
         raise
@@ -699,7 +706,7 @@ async def solve_scenario(
     except ClientResponseError as e:
         raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error starting solver for scenario: {e}")
+        logger.error(f"Error starting solver for scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to start solver")
 
 
@@ -733,5 +740,5 @@ async def clear_scenario(
     except ClientResponseError as e:
         raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error clearing scenario: {e}")
+        logger.error(f"Error clearing scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to clear scenario")
