@@ -827,6 +827,10 @@ class SocialGraphBuilder:
             for neighbor, data in self.graph[node].items():
                 if data.get("edge_type") != "request":
                     continue
+                # age_preference rows need bunkmate_grades the graph doesn't track per-edge;
+                # they're scored by the solver, not surfaced in graph node colors.
+                if data.get("request_type") == "age_preference":
+                    continue
                 person_requests.append(
                     {
                         "id": data.get("request_id", f"{node}-{neighbor}"),

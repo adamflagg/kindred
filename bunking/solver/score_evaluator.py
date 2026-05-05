@@ -150,11 +150,19 @@ def evaluate_scenario_score(
             if person_for_grade is not None:
                 request_for_predicate["requester_grade"] = person_for_grade.get("grade")
 
-        is_satisfied = is_request_satisfied(
-            request_for_predicate,
-            person_to_bunk,
-            bunkmate_grades=bunkmate_grades_map,
-        )
+        try:
+            is_satisfied = is_request_satisfied(
+                request_for_predicate,
+                person_to_bunk,
+                bunkmate_grades=bunkmate_grades_map,
+            )
+        except ValueError as e:
+            logger.warning(
+                "treating request as unsatisfied: %s (request_id=%s)",
+                e,
+                request.get("id"),
+            )
+            is_satisfied = False
 
         if is_satisfied:
             satisfied_count += 1
