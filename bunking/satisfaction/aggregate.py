@@ -4,9 +4,10 @@ The aggregation policy ("immaterial parent requests are visible per-request
 but excluded from totals/coverage") is enforced in this module via
 COUNTED_BUCKETS — exactly once.
 
-camper_satisfaction is pure (no IO). session_satisfaction (added in Task 5)
-is the IO-bound top-level entry that fetches data and calls camper_satisfaction
-per person.
+camper_satisfaction is pure (no IO). session_satisfaction is the synchronous
+IO-bound entry point that fetches PocketBase data and calls camper_satisfaction
+per person. The caller wraps it in asyncio.to_thread to avoid blocking the
+event loop.
 """
 
 from __future__ import annotations
@@ -131,6 +132,9 @@ def session_satisfaction(
 ) -> SatisfactionResponse:
     """Compute per-camper satisfaction for an entire session or AG cluster.
 
+    This function is synchronous (blocking IO via a concurrent.futures thread
+    pool). Callers from async contexts must wrap it in asyncio.to_thread.
+
     Mirrors OptimizedSocialGraphBuilder.build_social_network's data sourcing:
     - scenario_id set → assignments from BUNK_ASSIGNMENTS_DRAFT for that scenario.
     - scenario_id None → assignments from production BUNK_ASSIGNMENTS.
@@ -215,9 +219,20 @@ def session_satisfaction(
 
     bunkmate_grades: dict[int, list[int]] = {}
     for pid, bid in person_to_bunk.items():
-        bunkmate_grades[pid] = [
-            person_grades[other] for other in bunk_to_persons[bid] if other != pid and other in person_grades
-        ]
+        bunkmates = [other for other in bunk_to_persons[bid] if other != pid]
+        bunkmate_grades[pid] = [person_grades[other] for other in bunkmates if other in person_grades]
+        if len(bunkmates) > len(bunkmate_grades[pid]):
+            logger.warning(
+                "incomplete bunkmate grades",
+                extra={
+                    "satisfaction": {
+                        "person_cm_id": pid,
+                        "bunk_cm_id": bid,
+                        "bunkmate_count": len(bunkmates),
+                        "graded_count": len(bunkmate_grades[pid]),
+                    }
+                },
+            )
 
     requests_by_requester: dict[int, list[BunkRequestRow]] = defaultdict(list)
     for r in raw_requests:
