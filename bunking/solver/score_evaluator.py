@@ -20,9 +20,9 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
+from bunking.satisfaction import is_request_satisfied
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
-from bunking.utils.age_preference import is_age_preference_satisfied
 
 logger = get_logger(__name__)
 
@@ -116,10 +116,8 @@ def evaluate_scenario_score(
 
     for request in requests:
         requester_id = int(request.get("requester_id") or request.get("requester_person_cm_id") or 0)
-        requestee_id = request.get("requestee_id") or request.get("requested_person_cm_id")
         request_type = request.get("request_type", "")
         priority = int(request.get("priority", 5))
-        age_pref_target = request.get("age_preference_target")
 
         # Get source fields
         source_fields = _get_source_fields(request)
@@ -131,36 +129,32 @@ def evaluate_scenario_score(
         total_requests += 1
         field_stats[primary_field]["total"] += 1
 
-        # Check if request is satisfied
-        is_satisfied = False
+        # Check if request is satisfied — delegated to the canonical predicate
+        # in bunking.satisfaction. We pre-build bunkmate_grades for age_preference
+        # and pad requester_grade onto the request dict for the predicate to read.
+        bunkmate_grades_map: dict[int, list[int]] | None = None
+        if request_type == RequestType.AGE_PREFERENCE.value:
+            requester_bunk = person_to_bunk.get(requester_id)
+            grades_for_requester: list[int] = []
+            if requester_bunk is not None:
+                for pid in bunk_to_persons[requester_bunk]:
+                    if pid != requester_id and pid in person_by_cm_id:
+                        grade = person_by_cm_id[pid].get("grade")
+                        if grade is not None:
+                            grades_for_requester.append(int(grade))
+            bunkmate_grades_map = {requester_id: grades_for_requester}
 
-        if requester_id not in person_to_bunk:
-            # Requester not assigned - can't be satisfied
-            pass
-        elif request_type == RequestType.BUNK_WITH.value and requestee_id:
-            requestee_id = int(requestee_id)
-            if requestee_id in person_to_bunk:
-                is_satisfied = person_to_bunk[requester_id] == person_to_bunk[requestee_id]
-        elif request_type == RequestType.NOT_BUNK_WITH.value and requestee_id:
-            requestee_id = int(requestee_id)
-            if requestee_id in person_to_bunk:
-                is_satisfied = person_to_bunk[requester_id] != person_to_bunk[requestee_id]
-            else:
-                # Requestee not assigned - not_bunk_with is satisfied
-                is_satisfied = True
-        elif request_type == RequestType.AGE_PREFERENCE.value and age_pref_target:
-            person = person_by_cm_id.get(requester_id)
-            requester_grade = person.get("grade") if person else None
-            if person and requester_grade is not None:
-                requester_bunk = person_to_bunk.get(requester_id)
-                if requester_bunk:
-                    bunkmate_grades: list[int] = []
-                    for pid in bunk_to_persons[requester_bunk]:
-                        if pid != requester_id and pid in person_by_cm_id:
-                            grade = person_by_cm_id[pid].get("grade")
-                            if grade is not None:
-                                bunkmate_grades.append(grade)
-                    is_satisfied, _ = is_age_preference_satisfied(requester_grade, bunkmate_grades, age_pref_target)
+        request_for_predicate = dict(request)
+        if "requester_grade" not in request_for_predicate:
+            person_for_grade = person_by_cm_id.get(requester_id)
+            if person_for_grade is not None:
+                request_for_predicate["requester_grade"] = person_for_grade.get("grade")
+
+        is_satisfied = is_request_satisfied(
+            request_for_predicate,
+            person_to_bunk,
+            bunkmate_grades=bunkmate_grades_map,
+        )
 
         if is_satisfied:
             satisfied_count += 1
