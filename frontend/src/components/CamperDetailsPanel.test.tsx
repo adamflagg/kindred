@@ -85,8 +85,6 @@ let mockGetSatisfiedRequestInfo = vi.fn(
     staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
     parentMinOneViolation: false,
     staffUnsatisfiedAlert: false,
-    topPrioritySatisfied: false,
-    priorityLevels: [] as number[],
   })
 )
 
@@ -237,8 +235,6 @@ describe('CamperDetailsPanel', () => {
         staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
         parentMinOneViolation: false,
         staffUnsatisfiedAlert: false,
-        topPrioritySatisfied: false,
-        priorityLevels: [] as number[],
       })
     )
     // Default: empty responses for all collections
@@ -509,8 +505,6 @@ describe('CamperDetailsPanel', () => {
             staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
             parentMinOneViolation: !oliviaPresent,
             staffUnsatisfiedAlert: false,
-            topPrioritySatisfied: oliviaPresent,
-            priorityLevels: [1],
           }
         }
       )
@@ -557,8 +551,6 @@ describe('CamperDetailsPanel', () => {
             // passed to the mock matches the fallback [Emma-only] path.
             parentMinOneViolation: true,
             staffUnsatisfiedAlert: false,
-            topPrioritySatisfied: false,
-            priorityLevels: [1],
           }
         }
       )

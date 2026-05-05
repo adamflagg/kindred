@@ -211,8 +211,6 @@ describe('CamperAlertSection', () => {
       staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
       parentMinOneViolation: false,
       staffUnsatisfiedAlert: false,
-      topPrioritySatisfied: true,
-      priorityLevels: [],
     }
 
     it('produces no parent alert when only best-effort requests are unsatisfied', () => {
@@ -319,8 +317,6 @@ vi.mock('../hooks', async () => {
         staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
         parentMinOneViolation: false,
         staffUnsatisfiedAlert: false,
-        topPrioritySatisfied: false,
-        priorityLevels: [] as number[],
       }),
       isLoading: false,
       error: null,
@@ -372,8 +368,6 @@ describe('CamperDetailsPanel — alert section integration', () => {
         staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
         parentMinOneViolation: true,
         staffUnsatisfiedAlert: false,
-        topPrioritySatisfied: false,
-        priorityLevels: [] as number[],
       })
     )
     vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({

@@ -26,8 +26,6 @@ const BASE_INPUTS: CamperAlertInputs = {
     staff: EMPTY_SLICE,
     parentMinOneViolation: false,
     staffUnsatisfiedAlert: false,
-    topPrioritySatisfied: false,
-    priorityLevels: [],
   },
   lockState: 'none',
   lockGroupSize: 0,
@@ -116,8 +114,6 @@ describe('buildCamperAlerts — unsatisfied-parent-requests alert', () => {
         staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
         parentMinOneViolation: false,
         staffUnsatisfiedAlert: false,
-        topPrioritySatisfied: false,
-        priorityLevels: [],
       },
     })
     expect(alerts.find((a) => a.id === 'unsatisfied-parent-requests')).toBeUndefined()

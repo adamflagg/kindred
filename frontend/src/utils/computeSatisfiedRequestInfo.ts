@@ -35,16 +35,13 @@ const EMPTY_SLICE: RequestSlice = Object.freeze({
   satisfactionRate: 0,
 }) as RequestSlice
 
-// Frozen so the shared reference can't be mutated by any caller — the
-// `priorityLevels` array would otherwise alias across every empty return.
+// Frozen so the shared reference can't be mutated by any caller.
 export const EMPTY_SATISFIED_INFO: SatisfiedRequestInfo = Object.freeze({
   materialParent: EMPTY_SLICE,
   bestEffortParent: EMPTY_SLICE,
   staff: EMPTY_SLICE,
   parentMinOneViolation: false,
   staffUnsatisfiedAlert: false,
-  topPrioritySatisfied: false,
-  priorityLevels: Object.freeze([]) as readonly number[] as number[],
 }) as SatisfiedRequestInfo
 
 /**

@@ -30,13 +30,11 @@ export function computeSlicesFromPredicate(
   let bestSat = 0
   let staffTotal = 0
   let staffSat = 0
-  const satisfiedRequests: BunkRequest[] = []
 
   for (const req of personRequests) {
     // §15.1 resolved-only boundary
     if (req.status !== 'resolved') continue
     const sat = isSatisfied(req)
-    if (sat) satisfiedRequests.push(req)
 
     if (req.source_field === 'bunk_with') {
       materialTotal++
@@ -61,23 +59,11 @@ export function computeSlicesFromPredicate(
     satisfactionRate: total === 0 ? 0 : satisfied / total,
   })
 
-  // NOTE: topPriority is computed from the UNFILTERED personRequests (any
-  // status), while satisfiedRequests holds only resolved+satisfied rows. This
-  // preserves Stage 3a's verbatim behavior — see #1090 for follow-up on whether
-  // this should be resolved-only.
-  const topPriority = personRequests.reduce((m, r) => Math.max(m, r.priority ?? 0), 0)
-  const topPrioritySatisfied = satisfiedRequests.some((r) => (r.priority ?? 0) === topPriority)
-  const priorityLevels = [...new Set(satisfiedRequests.map((r) => r.priority ?? 0))].sort(
-    (a, b) => b - a
-  )
-
   return {
     materialParent: slice(materialTotal, materialSat),
     bestEffortParent: slice(bestTotal, bestSat),
     staff: slice(staffTotal, staffSat),
     parentMinOneViolation: materialTotal >= 1 && materialSat === 0,
     staffUnsatisfiedAlert: staffTotal >= 1 && staffSat === 0,
-    topPrioritySatisfied,
-    priorityLevels,
   }
 }

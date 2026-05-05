@@ -48,8 +48,6 @@ vi.mock('../hooks', () => ({
       staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
       parentMinOneViolation: false,
       staffUnsatisfiedAlert: false,
-      topPrioritySatisfied: false,
-      priorityLevels: [],
     }),
   }),
   useCamperHistoryContext: () => ({ getLastYearHistory: () => null }),

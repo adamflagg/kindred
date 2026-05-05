@@ -21,8 +21,6 @@ const emptySatisfiedInfo: SatisfiedRequestInfo = {
   staff: EMPTY_SLICE,
   parentMinOneViolation: false,
   staffUnsatisfiedAlert: false,
-  topPrioritySatisfied: false,
-  priorityLevels: [],
 }
 
 let mockSatisfiedInfo: SatisfiedRequestInfo = { ...emptySatisfiedInfo }
