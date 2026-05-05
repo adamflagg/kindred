@@ -59,15 +59,28 @@ def _backfill_source_field(request_type: str, source_field: str | None) -> str:
 
     Mapping mirrors bunking.satisfaction.bucket. Used for legacy edges whose
     upstream PB row predates the source_field column or has it null.
+
+    Unknown request_types fall back to "socialize_with" (IMMATERIAL bucket —
+    visible-but-uncounted) rather than the counted MATERIAL_PARENT bucket. A
+    silent promotion to parent would inflate parent_satisfaction_status with
+    no signal whenever a typo or future request_type slips through. We log a
+    warning when the fallback fires so the path is observable.
     """
     if source_field:
         return source_field
-    return {
+    mapping = {
         "bunk_with": "bunk_with",
         "not_bunk_with": "not_bunk_with",
         "socialize_with": "socialize_with",
         "age_preference": "age_preference",
-    }.get(request_type, "bunk_with")
+    }
+    if request_type in mapping:
+        return mapping[request_type]
+    logger.warning(
+        "unknown request_type with null source_field; classifying as socialize_with (immaterial): %r",
+        request_type,
+    )
+    return "socialize_with"
 
 
 def _build_request_edge_attrs(
@@ -877,16 +890,23 @@ class SocialGraphBuilder:
                 if edge_requester_id is None or int(node) != int(edge_requester_id):
                     continue
                 edge_requestee_id = data.get("requestee_id")
+                raw_request_type = data.get("request_type", "bunk_with")
+                resolved_source_field = _backfill_source_field(raw_request_type, data.get("source_field"))
+                # Unknown request_type would crash the predicate (ValueError). The
+                # predicate only handles bunk_with / not_bunk_with / age_preference;
+                # source_field=socialize_with maps onto a bunk_with-shaped row at the
+                # predicate level (its result lands in IMMATERIAL and is discarded by
+                # COUNTED_BUCKETS anyway). Normalize unknowns to bunk_with — the
+                # backfill warning above is the observable signal that this happened.
+                predicate_known_types = ("bunk_with", "not_bunk_with", "age_preference")
+                resolved_request_type = raw_request_type if raw_request_type in predicate_known_types else "bunk_with"
                 person_requests.append(
                     {
                         "id": data.get("request_id") or "",
                         "requester_id": int(edge_requester_id),
                         "requestee_id": int(edge_requestee_id) if edge_requestee_id is not None else int(neighbor),
-                        "request_type": data.get("request_type", "bunk_with"),
-                        "source_field": _backfill_source_field(
-                            data.get("request_type", "bunk_with"),
-                            data.get("source_field"),
-                        ),
+                        "request_type": resolved_request_type,
+                        "source_field": resolved_source_field,
                         "requester_grade": self.graph.nodes[node].get("grade"),
                         "age_preference_target": data.get("age_preference_target"),
                     }
