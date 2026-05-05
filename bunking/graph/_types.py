@@ -52,7 +52,7 @@ class _PersonRecordRequired(TypedDict):
     last_name: str
     grade: int
     gender: str
-    family_id: int
+    household_id: int
     school: str
 
 
@@ -85,7 +85,7 @@ def cast_person(record: Any) -> PersonRecord:
         last_name=getattr(record, "last_name", ""),
         grade=getattr(record, "grade", 0),
         gender=getattr(record, "gender", ""),
-        family_id=getattr(record, "family_id", 0),
+        household_id=getattr(record, "household_id", 0),
         age=getattr(record, "age", None),
         school=getattr(record, "school", ""),
     )

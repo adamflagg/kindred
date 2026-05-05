@@ -1,142 +1,143 @@
 """Tests for PocketBase record TypedDicts in bunking/graph/_types.py.
 
 These tests verify that:
-1. The TypedDicts export the required fields used by social_graph_builder.py.
-2. The cast helpers (cast_person, cast_session) return the correct TypedDict
-   type so downstream attribute access type-checks cleanly.
-3. Regression: last_year is always defined before the exception handler that
-   references it (line ~264 in social_graph_builder.py).
-4. Regression: nx.clustering() result is safely iterable as a dict even when
-   pyright sees ambiguous return type.
+1. ``cast_person`` and ``cast_session`` round-trip realistic PocketBase
+   ``Record`` shapes correctly, reading from the actual schema field names.
+2. ``cast_person`` reads ``household_id`` (the field that exists in the
+   ``persons`` PocketBase migration), not ``family_id`` (which does not exist
+   anywhere in the schema).
+3. Regression: ``last_year`` is always defined before the exception handler
+   that references it (line ~264 in social_graph_builder.py).
+4. Regression: ``nx.clustering()`` result is safely iterable as a dict.
 """
 
 from __future__ import annotations
 
-from typing import Any, get_type_hints
+from typing import Any
 from unittest.mock import MagicMock
 
 import networkx as nx
 
 from bunking.graph._types import (
-    CampSessionRecord,
-    PersonRecord,
     cast_person,
     cast_session,
 )
 from bunking.graph.social_graph_builder import SocialGraphBuilder
 
 # ---------------------------------------------------------------------------
-# TypedDict field coverage
+# cast_person — schema-correct field reads
 # ---------------------------------------------------------------------------
 
 
-class TestPersonRecordFields:
-    """PersonRecord must expose every field accessed via person.<attr> in
-    social_graph_builder.py."""
+def _make_record(**attrs: Any) -> MagicMock:
+    """Build a mock PocketBase record with explicit attribute values.
 
-    def test_has_first_name(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "first_name" in hints
-
-    def test_has_last_name(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "last_name" in hints
-
-    def test_has_grade(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "grade" in hints
-
-    def test_has_gender(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "gender" in hints
-
-    def test_has_family_id(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "family_id" in hints
-
-    def test_has_cm_id(self) -> None:
-        hints = get_type_hints(PersonRecord)
-        assert "cm_id" in hints
+    ``MagicMock`` auto-creates attributes on access, so attributes that are
+    NOT set here still resolve to fresh MagicMock instances. Callers that
+    want to test default-fallback behavior should use ``MagicMock(spec=[])``
+    instead — that raises ``AttributeError`` on missing access, exercising
+    the ``getattr(record, name, default)`` fallback path.
+    """
+    mock = MagicMock()
+    for k, v in attrs.items():
+        setattr(mock, k, v)
+    return mock
 
 
-class TestCampSessionRecordFields:
-    """CampSessionRecord must expose every field accessed via session.<attr> in
-    social_graph_builder.py."""
+class TestCastPersonFromRecord:
+    """cast_person() must read from the correct PocketBase schema fields."""
 
-    def test_has_name(self) -> None:
-        hints = get_type_hints(CampSessionRecord)
-        assert "name" in hints
-
-    def test_has_cm_id(self) -> None:
-        hints = get_type_hints(CampSessionRecord)
-        assert "cm_id" in hints
-
-
-# ---------------------------------------------------------------------------
-# cast helpers round-trip
-# ---------------------------------------------------------------------------
-
-
-class TestCastHelpers:
-    """cast_person / cast_session must preserve the underlying data."""
-
-    def _make_mock_record(self, **attrs: Any) -> MagicMock:
-        mock = MagicMock()
-        for k, v in attrs.items():
-            setattr(mock, k, v)
-        return mock
-
-    def test_cast_person_preserves_first_name(self) -> None:
-        mock = self._make_mock_record(
+    def test_reads_household_id_from_record_attribute(self) -> None:
+        """cast_person must read household_id (the actual PB field)."""
+        mock = _make_record(
+            id="p1",
+            cm_id=9999,
             first_name="Emma",
             last_name="Johnson",
             grade=7,
             gender="F",
-            family_id=12345,
-            cm_id=9999,
-            id="abc",
-            created="",
-            updated="",
+            household_id=12345,
+            school="Riverside Elementary",
         )
         p = cast_person(mock)
-        assert p["first_name"] == "Emma"
+        assert p["household_id"] == 12345
 
-    def test_cast_person_preserves_family_id(self) -> None:
-        mock = self._make_mock_record(
+    def test_household_id_zero_when_missing(self) -> None:
+        """Cast must default household_id to 0 when the attribute is absent."""
+        mock = MagicMock(spec=[])  # empty spec — AttributeError on any access
+        p = cast_person(mock)
+        assert p["household_id"] == 0
+
+    def test_preserves_first_name(self) -> None:
+        mock = _make_record(
+            id="p2",
+            cm_id=1001,
             first_name="Liam",
             last_name="Garcia",
             grade=8,
             gender="M",
-            family_id=42,
-            cm_id=1001,
-            id="def",
-            created="",
-            updated="",
+            household_id=42,
+            school="Oak Valley Middle",
         )
         p = cast_person(mock)
-        assert p["family_id"] == 42
+        assert p["first_name"] == "Liam"
 
-    def test_cast_session_preserves_name(self) -> None:
-        mock = self._make_mock_record(
-            name="Session 1A",
-            cm_id=1000001,
-            id="ghi",
-            created="",
-            updated="",
+    def test_preserves_cm_id(self) -> None:
+        mock = _make_record(
+            id="p3",
+            cm_id=2002,
+            first_name="Olivia",
+            last_name="Chen",
+            grade=6,
+            gender="F",
+            household_id=99,
+            school="Hillcrest High",
         )
+        p = cast_person(mock)
+        assert p["cm_id"] == 2002
+
+    def test_preserves_grade(self) -> None:
+        mock = _make_record(
+            id="p4",
+            cm_id=3003,
+            first_name="Riley",
+            last_name="Sam",
+            grade=9,
+            gender="NB",
+            household_id=7,
+            school="Riverside Elementary",
+        )
+        p = cast_person(mock)
+        assert p["grade"] == 9
+
+    def test_age_defaults_to_none_when_absent(self) -> None:
+        mock = MagicMock(spec=[])
+        p = cast_person(mock)
+        assert p.get("age") is None
+
+
+# ---------------------------------------------------------------------------
+# cast_session — schema-correct field reads
+# ---------------------------------------------------------------------------
+
+
+class TestCastSessionFromRecord:
+    """cast_session() must read from the correct PocketBase schema fields."""
+
+    def test_preserves_name(self) -> None:
+        mock = _make_record(id="s1", cm_id=1000001, name="Session 1A", session_type="overnight")
         s = cast_session(mock)
         assert s["name"] == "Session 1A"
 
-    def test_cast_session_preserves_cm_id(self) -> None:
-        mock = self._make_mock_record(
-            name="Session 2B",
-            cm_id=1000002,
-            id="jkl",
-            created="",
-            updated="",
-        )
+    def test_preserves_cm_id(self) -> None:
+        mock = _make_record(id="s2", cm_id=1000002, name="Session 2B", session_type="day")
         s = cast_session(mock)
         assert s["cm_id"] == 1000002
+
+    def test_name_defaults_to_empty_string_when_absent(self) -> None:
+        mock = MagicMock(spec=[])
+        s = cast_session(mock)
+        assert s["name"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -147,23 +148,21 @@ class TestCastHelpers:
 class TestLastYearBinding:
     """Regression: build_bunk_graph must not raise NameError due to last_year
     being unbound when the historical-data lookup raises before assignment.
-
-    This reproduces the 'last_year is possibly unbound' pyright error by
-    confirming the function runs without NameError even when the inner try
-    block fails immediately.
     """
 
     def test_build_bunk_graph_no_name_error_on_history_failure(self) -> None:
         pb = MagicMock()
 
-        # Simulate: person fetch succeeds, historical fetch fails immediately
         person_mock = MagicMock()
         person_mock.cm_id = 111
         person_mock.first_name = "Olivia"
         person_mock.last_name = "Chen"
         person_mock.grade = 7
         person_mock.gender = "F"
-        person_mock.family_id = 0
+        # Non-zero household_id — proves the sibling branch is reachable.
+        # (Sibling logic is still skipped here because there's only one bunk
+        # member, so no pairwise edges to add — but the cast/lookup path runs.)
+        person_mock.household_id = 50001
 
         def _get_first_list_item(filter_: str, **kwargs: Any) -> MagicMock:
             if "cm_id = 111" in filter_ and "person" not in filter_:
@@ -182,7 +181,6 @@ class TestLastYearBinding:
         pb.collection.return_value.get_first_list_item.side_effect = _get_first_list_item
 
         builder = SocialGraphBuilder(pb=pb)
-        # Should not raise NameError — last_year must always be bound before use
         result = builder.build_bunk_graph(year=2025, bunk_cm_id=1, session_cm_id=1000001)
         assert isinstance(result, nx.DiGraph)
 
@@ -195,10 +193,6 @@ class TestLastYearBinding:
 class TestClusteringDictSafety:
     """Regression: _calculate_node_metrics must not raise AttributeError when
     calling .items() on the result of nx.clustering().
-
-    nx.clustering(G) returns a dict[node, float] when given a graph (not a
-    single node), so .items() is always valid. This test exercises the code
-    path to confirm no AttributeError at runtime.
     """
 
     def test_calculate_node_metrics_clustering_iterable(self) -> None:
@@ -207,7 +201,6 @@ class TestClusteringDictSafety:
         builder.graph.add_node(1, bunk_cm_id=100)
         builder.graph.add_node(2, bunk_cm_id=100)
         builder.graph.add_edge(1, 2, edge_type="request", request_type="bunk_with")
-        # Must not raise AttributeError — this validates .items() is callable
         builder._calculate_node_metrics()
         assert "clustering" in builder.graph.nodes[1]
         assert "clustering" in builder.graph.nodes[2]

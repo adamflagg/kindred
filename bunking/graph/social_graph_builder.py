@@ -388,8 +388,8 @@ class SocialGraphBuilder:
                 try:
                     _person_rec = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
                     _typed_person = cast_person(_person_rec)
-                    if _typed_person.get("family_id"):
-                        persons_data[person_cm_id] = _typed_person["family_id"]
+                    if _typed_person.get("household_id"):
+                        persons_data[person_cm_id] = _typed_person["household_id"]
                 except Exception:  # noqa: S110 — intentional silent handling
                     pass
 
@@ -636,17 +636,17 @@ class SocialGraphBuilder:
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
-        """Add edges between siblings using family_id from CampMinder"""
+        """Add edges between siblings using household_id from PocketBase persons collection."""
         # Get all nodes in graph
         node_ids = list(self.graph.nodes())
 
-        # Group persons by family_id
+        # Group persons by household_id
         family_groups = defaultdict(list)
         for node_id in node_ids:
             person = self.person_cache.get(node_id, {})
-            family_id = person.get("family_id", 0)
+            family_id = person.get("household_id", 0)
 
-            # Only group if family_id is valid (> 0)
+            # Only group if household_id is valid (> 0)
             if family_id and family_id > 0:
                 family_groups[family_id].append(node_id)
 
@@ -664,7 +664,7 @@ class SocialGraphBuilder:
                     )
                     sibling_count += 1
 
-        logger.info(f"Added {sibling_count} sibling edges based on family_id")
+        logger.info(f"Added {sibling_count} sibling edges based on household_id")
 
     def _add_classmate_edges(self, year: int, session_cm_id: int) -> None:
         """Add edges between potential classmates based on school, city, and state"""
