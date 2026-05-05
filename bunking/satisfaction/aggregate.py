@@ -65,7 +65,7 @@ def camper_satisfaction(
     flags = SatisfactionFlags(
         parent_min_one_violation=material.total > 0 and material.satisfied == 0,
         staff_unsatisfied_alert=staff.total > 0 and staff.satisfied < staff.total,
-        has_any_counted_request=any(results for results in counted.values()),
+        has_any_counted_request=any(bucket_list for bucket_list in counted.values()),
     )
 
     return CamperSatisfaction(

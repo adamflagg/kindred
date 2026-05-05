@@ -97,3 +97,41 @@ class TestStaffUnsatisfiedAlert:
         req = _req("r1", "not_bunk_with", 1, 2, "not_bunk_with")
         result = camper_satisfaction(person_cm_id=1, person_requests=[req], person_to_bunk={1: 100, 2: 101})
         assert not result.flags.staff_unsatisfied_alert
+
+
+class TestMixedBuckets:
+    def test_material_and_immaterial_both_present(self) -> None:
+        # Camper has one material parent (bunk_with → bunk_with field, satisfied)
+        # AND one immaterial parent (bunk_with type → socialize_with field, satisfied).
+        material = _req("r1", "bunk_with", 1, 2, "bunk_with")
+        immaterial = _req("r2", "bunk_with", 1, 3, "socialize_with")
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[material, immaterial],
+            person_to_bunk={1: 100, 2: 100, 3: 100},
+        )
+        # Material counted, immaterial separately tracked
+        assert result.counted_totals[RequestBucket.MATERIAL_PARENT].total == 1
+        assert result.counted_totals[RequestBucket.MATERIAL_PARENT].satisfied == 1
+        assert result.immaterial.total == 1
+        assert result.immaterial.satisfied == 1
+        # Both visible in per_request, in input order
+        assert len(result.per_request) == 2
+        assert result.per_request[0].bucket is RequestBucket.MATERIAL_PARENT
+        assert result.per_request[1].bucket is RequestBucket.IMMATERIAL_PARENT
+        # has_any_counted_request True because material is counted
+        assert result.flags.has_any_counted_request
+
+    def test_material_unsatisfied_with_immaterial_satisfied_still_violates(self) -> None:
+        # Even if a camper has a satisfied immaterial socialize_with,
+        # an unsatisfied material parent_min_one_violation still triggers
+        # — immaterial cannot rescue the parent-paramount metric.
+        material = _req("r1", "bunk_with", 1, 2, "bunk_with")  # unsatisfied
+        immaterial = _req("r2", "bunk_with", 1, 3, "socialize_with")  # satisfied
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[material, immaterial],
+            person_to_bunk={1: 100, 2: 101, 3: 100},
+        )
+        assert result.flags.parent_min_one_violation is True
+        assert result.immaterial.satisfied == 1  # immaterial still tracked
