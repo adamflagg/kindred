@@ -367,11 +367,9 @@ export default function BunkSocialGraphModal({
 
     cyRef.current = cy
 
-    // Convert graph data to Cytoscape format. Sibling edges no longer
-    // render here (see follow-up issue) — filter once and use the result
-    // for both the degree calculation and the edge rendering pass so the
-    // node status agrees with the visible graph.
-    const visibleGraphEdges = graphData.edges.filter((edge) => edge.type !== 'sibling')
+    // Convert graph data to Cytoscape format. Sibling edges are filtered at
+    // the API response boundary (#1094) and will never appear here.
+    const visibleGraphEdges = graphData.edges
 
     const elements: cytoscape.ElementDefinition[] = []
     const nodeDegrees: Record<string, number> = {}
