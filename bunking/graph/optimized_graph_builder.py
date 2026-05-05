@@ -245,7 +245,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         for i in range(0, len(person_cm_ids), batch_size):
             batch_ids = person_cm_ids[i : i + batch_size]
             person_filter = " || ".join([f"requester_id = {pid}" for pid in batch_ids])
-            filter_str = f'({person_filter}) && session_id = {session_cm_id} && year = {year} && status = "resolved"'
+            filter_str = f"({person_filter}) && session_id = {session_cm_id} && year = {year} && status = \"resolved\" && (merged_into = '' || merged_into = null)"
 
             try:
                 requests = self.pb.collection(BUNK_REQUESTS).get_full_list(query_params={"filter": filter_str})
