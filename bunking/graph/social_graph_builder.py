@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import community as community_louvain
 import networkx as nx
@@ -21,6 +21,7 @@ from api.constants.collections import (
     PERSONS,
 )
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
+from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
@@ -193,13 +194,14 @@ class SocialGraphBuilder:
         for person_cm_id in bunk_members:
             # Get person details
             try:
-                person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
+                _person_rec = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
+                person = cast_person(_person_rec)
 
                 # Get last year's historical data from bunk_assignments
                 last_year_session = None
                 last_year_bunk = None
+                last_year = year - 1  # bind before inner try so except handler can reference it
                 try:
-                    last_year = year - 1
                     # Query bunk_assignments with expanded relations
                     historical = self.pb.collection(BUNK_ASSIGNMENTS).get_first_list_item(
                         f"person.cm_id = {person_cm_id} && year = {last_year}", query_params={"expand": "session,bunk"}
@@ -220,15 +222,14 @@ class SocialGraphBuilder:
                 except Exception as e:
                     # No historical data is fine
                     logger.debug(f"No historical data for {person_cm_id} in {last_year}: {e}")
-                    pass
 
                 # Add node with attributes
                 bunk_graph.add_node(
                     person_cm_id,
-                    name=f"{person.first_name} {person.last_name}",
-                    grade=person.grade,
-                    age=getattr(person, "age", None),
-                    gender=person.gender,
+                    name=f"{person['first_name']} {person['last_name']}",
+                    grade=person["grade"],
+                    age=person.get("age"),
+                    gender=person["gender"],
                     bunk_cm_id=bunk_cm_id,
                     last_year_session=last_year_session,
                     last_year_bunk=last_year_bunk,
@@ -385,9 +386,10 @@ class SocialGraphBuilder:
             persons_data = {}
             for person_cm_id in bunk_members:
                 try:
-                    person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
-                    if person.family_id:
-                        persons_data[person_cm_id] = person.family_id
+                    _person_rec = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
+                    person = cast_person(_person_rec)
+                    if person.get("household_id"):
+                        persons_data[person_cm_id] = person["household_id"]
                 except Exception:  # noqa: S110 — intentional silent handling
                     pass
 
@@ -439,7 +441,9 @@ class SocialGraphBuilder:
                 bunk_graph.nodes[node]["centrality"] = cent
 
             # Calculate clustering coefficient
-            clustering = nx.clustering(bunk_graph)
+            # nx.clustering(G) returns dict[node, float] when called with a graph;
+            # cast to silence pyright's ambiguous-overload noise (float|int|dict).
+            clustering = cast(dict[Any, float], nx.clustering(bunk_graph))
             for node, clust in clustering.items():
                 bunk_graph.nodes[node]["clustering"] = clust
 
@@ -526,13 +530,13 @@ class SocialGraphBuilder:
                 continue
             if person_cm_id not in self.attendee_cache:
                 self.attendee_cache[person_cm_id] = []
-            self.attendee_cache[person_cm_id].append(attendee.__dict__)
+            self.attendee_cache[person_cm_id].append(dict(attendee.__dict__))
 
             # Get person details if not cached
             if person_cm_id not in self.person_cache:
                 try:
                     person = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
-                    self.person_cache[person_cm_id] = person.__dict__
+                    self.person_cache[person_cm_id] = dict(person.__dict__)
                 except Exception as e:
                     logger.warning(f"Person {person_cm_id} not found: {e}")
                     continue
@@ -632,17 +636,17 @@ class SocialGraphBuilder:
                 )
 
     def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
-        """Add edges between siblings using family_id from CampMinder"""
+        """Add edges between siblings using household_id from PocketBase persons collection."""
         # Get all nodes in graph
         node_ids = list(self.graph.nodes())
 
-        # Group persons by family_id
+        # Group persons by household_id
         family_groups = defaultdict(list)
         for node_id in node_ids:
             person = self.person_cache.get(node_id, {})
-            family_id = person.get("family_id", 0)
+            family_id = person.get("household_id", 0)
 
-            # Only group if family_id is valid (> 0)
+            # Only group if household_id is valid (> 0)
             if family_id and family_id > 0:
                 family_groups[family_id].append(node_id)
 
@@ -660,7 +664,7 @@ class SocialGraphBuilder:
                     )
                     sibling_count += 1
 
-        logger.info(f"Added {sibling_count} sibling edges based on family_id")
+        logger.info(f"Added {sibling_count} sibling edges based on household_id")
 
     def _add_classmate_edges(self, year: int, session_cm_id: int) -> None:
         """Add edges between potential classmates based on school, city, and state"""
@@ -750,7 +754,9 @@ class SocialGraphBuilder:
         nx.set_node_attributes(self.graph, degree_centrality, "centrality")
 
         # Clustering coefficient (how connected are a node's neighbors)
-        clustering = nx.clustering(self.graph)
+        # nx.clustering(G) always returns dict[node, float] when passed a graph;
+        # cast to resolve pyright's ambiguous overload (float|int|dict).
+        clustering = cast(dict[Any, float], nx.clustering(self.graph))
         nx.set_node_attributes(self.graph, clustering, "clustering")
 
         # Connected component size — use weakly_connected_components for directed graphs
@@ -759,7 +765,8 @@ class SocialGraphBuilder:
         # DiGraph inputs and the satisfaction_status loop below never runs — leaving every
         # node's status null and every frontend border falling back to the default color.
         if self.graph.is_directed():
-            components = list(nx.weakly_connected_components(self.graph))
+            # cast: pyright can't narrow via .is_directed(); we know it's a DiGraph here
+            components = list(nx.weakly_connected_components(cast(nx.DiGraph, self.graph)))
         else:
             components = list(nx.connected_components(self.graph))
         component_map = {}
@@ -1020,9 +1027,11 @@ class SocialGraphBuilder:
         is_directed = isinstance(self.graph, nx.DiGraph)
 
         # Get components based on graph type
+        # cast: isinstance check above confirms DiGraph; pyright doesn't narrow self.graph
         if is_directed:
-            components = list(nx.weakly_connected_components(self.graph))
-            num_components = nx.number_weakly_connected_components(self.graph)
+            _digraph = cast(nx.DiGraph, self.graph)
+            components = list(nx.weakly_connected_components(_digraph))
+            num_components = nx.number_weakly_connected_components(_digraph)
         else:
             components = list(nx.connected_components(self.graph))
             num_components = nx.number_connected_components(self.graph)
