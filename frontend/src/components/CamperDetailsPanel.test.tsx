@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { mockPerson } from '../test/mockData'
+import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
@@ -73,20 +74,22 @@ vi.mock('../contexts/AuthContext', () => ({
 
 // Configurable mock for getSatisfiedRequestInfo — overridden in alert tests.
 // Default returns empty CamperSatisfaction so existing tests are unaffected.
-let mockGetSatisfiedRequestInfo = vi.fn((_personCmId: number) => ({
-  person_cm_id: _personCmId,
-  per_request: [] as { request_id: string; bucket: string; satisfied: boolean }[],
-  counted_totals: {
-    material_parent: { satisfied: 0, total: 0 },
-    staff: { satisfied: 0, total: 0 },
-  },
-  immaterial: { satisfied: 0, total: 0 },
-  flags: {
-    parent_min_one_violation: false,
-    staff_unsatisfied_alert: false,
-    has_any_counted_request: false,
-  },
-}))
+let mockGetSatisfiedRequestInfo = vi.fn(
+  (_personCmId: number): CamperSatisfaction => ({
+    person_cm_id: _personCmId,
+    per_request: [] as PerRequestStatus[],
+    counted_totals: {
+      material_parent: { satisfied: 0, total: 0 },
+      staff: { satisfied: 0, total: 0 },
+    },
+    immaterial: { satisfied: 0, total: 0 },
+    flags: {
+      parent_min_one_violation: false,
+      staff_unsatisfied_alert: false,
+      has_any_counted_request: false,
+    },
+  })
+)
 
 // Mock useBunkRequestContext — CamperDetailsPanel uses getSatisfiedRequestInfo
 // from BunkRequestProvider to derive the unsatisfied-requests alert in parity

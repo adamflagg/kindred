@@ -71,12 +71,14 @@ async def get_satisfaction(
     logger.info(
         "satisfaction computed",
         extra={
-            "session": session,
-            "related_sessions": ctx.related_session_ids,
-            "scenario": scenario,
-            "camper_count": len(response.campers),
-            "request_count": sum(len(c.per_request) for c in response.campers.values()),
-            "elapsed_ms": elapsed_ms,
+            "satisfaction": {
+                "session": session,
+                "related_sessions": ctx.related_session_ids,
+                "scenario": scenario,
+                "camper_count": len(response.campers),
+                "request_count": sum(len(c.per_request) for c in response.campers.values()),
+                "elapsed_ms": elapsed_ms,
+            }
         },
     )
     return response

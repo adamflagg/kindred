@@ -12,7 +12,7 @@ import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDivide
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
-import type { CamperSatisfaction } from '../../types/satisfaction'
+import type { BucketCount, CamperSatisfaction } from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -20,11 +20,6 @@ import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketba
  *  partitionInput below. */
 type WithTargetPerson<T> = T & {
   targetPerson?: { first_name?: string; last_name?: string } | null
-}
-
-interface BucketCount {
-  total: number
-  satisfied: number
 }
 
 function ratioColor(slice: BucketCount): string {

@@ -275,22 +275,6 @@ describe('CamperAlertSection', () => {
       expect(alerts.filter((a) => a.requestRelated)).toEqual([])
     })
   })
-
-  describe('materiality rule (legacy renderer assertions)', () => {
-    it('socialize_with-only camper with unsatisfied best-effort does NOT trigger unsatisfied-parent-requests alert', () => {
-      // When parentMinOneViolation is false (no material bunk_with requests),
-      // the buildCamperAlerts util must NOT emit unsatisfied-parent-requests
-      // even if bestEffortParent has unsatisfied requests. This test verifies
-      // the rendered alert section respects that rule at the component layer.
-      const alerts: CamperAlert[] = []
-      // (no 'unsatisfied-parent-requests' alert — parentMinOneViolation is false)
-
-      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
-
-      expect(screen.queryByRole('button', { name: /parent request/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('region', { name: /alerts/i })).not.toBeInTheDocument()
-    })
-  })
 })
 
 // ─── Integration: CamperDetailsPanel renders alert section ────────────────────

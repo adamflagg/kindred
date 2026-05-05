@@ -119,6 +119,7 @@ def test_endpoint_passes_scenario_through(
     response = client.get("/api/satisfaction?session=999&year=2026&scenario=abc123def456789")
     assert response.status_code == 200, response.text
 
+    mock_session_sat.assert_called_once()
     call_kwargs = mock_session_sat.call_args.kwargs
     assert call_kwargs["scenario_id"] == "abc123def456789"
 
@@ -145,6 +146,7 @@ def test_endpoint_no_scenario_passes_none(
     response = client.get("/api/satisfaction?session=42&year=2025")
     assert response.status_code == 200, response.text
 
+    mock_session_sat.assert_called_once()
     call_kwargs = mock_session_sat.call_args.kwargs
     assert call_kwargs["scenario_id"] is None
 
