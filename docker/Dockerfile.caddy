@@ -30,6 +30,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o healthcheck .
 # =============================================================================
 # Stage 3: Distroless runtime
 # =============================================================================
+# Stock Caddy binary — no custom modules required (rate-limiting is delegated
+# to Traefik upstream).
 FROM chainguard/static:latest
 
 COPY --from=dhi.io/caddy:2 /usr/local/bin/caddy /usr/local/bin/caddy

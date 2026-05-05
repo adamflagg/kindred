@@ -1,8 +1,16 @@
-# Production Caddyfile for multi-container deployment
+# Production Caddyfile for multi-container deployment.
+# Sits behind Traefik on the VPS (and historically behind Traefik on Unraid).
+# Traefik terminates TLS, runs WAF/rate-limit, and forwards over the local
+# Docker network. Cloudflare Tunnel + Access front Traefik at the edge.
+#
 # Routes to upstream services via env vars (with defaults for compose service names):
 #   POCKETBASE_HOST (default: pocketbase) → port 8090
 #   API_HOST (default: api) → port 8000
-# Frontend static files served directly by Caddy from /pb_public
+#
+# Transport-layer concerns kept here (rest delegated to Traefik / CF):
+#   - trusted_proxies private_ranges  → real client IP from X-Forwarded-For
+#   - security_headers snippet        → defense-in-depth; harmless if Traefik also sets them
+#   - cors snippet                    → app-layer; lives near the API/PB split
 #
 # Note on logging:
 # - Console format: TIMESTAMP LEVEL LOGGER MESSAGE (Caddy's fixed format)
@@ -11,6 +19,18 @@
 # - TZ=UTC in Dockerfile ensures UTC timestamps
 {
 	admin off
+
+	# Traefik (or cloudflared in legacy deploys) is the immediate upstream on
+	# the local Docker network. Trust private ranges so {client_ip} and logs
+	# reflect the real origin IP from X-Forwarded-For, not the proxy peer.
+	# Safe because the VPS is port-closed with ufw; there is no untrusted
+	# internal network. Required for downstream features (e.g. /_/ IP gate)
+	# that key on {client_ip}.
+	servers {
+		trusted_proxies static private_ranges
+		client_ip_headers X-Forwarded-For
+	}
+
 	log {
 		format console {
 			time_format iso8601
@@ -19,7 +39,42 @@
 	}
 }
 
+# Traefik's secure-headers middleware equivalent. X-XSS-Protection is omitted
+# on purpose — modern browsers ignore the legacy header. Server response
+# header is stripped so we don't leak the upstream identity.
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Frame-Options "SAMEORIGIN"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "accelerometer=(),camera=(),geolocation=(self),gyroscope=(),magnetometer=(),microphone=(),payment=(),usb=()"
+		X-Robots-Tag "none,noarchive,nosnippet,notranslate,noimageindex"
+		-Server
+	}
+}
+
+# CORS layer on top of whatever the upstream sets. Matches the request Origin
+# against ALLOWED_ORIGINS_REGEX (pipe-separated, regex-escaped). Empty env
+# var = no origin matches = CORS effectively off in Caddy. FastAPI continues
+# to read ALLOWED_ORIGINS independently for its own CORS needs.
+(cors) {
+	@cors_origin header_regexp Origin ^(?i)({$ALLOWED_ORIGINS_REGEX})$
+	header @cors_origin {
+		Access-Control-Allow-Origin "{http.request.header.Origin}"
+		Access-Control-Allow-Credentials "true"
+		Vary "Origin"
+	}
+}
+
 :8080 {
+	import security_headers
+	import cors
+
+	# Compression and rate-limiting are handled by Traefik upstream of this
+	# Caddy. Adding them here would double-count rate-limit buckets and
+	# duplicate Traefik's compression for no gain.
+
 	# PocketBase-specific patterns (explicit)
 	# These /api/* routes go to PocketBase (port 8090)
 	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
