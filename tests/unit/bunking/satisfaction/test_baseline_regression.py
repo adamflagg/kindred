@@ -39,7 +39,9 @@ def _save_or_compare(name: str, actual: dict[str, Any]) -> None:
 class _MinimalConfig:
     """Minimal config stub for score_evaluator — returns all defaults."""
 
-    _defaults: dict[str, int | float] = {
+    from typing import ClassVar
+
+    _defaults: ClassVar[dict[str, int | float]] = {
         "objective.enable_diminishing_returns": 1,
         "objective.first_request_multiplier": 10,
         "objective.second_request_multiplier": 5,

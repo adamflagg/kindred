@@ -146,8 +146,8 @@ def session_satisfaction(
     person_to_bunk: dict[int, int] = {}
     bunk_to_persons: dict[int, list[int]] = defaultdict(list)
     for a in assignments:
-        pid = int(getattr(a, "person_cm_id"))
-        bid = int(getattr(a, "bunk_cm_id"))
+        pid = int(a.person_cm_id)
+        bid = int(a.bunk_cm_id)
         person_to_bunk[pid] = bid
         bunk_to_persons[bid].append(pid)
 
@@ -171,7 +171,7 @@ def session_satisfaction(
             row = dict(r)
             rid = int(row["requester_id"])
         else:
-            rid = int(getattr(r, "requester_id"))
+            rid = int(r.requester_id)
             row = {
                 "id": getattr(r, "id", ""),
                 "requester_id": rid,

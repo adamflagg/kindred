@@ -21,7 +21,10 @@ type WithTargetPerson<T> = T & {
   targetPerson?: { first_name?: string; last_name?: string } | null
 }
 
-type BucketCount = { total: number; satisfied: number }
+interface BucketCount {
+  total: number
+  satisfied: number
+}
 
 function ratioColor(slice: BucketCount): string {
   if (slice.total === 0) return ''
