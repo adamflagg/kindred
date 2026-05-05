@@ -389,6 +389,110 @@ func TestAuthenticate_NoRetryOnNon429Error(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// #1136 — authenticateAtURL must use cached subscriptionKey, not re-read env
+// ---------------------------------------------------------------------------
+
+// TestAuthenticate_UsesCachedSubscriptionKey is the regression test for #1136.
+// It verifies that authenticateAtURL uses the subscription key captured in
+// c.subscriptionKey at construction time, not os.Getenv on every call.
+//
+// Steps:
+//  1. Set the env var and construct a real client via NewClient (captures key).
+//  2. Unset the env var so any os.Getenv call returns "".
+//  3. Call authenticateAtURL against a mock server that records request headers.
+//  4. Assert the Ocp-Apim-Subscription-Key header carries the originally-captured key.
+func TestAuthenticate_UsesCachedSubscriptionKey(t *testing.T) {
+	const wantKey = "cached-subscription-key-abc123"
+
+	// Step 1: set env so NewClient can construct the client.
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", wantKey)
+
+	client, err := NewClient(&Config{
+		APIKey:   "test-api-key",
+		ClientID: "test-client-id",
+		SeasonID: 2025,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() failed: %v", err)
+	}
+	// Override the httpClient so we can inject our test server.
+	client.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	// Step 2: unset the env var — os.Getenv now returns "".
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "")
+
+	// Step 3: mock server records the subscription key header.
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("Ocp-Apim-Subscription-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"Token":"header.e30K.sig"}`)
+	}))
+	defer srv.Close()
+
+	err = client.authenticateAtURL(srv.URL + "/auth/apikey")
+	if err != nil {
+		t.Fatalf("authenticateAtURL() failed (expected success): %v", err)
+	}
+
+	// Step 4: the header must carry the originally-captured key, not the empty string.
+	if gotKey != wantKey {
+		t.Errorf("Ocp-Apim-Subscription-Key header = %q, want %q", gotKey, wantKey)
+	}
+}
+
+// TestMakeRequestWithURLRetry_UsesCachedSubscriptionKey is the regression test
+// for #1136 applied to makeRequestWithURLRetry, which has the same env-re-read pattern.
+//
+// Steps:
+//  1. Set env and construct a real client via NewClient.
+//  2. Unset the env var.
+//  3. Pre-seed accessToken/tokenExpiry so ensureAuthenticated() is a no-op.
+//  4. Call makeRequestWithURLRetry against a mock server and assert the header.
+func TestMakeRequestWithURLRetry_UsesCachedSubscriptionKey(t *testing.T) {
+	const wantKey = "cached-subscription-key-xyz789"
+
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", wantKey)
+
+	client, err := NewClient(&Config{
+		APIKey:   "test-api-key",
+		ClientID: "test-client-id",
+		SeasonID: 2025,
+	})
+	if err != nil {
+		t.Fatalf("NewClient() failed: %v", err)
+	}
+
+	// Unset the env var.
+	t.Setenv("CAMPMINDER_PRIMARY_KEY", "")
+
+	// Pre-seed a valid token so ensureAuthenticated() short-circuits.
+	client.accessToken = "pre-seeded-bearer-token"
+	client.tokenExpiry = time.Now().Add(time.Hour)
+
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("Ocp-Apim-Subscription-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `[]`)
+	}))
+	defer srv.Close()
+
+	client.httpClient = &http.Client{Timeout: 5 * time.Second}
+
+	_, err = client.makeRequestWithURLRetry("GET", srv.URL+"/some/endpoint", 0)
+	if err != nil {
+		t.Fatalf("makeRequestWithURLRetry() failed: %v", err)
+	}
+
+	if gotKey != wantKey {
+		t.Errorf("Ocp-Apim-Subscription-Key header = %q, want %q", gotKey, wantKey)
+	}
+}
+
 // TestAuthenticate_SucceedsOnFirstAttempt verifies authenticate() succeeds
 // and returns nil when the server responds 200 on the first try.
 func TestAuthenticate_SucceedsOnFirstAttempt(t *testing.T) {

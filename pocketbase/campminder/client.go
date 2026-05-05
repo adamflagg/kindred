@@ -82,11 +82,9 @@ func (c *Client) authenticate() error {
 func (c *Client) authenticateAtURL(authURL string) error {
 	slog.Debug("CampMinder authenticating", "clientID", c.clientID)
 
-	// Get primary key from environment once; fail fast if missing.
-	primaryKey := os.Getenv("CAMPMINDER_PRIMARY_KEY")
-	if primaryKey == "" {
-		return fmt.Errorf("CAMPMINDER_PRIMARY_KEY not set in environment")
-	}
+	// Use the subscription key captured at client construction time (#1136).
+	// NewClient already validates this is non-empty, so no re-check needed here.
+	primaryKey := c.subscriptionKey
 
 	for attempt := range maxRequestRetries + 1 {
 		req, err := http.NewRequestWithContext(context.Background(), "GET", authURL, http.NoBody)
@@ -210,11 +208,8 @@ func (c *Client) makeRequestWithURLRetry(method, fullURL string, retryCount int)
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// Get primary key from environment
-	primaryKey := os.Getenv("CAMPMINDER_PRIMARY_KEY")
-	if primaryKey == "" {
-		return nil, fmt.Errorf("CAMPMINDER_PRIMARY_KEY not set in environment")
-	}
+	// Use the subscription key captured at client construction time (#1136).
+	primaryKey := c.subscriptionKey
 
 	// Set headers
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
