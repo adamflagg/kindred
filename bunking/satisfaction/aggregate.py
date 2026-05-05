@@ -11,6 +11,7 @@ per person.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 from api.schemas.satisfaction import (
@@ -18,6 +19,13 @@ from api.schemas.satisfaction import (
     CamperSatisfaction,
     PerRequestStatus,
     SatisfactionFlags,
+    SatisfactionResponse,
+)
+from api.constants.collections import (
+    BUNK_ASSIGNMENTS,
+    BUNK_ASSIGNMENTS_DRAFT,
+    BUNK_REQUESTS,
+    PERSONS,
 )
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
 from bunking.satisfaction.predicate import is_request_satisfied
@@ -74,4 +82,96 @@ def camper_satisfaction(
         counted_totals=counted_totals,
         immaterial=BucketCount(satisfied=sum(immaterial), total=len(immaterial)),
         flags=flags,
+    )
+
+
+def session_satisfaction(
+    session_cm_id: int,
+    year: int,
+    scenario_id: str | None,
+    pb_client: Any,
+) -> SatisfactionResponse:
+    """Compute per-camper satisfaction for an entire session.
+
+    Mirrors OptimizedSocialGraphBuilder.build_social_network's data sourcing:
+    - scenario_id set → assignments from BUNK_ASSIGNMENTS_DRAFT for that scenario.
+    - scenario_id None → assignments from production BUNK_ASSIGNMENTS.
+
+    Args:
+        session_cm_id: CampMinder session ID.
+        year: Camp year.
+        scenario_id: Optional PocketBase ID of a saved scenario. When provided,
+            bunk assignments are sourced from bunk_assignments_draft; otherwise
+            from the production bunk_assignments collection.
+        pb_client: PocketBase client instance.
+
+    Returns:
+        SatisfactionResponse with per-camper satisfaction keyed by cm_id.
+    """
+    persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year}")
+    person_grades: dict[int, int] = {}
+    for p in persons:
+        cm_id = getattr(p, "cm_id", None)
+        grade = getattr(p, "grade", None)
+        if cm_id is not None and grade is not None:
+            person_grades[int(cm_id)] = int(grade)
+
+    if scenario_id:
+        assignments = pb_client.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list(
+            filter=f"scenario = '{scenario_id}' && year = {year}"
+        )
+    else:
+        assignments = pb_client.collection(BUNK_ASSIGNMENTS).get_full_list(filter=f"year = {year}")
+
+    person_to_bunk: dict[int, int] = {}
+    bunk_to_persons: dict[int, list[int]] = defaultdict(list)
+    for a in assignments:
+        pid = int(getattr(a, "person_cm_id"))
+        bid = int(getattr(a, "bunk_cm_id"))
+        person_to_bunk[pid] = bid
+        bunk_to_persons[bid].append(pid)
+
+    bunkmate_grades: dict[int, list[int]] = {}
+    for pid, bid in person_to_bunk.items():
+        bunkmate_grades[pid] = [
+            person_grades[other] for other in bunk_to_persons[bid] if other != pid and other in person_grades
+        ]
+
+    raw_requests = pb_client.collection(BUNK_REQUESTS).get_full_list(
+        filter=(f"session_id = {session_cm_id} && year = {year} && (merged_into = '' || merged_into = null)")
+    )
+
+    requests_by_requester: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for r in raw_requests:
+        if isinstance(r, dict):
+            row = dict(r)
+            rid = int(row["requester_id"])
+        else:
+            rid = int(getattr(r, "requester_id"))
+            row = {
+                "id": getattr(r, "id", ""),
+                "requester_id": rid,
+                "requestee_id": getattr(r, "requestee_id", None),
+                "request_type": getattr(r, "request_type", ""),
+                "source_field": getattr(r, "source_field", ""),
+                "age_preference_target": getattr(r, "age_preference_target", None),
+            }
+        if "requester_grade" not in row:
+            row["requester_grade"] = person_grades.get(rid)
+        requests_by_requester[rid].append(row)
+
+    campers = {}
+    for person_cm_id, person_requests in requests_by_requester.items():
+        campers[person_cm_id] = camper_satisfaction(
+            person_cm_id=person_cm_id,
+            person_requests=person_requests,
+            person_to_bunk=person_to_bunk,
+            bunkmate_grades=bunkmate_grades,
+        )
+
+    return SatisfactionResponse(
+        campers=campers,
+        session_cm_id=session_cm_id,
+        year=year,
+        scenario_id=scenario_id,
     )
