@@ -208,21 +208,17 @@ PERSON_A = 101
 PERSON_B = 102
 
 
-@pytest.fixture
-def bunk_graph_client_with_siblings() -> Generator[TestClient]:
-    """TestClient where the mock bunk graph contains both request and sibling edges."""
-    fake_bunk = _make_bunk_record(BUNK_CM_ID)
-    person_a = _make_person_record(PERSON_A, "Emma", "Johnson")
-    person_b = _make_person_record(PERSON_B, "Liam", "Garcia")
+def _make_pb_collection_mock(bunk_record: MagicMock, person_a: MagicMock, person_b: MagicMock):
+    """Build a `pb.collection(name)` side_effect that dispatches by collection name."""
 
     def _pb_collection(name: str) -> MagicMock:
         col = MagicMock()
         if name == "bunks":
-            col.get_first_list_item.return_value = fake_bunk
+            col.get_first_list_item.return_value = bunk_record
         elif name == "persons":
 
             def _get_first(filter_str: str, **_kwargs: object) -> MagicMock:
-                return person_a if str(PERSON_A) in filter_str else person_b
+                return person_a if str(person_a.cm_id) in filter_str else person_b
 
             col.get_first_list_item.side_effect = _get_first
         else:
@@ -230,18 +226,15 @@ def bunk_graph_client_with_siblings() -> Generator[TestClient]:
             col.get_first_list_item.return_value = MagicMock()
         return col
 
-    mock_pb = MagicMock()
-    mock_pb.collection.side_effect = _pb_collection
+    return _pb_collection
 
-    fake_graph = _build_bunk_graph_with_sibling_and_request([PERSON_A, PERSON_B])
 
-    mock_builder = MagicMock()
-    mock_builder.build_bunk_graph.return_value = fake_graph
+def _make_bunk_test_client(mock_pb: MagicMock, mock_builder: MagicMock) -> Generator[TestClient]:
+    """Build a TestClient with social_graph router and standard bunk-graph mocks patched in."""
+    from api.routers.social_graph import router
 
     mock_cache = MagicMock()
     mock_cache.get_bunk_graph.return_value = None
-
-    from api.routers.social_graph import router
 
     app = FastAPI()
     app.include_router(router)
@@ -253,6 +246,22 @@ def bunk_graph_client_with_siblings() -> Generator[TestClient]:
         patch("api.routers.social_graph.OptimizedSocialGraphBuilder", return_value=mock_builder),
     ):
         yield TestClient(app)
+
+
+@pytest.fixture
+def bunk_graph_client_with_siblings() -> Generator[TestClient]:
+    """TestClient where the mock bunk graph contains both request and sibling edges."""
+    fake_bunk = _make_bunk_record(BUNK_CM_ID)
+    person_a = _make_person_record(PERSON_A, "Emma", "Johnson")
+    person_b = _make_person_record(PERSON_B, "Liam", "Garcia")
+
+    mock_pb = MagicMock()
+    mock_pb.collection.side_effect = _make_pb_collection_mock(fake_bunk, person_a, person_b)
+
+    mock_builder = MagicMock()
+    mock_builder.build_bunk_graph.return_value = _build_bunk_graph_with_sibling_and_request([PERSON_A, PERSON_B])
+
+    yield from _make_bunk_test_client(mock_pb, mock_builder)
 
 
 @pytest.fixture
@@ -262,44 +271,13 @@ def bunk_graph_client_with_secondary_sibling() -> Generator[TestClient]:
     person_a = _make_person_record(PERSON_A, "Olivia", "Chen")
     person_b = _make_person_record(PERSON_B, "Noah", "Williams")
 
-    def _pb_collection(name: str) -> MagicMock:
-        col = MagicMock()
-        if name == "bunks":
-            col.get_first_list_item.return_value = fake_bunk
-        elif name == "persons":
-
-            def _get_first(filter_str: str, **_kwargs: object) -> MagicMock:
-                return person_a if str(PERSON_A) in filter_str else person_b
-
-            col.get_first_list_item.side_effect = _get_first
-        else:
-            col.get_list.return_value = MagicMock(items=[])
-            col.get_first_list_item.return_value = MagicMock()
-        return col
-
     mock_pb = MagicMock()
-    mock_pb.collection.side_effect = _pb_collection
-
-    fake_graph = _build_bunk_graph_with_secondary_sibling([PERSON_A, PERSON_B])
+    mock_pb.collection.side_effect = _make_pb_collection_mock(fake_bunk, person_a, person_b)
 
     mock_builder = MagicMock()
-    mock_builder.build_bunk_graph.return_value = fake_graph
+    mock_builder.build_bunk_graph.return_value = _build_bunk_graph_with_secondary_sibling([PERSON_A, PERSON_B])
 
-    mock_cache = MagicMock()
-    mock_cache.get_bunk_graph.return_value = None
-
-    from api.routers.social_graph import router
-
-    app = FastAPI()
-    app.include_router(router)
-    app.dependency_overrides[get_current_user] = _mock_admin_user
-
-    with (
-        patch("api.routers.social_graph.pb", mock_pb),
-        patch("api.routers.social_graph.graph_cache", mock_cache),
-        patch("api.routers.social_graph.OptimizedSocialGraphBuilder", return_value=mock_builder),
-    ):
-        yield TestClient(app)
+    yield from _make_bunk_test_client(mock_pb, mock_builder)
 
 
 @pytest.fixture

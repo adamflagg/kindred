@@ -520,17 +520,6 @@ async def get_bunk_social_graph(
         # them for a 0.25 confidence boost), but must not reach the frontend.
         edges = []
 
-        # Debug: log edge counts by type
-        edge_type_counts = {"request": 0, "sibling": 0, "both": 0}
-        for source, target, data in bunk_graph.edges(data=True):
-            if data.get("secondary_type"):
-                edge_type_counts["both"] += 1
-            else:
-                edge_type_counts[data.get("edge_type", "unknown")] = (
-                    edge_type_counts.get(data.get("edge_type", "unknown"), 0) + 1
-                )
-        logger.info(f"Edge type counts in bunk graph: {edge_type_counts}")
-
         for source, target, data in bunk_graph.edges(data=True):
             # Use reciprocal flag from edge data (set during graph building)
             is_reciprocal = data.get("reciprocal", False)
@@ -542,6 +531,7 @@ async def get_bunk_social_graph(
             # Handle edges with both a primary type and a secondary_type.
             if data.get("secondary_type"):
                 primary_type = data.get("edge_type", "request")
+                is_request = primary_type == "request"
                 secondary_type = data.get("secondary_type")
 
                 # Add primary edge (always)
@@ -552,9 +542,9 @@ async def get_bunk_social_graph(
                         weight=data.get("weight", 1.0),
                         type=primary_type,
                         reciprocal=is_reciprocal,
-                        confidence=data.get("confidence") if primary_type == "request" else None,
-                        priority=data.get("priority") if primary_type == "request" else None,
-                        request_type=data.get("request_type") if primary_type == "request" else None,
+                        confidence=data.get("confidence") if is_request else None,
+                        priority=data.get("priority") if is_request else None,
+                        request_type=data.get("request_type") if is_request else None,
                     )
                 )
 

@@ -450,8 +450,9 @@ export function createGraphElements(
   // Sibling edges are filtered at the API response boundary (#1094) and will
   // never appear in edgeData here — no client-side defensive filter needed.
   const visibleEdges = edgeData.filter((edge) => {
-    const edgeType = edge.type as keyof ShowEdgesSettings
-    return showEdges[edgeType] !== false
+    // Unknown edge types default to visible; sibling is filtered server-side (#1094)
+    const setting = showEdges[edge.type as keyof ShowEdgesSettings]
+    return setting !== false
   })
 
   // Group edges by unordered pair so we can detect same-type reciprocal pairs
