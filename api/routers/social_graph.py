@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
@@ -29,6 +29,7 @@ from ..schemas import (
     BunkGraphMetrics,
     BunkGraphResponse,
     CamperPositionUpdate,
+    CrossScopeEdge,
     IncrementalUpdateResponse,
     SocialGraphEdge,
     SocialGraphNode,
@@ -150,7 +151,7 @@ async def get_session_social_graph(
 
         # Apply scope filter if units/bunks params are present
         unit_slugs, bunk_codes = parse_scope_query(units, bunks)
-        scoped_cross_edges: list[dict[str, Any]] = []
+        scoped_cross_edges: list[CrossScopeEdge] = []
         cross_scope_node_ids: set[int] = set()
         pre_scope_graph = graph
         if unit_slugs or bunk_codes:

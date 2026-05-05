@@ -58,12 +58,17 @@ export interface GraphData {
   layout_positions?: Record<number, [number, number]>
   edge_type_counts?: Record<string, number>
   /** Edges crossing the scope boundary when ?cross_scope=true. Frontend
-   *  renders these as ghosted to show context without polluting the layout. */
+   *  renders these as ghosted to show context without polluting the layout.
+   *  Shape mirrors the Python CrossScopeEdge Pydantic model. */
   cross_scope_edges?: Array<{
     source: number
     target: number
-    weight: number
     type: string
+    weight: number
+    request_type?: string | null
+    priority?: number | null
+    confidence?: number | null
+    reciprocal: boolean
     cross_scope: true
   }>
   /** Out-of-scope endpoints of cross_scope_edges. Frontend renders these as

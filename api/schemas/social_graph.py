@@ -4,7 +4,7 @@ Pydantic schemas for social graph endpoints.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -45,6 +45,24 @@ class SocialGraphEdge(BaseModel):
     cross_scope: bool = False  # True for edges crossing the active scope boundary
 
 
+class CrossScopeEdge(BaseModel):
+    """An edge crossing the active scope boundary.
+
+    Returned alongside the in-scope subgraph when ?cross_scope=true so the
+    frontend can render these as ghosted/dashed context edges.
+    """
+
+    source: int
+    target: int
+    type: str
+    weight: float = 1.0
+    request_type: str | None = None
+    priority: int | None = None
+    confidence: float | None = None
+    reciprocal: bool = False
+    cross_scope: Literal[True] = True
+
+
 class SocialGraphResponse(BaseModel):
     """Complete social graph data"""
 
@@ -55,7 +73,7 @@ class SocialGraphResponse(BaseModel):
     warnings: list[str] = []  # Warnings about isolated campers, split groups, etc.
     layout_positions: dict[int, tuple[float, float]] | None = None  # node_id -> (x, y)
     edge_type_counts: dict[str, int] = {}  # edge_type -> count
-    cross_scope_edges: list[SocialGraphEdge] = []  # Edges crossing the scope boundary (when ?cross_scope=true)
+    cross_scope_edges: list[CrossScopeEdge] = []  # Edges crossing the scope boundary (when ?cross_scope=true)
     cross_scope_nodes: list[
         SocialGraphNode
     ] = []  # Out-of-scope endpoints of cross_scope_edges (when ?cross_scope=true)

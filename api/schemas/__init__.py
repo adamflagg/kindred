@@ -40,6 +40,7 @@ from .social_graph import (
     BunkGraphMetrics,
     BunkGraphResponse,
     CamperPositionUpdate,
+    CrossScopeEdge,
     IncrementalUpdateResponse,
     SocialGraphEdge,
     SocialGraphNode,
@@ -54,25 +55,20 @@ from .solver import (
 from .validation import ValidateBunkingRequest
 
 __all__ = [
-    # Social Graph
     "BunkGraphMetrics",
     "BunkGraphResponse",
-    # Bunk Requests
     "BunkRequestCreate",
     "BunkRequestResponse",
     "BunkRequestUpdate",
-    # Admin
     "BunkRequestUpload",
     "CamperPositionUpdate",
-    # Solver
     "ClearAssignmentsRequest",
-    # Metrics
     "ComparisonDelta",
     "ComparisonMetricsResponse",
+    "CrossScopeEdge",
     "GenderBreakdown",
     "GradeBreakdown",
     "IncrementalUpdateResponse",
-    # Manual Review
     "ManualReviewDecision",
     "ManualReviewResponse",
     "MultiSessionSolverRequest",
@@ -88,13 +84,11 @@ __all__ = [
     "SocialGraphEdge",
     "SocialGraphNode",
     "SocialGraphResponse",
-    # Config
     "SolverConfigUpdate",
     "SolverRequest",
     "SolverResponse",
     "UpdateAdminSetting",
     "UpdateSyncSchedule",
-    # Validation
     "ValidateBunkingRequest",
     "ValidateCronRequest",
     "YearSummary",

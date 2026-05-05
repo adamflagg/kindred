@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import networkx as nx
 
+from api.schemas.social_graph import CrossScopeEdge
 from bunking.utils.units import UNIT_NAMES, get_bunks_in_unit, unit_to_slug
 
 
@@ -81,14 +82,14 @@ def apply_scope(
     graph: nx.DiGraph,
     in_scope_bunk_cm_ids: set[int],
     include_cross_scope: bool,
-) -> tuple[nx.DiGraph, list[dict[str, Any]], set[int]]:
+) -> tuple[nx.DiGraph, list[CrossScopeEdge], set[int]]:
     """Filter a built graph to in-scope nodes and (optionally) tag cross-scope edges.
 
     Returns:
         subgraph: NetworkX DiGraph containing only in-scope nodes and the edges
             among them.
-        cross_scope_edges: list of {source, target, weight, type, cross_scope=True, ...}
-            dicts for edges that cross the scope boundary in either direction.
+        cross_scope_edges: list of CrossScopeEdge instances for edges that cross
+            the scope boundary in either direction.
             Empty when in_scope is empty or include_cross_scope is False.
         cross_scope_node_ids: set of node ids (camper cm_ids) that sit on the
             far side of a cross-scope edge — i.e. out-of-scope endpoints the
@@ -103,7 +104,7 @@ def apply_scope(
 
     subgraph = cast(nx.DiGraph, graph.subgraph(in_scope_nodes).copy())
 
-    cross_scope_edges: list[dict[str, Any]] = []
+    cross_scope_edges: list[CrossScopeEdge] = []
     cross_scope_node_ids: set[int] = set()
     if include_cross_scope:
         for source, target, data in graph.edges(data=True):
@@ -111,19 +112,18 @@ def apply_scope(
             target_in = target in in_scope_nodes
             if source_in != target_in:
                 cross_scope_edges.append(
-                    {
-                        "source": source,
-                        "target": target,
-                        "weight": data.get("weight", 1.0),
-                        "type": data.get("edge_type", "request"),
-                        "request_type": data.get("request_type"),
-                        "priority": data.get("priority"),
-                        "confidence": data.get("confidence"),
+                    CrossScopeEdge(
+                        source=source,
+                        target=target,
+                        weight=data.get("weight", 1.0),
+                        type=data.get("edge_type", "request"),
+                        request_type=data.get("request_type"),
+                        priority=data.get("priority"),
+                        confidence=data.get("confidence"),
                         # Derived from the full pre-subgraph topology — same approach
                         # the API router uses for in-scope SocialGraphEdge.reciprocal.
-                        "reciprocal": graph.has_edge(target, source),
-                        "cross_scope": True,
-                    }
+                        reciprocal=graph.has_edge(target, source),
+                    )
                 )
                 cross_scope_node_ids.add(target if source_in else source)
 
