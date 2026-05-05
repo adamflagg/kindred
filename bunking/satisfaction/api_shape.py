@@ -1,11 +1,13 @@
 """Pydantic schemas for the satisfaction endpoint.
 
-Style: mirrors api/schemas/social_graph.py (refined in PR #1153 with the
-addition of CrossScopeEdge).
+Co-located with `bucket.py` and `aggregate.py` to avoid a circular import
+that previously formed when `api/schemas/satisfaction.py` imported
+`RequestBucket` from `bunking.satisfaction.bucket` while
+`bunking.satisfaction.aggregate` imported the Pydantic types back.
 
-Hand-mirrored TypeScript types live in frontend/src/types/satisfaction.ts.
-A future codegen pass (#1155) will replace the hand-mirroring with output
-from FastAPI's OpenAPI spec.
+Hand-mirrored TypeScript types live in frontend/src/types/satisfaction.ts
+(Task 10 will hand-mirror these). A future codegen pass (#1155) will
+replace the hand-mirroring with output from FastAPI's OpenAPI spec.
 """
 
 from __future__ import annotations

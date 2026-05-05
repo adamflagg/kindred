@@ -14,18 +14,18 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from api.schemas.satisfaction import (
-    BucketCount,
-    CamperSatisfaction,
-    PerRequestStatus,
-    SatisfactionFlags,
-    SatisfactionResponse,
-)
 from api.constants.collections import (
     BUNK_ASSIGNMENTS,
     BUNK_ASSIGNMENTS_DRAFT,
     BUNK_REQUESTS,
     PERSONS,
+)
+from bunking.satisfaction.api_shape import (
+    BucketCount,
+    CamperSatisfaction,
+    PerRequestStatus,
+    SatisfactionFlags,
+    SatisfactionResponse,
 )
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
 from bunking.satisfaction.predicate import is_request_satisfied

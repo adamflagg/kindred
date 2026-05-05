@@ -11,11 +11,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from bunking.satisfaction.aggregate import session_satisfaction
+from bunking.satisfaction.api_shape import SatisfactionResponse
 from bunking.satisfaction.bucket import RequestBucket
-
-# Import after bunking.satisfaction.aggregate so the circular-import bootstrap
-# order is deterministic (aggregate registers api.schemas.satisfaction first).
-from api.schemas.satisfaction import SatisfactionResponse
 
 
 def _person(cm_id: int, grade: int = 10, gender: str = "M") -> Any:

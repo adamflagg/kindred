@@ -5,11 +5,20 @@ Public API:
 - is_request_satisfied — per-request predicate
 - camper_satisfaction — per-camper aggregator (pure)
 - session_satisfaction — top-level entry (fetches PB data)
+- BucketCount, CamperSatisfaction, PerRequestStatus, SatisfactionFlags,
+  SatisfactionResponse — Pydantic API shapes
 
 Consumers: bunking.solver, bunking.graph, api.routers.satisfaction.
 """
 
 from bunking.satisfaction.aggregate import camper_satisfaction, session_satisfaction
+from bunking.satisfaction.api_shape import (
+    BucketCount,
+    CamperSatisfaction,
+    PerRequestStatus,
+    SatisfactionFlags,
+    SatisfactionResponse,
+)
 from bunking.satisfaction.bucket import (
     COUNTED_BUCKETS,
     RequestBucket,
@@ -19,7 +28,12 @@ from bunking.satisfaction.predicate import is_request_satisfied
 
 __all__ = [
     "COUNTED_BUCKETS",
+    "BucketCount",
+    "CamperSatisfaction",
+    "PerRequestStatus",
     "RequestBucket",
+    "SatisfactionFlags",
+    "SatisfactionResponse",
     "camper_satisfaction",
     "classify_request",
     "is_request_satisfied",

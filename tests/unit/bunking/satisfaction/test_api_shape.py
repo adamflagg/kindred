@@ -1,11 +1,11 @@
-"""Tests for api.schemas.satisfaction Pydantic models."""
+"""Tests for bunking.satisfaction.api_shape Pydantic models."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from api.schemas.satisfaction import (
+from bunking.satisfaction.api_shape import (
     BucketCount,
     CamperSatisfaction,
     PerRequestStatus,
