@@ -99,6 +99,24 @@ const EDGE_COLORS: Record<string, string> = {
   request: '#3498db', // Blue for all request edges
 }
 
+// Helpers hoisted to module scope: they reference no closure values and were
+// previously redeclared on every useMemo recompute.
+const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
+  if (!name) return 'B'
+  if (name.includes('AG') || name.startsWith('AG')) return 'AG'
+  if (name.startsWith('G-')) return 'G'
+  if (name.startsWith('B-')) return 'B'
+  return 'B'
+}
+
+const extractSortKey = (name: string): { primary: number; secondary: string } => {
+  if (name.includes('Alph')) return { primary: -2, secondary: name }
+  if (name.includes('Bet')) return { primary: -1, secondary: name }
+  const match = name.match(/[GB]-(\d+)/)
+  if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
+  return { primary: 999, secondary: name }
+}
+
 export default function BunkSocialGraphModal({
   bunkCmId,
   bunkName,
@@ -207,25 +225,13 @@ export default function BunkSocialGraphModal({
   const sessionBunks = useMemo(() => {
     if (!allBunks || allBunks.length === 0 || !bunkCmId) return []
 
-    const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-      if (!name) return 'B'
-      if (name.includes('AG') || name.startsWith('AG')) return 'AG'
-      if (name.startsWith('G-')) return 'G'
-      if (name.startsWith('B-')) return 'B'
-      return 'B'
-    }
-
     const currentBunk = allBunks.find((b) => b.cm_id === bunkCmId)
-    const currentBunkType = getBunkType(currentBunk?.name ?? '')
+    // Guard: if allBunks hasn't caught up yet (transient race during fast
+    // navigation), return an empty list rather than falling back to getBunkType('')
+    // which would classify this as type 'B' and show an unrelated bunk list.
+    if (!currentBunk) return []
+    const currentBunkType = getBunkType(currentBunk.name ?? '')
     if (currentBunkType === 'AG') return []
-
-    const extractSortKey = (name: string): { primary: number; secondary: string } => {
-      if (name.includes('Alph')) return { primary: -2, secondary: name }
-      if (name.includes('Bet')) return { primary: -1, secondary: name }
-      const match = name.match(/[GB]-(\d+)/)
-      if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
-      return { primary: 999, secondary: name }
-    }
 
     return allBunks
       .filter((bunk) => getBunkType(bunk.name || '') === currentBunkType)
@@ -242,9 +248,13 @@ export default function BunkSocialGraphModal({
       }))
   }, [allBunks, bunkCmId])
 
+  // Cache the last known good index so a transient miss (allBunks refetch
+  // racing a fast navigation) doesn't silently reset the cursor to bunk 0.
+  const lastIndexRef = useRef(0)
   const currentBunkIndex = useMemo(() => {
     const idx = sessionBunks.findIndex((b) => b.cm_id === bunkCmId)
-    return idx === -1 ? 0 : idx
+    if (idx !== -1) lastIndexRef.current = idx
+    return idx === -1 ? lastIndexRef.current : idx
   }, [sessionBunks, bunkCmId])
 
   // Initialize Cytoscape
