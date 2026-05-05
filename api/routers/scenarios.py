@@ -198,7 +198,7 @@ async def create_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error creating scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to create scenario: {e!s}")
+        raise
 
 
 @router.get("")
@@ -240,7 +240,7 @@ async def list_scenarios(
         raise
     except Exception as e:
         logger.error(f"Error listing scenarios: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list scenarios: {e!s}")
+        raise
 
 
 @router.get("/score")
@@ -375,9 +375,12 @@ async def evaluate_score(
             "grade_flow_details": breakdown.grade_flow_details,
         }
 
+    except ClientResponseError as e:
+        logger.error(f"PocketBase error evaluating score: {e}", exc_info=True)
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error evaluating score: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to evaluate score: {e!s}")
+        raise
 
 
 @router.get("/{scenario_id}")
@@ -421,7 +424,7 @@ async def get_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error getting scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get scenario")
+        raise
 
 
 @router.put("/{scenario_id}")
@@ -461,7 +464,7 @@ async def update_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error updating scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update scenario: {e!s}")
+        raise
 
 
 @router.delete("/{scenario_id}")
@@ -490,7 +493,7 @@ async def delete_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error deleting scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to delete scenario: {e!s}")
+        raise
 
 
 # ========================================
@@ -646,7 +649,7 @@ async def update_scenario_assignment(
         logger.error(f"Update data: {update}")
         if "existing" in locals():
             logger.error(f"Existing assignments: {existing}")
-        raise HTTPException(status_code=500, detail=f"Failed to update assignment: {e!s}")
+        raise
 
 
 # ========================================
@@ -707,7 +710,7 @@ async def solve_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error starting solver for scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to start solver")
+        raise
 
 
 @router.post("/{scenario_id}/clear")
@@ -741,4 +744,4 @@ async def clear_scenario(
         raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error clearing scenario: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to clear scenario")
+        raise

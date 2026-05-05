@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
@@ -87,6 +88,7 @@ from ..schemas.pipeline_debug import (
     RunPhase3Request,
 )
 from ..settings import get_settings
+from ..utils.pb_error import pb_error_to_http
 from ..utils.pb_filters import pb_escape
 from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
@@ -479,7 +481,8 @@ async def clear_parse_analysis(
         deleted_count = debug_repo.clear_all()
 
     if deleted_count < 0:
-        raise HTTPException(status_code=500, detail="Failed to clear parse analysis results")
+        logger.error("clear_parse_analysis: repository returned error sentinel (deleted_count=%d)", deleted_count)
+        raise RuntimeError("debug_repo.clear returned error sentinel")
 
     return ClearAnalysisResponse(deleted_count=deleted_count)
 
@@ -1418,11 +1421,10 @@ def get_pipeline_trace(
     """Get full trace JSON for drill-down."""
     try:
         record = pb.collection(DEBUG_PIPELINE_TRACES).get_one(trace_id)
-    except Exception as e:
-        # PocketBase raises ClientResponseError with status=404 for missing records
-        if getattr(e, "status", 0) == 404:
+    except ClientResponseError as e:
+        if e.status == 404:
             raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
-        raise
+        raise pb_error_to_http(e) from e
 
     return PipelineTraceResponse(trace=_pb_record_to_trace_item(record))
 
@@ -1480,10 +1482,10 @@ def _load_trace_record(trace_id: str) -> Any:
     """
     try:
         return pb.collection(DEBUG_PIPELINE_TRACES).get_one(trace_id)
-    except Exception as e:
-        if getattr(e, "status", 0) == 404:
+    except ClientResponseError as e:
+        if e.status == 404:
             raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found") from e
-        raise
+        raise pb_error_to_http(e) from e
 
 
 def _load_trace_data(trace_id: str) -> dict[str, Any]:

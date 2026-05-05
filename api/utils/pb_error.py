@@ -12,6 +12,24 @@ Mapping rationale:
 
 Error detail is intentionally generic — PocketBase internal messages (field names,
 schema details, internal IDs) must not be exposed to API consumers.
+
+Why PB 401 → API 403 (not 401):
+
+The frontend differentiates 401 (clear auth + redirect to login) from 403
+(generic error display) — see ``frontend/src/hooks/useApiWithAuth.ts``,
+``frontend/src/utils/queryClient.ts``, and ``frontend/src/contexts/AuthContext.tsx``.
+
+A PocketBase 401 reaching this helper means *the API's* upstream call to PB was
+unauthorized — not the end-user's session. The user's JWT is validated upstream
+by ``bunking.auth_middleware.get_current_user`` before any router code runs, so
+if their session were invalid the request would have already returned 401
+from middleware. PB 401 here typically signals that the API's superuser/service
+token has expired or PB is misconfigured — an infra issue the user cannot
+resolve by re-logging in.
+
+Mapping to 403 is therefore correct: the user *is* authenticated; the request
+just cannot be fulfilled. Mapping to 401 would trigger a misleading login
+redirect that wouldn't fix the underlying problem.
 """
 
 from __future__ import annotations
