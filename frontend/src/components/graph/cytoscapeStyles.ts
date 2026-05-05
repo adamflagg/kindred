@@ -5,6 +5,7 @@
 import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape'
 import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
+import type { CrossScopeEdge } from '../../types/graph'
 
 /** Input node data from API */
 export interface GraphNodeData {
@@ -333,20 +334,9 @@ export interface EdgeElement {
 
 /** Edge straddling the active scope (one endpoint in scope, one outside).
  *  Returned as a distinct list by the API so we can ghost them visually
- *  without polluting the layout's edge weight. */
-export interface CrossScopeEdgeData {
-  source: number
-  target: number
-  type: string
-  weight?: number
-  /** Same-shape metadata as in-scope edges so cross-scope edges can run
-   *  through the bucket-collapse / multi-curve algorithm identically. */
-  request_type?: string
-  priority?: number
-  confidence?: number
-  reciprocal?: boolean
-  cross_scope: true
-}
+ *  without polluting the layout's edge weight. Wire shape is exported as
+ *  `CrossScopeEdge` from `../../types/graph` — this is the same type. */
+export type CrossScopeEdgeData = CrossScopeEdge
 
 /** Result of createGraphElements */
 export interface GraphElements {

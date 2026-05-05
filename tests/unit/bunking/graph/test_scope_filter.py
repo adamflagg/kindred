@@ -16,8 +16,8 @@ import networkx as nx
 import pytest
 from pydantic import ValidationError
 
-from api.schemas.social_graph import CrossScopeEdge, SocialGraphResponse
-from bunking.graph.scope_filter import apply_scope
+from api.schemas.social_graph import SocialGraphResponse
+from bunking.graph.scope_filter import CrossScopeEdge, apply_scope
 
 
 def _make_graph() -> nx.DiGraph:

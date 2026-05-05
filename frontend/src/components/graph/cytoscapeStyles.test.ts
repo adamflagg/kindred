@@ -329,7 +329,17 @@ describe('createGraphElements', () => {
       { source: 1, target: 2, type: 'request', priority: 1, confidence: 0.9, reciprocal: false },
     ]
     const cross = [
-      { source: 1, target: 99, type: 'request', weight: 1, cross_scope: true as const },
+      {
+        source: 1,
+        target: 99,
+        type: 'request',
+        weight: 1,
+        request_type: null,
+        priority: null,
+        confidence: null,
+        reciprocal: false,
+        cross_scope: true as const,
+      },
     ]
     const ghostNodes: GraphNodeData[] = [
       {

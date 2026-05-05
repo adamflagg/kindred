@@ -54,24 +54,32 @@ from .solver import (
 )
 from .validation import ValidateBunkingRequest
 
-__all__ = [
+__all__ = [  # noqa: RUF022 — grouped by feature for navigability over alphabetical
+    # Social Graph
     "BunkGraphMetrics",
     "BunkGraphResponse",
+    "CamperPositionUpdate",
+    "CrossScopeEdge",
+    "IncrementalUpdateResponse",
+    "SocialGraphEdge",
+    "SocialGraphNode",
+    "SocialGraphResponse",
+    # Bunk Requests
     "BunkRequestCreate",
     "BunkRequestResponse",
     "BunkRequestUpdate",
     "BunkRequestUpload",
-    "CamperPositionUpdate",
+    # Solver
     "ClearAssignmentsRequest",
+    "MultiSessionSolverRequest",
+    "SolverConfigUpdate",
+    "SolverRequest",
+    "SolverResponse",
+    # Metrics
     "ComparisonDelta",
     "ComparisonMetricsResponse",
-    "CrossScopeEdge",
     "GenderBreakdown",
     "GradeBreakdown",
-    "IncrementalUpdateResponse",
-    "ManualReviewDecision",
-    "ManualReviewResponse",
-    "MultiSessionSolverRequest",
     "NewVsReturning",
     "RegistrationMetricsResponse",
     "RetentionByGender",
@@ -81,16 +89,14 @@ __all__ = [
     "RetentionMetricsResponse",
     "SessionBreakdown",
     "SessionLengthBreakdown",
-    "SocialGraphEdge",
-    "SocialGraphNode",
-    "SocialGraphResponse",
-    "SolverConfigUpdate",
-    "SolverRequest",
-    "SolverResponse",
+    "YearSummary",
+    "YearsAtCampBreakdown",
+    # Manual Review
+    "ManualReviewDecision",
+    "ManualReviewResponse",
+    # Admin / Config
     "UpdateAdminSetting",
     "UpdateSyncSchedule",
     "ValidateBunkingRequest",
     "ValidateCronRequest",
-    "YearSummary",
-    "YearsAtCampBreakdown",
 ]

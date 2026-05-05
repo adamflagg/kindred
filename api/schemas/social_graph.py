@@ -4,9 +4,14 @@ Pydantic schemas for social graph endpoints.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel
+
+# CrossScopeEdge lives in the domain layer (bunking.graph.scope_filter) to keep
+# bunking/ free of presentation-layer imports. Re-exported here so existing
+# `from api.schemas.social_graph import CrossScopeEdge` callsites still work.
+from bunking.graph.scope_filter import CrossScopeEdge as CrossScopeEdge
 
 
 class SocialGraphNode(BaseModel):
@@ -43,24 +48,6 @@ class SocialGraphEdge(BaseModel):
     request_type: str | None = None  # 'bunk_with' | 'not_bunk_with' for type='request' edges
     metadata: dict[str, Any] = {}  # Additional edge metadata (e.g., location for classmate edges)
     cross_scope: bool = False  # True for edges crossing the active scope boundary
-
-
-class CrossScopeEdge(BaseModel):
-    """An edge crossing the active scope boundary.
-
-    Returned alongside the in-scope subgraph when ?cross_scope=true so the
-    frontend can render these as ghosted/dashed context edges.
-    """
-
-    source: int
-    target: int
-    type: str
-    weight: float = 1.0
-    request_type: str | None = None
-    priority: int | None = None
-    confidence: float | None = None
-    reciprocal: bool = False
-    cross_scope: Literal[True] = True
 
 
 class SocialGraphResponse(BaseModel):

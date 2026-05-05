@@ -14,12 +14,33 @@ unfiltered requests.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import networkx as nx
+from pydantic import BaseModel
 
-from api.schemas.social_graph import CrossScopeEdge
 from bunking.utils.units import UNIT_NAMES, get_bunks_in_unit, unit_to_slug
+
+
+class CrossScopeEdge(BaseModel):
+    """An edge crossing the active scope boundary.
+
+    Returned alongside the in-scope subgraph when ?cross_scope=true so the
+    frontend can render these as ghosted/dashed context edges.
+
+    Lives in the domain layer (bunking.graph) to keep bunking/ self-contained
+    and avoid a layering inversion (domain importing from presentation).
+    """
+
+    source: int
+    target: int
+    type: str
+    weight: float = 1.0
+    request_type: str | None = None
+    priority: int | None = None
+    confidence: float | None = None
+    reciprocal: bool = False
+    cross_scope: Literal[True] = True
 
 
 def parse_scope_query(
