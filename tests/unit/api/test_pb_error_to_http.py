@@ -119,6 +119,20 @@ class TestPbErrorToHttp:
         assert "sensitive" not in str(exc.detail).lower()
         assert "PocketBase" not in str(exc.detail)
 
+    def test_unexpected_status_emits_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """pb_error_to_http emits a WARNING for unexpected upstream statuses (e.g. 429)."""
+        import logging
+
+        from api.utils.pb_error import pb_error_to_http
+
+        with caplog.at_level(logging.WARNING, logger="api.utils.pb_error"):
+            exc = pb_error_to_http(_make_client_response_error(429))
+
+        assert exc.status_code == 502
+        assert any("429" in record.message for record in caplog.records), (
+            f"Expected a warning mentioning '429' but got: {[r.message for r in caplog.records]}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Integration smoke: pre_validate_solver maps 404 → 404

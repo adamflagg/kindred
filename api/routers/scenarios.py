@@ -43,6 +43,7 @@ from ..constants.collections import (
 from ..dependencies import pb, solver_runs
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
+from ..utils.pb_error import pb_error_to_http
 from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
@@ -193,8 +194,8 @@ async def create_scenario(
         )
 
     except ClientResponseError as e:
-        logger.error(f"PocketBase error creating scenario: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"PocketBase error creating scenario: {e}", exc_info=True)
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error creating scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create scenario: {e!s}")
@@ -417,11 +418,9 @@ async def get_scenario(
         return scenario_result
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error getting scenario: {e}")
+        logger.error(f"Error getting scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get scenario")
 
 
@@ -459,9 +458,7 @@ async def update_scenario(
         )
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error updating scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to update scenario: {e!s}")
@@ -490,9 +487,7 @@ async def delete_scenario(
         return {"message": f"Scenario '{getattr(scenario, 'name', scenario_id)}' deleted successfully"}
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error deleting scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to delete scenario: {e!s}")
@@ -631,16 +626,18 @@ async def update_scenario_assignment(
                 }
 
     except ClientResponseError as e:
-        logger.error(
-            f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}"
-        )
-        logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        error_detail = str(e)
-        if hasattr(e, "data") and e.data:
-            error_detail = f"PocketBase error: {e.data}"
-        raise HTTPException(status_code=400, detail=error_detail)
+        if 400 <= e.status < 500:
+            logger.warning(
+                f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}"
+            )
+            logger.warning(f"Scenario ID: {scenario_id}, Update: {update}")
+        else:
+            logger.error(
+                f"PocketBase error in update_scenario_assignment: status={e.status}, body={getattr(e, 'data', None)}",
+                exc_info=True,
+            )
+            logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
+        raise pb_error_to_http(e)
     except HTTPException:
         raise
     except Exception as e:
@@ -707,11 +704,9 @@ async def solve_scenario(
         return {"run_id": run_id, "status": "started", "message": "Solver run started for scenario"}
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error starting solver for scenario: {e}")
+        logger.error(f"Error starting solver for scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to start solver")
 
 
@@ -743,9 +738,7 @@ async def clear_scenario(
         }
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Scenario not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
-        logger.error(f"Error clearing scenario: {e}")
+        logger.error(f"Error clearing scenario: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to clear scenario")

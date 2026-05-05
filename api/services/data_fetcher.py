@@ -12,9 +12,9 @@ import asyncio
 from collections import defaultdict
 from typing import Any
 
-from fastapi import HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.utils.pb_error import pb_error_to_http
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.direct_solver import (
     DirectBunk,
@@ -166,7 +166,7 @@ async def fetch_session_data_v2(
 
     except ClientResponseError as e:
         logger.error(f"Failed to fetch session data for CM ID {session_cm_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch session data: {e!s}")
+        raise pb_error_to_http(e)
 
 
 async def fetch_historical_bunking(

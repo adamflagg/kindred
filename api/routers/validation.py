@@ -8,12 +8,11 @@ against constraints and rules.
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
@@ -43,6 +42,7 @@ from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
 from ..services.session_context import build_session_context
+from ..utils.pb_error import pb_error_to_http
 from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 logger = get_logger(__name__)
@@ -395,12 +395,7 @@ async def validate_bunking(
         return validation_result.model_dump()
 
     except ClientResponseError as e:
-        if e.status == 404:
-            raise HTTPException(status_code=404, detail="Session not found")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise pb_error_to_http(e)
     except Exception as e:
         logger.error(f"Error during bunking validation: {e}", exc_info=True)
-        if os.environ.get("ENV", "development") == "development":
-            raise HTTPException(status_code=500, detail=f"Validation error: {e!s}")
-        else:
-            raise HTTPException(status_code=500, detail="Failed to validate bunking")
+        raise
