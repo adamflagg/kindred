@@ -14,6 +14,10 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, NotRequired, TypedDict
 
+from bunking.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 from api.constants.collections import (
     BUNK_ASSIGNMENTS,
     BUNK_ASSIGNMENTS_DRAFT,
@@ -179,6 +183,9 @@ def session_satisfaction(
     for a in assignments:
         pid = int(a.person_cm_id)
         bid = int(a.bunk_cm_id)
+        if bid <= 0:
+            logger.warning("skipping assignment with invalid bunk_cm_id=%d for person %d", bid, pid)
+            continue
         person_to_bunk[pid] = bid
         bunk_to_persons[bid].append(pid)
 

@@ -316,6 +316,20 @@ class TestAllRequestTypeVariants:
         assert camper3.counted_totals[RequestBucket.MATERIAL_PARENT].total == 0
 
 
+def test_assignment_with_zero_bunk_cm_id_is_filtered() -> None:
+    """Assignments with bunk_cm_id <= 0 are silently skipped (not inserted into person_to_bunk)."""
+    persons = [_person(1, 10), _person(2, 10)]
+    # Person 1 has a pathological assignment (bunk_cm_id=0); person 2 has a valid one.
+    bad_assignment = _assignment(1, 0)
+    good_assignment = _assignment(2, 100)
+    requests: list[dict[str, Any]] = []
+    pb = _build_pb_mock(persons, [bad_assignment, good_assignment], requests)
+    response = session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=None, pb_client=pb)
+    # Camper 2 is present (valid assignment); camper 1 is absent (filtered).
+    assert 2 in response.campers
+    assert 1 not in response.campers
+
+
 def test_campers_includes_assigned_with_zero_requests() -> None:
     """Regression: assigned campers with no requests must appear with no_requests status."""
     # Camper 1 has a request; camper 2 is assigned but silent.

@@ -29,7 +29,9 @@ def is_request_satisfied(
             and `requester_grade`.
         person_to_bunk: Mapping from person cm_id → bunk cm_id for currently
             assigned campers. Unassigned campers must NOT be present in the
-            map (callers should not insert sentinel values).
+            map (callers should not insert sentinel values). All bunk_cm_id
+            values must be positive ints (> 0); zero and negative values are
+            filtered at the boundary by session_satisfaction.
         bunkmate_grades: For age_preference requests only — mapping from
             requester cm_id → grades of OTHER campers in the same bunk.
             Required when request_type == 'age_preference'.
