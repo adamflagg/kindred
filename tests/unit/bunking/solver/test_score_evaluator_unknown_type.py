@@ -2,8 +2,6 @@
 
 import logging
 
-import pytest
-
 from bunking.solver.score_evaluator import evaluate_scenario_score
 
 
