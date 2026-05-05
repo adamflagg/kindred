@@ -13,10 +13,10 @@ from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
 # Source priority order (higher number = higher priority)
-# Used for deduplication tiebreaker only - staff validates family input
+# Used for deduplication tiebreaker only — FAMILY is authoritative (parent-paramount).
 SOURCE_PRIORITY = {
-    RequestSource.STAFF: 2,  # Staff validates/confirms family requests
-    RequestSource.FAMILY: 1,  # Original family submission
+    RequestSource.FAMILY: 2,  # Origin of intent — parent input is authoritative
+    RequestSource.STAFF: 1,  # Corroboration / observation — preserved as metadata
 }
 
 
@@ -105,7 +105,7 @@ class Deduplicator:
                 # Age preferences: group by (requester, None, type, "", year, session)
                 # Dedupes across ALL source fields. Same requester's age preference from
                 # different sources (AI-parsed vs dropdown) is the same intent.
-                # Priority: STAFF > FAMILY during merge preserves metadata from both.
+                # Priority: FAMILY > STAFF during merge — parent-paramount (#1088).
                 key = (
                     request.requester_cm_id,
                     None,  # No target for age preferences

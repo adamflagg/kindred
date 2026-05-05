@@ -454,7 +454,7 @@ class TestDeduplicator:
         Example: Parent mentions "wants to bunk with Sarah" in both:
         - share_bunk_with field (family form)
         - bunking_notes field (free text)
-        → Only ONE request should be kept (STAFF source wins over FAMILY).
+        → Only ONE request should be kept (FAMILY source wins — parent-paramount, #1088).
         """
         # Request from share_bunk_with field
         form_request = BunkRequest(
@@ -494,10 +494,10 @@ class TestDeduplicator:
 
         # Should deduplicate - only ONE kept (source priority first, then max confidence)
         assert len(result.kept_requests) == 1
-        # STAFF source wins over FAMILY, but keeps max confidence from both
-        assert result.kept_requests[0].source == RequestSource.STAFF
+        # FAMILY source wins over STAFF (#1088 parent-paramount flip), keeps max confidence from both
+        assert result.kept_requests[0].source == RequestSource.FAMILY
         assert result.kept_requests[0].confidence_score == 0.95  # Max confidence from both
-        assert result.kept_requests[0].metadata["origin"] == "notes"
+        assert result.kept_requests[0].metadata["origin"] == "form"
         assert result.statistics["duplicates_removed"] == 1
 
     def test_internal_notes_deduplicated_across_source_fields(self, deduplicator):
@@ -555,12 +555,12 @@ class TestSimplifiedSourcePriority:
         """Create a Deduplicator without repository (batch-only dedup)"""
         return Deduplicator()
 
-    def test_staff_over_family_tiebreaker(self):
-        """Test that STAFF source wins over FAMILY in dedup tiebreaker.
+    def test_family_over_staff_tiebreaker(self):
+        """Test that FAMILY source wins over STAFF in dedup tiebreaker (#1088 parent-paramount).
 
         When same (requester, requestee, type, session, year) comes from both
-        FAMILY and STAFF sources, STAFF should win because staff validates
-        family input.
+        FAMILY and STAFF sources, FAMILY should win — origin of intent is authoritative.
+        Staff corroborates but does not supersede parent input.
         """
         family_request = BunkRequest(
             requester_cm_id=12345,
@@ -597,10 +597,10 @@ class TestSimplifiedSourcePriority:
         deduplicator = Deduplicator()
         result = deduplicator.deduplicate_batch([family_request, staff_request])
 
-        # Staff should win even with lower confidence (source > confidence)
+        # Family wins even with staff having a different source_field (source > confidence)
         assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].source == RequestSource.STAFF
-        assert result.kept_requests[0].source_field == SourceField.NOT_BUNK_WITH
+        assert result.kept_requests[0].source == RequestSource.FAMILY
+        assert result.kept_requests[0].source_field == "share_bunk_with"
         assert result.statistics["duplicates_removed"] == 1
 
     def test_confidence_tiebreaker_same_source(self):
@@ -649,10 +649,10 @@ class TestSimplifiedSourcePriority:
         assert result.statistics["duplicates_removed"] == 1
 
     def test_source_priority_only_staff_and_family(self):
-        """Test that SOURCE_PRIORITY only contains STAFF and FAMILY.
+        """Test that SOURCE_PRIORITY only contains STAFF and FAMILY, with FAMILY paramount.
 
         NOTES category should not exist - bunking_notes and internal_notes
-        should map to STAFF source.
+        should map to STAFF source. FAMILY has higher priority than STAFF (#1088).
         """
         from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_PRIORITY
 
@@ -661,8 +661,8 @@ class TestSimplifiedSourcePriority:
         assert RequestSource.STAFF in SOURCE_PRIORITY
         assert RequestSource.FAMILY in SOURCE_PRIORITY
 
-        # STAFF should have higher priority than FAMILY
-        assert SOURCE_PRIORITY[RequestSource.STAFF] > SOURCE_PRIORITY[RequestSource.FAMILY]
+        # FAMILY should have higher priority than STAFF (#1088 parent-paramount)
+        assert SOURCE_PRIORITY[RequestSource.FAMILY] > SOURCE_PRIORITY[RequestSource.STAFF]
 
     def test_notes_enum_removed(self):
         """Test that RequestSource.NOTES no longer exists.
@@ -777,9 +777,9 @@ class TestAgePreferenceDeduplication:
         assert len(result.kept_requests) == 1
         assert result.statistics["duplicates_removed"] == 1
 
-        # STAFF wins over FAMILY (source priority)
+        # FAMILY wins over STAFF (#1088 parent-paramount)
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.STAFF
+        assert kept.source == RequestSource.FAMILY
 
         # But confidence is boosted to max from all sources
         assert kept.confidence_score == 1.0
@@ -791,7 +791,11 @@ class TestAgePreferenceDeduplication:
         """Test that conflicting age preferences resolve to highest priority source.
 
         Edge case: What if bunking_notes says "older" but dropdown says "younger"?
-        Higher priority source wins (STAFF > FAMILY), consistent with other request types.
+        Higher priority source wins (FAMILY > STAFF, #1088 parent-paramount).
+        Note: the conflict-target demotion path (_is_conflicting_age_preference_pair)
+        only fires for BUNK_WITH vs SOCIALIZE_WITH source fields — this case uses
+        bunking_notes vs ret_parent_socialize_with_best, so it falls through to the
+        normal tiebreak and FAMILY wins as primary.
         """
         # AI-parsed says "older" (STAFF source)
         older_request = BunkRequest(
@@ -829,12 +833,12 @@ class TestAgePreferenceDeduplication:
 
         result = deduplicator.deduplicate_batch([older_request, younger_request])
 
-        # Deduplicated - STAFF wins despite lower confidence
+        # Deduplicated - FAMILY wins (#1088 parent-paramount flip)
         assert len(result.kept_requests) == 1
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.STAFF
-        assert kept.metadata["age_preference"] == "older"
-        # Confidence boosted from family's higher value
+        assert kept.source == RequestSource.FAMILY
+        assert kept.metadata["age_preference"] == "younger"
+        # Confidence already highest on the family record
         assert kept.confidence_score == 1.0
 
     def test_age_preference_same_source_same_field_deduplicated(self, deduplicator):
@@ -1048,8 +1052,8 @@ class TestAgePreferenceDeduplication:
             f"Possible bugs: double-add or no dedup across sources."
         )
         assert result.statistics["duplicates_removed"] == 1
-        # STAFF wins over FAMILY
-        assert result.kept_requests[0].source == RequestSource.STAFF
+        # FAMILY wins over STAFF (#1088 parent-paramount)
+        assert result.kept_requests[0].source == RequestSource.FAMILY
 
 
 class TestParentAgePreferenceDeduplication:
@@ -1129,11 +1133,12 @@ class TestParentAgePreferenceDeduplication:
         result2 = deduplicator.deduplicate_batch([bunk_with_req, socialize_req])
         assert result2.kept_requests[0].source_field == SourceField.BUNK_WITH
 
-    def test_staff_over_family_still_wins_before_bunk_with_bias(self, deduplicator):
-        """SOURCE_PRIORITY (staff > family) must dominate the bunk_with tiebreaker.
+    def test_family_paramount_dominates_bunk_with_bias(self, deduplicator):
+        """SOURCE_PRIORITY (family > staff, #1088) dominates the bunk_with source_field tiebreaker.
 
-        A FAMILY bunk_with request must NOT beat a STAFF socialize_with request —
-        the bunk_with bias only fires for same-source (parent-vs-parent) ties.
+        A FAMILY bunk_with request beats a STAFF socialize_with request because
+        SOURCE_PRIORITY is the first sort key. The bunk_with bias is secondary and
+        only changes outcomes within same-source (parent-vs-parent) ties.
         """
         family_bunk_with = self._age_pref(SourceField.BUNK_WITH, confidence=0.92, source=RequestSource.FAMILY)
         staff_socialize = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=0.80, source=RequestSource.STAFF)
@@ -1141,8 +1146,8 @@ class TestParentAgePreferenceDeduplication:
         result = deduplicator.deduplicate_batch([family_bunk_with, staff_socialize])
 
         assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].source == RequestSource.STAFF, (
-            "Staff source must still win over family bunk_with; bunk_with bias must not override SOURCE_PRIORITY"
+        assert result.kept_requests[0].source == RequestSource.FAMILY, (
+            "Family source must win over staff socialize_with; SOURCE_PRIORITY (family > staff) dominates"
         )
 
     def test_confidence_still_tiebreaks_when_both_non_bunk_with(self, deduplicator):
@@ -1326,6 +1331,156 @@ class TestConflictTargetDemotion:
             f"fallback merge must NOT promote to pending (only conflicting "
             f"non-null targets do); got status={survivor.status}"
         )
+
+
+class TestFamilyParamountTiebreak:
+    """Test #1088: FAMILY beats STAFF in dedup tiebreak (parent-paramount policy).
+
+    Origin of intent is authoritative — a parent-sourced request must survive
+    as primary even when staff also records the same logical request.
+
+    These tests lock in the FAMILY > STAFF policy introduced in #1088.
+    """
+
+    @pytest.fixture
+    def deduplicator(self):
+        return Deduplicator()
+
+    def test_family_beats_staff_bunk_with_tiebreak(self, deduplicator):
+        """When a FAMILY bunk_with and a STAFF bunking_notes share the same dedup key,
+        the FAMILY row must survive as primary.
+
+        Scenario: Emma Johnson's parent submits "bunk with Liam Garcia" via the family
+        form (source_field=bunk_with). Staff also notes it in bunking_notes.
+        The parent-sourced row must win — origin of intent is authoritative.
+        """
+        family_request = BunkRequest(
+            requester_cm_id=11111,
+            requested_cm_id=22222,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000001,
+            priority=3,
+            confidence_score=0.90,
+            source=RequestSource.FAMILY,
+            source_field=SourceField.BUNK_WITH,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"source_detail": "parent_form", "original_text": "Please bunk with Liam Garcia"},
+        )
+
+        staff_request = BunkRequest(
+            requester_cm_id=11111,
+            requested_cm_id=22222,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000001,
+            priority=1,
+            confidence_score=0.85,
+            source=RequestSource.STAFF,
+            source_field=SourceField.BUNKING_NOTES,
+            csv_position=1,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"source_detail": "staff_observation", "original_text": "Liam Garcia - bunk with"},
+        )
+
+        result = deduplicator.deduplicate_batch([family_request, staff_request])
+
+        assert len(result.kept_requests) == 1
+        assert result.statistics["duplicates_removed"] == 1
+
+        survivor = result.kept_requests[0]
+
+        # FAMILY is primary — origin of intent is authoritative
+        assert survivor.source == RequestSource.FAMILY, (
+            f"Expected FAMILY to be primary (parent-paramount); got {survivor.source}"
+        )
+        assert survivor.source_field == SourceField.BUNK_WITH, (
+            f"Expected source_field=bunk_with on survivor; got {survivor.source_field}"
+        )
+
+        # Staff row is the dropped duplicate
+        assert len(result.duplicate_groups) == 1
+        assert result.duplicate_groups[0].primary.source == RequestSource.FAMILY
+        dropped = result.duplicate_groups[0].duplicates
+        assert len(dropped) == 1
+        assert dropped[0].source == RequestSource.STAFF
+
+        # _merge_metadata must have folded the staff row's metadata into the survivor
+        assert survivor.metadata.get("is_merged_duplicate") is True
+        merged_sources = survivor.metadata.get("merged_sources", [])
+        assert len(merged_sources) == 2, (
+            f"merged_sources should have 2 entries (family + staff); got {len(merged_sources)}"
+        )
+        # Both family and staff sources are represented in merged_sources
+        merged_source_values = [s.get("source") for s in merged_sources]
+        assert "family" in merged_source_values, "FAMILY source must appear in merged_sources"
+        assert "staff" in merged_source_values, "STAFF source must appear in merged_sources (preserved as metadata)"
+        # The staff row's original_text must appear in merged_sources
+        merged_texts = [s.get("original_text") for s in merged_sources]
+        assert "Liam Garcia - bunk with" in merged_texts, (
+            "Staff row's original_text must be preserved in merged_sources metadata"
+        )
+
+    def test_family_beats_staff_age_preference_tiebreak(self, deduplicator):
+        """When a FAMILY age_preference (AI-parsed from bunk_with prose) and a STAFF
+        age_preference (from bunking_notes) share the same dedup key, FAMILY wins.
+
+        Scenario: Liam Garcia's parent writes "prefers younger bunk-mates" in the
+        bunk_with text field (AI-parsed to age_preference/FAMILY). Staff also notes
+        the same preference in bunking_notes (STAFF). The parent-sourced row must win.
+        """
+        family_age_pref = BunkRequest(
+            requester_cm_id=33333,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000001,
+            priority=1,
+            confidence_score=0.88,
+            source=RequestSource.FAMILY,
+            source_field=SourceField.BUNK_WITH,  # Parent prose AI-parsed to age_preference
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "younger", "original_text": "prefers younger bunk-mates"},
+        )
+
+        staff_age_pref = BunkRequest(
+            requester_cm_id=33333,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000001,
+            priority=1,
+            confidence_score=0.80,
+            source=RequestSource.STAFF,
+            source_field=SourceField.BUNKING_NOTES,
+            csv_position=1,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "younger", "original_text": "Liam likes younger kids"},
+        )
+
+        result = deduplicator.deduplicate_batch([family_age_pref, staff_age_pref])
+
+        assert len(result.kept_requests) == 1
+        assert result.statistics["duplicates_removed"] == 1
+
+        survivor = result.kept_requests[0]
+
+        # FAMILY wins as primary — parent-paramount
+        assert survivor.source == RequestSource.FAMILY, (
+            f"Expected FAMILY to win age_preference tiebreak (parent-paramount); got {survivor.source}"
+        )
+
+        # Staff row recorded as the dropped duplicate
+        assert len(result.duplicate_groups) == 1
+        dropped = result.duplicate_groups[0].duplicates
+        assert len(dropped) == 1
+        assert dropped[0].source == RequestSource.STAFF
 
 
 if __name__ == "__main__":
