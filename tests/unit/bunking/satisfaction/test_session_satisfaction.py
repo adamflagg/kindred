@@ -176,3 +176,141 @@ class TestMultiSession:
         pb = _build_pb_mock([], [], [])
         with pytest.raises(ValueError, match="session_cm_ids must contain at least one id"):
             session_satisfaction(session_cm_ids=[], year=2026, scenario_id=None, pb_client=pb)
+
+
+class TestAllRequestTypeVariants:
+    """Verify each (request_type, source_field) combination lands in the right bucket.
+
+    Persons: 1 in bunk 100; 2 in bunk 100; 3 in bunk 101.
+    Truth table:
+      r_bunk_parent:   1 bunk_with 2, source_field=bunk_with         → MATERIAL_PARENT, satisfied
+      r_bunk_staff:    1 bunk_with 3, source_field=bunking_notes     → STAFF, unsatisfied
+      r_not_bunk:      2 not_bunk_with 1, source_field=not_bunk_with → STAFF, unsatisfied (same bunk)
+      r_socialize:     2 bunk_with 3, source_field=socialize_with    → IMMATERIAL_PARENT
+      r_internal:      3 bunk_with 1, source_field=internal_notes    → STAFF, satisfied (different bunk)
+    """
+
+    @pytest.fixture
+    def pb_all_variants(self) -> MagicMock:
+        persons = [_person(1, 10), _person(2, 10), _person(3, 10)]
+        assignments = [_assignment(1, 100), _assignment(2, 100), _assignment(3, 101)]
+        requests = [
+            # bunk_with parent → MATERIAL_PARENT; 1→2 same bunk = satisfied
+            {
+                "id": "r_bunk_parent",
+                "requester_id": 1,
+                "requestee_id": 2,
+                "request_type": "bunk_with",
+                "source_field": "bunk_with",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+            # bunk_with staff (bunking_notes) → STAFF; 1→3 different bunks = unsatisfied
+            {
+                "id": "r_bunk_staff",
+                "requester_id": 1,
+                "requestee_id": 3,
+                "request_type": "bunk_with",
+                "source_field": "bunking_notes",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+            # not_bunk_with → STAFF; 2→1 same bunk = unsatisfied (violation)
+            {
+                "id": "r_not_bunk",
+                "requester_id": 2,
+                "requestee_id": 1,
+                "request_type": "not_bunk_with",
+                "source_field": "not_bunk_with",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+            # socialize_with → IMMATERIAL_PARENT; 2→3 different bunks (irrelevant for immaterial)
+            {
+                "id": "r_socialize",
+                "requester_id": 2,
+                "requestee_id": 3,
+                "request_type": "bunk_with",
+                "source_field": "socialize_with",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+            # internal_notes → STAFF; 3→1 different bunks = satisfied
+            {
+                "id": "r_internal",
+                "requester_id": 3,
+                "requestee_id": 1,
+                "request_type": "bunk_with",
+                "source_field": "internal_notes",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+        ]
+        return _build_pb_mock(persons, assignments, requests)
+
+    def test_bunk_with_parent_lands_in_material_parent_bucket(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper1 = resp.campers[1]
+        # r_bunk_parent (bunk_with/bunk_with) → MATERIAL_PARENT satisfied
+        assert camper1.counted_totals[RequestBucket.MATERIAL_PARENT].total == 1
+        assert camper1.counted_totals[RequestBucket.MATERIAL_PARENT].satisfied == 1
+
+    def test_staff_sourced_bunk_with_lands_in_staff_bucket(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper1 = resp.campers[1]
+        # r_bunk_staff (bunk_with/bunking_notes) → STAFF unsatisfied (1→3 diff bunks)
+        # NOTE: bunk_with request type but bunking_notes source_field → STAFF bucket
+        assert camper1.counted_totals[RequestBucket.STAFF].total == 1
+        assert camper1.counted_totals[RequestBucket.STAFF].satisfied == 0
+
+    def test_not_bunk_with_lands_in_staff_bucket(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper2 = resp.campers[2]
+        # r_not_bunk: 2→1 same bunk = violation (unsatisfied)
+        assert camper2.counted_totals[RequestBucket.STAFF].total == 1
+        assert camper2.counted_totals[RequestBucket.STAFF].satisfied == 0
+
+    def test_socialize_with_lands_in_immaterial_bucket(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper2 = resp.campers[2]
+        # r_socialize (bunk_with/socialize_with) → IMMATERIAL — not counted in totals
+        assert camper2.immaterial.total == 1
+        assert camper2.counted_totals[RequestBucket.MATERIAL_PARENT].total == 0
+
+    def test_internal_notes_lands_in_staff_bucket(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper3 = resp.campers[3]
+        # r_internal: 3 bunk_with 1 via internal_notes → STAFF; 3 in bunk 101, 1 in bunk 100
+        # Different bunks = bunk_with NOT satisfied
+        assert camper3.counted_totals[RequestBucket.STAFF].total == 1
+        assert camper3.counted_totals[RequestBucket.STAFF].satisfied == 0
+
+    def test_age_preference_source_field_raises_on_classify(self) -> None:
+        """classify_request('age_preference') is not in _BUCKET_MAP — session_satisfaction
+        raises ValueError when an age_preference row reaches it.
+        This test documents the current gap: age_preference needs either a dedicated
+        bucket or pre-filtering before reaching camper_satisfaction.
+        See: bunking/satisfaction/bucket.py _BUCKET_MAP."""
+        persons = [_person(1, 7)]
+        assignments = [_assignment(1, 100)]
+        requests = [
+            {
+                "id": "r_age",
+                "requester_id": 1,
+                "requestee_id": 0,
+                "request_type": "age_preference",
+                "source_field": "age_preference",
+                "age_preference_target": "older",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            }
+        ]
+        pb = _build_pb_mock(persons, assignments, requests)
+        with pytest.raises(ValueError, match="unknown source_field"):
+            session_satisfaction([999], 2026, None, pb)
