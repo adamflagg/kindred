@@ -56,6 +56,26 @@ class TestCamperSatisfaction:
         assert c.person_cm_id == 12345
 
 
+class TestCamperSatisfactionCountedBuckets:
+    def test_camper_satisfaction_rejects_missing_counted_bucket(self) -> None:
+        """counted_totals must contain every key in COUNTED_BUCKETS."""
+        with pytest.raises((ValueError, Exception), match="missing buckets"):
+            CamperSatisfaction(
+                person_cm_id=1,
+                per_request=[],
+                counted_totals={
+                    RequestBucket.MATERIAL_PARENT: BucketCount(satisfied=0, total=0)
+                    # STAFF missing
+                },
+                immaterial=BucketCount(satisfied=0, total=0),
+                flags=SatisfactionFlags(
+                    parent_min_one_violation=False,
+                    staff_unsatisfied_alert=False,
+                    has_any_counted_request=False,
+                ),
+            )
+
+
 class TestSatisfactionResponse:
     def test_round_trip(self) -> None:
         flags = SatisfactionFlags(

@@ -12,9 +12,9 @@ replace the hand-mirroring with output from FastAPI's OpenAPI spec.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from bunking.satisfaction.bucket import RequestBucket
+from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket
 
 
 class PerRequestStatus(BaseModel):
@@ -58,6 +58,13 @@ class CamperSatisfaction(BaseModel):
     counted_totals: dict[RequestBucket, BucketCount]
     immaterial: BucketCount
     flags: SatisfactionFlags
+
+    @model_validator(mode="after")
+    def _check_counted_keys(self) -> "CamperSatisfaction":
+        missing = COUNTED_BUCKETS - set(self.counted_totals.keys())
+        if missing:
+            raise ValueError(f"counted_totals missing buckets: {sorted(missing)}")
+        return self
 
 
 class SatisfactionResponse(BaseModel):
