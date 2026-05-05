@@ -25,7 +25,6 @@ from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
 from bunking.satisfaction import RequestBucket, camper_satisfaction
 from bunking.satisfaction.aggregate import bucket_status
-from bunking.satisfaction.api_shape import BucketCount
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
 
