@@ -347,6 +347,8 @@ export function useCamperMovement({
         // Issue #1040 — graph node borders depend on bunk membership; invalidate.
         void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
         void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+        // #1041 — satisfaction endpoint must refresh after camper is moved.
+        void queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() })
         onPendingMoveCleared?.()
         toast.success('Camper moved successfully')
         return
@@ -362,6 +364,8 @@ export function useCamperMovement({
       // Issue #1040 — graph node borders depend on bunk membership; invalidate.
       void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+      // #1041 — satisfaction endpoint must refresh after camper is moved.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() })
       onPendingMoveCleared?.()
 
       // Invalidate graph cache for the session

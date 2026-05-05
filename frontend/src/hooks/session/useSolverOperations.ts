@@ -146,6 +146,8 @@ export function useSolverOperations({
                   // Issue #1040 — solver re-assigns campers; graph borders must refresh.
                   queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
+                  // #1041 — satisfaction endpoint must refresh after solver re-assigns campers.
+                  queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
@@ -185,6 +187,8 @@ export function useSolverOperations({
                   // Issue #1040 — solver re-assigns campers; graph borders must refresh.
                   queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
                   queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
+                  // #1041 — satisfaction endpoint must refresh after solver re-assigns campers.
+                  queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
                 ])
               } catch (applyError) {
                 console.error('Failed to apply solver results:', applyError)
@@ -253,6 +257,8 @@ export function useSolverOperations({
         // the user navigates away and back (scan-it Finding #2).
         queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() }),
+        // #1041 — satisfaction endpoint must refresh after assignments are cleared.
+        queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() }),
       ])
 
       const message = result.message || 'Assignments cleared successfully'

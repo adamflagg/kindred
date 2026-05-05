@@ -445,6 +445,8 @@ export function invalidateRequestQueries(
   // so approve/decline/merge/split immediately update the graph's node colours.
   void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+  // #1041 — satisfaction endpoint is authoritative; request mutations must refresh it.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() })
   if (options.includeSourceLinks) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
