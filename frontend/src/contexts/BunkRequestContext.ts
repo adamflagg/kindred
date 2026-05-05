@@ -26,8 +26,6 @@ export interface SatisfiedRequestInfo {
   staff: RequestSlice
   parentMinOneViolation: boolean
   staffUnsatisfiedAlert: boolean
-  topPrioritySatisfied: boolean
-  priorityLevels: number[]
 }
 
 interface BunkRequestContextValue {
