@@ -86,19 +86,23 @@ def camper_satisfaction(
 
 
 def session_satisfaction(
-    session_cm_id: int,
+    session_cm_ids: list[int],
     year: int,
     scenario_id: str | None,
     pb_client: Any,
 ) -> SatisfactionResponse:
-    """Compute per-camper satisfaction for an entire session.
+    """Compute per-camper satisfaction for an entire session or AG cluster.
 
     Mirrors OptimizedSocialGraphBuilder.build_social_network's data sourcing:
     - scenario_id set → assignments from BUNK_ASSIGNMENTS_DRAFT for that scenario.
     - scenario_id None → assignments from production BUNK_ASSIGNMENTS.
 
     Args:
-        session_cm_id: CampMinder session ID.
+        session_cm_ids: One or more CampMinder session ids to compute
+            satisfaction across. For AG-clustered work this includes the
+            primary session plus its related AG sessions, sourced from
+            SessionContext.related_session_ids. Single-session use passes
+            a one-element list.
         year: Camp year.
         scenario_id: Optional PocketBase ID of a saved scenario. When provided,
             bunk assignments are sourced from bunk_assignments_draft; otherwise
@@ -107,7 +111,17 @@ def session_satisfaction(
 
     Returns:
         SatisfactionResponse with per-camper satisfaction keyed by cm_id.
+        session_cm_id in the response is the first (primary) id in session_cm_ids.
     """
+    if not session_cm_ids:
+        raise ValueError("session_cm_ids must contain at least one id")
+
+    # Filter strings for 1-or-N session ids.
+    # session_id_filter covers bunk_requests (direct cm_id field).
+    session_id_filter = " || ".join(f"session_id = {sid}" for sid in session_cm_ids)
+    # session_relation_filter covers bunk_assignments (relation field).
+    session_relation_filter = " || ".join(f"session.cm_id = {sid}" for sid in session_cm_ids)
+
     persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year}")
     person_grades: dict[int, int] = {}
     for p in persons:
@@ -122,11 +136,11 @@ def session_satisfaction(
     # same exposure; auth-gated endpoint mitigates risk for now.
     if scenario_id:
         assignments = pb_client.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list(
-            filter=(f"scenario = '{scenario_id}' && year = {year} && session.cm_id = {session_cm_id}")
+            filter=(f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})")
         )
     else:
         assignments = pb_client.collection(BUNK_ASSIGNMENTS).get_full_list(
-            filter=f"year = {year} && session.cm_id = {session_cm_id}"
+            filter=f"year = {year} && ({session_relation_filter})"
         )
 
     person_to_bunk: dict[int, int] = {}
@@ -145,7 +159,7 @@ def session_satisfaction(
 
     raw_requests = pb_client.collection(BUNK_REQUESTS).get_full_list(
         filter=(
-            f"session_id = {session_cm_id} && year = {year} "
+            f"({session_id_filter}) && year = {year} "
             f'&& status = "resolved" '
             f"&& (merged_into = '' || merged_into = null)"
         )
@@ -181,7 +195,7 @@ def session_satisfaction(
 
     return SatisfactionResponse(
         campers=campers,
-        session_cm_id=session_cm_id,
+        session_cm_id=session_cm_ids[0],
         year=year,
         scenario_id=scenario_id,
     )

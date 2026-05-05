@@ -124,6 +124,7 @@ def create_app() -> FastAPI:
         internal,
         metrics,
         requests,
+        satisfaction,
         scenarios,
         session_availability,
         social_graph,
@@ -135,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(solver.router)
     app.include_router(scenarios.router)
     app.include_router(social_graph.router)
+    app.include_router(satisfaction.router)
     app.include_router(requests.router)
     app.include_router(debug.router)
     app.include_router(metrics.router)
