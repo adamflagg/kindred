@@ -187,7 +187,7 @@ echo -e "${BLUE}Starting Caddy on port ${CADDY_PORT:-8080}...${NC}"
 # Set environment variables for Caddy
 # Use pb_public since it has both frontend build AND local assets
 export FRONTEND_BUILD_PATH="$PROJECT_ROOT/pocketbase/pb_public"
-export CADDY_PORT POCKETBASE_PORT FASTAPI_PORT
+export CADDY_PORT POCKETBASE_PORT FASTAPI_PORT ADMIN_ALLOWLIST
 cd "$PROJECT_ROOT/frontend"
 caddy run --config Caddyfile --adapter caddyfile &
 CADDY_PID=$!

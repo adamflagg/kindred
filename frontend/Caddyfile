@@ -6,7 +6,7 @@
 	# PocketBase-specific patterns (explicit)
 	# These are the only /api/* routes that go to PocketBase
 	# Note: Must include both root paths and wildcards (e.g., /api/collections AND /api/collections/*)
-	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/oauth2-redirect /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
+	@pocketbase path /api/collections /api/collections/* /api/files/* /api/realtime /api/custom/* /api/settings /api/logs /api/logs/* /api/backups /api/backups/*
 
 	# PocketBase routes
 	handle @pocketbase {
@@ -15,8 +15,34 @@
 		}
 	}
 
-	# PocketBase admin UI
+	# OAuth2 redirect — rewrite PocketBase's redirect to the kindred-served
+	# completion page so /_/* can be gated. See docker/Caddyfile for the full
+	# explanation.
+	handle /api/oauth2-redirect {
+		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
+			header_up Host {host}
+			# See docker/Caddyfile for why we use header+respond instead of redir.
+			@oauth_success header Location *oauth2-redirect-success*
+			handle_response @oauth_success {
+				header Location "/oauth2-complete.html?status=success"
+				respond 307
+			}
+			@oauth_failure header Location *oauth2-redirect-failure*
+			handle_response @oauth_failure {
+				header Location "/oauth2-complete.html?status=failure"
+				respond 307
+			}
+		}
+	}
+
+	# PocketBase admin UI — IP-gated by ADMIN_ALLOWLIST. Required in .env; no
+	# default (see docker/Caddyfile for why).
+	# client_ip falls back to remote_ip when trusted_proxies isn't configured,
+	# so this works in dev (direct connections) and stays consistent with
+	# docker/Caddyfile (where it matters because of CF Tunnel + Traefik).
 	handle /_/* {
+		@admin_blocked not client_ip {$ADMIN_ALLOWLIST}
+		respond @admin_blocked 403
 		reverse_proxy 127.0.0.1:{$POCKETBASE_PORT:8090} {
 			header_up Host {host}
 		}

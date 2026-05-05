@@ -117,6 +117,14 @@ APPDATA_DIR=/path/to/appdata
 
 # IPv4 enforcement (critical!)
 # Always use 127.0.0.1, not localhost, for inter-service communication
+
+# PocketBase admin UI IP allowlist (Caddy /_/* gate)
+# Space-separated CIDRs. Default unset = open. Set to home/VPN ranges to
+# restrict admin UI access without affecting user OAuth login (Caddy rewrites
+# the OAuth completion redirect from /_/#/auth/oauth2-redirect-success to
+# the kindred-served /oauth2-complete.html, so /_/* is no longer in the user
+# login path).
+ADMIN_ALLOWLIST=10.0.0.0/8 192.168.0.0/16
 ```
 
 ### Logging & Monitoring

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Authentication complete</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 2rem; text-align: center; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    p { color: #555; margin: 0; }
+    .err h1 { color: #b00; }
+  </style>
+</head>
+<body>
+  <main id="content">
+    <h1>Authentication complete.</h1>
+    <p>You can close this window and go back to the app.</p>
+  </main>
+  <script>
+    (function () {
+      var status = new URLSearchParams(window.location.search).get('status');
+      if (status === 'failure') {
+        var el = document.getElementById('content');
+        el.classList.add('err');
+        el.innerHTML = '<h1>Authentication failed.</h1><p>You can close this window and go back to the app to try again.</p>';
+      }
+      // Mirror PocketBase's admin-UI behavior: auto-close the popup. The realtime
+      // channel has already delivered the auth code to the parent window by this
+      // point, so closing here is purely a UX convenience. (The PocketBase JS SDK
+      // also calls s.close() on the popup from the parent window, so this is
+      // belt-and-suspenders — works even if the popup is opened standalone.)
+      window.close();
+    })();
+  </script>
+</body>
+</html>

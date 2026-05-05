@@ -132,6 +132,8 @@ services:
       # its own CORS, so the app isn't broken — but the defense-in-depth Caddy
       # layer never fires. Set in .env (see .env.example).
       - ALLOWED_ORIGINS_REGEX=${ALLOWED_ORIGINS_REGEX:-}
+      # Required — Caddyfile fails to load if unset. See .env.example for details.
+      - ADMIN_ALLOWLIST=${ADMIN_ALLOWLIST:?ADMIN_ALLOWLIST is required (set in .env, see .env.example)}
     tmpfs:
       - /tmp:size=8m,uid=65532,gid=65532
       - /app/.config/caddy:size=8m,uid=65532,gid=65532
