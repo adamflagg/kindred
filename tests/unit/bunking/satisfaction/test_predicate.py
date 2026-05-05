@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from bunking.satisfaction.predicate import is_request_satisfied
@@ -14,7 +16,7 @@ def _req(
     *,
     age_preference_target: str | None = None,
     requester_grade: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "requester_id": requester_id,
         "requestee_id": requestee_id,

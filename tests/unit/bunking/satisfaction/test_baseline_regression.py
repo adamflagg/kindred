@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -38,8 +38,6 @@ def _save_or_compare(name: str, actual: dict[str, Any]) -> None:
 
 class _MinimalConfig:
     """Minimal config stub for score_evaluator — returns all defaults."""
-
-    from typing import ClassVar
 
     _defaults: ClassVar[dict[str, int | float]] = {
         "objective.enable_diminishing_returns": 1,
@@ -86,7 +84,7 @@ def test_solver_score_baseline(
         assignments=synthetic_assignments,
         persons=synthetic_persons,
         bunks=synthetic_bunks,
-        config=_MinimalConfig(),  # type: ignore[arg-type]
+        config=_MinimalConfig(),
     )
     actual = {
         "total_score": breakdown.total_score,

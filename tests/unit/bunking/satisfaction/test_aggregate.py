@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from bunking.satisfaction.aggregate import camper_satisfaction
 from bunking.satisfaction.bucket import RequestBucket
 
@@ -15,7 +17,7 @@ def _req(
     *,
     requester_grade: int | None = None,
     age_preference_target: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     return {
         "id": request_id,
         "request_type": request_type,
