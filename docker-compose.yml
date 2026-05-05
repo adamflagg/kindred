@@ -126,6 +126,12 @@ services:
     environment:
       - POCKETBASE_HOST=${POCKETBASE_HOST:-pocketbase}
       - API_HOST=${API_HOST:-api}
+      # Required by docker/Caddyfile's (cors) snippet. Without propagation here
+      # the placeholder substitutes empty, the regex becomes ^(?i)()$, no Origin
+      # matches, and Caddy's CORS layer is silently inert. FastAPI still applies
+      # its own CORS, so the app isn't broken — but the defense-in-depth Caddy
+      # layer never fires. Set in .env (see .env.example).
+      - ALLOWED_ORIGINS_REGEX=${ALLOWED_ORIGINS_REGEX:-}
     tmpfs:
       - /tmp:size=8m,uid=65532,gid=65532
       - /app/.config/caddy:size=8m,uid=65532,gid=65532
