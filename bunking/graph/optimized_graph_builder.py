@@ -189,6 +189,8 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                     "confidence": round(request.confidence_score, 2) if request.confidence_score else None,
                     "year": request.year,
                     "source": getattr(request, "source", None),
+                    "source_field": getattr(request, "source_field", None),
+                    "request_id": getattr(request, "id", ""),
                 }
 
                 edge_data.append((person_id, requestee, edge_attrs))

@@ -97,6 +97,28 @@ def test_solver_score_baseline(
     _save_or_compare("solver_score", actual)
 
 
+# NOTE: The graph_node_metrics.json baseline was regenerated as part of T9
+# (2026-05-05) to reflect the intentional spec change from request_type-based
+# bucketing to source_field-based bucketing per #1041:
+#
+#   OLD: parent_edges = request_type == "bunk_with"
+#        staff_edges  = request_type == "not_bunk_with"
+#        aggregate    = ANY request edge satisfied
+#
+#   NEW: MATERIAL_PARENT = source_field == "bunk_with"
+#        STAFF           = source_field in {not_bunk_with, bunking_notes, internal_notes}
+#        IMMATERIAL      = source_field == "socialize_with" (visible-uncounted)
+#        aggregate       = ANY material_parent OR staff edge satisfied
+#                         (immaterial excluded from totals)
+#
+# Notable behavioral changes captured in the new baseline:
+# - Nodes whose only requests are socialize_with go "satisfied" → "no_requests"
+#   (gray) since immaterial doesn't count toward totals.
+# - bunk_with requests sourced from staff (bunking_notes, internal_notes) move
+#   from parent_satisfaction_status to staff_satisfaction_status.
+# - Unbunked campers with request edges go from "no_requests" → "unsatisfied"
+#   (the new aggregator is honest about unmet requests vs. silently grey-stating
+#   them).
 def test_graph_node_metrics_baseline(
     synthetic_persons: list[dict[str, Any]],
     synthetic_assignments: list[dict[str, Any]],
@@ -121,9 +143,11 @@ def test_graph_node_metrics_baseline(
         g.add_node(p["cm_id"], bunk_cm_id=bunk, grade=p["grade"], gender=p["gender"])
 
     for r in synthetic_requests:
-        # The graph builder's _calculate_node_metrics reads request_type off edges
-        # to bucket into parent_edges vs staff_edges. Set source for completeness
-        # (matches what the production build_social_network path produces).
+        # The graph builder's _calculate_node_metrics reads source_field off
+        # edges to classify into MATERIAL_PARENT / STAFF / IMMATERIAL_PARENT
+        # per bunking.satisfaction.bucket. Set both `source` (legacy 2-axis,
+        # still consumed by some UI paths) AND `source_field` (new 3-bucket
+        # axis driving graph satisfaction statuses).
         g.add_edge(
             r["requester_id"],
             r["requestee_id"],
@@ -131,6 +155,7 @@ def test_graph_node_metrics_baseline(
             request_type=r["request_type"],
             priority=r["priority"],
             source=("staff" if r["source_field"] in ("not_bunk_with", "bunking_notes", "internal_notes") else "family"),
+            source_field=r["source_field"],
             request_id=r["id"],
         )
     builder.graph = g

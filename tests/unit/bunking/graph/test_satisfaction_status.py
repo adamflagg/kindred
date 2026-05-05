@@ -47,6 +47,14 @@ def _populate(
 
     request_edges accepts 2-tuples (u, v) for legacy tests or 3-tuples
     (u, v, source) for parent/staff-split tests.
+
+    Post-#1041: _calculate_node_metrics now classifies on source_field, not
+    request_type. The legacy 2-axis source ("family"/"staff") is mapped to
+    source_field per the canonical pairing:
+      source="family" → source_field="bunk_with"      (MATERIAL_PARENT)
+      source="staff"  → source_field="not_bunk_with"  (STAFF)
+    request_type is also set so other consumers (cytoscape coloring, frontend
+    inversion) keep working.
     """
     builder.graph = graph_type()
     for node_id, bunk_cm_id in nodes.items():
@@ -54,15 +62,28 @@ def _populate(
     for edge in request_edges:
         if len(edge) == 3:
             u, v, source = edge
-            # parent_edges/staff_edges classify on request_type. Default the
-            # type to mirror the canonical source/type pairing
+            # Default the type to mirror the canonical source/type pairing
             # (family→bunk_with, staff→not_bunk_with) so legacy tests that only
             # specify source continue to behave as documented.
             request_type = "not_bunk_with" if source == "staff" else "bunk_with"
-            builder.graph.add_edge(u, v, edge_type="request", source=source, request_type=request_type)
+            source_field = "not_bunk_with" if source == "staff" else "bunk_with"
+            builder.graph.add_edge(
+                u,
+                v,
+                edge_type="request",
+                source=source,
+                source_field=source_field,
+                request_type=request_type,
+            )
         else:
             u, v = edge
-            builder.graph.add_edge(u, v, edge_type="request", request_type="bunk_with")
+            builder.graph.add_edge(
+                u,
+                v,
+                edge_type="request",
+                request_type="bunk_with",
+                source_field="bunk_with",
+            )
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
 
@@ -164,7 +185,14 @@ def test_parent_builder_on_digraph_still_works() -> None:
 
 
 def _fake_request(requester_id: int, requestee_id: int, source: str | None = "family", **overrides: object) -> object:
-    """Build a minimal duck-typed ParsedRequest that _add_request_edges can read."""
+    """Build a minimal duck-typed ParsedRequest that _add_request_edges can read.
+
+    source_field defaults to mirror the canonical source/type pairing
+    (family→bunk_with, staff→not_bunk_with) for the request_type derived from
+    overrides. Pass source_field= explicitly to override.
+    """
+    request_type = overrides.get("request_type", "bunk_with")
+    default_source_field = "not_bunk_with" if request_type == "not_bunk_with" else "bunk_with"
     attrs: dict[str, object] = {
         "id": f"r-{requester_id}-{requestee_id}",
         "requester_id": requester_id,
@@ -176,6 +204,7 @@ def _fake_request(requester_id: int, requestee_id: int, source: str | None = "fa
         "status": "resolved",
         "year": 2026,
         "source": source,
+        "source_field": default_source_field,
     }
     attrs.update(overrides)
     request = MagicMock()
@@ -349,7 +378,9 @@ def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=100)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+    )
     builder._calculate_node_metrics()
     # Both endpoints view this as a violation; staff_satisfaction_status reflects it.
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
@@ -363,7 +394,9 @@ def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=200)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+    )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
 
@@ -374,24 +407,40 @@ def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=None)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1, 2, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+    )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
 
 
-def test_unbunked_requester_skips_satisfaction() -> None:
-    """An unbunked requester is skipped; their satisfaction status reads
-    `no_requests` regardless of how many edges they have."""
+def test_unbunked_requester_marks_unsatisfied() -> None:
+    """An unbunked requester with active requests is honestly unsatisfied
+    rather than silently grey-stated.
+
+    Updated under #1041 T9: the OLD `_bucket()` returned "no_requests" for
+    unbunked requesters regardless of edge count. The NEW aggregator-backed
+    bucket policy classifies them per-edge bucket and surfaces "unsatisfied"
+    when there are pending counted requests the camper has not yet had met.
+    This is the correct UI signal — an unassigned camper with a parent
+    bunk_with request is NOT satisfied; they're waiting on placement.
+    """
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=None)  # unbunked requester
     builder.graph.add_node(2, bunk_cm_id=100)
     builder.graph.add_node(3, bunk_cm_id=100)
-    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="bunk_with")
-    builder.graph.add_edge(1, 3, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1, 2, edge_type="request", source="family", source_field="bunk_with", request_type="bunk_with"
+    )
+    builder.graph.add_edge(
+        1, 3, edge_type="request", source="staff", source_field="not_bunk_with", request_type="not_bunk_with"
+    )
     builder._calculate_node_metrics()
-    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
-    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
+    # Parent bucket: bunk_with → unsatisfied (requester unbunked → predicate False).
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "unsatisfied"
+    # Staff bucket: not_bunk_with → unsatisfied (requester unbunked → predicate False).
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
 def test_request_edges_carry_source_attribute() -> None:
@@ -504,7 +553,11 @@ def _make_assignment_with_expand(person_cm_id: int) -> object:
 
 
 def _make_request_record(requester_id: int, requestee_id: int, source: str) -> object:
-    """Minimal bunk_request record for build_bunk_graph edge creation."""
+    """Minimal bunk_request record for build_bunk_graph edge creation.
+
+    source_field defaults to "bunk_with" (MATERIAL_PARENT) for legacy callers
+    that only specify the 2-axis source and request_type=bunk_with.
+    """
     from types import SimpleNamespace
 
     return SimpleNamespace(
@@ -517,6 +570,7 @@ def _make_request_record(requester_id: int, requestee_id: int, source: str) -> o
         is_reciprocal=False,
         status="resolved",
         year=2026,
+        source_field="bunk_with",
         source=source,
     )
 
@@ -618,10 +672,20 @@ def _make_typed_request_record(
     requestee_id: int,
     source: str,
     request_type: str,
+    source_field: str | None = None,
 ) -> object:
-    """Same as _make_request_record but with explicit request_type."""
+    """Same as _make_request_record but with explicit request_type.
+
+    source_field defaults to mirror the canonical source/type pairing so
+    pre-#1041 callsites continue to bucket as expected:
+      source="family" + bunk_with     → source_field="bunk_with"
+      source="staff"  + not_bunk_with → source_field="not_bunk_with"
+    Override `source_field` directly for boundary cases.
+    """
     from types import SimpleNamespace
 
+    if source_field is None:
+        source_field = "not_bunk_with" if request_type == "not_bunk_with" else "bunk_with"
     return SimpleNamespace(
         id=f"r-{requester_id}-{requestee_id}-{request_type}",
         requester_id=requester_id,
@@ -633,6 +697,7 @@ def _make_typed_request_record(
         status="resolved",
         year=2026,
         source=source,
+        source_field=source_field,
     )
 
 
@@ -825,23 +890,35 @@ def test_build_bunk_graph_reciprocal_with_opposite_request_types_preserves_both(
     )
 
 
-def test_parent_edges_filter_excludes_family_source_not_bunk_with() -> None:
-    """parent_edges in _calculate_node_metrics classifies on request_type, not
-    source. A FAMILY-source not_bunk_with edge (rare boundary case at the
-    migration boundary) must NOT trigger parent_satisfaction_status — the
-    bucket _bucket inverts on must match the request_type _bucket reads.
+def test_parent_edges_filter_excludes_not_bunk_with_source_field() -> None:
+    """A not_bunk_with-source request must NOT feed the parent (MATERIAL_PARENT)
+    bucket, regardless of which legacy 2-axis `source` value it had.
+
+    Updated under #1041 T9: classification now reads `source_field` (the
+    canonical 3-bucket axis from bunking.satisfaction.bucket), not
+    `request_type`. The boundary case the older test captured (FAMILY-source
+    not_bunk_with) is structurally impossible under the new policy because
+    source_field=not_bunk_with always classifies into STAFF — independent of
+    the legacy `source` field.
     """
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=100)
-    # FAMILY source but not_bunk_with request_type — must NOT count as parent.
-    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="not_bunk_with")
+    # source_field=not_bunk_with → STAFF bucket; must NOT feed parent.
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="family",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+    )
     builder._calculate_node_metrics()
-    # Parent bucket sees no bunk_with edges → no_requests.
+    # Parent bucket sees no MATERIAL_PARENT edges → no_requests.
     assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests", (
-        f"FAMILY-source not_bunk_with must not feed parent bucket (#6 scan-it); "
-        f"got {builder.graph.nodes[1].get('parent_satisfaction_status')!r}"
+        f"not_bunk_with source_field must route to STAFF, not MATERIAL_PARENT "
+        f"(#6 scan-it); got {builder.graph.nodes[1].get('parent_satisfaction_status')!r}"
     )
     # The not_bunk_with edge falls into the staff bucket (it's a violation —
     # same bunk → unsatisfied).
