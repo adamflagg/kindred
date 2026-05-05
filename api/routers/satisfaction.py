@@ -51,6 +51,9 @@ async def get_satisfaction(
     Scope automatically widens to AG-related sessions via SessionContext, so
     a main session with AG children returns satisfaction for all campers in
     the cluster.
+
+    # TODO(perf): consider etag/304 short-circuit using max(updated) of bunk_requests
+    # + bunk_assignments as a cache key for repeat polling.
     """
     start = time.perf_counter()
 
