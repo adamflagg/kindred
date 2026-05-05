@@ -187,7 +187,10 @@ class TestAllRequestTypeVariants:
       r_bunk_staff:    1 bunk_with 3, source_field=bunking_notes     → STAFF, unsatisfied
       r_not_bunk:      2 not_bunk_with 1, source_field=not_bunk_with → STAFF, unsatisfied (same bunk)
       r_socialize:     2 bunk_with 3, source_field=socialize_with    → IMMATERIAL_PARENT
-      r_internal:      3 bunk_with 1, source_field=internal_notes    → STAFF, satisfied (different bunk)
+      r_internal:      3 bunk_with 1, source_field=internal_notes    → STAFF, unsatisfied (different bunks)
+      r_age:           3 age_preference, source_field=socialize_with → IMMATERIAL_PARENT (canonical
+                       pairing — production age_preference rows always carry the socialize_with
+                       parent dropdown source per bunk_request_processor convention)
     """
 
     @pytest.fixture
@@ -239,13 +242,26 @@ class TestAllRequestTypeVariants:
                 "session_id": 999,
                 "merged_into": "",
             },
-            # internal_notes → STAFF; 3→1 different bunks = satisfied
+            # internal_notes → STAFF; 3→1 different bunks = unsatisfied (bunk_with not met)
             {
                 "id": "r_internal",
                 "requester_id": 3,
                 "requestee_id": 1,
                 "request_type": "bunk_with",
                 "source_field": "internal_notes",
+                "year": 2026,
+                "session_id": 999,
+                "merged_into": "",
+            },
+            # age_preference / socialize_with → IMMATERIAL_PARENT; classified by source_field,
+            # not request_type. Production age_preference rows go through socialize_with.
+            {
+                "id": "r_age",
+                "requester_id": 3,
+                "requestee_id": 0,
+                "request_type": "age_preference",
+                "source_field": "socialize_with",
+                "age_preference_target": "older",
                 "year": 2026,
                 "session_id": 999,
                 "merged_into": "",
@@ -290,27 +306,37 @@ class TestAllRequestTypeVariants:
         assert camper3.counted_totals[RequestBucket.STAFF].total == 1
         assert camper3.counted_totals[RequestBucket.STAFF].satisfied == 0
 
-    def test_age_preference_source_field_raises_on_classify(self) -> None:
-        """classify_request('age_preference') is not in _BUCKET_MAP — session_satisfaction
-        raises ValueError when an age_preference row reaches it.
-        This test documents the current gap: age_preference needs either a dedicated
-        bucket or pre-filtering before reaching camper_satisfaction.
-        See: bunking/satisfaction/bucket.py _BUCKET_MAP."""
-        persons = [_person(1, 7)]
-        assignments = [_assignment(1, 100)]
-        requests = [
-            {
-                "id": "r_age",
-                "requester_id": 1,
-                "requestee_id": 0,
-                "request_type": "age_preference",
-                "source_field": "age_preference",
-                "age_preference_target": "older",
-                "year": 2026,
-                "session_id": 999,
-                "merged_into": "",
-            }
-        ]
-        pb = _build_pb_mock(persons, assignments, requests)
-        with pytest.raises(ValueError, match="unknown source_field"):
-            session_satisfaction([999], 2026, None, pb)
+    def test_age_preference_with_socialize_with_source_lands_in_immaterial(self, pb_all_variants: MagicMock) -> None:
+        resp = session_satisfaction([999], 2026, None, pb_all_variants)
+        camper3 = resp.campers[3]
+        # r_age: age_preference request_type, source_field=socialize_with → IMMATERIAL.
+        # Camper 3 also has r_internal (STAFF), so MATERIAL_PARENT total is 0 and
+        # immaterial.total is 1 (just r_age).
+        assert camper3.immaterial.total == 1
+        assert camper3.counted_totals[RequestBucket.MATERIAL_PARENT].total == 0
+
+
+def test_unknown_source_field_raises_on_classify() -> None:
+    """bucket.classify_request raises on any source_field not in _BUCKET_MAP.
+
+    The PB schema requires source_field, and the bucket map covers every legal
+    value. Any unknown source_field is a data-hygiene regression and must
+    surface loudly rather than be silently misbucketed.
+    """
+    persons = [_person(1, 10)]
+    assignments = [_assignment(1, 100)]
+    requests = [
+        {
+            "id": "r_bogus",
+            "requester_id": 1,
+            "requestee_id": 0,
+            "request_type": "bunk_with",
+            "source_field": "made_up_source",
+            "year": 2026,
+            "session_id": 999,
+            "merged_into": "",
+        }
+    ]
+    pb = _build_pb_mock(persons, assignments, requests)
+    with pytest.raises(ValueError, match="unknown source_field"):
+        session_satisfaction([999], 2026, None, pb)

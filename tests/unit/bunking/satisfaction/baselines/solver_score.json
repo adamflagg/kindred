@@ -1,10 +1,5 @@
 {
   "field_scores": {
-    "age_preference": {
-      "raw_score": 0,
-      "satisfied": 0,
-      "total": 1
-    },
     "bunk_with": {
       "raw_score": 75,
       "satisfied": 1,
@@ -28,7 +23,7 @@
     "socialize_with": {
       "raw_score": 24,
       "satisfied": 1,
-      "total": 1
+      "total": 2
     }
   },
   "request_satisfaction_score": 2620,

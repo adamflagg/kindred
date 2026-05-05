@@ -133,13 +133,16 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "year": 2026,
             "session_id": 999,
         },  # satisfied
-        # age_preference → scored by solver, skipped in graph node metrics
+        # age_preference request_type, source_field=socialize_with → IMMATERIAL_PARENT.
+        # Production age preference rows use the socialize_with parent dropdown source;
+        # source_field='age_preference' is not a valid PB value (bucket.py raises on
+        # unknown). Graph builder skips age_preference rows at the request_type level.
         {
             "id": "r_age",
             "requester_id": 8,
             "requestee_id": 0,
             "request_type": "age_preference",
-            "source_field": "age_preference",
+            "source_field": "socialize_with",
             "priority": 4,
             "year": 2026,
             "session_id": 100,
