@@ -28,6 +28,9 @@ export interface GraphEdge {
   source: number
   target: number
   weight: number
+  /** Edge type. Valid values: 'request' | 'historical' | 'classmate_city' | 'classmate_state' | 'bundled'.
+   *  'sibling' is intentionally excluded: sibling edges are filtered at the API
+   *  response boundary (#1094) and will never appear in graph API responses. */
   type: string
   reciprocal: boolean
   request_type?: string // 'bunk_with' | 'not_bunk_with' for type='request' edges

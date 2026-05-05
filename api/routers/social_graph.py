@@ -250,6 +250,11 @@ async def get_session_social_graph(
             # Count edge types for metadata
             edge_type_counts[edge_type] = edge_type_counts.get(edge_type, 0) + 1
 
+            # Sibling edges stay in the in-memory graph (name-resolution pipeline
+            # uses them for a confidence boost), but must not reach the frontend.
+            if edge_type == "sibling":
+                continue
+
             # Filter by edge type if specified
             if allowed_edge_types and edge_type not in allowed_edge_types:
                 continue
@@ -487,15 +492,7 @@ async def get_bunk_social_graph(
                     first_year_campers.add(node_id)
                     logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp={years_at_camp})")
 
-                # Log grade info for debugging
-                if "mila" in name.lower() and "cowles" in name.lower():
-                    logger.info(
-                        f"MILA COWLES DEBUG - Person {node_id}: grade={grade}, years_at_camp={years_at_camp}, all fields: {vars(person)}"
-                    )
-                else:
-                    logger.debug(
-                        f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}"
-                    )
+                logger.debug(f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}")
             except Exception as e:
                 name = f"Person {node_id}"
                 grade = None
@@ -519,42 +516,26 @@ async def get_bunk_social_graph(
                 )
             )
 
-        # Convert edges - handle edges that may have both request and sibling relationships
+        # Convert edges - handle edges that may have both request and sibling relationships.
+        # Sibling edges stay in the in-memory bunk_graph (name-resolution pipeline uses
+        # them for a 0.25 confidence boost), but must not reach the frontend.
         edges = []
-        processed_edges = set()  # Track processed edges to avoid duplication
-
-        # Debug: log edge counts by type
-        edge_type_counts = {"request": 0, "sibling": 0, "both": 0}
-        for source, target, data in bunk_graph.edges(data=True):
-            if data.get("secondary_type"):
-                edge_type_counts["both"] += 1
-            else:
-                edge_type_counts[data.get("edge_type", "unknown")] = (
-                    edge_type_counts.get(data.get("edge_type", "unknown"), 0) + 1
-                )
-        logger.info(f"Edge type counts in bunk graph: {edge_type_counts}")
 
         for source, target, data in bunk_graph.edges(data=True):
             # Use reciprocal flag from edge data (set during graph building)
             is_reciprocal = data.get("reciprocal", False)
 
-            # For sibling edges, only process once (they're always bidirectional)
+            # Sibling-only edges: skip entirely — they must not reach the frontend.
             if data.get("edge_type") == "sibling":
-                edge_key = tuple(sorted([source, target]))
-                if edge_key in processed_edges:
-                    continue
-                processed_edges.add(edge_key)
+                continue
 
-            # Handle edges with both sibling and request relationships
+            # Handle edges with both a primary type and a secondary_type.
             if data.get("secondary_type"):
-                # This edge has both types - create two separate edges for frontend
                 primary_type = data.get("edge_type", "request")
+                is_request = primary_type == "request"
                 secondary_type = data.get("secondary_type")
-                logger.info(
-                    f"Processing edge with both types: {source}->{target}, primary={primary_type}, secondary={secondary_type}"
-                )
 
-                # Add primary edge
+                # Add primary edge (always)
                 edges.append(
                     SocialGraphEdge(
                         source=source,
@@ -562,29 +543,14 @@ async def get_bunk_social_graph(
                         weight=data.get("weight", 1.0),
                         type=primary_type,
                         reciprocal=is_reciprocal,
-                        confidence=data.get("confidence") if primary_type == "request" else None,
-                        priority=data.get("priority") if primary_type == "request" else None,
-                        request_type=data.get("request_type") if primary_type == "request" else None,
+                        confidence=data.get("confidence") if is_request else None,
+                        priority=data.get("priority") if is_request else None,
+                        request_type=data.get("request_type") if is_request else None,
                     )
                 )
 
-                # Add secondary edge (only if it's not a sibling that we already processed)
-                if secondary_type == "sibling":
-                    sec_edge_key = tuple(sorted([source, target]))
-                    if sec_edge_key not in processed_edges:
-                        processed_edges.add(sec_edge_key)
-                        edges.append(
-                            SocialGraphEdge(
-                                source=source,
-                                target=target,
-                                weight=1.5,
-                                type=secondary_type,
-                                reciprocal=True,  # Siblings are always reciprocal
-                                confidence=None,
-                                priority=None,
-                            )
-                        )
-                else:
+                # Secondary sibling edges are also filtered out at the response boundary.
+                if secondary_type != "sibling":
                     edges.append(
                         SocialGraphEdge(
                             source=source,
@@ -597,11 +563,8 @@ async def get_bunk_social_graph(
                         )
                     )
             else:
-                # Single type edge
+                # Single-type, non-sibling edge
                 edge_type = data.get("edge_type", "request")
-                # Siblings are always reciprocal, otherwise use the flag from edge data
-                if edge_type == "sibling":
-                    is_reciprocal = True
                 edges.append(
                     SocialGraphEdge(
                         source=source,

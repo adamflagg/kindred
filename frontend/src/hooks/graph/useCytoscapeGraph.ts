@@ -9,7 +9,6 @@ export interface GraphInitConfig {
   showLabels: boolean
   showEdges: {
     request: boolean
-    sibling: boolean
   }
   showBubbles: boolean
 }

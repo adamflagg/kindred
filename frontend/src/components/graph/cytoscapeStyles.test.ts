@@ -302,11 +302,12 @@ describe('createGraphElements', () => {
     expect(out[0]?.data.request_type).toBe('not_bunk_with')
   })
 
-  it('filters out sibling edges defensively even if the API still emits them', () => {
-    const edges: GraphEdgeData[] = [
-      { source: 1, target: 2, type: 'sibling', priority: 0, confidence: 1, reciprocal: false },
-      reqEdge(1, 2, 'bunk_with'),
-    ]
+  it('sibling edges are not emitted by the API (#1094) and are not handled by createGraphElements', () => {
+    // Sibling edges are stripped at the API response boundary (#1094) —
+    // they never arrive in edgeData. The client-side defensive filter that
+    // used to exist here has been removed; this test documents the new contract:
+    // if only non-sibling edges are present, createGraphElements renders them.
+    const edges: GraphEdgeData[] = [reqEdge(1, 2, 'bunk_with')]
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
     expect(out).toHaveLength(1)
     expect(out[0]?.data.edge_type).toBe('request')
@@ -356,7 +357,6 @@ describe('createGraphElements', () => {
     const { edges } = createGraphElements(mockNodes, inScope, mockBunksData, {
       request: true,
       historical: true,
-      sibling: true,
       school: true,
       cross_scope: true,
     })
@@ -367,7 +367,7 @@ describe('createGraphElements', () => {
       mockNodes,
       inScope,
       mockBunksData,
-      { request: true, historical: true, sibling: true, school: true, cross_scope: true },
+      { request: true, historical: true, school: true, cross_scope: true },
       cross,
       ghostNodes
     )
