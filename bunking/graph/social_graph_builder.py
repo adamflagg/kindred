@@ -24,6 +24,7 @@ from api.utils.session_metrics import get_person_from_expand, get_session_from_e
 from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
 from bunking.satisfaction import RequestBucket, camper_satisfaction
+from bunking.satisfaction.aggregate import bucket_status
 from bunking.satisfaction.api_shape import BucketCount
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
@@ -850,13 +851,6 @@ class SocialGraphBuilder:
         # Each status is one of: "satisfied" (≥1 in-bucket request satisfied),
         # "unsatisfied" (in-bucket request(s) exist, none satisfied), or
         # "no_requests" (no in-bucket request edges).
-        def _status(count: BucketCount) -> str:
-            if count.total == 0:
-                return "no_requests"
-            if count.satisfied > 0:
-                return "satisfied"
-            return "unsatisfied"
-
         # Build person_to_bunk from graph node attrs (only assigned campers).
         person_to_bunk: dict[int, int] = {
             int(n): int(self.graph.nodes[n]["bunk_cm_id"])
@@ -916,8 +910,8 @@ class SocialGraphBuilder:
                 person_requests=person_requests,
                 person_to_bunk=person_to_bunk,
             )
-            parent_status_map[node] = _status(sat.counted_totals[RequestBucket.MATERIAL_PARENT])
-            staff_status_map[node] = _status(sat.counted_totals[RequestBucket.STAFF])
+            parent_status_map[node] = bucket_status(sat.counted_totals[RequestBucket.MATERIAL_PARENT])
+            staff_status_map[node] = bucket_status(sat.counted_totals[RequestBucket.STAFF])
 
             # Aggregate combines counted buckets (material + staff) only —
             # immaterial parent (socialize_with) is excluded from totals per

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from collections import defaultdict
-from typing import Any, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 from bunking.logging_config import get_logger
 
@@ -35,6 +35,20 @@ from bunking.satisfaction.api_shape import (
 )
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
 from bunking.satisfaction.predicate import is_request_satisfied
+
+
+def bucket_status(count: BucketCount) -> Literal["no_requests", "satisfied", "unsatisfied"]:
+    """3-state classification of a single bucket's coverage.
+
+    Returns "satisfied" if at least one request in the bucket is satisfied,
+    "unsatisfied" if requests exist but none are satisfied, or "no_requests"
+    if the bucket has no requests at all.
+    """
+    if count.total == 0:
+        return "no_requests"
+    if count.satisfied == 0:
+        return "unsatisfied"
+    return "satisfied"
 
 
 class BunkRequestRow(TypedDict):
