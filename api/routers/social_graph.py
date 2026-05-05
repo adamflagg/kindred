@@ -491,15 +491,7 @@ async def get_bunk_social_graph(
                     first_year_campers.add(node_id)
                     logger.info(f"Person {node_id} ({name}) is a first-year camper (years_at_camp={years_at_camp})")
 
-                # Log grade info for debugging
-                if "mila" in name.lower() and "cowles" in name.lower():
-                    logger.info(
-                        f"MILA COWLES DEBUG - Person {node_id}: grade={grade}, years_at_camp={years_at_camp}, all fields: {vars(person)}"
-                    )
-                else:
-                    logger.debug(
-                        f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}"
-                    )
+                logger.debug(f"Bunk graph - Person {node_id} ({name}): grade={grade}, years_at_camp={years_at_camp}")
             except Exception as e:
                 name = f"Person {node_id}"
                 grade = None

@@ -45,7 +45,6 @@ describe('useCytoscapeGraph', () => {
         showLabels: true,
         showEdges: {
           request: true,
-          sibling: true,
         },
         showBubbles: false,
       }

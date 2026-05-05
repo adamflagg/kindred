@@ -347,7 +347,6 @@ describe('createGraphElements', () => {
     const { edges } = createGraphElements(mockNodes, inScope, mockBunksData, {
       request: true,
       historical: true,
-      sibling: true,
       school: true,
       cross_scope: true,
     })
@@ -358,7 +357,7 @@ describe('createGraphElements', () => {
       mockNodes,
       inScope,
       mockBunksData,
-      { request: true, historical: true, sibling: true, school: true, cross_scope: true },
+      { request: true, historical: true, school: true, cross_scope: true },
       cross,
       ghostNodes
     )

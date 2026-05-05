@@ -17,7 +17,5 @@ describe('getEdgeLabel utility', () => {
   it('falls back to the raw type for unknown edge types', () => {
     expect(getEdgeLabel('unknown')).toBe('unknown')
     expect(getEdgeLabel('custom')).toBe('custom')
-    // Sibling is intentionally not labeled — the type is removed.
-    expect(getEdgeLabel('sibling')).toBe('sibling')
   })
 })
