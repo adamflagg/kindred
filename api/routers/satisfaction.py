@@ -34,13 +34,16 @@ router = APIRouter(tags=["satisfaction"])
 
 @router.get("/api/satisfaction", response_model=SatisfactionResponse)
 async def get_satisfaction(
-    session: Annotated[int, Query(..., description="CampMinder session cm_id.")],
-    year: Annotated[int, Query(..., description="Camp year.")],
+    session: Annotated[int, Query(..., ge=1, description="CampMinder session cm_id.")],
+    year: Annotated[int, Query(..., ge=2000, le=2100, description="Camp year.")],
     scenario: Annotated[
         str | None,
-        Query(description="PocketBase scenario id; omit for production assignments."),
+        Query(
+            description="PocketBase scenario id; omit for production assignments.",
+            pattern=r"^[a-zA-Z0-9]{15}$",
+        ),
     ] = None,
-    user: AuthUser = Depends(get_current_user),
+    _user: AuthUser = Depends(get_current_user),
     _: None = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SatisfactionResponse:
     """Compute per-camper satisfaction for a session × scenario.

@@ -130,10 +130,8 @@ def session_satisfaction(
         if cm_id is not None and grade is not None:
             person_grades[int(cm_id)] = int(grade)
 
-    # TODO(security): scenario_id is interpolated into a PB filter string.
-    # Validate it matches the PB record-id format (alphanumeric, 15 chars)
-    # before reaching this point. Existing pattern across the codebase has the
-    # same exposure; auth-gated endpoint mitigates risk for now.
+    # scenario_id is router-validated against the PB record-id pattern (^[a-zA-Z0-9]{15}$).
+    # Do not call this function directly with an unvalidated/untrusted scenario_id value.
     if scenario_id:
         assignments = pb_client.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list(
             filter=(f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})")

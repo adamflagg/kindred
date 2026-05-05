@@ -113,14 +113,14 @@ def test_endpoint_passes_scenario_through(
         campers={},
         session_cm_id=999,
         year=2026,
-        scenario_id="scn-abc",
+        scenario_id="abc123def456789",
     )
 
-    response = client.get("/api/satisfaction?session=999&year=2026&scenario=scn-abc")
+    response = client.get("/api/satisfaction?session=999&year=2026&scenario=abc123def456789")
     assert response.status_code == 200, response.text
 
     call_kwargs = mock_session_sat.call_args.kwargs
-    assert call_kwargs["scenario_id"] == "scn-abc"
+    assert call_kwargs["scenario_id"] == "abc123def456789"
 
 
 @patch("api.routers.satisfaction.session_satisfaction")
@@ -147,3 +147,50 @@ def test_endpoint_no_scenario_passes_none(
 
     call_kwargs = mock_session_sat.call_args.kwargs
     assert call_kwargs["scenario_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Input validation tests (Task 19)
+# ---------------------------------------------------------------------------
+
+
+def test_session_zero_rejected(client: TestClient) -> None:
+    r = client.get("/api/satisfaction?session=0&year=2026")
+    assert r.status_code == 422
+
+
+def test_session_negative_rejected(client: TestClient) -> None:
+    r = client.get("/api/satisfaction?session=-5&year=2026")
+    assert r.status_code == 422
+
+
+def test_year_below_range_rejected(client: TestClient) -> None:
+    r = client.get("/api/satisfaction?session=5&year=1900")
+    assert r.status_code == 422
+
+
+def test_scenario_id_format_rejected(client: TestClient) -> None:
+    r = client.get("/api/satisfaction?session=5&year=2026&scenario=not-real")
+    assert r.status_code == 422
+
+
+@patch("api.routers.satisfaction.session_satisfaction")
+@patch("api.routers.satisfaction.build_session_context", new_callable=AsyncMock)
+def test_scenario_id_valid_format_accepted(
+    mock_build_ctx: AsyncMock,
+    mock_session_sat: MagicMock,
+    client: TestClient,
+) -> None:
+    """A real-shaped 15-char alphanumeric scenario id should pass validation."""
+    ctx = MagicMock()
+    ctx.related_session_ids = [5]
+    mock_build_ctx.return_value = ctx
+    mock_session_sat.return_value = SatisfactionResponse(
+        campers={},
+        session_cm_id=5,
+        year=2026,
+        scenario_id="abc123def456789",
+    )
+
+    r = client.get("/api/satisfaction?session=5&year=2026&scenario=abc123def456789")
+    assert r.status_code != 422
