@@ -21,7 +21,7 @@ interface BunkRequestProviderProps {
 
 export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProviderProps) {
   const currentYear = useYear()
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const { currentScenario } = useScenario()
   const { fetchWithAuth } = useApiWithAuth()
   const scenarioId = currentScenario?.id ?? null
@@ -49,7 +49,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     },
     staleTime: 1 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
-    enabled: !!user,
+    enabled: !!user && !isAuthLoading && sessionCmId > 0,
   })
 
   // Fetch satisfaction state from /api/satisfaction — single source of truth
@@ -74,7 +74,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     },
     staleTime: 30 * 1000, // matches social-graph staleness
     gcTime: 10 * 60 * 1000,
-    enabled: !!user,
+    enabled: !!user && !isAuthLoading && sessionCmId > 0,
   })
 
   // Pre-compute request lookups for hasRequests / getRequestsForCamper
