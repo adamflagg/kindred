@@ -26,11 +26,16 @@ def _baseline_path(name: str) -> Path:
 
 
 def _save_or_compare(name: str, actual: dict[str, Any]) -> None:
-    """First run captures; subsequent runs compare. Set RECAPTURE=1 to refresh."""
+    """Compare against committed baseline; set RECAPTURE=1 to refresh."""
     path = _baseline_path(name)
-    if os.environ.get("RECAPTURE") == "1" or not path.exists():
-        BASELINE_DIR.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(actual, indent=2, sort_keys=True))
+    if not path.exists():
+        if os.environ.get("RECAPTURE") == "1":
+            BASELINE_DIR.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
+            pytest.skip(f"baseline written to {path} (RECAPTURE=1)")
+        pytest.fail(f"baseline missing at {path}; rerun with RECAPTURE=1 to capture")
+    if os.environ.get("RECAPTURE") == "1":
+        path.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
         pytest.skip(f"Captured baseline {name} — re-run without RECAPTURE to assert.")
     expected = json.loads(path.read_text())
     assert actual == expected, f"Regression in {name}"
