@@ -104,10 +104,18 @@ class TestSessionSatisfactionProductionPath:
 
 
 class TestSessionSatisfactionScenarioPath:
-    def test_scenario_id_passed_through(self) -> None:
+    def test_scenario_id_routes_to_draft_collection(self) -> None:
+        from api.constants.collections import BUNK_ASSIGNMENTS, BUNK_ASSIGNMENTS_DRAFT
+
         persons = [_person(1)]
         assignments = [_assignment(1, 100)]
         requests: list[dict[str, Any]] = []
         pb = _build_pb_mock(persons, assignments, requests)
+
         resp = session_satisfaction(session_cm_id=999, year=2026, scenario_id="scenario-abc", pb_client=pb)
+
         assert resp.scenario_id == "scenario-abc"
+        # Verify routing: draft collection was queried, prod was not.
+        called_collections = [call.args[0] for call in pb.collection.call_args_list]
+        assert BUNK_ASSIGNMENTS_DRAFT in called_collections
+        assert BUNK_ASSIGNMENTS not in called_collections

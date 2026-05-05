@@ -116,12 +116,18 @@ def session_satisfaction(
         if cm_id is not None and grade is not None:
             person_grades[int(cm_id)] = int(grade)
 
+    # TODO(security): scenario_id is interpolated into a PB filter string.
+    # Validate it matches the PB record-id format (alphanumeric, 15 chars)
+    # before reaching this point. Existing pattern across the codebase has the
+    # same exposure; auth-gated endpoint mitigates risk for now.
     if scenario_id:
         assignments = pb_client.collection(BUNK_ASSIGNMENTS_DRAFT).get_full_list(
-            filter=f"scenario = '{scenario_id}' && year = {year}"
+            filter=(f"scenario = '{scenario_id}' && year = {year} && session.cm_id = {session_cm_id}")
         )
     else:
-        assignments = pb_client.collection(BUNK_ASSIGNMENTS).get_full_list(filter=f"year = {year}")
+        assignments = pb_client.collection(BUNK_ASSIGNMENTS).get_full_list(
+            filter=f"year = {year} && session.cm_id = {session_cm_id}"
+        )
 
     person_to_bunk: dict[int, int] = {}
     bunk_to_persons: dict[int, list[int]] = defaultdict(list)
@@ -138,7 +144,11 @@ def session_satisfaction(
         ]
 
     raw_requests = pb_client.collection(BUNK_REQUESTS).get_full_list(
-        filter=(f"session_id = {session_cm_id} && year = {year} && (merged_into = '' || merged_into = null)")
+        filter=(
+            f"session_id = {session_cm_id} && year = {year} "
+            f'&& status = "resolved" '
+            f"&& (merged_into = '' || merged_into = null)"
+        )
     )
 
     requests_by_requester: dict[int, list[dict[str, Any]]] = defaultdict(list)
