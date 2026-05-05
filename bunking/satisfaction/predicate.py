@@ -36,8 +36,8 @@ def is_request_satisfied(
 
     Raises:
         ValueError: if request is missing requester_id (and requester_person_cm_id),
-            if request_type is unknown, or if request_type is
-            'age_preference' and bunkmate_grades is None.
+            if request_type is unknown, if request_type is 'age_preference' and
+            bunkmate_grades is None, or if requester_grade is outside 0-12.
     """
     raw = request.get("requester_id")
     if raw is None:
@@ -77,7 +77,10 @@ def is_request_satisfied(
         requester_grade = request.get("requester_grade")
         if requester_grade is None:
             return False
-        satisfied, _ = is_age_preference_satisfied(int(requester_grade), requester_grades, str(target))
+        grade_int = int(requester_grade)
+        if grade_int not in range(0, 13):
+            raise ValueError(f"requester_grade {grade_int} out of valid range 0-12")
+        satisfied, _ = is_age_preference_satisfied(grade_int, requester_grades, str(target))
         return satisfied
 
     raise ValueError(f"unknown request_type {request_type!r}")

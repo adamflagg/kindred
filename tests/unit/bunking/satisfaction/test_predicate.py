@@ -112,6 +112,42 @@ class TestRequesterIdZero:
         assert is_request_satisfied(req, p2b)
 
 
+class TestGradeSanityBound:
+    """requester_grade must be in range 0-12; out-of-range raises ValueError."""
+
+    def test_grade_zero_is_valid(self) -> None:
+        result = is_request_satisfied(
+            _req("age_preference", 1, age_preference_target="older", requester_grade=0),
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [1, 2]},
+        )
+        assert isinstance(result, bool)
+
+    def test_grade_twelve_is_valid(self) -> None:
+        result = is_request_satisfied(
+            _req("age_preference", 1, age_preference_target="older", requester_grade=12),
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [10, 11]},
+        )
+        assert isinstance(result, bool)
+
+    def test_grade_thirteen_raises(self) -> None:
+        with pytest.raises(ValueError, match="requester_grade 13 out of valid range"):
+            is_request_satisfied(
+                _req("age_preference", 1, age_preference_target="older", requester_grade=13),
+                person_to_bunk={1: 100},
+                bunkmate_grades={1: [10, 11]},
+            )
+
+    def test_grade_negative_one_raises(self) -> None:
+        with pytest.raises(ValueError, match="requester_grade -1 out of valid range"):
+            is_request_satisfied(
+                _req("age_preference", 1, age_preference_target="older", requester_grade=-1),
+                person_to_bunk={1: 100},
+                bunkmate_grades={1: [10, 11]},
+            )
+
+
 class TestUnknownRequestType:
     def test_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="unknown request_type"):
