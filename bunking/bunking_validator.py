@@ -128,6 +128,9 @@ class ValidationStatistics(BaseModel):
     satisfied_material_parent_requests: int = 0
     material_parent_request_satisfaction_rate: float = 0.0
     campers_with_unsatisfied_material_parent_requests: int = 0
+    # Persons with ≥1 unmet material parent request — used by the Check Bunking
+    # modal drill-down (#1105). Each entry is {cm_id, name}.
+    unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
 
     # Best-effort parent (socialize_with-source only) — emitted for modal display, drives no alarm.
     best_effort_parent_requests: int = 0
@@ -648,6 +651,11 @@ class BunkingValidator:
             for pid, reqs in material_parent_by_person.items()
             if reqs and not satisfied_material_parent_by_person.get(pid)
         )
+        stats.unsatisfied_material_parent_persons = [
+            {"cm_id": int(pid), "name": p.name if (p := person_by_id.get(pid)) else f"Person {pid}"}
+            for pid, reqs in material_parent_by_person.items()
+            if reqs and len(satisfied_material_parent_by_person.get(pid, [])) < len(reqs)
+        ]
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

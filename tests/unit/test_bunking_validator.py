@@ -1630,3 +1630,81 @@ def test_validator_warns_when_resolved_age_preference_has_null_source_field(
     assert any("source_field" in msg and "age_preference" in msg for msg in warning_messages), (
         f"Expected warning about null source_field on resolved age_preference; got: {warning_messages}"
     )
+
+
+# ---------------------------------------------------------------------------
+# #1105: unsatisfied_material_parent_persons drill-down list
+# ---------------------------------------------------------------------------
+
+
+def test_unsatisfied_material_parent_persons_empty_when_all_satisfied():
+    """When all material parent requests are satisfied, the drill-down list is empty."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [_mock_assignment("20001", "30001"), _mock_assignment("20002", "30001")]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    assert result.statistics.unsatisfied_material_parent_persons == []
+
+
+def test_unsatisfied_material_parent_persons_populated_when_request_unmet():
+    """When a material parent request is not satisfied, the person appears in the drill-down list."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),  # NOT with 20001 — request unsatisfied
+        _mock_assignment("20003", "30001"),
+    ]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    assert len(unmet) == 1
+    assert unmet[0]["cm_id"] == 20001
+    assert unmet[0]["name"] == "Camper20001"
+
+
+def test_unsatisfied_material_parent_persons_includes_partial_satisfaction():
+    """Camper with 2 parent requests where only 1 is satisfied appears in the drill-down list."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),  # satisfied: 20001 bunked with 20002
+        _mock_assignment("20003", "30002"),  # unsatisfied: 20001 NOT bunked with 20003
+    ]
+    requests = [
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),  # satisfied
+        _mock_request("20001", "20003", SourceField.BUNK_WITH, "family"),  # unsatisfied
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    assert len(unmet) == 1, "Camper 20001 has 1 unmet parent request so must appear in the drill-down list"
+    assert unmet[0]["cm_id"] == 20001

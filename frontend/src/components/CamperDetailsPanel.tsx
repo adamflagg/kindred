@@ -913,6 +913,7 @@ export default function CamperDetailsPanel({
             sessionCmId={camper.session_cm_id}
             year={currentYear}
             selfDisplayName={camper.preferred_name?.trim() || camper.first_name || 'this camper'}
+            hasMultipleEnrollments={currentEnrollments.length > 1}
           />
         )}
 

@@ -23,6 +23,8 @@ interface CamperCohortsSectionProps {
   year: number
   /** Source camper's display name (preferred or first), used in modal copy. */
   selfDisplayName: string
+  /** When true, shows a "(primary session)" note — for campers enrolled in multiple sessions. */
+  hasMultipleEnrollments?: boolean
 }
 
 export function CamperCohortsSection({
@@ -30,6 +32,7 @@ export function CamperCohortsSection({
   sessionCmId,
   year,
   selfDisplayName,
+  hasMultipleEnrollments = false,
 }: CamperCohortsSectionProps) {
   const { cohorts, isLoading } = useCamperCohorts(personCmId, sessionCmId, year)
   const { relations } = useCohortRequestRelations(personCmId, sessionCmId, year)
@@ -81,6 +84,10 @@ export function CamperCohortsSection({
           )
         })}
       </div>
+
+      {hasMultipleEnrollments && (
+        <p className="text-muted-foreground/60 mt-0.5 px-1 text-xs">Primary session only</p>
+      )}
 
       {openKind && openEntry && (
         <CohortDrillDownModal
