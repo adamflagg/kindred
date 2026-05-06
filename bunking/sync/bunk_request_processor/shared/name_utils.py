@@ -64,7 +64,7 @@ def _normalize_last_name(name: str) -> str:
     return name.lower()
 
 
-def _last_name_jw_raw_score(search_last: str, db_last: str) -> float:
+def last_name_jw_raw_score(search_last: str, db_last: str) -> float:
     """Compute best JW similarity between two last names.
 
     Applies normalization (Mc/Mac prefix, apostrophes, case) then JW, plus
@@ -133,7 +133,7 @@ def last_name_matches(search_last: str, db_last: str, threshold: float = 0.90) -
         return True
 
     # Jaro-Winkler fuzzy match on normalized forms (including hyphen-split parts)
-    return _last_name_jw_raw_score(search_last, db_last) >= threshold
+    return last_name_jw_raw_score(search_last, db_last) >= threshold
 
 
 def normalize_name(name: str) -> str:

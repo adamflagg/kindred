@@ -237,6 +237,8 @@ async def list_scenarios(
         ]
 
     except HTTPException:
+        # build_session_context raises HTTPException(404) for unknown session/year — that's
+        # client input, not a server error. Don't pollute error logs with stacktraces.
         raise
     except Exception as e:
         logger.error(f"Error listing scenarios: {e}", exc_info=True)
@@ -513,6 +515,7 @@ async def update_scenario_assignment(
     Frontend sends CampMinder IDs which are looked up to get PocketBase IDs.
     """
     logger.info(f"update_scenario_assignment called: scenario_id={scenario_id}, update={update}")
+    existing: list[Any] = []
     try:
         # Build session context from the update request (validates session/year)
         ctx = await build_session_context(update.session_cm_id, update.year, pb)
@@ -642,13 +645,18 @@ async def update_scenario_assignment(
             logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
         raise pb_error_to_http(e)
     except HTTPException:
+        # Explicit 4xx raises in the function body are client-input cases, not server errors.
+        # Without this, they fall through to `except Exception` and pollute error dashboards
+        # with ERROR-level stacktraces for routine 404/400 conditions.
         raise
     except Exception as e:
-        logger.error(f"Error updating assignment: {e}", exc_info=True)
-        logger.error(f"Scenario ID: {scenario_id}")
-        logger.error(f"Update data: {update}")
-        if "existing" in locals():
-            logger.error(f"Existing assignments: {existing}")
+        # The custom formatter in bunking/logging_config.py only emits record.getMessage(),
+        # so any `extra={}` payload is dropped. Inline diagnostic context into the message
+        # so it actually reaches log output.
+        logger.error(
+            f"Error updating assignment: {e} scenario_id={scenario_id} update={update} existing_count={len(existing)}",
+            exc_info=True,
+        )
         raise
 
 
