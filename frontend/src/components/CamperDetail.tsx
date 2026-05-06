@@ -4,6 +4,7 @@
  * This component orchestrates data fetching through hooks and
  * delegates rendering to extracted UI components.
  */
+import { useContext, useEffect } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
@@ -12,6 +13,8 @@ import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
+import { BunkRequestContext } from '../contexts/BunkRequestContext'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
 
 // Import extracted hooks
@@ -23,6 +26,8 @@ import {
   useAllBunkRequests,
   useSatisfactionData,
 } from '../hooks/camper'
+import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import type { SatisfactionMap } from '../hooks/camper/types'
 
 // Import extracted UI components
 import {
@@ -34,6 +39,12 @@ import {
   CampJourneyTimeline,
   SiblingsPanel,
 } from './camper'
+import type { Camper } from '../types/app-types'
+import type {
+  HistoricalRecord,
+  OriginalBunkData,
+  SiblingWithEnrollment,
+} from '../hooks/camper/types'
 
 /**
  * Format pronouns display - use actual pronouns fields from V2 schema
@@ -77,6 +88,161 @@ function getSessionShortName(
   return session.name ?? 'Unknown'
 }
 
+interface CamperDetailBodyProps {
+  camper: Camper
+  enrolledCampers: Camper[]
+  currentYear: number
+  person: PersonsResponse | undefined
+  allBunkRequests: EnhancedBunkRequest[]
+  satisfactionData: SatisfactionMap
+  satisfactionLoading: boolean
+  originalBunkData: OriginalBunkData | null | undefined
+  siblings: SiblingWithEnrollment[]
+  siblingsLoading: boolean
+  siblingsError: Error | null
+  camperHistory: HistoricalRecord[]
+  canManageBunking: boolean
+  isAdmin: boolean
+}
+
+/**
+ * Renders the full camper detail UI. Must be mounted inside a BunkRequestProvider
+ * so that useContext(BunkRequestContext) resolves to the session-scoped context.
+ */
+function CamperDetailBody({
+  camper,
+  enrolledCampers,
+  currentYear,
+  person,
+  allBunkRequests,
+  satisfactionData,
+  satisfactionLoading,
+  originalBunkData,
+  siblings,
+  siblingsLoading,
+  siblingsError,
+  camperHistory,
+  canManageBunking,
+  isAdmin,
+}: CamperDetailBodyProps) {
+  // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
+  const bunkRequestCtx = useContext(BunkRequestContext)!
+  const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
+
+  // Computed values - use discrete columns instead of JSON parsing
+  const location = getLocationDisplay(
+    person?.normalized_city ?? person?.address_city,
+    person?.address_state
+  )
+  const congregation = person?.normalized_congregation ?? null
+  const pronouns = formatPronouns(camper)
+  const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
+  const allSessionNames =
+    enrolledCampers.length > 1
+      ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined))
+      : undefined
+  // BunkingStatusPanel surfaces only resolved rows. The admin
+  // ParsedRequestsPanel below still consumes the unfiltered allBunkRequests
+  // for debug.
+  const agePreferenceRequests = allBunkRequests.filter(
+    (r) => r.request_type === 'age_preference' && r.status === 'resolved'
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* Historical Data Notice */}
+      {camper.expand?.session?.year && camper.expand.session.year !== currentYear && (
+        <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              You are viewing historical data from {camper.expand.session.year}. This camper may
+              have different information for the current year.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Header */}
+      <HeroHeader
+        camper={camper}
+        enrolledCampers={enrolledCampers}
+        currentYear={currentYear}
+        location={location}
+        sessionShortName={sessionShortName}
+        pronouns={pronouns}
+        allSessionNames={allSessionNames}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main Content */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Identity & Details */}
+          <IdentityPanel
+            camper={camper}
+            location={location}
+            congregation={congregation}
+            pronouns={pronouns}
+            defaultExpanded={true}
+            cohortContext={
+              camper.attendee_status === 'enrolled' &&
+              camper.expand?.session?.year === currentYear &&
+              camper.person_cm_id &&
+              camper.session_cm_id > 0
+                ? {
+                    personCmId: camper.person_cm_id,
+                    sessionCmId: camper.session_cm_id,
+                    year: currentYear,
+                    selfDisplayName:
+                      camper.preferred_name?.trim() || camper.first_name || 'this camper',
+                  }
+                : undefined
+            }
+          />
+
+          {/* Bunking panels - only shown for enrolled campers */}
+          {camper.attendee_status === 'enrolled' && (
+            <>
+              {/* Bunking Status */}
+              <BunkingStatusPanel
+                camper={camper}
+                enrolledCampers={enrolledCampers}
+                sessionShortName={sessionShortName}
+                allBunkRequests={allBunkRequests}
+                agePreferenceRequests={agePreferenceRequests}
+                satisfactionData={satisfactionData}
+                satisfactionLoading={satisfactionLoading}
+                camperSatisfaction={camperSatisfaction}
+              />
+
+              {/* Raw Bunking Data (admin only) */}
+              {canManageBunking && originalBunkData && (
+                <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
+              )}
+
+              {/* Parsed Bunk Requests (admin only) */}
+              {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
+            </>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Camp Journey Timeline */}
+          <CampJourneyTimeline
+            history={camperHistory}
+            yearsAtCamp={camper.years_at_camp ?? 0}
+            currentYear={currentYear}
+          />
+
+          {/* Siblings */}
+          <SiblingsPanel siblings={siblings} isLoading={siblingsLoading} error={siblingsError} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CamperDetail() {
   const { camperId } = useParams<{ camperId: string }>()
   const currentYear = useYear()
@@ -115,10 +281,11 @@ export default function CamperDetail() {
     staleTime: 0,
   })
 
-  // Log person fetch error if any
-  if (personError) {
-    console.error('Error fetching person:', personError)
-  }
+  useEffect(() => {
+    if (personError) {
+      console.error('Error fetching person:', personError)
+    }
+  }, [personError])
 
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null
@@ -222,115 +389,29 @@ export default function CamperDetail() {
     )
   }
 
-  // Computed values - use discrete columns instead of JSON parsing
-  const location = getLocationDisplay(
-    person?.normalized_city ?? person?.address_city,
-    person?.address_state
-  )
-  const congregation = person?.normalized_congregation ?? null
-  const pronouns = formatPronouns(camper)
-  const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
-  const allSessionNames =
-    enrolledCampers.length > 1
-      ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined))
-      : undefined
-  // BunkingStatusPanel surfaces only resolved rows. The admin
-  // ParsedRequestsPanel below still consumes the unfiltered allBunkRequests
-  // for debug.
-  const agePreferenceRequests = allBunkRequests.filter(
-    (r) => r.request_type === 'age_preference' && r.status === 'resolved'
-  )
-
+  // camper is guaranteed non-null past this point.
+  // Wrap in BunkRequestProvider so CamperDetailBody's useContext(BunkRequestContext)
+  // resolves to the session-scoped context — without this, the context is undefined
+  // and BunkingStatusPanel hides the "X/Y met" summary (EMPTY fallback gives total=0).
+  // Camp is single-session-per-camper; session_cm_id ?? 0 is safe for unassigned campers.
   return (
-    <div className="space-y-6">
-      {/* Historical Data Notice */}
-      {camper.expand?.session?.year && camper.expand.session.year !== currentYear && (
-        <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              You are viewing historical data from {camper.expand.session.year}. This camper may
-              have different information for the current year.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Hero Header */}
-      <HeroHeader
+    <BunkRequestProvider sessionCmId={camper.session_cm_id ?? 0}>
+      <CamperDetailBody
         camper={camper}
         enrolledCampers={enrolledCampers}
         currentYear={currentYear}
-        location={location}
-        sessionShortName={sessionShortName}
-        pronouns={pronouns}
-        allSessionNames={allSessionNames}
+        person={person}
+        allBunkRequests={allBunkRequests}
+        satisfactionData={satisfactionData}
+        satisfactionLoading={satisfactionLoading}
+        originalBunkData={originalBunkData}
+        siblings={siblings}
+        siblingsLoading={siblingsLoading}
+        siblingsError={siblingsError}
+        camperHistory={camperHistory}
+        canManageBunking={canManageBunking}
+        isAdmin={isAdmin}
       />
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="space-y-6 lg:col-span-2">
-          {/* Identity & Details */}
-          <IdentityPanel
-            camper={camper}
-            location={location}
-            congregation={congregation}
-            pronouns={pronouns}
-            defaultExpanded={true}
-            cohortContext={
-              camper.attendee_status === 'enrolled' &&
-              camper.expand?.session?.year === currentYear &&
-              camper.person_cm_id &&
-              camper.session_cm_id > 0
-                ? {
-                    personCmId: camper.person_cm_id,
-                    sessionCmId: camper.session_cm_id,
-                    year: currentYear,
-                    selfDisplayName:
-                      camper.preferred_name?.trim() || camper.first_name || 'this camper',
-                  }
-                : undefined
-            }
-          />
-
-          {/* Bunking panels - only shown for enrolled campers */}
-          {camper.attendee_status === 'enrolled' && (
-            <>
-              {/* Bunking Status */}
-              <BunkingStatusPanel
-                camper={camper}
-                enrolledCampers={enrolledCampers}
-                sessionShortName={sessionShortName}
-                allBunkRequests={allBunkRequests}
-                agePreferenceRequests={agePreferenceRequests}
-                satisfactionData={satisfactionData}
-                satisfactionLoading={satisfactionLoading}
-              />
-
-              {/* Raw Bunking Data (admin only) */}
-              {canManageBunking && originalBunkData && (
-                <RawDataPanel data={originalBunkData} year={currentYear} defaultExpanded={false} />
-              )}
-
-              {/* Parsed Bunk Requests (admin only) */}
-              {isAdmin && <ParsedRequestsPanel requests={allBunkRequests} />}
-            </>
-          )}
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Camp Journey Timeline */}
-          <CampJourneyTimeline
-            history={camperHistory}
-            yearsAtCamp={camper.years_at_camp ?? 0}
-            currentYear={currentYear}
-          />
-
-          {/* Siblings */}
-          <SiblingsPanel siblings={siblings} isLoading={siblingsLoading} error={siblingsError} />
-        </div>
-      </div>
-    </div>
+    </BunkRequestProvider>
   )
 }

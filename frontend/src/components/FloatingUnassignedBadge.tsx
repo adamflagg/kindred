@@ -246,7 +246,6 @@ export default function FloatingUnassignedBadge({
                       isProductionMode={isProductionMode}
                       onClick={handleCamperClick}
                       hasRequests={requestStatus[camper.person_cm_id] ?? true}
-                      bunkCampers={[]}
                       lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
                       lockGroupColor={
                         isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined

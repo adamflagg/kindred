@@ -1501,8 +1501,8 @@ def test_validator_slice_classification(
     source: str,
     expected_slice: str,
 ) -> None:
-    """Backend slice classification must match the frontend computeSlicesFromPredicate
-    truth table per Stage 3b.1 §2.8.
+    """Backend slice classification must match the bucket policy in
+    bunking.satisfaction.bucket._BUCKET_MAP (the post-#1041 single source of truth).
 
     We test classification (which counter increments) not satisfaction. Both campers
     are placed in the same bunk; not_bunk_with rows will therefore be unsatisfied, but

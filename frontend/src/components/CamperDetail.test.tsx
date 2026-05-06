@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import CamperDetail from './CamperDetail'
+import type { SatisfactionResponse } from '../types/satisfaction'
 
 let mockSessionYear = 2026
 let mockAttendeeYear = 2026
@@ -104,8 +105,26 @@ vi.mock('../lib/pocketbase', () => ({
             },
           ],
         }),
+      getFullList: () => Promise.resolve([]),
     }),
   },
+}))
+
+vi.mock('../hooks/useScenario', () => ({
+  useScenario: () => ({ currentScenario: null }),
+}))
+
+// Default response — campers map empty so getSatisfiedRequestInfo returns
+// the EMPTY fallback. Reset in beforeEach so suite-level mutations don't leak.
+const _defaultMockFetchWithAuth = () =>
+  Promise.resolve(
+    new Response(JSON.stringify({ campers: {}, session_cm_id: 0, year: 2026, scenario_id: null }))
+  )
+
+let mockFetchWithAuth: (url: string) => Promise<Response> = _defaultMockFetchWithAuth
+
+vi.mock('../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: (url: string) => mockFetchWithAuth(url) }),
 }))
 
 let mockAuthValue: { user: unknown; isLoading: boolean; isBypassMode?: boolean } = {
@@ -133,6 +152,9 @@ beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }
   mockSessionYear = 2026
   mockAttendeeYear = 2026
+  // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
+  // a later test doesn't inherit a prior suite's stub state.
+  mockFetchWithAuth = _defaultMockFetchWithAuth
 })
 
 describe('CamperDetail permission gates', () => {
@@ -214,5 +236,50 @@ describe('CamperDetail cohort badges', () => {
     expect(screen.queryByTestId('cohort-badge-school')).toBeNull()
     expect(screen.queryByTestId('cohort-badge-city')).toBeNull()
     expect(screen.queryByTestId('cohort-badge-congregation')).toBeNull()
+  })
+})
+
+describe('CamperDetail satisfaction summary', () => {
+  beforeEach(() => {
+    mockAuthValue = {
+      user: { is_admin: false, cached_permissions: ['bunking.manage'] },
+      isLoading: false,
+    }
+  })
+
+  it('renders X/Y met summary on standalone /camper/:id route when provider supplies satisfaction data', async () => {
+    // BunkRequestProvider fetches /api/satisfaction — mock it to return 1 material_parent
+    // request with satisfied=1, total=2 for person 1000001 (session_cm_id=2 from fixture).
+    const satisfactionPayload: SatisfactionResponse = {
+      campers: {
+        1000001: {
+          person_cm_id: 1000001,
+          per_request: [],
+          counted_totals: {
+            material_parent: { satisfied: 1, total: 2 },
+            staff: { satisfied: 0, total: 0 },
+          },
+          immaterial: { satisfied: 0, total: 0 },
+          flags: {
+            parent_min_one_violation: true,
+            staff_unsatisfied_alert: false,
+            has_any_counted_request: true,
+          },
+        },
+      },
+      session_cm_id: 2,
+      year: 2026,
+      scenario_id: null,
+    }
+    mockFetchWithAuth = () =>
+      Promise.resolve(
+        new Response(JSON.stringify(satisfactionPayload), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+
+    renderDetail()
+    // "1/2 met" should appear once the provider resolves and BunkingStatusPanel renders
+    expect(await screen.findByText(/1\/2 met/i)).toBeTruthy()
   })
 })

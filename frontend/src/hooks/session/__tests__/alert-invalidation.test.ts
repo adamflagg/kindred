@@ -52,6 +52,9 @@ function buildQueryClient(sessionCmId = 1001, year = 2025) {
     [{ id: 'req-1', requester_id: 1001, requestee_id: 1002, status: 'pending' }]
   )
   qc.setQueryData(['request-satisfaction', 1001], {})
+  // Scan-it round 3 #4: PR #1158 added satisfactionPrefix() invalidation;
+  // the contract test must seed and assert it so future regressions are caught.
+  qc.setQueryData(['satisfaction', sessionCmId, year, null], {})
   return qc
 }
 
@@ -78,6 +81,13 @@ function isTooltipStale(qc: QueryClient, personCmId = 1001, year = 2025) {
 
 function isSatisfactionStale(qc: QueryClient, personCmId = 1001) {
   const state = qc.getQueryState(['request-satisfaction', personCmId])
+  return state?.isInvalidated === true
+}
+
+function isNewSatisfactionStale(qc: QueryClient, sessionCmId = 1001, year = 2025) {
+  // Scan-it round 3 #4: PR #1158's GET /api/satisfaction endpoint, keyed
+  // ['satisfaction', sessionCmId, year, scenarioId] via satisfactionPrefix().
+  const state = qc.getQueryState(['satisfaction', sessionCmId, year, null])
   return state?.isInvalidated === true
 }
 
@@ -175,6 +185,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
+    expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
 
   it('AllCamperRequestsModal status update invalidates all-bunk-requests', () => {
@@ -185,6 +196,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
+    expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
 
   it('CreateRequestModal create invalidates all-bunk-requests', () => {
@@ -195,6 +207,7 @@ describe('Stage 3a status mutations — must invalidate all-bunk-requests', () =
     expect(isPersonAllBunkRequestsStale(queryClient)).toBe(true)
     expect(isTooltipStale(queryClient)).toBe(true)
     expect(isSatisfactionStale(queryClient)).toBe(true)
+    expect(isNewSatisfactionStale(queryClient)).toBe(true)
   })
 })
 
@@ -214,6 +227,7 @@ describe('Merge / Split mutation contract — must invalidate all 7 keys', () =>
     expect(isPersonAllBunkRequestsStale(qc)).toBe(true)
     expect(isTooltipStale(qc)).toBe(true)
     expect(isSatisfactionStale(qc)).toBe(true)
+    expect(isNewSatisfactionStale(qc)).toBe(true)
   }
 
   it('MergeRequestsModal onSuccess invalidates every request-derived key', () => {

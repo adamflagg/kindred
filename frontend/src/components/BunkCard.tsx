@@ -151,10 +151,6 @@ function BunkCard({
 
   // Get bunk request status for all campers in this bunk
   const camperPersonIds = bunk.campers.map((c) => c.person_cm_id)
-  const bunkCampersWithGrades = bunk.campers.map((c) => ({
-    cmId: c.person_cm_id,
-    grade: c.grade,
-  }))
   const { data: requestStatus = {} } = useBunkRequestsFromContext(camperPersonIds)
 
   const utilizationColor =
@@ -451,7 +447,6 @@ function BunkCard({
                     onLockToggle: onCamperLockToggle,
                   })}
                   {...(onCamperUnassign && { onUnassign: onCamperUnassign })}
-                  bunkCampers={bunkCampersWithGrades}
                   lockState={isDraftMode ? getCamperLockState(camper.person_cm_id) : 'none'}
                   lockGroupColor={
                     isDraftMode ? getCamperLockGroupColor(camper.person_cm_id) : undefined

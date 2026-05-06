@@ -1,17 +1,28 @@
 /**
- * Per-request satisfaction — single source of truth.
+ * Per-request satisfaction — frontend decision tree.
  *
- * Both `useSatisfactionData` (PB-backed) and `CamperDetailsPanel`
- * (scenario-aware in-memory) call this function. The decision tree here
- * MUST match `BunkRequestProvider.getSatisfiedRequestInfo`'s implicit
- * per-request logic so the orange-triangle alert on the bunking-board card
- * and the Met/Unmet pill in the modal never disagree.
+ * The canonical Python implementation is
+ * `bunking.satisfaction.predicate.is_request_satisfied`. This function
+ * mirrors that logic for client-side use (scenario-aware in-memory views,
+ * CamperDetailsPanel, BunkRequestProvider.getSatisfiedRequestInfo).
+ *
+ * Keep this in sync with the Python implementation manually until #1155
+ * (FastAPI OpenAPI codegen) replaces both with generated types and a
+ * single authoritative call path.
+ *
+ * The decision tree here MUST match `BunkRequestProvider.getSatisfiedRequestInfo`'s
+ * implicit per-request logic so the orange-triangle alert on the bunking-board
+ * card and the Met/Unmet pill in the modal never disagree.
  */
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 import { formatGradeOrdinal } from './gradeUtils'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 import type { SatisfactionResult } from '../hooks/camper/types'
+
+export interface BunkmateInfo {
+  cmId: number
+  grade: number | null
+}
 
 export interface ComputeRequestSatisfactionInputs {
   request: EnhancedBunkRequest

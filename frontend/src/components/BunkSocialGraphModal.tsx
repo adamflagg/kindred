@@ -99,6 +99,26 @@ const EDGE_COLORS: Record<string, string> = {
   request: '#3498db', // Blue for all request edges
 }
 
+// Helpers hoisted to module scope: they reference no closure values and were
+// previously redeclared on every useMemo recompute. Exported for unit tests.
+// eslint-disable-next-line react-refresh/only-export-components
+export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
+  if (!name) return 'B'
+  if (name.includes('AG')) return 'AG'
+  if (name.startsWith('G-')) return 'G'
+  if (name.startsWith('B-')) return 'B'
+  return 'B'
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const extractSortKey = (name: string): { primary: number; secondary: string } => {
+  if (name.includes('Alph')) return { primary: -2, secondary: name }
+  if (name.includes('Bet')) return { primary: -1, secondary: name }
+  const match = name.match(/[GB]-(\d+)/)
+  if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
+  return { primary: 999, secondary: name }
+}
+
 export default function BunkSocialGraphModal({
   bunkCmId,
   bunkName,
@@ -115,10 +135,6 @@ export default function BunkSocialGraphModal({
   const { currentScenario } = useScenario()
   const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
-  const [currentBunkIndex, setCurrentBunkIndex] = useState<number>(0)
-  const [sessionBunks, setSessionBunks] = useState<
-    Array<{ cm_id: number; name: string; gender: string }>
-  >([])
   const [showLegend, setShowLegend] = useState<boolean>(false)
 
   // Fetch bunk graph data. The query key and in-memory graph cache both
@@ -167,10 +183,7 @@ export default function BunkSocialGraphModal({
         throw new Error(`Session with CampMinder ID ${sessionCmId} not found for year ${year}`)
       }
 
-      const session = sessionResp.items[0]
-      if (!session) {
-        throw new Error(`Session with CampMinder ID ${sessionCmId} not found for year ${year}`)
-      }
+      const session = sessionResp.items[0]!
 
       // Get bunk plans for this session using relation expansion
       const filter = `session.cm_id = ${session.cm_id} && year = ${year}`
@@ -205,68 +218,48 @@ export default function BunkSocialGraphModal({
     enabled: isOpen,
   })
 
-  // Initialize session bunks and current index when data is loaded
-  useEffect(() => {
-    if (allBunks && allBunks.length > 0 && bunkCmId) {
-      // Determine bunk type (G, B, or AG)
-      const currentBunk = allBunks.find((b) => b.cm_id === bunkCmId)
-      const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-        if (!name) return 'B'
-        if (name.includes('AG') || name.startsWith('AG')) return 'AG'
-        if (name.startsWith('G-')) return 'G'
-        if (name.startsWith('B-')) return 'B'
-        return 'B' // Default fallback
-      }
+  // Pure derivation: same-type bunks sorted by level, plus the current
+  // bunk's index within that list. Recomputed on bunkCmId / allBunks change;
+  // navigation flows through onBunkChange → bunkCmId, which re-derives.
+  const sessionBunks = useMemo(() => {
+    if (!allBunks || allBunks.length === 0 || !bunkCmId) return []
 
-      const currentBunkType = getBunkType(currentBunk?.name ?? '')
+    const currentBunk = allBunks.find((b) => b.cm_id === bunkCmId)
+    // Guard: if allBunks hasn't caught up yet (transient race during fast
+    // navigation), return an empty list rather than falling back to getBunkType('')
+    // which would classify this as type 'B' and show an unrelated bunk list.
+    if (!currentBunk) return []
+    const currentBunkType = getBunkType(currentBunk.name ?? '')
+    if (currentBunkType === 'AG') return []
 
-      // For AG bunks, no navigation
-      if (currentBunkType === 'AG') {
-        setSessionBunks([])
-        return
-      }
-
-      // Extract level for sorting (handles Alph, Bet, and numbers)
-      const extractSortKey = (name: string): { primary: number; secondary: string } => {
-        if (name.includes('Alph')) return { primary: -2, secondary: name }
-        if (name.includes('Bet')) return { primary: -1, secondary: name }
-
-        const match = name.match(/[GB]-(\d+)/)
-        if (match?.[1]) {
-          return { primary: parseInt(match[1], 10), secondary: name }
-        }
-        return { primary: 999, secondary: name }
-      }
-
-      // Filter bunks by type and sort
-      const sortedBunks = allBunks
-        .filter((bunk) => {
-          const bunkType = getBunkType(bunk.name || '')
-          return bunkType === currentBunkType
-        })
-        .sort((a, b) => {
-          const keyA = extractSortKey(a.name || '')
-          const keyB = extractSortKey(b.name || '')
-
-          if (keyA.primary !== keyB.primary) return keyA.primary - keyB.primary
-          // If same level, sort alphabetically (handles suffixes like G-1A, G-1B)
-          return keyA.secondary.localeCompare(keyB.secondary)
-        })
-        .map((bunk) => ({
-          cm_id: bunk.cm_id,
-          name: bunk.name || '',
-          gender: getBunkType(bunk.name || '') === 'G' ? 'F' : 'M',
-        }))
-
-      setSessionBunks(sortedBunks)
-
-      // Find current bunk index
-      const index = sortedBunks.findIndex((b) => b.cm_id === bunkCmId)
-      if (index !== -1) {
-        setCurrentBunkIndex(index)
-      }
-    }
+    return allBunks
+      .filter((bunk) => getBunkType(bunk.name || '') === currentBunkType)
+      .sort((a, b) => {
+        const keyA = extractSortKey(a.name || '')
+        const keyB = extractSortKey(b.name || '')
+        if (keyA.primary !== keyB.primary) return keyA.primary - keyB.primary
+        return keyA.secondary.localeCompare(keyB.secondary)
+      })
+      .map((bunk) => ({
+        cm_id: bunk.cm_id,
+        name: bunk.name || '',
+        gender: currentBunkType === 'G' ? 'F' : 'M',
+      }))
   }, [allBunks, bunkCmId])
+
+  // Cache the last known good index so a transient miss (allBunks refetch
+  // racing a fast navigation) doesn't silently reset the cursor to bunk 0.
+  // The ref is updated in a useEffect (not inside useMemo) to keep the memo
+  // pure — Strict Mode and React Compiler both surface mid-memo mutations.
+  const lastIndexRef = useRef(0)
+  const computedIdx = useMemo(
+    () => sessionBunks.findIndex((b) => b.cm_id === bunkCmId),
+    [sessionBunks, bunkCmId]
+  )
+  useEffect(() => {
+    if (computedIdx !== -1) lastIndexRef.current = computedIdx
+  }, [computedIdx])
+  const currentBunkIndex = computedIdx === -1 ? lastIndexRef.current : computedIdx
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -556,7 +549,7 @@ export default function BunkSocialGraphModal({
   }
 
   // Check if this is an AG bunk or single bunk session
-  const isAGBunk = bunkName.includes('AG') || bunkName.startsWith('AG')
+  const isAGBunk = bunkName.includes('AG')
   const hideNavigation = isAGBunk || sessionBunks.length === 0
 
   // Use Activity to preserve state when hidden while unmounting effects
@@ -637,7 +630,7 @@ export default function BunkSocialGraphModal({
                     <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-gray-400" />
                     <h3 className="mb-2 text-lg font-medium">No Campers Found</h3>
                     <p className="text-sm">
-                      {bunkName.includes('AG') || bunkName.startsWith('AG')
+                      {bunkName.includes('AG')
                         ? 'This AG bunk does not have any assigned campers yet.'
                         : 'This bunk does not have any assigned campers for this session.'}
                     </p>

@@ -342,6 +342,11 @@ export const queryKeys = {
   socialGraphPrefix: () => ['social-graph'] as const,
   bunkSocialGraphPrefix: () => ['bunk-social-graph'] as const,
 
+  // Satisfaction (Tier 2 - computed from solver + bunk assignments)
+  satisfaction: (sessionCmId: number, year: number, scenarioId: string | null = null) =>
+    ['satisfaction', sessionCmId, year, scenarioId] as const,
+  satisfactionPrefix: () => ['satisfaction'] as const,
+
   // Parameterized fetch-site factories (Issue #1023, #1084)
   allBunkRequests: (sessionCmId: number, year: number) =>
     ['all-bunk-requests', sessionCmId, year] as const,
@@ -440,6 +445,8 @@ export function invalidateRequestQueries(
   // so approve/decline/merge/split immediately update the graph's node colours.
   void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
   void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+  // #1041 — satisfaction endpoint is authoritative; request mutations must refresh it.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() })
   if (options.includeSourceLinks) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })

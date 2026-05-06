@@ -1,0 +1,36 @@
+{
+  "campers": {
+    "1": {
+      "counted_totals": {
+        "material_parent": {
+          "satisfied": 1,
+          "total": 1
+        },
+        "staff": {
+          "satisfied": 0,
+          "total": 0
+        }
+      },
+      "flags": {
+        "has_any_counted_request": true,
+        "parent_min_one_violation": false,
+        "staff_unsatisfied_alert": false
+      },
+      "immaterial": {
+        "satisfied": 0,
+        "total": 0
+      },
+      "per_request": [
+        {
+          "bucket": "material_parent",
+          "request_id": "r1",
+          "satisfied": true
+        }
+      ],
+      "person_cm_id": 1
+    }
+  },
+  "scenario_id": null,
+  "session_cm_id": 5,
+  "year": 2026
+}

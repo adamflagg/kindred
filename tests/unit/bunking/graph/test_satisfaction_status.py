@@ -47,6 +47,14 @@ def _populate(
 
     request_edges accepts 2-tuples (u, v) for legacy tests or 3-tuples
     (u, v, source) for parent/staff-split tests.
+
+    Post-#1041: _calculate_node_metrics now classifies on source_field, not
+    request_type. The legacy 2-axis source ("family"/"staff") is mapped to
+    source_field per the canonical pairing:
+      source="family" → source_field="bunk_with"      (MATERIAL_PARENT)
+      source="staff"  → source_field="not_bunk_with"  (STAFF)
+    request_type is also set so other consumers (cytoscape coloring, frontend
+    inversion) keep working.
     """
     builder.graph = graph_type()
     for node_id, bunk_cm_id in nodes.items():
@@ -54,15 +62,32 @@ def _populate(
     for edge in request_edges:
         if len(edge) == 3:
             u, v, source = edge
-            # parent_edges/staff_edges classify on request_type. Default the
-            # type to mirror the canonical source/type pairing
+            # Default the type to mirror the canonical source/type pairing
             # (family→bunk_with, staff→not_bunk_with) so legacy tests that only
             # specify source continue to behave as documented.
             request_type = "not_bunk_with" if source == "staff" else "bunk_with"
-            builder.graph.add_edge(u, v, edge_type="request", source=source, request_type=request_type)
+            source_field = "not_bunk_with" if source == "staff" else "bunk_with"
+            builder.graph.add_edge(
+                u,
+                v,
+                edge_type="request",
+                source=source,
+                source_field=source_field,
+                request_type=request_type,
+                requester_id=u,
+                requestee_id=v,
+            )
         else:
             u, v = edge
-            builder.graph.add_edge(u, v, edge_type="request", request_type="bunk_with")
+            builder.graph.add_edge(
+                u,
+                v,
+                edge_type="request",
+                request_type="bunk_with",
+                source_field="bunk_with",
+                requester_id=u,
+                requestee_id=v,
+            )
     for u, v in other_edges or []:
         builder.graph.add_edge(u, v, edge_type="sibling")
 
@@ -71,8 +96,10 @@ def test_all_requests_satisfied_marks_satisfied() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 100}, request_edges=[(1, 2)])
     builder._calculate_node_metrics()
+    # Node 1 is the requester — satisfied (same bunk).
     assert builder.graph.nodes[1]["satisfaction_status"] == "satisfied"
-    assert builder.graph.nodes[2]["satisfaction_status"] == "satisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["satisfaction_status"] == "no_requests"
 
 
 def test_some_requests_satisfied_collapses_to_satisfied() -> None:
@@ -88,8 +115,10 @@ def test_has_requests_none_satisfied_marks_unsatisfied() -> None:
     builder = _make_builder()
     _populate(builder, nodes={1: 100, 2: 200}, request_edges=[(1, 2)])
     builder._calculate_node_metrics()
+    # Node 1 is the requester — unsatisfied (different bunks).
     assert builder.graph.nodes[1]["satisfaction_status"] == "unsatisfied"
-    assert builder.graph.nodes[2]["satisfaction_status"] == "unsatisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["satisfaction_status"] == "no_requests"
 
 
 def test_no_request_edges_marks_no_requests_even_when_connected() -> None:
@@ -164,18 +193,36 @@ def test_parent_builder_on_digraph_still_works() -> None:
 
 
 def _fake_request(requester_id: int, requestee_id: int, source: str | None = "family", **overrides: object) -> object:
-    """Build a minimal duck-typed ParsedRequest that _add_request_edges can read."""
+    """Build a minimal duck-typed ParsedRequest that _add_request_edges can read.
+
+    source_field defaults based on (request_type, source) pairing so that
+    staff-sourced requests get the right source_field without explicit override.
+    Pass source_field= explicitly to override.
+    """
+    request_type = str(overrides.get("request_type", "bunk_with"))
+    # Only structurally valid (request_type, source) → source_field pairings are
+    # listed here. Callers testing invalid/edge-case paths must pass source_field=
+    # explicitly rather than relying on this default map.
+    default_source_field = {
+        ("bunk_with", "parent"): "bunk_with",
+        # ("bunk_with", "staff"): removed — semantically invalid (type/field disagree)
+        ("not_bunk_with", "parent"): "not_bunk_with",
+        ("not_bunk_with", "staff"): "not_bunk_with",
+        ("socialize_with", "parent"): "socialize_with",
+        # ("age_preference", "parent"): removed — "age_preference" is not a valid source_field
+    }.get((request_type, source or "parent"), "bunk_with")
     attrs: dict[str, object] = {
         "id": f"r-{requester_id}-{requestee_id}",
         "requester_id": requester_id,
         "requestee_id": requestee_id,
-        "request_type": "bunk_with",
+        "request_type": request_type,
         "priority": 4,
         "confidence_score": 0.95,
         "is_reciprocal": False,
         "status": "resolved",
         "year": 2026,
         "source": source,
+        "source_field": default_source_field,
     }
     attrs.update(overrides)
     request = MagicMock()
@@ -193,7 +240,7 @@ def test_node_emits_parent_satisfaction_status_unsatisfied_when_only_parent_unsa
 
 
 def test_node_emits_staff_satisfaction_status_unsatisfied_when_only_staff_unsat() -> None:
-    """Audit-pass-3 inverted semantics for not_bunk_with: same-bunk = violation
+    """Inverted semantics for not_bunk_with: same-bunk = violation
     (unsatisfied). The default _populate maps source="staff" to
     request_type="not_bunk_with", so put 1 and 2 in the same bunk to trigger
     a violation."""
@@ -343,17 +390,27 @@ def test_request_edges_carry_request_type_attribute() -> None:
 
 
 def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
-    """A not_bunk_with edge between bunkmates is a violation — satisfaction
-    bucket inverts vs bunk_with."""
+    """A not_bunk_with edge where the requester is in the same bunk as the requestee
+    is a violation — staff bucket marks unsatisfied for the requester."""
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=100)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
+    )
     builder._calculate_node_metrics()
-    # Both endpoints view this as a violation; staff_satisfaction_status reflects it.
+    # Node 1 is the requester — violation (same bunk) → unsatisfied.
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
-    assert builder.graph.nodes[2]["staff_satisfaction_status"] == "unsatisfied"
+    # Node 2 is the receiver only — no requests they made → no_requests.
+    assert builder.graph.nodes[2]["staff_satisfaction_status"] == "no_requests"
 
 
 def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
@@ -363,7 +420,16 @@ def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=200)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
+    )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
 
@@ -374,24 +440,61 @@ def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=None)
-    builder.graph.add_edge(1, 2, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
+    )
     builder._calculate_node_metrics()
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "satisfied"
 
 
-def test_unbunked_requester_skips_satisfaction() -> None:
-    """An unbunked requester is skipped; their satisfaction status reads
-    `no_requests` regardless of how many edges they have."""
+def test_unbunked_requester_marks_unsatisfied() -> None:
+    """An unbunked requester with active requests is honestly unsatisfied
+    rather than silently grey-stated.
+
+    Updated under #1041 T9: the OLD `_bucket()` returned "no_requests" for
+    unbunked requesters regardless of edge count. The NEW aggregator-backed
+    bucket policy classifies them per-edge bucket and surfaces "unsatisfied"
+    when there are pending counted requests the camper has not yet had met.
+    This is the correct UI signal — an unassigned camper with a parent
+    bunk_with request is NOT satisfied; they're waiting on placement.
+    """
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=None)  # unbunked requester
     builder.graph.add_node(2, bunk_cm_id=100)
     builder.graph.add_node(3, bunk_cm_id=100)
-    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="bunk_with")
-    builder.graph.add_edge(1, 3, edge_type="request", source="staff", request_type="not_bunk_with")
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="family",
+        source_field="bunk_with",
+        request_type="bunk_with",
+        requester_id=1,
+        requestee_id=2,
+    )
+    builder.graph.add_edge(
+        1,
+        3,
+        edge_type="request",
+        source="staff",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=3,
+    )
     builder._calculate_node_metrics()
-    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests"
-    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "no_requests"
+    # Parent bucket: bunk_with → unsatisfied (requester unbunked → predicate False).
+    assert builder.graph.nodes[1]["parent_satisfaction_status"] == "unsatisfied"
+    # Staff bucket: not_bunk_with → unsatisfied (requester unbunked → predicate False).
+    assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
 def test_request_edges_carry_source_attribute() -> None:
@@ -504,7 +607,11 @@ def _make_assignment_with_expand(person_cm_id: int) -> object:
 
 
 def _make_request_record(requester_id: int, requestee_id: int, source: str) -> object:
-    """Minimal bunk_request record for build_bunk_graph edge creation."""
+    """Minimal bunk_request record for build_bunk_graph edge creation.
+
+    source_field defaults to "bunk_with" (MATERIAL_PARENT) for legacy callers
+    that only specify the 2-axis source and request_type=bunk_with.
+    """
     from types import SimpleNamespace
 
     return SimpleNamespace(
@@ -517,6 +624,7 @@ def _make_request_record(requester_id: int, requestee_id: int, source: str) -> o
         is_reciprocal=False,
         status="resolved",
         year=2026,
+        source_field="bunk_with",
         source=source,
     )
 
@@ -603,6 +711,71 @@ def test_build_bunk_graph_emits_satisfaction_fields() -> None:
     assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"
 
 
+def test_build_bunk_graph_reciprocal_pair_both_campers_satisfied() -> None:
+    """Finding #5: reciprocal A↔B bunk_with pairs collapse to ONE edge in
+    build_bunk_graph, storing only pair_requests[0] as the requester. The
+    per-requester filter in _calculate_node_metrics then drops the *other*
+    camper's request entirely — they get parent_satisfaction_status="no_requests"
+    instead of "satisfied".
+
+    Both campers in the same bunk with reciprocal bunk_with requests must each
+    show as parent-satisfied.
+    """
+    pb = MagicMock()
+
+    person_a_id = 2001
+    person_b_id = 2002
+    bunk_cm_id = 777
+    session_cm_id = 999
+    year = 2026
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+    person_a = _make_person(person_a_id, "Olivia", "Chen", bunk_cm_id)
+    person_b = _make_person(person_b_id, "Riley", "Sam", bunk_cm_id)
+
+    # Two reciprocal requests: a→b AND b→a.
+    request_ab = _make_request_record(person_a_id, person_b_id, source="family")
+    request_ba = _make_request_record(person_b_id, person_a_id, source="family")
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = [request_ab, request_ba]
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    # Both campers must register as satisfied — neither's request can be lost.
+    assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "satisfied", (
+        f"person_a parent_satisfaction_status="
+        f"{bunk_graph.nodes[person_a_id].get('parent_satisfaction_status')!r}, expected 'satisfied'"
+    )
+    assert bunk_graph.nodes[person_b_id]["parent_satisfaction_status"] == "satisfied", (
+        f"person_b parent_satisfaction_status="
+        f"{bunk_graph.nodes[person_b_id].get('parent_satisfaction_status')!r}, expected 'satisfied' "
+        "(reciprocal-pair collapse drops the second camper's request — see Finding #5)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Audit 2026-04-29 finding: build_bunk_graph fetched all request types.
 # A not_bunk_with row between two campers placed in the same bunk produced an
@@ -618,10 +791,20 @@ def _make_typed_request_record(
     requestee_id: int,
     source: str,
     request_type: str,
+    source_field: str | None = None,
 ) -> object:
-    """Same as _make_request_record but with explicit request_type."""
+    """Same as _make_request_record but with explicit request_type.
+
+    source_field defaults to mirror the canonical source/type pairing so
+    pre-#1041 callsites continue to bucket as expected:
+      source="family" + bunk_with     → source_field="bunk_with"
+      source="staff"  + not_bunk_with → source_field="not_bunk_with"
+    Override `source_field` directly for boundary cases.
+    """
     from types import SimpleNamespace
 
+    if source_field is None:
+        source_field = "not_bunk_with" if request_type == "not_bunk_with" else "bunk_with"
     return SimpleNamespace(
         id=f"r-{requester_id}-{requestee_id}-{request_type}",
         requester_id=requester_id,
@@ -633,6 +816,7 @@ def _make_typed_request_record(
         status="resolved",
         year=2026,
         source=source,
+        source_field=source_field,
     )
 
 
@@ -675,7 +859,7 @@ def test_build_bunk_graph_includes_not_bunk_with_as_violation() -> None:
                 qp = kwargs.get("query_params") or (args[0] if args else {})
                 flt = str(qp.get("filter", "")) if isinstance(qp, dict) else ""
                 captured_filters.append(flt)
-                # Audit-pass-3: the bunk_graph fetch now includes both
+                # The bunk_graph fetch now includes both
                 # request_type values; the DB returns whatever matches.
                 # The not_bunk_with row should come back and produce a
                 # red-line edge in the graph.
@@ -825,23 +1009,37 @@ def test_build_bunk_graph_reciprocal_with_opposite_request_types_preserves_both(
     )
 
 
-def test_parent_edges_filter_excludes_family_source_not_bunk_with() -> None:
-    """parent_edges in _calculate_node_metrics classifies on request_type, not
-    source. A FAMILY-source not_bunk_with edge (rare boundary case at the
-    migration boundary) must NOT trigger parent_satisfaction_status — the
-    bucket _bucket inverts on must match the request_type _bucket reads.
+def test_parent_edges_filter_excludes_not_bunk_with_source_field() -> None:
+    """A not_bunk_with-source request must NOT feed the parent (MATERIAL_PARENT)
+    bucket, regardless of which legacy 2-axis `source` value it had.
+
+    Updated under #1041 T9: classification now reads `source_field` (the
+    canonical 3-bucket axis from bunking.satisfaction.bucket), not
+    `request_type`. The boundary case the older test captured (FAMILY-source
+    not_bunk_with) is structurally impossible under the new policy because
+    source_field=not_bunk_with always classifies into STAFF — independent of
+    the legacy `source` field.
     """
     builder = _make_builder()
     builder.graph = nx.Graph()
     builder.graph.add_node(1, bunk_cm_id=100)
     builder.graph.add_node(2, bunk_cm_id=100)
-    # FAMILY source but not_bunk_with request_type — must NOT count as parent.
-    builder.graph.add_edge(1, 2, edge_type="request", source="family", request_type="not_bunk_with")
+    # source_field=not_bunk_with → STAFF bucket; must NOT feed parent.
+    builder.graph.add_edge(
+        1,
+        2,
+        edge_type="request",
+        source="family",
+        source_field="not_bunk_with",
+        request_type="not_bunk_with",
+        requester_id=1,
+        requestee_id=2,
+    )
     builder._calculate_node_metrics()
-    # Parent bucket sees no bunk_with edges → no_requests.
+    # Parent bucket sees no MATERIAL_PARENT edges → no_requests.
     assert builder.graph.nodes[1]["parent_satisfaction_status"] == "no_requests", (
-        f"FAMILY-source not_bunk_with must not feed parent bucket (#6 scan-it); "
-        f"got {builder.graph.nodes[1].get('parent_satisfaction_status')!r}"
+        f"not_bunk_with source_field must route to STAFF, not MATERIAL_PARENT "
+        f"(#6 scan-it); got {builder.graph.nodes[1].get('parent_satisfaction_status')!r}"
     )
     # The not_bunk_with edge falls into the staff bucket (it's a violation —
     # same bunk → unsatisfied).

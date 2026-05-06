@@ -200,25 +200,33 @@ describe('CamperAlertSection', () => {
     })
   })
 
-  // ─── 6. Materiality rule: best-effort (socialize_with) doesn't trip parent alert ─
+  // ─── 6. Materiality rule: immaterial (socialize_with) doesn't trip parent alert ─
 
   describe('materiality gating in buildCamperAlerts', () => {
     // The materiality gate lives in buildCamperAlerts, not in this renderer.
     // Exercise the gate directly so the test fails if the gate flips.
+    const EMPTY_COUNT = { satisfied: 0, total: 0 }
     const baseRequestInfo = {
-      materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: false,
-      staffUnsatisfiedAlert: false,
+      person_cm_id: 100,
+      per_request: [],
+      counted_totals: {
+        material_parent: EMPTY_COUNT,
+        staff: EMPTY_COUNT,
+      },
+      immaterial: EMPTY_COUNT,
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: false,
+      },
     }
 
-    it('produces no parent alert when only best-effort requests are unsatisfied', () => {
+    it('produces no parent alert when only immaterial requests are unsatisfied', () => {
       const alerts = buildCamperAlerts({
         assignedBunkCmId: 100,
         requestInfo: {
           ...baseRequestInfo,
-          bestEffortParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
+          immaterial: { total: 1, satisfied: 0 },
         },
         lockState: 'none',
         lockGroupSize: 0,
@@ -232,8 +240,11 @@ describe('CamperAlertSection', () => {
         assignedBunkCmId: 100,
         requestInfo: {
           ...baseRequestInfo,
-          materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
-          parentMinOneViolation: true,
+          counted_totals: {
+            ...baseRequestInfo.counted_totals,
+            material_parent: { total: 2, satisfied: 0 },
+          },
+          flags: { ...baseRequestInfo.flags, parent_min_one_violation: true },
         },
         lockState: 'none',
         lockGroupSize: 0,
@@ -248,31 +259,20 @@ describe('CamperAlertSection', () => {
         assignedBunkCmId: null,
         requestInfo: {
           ...baseRequestInfo,
-          materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
-          parentMinOneViolation: true,
-          staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
-          staffUnsatisfiedAlert: true,
+          counted_totals: {
+            material_parent: { total: 1, satisfied: 0 },
+            staff: { total: 1, satisfied: 0 },
+          },
+          flags: {
+            parent_min_one_violation: true,
+            staff_unsatisfied_alert: true,
+            has_any_counted_request: true,
+          },
         },
         lockState: 'none',
         lockGroupSize: 0,
       })
       expect(alerts.filter((a) => a.requestRelated)).toEqual([])
-    })
-  })
-
-  describe('materiality rule (legacy renderer assertions)', () => {
-    it('socialize_with-only camper with unsatisfied best-effort does NOT trigger unsatisfied-parent-requests alert', () => {
-      // When parentMinOneViolation is false (no material bunk_with requests),
-      // the buildCamperAlerts util must NOT emit unsatisfied-parent-requests
-      // even if bestEffortParent has unsatisfied requests. This test verifies
-      // the rendered alert section respects that rule at the component layer.
-      const alerts: CamperAlert[] = []
-      // (no 'unsatisfied-parent-requests' alert — parentMinOneViolation is false)
-
-      render(<CamperAlertSection alerts={alerts} onRequestAlertClick={mockOnRequestAlertClick} />)
-
-      expect(screen.queryByRole('button', { name: /parent request/i })).not.toBeInTheDocument()
-      expect(screen.queryByRole('region', { name: /alerts/i })).not.toBeInTheDocument()
     })
   })
 })
@@ -311,12 +311,19 @@ vi.mock('../hooks', async () => {
       allRequests: [],
       hasRequests: () => false,
       getRequestsForCamper: () => [],
-      getSatisfiedRequestInfo: () => ({
-        materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        parentMinOneViolation: false,
-        staffUnsatisfiedAlert: false,
+      getSatisfiedRequestInfo: (personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: false,
+        },
       }),
       isLoading: false,
       error: null,
@@ -355,21 +362,30 @@ describe('CamperDetailsPanel — alert section integration', () => {
   })
 
   // Scenario-aware assignment: CamperDetailsPanel re-fetches `camper` from PB,
-  // which only sees LIVE/prod assignments. When opened from a board that holds
-  // an active scenario in client state, the parent passes `assignedBunkCmId`
-  // so the alert path computes against the scenario, not the empty live state.
-  it('passes assignedBunkCmId prop into getSatisfiedRequestInfo (scenario override)', async () => {
+  // which only sees LIVE/prod assignments. The panel calls getSatisfiedRequestInfo
+  // with the camper's personCmId; the assignedBunkCmId prop gates whether
+  // buildCamperAlerts fires request-related alerts, not getSatisfiedRequestInfo.
+  // Finding #20: prior title promised "surfaces alert ..." but the body only
+  // checked the spy was called — the camper-load mock is incomplete here, so
+  // this stays a hook-invocation contract test. End-to-end alert rendering is
+  // covered in CamperDetailsPanel.test.tsx (which mocks useCamper).
+  it('calls getSatisfiedRequestInfo when parent_min_one_violation flag is true', async () => {
     const hooks = await import('../hooks')
 
-    const spy = vi.fn(
-      (_personCmId: number, _bunkCmId: number, _campers: unknown, _grade: number | null) => ({
-        materialParent: { total: 2, satisfied: 0, satisfactionRate: 0 },
-        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        parentMinOneViolation: true,
-        staffUnsatisfiedAlert: false,
-      })
-    )
+    const spy = vi.fn((_personCmId: number) => ({
+      person_cm_id: _personCmId,
+      per_request: [],
+      counted_totals: {
+        material_parent: { total: 2, satisfied: 0 },
+        staff: { satisfied: 0, total: 0 },
+      },
+      immaterial: { satisfied: 0, total: 0 },
+      flags: {
+        parent_min_one_violation: true,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: true,
+      },
+    }))
     vi.spyOn(hooks, 'useBunkRequestContext').mockReturnValue({
       allRequests: [],
       hasRequests: () => false,
@@ -381,13 +397,11 @@ describe('CamperDetailsPanel — alert section integration', () => {
 
     render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} assignedBunkCmId={777} />)
 
+    // Wait for getSatisfiedRequestInfo to be called (it fires during render even
+    // before camper data loads, using the `?? 0` fallback personCmId).
     await waitFor(() => {
       expect(spy).toHaveBeenCalled()
     })
-    // Second arg is bunkCmId — must be the scenario value from the prop
-    const firstCall = spy.mock.calls[0]
-    expect(firstCall).toBeDefined()
-    expect(firstCall?.[1]).toBe(777)
   })
 
   // Regression guard: CamperDetailsPanel must mount without error when the

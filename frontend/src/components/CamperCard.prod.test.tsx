@@ -4,27 +4,34 @@
  * In prod mode the card must render title="Switch to a scenario to edit" on
  * its root element. In scenario mode no such title is set.
  *
- * Stage 3a parent-paramount Shape A: the card renders a parent triangle when
- * parentMinOneViolation is true, and a separate amber staff dot when
- * staffUnsatisfiedAlert is true. Both can render simultaneously; staff dot is
- * independent of parent state (resolved Q #6 in the Stage 2 spec).
+ * The card renders a parent triangle when flags.parent_min_one_violation is
+ * true, and a separate amber staff dot when flags.staff_unsatisfied_alert is
+ * true. Both can render simultaneously; staff dot is independent of parent
+ * state.
  */
 import { render } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { RequestSlice, SatisfiedRequestInfo } from '../contexts/BunkRequestContext'
+import type { CamperSatisfaction } from '../types/satisfaction'
 
-const EMPTY_SLICE: RequestSlice = { total: 0, satisfied: 0, satisfactionRate: 1 }
+const EMPTY_COUNT = { satisfied: 0, total: 0 }
 
-const emptySatisfiedInfo: SatisfiedRequestInfo = {
-  materialParent: EMPTY_SLICE,
-  bestEffortParent: EMPTY_SLICE,
-  staff: EMPTY_SLICE,
-  parentMinOneViolation: false,
-  staffUnsatisfiedAlert: false,
+const emptySatisfiedInfo: CamperSatisfaction = {
+  person_cm_id: 1000001,
+  per_request: [],
+  counted_totals: {
+    material_parent: EMPTY_COUNT,
+    staff: EMPTY_COUNT,
+  },
+  immaterial: EMPTY_COUNT,
+  flags: {
+    parent_min_one_violation: false,
+    staff_unsatisfied_alert: false,
+    has_any_counted_request: false,
+  },
 }
 
-let mockSatisfiedInfo: SatisfiedRequestInfo = { ...emptySatisfiedInfo }
-function setSatisfiedInfo(overrides: Partial<SatisfiedRequestInfo>) {
+let mockSatisfiedInfo: CamperSatisfaction = { ...emptySatisfiedInfo }
+function setSatisfiedInfo(overrides: Partial<CamperSatisfaction>) {
   mockSatisfiedInfo = { ...emptySatisfiedInfo, ...overrides }
 }
 
@@ -105,94 +112,137 @@ const assignedCamper: Camper = {
 } as unknown as Camper
 
 describe('CamperCard parent-paramount icons', () => {
-  it('renders parent triangle when parentMinOneViolation is true', () => {
+  it('renders parent triangle when parent_min_one_violation is true', () => {
     setSatisfiedInfo({
-      materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: true,
+      counted_totals: { material_parent: { total: 1, satisfied: 0 }, staff: EMPTY_COUNT },
+      flags: {
+        parent_min_one_violation: true,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: true,
+      },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
     expect(container.querySelector('[title*="staff request"]')).toBeNull()
   })
 
-  it('renders staff dot when staffUnsatisfiedAlert is true and no parent violation', () => {
+  it('renders staff dot when staff_unsatisfied_alert is true and no parent violation', () => {
     setSatisfiedInfo({
-      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
-      staffUnsatisfiedAlert: true,
+      counted_totals: { material_parent: EMPTY_COUNT, staff: { total: 1, satisfied: 0 } },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: true,
+        has_any_counted_request: true,
+      },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
   })
 
-  it('renders BOTH icons when parentMinOneViolation and staffUnsatisfiedAlert are both true', () => {
+  it('renders BOTH icons when parent_min_one_violation and staff_unsatisfied_alert are both true', () => {
     setSatisfiedInfo({
-      materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
-      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: true,
-      staffUnsatisfiedAlert: true,
+      counted_totals: {
+        material_parent: { total: 1, satisfied: 0 },
+        staff: { total: 1, satisfied: 0 },
+      },
+      flags: {
+        parent_min_one_violation: true,
+        staff_unsatisfied_alert: true,
+        has_any_counted_request: true,
+      },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
   })
 
-  it('renders staff dot when staff unsat even if parent is satisfied (resolved Q #6)', () => {
+  it('renders staff dot when staff unsat even if parent is satisfied', () => {
     setSatisfiedInfo({
-      materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
-      staff: { total: 1, satisfied: 0, satisfactionRate: 0 },
-      parentMinOneViolation: false,
-      staffUnsatisfiedAlert: true,
+      counted_totals: {
+        material_parent: { total: 1, satisfied: 1 },
+        staff: { total: 1, satisfied: 0 },
+      },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: true,
+        has_any_counted_request: true,
+      },
     })
     const { container } = render(
-      <CamperCard
-        camper={assignedCamper}
-        isDraggable={true}
-        isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
-      />
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
     expect(container.querySelector('[title*="staff request"]')).not.toBeNull()
   })
 
-  it('renders no icons when both parentMinOneViolation and staffUnsatisfiedAlert are false', () => {
+  it('renders no icons when both flags are false', () => {
     setSatisfiedInfo({
-      materialParent: { total: 1, satisfied: 1, satisfactionRate: 1 },
-      staff: { total: 1, satisfied: 1, satisfactionRate: 1 },
-      parentMinOneViolation: false,
-      staffUnsatisfiedAlert: false,
+      counted_totals: {
+        material_parent: { total: 1, satisfied: 1 },
+        staff: { total: 1, satisfied: 1 },
+      },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: true,
+      },
     })
+    const { container } = render(
+      <CamperCard camper={assignedCamper} isDraggable={true} isProductionMode={false} />
+    )
+    expect(container.querySelector('[title*="parent request"]')).toBeNull()
+    expect(container.querySelector('[title*="staff request"]')).toBeNull()
+  })
+})
+
+describe('CamperCard satisfaction suppression', () => {
+  beforeEach(() => {
+    setSatisfiedInfo({
+      counted_totals: { material_parent: { total: 1, satisfied: 0 }, staff: EMPTY_COUNT },
+      flags: {
+        parent_min_one_violation: true,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: true,
+      },
+    })
+  })
+
+  it('hides parent triangle when camper is unassigned', () => {
+    // fakeCamper has assigned_bunk_cm_id: null
+    const { container } = render(
+      <CamperCard camper={fakeCamper} isDraggable={true} isProductionMode={false} />
+    )
+    expect(container.querySelector('[title*="parent request"]')).toBeNull()
+  })
+
+  it('hides parent triangle while dragging', () => {
     const { container } = render(
       <CamperCard
         camper={assignedCamper}
         isDraggable={true}
+        isDragging={true}
         isProductionMode={false}
-        bunkCampers={[{ cmId: 1000001, grade: 5 }]}
       />
     )
     expect(container.querySelector('[title*="parent request"]')).toBeNull()
-    expect(container.querySelector('[title*="staff request"]')).toBeNull()
+  })
+
+  it('shows parent triangle for assigned non-dragging camper with violation', () => {
+    const { container } = render(
+      <CamperCard
+        camper={assignedCamper}
+        isDraggable={true}
+        isDragging={false}
+        isProductionMode={false}
+      />
+    )
+    expect(container.querySelector('[title*="parent request"]')).not.toBeNull()
   })
 })

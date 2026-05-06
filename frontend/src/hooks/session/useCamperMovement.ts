@@ -15,6 +15,7 @@ import type {
   BunkAssignmentsResponse,
 } from '../../types/pocketbase-types'
 import { queryKeys } from '../../utils/queryKeys'
+import { invalidateAssignmentDerivedQueries } from '../../utils/queryInvalidation'
 
 /**
  * Parsed camper ID result
@@ -344,9 +345,8 @@ export function useCamperMovement({
         })
         void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
         void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
-        // Issue #1040 — graph node borders depend on bunk membership; invalidate.
-        void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+        // Issue #1040 / #1041 — graph borders + satisfaction must refresh after move.
+        invalidateAssignmentDerivedQueries(queryClient)
         onPendingMoveCleared?.()
         toast.success('Camper moved successfully')
         return
@@ -359,9 +359,8 @@ export function useCamperMovement({
       void queryClient.invalidateQueries({ queryKey: ['campers', selectedSession] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.bunkRequestStatus() })
       void queryClient.invalidateQueries({ queryKey: queryKeys.allBunkRequestsPrefix() })
-      // Issue #1040 — graph node borders depend on bunk membership; invalidate.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.socialGraphPrefix() })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
+      // Issue #1040 / #1041 — graph borders + satisfaction must refresh after move.
+      invalidateAssignmentDerivedQueries(queryClient)
       onPendingMoveCleared?.()
 
       // Invalidate graph cache for the session

@@ -145,6 +145,8 @@ export interface BunkRequest {
   was_dropped_for_spread?: boolean
   // Locking fields
   request_locked?: boolean
+  // Merge tracking — empty string or undefined means not merged; non-empty is the PB record ID it was merged into
+  merged_into?: string
   created: string
   updated: string
 }

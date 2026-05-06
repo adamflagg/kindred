@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { mockPerson } from '../test/mockData'
+import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 
 // Configurable per-collection mock factories
 const mockGetFullListPersons = vi.fn()
@@ -71,20 +72,22 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }))
 
-// Configurable mock for getSatisfiedRequestInfo — overridden in bunkCampers tests.
-// Default returns an empty satisfaction info so existing tests are unaffected.
+// Configurable mock for getSatisfiedRequestInfo — overridden in alert tests.
+// Default returns empty CamperSatisfaction so existing tests are unaffected.
 let mockGetSatisfiedRequestInfo = vi.fn(
-  (
-    _personCmId: number,
-    _bunkCmId: number,
-    _campersInBunk: { cmId: number; grade: number | null }[],
-    _requesterGrade: number | null
-  ) => ({
-    materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-    bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-    staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-    parentMinOneViolation: false,
-    staffUnsatisfiedAlert: false,
+  (personCmId: number): CamperSatisfaction => ({
+    person_cm_id: personCmId,
+    per_request: [] as PerRequestStatus[],
+    counted_totals: {
+      material_parent: { satisfied: 0, total: 0 },
+      staff: { satisfied: 0, total: 0 },
+    },
+    immaterial: { satisfied: 0, total: 0 },
+    flags: {
+      parent_min_one_violation: false,
+      staff_unsatisfied_alert: false,
+      has_any_counted_request: false,
+    },
   })
 )
 
@@ -100,12 +103,7 @@ vi.mock('../hooks', async () => {
       allRequests: [],
       hasRequests: () => false,
       getRequestsForCamper: () => [],
-      getSatisfiedRequestInfo: (
-        personCmId: number,
-        bunkCmId: number,
-        campersInBunk: { cmId: number; grade: number | null }[],
-        requesterGrade: number | null
-      ) => mockGetSatisfiedRequestInfo(personCmId, bunkCmId, campersInBunk, requesterGrade),
+      getSatisfiedRequestInfo: (personCmId: number) => mockGetSatisfiedRequestInfo(personCmId),
       isLoading: false,
       error: null,
     }),
@@ -223,20 +221,20 @@ describe('CamperDetailsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset getSatisfiedRequestInfo to the default no-op after each test
-    mockGetSatisfiedRequestInfo = vi.fn(
-      (
-        _personCmId: number,
-        _bunkCmId: number,
-        _campersInBunk: { cmId: number; grade: number | null }[],
-        _requesterGrade: number | null
-      ) => ({
-        materialParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-        parentMinOneViolation: false,
-        staffUnsatisfiedAlert: false,
-      })
-    )
+    mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+      person_cm_id: personCmId,
+      per_request: [],
+      counted_totals: {
+        material_parent: { satisfied: 0, total: 0 },
+        staff: { satisfied: 0, total: 0 },
+      },
+      immaterial: { satisfied: 0, total: 0 },
+      flags: {
+        parent_min_one_violation: false,
+        staff_unsatisfied_alert: false,
+        has_any_counted_request: false,
+      },
+    }))
     // Default: empty responses for all collections
     mockGetFullListPersons.mockResolvedValue([])
     mockGetFullListAttendees.mockResolvedValue([])
@@ -481,37 +479,26 @@ describe('CamperDetailsPanel', () => {
       mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
     }
 
-    it('surfaces parentMinOneViolation alert when bunkCampers prop is passed and requestee absent', async () => {
-      // When graph callers pass bunkCampers=[Emma+Liam] (Olivia absent),
-      // getSatisfiedRequestInfo should receive that roster and return
-      // parentMinOneViolation: true.
-      mockGetSatisfiedRequestInfo.mockImplementation(
-        (
-          _personCmId: number,
-          _bunkCmId: number,
-          campersInBunk: { cmId: number; grade: number | null }[],
-          _requesterGrade: number | null
-        ) => {
-          const cmIds = campersInBunk.map((c) => c.cmId)
-          // Olivia (1002) is NOT in the roster → unsatisfied
-          const oliviaPresent = cmIds.includes(1002)
-          return {
-            materialParent: {
-              total: 1,
-              satisfied: oliviaPresent ? 1 : 0,
-              satisfactionRate: oliviaPresent ? 1 : 0,
-            },
-            bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-            staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-            parentMinOneViolation: !oliviaPresent,
-            staffUnsatisfiedAlert: false,
-          }
-        }
-      )
+    it('surfaces parent_min_one_violation alert when getSatisfiedRequestInfo returns the flag', async () => {
+      // Satisfaction is now server-computed. The alert fires when the mock
+      // (standing in for /api/satisfaction) returns parent_min_one_violation: true.
+      mockGetSatisfiedRequestInfo.mockImplementation((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [],
+        counted_totals: {
+          material_parent: { total: 1, satisfied: 0 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: true,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: true,
+        },
+      }))
 
       setupGraphPanelMocks()
 
-      // bunkCampers passed from graph: Emma + Liam, Olivia absent
       const bunkCampers = [
         { cmId: 1001, grade: 6 },
         { cmId: 1003, grade: 6 },
@@ -524,54 +511,24 @@ describe('CamperDetailsPanel', () => {
       })
     })
 
-    it('calls getSatisfiedRequestInfo with self-only roster when bunkCampers prop is omitted (legacy fallback)', async () => {
-      // Without bunkCampers, the panel uses a self-only roster [Emma].
-      // The getSatisfiedRequestInfo mock returns parentMinOneViolation: true
-      // ONLY when the roster lacks Olivia — which it does when self-only.
-      // After Task 19, graph callers always pass bunkCampers, so this branch
-      // is effectively dead in production, but the panel still supports it.
-      // This test pins the legacy fallback behaviour.
-      mockGetSatisfiedRequestInfo.mockImplementation(
-        (
-          _personCmId: number,
-          _bunkCmId: number,
-          _campersInBunk: { cmId: number; grade: number | null }[],
-          _requesterGrade: number | null
-        ) => {
-          // With self-only roster [1001], Olivia (1002) is absent → would fire alert.
-          // But the INTENT of this test is to assert behaviour is unchanged when
-          // no bunkCampers prop is passed (self-only fallback). The mock confirms
-          // getSatisfiedRequestInfo is called with [1001]-only when prop is omitted.
-          return {
-            materialParent: { total: 1, satisfied: 0, satisfactionRate: 0 },
-            bestEffortParent: { total: 0, satisfied: 0, satisfactionRate: 0 },
-            staff: { total: 0, satisfied: 0, satisfactionRate: 0 },
-            // Self-only IS the legacy broken behaviour — alert still fires
-            // because satisfied=0 regardless. This test just checks the roster
-            // passed to the mock matches the fallback [Emma-only] path.
-            parentMinOneViolation: true,
-            staffUnsatisfiedAlert: false,
-          }
-        }
-      )
-
+    it('calls getSatisfiedRequestInfo with the camper person_cm_id', async () => {
+      // Verify that once the panel loads, it calls getSatisfiedRequestInfo with
+      // Emma's person_cm_id (1001). During the loading phase the panel may call
+      // with 0 (the `camper?.person_cm_id ?? 0` fallback) — so we wait for the
+      // heading and then check that at least one call used the correct id.
       setupGraphPanelMocks()
 
-      // No bunkCampers prop → self-only fallback
       render(<CamperDetailsPanel camperId="1001" onClose={mockOnClose} />)
 
-      // Wait for data to load
       await waitFor(() => {
         expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
       })
 
-      // Verify getSatisfiedRequestInfo was called with a single-member roster (Emma only)
       const calls = mockGetSatisfiedRequestInfo.mock.calls
       expect(calls.length).toBeGreaterThan(0)
-      const lastCall = calls[calls.length - 1]!
-      const lastCallRoster = lastCall[2] as { cmId: number }[]
-      expect(lastCallRoster).toHaveLength(1)
-      expect(lastCallRoster[0]!.cmId).toBe(1001)
+      // At least one call should use personCmId=1001 (after the camper loads)
+      const calledWithCorrectId = calls.some((call) => call[0] === 1001)
+      expect(calledWithCorrectId).toBe(true)
     })
   })
 
@@ -785,6 +742,29 @@ describe('CamperDetailsPanel', () => {
         },
       ]
       setupR3Mocks(bunkRequests)
+      // After #1159, age-pref P/S badges read per_request[i].bucket from the
+      // centralized aggregator, not raw source_field. Mirror what
+      // session_satisfaction would emit for this row.
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-age-p',
+            bucket: 'material_parent',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 1 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: true,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: true,
+        },
+      }))
 
       render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
       expect(await screen.findByText('P')).toBeInTheDocument()
@@ -814,9 +794,82 @@ describe('CamperDetailsPanel', () => {
         },
       ]
       setupR3Mocks(bunkRequests)
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-age-s',
+            bucket: 'staff',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 1 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: true,
+          has_any_counted_request: true,
+        },
+      }))
 
       render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
       expect(await screen.findByText('S')).toBeInTheDocument()
+    })
+
+    it('age-pref badge follows per_request.bucket, not raw source_field (#1159)', async () => {
+      // Mismatched fixture: source_field=bunk_with would set P under the old
+      // per-row classification, but the centralized aggregator's bucket=staff
+      // wins → S badge, not P.
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-mismatch',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunk_with',
+          source: 'family',
+          age_preference_target: 'older',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-mismatch',
+            bucket: 'staff',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 1 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: true,
+          has_any_counted_request: true,
+        },
+      }))
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('P')).toBeNull()
     })
 
     it('does NOT render any new "Parent request satisfaction:" summary line in the sidebar', async () => {

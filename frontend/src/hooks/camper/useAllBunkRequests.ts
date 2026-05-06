@@ -40,7 +40,8 @@ export function useAllBunkRequests(
         // so the full-page CamperDetail's ParsedRequestsPanel can show every
         // row (pending and declined included) for staff audit.
         // Satisfaction-facing consumers downstream filter at their own
-        // boundary — see useSatisfactionData and computeSatisfiedRequestInfo.
+        // boundary — see useSatisfactionData (per-row pills) and
+        // bunking.satisfaction.aggregate.session_satisfaction (counted totals).
         const filter = `requester_id = ${personCmId} && year = ${currentYear}`
         const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
           filter,

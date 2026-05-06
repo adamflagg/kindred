@@ -41,6 +41,7 @@ import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
 import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
 import type { SatisfactionMap } from '../hooks/camper/types'
+import type { RequestBucket } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -59,9 +60,8 @@ import { CamperAlertSection } from './CamperAlertSection'
 import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
-import { EMPTY_SATISFIED_INFO } from '../utils/computeSatisfiedRequestInfo'
 import { useBunkRequestContext } from '../hooks'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
+import type { BunkmateInfo } from '../utils/requestSatisfaction'
 import { queryKeys } from '../utils/queryKeys'
 
 // Panel-augmented bunk request: extends the PB `BunkRequestsResponse` (the
@@ -681,31 +681,31 @@ export default function CamperDetailsPanel({
   // for session-agnostic callers (graph modals, full-page camper view).
   const effectiveAssignedBunkCmId = assignedBunkCmId ?? camper?.assigned_bunk_cm_id ?? null
 
-  const camperAlerts = useMemo(() => {
-    const requestInfo = effectiveAssignedBunkCmId
-      ? getSatisfiedRequestInfo(
-          camper?.person_cm_id ?? 0,
-          effectiveAssignedBunkCmId,
-          effectiveBunkCampers,
-          camper?.grade ?? null
-        )
-      : EMPTY_SATISFIED_INFO
-    return buildCamperAlerts({
-      assignedBunkCmId: effectiveAssignedBunkCmId,
-      requestInfo,
-      lockState,
-      lockGroupSize,
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    effectiveAssignedBunkCmId,
-    camper?.person_cm_id,
-    camper?.grade,
-    bunkCampersKey,
-    lockState,
-    lockGroupSize,
-    getSatisfiedRequestInfo,
-  ])
+  // Compute satisfaction info once — both bucketByRequestId and camperAlerts consume it.
+  const satInfo = useMemo(
+    () => getSatisfiedRequestInfo(camper?.person_cm_id ?? 0),
+    [camper?.person_cm_id, getSatisfiedRequestInfo]
+  )
+
+  // Per-row bucket lookup so age-pref P/S badges read the centralized
+  // classification (CamperSatisfaction.per_request[i].bucket) instead of
+  // re-deriving from raw source_field/source — same pattern as
+  // BunkingStatusPanel (#1159).
+  const bucketByRequestId = useMemo(
+    () => new Map<string, RequestBucket>(satInfo.per_request.map((p) => [p.request_id, p.bucket])),
+    [satInfo]
+  )
+
+  const camperAlerts = useMemo(
+    () =>
+      buildCamperAlerts({
+        assignedBunkCmId: effectiveAssignedBunkCmId,
+        requestInfo: satInfo,
+        lockState,
+        lockGroupSize,
+      }),
+    [effectiveAssignedBunkCmId, satInfo, lockState, lockGroupSize]
+  )
 
   // Loading state
   if (camperLoading) {
@@ -976,8 +976,10 @@ export default function CamperDetailsPanel({
                         satisfaction={satisfaction?.status ?? null}
                         satisfactionLoading={satisfactionLoading}
                         satisfactionDetail={satisfaction?.detail}
-                        isMaterialAgePreference={req.source_field === 'bunk_with'}
-                        staffAgeBadge={req.source === 'staff'}
+                        isMaterialAgePreference={
+                          bucketByRequestId.get(req.id) === 'material_parent'
+                        }
+                        staffAgeBadge={bucketByRequestId.get(req.id) === 'staff'}
                       />
                     )
                   })}

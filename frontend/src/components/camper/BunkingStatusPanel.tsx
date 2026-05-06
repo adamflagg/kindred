@@ -5,7 +5,6 @@ import { useMemo } from 'react'
 import { Link } from 'react-router'
 import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
-import { deriveSlicesFromSatisfactionMap } from '../../utils/deriveSlicesFromSatisfactionMap'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
 import { isConfirmedRequest } from '../../utils/bunkRequest'
 import { BunkRequestRow } from '../BunkRequestRow'
@@ -13,7 +12,7 @@ import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDivide
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
-import type { RequestSlice } from '../../contexts/BunkRequestContext'
+import type { BucketCount, CamperSatisfaction, RequestBucket } from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -23,14 +22,14 @@ type WithTargetPerson<T> = T & {
   targetPerson?: { first_name?: string; last_name?: string } | null
 }
 
-function ratioColor(slice: RequestSlice): string {
+function ratioColor(slice: BucketCount): string {
   if (slice.total === 0) return ''
   if (slice.satisfied === slice.total) return 'text-green-600 dark:text-green-400'
   if (slice.satisfied === 0) return 'text-red-600 dark:text-red-400'
   return 'text-amber-600 dark:text-amber-400'
 }
 
-function SliceLine({ label, slice }: { label: string; slice: RequestSlice }) {
+function SliceLine({ label, slice }: { label: string; slice: BucketCount }) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-muted-foreground text-sm">{label}</span>
@@ -52,6 +51,12 @@ interface BunkingStatusPanelProps {
   agePreferenceRequests: EnhancedBunkRequest[]
   satisfactionData: SatisfactionMap
   satisfactionLoading: boolean
+  /**
+   * Authoritative per-camper bucket counts from `/api/satisfaction`. Slice
+   * totals on this panel must read from `counted_totals` to stay aligned with
+   * the bunking board card and graph node states (#1159).
+   */
+  camperSatisfaction: CamperSatisfaction
 }
 
 export function BunkingStatusPanel({
@@ -62,6 +67,7 @@ export function BunkingStatusPanel({
   agePreferenceRequests,
   satisfactionData,
   satisfactionLoading,
+  camperSatisfaction,
 }: BunkingStatusPanelProps) {
   // The per-camper list must agree with the summary above — both filter to
   // status === 'resolved' so pending and declined rows don't render with
@@ -70,13 +76,26 @@ export function BunkingStatusPanel({
   // merged into `summaryRequests` for both the slice summary and the row list.
   const personRequests = useMemo(
     () =>
-      allBunkRequests.filter((r) => r.status === 'resolved' && r.request_type !== 'age_preference'),
-    [allBunkRequests]
+      allBunkRequests.filter(
+        (r) =>
+          r.session_id === camper.session_cm_id &&
+          r.status === 'resolved' &&
+          !r.merged_into &&
+          r.request_type !== 'age_preference'
+      ),
+    [allBunkRequests, camper.session_cm_id]
   )
 
+  // agePreferenceRequests is fetched year-only (allBunkRequests query is not
+  // session-scoped), so apply the same defensive gate as personRequests above.
+  // Without this, sibling-session age-pref rows leak into summaryRequests and
+  // the row partition.
   const resolvedAgePrefs = useMemo(
-    () => (agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
-    [agePreferenceRequests]
+    () =>
+      (agePreferenceRequests ?? []).filter(
+        (r) => r.session_id === camper.session_cm_id && !r.merged_into && r.status === 'resolved'
+      ),
+    [agePreferenceRequests, camper.session_cm_id]
   )
 
   // Used for both the summary slices and the row partition so material parent
@@ -87,13 +106,26 @@ export function BunkingStatusPanel({
     [personRequests, resolvedAgePrefs]
   )
 
-  const slices = useMemo(
-    () => deriveSlicesFromSatisfactionMap(summaryRequests, satisfactionData),
-    [summaryRequests, satisfactionData]
+  // Slice totals come from the centralized aggregator (`/api/satisfaction`),
+  // not from re-bucketing rows here. This is the single source of truth shared
+  // with the bunking-board card and graph node states (#1159).
+  const materialParent = camperSatisfaction.counted_totals.material_parent
+  const staff = camperSatisfaction.counted_totals.staff
+
+  // Per-row bucket lookup so age-pref P/S badges read the centralized
+  // classification (CamperSatisfaction.per_request[i].bucket) instead of
+  // re-deriving from raw source_field/source — the duplication #1041/#1159
+  // exists to eliminate.
+  const bucketByRequestId = useMemo(
+    () =>
+      new Map<string, RequestBucket>(
+        camperSatisfaction.per_request.map((p) => [p.request_id, p.bucket])
+      ),
+    [camperSatisfaction]
   )
 
-  const showParent = slices.materialParent.total > 0
-  const showStaff = slices.staff.total > 0
+  const showParent = materialParent.total > 0
+  const showStaff = staff.total > 0
   const showSummary = showParent || showStaff
 
   // R3: targetPerson enrichment strategy (Case b): EnhancedBunkRequest carries
@@ -212,17 +244,17 @@ export function BunkingStatusPanel({
             {showParent && showStaff ? (
               <div className="grid grid-cols-[1fr_1px_1fr] items-center">
                 <div className="px-4">
-                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+                  <SliceLine label="Parent request satisfaction:" slice={materialParent} />
                 </div>
                 <div className="bg-border self-stretch" />
                 <div className="px-4">
-                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+                  <SliceLine label="Staff request satisfaction:" slice={staff} />
                 </div>
               </div>
             ) : showParent ? (
-              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+              <SliceLine label="Parent request satisfaction:" slice={materialParent} />
             ) : (
-              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+              <SliceLine label="Staff request satisfaction:" slice={staff} />
             )}
           </div>
         )}
@@ -269,6 +301,7 @@ export function BunkingStatusPanel({
             )}
             {ageRows.map((req) => {
               const sat = satisfactionData[req.id]
+              const bucket = bucketByRequestId.get(req.id)
               return (
                 <BunkRequestRow
                   key={req.id}
@@ -278,8 +311,8 @@ export function BunkingStatusPanel({
                   showSatisfaction={true}
                   satisfactionLoading={satisfactionLoading}
                   satisfactionDetail={sat?.detail}
-                  isMaterialAgePreference={req.source_field === 'bunk_with'}
-                  staffAgeBadge={req.source === 'staff'}
+                  isMaterialAgePreference={bucket === 'material_parent'}
+                  staffAgeBadge={bucket === 'staff'}
                 />
               )
             })}
