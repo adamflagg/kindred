@@ -1,18 +1,16 @@
 # Issue Triage
 
 Open issues grouped by code area with dependencies and suggested attack order.
-Last updated: 2026-05-06 (29 open issues, 7 closed since last update).
+Last updated: 2026-05-06 (27 open issues, 9 closed since last update).
 
 ---
 
 ## Remaining Open Issues
 
-### Group 33 — Social graph cleanup
+### Group 33 — Social graph cleanup (residual tech-debt)
 
 | # | Title | Type | Priority | Status |
 |---|-------|------|----------|--------|
-| 1156 | fix(api): _add_classmate_edges reads removed JSON 'address' field | bug | Medium | Ready — confirmed still in code (`social_graph_builder.py:785-786`) |
-| 1164 | fix(frontend): BunkSocialGraphModal getBunkType uses incidental substring match for AG bunks | tech-debt | Medium | Ready |
 | 1163 | fix(api): session_utils.get_related_session_ids may emit cm_id=0 for AG sessions missing cm_id | tech-debt | Medium | Ready |
 | 1162 | refactor(api): switch SocialGraphBuilder to nx.MultiGraph for per-source request edges | tech-debt | Low | Ready |
 | 1157 | refactor(api): rename SocialGraphEdge.type and CrossScopeEdge.type to edge_type | refactor | Low | Ready |
@@ -70,13 +68,14 @@ Last updated: 2026-05-06 (29 open issues, 7 closed since last update).
 
 ## Suggested Attack Order
 
-1. **Group 33 (#1156 first)** — confirmed bug with concrete fix path; the rest of the group is tech-debt and can ride along in same PR or follow-up.
-2. **Group 35 (#1059, #1069, #1068)** — bunk-request lifecycle correctness; #1059 is a bug, others are feat/investigation but cohesive.
+1. **Group 35 (#1059, #1069, #1068)** — bunk-request lifecycle correctness; #1059 is a bug, others are feat/investigation but cohesive. (#1059's surface area shrank since filing — only `BunkRequestRow.tsx:258` still trusts the stored `is_reciprocal` flag.)
+2. **Group 38 small wins (#1179, #1178)** — defensive infra, both small.
 3. Remaining groups by priority/readiness.
 
 ## Completed Groups
 
 - **Group 32** — `/api/satisfaction` regression cluster (PR #1158/1169 fallout). Shipped via PR #1169 (commit c985edf8) and PR #1177 (commit 3e0eb524). All three issues closed: #1171 (aggregate.py 500), #1172 (P-badge / 0-of-N source_field fallback), #1170 (bunking_validator → satisfaction.predicate migration).
+- **Group 33 confirmed bugs** — #1156 (_add_classmate_edges discrete address columns) and #1164 (anchored AG match) shipping in PR #1182. The remaining three issues in Group 33 are tech-debt/refactor only.
 
 Historical completed groups (Groups 1–31) are reflected in closed GitHub issues
 and git history; see `git log docs/reference/issue-triage.md` for prior triage
