@@ -113,7 +113,7 @@ describe('useCsvPipelineStatus', () => {
             {
               run_id: 'r-done',
               created: debugCreated,
-              status_breakdown: { status_resolved: 18, status_pending: 4, status_declined: 2 },
+              status_breakdown: { resolved: 18, pending: 4, declined: 2 },
             },
           ],
         }),

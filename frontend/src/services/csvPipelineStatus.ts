@@ -9,10 +9,13 @@ export interface SyncJobStatus {
 export interface DebugPipelineRun {
   run_id: string
   created: string
+  // Shape matches what trace_collector._compute_status_breakdown writes
+  // (bunking/sync/bunk_request_processor/debug/trace_collector.py). The other
+  // frontend consumer (PipelineRunSelector) reads the same keys — keep aligned.
   status_breakdown: {
-    status_resolved: number
-    status_pending: number
-    status_declined: number
+    resolved: number
+    pending: number
+    declined: number
   }
 }
 
@@ -131,9 +134,9 @@ export function derivePhase(
 }
 
 function doneFromDebug(d: DebugPipelineRun): PipelinePhase {
-  const { status_resolved, status_pending, status_declined } = d.status_breakdown
-  const autoMatched = status_resolved + status_declined
-  const needReview = status_pending
+  const { resolved, pending, declined } = d.status_breakdown
+  const autoMatched = resolved + declined
+  const needReview = pending
   return {
     phase: 'done',
     runId: d.run_id,
@@ -193,7 +196,13 @@ type RawDebugListResponse = {
   items: Array<{
     run_id: string
     created: string
-    status_breakdown: { status_resolved: number; status_pending: number; status_declined: number }
+    // PB returns the JSON field as-is. trace_collector also writes skipped and
+    // deduped, but only resolved/pending/declined are consumed here.
+    status_breakdown?: {
+      resolved?: unknown
+      pending?: unknown
+      declined?: unknown
+    }
   }>
 }
 
@@ -209,17 +218,18 @@ export async function fetchLatestDebugRun(
   if (!first) return null
   // Guard against malformed rows (schema mismatch, partial write). Without
   // this, doneFromDebug would throw a TypeError when destructuring the counts.
+  const sb = first.status_breakdown
   if (
-    !first.status_breakdown ||
-    typeof first.status_breakdown.status_resolved !== 'number' ||
-    typeof first.status_breakdown.status_pending !== 'number' ||
-    typeof first.status_breakdown.status_declined !== 'number'
+    !sb ||
+    typeof sb.resolved !== 'number' ||
+    typeof sb.pending !== 'number' ||
+    typeof sb.declined !== 'number'
   ) {
     return null
   }
   return {
     run_id: first.run_id,
     created: first.created,
-    status_breakdown: first.status_breakdown,
+    status_breakdown: { resolved: sb.resolved, pending: sb.pending, declined: sb.declined },
   }
 }
