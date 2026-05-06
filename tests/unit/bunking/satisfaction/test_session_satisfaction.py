@@ -428,4 +428,4 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
     assert "cm_id = 1" in persons_filter
     assert "cm_id = 2" in persons_filter
     # The filter must NOT be the old broad year-only filter.
-    assert persons_filter != f"year = 2026"
+    assert persons_filter != "year = 2026"

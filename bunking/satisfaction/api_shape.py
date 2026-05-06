@@ -60,7 +60,7 @@ class CamperSatisfaction(BaseModel):
     flags: SatisfactionFlags
 
     @model_validator(mode="after")
-    def _check_counted_keys(self) -> "CamperSatisfaction":
+    def _check_counted_keys(self) -> CamperSatisfaction:
         missing = COUNTED_BUCKETS - set(self.counted_totals.keys())
         if missing:
             raise ValueError(f"counted_totals missing buckets: {sorted(missing)}")

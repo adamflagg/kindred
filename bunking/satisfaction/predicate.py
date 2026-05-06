@@ -10,13 +10,14 @@ Behavior is identical to those predicates — no behavior delta tolerated.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from bunking.utils.age_preference import is_age_preference_satisfied
 
 
 def is_request_satisfied(
-    request: dict[str, Any],
+    request: Mapping[str, Any],
     person_to_bunk: dict[int, int],
     *,
     bunkmate_grades: dict[int, list[int]] | None = None,

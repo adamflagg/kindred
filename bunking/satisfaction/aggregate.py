@@ -16,16 +16,13 @@ import concurrent.futures
 from collections import defaultdict
 from typing import Any, Literal, NotRequired, TypedDict
 
-from bunking.logging_config import get_logger
-
-logger = get_logger(__name__)
-
 from api.constants.collections import (
     BUNK_ASSIGNMENTS,
     BUNK_ASSIGNMENTS_DRAFT,
     BUNK_REQUESTS,
     PERSONS,
 )
+from bunking.logging_config import get_logger
 from bunking.satisfaction.api_shape import (
     BucketCount,
     CamperSatisfaction,
@@ -35,6 +32,8 @@ from bunking.satisfaction.api_shape import (
 )
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
 from bunking.satisfaction.predicate import is_request_satisfied
+
+logger = get_logger(__name__)
 
 
 def bucket_status(count: BucketCount) -> Literal["no_requests", "satisfied", "unsatisfied"]:
@@ -86,7 +85,7 @@ def _coerce_row(r: Any) -> BunkRequestRow:
 
 def camper_satisfaction(
     person_cm_id: int,
-    person_requests: list[BunkRequestRow],
+    person_requests: list[BunkRequestRow] | list[dict[str, Any]],
     person_to_bunk: dict[int, int],
     *,
     bunkmate_grades: dict[int, list[int]] | None = None,
@@ -220,9 +219,9 @@ def session_satisfaction(
     needed_cm_ids = sorted(person_to_bunk.keys())
     person_grades: dict[int, int] = {}
     if needed_cm_ids:
-        _CHUNK = 100
-        for chunk_start in range(0, len(needed_cm_ids), _CHUNK):
-            chunk = needed_cm_ids[chunk_start : chunk_start + _CHUNK]
+        chunk_size = 100
+        for chunk_start in range(0, len(needed_cm_ids), chunk_size):
+            chunk = needed_cm_ids[chunk_start : chunk_start + chunk_size]
             cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
             persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year} && ({cm_id_filter})")
             for p in persons:

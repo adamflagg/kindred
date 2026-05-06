@@ -154,7 +154,7 @@ class TestUnknownRequestType:
             is_request_satisfied(_req("nonsense", 1, 2), person_to_bunk={1: 100, 2: 100})
 
 
-@pytest.mark.parametrize("a_bunk,b_bunk", [(10, 10), (10, 11), (10, None)])
+@pytest.mark.parametrize(("a_bunk", "b_bunk"), [(10, 10), (10, 11), (10, None)])
 def test_bunk_with_and_not_bunk_with_are_inverses(a_bunk: int | None, b_bunk: int | None) -> None:
     p2b = {1: a_bunk} if a_bunk is not None else {}
     if b_bunk is not None:
