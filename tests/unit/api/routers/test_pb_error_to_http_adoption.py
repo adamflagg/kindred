@@ -21,7 +21,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -401,6 +401,76 @@ class TestUpdateScenarioAssignmentPbError:
         body = resp.json()
         assert "sensitive" not in str(body).lower()
         assert "PocketBase" not in str(body)
+
+
+# ---------------------------------------------------------------------------
+# scenarios.py — explicit HTTPException(4xx) must NOT be logged at ERROR
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateScenarioAssignmentHttpExceptionNotLogged:
+    """Explicit raise HTTPException(404) inside update_scenario_assignment must propagate
+    cleanly without being caught by the broad `except Exception` and logged at ERROR.
+
+    Regression for #1150: removing the inner `except HTTPException: raise` would route
+    the explicit 404 (person-not-found) through `logger.error(..., exc_info=True)`,
+    polluting error dashboards with client-input cases.
+    """
+
+    @pytest.fixture
+    def client_person_not_found(self) -> Iterator[TestClient]:
+        """Patch build_session_context to succeed and pb.collection().get_full_list to
+        return [] for the persons lookup, so the function explicitly raises HTTPException(404).
+        """
+        from api.routers.scenarios import router
+
+        # Stub session context: just any object with the attrs the function uses.
+        class _Ctx:
+            session_pb_id = "session_pb"
+            session_cm_id = 3001
+            year = 2025
+
+        # pb.collection(...).get_full_list returns [] for every collection, including persons.
+        mock_pb = MagicMock()
+        mock_pb.collection.return_value.get_full_list.return_value = []
+        # get_one (saved scenario) returns a stub object so we get past that line.
+        mock_pb.collection.return_value.get_one.return_value = MagicMock(id="any-id", session=None)
+
+        app = _make_app(router)
+        with (
+            # build_session_context is async — must use AsyncMock so the await resolves
+            # to _Ctx() rather than yielding a non-awaitable MagicMock.
+            patch("api.routers.scenarios.build_session_context", new=AsyncMock(return_value=_Ctx())),
+            patch("api.routers.scenarios.pb", mock_pb),
+        ):
+            yield TestClient(app, raise_server_exceptions=False)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "person_id": 99999,  # not found
+            "bunk_id": 2001,
+            "session_cm_id": 3001,
+            "year": 2025,
+        }
+
+    def test_returns_404(self, client_person_not_found: TestClient) -> None:
+        resp = client_person_not_found.put("/api/scenarios/any-id/assignments", json=self._payload())
+        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.json()}"
+
+    def test_does_not_log_at_error(self, client_person_not_found: TestClient, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        with caplog.at_level(logging.ERROR, logger="api.routers.scenarios"):
+            resp = client_person_not_found.put("/api/scenarios/any-id/assignments", json=self._payload())
+
+        assert resp.status_code == 404
+        error_records = [
+            r for r in caplog.records if r.levelno >= logging.ERROR and "Error updating assignment" in r.getMessage()
+        ]
+        assert error_records == [], (
+            "Explicit HTTPException(404) must not fall through to logger.error in the broad "
+            f"`except Exception` handler. Got error records: {[r.getMessage() for r in error_records]}"
+        )
 
 
 # ---------------------------------------------------------------------------
