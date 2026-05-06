@@ -75,6 +75,12 @@ const getSolverApiUrl = () => {
 
 const SOLVER_API_URL = getSolverApiUrl()
 
+// Solver runs up to its requested time_limit, then needs a tail to write
+// assignments to PocketBase before the run record flips to "completed".
+// Without this buffer, a solve that uses its full time_limit appears as a
+// frontend timeout even though the backend ultimately succeeds.
+export const POLL_BUFFER_SECONDS = 30
+
 export interface SolverRequest {
   session_id: string
   constraints: Constraint[]
@@ -126,7 +132,7 @@ export const solverService = {
       }
 
       // Poll for completion (solver runs async)
-      return await this.pollSolverStatus(result.run_id, fetchWithAuth)
+      return await this.pollSolverStatus(result.run_id, fetchWithAuth, timeLimit)
     } catch (error) {
       console.error('Solver error:', error)
       throw error
@@ -136,8 +142,10 @@ export const solverService = {
   async pollSolverStatus(
     solverRunId: string,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
-    maxAttempts = 60
+    timeLimitSeconds = 60
   ): Promise<SolverRun> {
+    const effectiveLimit = Math.max(1, Math.floor(timeLimitSeconds))
+    const maxAttempts = effectiveLimit + POLL_BUFFER_SECONDS
     for (let i = 0; i < maxAttempts; i++) {
       // Poll the solver service API for status
       const response = await fetchWithAuth(`${SOLVER_API_URL}/solver/run/${solverRunId}`)
