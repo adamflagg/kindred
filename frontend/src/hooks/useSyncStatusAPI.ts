@@ -98,6 +98,12 @@ export interface SyncStatusResponse {
   _queue_length?: number
   // Current run progress (remaining jobs in active sequence)
   _current_run?: CurrentRunProgress
+  // Most recent bunk_requests CSV upload (filename + RFC3339 timestamp).
+  // Absent if no CSV has been uploaded for the current data dir.
+  _bunk_requests_upload?: {
+    filename: string
+    uploaded_at: string
+  }
 }
 
 // On 401 the hook returns null instead of a fake `{}` cast to SyncStatusResponse.

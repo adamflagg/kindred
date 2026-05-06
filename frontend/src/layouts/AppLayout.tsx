@@ -31,7 +31,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { useSyncStatusAPI } from '../hooks/useSyncStatusAPI'
-import { formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import { useProgram } from '../contexts/ProgramContext'
 import { getProgramFromPath, getProgramHomeUrl } from '../utils/programUrls'
 import { pb } from '../lib/pocketbase'
@@ -707,7 +707,9 @@ export const AppLayout = () => {
               </div>
               {activeProgram === 'summer' &&
                 syncStatus &&
-                (syncStatus.bunk_assignments?.end_time ?? syncStatus.bunk_requests?.end_time) && (
+                (syncStatus.bunk_assignments?.end_time ??
+                  syncStatus.bunk_requests?.end_time ??
+                  syncStatus._bunk_requests_upload?.uploaded_at) && (
                   <div className="text-muted-foreground flex items-center gap-3 text-xs">
                     {syncStatus.bunk_assignments?.end_time && (
                       <span
@@ -721,17 +723,39 @@ export const AppLayout = () => {
                         })}
                       </span>
                     )}
-                    {syncStatus.bunk_requests?.end_time && (
+                    {syncStatus._bunk_requests_upload?.uploaded_at ? (
                       <span
                         className="flex items-center gap-1.5 whitespace-nowrap"
-                        title={buildSyncTooltip('bunk requests', syncStatus.bunk_requests)}
+                        title={`${syncStatus._bunk_requests_upload.filename} • ${buildSyncTooltip(
+                          'bunk requests',
+                          syncStatus.bunk_requests ?? { status: 'idle' }
+                        )}`}
                       >
                         <Clock className="h-3 w-3" />
-                        Requests synced{' '}
-                        {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), {
-                          addSuffix: true,
-                        })}
+                        Requests uploaded{' '}
+                        {format(
+                          new Date(syncStatus._bunk_requests_upload.uploaded_at),
+                          'MMM d, h:mm a'
+                        )}
+                        {' · '}
+                        {formatDistanceToNow(
+                          new Date(syncStatus._bunk_requests_upload.uploaded_at),
+                          { addSuffix: true }
+                        )}
                       </span>
+                    ) : (
+                      syncStatus.bunk_requests?.end_time && (
+                        <span
+                          className="flex items-center gap-1.5 whitespace-nowrap"
+                          title={buildSyncTooltip('bunk requests', syncStatus.bunk_requests)}
+                        >
+                          <Clock className="h-3 w-3" />
+                          Requests synced{' '}
+                          {formatDistanceToNow(new Date(syncStatus.bunk_requests.end_time), {
+                            addSuffix: true,
+                          })}
+                        </span>
+                      )
                     )}
                   </div>
                 )}

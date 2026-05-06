@@ -940,6 +940,16 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 	}
 	statuses["_configured_year"] = configuredYear
 
+	// Add bunk requests CSV upload metadata if a CSV has ever been uploaded.
+	// Read failures are logged but not surfaced — the absence of this field is
+	// indistinguishable from "no upload yet" on the frontend, which is the
+	// correct fallback either way.
+	if meta, err := readBunkRequestsUploadMetadata(scheduler.app.DataDir()); err != nil {
+		slog.Warn("Failed to read bunk_requests upload metadata", "error", err)
+	} else if meta != nil {
+		statuses["_bunk_requests_upload"] = meta
+	}
+
 	// Add queue info
 	queue := orchestrator.GetQueuedSyncs()
 	queueInfo := make([]map[string]any, len(queue))
