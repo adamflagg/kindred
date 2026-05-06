@@ -406,4 +406,28 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
     expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
+
+  it('exposes disclosure state via aria-expanded and aria-controls (#1169 review)', async () => {
+    const user = userEvent.setup()
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_persons: [{ cm_id: 1000001, name: 'Emma Johnson' }],
+        })}
+      />
+    )
+
+    const toggle = screen.getByRole('button', { name: /unmet parent requests/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    const controlsId = toggle.getAttribute('aria-controls')
+    expect(controlsId).toBeTruthy()
+
+    await user.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    // The controlled list element should now exist with the matching id.
+    expect(document.getElementById(controlsId as string)).not.toBeNull()
+  })
 })

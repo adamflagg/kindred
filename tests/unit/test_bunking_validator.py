@@ -1904,3 +1904,90 @@ def test_validator_is_satisfied_returns_false_on_non_numeric_grade():
     )
     # Validation completed without crashing — that's the contract.
     assert result.statistics is not None
+
+
+def test_unsatisfied_material_parent_persons_skips_non_numeric_requester_id():
+    """Non-numeric requester_id in unmet drill-down must NOT crash validation.
+
+    `unsatisfied_material_parent_persons` calls `int(pid)` directly on the
+    `material_parent_by_person` keys. If a request carries a malformed
+    requester_id (corrupt CSV, schema migration gap, manual edit), this
+    raises mid-`sorted()` and tanks the entire validation summary. The
+    surrounding canonical predicate already absorbs the same bad-data class;
+    the drill-down must mirror that contract.
+    """
+    session = _mock_session(cm_id="10000001", name="UnmetDrillNonNumericPidFixture")
+    # Non-numeric requester has no Person/Assignment record — matches real production
+    # data hygiene gaps (orphaned request rows pointing at a deleted/typo'd cm_id).
+    persons = [
+        _mock_person("20001", grade=5),
+        _mock_person("20002", grade=5),
+    ]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),
+    ]
+    # age_preference requests still classify as material-parent (source_field=bunk_with,
+    # source=family) but bypass the bunk_with-only isolation-risk pass. That keeps this
+    # test surgically scoped to the unmet-parent drill-down code path.
+    requests = [
+        # Bad requester — should be skipped by the drill-down without crashing.
+        _mock_request("abc", "20002", SourceField.BUNK_WITH, "family", request_type="age_preference"),
+        # Good requester — should still appear in unmet list.
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family", request_type="age_preference"),
+    ]
+
+    # Must not raise.
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet_ids = {entry["cm_id"] for entry in result.statistics.unsatisfied_material_parent_persons}
+    # 20001 still surfaces; "abc" is silently skipped.
+    assert 20001 in unmet_ids
+    assert all(isinstance(entry["cm_id"], int) for entry in result.statistics.unsatisfied_material_parent_persons)
+
+
+def test_validator_handles_non_numeric_bunkmate_grade():
+    """Non-numeric bunkmate grade in canonical precompute must NOT crash validation.
+
+    `bunkmate_grades_canon[pid_int] = [int(bunkmate.grade) ...]` runs BEFORE
+    `_is_satisfied()` gets a chance to absorb bad data. One non-numeric
+    bunkmate grade ("K", "Pre-K", null-as-string) currently aborts the
+    whole validation pass instead of degrading to "unsatisfied".
+    """
+    session = _mock_session(cm_id="10000001", name="BunkmateGradeHygieneFixture")
+    # Requester has a valid grade; its bunkmate has a non-numeric grade.
+    requester = _mock_person("20001", grade=5)
+    bad_grade_bunkmate = MockPerson(campminder_id="20002", name="Camper20002", grade=cast(Any, "K"))
+    persons = [requester, bad_grade_bunkmate]
+    bunks = [_mock_bunk("30001")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),  # bunkmate of 20001
+    ]
+    # An age_preference request — exercises the bunkmate_grades_canon precompute path.
+    requests = [
+        _mock_request(
+            "20001",
+            "0",
+            SourceField.SOCIALIZE_WITH,
+            "family",
+            request_type="age_preference",
+        ),
+    ]
+
+    # Must not raise — bad grade should be skipped, not aborted.
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    assert result.statistics is not None

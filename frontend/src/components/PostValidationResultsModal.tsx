@@ -764,6 +764,8 @@ export default function PostValidationResultsModal({
           <button
             type="button"
             onClick={() => setShowUnmetParents(!showUnmetParents)}
+            aria-expanded={showUnmetParents}
+            aria-controls="unmet-parent-requests-list"
             className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
           >
             <span className="flex items-center gap-2">
@@ -778,7 +780,10 @@ export default function PostValidationResultsModal({
           </button>
 
           {showUnmetParents && (
-            <ul className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4">
+            <ul
+              id="unmet-parent-requests-list"
+              className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4"
+            >
               {unmetParents.map((person) => (
                 <li key={person.cm_id} className="text-foreground text-sm">
                   {person.name}

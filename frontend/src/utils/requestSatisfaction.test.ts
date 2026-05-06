@@ -242,8 +242,14 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
 
-  it('undefined bucket + source_field=bunk_with → P badge (fallback)', () => {
-    const result = resolveBadgeBucket(undefined, { source_field: 'bunk_with', source: 'family' })
+  it('undefined bucket + age_preference + source_field=bunk_with → P badge (fallback)', () => {
+    // Pre-#1169 review this test passed without request_type; the function now requires
+    // request_type='age_preference' to fire the P badge fallback (see new tests below).
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'age_preference',
+    })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 
@@ -275,5 +281,26 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     for (const b of buckets) {
       expect(() => resolveBadgeBucket(b, {})).not.toThrow()
     }
+  })
+
+  // #1169 review: the fallback P-badge rule must only fire for age_preference rows.
+  // A plain bunk_with request also has source_field='bunk_with' but is NOT a parent
+  // age preference — the function should not slap a P badge on it.
+  it('undefined bucket + bunk_with request_type + source_field=bunk_with → no P badge', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'bunk_with',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + age_preference request_type + source_field=bunk_with → P badge', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'age_preference',
+    })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 })
