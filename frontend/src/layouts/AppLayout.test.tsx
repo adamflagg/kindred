@@ -274,6 +274,81 @@ describe('AppLayout sync-status labels', () => {
   })
 })
 
+describe('AppLayout requests upload label', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPerms = {
+      hasPermission: (p: string) => p === 'bunking.manage',
+      isAdmin: false,
+    }
+  })
+
+  // Use an upload time well in the past so the relative phrase is stable
+  // across test runs ("about 1 month ago" instead of e.g. "less than a minute ago").
+  const uploadedAt = '2026-04-04T14:13:00.000Z'
+  const syncIso = '2026-04-22T12:00:00.000Z'
+
+  function mockWithUpload(filename: string) {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_assignments: {
+          status: 'success',
+          end_time: syncIso,
+          start_time: syncIso,
+          summary: { created: 1, updated: 2, skipped: 0, errors: 0 },
+        },
+        bunk_requests: {
+          status: 'success',
+          end_time: syncIso,
+          start_time: syncIso,
+          summary: { created: 3, updated: 4, skipped: 1, errors: 0 },
+        },
+        _bunk_requests_upload: { filename, uploaded_at: uploadedAt },
+      } as SyncStatusResponse,
+    }))
+  }
+
+  it('uses upload time and absolute+relative wording when metadata is present', () => {
+    mockWithUpload('BunkRequests_2026-04-04.csv')
+    renderAppLayout()
+
+    const label = screen.getByText(/Requests uploaded/)
+    expect(label).toBeInTheDocument()
+    // Absolute date (date-fns "MMM d" — locale-independent month abbrev)
+    expect(label.textContent).toMatch(/Apr 4/)
+    // Relative phrase ("ago" suffix)
+    expect(label.textContent).toMatch(/ago/)
+    // Should NOT use the sync end_time wording when upload metadata exists
+    expect(screen.queryByText(/Requests synced/)).not.toBeInTheDocument()
+  })
+
+  it('exposes the original CSV filename via tooltip', () => {
+    mockWithUpload('BunkRequests_2026-04-04.csv')
+    renderAppLayout()
+    const label = screen.getByText(/Requests uploaded/)
+    const tooltipHost = label.closest('[title]') as HTMLElement | null
+    expect(tooltipHost).not.toBeNull()
+    const title = tooltipHost?.getAttribute('title') ?? ''
+    expect(title).toContain('BunkRequests_2026-04-04.csv')
+  })
+
+  it('falls back to "Requests synced" wording when upload metadata is missing', () => {
+    syncStatusSpy.mockImplementation(() => ({
+      data: {
+        bunk_requests: {
+          status: 'success',
+          end_time: syncIso,
+          start_time: syncIso,
+          summary: { created: 0, updated: 0, skipped: 0, errors: 0 },
+        },
+      } as SyncStatusResponse,
+    }))
+    renderAppLayout()
+    expect(screen.getByText(/Requests synced/)).toBeInTheDocument()
+    expect(screen.queryByText(/Requests uploaded/)).not.toBeInTheDocument()
+  })
+})
+
 // Regression boundary: sentinel shape returned on 401, not the full
 // pb.afterSend async-redirect race. See #1011 for the discriminated-union fix.
 describe('AppLayout fresh-login crash guard', () => {
