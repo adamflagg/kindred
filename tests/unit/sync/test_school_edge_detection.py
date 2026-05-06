@@ -39,11 +39,11 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Set up person cache with addresses and schools
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            3: {"address": {"city": "New York", "state": "NY"}, "grade": 5, "school": "PS 101"},
-            4: {"address": {"city": "Boston", "state": "MA"}, "grade": 8, "school": "Lincoln Elementary"},
-            5: {"address": {"city": "Cambridge", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            3: {"address_city": "New York", "address_state": "NY", "grade": 5, "school": "PS 101"},
+            4: {"address_city": "Boston", "address_state": "MA", "grade": 8, "school": "Lincoln Elementary"},
+            5: {"address_city": "Cambridge", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
         }
 
         # Call the method
@@ -75,9 +75,14 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Set up person cache - various missing fields
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": ""},  # Empty school
-            3: {"address": {"city": "Boston", "state": ""}, "grade": 5, "school": "Lincoln Elementary"},  # Empty state
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": ""},  # Empty school
+            3: {
+                "address_city": "Boston",
+                "address_state": "",
+                "grade": 5,
+                "school": "Lincoln Elementary",
+            },  # Empty state
         }
 
         # Call the method
@@ -99,8 +104,8 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Set up person cache
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
         }
 
         # Call the method
@@ -125,10 +130,10 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Set up person cache - missing required data
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
             2: {"grade": 5, "school": "Lincoln Elementary"},  # No address
-            3: {"address": {}, "grade": 5, "school": "Lincoln Elementary"},  # Empty address
-            4: {"address": {"city": "Boston", "state": "MA"}, "grade": 5},  # No school
+            3: {"address_city": "", "address_state": "", "grade": 5, "school": "Lincoln Elementary"},  # Empty address
+            4: {"address_city": "Boston", "address_state": "MA", "grade": 5},  # No school
         }
 
         # Call the method
@@ -150,8 +155,8 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Set up person cache with different case
         self.builder.person_cache = {
-            1: {"address": {"city": "BOSTON", "state": "MA"}, "grade": 5, "school": "LINCOLN ELEMENTARY"},
-            2: {"address": {"city": "boston", "state": "ma"}, "grade": 5, "school": "lincoln elementary"},
+            1: {"address_city": "BOSTON", "address_state": "MA", "grade": 5, "school": "LINCOLN ELEMENTARY"},
+            2: {"address_city": "boston", "address_state": "ma", "grade": 5, "school": "lincoln elementary"},
         }
 
         # Call the method
@@ -171,10 +176,25 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # All from same school and location
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 6, "school": "Lincoln Elementary"},  # Diff = 1
-            3: {"address": {"city": "Boston", "state": "MA"}, "grade": 7, "school": "Lincoln Elementary"},  # Diff = 2
-            4: {"address": {"city": "Boston", "state": "MA"}, "grade": 4, "school": "Lincoln Elementary"},  # Diff = 1
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 6,
+                "school": "Lincoln Elementary",
+            },  # Diff = 1
+            3: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 7,
+                "school": "Lincoln Elementary",
+            },  # Diff = 2
+            4: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 4,
+                "school": "Lincoln Elementary",
+            },  # Diff = 1
         }
 
         # Call the method
@@ -197,10 +217,10 @@ class TestSchoolEdgeDetection(unittest.TestCase):
 
         # Mix of different schools and locations
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            3: {"address": {"city": "Cambridge", "state": "MA"}, "grade": 5, "school": "Cambridge Elementary"},
-            4: {"address": {"city": "New York", "state": "NY"}, "grade": 5, "school": "PS 101"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            3: {"address_city": "Cambridge", "address_state": "MA", "grade": 5, "school": "Cambridge Elementary"},
+            4: {"address_city": "New York", "address_state": "NY", "grade": 5, "school": "PS 101"},
         }
 
         # Call the method

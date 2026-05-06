@@ -102,9 +102,12 @@ const EDGE_COLORS: Record<string, string> = {
 // Helpers hoisted to module scope: they reference no closure values and were
 // previously redeclared on every useMemo recompute. Exported for unit tests.
 // eslint-disable-next-line react-refresh/only-export-components
+export const isAGBunkName = (name: string): boolean => /^AG(?:$|[\s-]|\d)/.test(name)
+
+// eslint-disable-next-line react-refresh/only-export-components
 export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
   if (!name) return 'B'
-  if (name.includes('AG')) return 'AG'
+  if (isAGBunkName(name)) return 'AG'
   if (name.startsWith('G-')) return 'G'
   if (name.startsWith('B-')) return 'B'
   return 'B'
@@ -549,7 +552,7 @@ export default function BunkSocialGraphModal({
   }
 
   // Check if this is an AG bunk or single bunk session
-  const isAGBunk = bunkName.includes('AG')
+  const isAGBunk = isAGBunkName(bunkName)
   const hideNavigation = isAGBunk || sessionBunks.length === 0
 
   // Use Activity to preserve state when hidden while unmounting effects
@@ -630,7 +633,7 @@ export default function BunkSocialGraphModal({
                     <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-gray-400" />
                     <h3 className="mb-2 text-lg font-medium">No Campers Found</h3>
                     <p className="text-sm">
-                      {bunkName.includes('AG')
+                      {isAGBunkName(bunkName)
                         ? 'This AG bunk does not have any assigned campers yet.'
                         : 'This bunk does not have any assigned campers for this session.'}
                     </p>

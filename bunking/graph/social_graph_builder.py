@@ -781,19 +781,14 @@ class SocialGraphBuilder:
                 if not school1 or not school2:
                     continue
 
-                # Get addresses
-                addr1 = person1.get("address", {})
-                addr2 = person2.get("address", {})
-
-                # Skip if no address info
-                if not addr1 or not addr2:
-                    continue
-
-                # Get location data
-                city1 = addr1.get("city", "").strip()
-                city2 = addr2.get("city", "").strip()
-                state1 = addr1.get("state", "").strip()
-                state2 = addr2.get("state", "").strip()
+                # Get location data from discrete address columns. The legacy JSON
+                # `address` field was removed in migration 1500000054_remove_json_fields.js
+                # (#1156); the persons collection now exposes `address_city` and
+                # `address_state` as flat columns directly on the record.
+                city1 = (person1.get("address_city") or "").strip()
+                city2 = (person2.get("address_city") or "").strip()
+                state1 = (person1.get("address_state") or "").strip()
+                state2 = (person2.get("address_state") or "").strip()
 
                 # Skip if missing any location data
                 if not (city1 and city2 and state1 and state2):

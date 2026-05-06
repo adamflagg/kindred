@@ -68,14 +68,33 @@ describe('getBunkType', () => {
     expect(getBunkType('AG1')).toBe('AG')
   })
 
-  it('classifies bunks containing AG substring as AG', () => {
-    // NOTE: This is intentional current behaviour. Task 47 tracks the follow-up
-    // to fix the substring match; do not change this assertion.
-    expect(getBunkType('B-1AG')).toBe('AG')
-  })
-
   it('falls back to B for unrecognised names', () => {
     expect(getBunkType('Cabin-5')).toBe('B')
+  })
+
+  // #1164: classification was previously a substring match (`name.includes('AG')`),
+  // which mis-classified incidental occurrences. The match must be prefix-anchored
+  // and bounded — AG followed by end-of-string, whitespace, hyphen, or a digit.
+  describe('#1164 — AG match must be prefix-anchored, not substring', () => {
+    it.each([
+      ['AG', 'AG'],
+      ['AG-1', 'AG'],
+      ['AG1', 'AG'],
+      ['AG Alph', 'AG'],
+      ['AG-Alpha-1', 'AG'],
+    ])('classifies %s as AG', (name, expected) => {
+      expect(getBunkType(name)).toBe(expected)
+    })
+
+    it.each([
+      ['STAGE', 'B'], // Incidental "AG" mid-word
+      ['page', 'B'], // Incidental "ag" lowercased
+      ['BAG-1', 'B'], // "AG" inside a B-prefixed name
+      ['B-1AG', 'B'], // Trailing AG suffix on a B bunk (was previously mis-AG'd; #1164 inverts)
+      ['Stage-1', 'B'], // Mixed-case "ag" mid-word
+    ])('does NOT classify %s as AG (incidental match)', (name, expected) => {
+      expect(getBunkType(name)).toBe(expected)
+    })
   })
 })
 
