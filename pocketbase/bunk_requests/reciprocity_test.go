@@ -94,3 +94,59 @@ func TestRecomputePairReciprocity_CreatesPair(t *testing.T) {
 		t.Errorf("B→A: expected is_reciprocal=true, got false")
 	}
 }
+
+// Test 2: With the hook registered, inserting B→A on top of an existing
+// resolved A→B should fire the hook and flip both rows' is_reciprocal=true.
+func TestHook_FiresOnCreate(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+
+	// NOTE: we can't pass *tests.TestApp to RegisterHooks (which expects
+	// *pocketbase.PocketBase). Use the lower-level event API directly,
+	// matching what RegisterHooks does.
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+
+	// At this point only A→B exists; the hook fired but B→A doesn't exist
+	// yet, so A→B's flag stays false.
+	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	if gotAB.GetBool("is_reciprocal") {
+		t.Errorf("after lone A→B insert: expected is_reciprocal=false, got true")
+	}
+
+	// Now insert B→A. Hook fires, recompute finds both rows resolved → both flip.
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	gotAB, _ = app.FindRecordById("bunk_requests", rowAB.Id)
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if !gotAB.GetBool("is_reciprocal") {
+		t.Errorf("after pair complete: A→B expected is_reciprocal=true, got false")
+	}
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after pair complete: B→A expected is_reciprocal=true, got false")
+	}
+}
+
+// registerHooksOnApp wires the same three success hooks RegisterHooks does,
+// but takes a core.App (which the *tests.TestApp implements). We can't pass
+// *tests.TestApp to RegisterHooks because it expects *pocketbase.PocketBase.
+func registerHooksOnApp(app core.App) {
+	app.OnRecordAfterCreateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
+		runRecompute(e)
+		return e.Next()
+	})
+	app.OnRecordAfterUpdateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
+		runRecompute(e)
+		return e.Next()
+	})
+	app.OnRecordAfterDeleteSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
+		runRecompute(e)
+		return e.Next()
+	})
+}
