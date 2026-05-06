@@ -9,7 +9,7 @@ import type { BunkRequest } from '../types/app-types'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import {
   type CamperSatisfaction,
-  EMPTY_CAMPER_SATISFACTION,
+  emptyCamperSatisfaction,
   type SatisfactionResponse,
 } from '../types/satisfaction'
 import { queryKeys } from '../utils/queryKeys'
@@ -97,7 +97,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   )
   const getSatisfiedRequestInfo = useCallback(
     (personCmId: number): CamperSatisfaction =>
-      satisfaction?.campers[String(personCmId)] ?? EMPTY_CAMPER_SATISFACTION(personCmId),
+      satisfaction?.campers[String(personCmId)] ?? emptyCamperSatisfaction(personCmId),
     [satisfaction]
   )
 

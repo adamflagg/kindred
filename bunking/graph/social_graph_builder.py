@@ -100,8 +100,12 @@ def _build_request_edge_attrs(
     raw_requestee = getattr(request, "requestee_id", None)
     requester_id = int(raw_requester) if raw_requester is not None else None
     requestee_id = int(raw_requestee) if raw_requestee is not None else None
+    # Finding #13: an empty-string request_type silently coerced to "bunk_with"
+    # via `or` and the backfill warning never fired. Pass the raw value through
+    # so _backfill_source_field can warn on empty/None equally.
+    raw_request_type = getattr(request, "request_type", None)
     sf = _backfill_source_field(
-        getattr(request, "request_type", "bunk_with") or "bunk_with",
+        raw_request_type or "",
         getattr(request, "source_field", None),
     )
     attrs: dict[str, Any] = {
@@ -374,6 +378,21 @@ class SocialGraphBuilder:
                     priority = getattr(request, "priority", 5)
                     weight = 1.0 + (priority / 10.0)
 
+                    # Finding #5: a reciprocal pair carries TWO requests (one per direction).
+                    # Storing only pair_requests[0] as the edge's requester drops the
+                    # second camper's row in _calculate_node_metrics' per-requester filter,
+                    # leaving them with parent_satisfaction_status="no_requests" instead of
+                    # the correct "satisfied". Carry every pair_request's (requester, id)
+                    # tuple so the metrics pass can reconstruct rows for both campers.
+                    reciprocal_rows = [
+                        {
+                            "request_id": getattr(r, "id", "") or "",
+                            "requester_id": int(getattr(r, "requester_id", 0) or 0),
+                            "requestee_id": int(getattr(r, "requestee_id", 0) or 0),
+                        }
+                        for r in pair_requests
+                    ]
+
                     # Check if sibling edge exists
                     if bunk_graph.has_edge(person1, person2):
                         edge_data = bunk_graph[person1][person2]
@@ -385,6 +404,7 @@ class SocialGraphBuilder:
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
                             edge_data["source"] = getattr(request, "source", None)
                             edge_data["weight"] = max(edge_data["weight"], weight)
+                            edge_data["reciprocal_rows"] = reciprocal_rows
                             logger.info(
                                 f"Added reciprocal request as secondary type to sibling edge: {person1} <-> {person2}"
                             )
@@ -400,6 +420,7 @@ class SocialGraphBuilder:
                                 weight=weight,
                                 # pair_key request_type is authoritative
                                 request_type=request_type,
+                                reciprocal_rows=reciprocal_rows,
                             ),
                         )
                         request_count += 1
@@ -857,53 +878,73 @@ class SocialGraphBuilder:
             if self.graph.nodes[n].get("bunk_cm_id") is not None
         }
 
-        # Reconstruct per-camper request rows from each node's adjacency view.
-        # Iterating self.graph[node] preserves the OLD code's double-counting
-        # semantics for undirected nx.Graph (where each edge appears in BOTH
-        # endpoints' adjacency) while matching DiGraph's outbound-only view
-        # (self.graph[node] returns SUCCESSORS for DiGraph). source_field is
-        # set on every request-edge add_edge call (above); request_id likewise
-        # carries the bunk_request row id.
+        # Reconstruct per-camper request rows by scanning every request edge once.
+        # We iterate `self.graph.edges(data=True)` rather than per-node adjacency
+        # so reciprocal pairs (which can be stored as a single directed edge in
+        # DiGraph mode) yield one row per direction — `reciprocal_rows` carries
+        # the (request_id, requester_id, requestee_id) tuple for each direction.
+        # Without this, the per-requester filter dropped the second camper's
+        # request whenever a reciprocal pair was collapsed.
         parent_status_map: dict[Any, str] = {}
         staff_status_map: dict[Any, str] = {}
         aggregate_status_map: dict[Any, str] = {}
-        for node in self.graph.nodes():
-            person_requests: list[dict[str, Any]] = []
-            for neighbor, data in self.graph[node].items():
-                if data.get("edge_type") != "request":
+
+        node_requests: dict[int, list[dict[str, Any]]] = {int(n): [] for n in self.graph.nodes()}
+        predicate_known_types = ("bunk_with", "not_bunk_with", "age_preference")
+
+        for u, v, data in self.graph.edges(data=True):
+            if data.get("edge_type") != "request":
+                continue
+            # age_preference rows need bunkmate_grades the graph doesn't track per-edge;
+            # they're scored by the solver, not surfaced in graph node colors.
+            if data.get("request_type") == "age_preference":
+                continue
+            raw_request_type = data.get("request_type", "bunk_with")
+            resolved_source_field = _backfill_source_field(raw_request_type, data.get("source_field"))
+            # Unknown request_type would crash the predicate (ValueError). The
+            # predicate only handles bunk_with / not_bunk_with / age_preference;
+            # source_field=socialize_with maps onto a bunk_with-shaped row at the
+            # predicate level (its result lands in IMMATERIAL and is discarded by
+            # COUNTED_BUCKETS anyway). Normalize unknowns to bunk_with — the
+            # backfill warning above is the observable signal that this happened.
+            resolved_request_type = raw_request_type if raw_request_type in predicate_known_types else "bunk_with"
+
+            # Reciprocal pairs carry one tuple per direction so both campers'
+            # requests survive (Finding #5). Non-reciprocal edges fall back to the
+            # single (requester_id, request_id) on the edge itself.
+            edge_rows = data.get("reciprocal_rows") or [
+                {
+                    "request_id": data.get("request_id") or "",
+                    "requester_id": data.get("requester_id"),
+                    "requestee_id": data.get("requestee_id"),
+                }
+            ]
+
+            for row in edge_rows:
+                row_requester = row.get("requester_id")
+                if row_requester is None:
                     continue
-                # age_preference rows need bunkmate_grades the graph doesn't track per-edge;
-                # they're scored by the solver, not surfaced in graph node colors.
-                if data.get("request_type") == "age_preference":
+                row_requester = int(row_requester)
+                if row_requester not in node_requests:
                     continue
-                # Per-requester filter: skip edges where this node is the receiver, not
-                # the requester. Defensive: if requester_id is absent (external graph
-                # mutation or legacy edge without the attr), skip as well.
-                edge_requester_id = data.get("requester_id")
-                if edge_requester_id is None or int(node) != int(edge_requester_id):
-                    continue
-                edge_requestee_id = data.get("requestee_id")
-                raw_request_type = data.get("request_type", "bunk_with")
-                resolved_source_field = _backfill_source_field(raw_request_type, data.get("source_field"))
-                # Unknown request_type would crash the predicate (ValueError). The
-                # predicate only handles bunk_with / not_bunk_with / age_preference;
-                # source_field=socialize_with maps onto a bunk_with-shaped row at the
-                # predicate level (its result lands in IMMATERIAL and is discarded by
-                # COUNTED_BUCKETS anyway). Normalize unknowns to bunk_with — the
-                # backfill warning above is the observable signal that this happened.
-                predicate_known_types = ("bunk_with", "not_bunk_with", "age_preference")
-                resolved_request_type = raw_request_type if raw_request_type in predicate_known_types else "bunk_with"
-                person_requests.append(
+                row_requestee = row.get("requestee_id")
+                # If requestee is missing on a reciprocal row, derive from the edge's other endpoint.
+                if row_requestee is None:
+                    row_requestee = int(v) if int(u) == row_requester else int(u)
+                node_requests[row_requester].append(
                     {
-                        "id": data.get("request_id") or "",
-                        "requester_id": int(edge_requester_id),
-                        "requestee_id": int(edge_requestee_id) if edge_requestee_id is not None else int(neighbor),
+                        "id": row.get("request_id") or "",
+                        "requester_id": row_requester,
+                        "requestee_id": int(row_requestee),
                         "request_type": resolved_request_type,
                         "source_field": resolved_source_field,
-                        "requester_grade": self.graph.nodes[node].get("grade"),
+                        "requester_grade": self.graph.nodes[row_requester].get("grade"),
                         "age_preference_target": data.get("age_preference_target"),
                     }
                 )
+
+        for node in self.graph.nodes():
+            person_requests = node_requests.get(int(node), [])
             sat = camper_satisfaction(
                 person_cm_id=int(node),
                 person_requests=person_requests,

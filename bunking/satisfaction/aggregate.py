@@ -13,6 +13,7 @@ event loop.
 from __future__ import annotations
 
 import concurrent.futures
+import re
 from collections import defaultdict
 from typing import Any, Literal, NotRequired, TypedDict
 
@@ -34,6 +35,14 @@ from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify
 from bunking.satisfaction.predicate import is_request_satisfied
 
 logger = get_logger(__name__)
+
+_PB_RECORD_ID_RE = re.compile(r"^[a-zA-Z0-9]{15}$")
+_PB_FETCH_TIMEOUT_S = 30.0
+
+
+def _coerce_str(v: Any) -> str:
+    """Coerce a PB field value to a string, mapping None to '' (not 'None')."""
+    return "" if v is None else str(v)
 
 
 def bucket_status(count: BucketCount) -> Literal["no_requests", "satisfied", "unsatisfied"]:
@@ -61,23 +70,29 @@ class BunkRequestRow(TypedDict):
 
 
 def _coerce_row(r: Any) -> BunkRequestRow:
-    """Coerce a PocketBase record or plain dict into a BunkRequestRow."""
+    """Coerce a PocketBase record or plain dict into a BunkRequestRow.
+
+    Uses _coerce_str for string-typed fields so that explicit None values
+    (which PB can return for legacy rows) become "" instead of the literal
+    string "None" — the latter would defeat downstream missing-field
+    fallbacks (bucket.classify_request, source-field backfill).
+    """
     if isinstance(r, dict):
         return BunkRequestRow(
-            id=str(r.get("id", "")),
+            id=_coerce_str(r.get("id")),
             requester_id=int(r["requester_id"]),
             requestee_id=r.get("requestee_id"),
-            request_type=str(r.get("request_type", "")),
-            source_field=str(r.get("source_field", "")),
+            request_type=_coerce_str(r.get("request_type")),
+            source_field=_coerce_str(r.get("source_field")),
             age_preference_target=r.get("age_preference_target"),
             requester_grade=r.get("requester_grade"),
         )
     return BunkRequestRow(
-        id=str(getattr(r, "id", "")),
+        id=_coerce_str(getattr(r, "id", None)),
         requester_id=int(r.requester_id),
         requestee_id=getattr(r, "requestee_id", None),
-        request_type=str(getattr(r, "request_type", "")),
-        source_field=str(getattr(r, "source_field", "")),
+        request_type=_coerce_str(getattr(r, "request_type", None)),
+        source_field=_coerce_str(getattr(r, "source_field", None)),
         age_preference_target=getattr(r, "age_preference_target", None),
         requester_grade=getattr(r, "requester_grade", None),
     )
@@ -108,8 +123,18 @@ def camper_satisfaction(
     immaterial: list[bool] = []
 
     for req in person_requests:
-        bucket = classify_request(str(req["source_field"]))
-        satisfied = is_request_satisfied(req, person_to_bunk, bunkmate_grades=bunkmate_grades)
+        bucket = classify_request(_coerce_str(req.get("source_field")))
+        try:
+            satisfied = is_request_satisfied(req, person_to_bunk, bunkmate_grades=bunkmate_grades)
+        except ValueError as exc:
+            # One malformed row should not 500 the whole /api/satisfaction call.
+            # Solver's score_evaluator wraps with the same try/except — match that.
+            logger.warning(
+                "treating request as unsatisfied: %s (request_id=%s)",
+                exc,
+                req.get("id"),
+            )
+            satisfied = False
         per_request.append(PerRequestStatus(request_id=str(req.get("id", "")), bucket=bucket, satisfied=satisfied))
         if bucket in COUNTED_BUCKETS:
             counted[bucket].append(satisfied)
@@ -171,14 +196,21 @@ def session_satisfaction(
     if not session_cm_ids:
         raise ValueError("session_cm_ids must contain at least one id")
 
+    # Defense-in-depth: the router validates scenario_id with the same pattern,
+    # but session_satisfaction is public and direct callers (tests, scripts,
+    # future routers) can bypass it. Validating here prevents PB filter injection.
+    if scenario_id is not None and not _PB_RECORD_ID_RE.fullmatch(scenario_id):
+        raise ValueError(f"invalid scenario_id {scenario_id!r}; must match {_PB_RECORD_ID_RE.pattern}")
+
+    # Coerce session ids to int defensively in case a caller passes a stringly-typed list.
+    session_cm_ids = [int(sid) for sid in session_cm_ids]
+
     # Filter strings for 1-or-N session ids.
     # session_id_filter covers bunk_requests (direct cm_id field).
     session_id_filter = " || ".join(f"session_id = {sid}" for sid in session_cm_ids)
     # session_relation_filter covers bunk_assignments (relation field).
     session_relation_filter = " || ".join(f"session.cm_id = {sid}" for sid in session_cm_ids)
 
-    # scenario_id is router-validated against the PB record-id pattern (^[a-zA-Z0-9]{15}$).
-    # Do not call this function directly with an unvalidated/untrusted scenario_id value.
     if scenario_id:
         assignments_collection = BUNK_ASSIGNMENTS_DRAFT
         assignments_filter = f"scenario = '{scenario_id}' && year = {year} && ({session_relation_filter})"
@@ -187,20 +219,34 @@ def session_satisfaction(
         assignments_filter = f"year = {year} && ({session_relation_filter})"
 
     requests_filter = (
-        f"({session_id_filter}) && year = {year} && status = \"resolved\" && (merged_into = '' || merged_into = null)"
+        f"({session_id_filter}) && year = {year} && status = 'resolved' && (merged_into = '' || merged_into = null)"
     )
 
     # Task 36: fetch assignments + requests in parallel — they are independent queries.
     # persons must come AFTER assignments because we scope it to person_to_bunk.keys().
+    def _fetch_assignments() -> list[Any]:
+        rows: list[Any] = pb_client.collection(assignments_collection).get_full_list(
+            query_params={"filter": assignments_filter}
+        )
+        return rows
+
+    def _fetch_requests() -> list[Any]:
+        rows: list[Any] = pb_client.collection(BUNK_REQUESTS).get_full_list(query_params={"filter": requests_filter})
+        return rows
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        assignments_future = executor.submit(
-            lambda: pb_client.collection(assignments_collection).get_full_list(filter=assignments_filter)
-        )
-        requests_future = executor.submit(
-            lambda: pb_client.collection(BUNK_REQUESTS).get_full_list(filter=requests_filter)
-        )
-        assignments = assignments_future.result()
-        raw_requests = requests_future.result()
+        assignments_future = executor.submit(_fetch_assignments)
+        requests_future = executor.submit(_fetch_requests)
+        try:
+            assignments = assignments_future.result(timeout=_PB_FETCH_TIMEOUT_S)
+        except Exception:
+            logger.exception("failed to fetch %s", assignments_collection)
+            raise
+        try:
+            raw_requests = requests_future.result(timeout=_PB_FETCH_TIMEOUT_S)
+        except Exception:
+            logger.exception("failed to fetch %s", BUNK_REQUESTS)
+            raise
 
     # Build person_to_bunk from assignments so we can scope the persons fetch.
     person_to_bunk: dict[int, int] = {}
@@ -223,7 +269,9 @@ def session_satisfaction(
         for chunk_start in range(0, len(needed_cm_ids), chunk_size):
             chunk = needed_cm_ids[chunk_start : chunk_start + chunk_size]
             cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
-            persons = pb_client.collection(PERSONS).get_full_list(filter=f"year = {year} && ({cm_id_filter})")
+            persons = pb_client.collection(PERSONS).get_full_list(
+                query_params={"filter": f"year = {year} && ({cm_id_filter})"}
+            )
             for p in persons:
                 cm_id = getattr(p, "cm_id", None)
                 grade = getattr(p, "grade", None)
@@ -255,10 +303,13 @@ def session_satisfaction(
             row["requester_grade"] = person_grades.get(rid)
         requests_by_requester[rid].append(row)
 
-    # Pre-populate every assigned camper so those with zero requests still appear.
+    # Pre-populate assigned campers without requests so they still appear in the
+    # response with zero counts. Skip campers who have requests — those will be
+    # computed below; pre-populating them is wasted work.
     campers: dict[int, CamperSatisfaction] = {
         pid: camper_satisfaction(person_cm_id=pid, person_requests=[], person_to_bunk=person_to_bunk)
         for pid in person_to_bunk
+        if pid not in requests_by_requester
     }
     for person_cm_id, person_requests in requests_by_requester.items():
         campers[person_cm_id] = camper_satisfaction(

@@ -708,6 +708,71 @@ def test_build_bunk_graph_emits_satisfaction_fields() -> None:
     assert bunk_graph.nodes[person_a_id]["staff_satisfaction_status"] == "no_requests"
 
 
+def test_build_bunk_graph_reciprocal_pair_both_campers_satisfied() -> None:
+    """Finding #5: reciprocal A↔B bunk_with pairs collapse to ONE edge in
+    build_bunk_graph, storing only pair_requests[0] as the requester. The
+    per-requester filter in _calculate_node_metrics then drops the *other*
+    camper's request entirely — they get parent_satisfaction_status="no_requests"
+    instead of "satisfied".
+
+    Both campers in the same bunk with reciprocal bunk_with requests must each
+    show as parent-satisfied.
+    """
+    pb = MagicMock()
+
+    person_a_id = 2001
+    person_b_id = 2002
+    bunk_cm_id = 777
+    session_cm_id = 999
+    year = 2026
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+    person_a = _make_person(person_a_id, "Olivia", "Chen", bunk_cm_id)
+    person_b = _make_person(person_b_id, "Riley", "Sam", bunk_cm_id)
+
+    # Two reciprocal requests: a→b AND b→a.
+    request_ab = _make_request_record(person_a_id, person_b_id, source="family")
+    request_ba = _make_request_record(person_b_id, person_a_id, source="family")
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = [request_ab, request_ba]
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    # Both campers must register as satisfied — neither's request can be lost.
+    assert bunk_graph.nodes[person_a_id]["parent_satisfaction_status"] == "satisfied", (
+        f"person_a parent_satisfaction_status="
+        f"{bunk_graph.nodes[person_a_id].get('parent_satisfaction_status')!r}, expected 'satisfied'"
+    )
+    assert bunk_graph.nodes[person_b_id]["parent_satisfaction_status"] == "satisfied", (
+        f"person_b parent_satisfaction_status="
+        f"{bunk_graph.nodes[person_b_id].get('parent_satisfaction_status')!r}, expected 'satisfied' "
+        "(reciprocal-pair collapse drops the second camper's request — see Finding #5)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Audit 2026-04-29 finding: build_bunk_graph fetched all request types.
 # A not_bunk_with row between two campers placed in the same bunk produced an

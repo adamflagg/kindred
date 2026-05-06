@@ -115,9 +115,11 @@ class TestSessionSatisfactionScenarioPath:
         requests: list[dict[str, Any]] = []
         pb = _build_pb_mock(persons, assignments, requests)
 
-        resp = session_satisfaction(session_cm_ids=[999], year=2026, scenario_id="scenario-abc", pb_client=pb)
+        # Use a structurally valid 15-char alphanumeric scenario_id (PB record-id shape).
+        valid_scenario = "scenarioabc1234"
+        resp = session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=valid_scenario, pb_client=pb)
 
-        assert resp.scenario_id == "scenario-abc"
+        assert resp.scenario_id == valid_scenario
         # Verify routing: draft collection was queried, prod was not.
         called_collections = [call.args[0] for call in pb.collection.call_args_list]
         assert BUNK_ASSIGNMENTS_DRAFT in called_collections
@@ -136,7 +138,10 @@ class TestMultiSession:
             col = MagicMock()
 
             def _get_full_list(**kwargs: Any) -> list[Any]:
-                tracked_filters.append(kwargs.get("filter", ""))
+                # Tolerate both `query_params={"filter": ...}` (canonical PB SDK) and
+                # bare `filter=...` (legacy). Finding #30 — capture from either shape.
+                qp = kwargs.get("query_params") or {}
+                tracked_filters.append(qp.get("filter") or kwargs.get("filter", ""))
                 if "person" in name.lower():
                     return [_person(1)]
                 if "draft" in name.lower():
@@ -400,8 +405,10 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
         col = MagicMock()
         if name == PERSONS:
 
-            def capture(filter: str = "", **_: Any) -> list[Any]:
-                captured_filters.append(filter)
+            def capture(*_args: Any, **kwargs: Any) -> list[Any]:
+                # Accept both `query_params={"filter": ...}` and legacy `filter=...`.
+                qp = kwargs.get("query_params") or {}
+                captured_filters.append(qp.get("filter") or kwargs.get("filter", ""))
                 return []
 
             col.get_full_list.side_effect = capture
@@ -429,3 +436,85 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
     assert "cm_id = 2" in persons_filter
     # The filter must NOT be the old broad year-only filter.
     assert persons_filter != "year = 2026"
+
+
+# ---------------------------------------------------------------------------
+# Finding #1 — get_full_list must use the canonical `query_params={"filter": ...}`
+# kwarg shape, not the wrong `filter=...` kwarg. The real pocketbase SDK
+# (vaphes/pocketbase) exposes `def get_full_list(self, batch=100, query_params=None)`
+# with no `filter` parameter — calling with `filter=...` raises TypeError in
+# production. Test mocks accept any kwargs by default which masked this.
+# ---------------------------------------------------------------------------
+
+
+def test_get_full_list_called_with_query_params_not_filter_kwarg() -> None:
+    """All collection.get_full_list calls must use query_params={'filter': ...}."""
+    from types import SimpleNamespace
+
+    seen_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def make_collection(name: str) -> Any:
+        col = MagicMock()
+
+        def capture(*_args: Any, **kwargs: Any) -> list[Any]:
+            seen_calls.append((name, dict(kwargs)))
+            if name == BUNK_ASSIGNMENTS:
+                return [SimpleNamespace(person_cm_id=1, bunk_cm_id=10)]
+            return []
+
+        col.get_full_list.side_effect = capture
+        return col
+
+    pb = MagicMock()
+    pb.collection.side_effect = make_collection
+
+    session_satisfaction(session_cm_ids=[5], year=2026, scenario_id=None, pb_client=pb)
+
+    assert seen_calls, "no get_full_list calls recorded"
+    for collection_name, kwargs in seen_calls:
+        assert "filter" not in kwargs, (
+            f"{collection_name}.get_full_list called with bare filter= kwarg — "
+            "real pocketbase SDK rejects this. Use query_params={'filter': ...}."
+        )
+        assert "query_params" in kwargs, f"{collection_name}.get_full_list missing query_params kwarg."
+        assert "filter" in kwargs["query_params"], f"{collection_name}.get_full_list query_params missing 'filter' key."
+
+
+# ---------------------------------------------------------------------------
+# Finding #9 — session_satisfaction is public; direct callers bypass router
+# scenario_id pattern validation. Defense in depth: validate inside the
+# function too.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_scenario_id",
+    [
+        "'; DROP TABLE--",
+        "abc",  # too short
+        "abc!@#$%^&*()12",  # invalid chars
+        "x" * 16,  # too long
+        " " * 15,  # whitespace
+    ],
+)
+def test_session_satisfaction_rejects_malformed_scenario_id(bad_scenario_id: str) -> None:
+    pb = _build_pb_mock([], [], [])
+    with pytest.raises(ValueError, match="scenario_id"):
+        session_satisfaction(
+            session_cm_ids=[999],
+            year=2026,
+            scenario_id=bad_scenario_id,
+            pb_client=pb,
+        )
+
+
+def test_session_satisfaction_accepts_valid_scenario_id() -> None:
+    pb = _build_pb_mock([], [], [])
+    valid = "abc123def456ghi"  # exactly 15 alphanumerics
+    # Must not raise on a structurally valid id
+    session_satisfaction(
+        session_cm_ids=[999],
+        year=2026,
+        scenario_id=valid,
+        pb_client=pb,
+    )

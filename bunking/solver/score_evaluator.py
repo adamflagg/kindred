@@ -145,7 +145,10 @@ def evaluate_scenario_score(
             bunkmate_grades_map = {requester_id: grades_for_requester}
 
         request_for_predicate = dict(request)
-        if "requester_grade" not in request_for_predicate:
+        # Backfill when the field is missing OR present-and-None. PB rows can
+        # carry requester_grade=None explicitly (legacy rows pre-backfill); the
+        # bare `not in` check missed those, treating age_preference as unsatisfied.
+        if request_for_predicate.get("requester_grade") is None:
             person_for_grade = person_by_cm_id.get(requester_id)
             if person_for_grade is not None:
                 request_for_predicate["requester_grade"] = person_for_grade.get("grade")

@@ -86,9 +86,16 @@ export function BunkingStatusPanel({
     [allBunkRequests, camper.session_cm_id]
   )
 
+  // agePreferenceRequests is fetched year-only (allBunkRequests query is not
+  // session-scoped), so apply the same defensive gate as personRequests above.
+  // Without this, sibling-session age-pref rows leak into summaryRequests and
+  // the row partition.
   const resolvedAgePrefs = useMemo(
-    () => (agePreferenceRequests ?? []).filter((r) => r.status === 'resolved'),
-    [agePreferenceRequests]
+    () =>
+      (agePreferenceRequests ?? []).filter(
+        (r) => r.session_id === camper.session_cm_id && !r.merged_into && r.status === 'resolved'
+      ),
+    [agePreferenceRequests, camper.session_cm_id]
   )
 
   // Used for both the summary slices and the row partition so material parent

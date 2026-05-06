@@ -32,7 +32,7 @@ export interface CamperSatisfaction {
   counted_totals: { material_parent: BucketCount; staff: BucketCount }
   immaterial: BucketCount
   flags: SatisfactionFlags
-  /** Present and true only on EMPTY_CAMPER_SATISFACTION fallback values. */
+  /** Present and true only on emptyCamperSatisfaction fallback values. */
   _is_empty?: true
 }
 
@@ -45,7 +45,7 @@ export interface SatisfactionResponse {
 }
 
 /** Defensive fallback when a person isn't in the response. */
-export const EMPTY_CAMPER_SATISFACTION = (personCmId: number): CamperSatisfaction => ({
+export const emptyCamperSatisfaction = (personCmId: number): CamperSatisfaction => ({
   person_cm_id: personCmId,
   per_request: [],
   counted_totals: {

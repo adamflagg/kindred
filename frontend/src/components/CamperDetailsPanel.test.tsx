@@ -75,8 +75,8 @@ vi.mock('../contexts/AuthContext', () => ({
 // Configurable mock for getSatisfiedRequestInfo — overridden in alert tests.
 // Default returns empty CamperSatisfaction so existing tests are unaffected.
 let mockGetSatisfiedRequestInfo = vi.fn(
-  (_personCmId: number): CamperSatisfaction => ({
-    person_cm_id: _personCmId,
+  (personCmId: number): CamperSatisfaction => ({
+    person_cm_id: personCmId,
     per_request: [] as PerRequestStatus[],
     counted_totals: {
       material_parent: { satisfied: 0, total: 0 },
@@ -221,8 +221,8 @@ describe('CamperDetailsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset getSatisfiedRequestInfo to the default no-op after each test
-    mockGetSatisfiedRequestInfo = vi.fn((_personCmId: number) => ({
-      person_cm_id: _personCmId,
+    mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+      person_cm_id: personCmId,
       per_request: [],
       counted_totals: {
         material_parent: { satisfied: 0, total: 0 },
@@ -482,8 +482,8 @@ describe('CamperDetailsPanel', () => {
     it('surfaces parent_min_one_violation alert when getSatisfiedRequestInfo returns the flag', async () => {
       // Satisfaction is now server-computed. The alert fires when the mock
       // (standing in for /api/satisfaction) returns parent_min_one_violation: true.
-      mockGetSatisfiedRequestInfo.mockImplementation((_personCmId: number) => ({
-        person_cm_id: _personCmId,
+      mockGetSatisfiedRequestInfo.mockImplementation((personCmId: number) => ({
+        person_cm_id: personCmId,
         per_request: [],
         counted_totals: {
           material_parent: { total: 1, satisfied: 0 },

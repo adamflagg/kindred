@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BunkRequestProvider } from './BunkRequestProvider'
 
@@ -73,16 +73,14 @@ describe('BunkRequestProvider query gating', () => {
 
     renderProvider(5)
 
-    // Wait for queries to fire (they're async)
-    await new Promise((r) => setTimeout(r, 50))
-
-    // satisfaction query via fetchWithAuth
-    const satisfactionCalled = fetchSpy.mock.calls.some((args) =>
-      String(args[0]).includes('/api/satisfaction')
-    )
-    expect(satisfactionCalled).toBe(true)
-
-    // bunk_requests query via pb.collection().getFullList
-    expect(getFullListSpy).toHaveBeenCalled()
+    // Wait deterministically for queries to fire (they're async). Replaces a
+    // brittle 50ms setTimeout that could flake on a loaded CI runner.
+    await waitFor(() => {
+      const satisfactionCalled = fetchSpy.mock.calls.some((args) =>
+        String(args[0]).includes('/api/satisfaction')
+      )
+      expect(satisfactionCalled).toBe(true)
+      expect(getFullListSpy).toHaveBeenCalled()
+    })
   })
 })

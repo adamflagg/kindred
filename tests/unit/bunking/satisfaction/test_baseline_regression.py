@@ -91,13 +91,17 @@ def test_solver_score_baseline(
         bunks=synthetic_bunks,
         config=_MinimalConfig(),
     )
+    # Snapshot the full ScoreBreakdown — partial snapshots let parts of the
+    # solver contract regress silently (#16).
     actual = {
         "total_score": breakdown.total_score,
         "request_satisfaction_score": breakdown.request_satisfaction_score,
         "soft_penalty_score": breakdown.soft_penalty_score,
         "total_requests": breakdown.total_requests,
         "satisfied_requests": breakdown.satisfied_requests,
+        "satisfaction_rate": breakdown.satisfaction_rate,
         "field_scores": breakdown.field_scores,
+        "penalties": breakdown.penalties,
     }
     _save_or_compare("solver_score", actual)
 

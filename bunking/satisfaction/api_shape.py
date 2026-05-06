@@ -31,6 +31,12 @@ class BucketCount(BaseModel):
     satisfied: int = Field(..., ge=0)
     total: int = Field(..., ge=0)
 
+    @model_validator(mode="after")
+    def _check_satisfied_le_total(self) -> BucketCount:
+        if self.satisfied > self.total:
+            raise ValueError(f"satisfied ({self.satisfied}) must not exceed total ({self.total})")
+        return self
+
 
 class SatisfactionFlags(BaseModel):
     """Derived boolean flags driving frontend alerts and graph node colors."""

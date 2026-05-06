@@ -250,12 +250,17 @@ export default function BunkSocialGraphModal({
 
   // Cache the last known good index so a transient miss (allBunks refetch
   // racing a fast navigation) doesn't silently reset the cursor to bunk 0.
+  // The ref is updated in a useEffect (not inside useMemo) to keep the memo
+  // pure — Strict Mode and React Compiler both surface mid-memo mutations.
   const lastIndexRef = useRef(0)
-  const currentBunkIndex = useMemo(() => {
-    const idx = sessionBunks.findIndex((b) => b.cm_id === bunkCmId)
-    if (idx !== -1) lastIndexRef.current = idx
-    return idx === -1 ? lastIndexRef.current : idx
-  }, [sessionBunks, bunkCmId])
+  const computedIdx = useMemo(
+    () => sessionBunks.findIndex((b) => b.cm_id === bunkCmId),
+    [sessionBunks, bunkCmId]
+  )
+  useEffect(() => {
+    if (computedIdx !== -1) lastIndexRef.current = computedIdx
+  }, [computedIdx])
+  const currentBunkIndex = computedIdx === -1 ? lastIndexRef.current : computedIdx
 
   // Initialize Cytoscape
   useEffect(() => {

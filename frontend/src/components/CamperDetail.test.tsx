@@ -144,10 +144,20 @@ function renderDetail() {
   )
 }
 
+// Default response — campers map empty so getSatisfiedRequestInfo returns
+// the EMPTY fallback. Reset in beforeEach so suite-level mutations don't leak.
+const _defaultMockFetchWithAuth = () =>
+  Promise.resolve(
+    new Response(JSON.stringify({ campers: {}, session_cm_id: 0, year: 2026, scenario_id: null }))
+  )
+
 beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }
   mockSessionYear = 2026
   mockAttendeeYear = 2026
+  // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
+  // a later test doesn't inherit a prior suite's stub state.
+  mockFetchWithAuth = _defaultMockFetchWithAuth
 })
 
 describe('CamperDetail permission gates', () => {

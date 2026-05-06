@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from bunking.satisfaction.aggregate import camper_satisfaction
+import pytest
+
+from bunking.satisfaction.aggregate import _coerce_row, camper_satisfaction
 from bunking.satisfaction.bucket import RequestBucket
 
 
@@ -137,3 +139,128 @@ class TestMixedBuckets:
         )
         assert result.flags.parent_min_one_violation is True
         assert result.immaterial.satisfied == 1  # immaterial still tracked
+
+
+class TestCoerceRowNoneSourceField:
+    """Finding #2: str(None) → 'None' string defeats missing-source-field fallback.
+
+    PB rows can return source_field=None explicitly (legacy rows). The default-
+    arg shortcut `r.get("source_field", "")` only fires when the key is absent;
+    if it's present-and-None, str(None) yields the literal string 'None' which
+    `bucket.classify_request` then rejects as unknown.
+    """
+
+    def test_none_source_field_dict_coerces_to_empty_string(self) -> None:
+        row = {
+            "id": "r1",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": None,
+        }
+        coerced = _coerce_row(row)
+        assert coerced["source_field"] == ""
+
+    def test_none_source_field_object_coerces_to_empty_string(self) -> None:
+        class Row:
+            id = "r1"
+            requester_id = 1
+            requestee_id = 2
+            request_type = "bunk_with"
+            source_field = None
+
+        coerced = _coerce_row(Row())
+        assert coerced["source_field"] == ""
+
+    def test_none_request_type_coerces_to_empty_string(self) -> None:
+        row = {
+            "id": "r1",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": None,
+            "source_field": "bunk_with",
+        }
+        coerced = _coerce_row(row)
+        assert coerced["request_type"] == ""
+
+
+class TestCamperSatisfactionMissingSourceField:
+    """Finding #10: req["source_field"] subscript raises KeyError for raw dict.
+
+    `camper_satisfaction` accepts `list[BunkRequestRow] | list[dict[str, Any]]`.
+    Direct dict callers bypassing `_coerce_row` should not see KeyError on a
+    missing source_field — they should see the same missing-field signal that
+    coerced rows surface (i.e. classify_request(""))
+    """
+
+    def test_dict_without_source_field_does_not_raise_keyerror(self) -> None:
+        row = {
+            "id": "r1",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            # source_field intentionally absent
+        }
+        with pytest.raises(ValueError, match="unknown source_field"):
+            # classify_request raises ValueError for unknown source_field — that's the
+            # contract. KeyError would be a regression.
+            camper_satisfaction(
+                person_cm_id=1,
+                person_requests=[row],
+                person_to_bunk={1: 100, 2: 100},
+            )
+
+
+class TestCamperSatisfactionPredicateExceptionHandling:
+    """Finding #4: is_request_satisfied() raises on bad rows; one bad row should
+    not 500 the whole endpoint. Solver path (score_evaluator.py) wraps with
+    try/except already; the new aggregator path should match.
+    """
+
+    def test_unknown_request_type_treated_as_unsatisfied_not_raised(self) -> None:
+        # request_type='foo' is unknown; predicate would normally raise ValueError.
+        # Aggregator must catch and treat as unsatisfied so one malformed row
+        # doesn't crash the entire response.
+        bad_row = {
+            "id": "r_bad",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": "foo_bar_unknown",
+            "source_field": "bunk_with",
+        }
+        good_row = _req("r_good", "bunk_with", 1, 3, "bunk_with")  # 1→3 satisfied
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[bad_row, good_row],
+            person_to_bunk={1: 100, 2: 100, 3: 100},
+        )
+        # Both rows in counted_totals: bad treated as unsatisfied, good as satisfied
+        assert result.counted_totals[RequestBucket.MATERIAL_PARENT].total == 2
+        assert result.counted_totals[RequestBucket.MATERIAL_PARENT].satisfied == 1
+        # Per-request tracks both
+        assert len(result.per_request) == 2
+        assert result.per_request[0].satisfied is False
+        assert result.per_request[1].satisfied is True
+
+    def test_age_preference_missing_grade_treated_as_unsatisfied(self) -> None:
+        # age_preference with out-of-range grade would normally ValueError.
+        # Aggregator must catch and treat as unsatisfied.
+        bad_age = {
+            "id": "r_bad_age",
+            "requester_id": 1,
+            "requestee_id": 0,
+            "request_type": "age_preference",
+            "source_field": "socialize_with",
+            "age_preference_target": "older",
+            "requester_grade": 99,  # out of range 0-12
+        }
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[bad_age],
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [10, 11]},
+        )
+        # IMMATERIAL bucket since source_field is socialize_with
+        assert result.immaterial.total == 1
+        assert result.immaterial.satisfied == 0
+        assert result.per_request[0].satisfied is False

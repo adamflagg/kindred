@@ -76,14 +76,17 @@ def is_request_satisfied(
             return False
         if bunkmate_grades is None:
             raise ValueError("bunkmate_grades is required for age_preference requests")
-        requester_grades = bunkmate_grades.get(requester_id, [])
+        # NOTE: holds the requester's bunkmates' grades (not the requester's own grade —
+        # that's `requester_grade` below). Renamed from the previous misleading
+        # `requester_grades`.
+        bunkmates_for_requester = bunkmate_grades.get(requester_id, [])
         requester_grade = request.get("requester_grade")
         if requester_grade is None:
             return False
         grade_int = int(requester_grade)
         if grade_int not in range(0, 13):
             raise ValueError(f"requester_grade {grade_int} out of valid range 0-12")
-        satisfied, _ = is_age_preference_satisfied(grade_int, requester_grades, str(target))
+        satisfied, _ = is_age_preference_satisfied(grade_int, bunkmates_for_requester, str(target))
         return satisfied
 
     raise ValueError(f"unknown request_type {request_type!r}")

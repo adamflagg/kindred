@@ -17,7 +17,7 @@ import { BunkingStatusPanel } from './BunkingStatusPanel'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { CamperSatisfaction } from '../../types/satisfaction'
-import { EMPTY_CAMPER_SATISFACTION } from '../../types/satisfaction'
+import { emptyCamperSatisfaction } from '../../types/satisfaction'
 
 function makeCamper(): Camper {
   return {
@@ -75,7 +75,7 @@ function buildCamperSatisfactionFromRequests(
       if (sat) stSat++
     }
   }
-  const empty = EMPTY_CAMPER_SATISFACTION(12345)
+  const empty = emptyCamperSatisfaction(12345)
   return {
     ...empty,
     counted_totals: {
@@ -352,7 +352,7 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
       source: 'family',
     })
     const camperSatisfaction: CamperSatisfaction = {
-      ...EMPTY_CAMPER_SATISFACTION(12345),
+      ...emptyCamperSatisfaction(12345),
       counted_totals: {
         material_parent: { total: 5, satisfied: 3 },
         staff: { total: 0, satisfied: 0 },
@@ -368,7 +368,7 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
 
   it('shows ratios from counted_totals.staff', () => {
     const camperSatisfaction: CamperSatisfaction = {
-      ...EMPTY_CAMPER_SATISFACTION(12345),
+      ...emptyCamperSatisfaction(12345),
       counted_totals: {
         material_parent: { total: 0, satisfied: 0 },
         staff: { total: 4, satisfied: 1 },
@@ -385,7 +385,7 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
   })
 
   it('hides summary entirely when both counted_totals are zero', () => {
-    const camperSatisfaction: CamperSatisfaction = EMPTY_CAMPER_SATISFACTION(12345)
+    const camperSatisfaction: CamperSatisfaction = emptyCamperSatisfaction(12345)
     renderPanelWith({
       allBunkRequests: [],
       satisfactionData: {},

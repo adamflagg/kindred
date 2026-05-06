@@ -36,6 +36,17 @@ class TestBucketCount:
         with pytest.raises(ValidationError):
             BucketCount(satisfied=0, total=-1)
 
+    def test_satisfied_exceeding_total_rejected(self) -> None:
+        """Finding #11: satisfied must not exceed total. Defends against caller bugs
+        producing nonsensical ratios that render as e.g. '5/2 met' in SliceLine.
+        """
+        with pytest.raises(ValidationError, match="satisfied"):
+            BucketCount(satisfied=5, total=2)
+
+    def test_satisfied_equal_to_total_allowed(self) -> None:
+        c = BucketCount(satisfied=3, total=3)
+        assert c.satisfied == c.total == 3
+
 
 class TestCamperSatisfaction:
     def test_minimal_construction(self) -> None:

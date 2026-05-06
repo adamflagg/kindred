@@ -365,7 +365,11 @@ describe('CamperDetailsPanel — alert section integration', () => {
   // which only sees LIVE/prod assignments. The panel calls getSatisfiedRequestInfo
   // with the camper's personCmId; the assignedBunkCmId prop gates whether
   // buildCamperAlerts fires request-related alerts, not getSatisfiedRequestInfo.
-  it('calls getSatisfiedRequestInfo and surfaces alert when parent_min_one_violation is true', async () => {
+  // Finding #20: prior title promised "surfaces alert ..." but the body only
+  // checked the spy was called — the camper-load mock is incomplete here, so
+  // this stays a hook-invocation contract test. End-to-end alert rendering is
+  // covered in CamperDetailsPanel.test.tsx (which mocks useCamper).
+  it('calls getSatisfiedRequestInfo when parent_min_one_violation flag is true', async () => {
     const hooks = await import('../hooks')
 
     const spy = vi.fn((_personCmId: number) => ({

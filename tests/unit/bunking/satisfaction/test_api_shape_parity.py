@@ -73,12 +73,18 @@ def _key_skeleton(o: object) -> object:
 def test_satisfaction_response_shape_matches_fixture() -> None:
     """Key skeleton of the serialised response must match the captured fixture."""
     actual = json.loads(_sample_response().model_dump_json())
+    recapture = os.environ.get("RECAPTURE") == "1"
+
+    # Finding #17: previously, RECAPTURE=1 only wrote the fixture when it didn't
+    # already exist — but the failure message ("re-run with RECAPTURE=1 to update")
+    # implied otherwise. Now RECAPTURE=1 always writes, so the user-facing
+    # contract matches the implementation.
+    if recapture:
+        SHAPE_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+        SHAPE_FIXTURE.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
+        pytest.skip(f"captured parity fixture (RECAPTURE=1) at {SHAPE_FIXTURE}")
 
     if not SHAPE_FIXTURE.exists():
-        if os.environ.get("RECAPTURE"):
-            SHAPE_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-            SHAPE_FIXTURE.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n")
-            pytest.skip("captured initial parity fixture")
         pytest.fail(f"missing fixture {SHAPE_FIXTURE}; run with RECAPTURE=1 to create it")
 
     expected = json.loads(SHAPE_FIXTURE.read_text())
