@@ -7,6 +7,7 @@
  */
 
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
@@ -336,5 +337,73 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
     // "requests met" caption (graceful degradation).
     expect(screen.getByText('18/20')).toBeInTheDocument()
     expect(screen.getByText(/^requests met$/i)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #1105: Unmet parent requests drill-down section
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
+  it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
+    render(<PostValidationResultsModal isOpen={true} onClose={() => {}} results={makeResults()} />)
+
+    expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
+  })
+
+  it('shows no drill-down section when unsatisfied_material_parent_persons is empty', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({ unsatisfied_material_parent_persons: [] })}
+      />
+    )
+
+    expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
+  })
+
+  it('shows collapsible drill-down section with count when unsatisfied persons present', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_persons: [
+            { cm_id: 1000001, name: 'Emma Johnson' },
+            { cm_id: 1000002, name: 'Liam Garcia' },
+          ],
+        })}
+      />
+    )
+
+    // Pin both the literal label and the rendered count.
+    expect(screen.getByText('Unmet parent requests (2)')).toBeInTheDocument()
+  })
+
+  it('shows camper names after expanding the drill-down section', async () => {
+    const user = userEvent.setup()
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_persons: [
+            { cm_id: 1000001, name: 'Emma Johnson' },
+            { cm_id: 1000002, name: 'Liam Garcia' },
+          ],
+        })}
+      />
+    )
+
+    // Names should not be visible before expanding
+    expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
+    expect(screen.queryByText('Liam Garcia')).not.toBeInTheDocument()
+
+    // Click to expand
+    await user.click(screen.getByText(/unmet parent requests/i))
+
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
   })
 })

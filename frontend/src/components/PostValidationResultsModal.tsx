@@ -36,6 +36,7 @@ interface ValidationStatistics {
   satisfied_material_parent_requests?: number
   material_parent_request_satisfaction_rate?: number
   campers_with_unsatisfied_material_parent_requests?: number
+  unsatisfied_material_parent_persons?: Array<{ cm_id: number; name: string }>
   best_effort_parent_requests?: number
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
@@ -509,9 +510,11 @@ export default function PostValidationResultsModal({
   scenarioId,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const [showUnmetParents, setShowUnmetParents] = useState(false)
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
+  const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -752,6 +755,37 @@ export default function PostValidationResultsModal({
           <p className="text-muted-foreground text-sm">
             No issues detected. All bunking assignments look great!
           </p>
+        </div>
+      )}
+
+      {/* Unmet parent requests drill-down (#1105) */}
+      {unmetParents.length > 0 && (
+        <div className="border-border/50 border-t">
+          <button
+            type="button"
+            onClick={() => setShowUnmetParents(!showUnmetParents)}
+            className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Unmet parent requests ({unmetParents.length})
+            </span>
+            {showUnmetParents ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+
+          {showUnmetParents && (
+            <ul className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4">
+              {unmetParents.map((person) => (
+                <li key={person.cm_id} className="text-foreground text-sm">
+                  {person.name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

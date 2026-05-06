@@ -18,6 +18,7 @@ import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 import { formatGradeOrdinal } from './gradeUtils'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { SatisfactionResult } from '../hooks/camper/types'
+import type { RequestBucket } from '../types/satisfaction'
 
 export interface BunkmateInfo {
   cmId: number
@@ -104,4 +105,33 @@ export function computeRequestSatisfaction({
   }
 
   return { status: 'unknown' }
+}
+
+/**
+ * Resolve the P/S age-preference badge state for a request row (#1172).
+ *
+ * The centralized aggregator (`CamperSatisfaction.per_request[i].bucket`) is
+ * the source of truth when present — that's what #1158/#1159 consolidated.
+ * When the aggregator is unavailable (`/api/satisfaction` 500, empty response,
+ * loading state), bucket is `undefined` and the badge silently disappears
+ * unless we fall back to the row's own `source_field`/`source` — which is
+ * what drove the badge pre-#1158 and cannot fail.
+ *
+ * Centralized bucket wins; row-level fields are ONLY consulted when the
+ * centralized map has no entry for this row.
+ */
+export function resolveBadgeBucket(
+  bucket: RequestBucket | undefined,
+  req: { source_field?: string | null; source?: string | null }
+): { isMaterialAgePref: boolean; isStaffBadge: boolean } {
+  if (bucket === 'material_parent') return { isMaterialAgePref: true, isStaffBadge: false }
+  if (bucket === 'staff') return { isMaterialAgePref: false, isStaffBadge: true }
+  if (bucket === undefined) {
+    return {
+      isMaterialAgePref: req.source_field === 'bunk_with',
+      isStaffBadge: req.source === 'staff',
+    }
+  }
+  // bucket === 'immaterial_parent' → no badges (best-effort socialize_with).
+  return { isMaterialAgePref: false, isStaffBadge: false }
 }

@@ -379,3 +379,61 @@ describe('CamperCohortsSection', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1044: Multi-session camper annotation
+// ---------------------------------------------------------------------------
+describe('CamperCohortsSection multi-session annotation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseCohortRequestRelations.mockReturnValue({ relations: new Map(), isLoading: false })
+    mockUseCamperCohorts.mockReturnValue({
+      cohorts: cohorts({ school: entry('Riverside Elementary', 3) }),
+      isLoading: false,
+    })
+  })
+
+  it('shows no annotation when hasMultipleEnrollments is false', async () => {
+    render(
+      <CamperCohortsSection
+        personCmId={1000001}
+        sessionCmId={201}
+        year={2025}
+        selfDisplayName="Emma"
+        hasMultipleEnrollments={false}
+      />
+    )
+
+    await screen.findByText(/Also from Riverside Elementary/)
+    expect(screen.queryByText('Cohorts from this session only')).not.toBeInTheDocument()
+  })
+
+  it('shows primary-session annotation when hasMultipleEnrollments is true', async () => {
+    render(
+      <CamperCohortsSection
+        personCmId={1000001}
+        sessionCmId={201}
+        year={2025}
+        selfDisplayName="Emma"
+        hasMultipleEnrollments={true}
+      />
+    )
+
+    await screen.findByText(/Also from Riverside Elementary/)
+    expect(screen.getByText('Cohorts from this session only')).toBeInTheDocument()
+  })
+
+  it('shows no annotation when hasMultipleEnrollments is omitted', async () => {
+    render(
+      <CamperCohortsSection
+        personCmId={1000001}
+        sessionCmId={201}
+        year={2025}
+        selfDisplayName="Emma"
+      />
+    )
+
+    await screen.findByText(/Also from Riverside Elementary/)
+    expect(screen.queryByText('Cohorts from this session only')).not.toBeInTheDocument()
+  })
+})

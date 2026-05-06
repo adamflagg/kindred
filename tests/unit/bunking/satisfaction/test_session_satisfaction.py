@@ -25,10 +25,31 @@ def _person(cm_id: int, grade: int = 10, gender: str = "M") -> Any:
 
 
 def _assignment(person_cm_id: int, bunk_cm_id: int) -> Any:
-    a = MagicMock()
-    a.person_cm_id = person_cm_id
-    a.bunk_cm_id = bunk_cm_id
-    return a
+    """Build a bunk_assignments record shaped like the real PocketBase SDK returns.
+
+    person/bunk are relation fields (PB record ids); cm_ids resolve via the expand
+    payload (#1171). NEVER add flat person_cm_id/bunk_cm_id attributes — the real
+    schema doesn't have them and tests must mirror that.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"a{person_cm_id:014d}",
+        cm_id=person_cm_id * 1000 + bunk_cm_id,
+        person=f"p{person_cm_id:014d}",
+        bunk=f"b{bunk_cm_id:014d}",
+        session=f"s{1:014d}",
+        expand={
+            "person": SimpleNamespace(
+                id=f"p{person_cm_id:014d}",
+                cm_id=person_cm_id,
+            ),
+            "bunk": SimpleNamespace(
+                id=f"b{bunk_cm_id:014d}",
+                cm_id=bunk_cm_id,
+            ),
+        },
+    )
 
 
 def _build_pb_mock(
@@ -460,8 +481,6 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
     persons in the year.  After Task 34 the filter must contain the specific
     cm_ids that appear in the assignment list, not a year-wide scan.
     """
-    from types import SimpleNamespace
-
     captured_filters: list[str] = []
 
     def make_collection(name: str) -> Any:
@@ -476,10 +495,7 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
 
             col.get_full_list.side_effect = capture
         elif name == BUNK_ASSIGNMENTS:
-            col.get_full_list.return_value = [
-                SimpleNamespace(person_cm_id=1, bunk_cm_id=10),
-                SimpleNamespace(person_cm_id=2, bunk_cm_id=10),
-            ]
+            col.get_full_list.return_value = [_assignment(1, 10), _assignment(2, 10)]
         elif name == BUNK_REQUESTS:
             col.get_full_list.return_value = []
         else:
@@ -512,8 +528,6 @@ def test_session_satisfaction_scopes_persons_fetch_to_assigned() -> None:
 
 def test_get_full_list_called_with_query_params_not_filter_kwarg() -> None:
     """All collection.get_full_list calls must use query_params={'filter': ...}."""
-    from types import SimpleNamespace
-
     seen_calls: list[tuple[str, dict[str, Any]]] = []
 
     def make_collection(name: str) -> Any:
@@ -522,7 +536,7 @@ def test_get_full_list_called_with_query_params_not_filter_kwarg() -> None:
         def capture(*_args: Any, **kwargs: Any) -> list[Any]:
             seen_calls.append((name, dict(kwargs)))
             if name == BUNK_ASSIGNMENTS:
-                return [SimpleNamespace(person_cm_id=1, bunk_cm_id=10)]
+                return [_assignment(1, 10)]
             return []
 
         col.get_full_list.side_effect = capture
@@ -581,3 +595,93 @@ def test_session_satisfaction_accepts_valid_scenario_id() -> None:
         scenario_id=valid,
         pb_client=pb,
     )
+
+
+# ---------------------------------------------------------------------------
+# #1171 — Real PocketBase Record shape regression
+#
+# bunk_assignments collection has `person` / `bunk` relation fields (returning
+# PB record ids) and `cm_id` for the assignment itself — but NO `person_cm_id`
+# / `bunk_cm_id` flat attributes. Reading those raises AttributeError on every
+# real Record. The _assignment helper above already mirrors the real shape
+# (relation strings + expand payload). These tests pin the contract.
+# ---------------------------------------------------------------------------
+
+
+def test_assignments_query_includes_expand_for_person_and_bunk() -> None:
+    """The assignments fetch must request `expand="person,bunk"` so the SDK populates
+    the relation payload. Without it, expand is empty and cm_ids cannot be resolved.
+    """
+    captured_kwargs: list[dict[str, Any]] = []
+
+    def make_collection(name: str) -> Any:
+        col = MagicMock()
+
+        def capture(*_args: Any, **kwargs: Any) -> list[Any]:
+            if name == BUNK_ASSIGNMENTS:
+                captured_kwargs.append(dict(kwargs))
+                return [_assignment(1, 100)]
+            if name == PERSONS:
+                return [_person(1, 10)]
+            return []
+
+        col.get_full_list.side_effect = capture
+        return col
+
+    pb = MagicMock()
+    pb.collection.side_effect = make_collection
+
+    session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=None, pb_client=pb)
+
+    assert captured_kwargs, "BUNK_ASSIGNMENTS query was never issued"
+    qp = captured_kwargs[0].get("query_params") or {}
+    expand = qp.get("expand", "")
+    assert "person" in expand, f"expand missing 'person': {expand!r}"
+    assert "bunk" in expand, f"expand missing 'bunk': {expand!r}"
+
+
+def test_assignment_with_unresolved_expand_is_skipped() -> None:
+    """Defense: if the SDK returns an assignment without an expanded person/bunk
+    (stale data, missing relation), skip it with a log warning rather than 500.
+    """
+    from types import SimpleNamespace
+
+    persons = [_person(1, 10)]
+    # Valid: person 1 in bunk 10
+    good = _assignment(1, 10)
+    # Pathological: relation strings present but expand payload missing
+    bad = SimpleNamespace(id="abad", cm_id=42, person="p_orphan", bunk="b_orphan", session="s1", expand={})
+    pb = _build_pb_mock(persons, [good, bad], [])
+    resp = session_satisfaction([999], 2026, None, pb)
+
+    # Bad assignment is skipped silently; good one survives.
+    assert 1 in resp.campers
+
+
+def test_assignment_with_non_numeric_cm_id_is_skipped() -> None:
+    """CR1 — defense in depth: if the expanded person/bunk has a non-numeric cm_id
+    (data hygiene gap, manual edit, future schema regression), int() raises and would
+    abort the whole aggregation. Skip the row with a warning instead.
+    """
+    from types import SimpleNamespace
+
+    persons = [_person(1, 10), _person(2, 10)]
+    good = _assignment(1, 10)
+    # Pathological: cm_id is a non-numeric string. Real PB schema types it as number,
+    # but malformed data, partial-sync state, or schema migration gaps could surface
+    # this. The aggregator must not 500 the whole /api/satisfaction call on one bad row.
+    bad = SimpleNamespace(
+        id="abad",
+        cm_id=99,
+        person="p_bad",
+        bunk="b_bad",
+        session="s1",
+        expand={
+            "person": SimpleNamespace(id="p_bad", cm_id="not-a-number"),
+            "bunk": SimpleNamespace(id="b_bad", cm_id=20),
+        },
+    )
+    pb = _build_pb_mock(persons, [good, bad], [])
+    # Must not raise — bad row is skipped, good row is processed.
+    resp = session_satisfaction([999], 2026, None, pb)
+    assert 1 in resp.campers

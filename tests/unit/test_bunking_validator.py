@@ -1630,3 +1630,277 @@ def test_validator_warns_when_resolved_age_preference_has_null_source_field(
     assert any("source_field" in msg and "age_preference" in msg for msg in warning_messages), (
         f"Expected warning about null source_field on resolved age_preference; got: {warning_messages}"
     )
+
+
+# ---------------------------------------------------------------------------
+# #1105: unsatisfied_material_parent_persons drill-down list
+# ---------------------------------------------------------------------------
+
+
+def test_unsatisfied_material_parent_persons_empty_when_all_satisfied():
+    """When all material parent requests are satisfied, the drill-down list is empty."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002")]
+    bunks = [_mock_bunk("30001")]
+    assignments = [_mock_assignment("20001", "30001"), _mock_assignment("20002", "30001")]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    assert result.statistics.unsatisfied_material_parent_persons == []
+
+
+def test_unsatisfied_material_parent_persons_populated_when_request_unmet():
+    """When a material parent request is not satisfied, the person appears in the drill-down list."""
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),  # NOT with 20001 — request unsatisfied
+        _mock_assignment("20003", "30001"),
+    ]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    assert len(unmet) == 1
+    assert unmet[0]["cm_id"] == 20001
+    assert unmet[0]["name"] == "Camper20001"
+
+
+def test_unsatisfied_material_parent_persons_excludes_partial_satisfaction():
+    """Camper with 2 parent requests where ≥1 is satisfied is NOT in the drill-down list.
+
+    Per the canonical satisfaction policy in `bunking/satisfaction/aggregate.bucket_status`,
+    a bucket is "unsatisfied" only when total > 0 AND satisfied == 0. Partial satisfaction
+    (≥1 of N) classifies as "satisfied", so such campers must not appear in the unmet list
+    — otherwise the drill-down contradicts the modal header scalar
+    (`campers_with_unsatisfied_material_parent_requests`).
+    """
+    session = _mock_session()
+    persons = [_mock_person("20001"), _mock_person("20002"), _mock_person("20003")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),  # satisfied: 20001 bunked with 20002
+        _mock_assignment("20003", "30002"),  # unsatisfied: 20001 NOT bunked with 20003
+    ]
+    requests = [
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),  # satisfied
+        _mock_request("20001", "20003", SourceField.BUNK_WITH, "family"),  # unsatisfied
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    assert unmet == [], (
+        "Camper 20001 has 1 of 2 parent requests satisfied — per canonical policy this is "
+        "the 'satisfied' bucket, so they must NOT appear in the drill-down list."
+    )
+    # Sanity: scalar must agree.
+    assert result.statistics.campers_with_unsatisfied_material_parent_requests == 0
+
+
+def test_unsatisfied_material_parent_persons_sorted_alphabetically():
+    """Drill-down list is sorted alphabetically by name for deterministic UI rendering."""
+    session = _mock_session()
+    # Names chosen so insertion-order (request order) differs from alphabetical order.
+    persons = [
+        MockPerson(campminder_id="20001", name="Zoe Smith", grade=5),
+        MockPerson(campminder_id="20002", name="Anna Brown", grade=5),
+        MockPerson(campminder_id="20003", name="Mara Lee", grade=5),
+        _mock_person("20099"),
+    ]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    # All requesters in their own bunk so no parent requests are satisfied.
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30001"),
+        _mock_assignment("20099", "30002"),
+    ]
+    requests = [
+        _mock_request("20001", "20099", SourceField.BUNK_WITH, "family"),  # Zoe Smith
+        _mock_request("20002", "20099", SourceField.BUNK_WITH, "family"),  # Anna Brown
+        _mock_request("20003", "20099", SourceField.BUNK_WITH, "family"),  # Mara Lee
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    names = [entry["name"] for entry in unmet]
+    assert names == sorted(names), f"Expected alphabetical ordering, got: {names}"
+
+
+def test_unsatisfied_material_parent_persons_falls_back_when_person_missing():
+    """When a request's requester_id has no matching person row, fall back to 'Person {pid}'.
+
+    The requester (20999) IS assigned to a bunk so the request is processed, but is
+    absent from the persons list so `person_by_id.get(20999)` returns None and the
+    fallback name path executes.
+    """
+    session = _mock_session()
+    # 20999 is referenced as a requester but NOT in the persons list.
+    persons = [_mock_person("20002")]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20999", "30001"),  # requester assigned (so request is processed)
+        _mock_assignment("20002", "30002"),  # target in different bunk → unsatisfied
+    ]
+    requests = [_mock_request("20999", "20002", SourceField.BUNK_WITH, "family")]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    unmet = result.statistics.unsatisfied_material_parent_persons
+    fallback_entries = [entry for entry in unmet if entry["name"] == "Person 20999"]
+    assert len(fallback_entries) == 1, f"Expected fallback entry for unknown person; got: {unmet}"
+    assert fallback_entries[0]["cm_id"] == 20999
+
+
+# ---------------------------------------------------------------------------
+# #1170 — Validator must consume bunking.satisfaction.predicate, not maintain a
+# local duplicate. The drift was surfaced when #1169 introduced
+# unsatisfied_material_parent_persons, whose initial classification contradicted
+# the canonical bucket_status policy because the validator's satisfaction logic
+# wasn't grounded in the canonical predicate.
+# ---------------------------------------------------------------------------
+
+
+def test_validator_imports_canonical_predicate_and_drops_local_duplicate():
+    """The validator module must import is_request_satisfied from
+    bunking.satisfaction.predicate and must NOT define its own local duplicate.
+    """
+    import inspect
+
+    import bunking.bunking_validator as v
+
+    src = inspect.getsource(v)
+    assert "from bunking.satisfaction.predicate import is_request_satisfied" in src, (
+        "validator must import is_request_satisfied from bunking.satisfaction.predicate"
+    )
+    # Local duplicate must be removed — single source of truth.
+    assert "def is_request_satisfied(" not in src, (
+        "validator still defines a local is_request_satisfied; drop it and use the canonical import"
+    )
+
+
+def test_validator_satisfied_counts_match_canonical_predicate_on_mixed_fixture():
+    """Behavioral pin: satisfied_material_parent_requests and satisfied counts
+    must match what bunking.satisfaction.predicate.is_request_satisfied would
+    compute for the same fixture. Guards against drift during the migration.
+
+    The validator bins by source_field, not source — so a fixture exercising the
+    binning + satisfaction split needs varied source_fields. This test sticks to
+    bunk_with parent requests because those drive the material_parent bucket
+    that #1170's drift surfaced.
+    """
+    session = _mock_session(cm_id="10000001", name="MixedFixture")
+    persons = [_mock_person(str(cm), grade=5) for cm in (20001, 20002, 20003, 20004)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    # 20001, 20002 in bunk 30001; 20003, 20004 in bunk 30002.
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30002"),
+        _mock_assignment("20004", "30002"),
+    ]
+    requests = [
+        # satisfied bunk_with parent: 20001 → 20002 (same bunk)
+        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        # unsatisfied bunk_with parent: 20001 → 20003 (different bunks)
+        _mock_request("20001", "20003", SourceField.BUNK_WITH, "family"),
+        # unsatisfied bunk_with parent: 20003 → 20001 (different bunks)
+        _mock_request("20003", "20001", SourceField.BUNK_WITH, "family"),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    # Material parent (bunk_with source_field): 3 total, 1 satisfied (20001→20002).
+    # The exact counts must hold across the predicate migration — they pin
+    # behavior that downstream metrics + UI depend on.
+    assert stats.material_parent_requests == 3
+    assert stats.satisfied_material_parent_requests == 1
+    # 20001 has ≥1 satisfied → bucket "satisfied" under canonical policy → NOT
+    # in unmet. 20003 has 0 satisfied → bucket "unsatisfied" → IS in unmet.
+    assert stats.campers_with_unsatisfied_material_parent_requests == 1
+    unmet_ids = {entry["cm_id"] for entry in stats.unsatisfied_material_parent_persons}
+    assert unmet_ids == {20003}
+
+
+def test_validator_is_satisfied_returns_false_on_non_numeric_grade():
+    """CR2 — defensive: the _is_satisfied adapter must absorb int() failures across
+    the FULL row construction (requested_person_cm_id, requester_grade), not just
+    the requester id. Currently a non-numeric grade would raise inside the adapter
+    and abort validation; legacy local predicate returned False on data-hygiene
+    gaps, and the adapter should mirror that.
+    """
+    session = _mock_session(cm_id="10000001", name="GradeHygieneFixture")
+    # Person with a non-numeric grade (corrupt CSV, schema migration gap, etc.).
+    # _mock_person normally takes int grade; cast to bypass the helper's typing.
+    bad_grade_person = MockPerson(campminder_id="20001", name="Camper20001", grade=cast(Any, "K"))
+    persons = [bad_grade_person, _mock_person("20002", grade=5)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),
+    ]
+    # An age_preference request — needs requester_grade. Bad grade should NOT 500.
+    requests = [
+        _mock_request(
+            "20001",
+            "0",
+            SourceField.SOCIALIZE_WITH,
+            "family",
+            request_type="age_preference",
+        ),
+    ]
+
+    # Must not raise — adapter swallows ValueError, treats as unsatisfied.
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    # Validation completed without crashing — that's the contract.
+    assert result.statistics is not None

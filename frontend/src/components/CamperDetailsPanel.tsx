@@ -38,6 +38,7 @@ import { Collections } from '../types/pocketbase-types'
 import { toAppCamper } from '../utils/transforms'
 import { isConfirmedRequest } from '../utils/bunkRequest'
 import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
+import { resolveBadgeBucket } from '../utils/requestSatisfaction'
 import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
 import type { SatisfactionMap } from '../hooks/camper/types'
@@ -913,6 +914,7 @@ export default function CamperDetailsPanel({
             sessionCmId={camper.session_cm_id}
             year={currentYear}
             selfDisplayName={camper.preferred_name?.trim() || camper.first_name || 'this camper'}
+            hasMultipleEnrollments={currentEnrollments.length > 1}
           />
         )}
 
@@ -968,6 +970,10 @@ export default function CamperDetailsPanel({
                   )}
                   {ageRows.map((req) => {
                     const satisfaction = satisfactionData[req.id]
+                    const { isMaterialAgePref, isStaffBadge } = resolveBadgeBucket(
+                      bucketByRequestId.get(req.id),
+                      req
+                    )
                     return (
                       <BunkRequestRow
                         key={req.id}
@@ -976,10 +982,8 @@ export default function CamperDetailsPanel({
                         satisfaction={satisfaction?.status ?? null}
                         satisfactionLoading={satisfactionLoading}
                         satisfactionDetail={satisfaction?.detail}
-                        isMaterialAgePreference={
-                          bucketByRequestId.get(req.id) === 'material_parent'
-                        }
-                        staffAgeBadge={bucketByRequestId.get(req.id) === 'staff'}
+                        isMaterialAgePreference={isMaterialAgePref}
+                        staffAgeBadge={isStaffBadge}
                       />
                     )
                   })}

@@ -409,6 +409,151 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
   })
 })
 
+describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/satisfaction unavailable', () => {
+  // PR #1158 made the badges depend on bucketByRequestId, sourced from
+  // /api/satisfaction. When that endpoint is down (#1171), the map is empty
+  // and badges silently disappear. Pre-1158 behavior was driven from each
+  // request's own source_field/source — local data, can't fail. The fallback
+  // restores that resilience: centralized path stays canonical when present;
+  // when bucket is undefined, fall back to the row's source_field/source.
+
+  it('renders P badge from source_field=bunk_with when per_request is empty', () => {
+    // Simulates /api/satisfaction returning emptyCamperSatisfaction (e.g. 500).
+    const ageReq = makeRequest({
+      id: 'no-bucket',
+      request_type: 'age_preference',
+      source_field: 'bunk_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction: emptyCamperSatisfaction(12345),
+    })
+    expect(screen.getByText('P')).toBeInTheDocument()
+    expect(screen.queryByText('S')).toBeNull()
+  })
+
+  it('renders S badge from source=staff when per_request is empty', () => {
+    const ageReq = makeRequest({
+      id: 'no-bucket-staff',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction: emptyCamperSatisfaction(12345),
+    })
+    expect(screen.getByText('S')).toBeInTheDocument()
+    expect(screen.queryByText('P')).toBeNull()
+  })
+
+  it('centralized bucket still wins when present (regression guard for #1159)', () => {
+    // When per_request entry exists, it must override the source_field fallback.
+    // This is the inverse of the fallback — pin that the bucket path remains
+    // canonical and source_field is read ONLY when the centralized map has no
+    // entry.
+    const ageReq = makeRequest({
+      id: 'present',
+      request_type: 'age_preference',
+      source_field: 'bunk_with', // would set P under fallback
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const camperSatisfaction: CamperSatisfaction = {
+      ...emptyCamperSatisfaction(12345),
+      per_request: [{ request_id: 'present', bucket: 'staff', satisfied: false }],
+    }
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    // Bucket wins: S badge, not P.
+    expect(screen.getByText('S')).toBeInTheDocument()
+    expect(screen.queryByText('P')).toBeNull()
+  })
+
+  it('does NOT fabricate parent ratio when aggregator legitimately reports 0/0 parent + non-zero staff', () => {
+    // Aggregator is healthy: per_request has entries (staff classifications),
+    // counted_totals.staff > 0, counted_totals.material_parent = 0/0. A stale or
+    // local-only bunk_with row in the rendered list must NOT be re-bucketed by
+    // the fallback — that would silently contradict the canonical aggregator.
+    // Fallback fires only when the aggregator is genuinely empty/unavailable.
+    const ageStaff = makeRequest({
+      id: 'staff-1',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    const stalePartial = makeRequest({
+      id: 'stale-bunk_with',
+      request_type: 'bunk_with',
+      source_field: 'bunk_with',
+      source: 'family',
+      requestee_id: 99999,
+      requestedPersonName: 'Olivia Chen',
+    })
+    const camperSatisfaction: CamperSatisfaction = {
+      ...emptyCamperSatisfaction(12345),
+      // Aggregator says: 1 staff request, 0 parent. per_request has the staff entry,
+      // does NOT mention the stale parent row (data drift).
+      per_request: [{ request_id: 'staff-1', bucket: 'staff', satisfied: false }],
+      counted_totals: {
+        material_parent: { total: 0, satisfied: 0 },
+        staff: { total: 1, satisfied: 0 },
+      },
+    }
+    renderPanelWith({
+      allBunkRequests: [stalePartial],
+      agePreferenceRequests: [ageStaff],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    // Aggregator's authoritative answer: NO parent satisfaction line.
+    expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
+    // Staff slice should still render (1 staff request).
+    expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
+  })
+
+  it('derives parent ratio from local bunk_with rows when counted_totals is empty', () => {
+    // Two bunk_with parent rows, /api/satisfaction reports 0/0 (unavailable).
+    // Pre-1158 the slice ratio was driven from local rows; restore that as a
+    // fallback so a backend hiccup doesn't silently hide the 0/N display.
+    const allBunkRequests = [
+      makeRequest({
+        id: 'p1',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        requestedPersonName: 'Liam Garcia',
+      }),
+      makeRequest({
+        id: 'p2',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        requestedPersonName: 'Olivia Chen',
+      }),
+    ]
+    renderPanelWith({
+      allBunkRequests,
+      satisfactionData: { p1: { status: 'satisfied', detail: '' } },
+      camperSatisfaction: emptyCamperSatisfaction(12345),
+    })
+    // 1 satisfied (p1), 2 total → "1/2 met" must appear.
+    expect(screen.getByText('1/2 met')).toBeInTheDocument()
+  })
+})
+
 describe('BunkingStatusPanel — #1159 age-pref badges read per_request.bucket', () => {
   it('renders S badge when per_request bucket=staff even though source_field=bunk_with', () => {
     // Mismatched fixture: row's source_field says bunk_with (would set P badge

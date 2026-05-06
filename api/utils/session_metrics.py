@@ -100,6 +100,24 @@ def get_person_from_expand(record: Any) -> Any:
     return getattr(expand, "person", None)
 
 
+def get_bunk_from_expand(record: Any) -> Any:
+    """Extract bunk from a record's PocketBase expand dict.
+
+    Symmetric to get_person_from_expand — handles both dict-style and
+    object-style expand attributes.
+
+    Args:
+        record: A PocketBase record with an expand attribute.
+
+    Returns:
+        The bunk object, or None if not found.
+    """
+    expand = getattr(record, "expand", {}) or {}
+    if isinstance(expand, dict):
+        return expand.get("bunk")
+    return getattr(expand, "bunk", None)
+
+
 def build_ag_parent_map(sessions: dict[int, Any]) -> dict[int, int]:
     """Build mapping from AG session cm_ids to their parent main session cm_ids.
 

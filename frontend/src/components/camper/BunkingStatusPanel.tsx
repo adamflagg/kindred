@@ -7,6 +7,7 @@ import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
 import { isConfirmedRequest } from '../../utils/bunkRequest'
+import { resolveBadgeBucket } from '../../utils/requestSatisfaction'
 import { BunkRequestRow } from '../BunkRequestRow'
 import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
@@ -109,7 +110,7 @@ export function BunkingStatusPanel({
   // Slice totals come from the centralized aggregator (`/api/satisfaction`),
   // not from re-bucketing rows here. This is the single source of truth shared
   // with the bunking-board card and graph node states (#1159).
-  const materialParent = camperSatisfaction.counted_totals.material_parent
+  const centralizedMaterialParent = camperSatisfaction.counted_totals.material_parent
   const staff = camperSatisfaction.counted_totals.staff
 
   // Per-row bucket lookup so age-pref P/S badges read the centralized
@@ -123,6 +124,29 @@ export function BunkingStatusPanel({
       ),
     [camperSatisfaction]
   )
+
+  // #1172: when /api/satisfaction is fully unavailable, counted_totals is 0/0 AND
+  // per_request is empty AND staff total is 0 — that's the only signal that the
+  // aggregator has no answer for us. Fall back to deriving the parent slice from
+  // local bunk_with rows so a backend hiccup doesn't silently hide the 0/N ratio.
+  //
+  // Trigger MUST be tighter than just "material_parent.total === 0" — the
+  // aggregator legitimately reports 0/0 parent for staff-only campers, and we
+  // must not contradict it by re-bucketing local rows that the aggregator
+  // already classified differently (or filtered out).
+  const aggregatorEmpty =
+    camperSatisfaction.per_request.length === 0 &&
+    centralizedMaterialParent.total === 0 &&
+    staff.total === 0
+  const materialParent = useMemo(() => {
+    if (!aggregatorEmpty) return centralizedMaterialParent
+    const bunkWithRows = summaryRequests.filter((r) => r.source_field === 'bunk_with')
+    if (bunkWithRows.length === 0) return centralizedMaterialParent
+    const satisfied = bunkWithRows.filter(
+      (r) => satisfactionData[r.id]?.status === 'satisfied'
+    ).length
+    return { total: bunkWithRows.length, satisfied }
+  }, [aggregatorEmpty, centralizedMaterialParent, summaryRequests, satisfactionData])
 
   const showParent = materialParent.total > 0
   const showStaff = staff.total > 0
@@ -301,7 +325,10 @@ export function BunkingStatusPanel({
             )}
             {ageRows.map((req) => {
               const sat = satisfactionData[req.id]
-              const bucket = bucketByRequestId.get(req.id)
+              const { isMaterialAgePref, isStaffBadge } = resolveBadgeBucket(
+                bucketByRequestId.get(req.id),
+                req
+              )
               return (
                 <BunkRequestRow
                   key={req.id}
@@ -311,8 +338,8 @@ export function BunkingStatusPanel({
                   showSatisfaction={true}
                   satisfactionLoading={satisfactionLoading}
                   satisfactionDetail={sat?.detail}
-                  isMaterialAgePreference={bucket === 'material_parent'}
-                  staffAgeBadge={bucket === 'staff'}
+                  isMaterialAgePreference={isMaterialAgePref}
+                  staffAgeBadge={isStaffBadge}
                 />
               )
             })}

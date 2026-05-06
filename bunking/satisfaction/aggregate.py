@@ -23,6 +23,7 @@ from api.constants.collections import (
     BUNK_REQUESTS,
     PERSONS,
 )
+from api.utils.session_metrics import get_bunk_from_expand, get_person_from_expand
 from bunking.logging_config import get_logger
 from bunking.satisfaction.api_shape import (
     BucketCount,
@@ -237,9 +238,13 @@ def session_satisfaction(
     # Task 36: fetch assignments + requests in parallel — they are independent queries.
     # persons must come AFTER assignments because we scope it to person_to_bunk.keys().
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        # bunk_assignments has person/bunk as relation fields (PB record ids), not
+        # flat person_cm_id/bunk_cm_id attributes. expand=person,bunk populates the
+        # SDK's expand payload so cm_ids resolve via expand.person.cm_id /
+        # expand.bunk.cm_id — matches social_graph_builder.py's pattern.
         assignments_future = executor.submit(
             pb_client.collection(assignments_collection).get_full_list,
-            query_params={"filter": assignments_filter},
+            query_params={"filter": assignments_filter, "expand": "person,bunk"},
         )
         requests_future = executor.submit(
             pb_client.collection(BUNK_REQUESTS).get_full_list,
@@ -260,8 +265,36 @@ def session_satisfaction(
     person_to_bunk: dict[int, int] = {}
     bunk_to_persons: dict[int, list[int]] = defaultdict(list)
     for a in assignments:
-        pid = int(a.person_cm_id)
-        bid = int(a.bunk_cm_id)
+        person_data = get_person_from_expand(a)
+        bunk_data = get_bunk_from_expand(a)
+        if person_data is None or bunk_data is None:
+            logger.warning(
+                "skipping assignment with unresolved expand (person/bunk missing): assignment_id=%s",
+                getattr(a, "id", "<unknown>"),
+            )
+            continue
+        person_cm_id_val = getattr(person_data, "cm_id", None)
+        bunk_cm_id_val = getattr(bunk_data, "cm_id", None)
+        if person_cm_id_val is None or bunk_cm_id_val is None:
+            logger.warning(
+                "skipping assignment with missing cm_id on expanded relation: assignment_id=%s",
+                getattr(a, "id", "<unknown>"),
+            )
+            continue
+        try:
+            pid = int(person_cm_id_val)
+            bid = int(bunk_cm_id_val)
+        except TypeError, ValueError:
+            # Non-numeric cm_id — data hygiene gap (manual edit, partial sync,
+            # schema regression). Skip rather than 500 the whole aggregation.
+            logger.warning(
+                "skipping assignment with non-numeric cm_id on expanded relation: "
+                "assignment_id=%s person_cm_id=%r bunk_cm_id=%r",
+                getattr(a, "id", "<unknown>"),
+                person_cm_id_val,
+                bunk_cm_id_val,
+            )
+            continue
         if bid <= 0:
             logger.warning("skipping assignment with invalid bunk_cm_id=%d for person %d", bid, pid)
             continue
