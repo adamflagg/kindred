@@ -47,11 +47,15 @@ func RecomputePairReciprocity(
 	aResolved := rowAB != nil && rowAB.GetString("status") == statusResolved
 	bResolved := rowBA != nil && rowBA.GetString("status") == statusResolved
 
-	// A→B's flag depends on whether B→A is currently resolved, and vice versa.
-	if err := setIfChanged(app, rowAB, bResolved); err != nil {
+	// Reciprocity is a symmetric pair-level property: both rows are reciprocal
+	// iff both exist AND both are resolved. Matches the graph builder's
+	// has_forward && has_backward semantic at social_graph_builder.py:379.
+	pairReciprocal := aResolved && bResolved
+
+	if err := setIfChanged(app, rowAB, pairReciprocal); err != nil {
 		return fmt.Errorf("update A→B: %w", err)
 	}
-	if err := setIfChanged(app, rowBA, aResolved); err != nil {
+	if err := setIfChanged(app, rowBA, pairReciprocal); err != nil {
 		return fmt.Errorf("update B→A: %w", err)
 	}
 	return nil

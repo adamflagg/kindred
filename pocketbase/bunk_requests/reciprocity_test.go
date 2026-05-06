@@ -185,3 +185,41 @@ func TestHook_DeletionFlipsPartner(t *testing.T) {
 		t.Errorf("after A→B delete: B→A expected is_reciprocal=false, got true (#1059 bug)")
 	}
 }
+
+// Test 4 — #1069 coverage: status flip resolved → declined on one row should
+// flip the partner's is_reciprocal to false (declined doesn't count as
+// reciprocal).
+func TestHook_StatusFlipFlipsPartner(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	// Sanity check.
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected B→A reciprocal=true")
+	}
+
+	// Flip A→B to declined; hook fires on update.
+	rowAB.Set("status", "declined")
+	if err := app.Save(rowAB); err != nil {
+		t.Fatalf("save flipped AB: %v", err)
+	}
+
+	gotBA, _ = app.FindRecordById("bunk_requests", rowBA.Id)
+	if gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after A→B flip to declined: B→A expected is_reciprocal=false, got true")
+	}
+	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	if gotAB.GetBool("is_reciprocal") {
+		t.Errorf("after A→B flip to declined: A→B expected is_reciprocal=false, got true")
+	}
+}
