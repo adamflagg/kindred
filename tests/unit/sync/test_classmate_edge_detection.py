@@ -38,10 +38,10 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Set up person cache with addresses and schools (implementation requires school match)
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            3: {"address": {"city": "New York", "state": "NY"}, "grade": 5, "school": "PS 101"},
-            4: {"address": {"city": "Boston", "state": "MA"}, "grade": 8, "school": "Lincoln Elementary"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            3: {"address_city": "New York", "address_state": "NY", "grade": 5, "school": "PS 101"},
+            4: {"address_city": "Boston", "address_state": "MA", "grade": 8, "school": "Lincoln Elementary"},
         }
 
         # Call the method
@@ -71,8 +71,8 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Set up person cache - same state, different cities, different schools
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Cambridge", "state": "MA"}, "grade": 6, "school": "Cambridge Academy"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Cambridge", "address_state": "MA", "grade": 6, "school": "Cambridge Academy"},
         }
 
         # Call the method
@@ -93,8 +93,8 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Set up person cache - same school, city, state (would create edge if not already connected)
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
         }
 
         # Call the method
@@ -118,9 +118,9 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Set up person cache - missing address data
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"grade": 5, "school": "Lincoln Elementary"},  # No address
-            3: {"address": {}, "grade": 5, "school": "Lincoln Elementary"},  # Empty address
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"grade": 5, "school": "Lincoln Elementary"},  # No address columns at all
+            3: {"address_city": "", "address_state": "", "grade": 5, "school": "Lincoln Elementary"},  # Empty strings
         }
 
         # Call the method
@@ -141,8 +141,8 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Set up person cache with different case - include school for match
         self.builder.person_cache = {
-            1: {"address": {"city": "BOSTON", "state": "MA"}, "grade": 5, "school": "LINCOLN ELEMENTARY"},
-            2: {"address": {"city": "boston", "state": "ma"}, "grade": 5, "school": "lincoln elementary"},
+            1: {"address_city": "BOSTON", "address_state": "MA", "grade": 5, "school": "LINCOLN ELEMENTARY"},
+            2: {"address_city": "boston", "address_state": "ma", "grade": 5, "school": "lincoln elementary"},
         }
 
         # Call the method
@@ -162,10 +162,25 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # All from same school, city, state
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 6, "school": "Lincoln Elementary"},  # Diff = 1
-            3: {"address": {"city": "Boston", "state": "MA"}, "grade": 7, "school": "Lincoln Elementary"},  # Diff = 2
-            4: {"address": {"city": "Boston", "state": "MA"}, "grade": 4, "school": "Lincoln Elementary"},  # Diff = 1
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 6,
+                "school": "Lincoln Elementary",
+            },  # Diff = 1
+            3: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 7,
+                "school": "Lincoln Elementary",
+            },  # Diff = 2
+            4: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 4,
+                "school": "Lincoln Elementary",
+            },  # Diff = 1
         }
 
         # Call the method
@@ -175,6 +190,45 @@ class TestClassmateEdgeDetection(unittest.TestCase):
         assert self.builder.graph.has_edge(1, 2)  # Grade diff = 1 ✓
         assert not self.builder.graph.has_edge(1, 3)  # Grade diff = 2 ✗
         assert self.builder.graph.has_edge(1, 4)  # Grade diff = 1 ✓
+
+    def test_classmate_edges_from_discrete_address_columns(self):
+        """#1156: persons collection now has address_city/address_state discrete columns
+        (the JSON 'address' field was removed in migration 1500000054_remove_json_fields.js).
+        _add_classmate_edges must read the discrete columns; reading person.get("address", {})
+        returns {} for post-migration records and silently produces zero classmate edges.
+        """
+        self.builder.graph = nx.Graph()
+        self.builder.graph.add_node(1, name="Emma Johnson", grade=5)
+        self.builder.graph.add_node(2, name="Liam Garcia", grade=5)
+
+        # Post-migration shape: discrete address_city / address_state columns,
+        # NO nested 'address' dict. Mirrors what PocketBase emits today.
+        self.builder.person_cache = {
+            1: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 5,
+                "school": "Riverside Elementary",
+            },
+            2: {
+                "address_city": "Boston",
+                "address_state": "MA",
+                "grade": 5,
+                "school": "Riverside Elementary",
+            },
+        }
+
+        self.builder._add_classmate_edges(2025, 1234)
+
+        assert self.builder.graph.has_edge(1, 2), (
+            "Expected classmate edge under post-migration data shape "
+            "(address_city/address_state). #1156 — currently produces no edge "
+            "because the code still reads the removed JSON 'address' field."
+        )
+        edge_data = self.builder.graph.get_edge_data(1, 2)
+        assert edge_data["edge_type"] == "school"
+        assert edge_data["metadata"]["city"] == "Boston"
+        assert edge_data["metadata"]["state"] == "MA"
 
     @patch("bunking.graph.social_graph_builder.logger")
     def test_logging_output(self, mock_logger):
@@ -188,10 +242,10 @@ class TestClassmateEdgeDetection(unittest.TestCase):
 
         # Mix of school matches
         self.builder.person_cache = {
-            1: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            2: {"address": {"city": "Boston", "state": "MA"}, "grade": 5, "school": "Lincoln Elementary"},
-            3: {"address": {"city": "Cambridge", "state": "MA"}, "grade": 5, "school": "Cambridge Elementary"},
-            4: {"address": {"city": "New York", "state": "NY"}, "grade": 5, "school": "PS 101"},
+            1: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            2: {"address_city": "Boston", "address_state": "MA", "grade": 5, "school": "Lincoln Elementary"},
+            3: {"address_city": "Cambridge", "address_state": "MA", "grade": 5, "school": "Cambridge Elementary"},
+            4: {"address_city": "New York", "address_state": "NY", "grade": 5, "school": "PS 101"},
         }
 
         # Call the method
