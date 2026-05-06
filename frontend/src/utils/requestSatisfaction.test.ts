@@ -8,8 +8,9 @@
  * orange-triangle alert.
  */
 import { describe, it, expect } from 'vitest'
-import { computeRequestSatisfaction } from './requestSatisfaction'
+import { computeRequestSatisfaction, resolveBadgeBucket } from './requestSatisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import type { RequestBucket } from '../types/satisfaction'
 
 // Minimal request fixture — only fields the utility reads
 function req(partial: Partial<EnhancedBunkRequest>): EnhancedBunkRequest {
@@ -211,5 +212,68 @@ describe('computeRequestSatisfaction — fallback', () => {
       requesterGrade: REQUESTER_GRADE,
     })
     expect(result.status).toBe('unknown')
+  })
+})
+
+describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fallback', () => {
+  // Pin contract: when the centralized aggregator (CamperSatisfaction.per_request)
+  // classifies the row, that wins. When it has no entry (aggregator unavailable
+  // or row not in the response), fall back to the row's own source_field/source —
+  // pre-#1158 behavior. Centralized 'immaterial_parent' yields no badge.
+
+  it('material_parent bucket → P badge regardless of source_field', () => {
+    const result = resolveBadgeBucket('material_parent', {
+      source_field: 'bunking_notes',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
+  })
+
+  it('staff bucket → S badge regardless of source_field', () => {
+    const result = resolveBadgeBucket('staff', { source_field: 'bunk_with', source: 'family' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('immaterial_parent bucket → no badges', () => {
+    const result = resolveBadgeBucket('immaterial_parent', {
+      source_field: 'bunk_with',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + source_field=bunk_with → P badge (fallback)', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: 'bunk_with', source: 'family' })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
+  })
+
+  it('undefined bucket + source=staff → S badge (fallback)', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: 'bunking_notes', source: 'staff' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('undefined bucket + neither → no badges', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'socialize_with',
+      source: 'family',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + missing source fields → no badges', () => {
+    const result = resolveBadgeBucket(undefined, {})
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('handles all RequestBucket values without throwing', () => {
+    const buckets: (RequestBucket | undefined)[] = [
+      'material_parent',
+      'immaterial_parent',
+      'staff',
+      undefined,
+    ]
+    for (const b of buckets) {
+      expect(() => resolveBadgeBucket(b, {})).not.toThrow()
+    }
   })
 })

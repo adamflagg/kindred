@@ -514,6 +514,7 @@ export default function PostValidationResultsModal({
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
+  const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -758,15 +759,16 @@ export default function PostValidationResultsModal({
       )}
 
       {/* Unmet parent requests drill-down (#1105) */}
-      {(statistics.unsatisfied_material_parent_persons?.length ?? 0) > 0 && (
+      {unmetParents.length > 0 && (
         <div className="border-border/50 border-t">
           <button
+            type="button"
             onClick={() => setShowUnmetParents(!showUnmetParents)}
             className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
           >
             <span className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Unmet parent requests ({statistics.unsatisfied_material_parent_persons!.length})
+              Unmet parent requests ({unmetParents.length})
             </span>
             {showUnmetParents ? (
               <ChevronUp className="h-4 w-4" />
@@ -776,8 +778,8 @@ export default function PostValidationResultsModal({
           </button>
 
           {showUnmetParents && (
-            <ul className="animate-fade-in space-y-1 px-5 pb-4">
-              {statistics.unsatisfied_material_parent_persons!.map((person) => (
+            <ul className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4">
+              {unmetParents.map((person) => (
                 <li key={person.cm_id} className="text-foreground text-sm">
                   {person.name}
                 </li>

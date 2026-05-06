@@ -548,6 +548,47 @@ class TestGetSessionFromExpand:
         assert get_session_from_expand(record) is None
 
 
+class TestGetBunkFromExpand:
+    """Tests for get_bunk_from_expand() — symmetric helper to get_person_from_expand
+    so #1171's aggregate.py + social_graph_builder.py can resolve the bunk relation
+    consistently (handles both dict-style and object-style PB SDK expand payloads).
+    """
+
+    def test_extracts_bunk_from_dict_expand(self) -> None:
+        from api.utils.session_metrics import get_bunk_from_expand
+
+        bunk = Mock(cm_id=42)
+        record = Mock(expand={"bunk": bunk})
+        assert get_bunk_from_expand(record) is bunk
+
+    def test_extracts_bunk_from_object_expand(self) -> None:
+        from api.utils.session_metrics import get_bunk_from_expand
+
+        bunk = Mock(cm_id=42)
+        expand = Mock(bunk=bunk)
+        expand.__contains__ = Mock(side_effect=TypeError)
+        record = Mock(expand=expand)
+        assert get_bunk_from_expand(record) is bunk
+
+    def test_returns_none_for_empty_expand(self) -> None:
+        from api.utils.session_metrics import get_bunk_from_expand
+
+        record = Mock(expand={})
+        assert get_bunk_from_expand(record) is None
+
+    def test_returns_none_for_none_expand(self) -> None:
+        from api.utils.session_metrics import get_bunk_from_expand
+
+        record = Mock(expand=None)
+        assert get_bunk_from_expand(record) is None
+
+    def test_returns_none_for_missing_expand(self) -> None:
+        from api.utils.session_metrics import get_bunk_from_expand
+
+        record = Mock(spec=[])
+        assert get_bunk_from_expand(record) is None
+
+
 class TestBuildAgParentMap:
     """Tests for build_ag_parent_map() utility function."""
 

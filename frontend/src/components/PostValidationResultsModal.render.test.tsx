@@ -7,6 +7,7 @@
  */
 
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
@@ -342,7 +343,6 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 // ---------------------------------------------------------------------------
 // #1105: Unmet parent requests drill-down section
 // ---------------------------------------------------------------------------
-import userEvent from '@testing-library/user-event'
 
 describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
   it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
@@ -363,7 +363,7 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
   })
 
-  it('shows collapsible drill-down section when unsatisfied persons present', () => {
+  it('shows collapsible drill-down section with count when unsatisfied persons present', () => {
     render(
       <PostValidationResultsModal
         isOpen={true}
@@ -377,7 +377,8 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
       />
     )
 
-    expect(screen.getByText(/unmet parent requests/i)).toBeInTheDocument()
+    // Pin both the literal label and the rendered count.
+    expect(screen.getByText('Unmet parent requests (2)')).toBeInTheDocument()
   })
 
   it('shows camper names after expanding the drill-down section', async () => {

@@ -872,6 +872,98 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText('P')).toBeNull()
     })
 
+    it('#1172: renders P badge from source_field=bunk_with when per_request is empty', async () => {
+      // Simulate /api/satisfaction unavailable: emptyCamperSatisfaction (per_request: []).
+      // Pre-#1158 the badge was driven by the row's own source_field — fall back to
+      // that path so a backend hiccup doesn't silently hide the P badge.
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-fallback-p',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunk_with',
+          source: 'family',
+          age_preference_target: 'older',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+      // Empty per_request — bucketByRequestId is empty → fallback path must fire.
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [] as PerRequestStatus[],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: false,
+        },
+      }))
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('P')).toBeInTheDocument()
+      expect(screen.queryByText('S')).toBeNull()
+    })
+
+    it('#1172: renders S badge from source=staff when per_request is empty', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-fallback-s',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunking_notes',
+          source: 'staff',
+          age_preference_target: 'younger',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [] as PerRequestStatus[],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: false,
+        },
+      }))
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('P')).toBeNull()
+    })
+
     it('does NOT render any new "Parent request satisfaction:" summary line in the sidebar', async () => {
       // The sidebar conveys source-aware satisfaction via CamperAlertSection,
       // not a separate summary label. Spec §2.4 explicitly forbids adding one.

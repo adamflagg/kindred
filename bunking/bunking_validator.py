@@ -15,13 +15,13 @@ from pydantic import BaseModel, Field
 
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
+from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.core.models import RequestSource
 from bunking.sync.bunk_request_processor.shared.constants import (
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
 )
-from bunking.utils.age_preference import is_age_preference_satisfied
 
 # Canonical SourceField value → field_stats key used by the validator.
 # This is the single source of truth: adding a new SourceField means adding one
@@ -444,52 +444,63 @@ class BunkingValidator:
 
             return []
 
-        def is_request_satisfied(
-            request: BunkRequest,
-            person_assignment: BunkAssignment | None,
-            assignments_by_person: dict[str, BunkAssignment],
-        ) -> bool:
-            """Check if a request is satisfied."""
-            if not person_assignment:
-                return False
+        # Build the inputs the canonical predicate expects (#1170): person_to_bunk
+        # mapping (cm_id ints → bunk cm_id ints) and bunkmate_grades (cm_id →
+        # grades of OTHER campers in the same bunk). Built once per validation
+        # pass; reused for every request.
+        person_to_bunk_canon: dict[int, int] = {}
+        for cm_id_str, asgn in assignments_by_person.items():
+            try:
+                pid_int = int(cm_id_str)
+                bid_int = int(asgn.bunk_cm_id)
+            except TypeError, ValueError:
+                continue
+            if bid_int <= 0:
+                continue
+            person_to_bunk_canon[pid_int] = bid_int
 
-            if request.request_type == "bunk_with" and request.requested_person_cm_id:
-                requested_assignment = assignments_by_person.get(request.requested_person_cm_id)
-                return bool(requested_assignment and requested_assignment.bunk_cm_id == person_assignment.bunk_cm_id)
-            elif request.request_type == "not_bunk_with" and request.requested_person_cm_id:
-                requested_assignment = assignments_by_person.get(request.requested_person_cm_id)
-                return bool(not requested_assignment or requested_assignment.bunk_cm_id != person_assignment.bunk_cm_id)
-            elif request.request_type == "age_preference":
-                # Check if the bunk has older/younger bunkmates based on age_preference_target
-                age_pref_target = getattr(request, "age_preference_target", None)
-                if not age_pref_target:
+        bunkmate_grades_canon: dict[int, list[int]] = {}
+        for cm_id_str, asgn in assignments_by_person.items():
+            try:
+                pid_int = int(cm_id_str)
+            except TypeError, ValueError:
+                continue
+            grades: list[int] = []
+            for other in assignments_by_bunk.get(asgn.bunk_cm_id, []):
+                if other.person_cm_id == cm_id_str:
+                    continue
+                bunkmate = person_by_id.get(other.person_cm_id)
+                if bunkmate is None or bunkmate.grade is None:
+                    continue
+                grades.append(int(bunkmate.grade))
+            bunkmate_grades_canon[pid_int] = grades
+
+        def _is_satisfied(request: BunkRequest) -> bool:
+            """Adapter to bunking.satisfaction.predicate.is_request_satisfied.
+
+            Wraps ALL int() conversions and the canonical call in a single try/except
+            so any data-hygiene gap (non-numeric cm_id, non-numeric grade, unknown
+            request_type, out-of-range grade) returns False instead of crashing the
+            whole validation pass — matching the legacy local predicate's contract.
+            """
+            try:
+                requester_int = int(request.requester_person_cm_id)
+                if requester_int not in person_to_bunk_canon:
                     return False
-
-                # Get all bunkmates in the same bunk
-                bunk_assignments = assignments_by_bunk.get(person_assignment.bunk_cm_id, [])
-                if len(bunk_assignments) < 2:
-                    return False  # No bunkmates to compare
-
-                # Get the requester's grade
+                requester_grade: int | None = None
                 requester_person = person_by_id.get(request.requester_person_cm_id)
-                if not requester_person or requester_person.grade is None:
-                    return False
-
-                requester_grade = requester_person.grade
-
-                # Collect grades of all bunkmates (excluding the requester)
-                bunkmate_grades = []
-                for assignment in bunk_assignments:
-                    if assignment.person_cm_id != request.requester_person_cm_id:
-                        bunkmate = person_by_id.get(assignment.person_cm_id)
-                        if bunkmate and bunkmate.grade is not None:
-                            bunkmate_grades.append(bunkmate.grade)
-
-                # Use shared utility for consistent satisfaction logic
-                satisfied, _ = is_age_preference_satisfied(requester_grade, bunkmate_grades, age_pref_target)
-                return satisfied
-
-            return False
+                if requester_person is not None and requester_person.grade is not None:
+                    requester_grade = int(requester_person.grade)
+                row: dict[str, Any] = {
+                    "requester_id": requester_int,
+                    "requestee_id": int(request.requested_person_cm_id) if request.requested_person_cm_id else None,
+                    "request_type": request.request_type,
+                    "age_preference_target": getattr(request, "age_preference_target", None),
+                    "requester_grade": requester_grade,
+                }
+                return is_request_satisfied(row, person_to_bunk_canon, bunkmate_grades=bunkmate_grades_canon)
+            except TypeError, ValueError:
+                return False
 
         # Process each request
         for request in requests:
@@ -542,9 +553,8 @@ class BunkingValidator:
                     if field in stats.field_stats:
                         stats.field_stats[field]["total"] += 1
 
-                # Check if this valid request is satisfied
-                person_assignment = assignments_by_person.get(requester_id)
-                if is_request_satisfied(request, person_assignment, assignments_by_person):
+                # Check if this valid request is satisfied (#1170 — canonical predicate via _is_satisfied adapter).
+                if _is_satisfied(request):
                     satisfied_requests_by_person[requester_id].append(request)
                     if raw_source_field == SourceField.BUNK_WITH:
                         satisfied_material_parent_by_person[requester_id].append(request)
@@ -651,11 +661,18 @@ class BunkingValidator:
             for pid, reqs in material_parent_by_person.items()
             if reqs and not satisfied_material_parent_by_person.get(pid)
         )
-        stats.unsatisfied_material_parent_persons = [
-            {"cm_id": int(pid), "name": p.name if (p := person_by_id.get(pid)) else f"Person {pid}"}
-            for pid, reqs in material_parent_by_person.items()
-            if reqs and len(satisfied_material_parent_by_person.get(pid, [])) < len(reqs)
-        ]
+        # Match the canonical satisfaction policy from `bunking/satisfaction/aggregate.bucket_status`:
+        # the bucket is "unsatisfied" only when total > 0 AND zero satisfied. Partial satisfaction
+        # (≥1 of N) classifies as "satisfied" and must NOT appear here, otherwise the drill-down
+        # contradicts `campers_with_unsatisfied_material_parent_requests` above.
+        stats.unsatisfied_material_parent_persons = sorted(
+            (
+                {"cm_id": int(pid), "name": p.name if (p := person_by_id.get(pid)) else f"Person {pid}"}
+                for pid, reqs in material_parent_by_person.items()
+                if reqs and not satisfied_material_parent_by_person.get(pid)
+            ),
+            key=lambda entry: entry["name"],
+        )
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

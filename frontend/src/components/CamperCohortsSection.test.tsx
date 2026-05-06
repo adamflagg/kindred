@@ -405,7 +405,7 @@ describe('CamperCohortsSection multi-session annotation', () => {
     )
 
     await screen.findByText(/Also from Riverside Elementary/)
-    expect(screen.queryByText(/primary session/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Cohorts from this session only')).not.toBeInTheDocument()
   })
 
   it('shows primary-session annotation when hasMultipleEnrollments is true', async () => {
@@ -420,7 +420,7 @@ describe('CamperCohortsSection multi-session annotation', () => {
     )
 
     await screen.findByText(/Also from Riverside Elementary/)
-    expect(screen.getByText(/primary session/i)).toBeInTheDocument()
+    expect(screen.getByText('Cohorts from this session only')).toBeInTheDocument()
   })
 
   it('shows no annotation when hasMultipleEnrollments is omitted', async () => {
@@ -434,6 +434,6 @@ describe('CamperCohortsSection multi-session annotation', () => {
     )
 
     await screen.findByText(/Also from Riverside Elementary/)
-    expect(screen.queryByText(/primary session/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Cohorts from this session only')).not.toBeInTheDocument()
   })
 })

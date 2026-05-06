@@ -86,7 +86,9 @@ export function CamperCohortsSection({
       </div>
 
       {hasMultipleEnrollments && (
-        <p className="text-muted-foreground/60 mt-0.5 px-1 text-xs">Primary session only</p>
+        <p className="text-muted-foreground/60 mt-0.5 px-1 text-xs">
+          Cohorts from this session only
+        </p>
       )}
 
       {openKind && openEntry && (
