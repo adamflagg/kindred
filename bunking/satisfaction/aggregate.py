@@ -273,8 +273,13 @@ def session_satisfaction(
                 getattr(a, "id", "<unknown>"),
             )
             continue
-        person_cm_id_val = getattr(person_data, "cm_id", None)
-        bunk_cm_id_val = getattr(bunk_data, "cm_id", None)
+        # Mirror the dual-shape contract of get_person_from_expand / get_bunk_from_expand:
+        # the expand payload may be either a dict or an attribute-style object, so cm_id
+        # has to be read accordingly.
+        person_cm_id_val = (
+            person_data.get("cm_id") if isinstance(person_data, dict) else getattr(person_data, "cm_id", None)
+        )
+        bunk_cm_id_val = bunk_data.get("cm_id") if isinstance(bunk_data, dict) else getattr(bunk_data, "cm_id", None)
         if person_cm_id_val is None or bunk_cm_id_val is None:
             logger.warning(
                 "skipping assignment with missing cm_id on expanded relation: assignment_id=%s",

@@ -163,6 +163,52 @@ interface CurrentEnrollment {
   attendeeStatus?: string
 }
 
+// Hoisted out of CamperDetailsPanel render to avoid React unmounting/remounting
+// the section header (and losing focus / replaying animations) on every parent
+// re-render.
+const SECTION_HEADER_COLOR_CLASSES = {
+  forest: 'bg-forest-50 dark:bg-forest-900/60 text-forest-700 dark:text-forest-100',
+  amber: 'bg-amber-50 dark:bg-amber-900/60 text-amber-700 dark:text-amber-100',
+  pink: 'bg-pink-50 dark:bg-pink-900/60 text-pink-700 dark:text-pink-100',
+  stone: 'bg-stone-100 dark:bg-stone-700/60 text-stone-700 dark:text-stone-100',
+} as const
+
+function SectionHeader({
+  title,
+  icon: Icon,
+  isExpanded,
+  onToggle,
+  badge,
+  accentColor = 'forest',
+}: {
+  title: string
+  icon: React.ElementType
+  isExpanded: boolean
+  onToggle: () => void
+  badge?: string | number
+  accentColor?: keyof typeof SECTION_HEADER_COLOR_CLASSES
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={`flex w-full items-center justify-between rounded-xl p-2.5 transition-all duration-200 hover:scale-[1.01] ${SECTION_HEADER_COLOR_CLASSES[accentColor]}`}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className="h-4 w-4" />
+        <span className="text-xs font-bold tracking-wider uppercase">{title}</span>
+        {badge !== undefined && (
+          <span className="rounded-full bg-white/60 px-1.5 py-0.5 text-[10px] font-bold dark:bg-black/20">
+            {badge}
+          </span>
+        )}
+      </div>
+      <ChevronDown
+        className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+      />
+    </button>
+  )
+}
+
 export default function CamperDetailsPanel({
   camperId,
   onClose,
@@ -757,50 +803,6 @@ export default function CamperDetailsPanel({
           <div className="text-muted-foreground text-center">Camper not found</div>
         </div>
       </>
-    )
-  }
-
-  // Collapsible Section Header
-  const SectionHeader = ({
-    title,
-    icon: Icon,
-    isExpanded,
-    onToggle,
-    badge,
-    accentColor = 'forest',
-  }: {
-    title: string
-    icon: React.ElementType
-    isExpanded: boolean
-    onToggle: () => void
-    badge?: string | number
-    accentColor?: 'forest' | 'amber' | 'pink' | 'stone'
-  }) => {
-    const colorClasses = {
-      forest: 'bg-forest-50 dark:bg-forest-900/60 text-forest-700 dark:text-forest-100',
-      amber: 'bg-amber-50 dark:bg-amber-900/60 text-amber-700 dark:text-amber-100',
-      pink: 'bg-pink-50 dark:bg-pink-900/60 text-pink-700 dark:text-pink-100',
-      stone: 'bg-stone-100 dark:bg-stone-700/60 text-stone-700 dark:text-stone-100',
-    }
-
-    return (
-      <button
-        onClick={onToggle}
-        className={`flex w-full items-center justify-between rounded-xl p-2.5 transition-all duration-200 hover:scale-[1.01] ${colorClasses[accentColor]}`}
-      >
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4" />
-          <span className="text-xs font-bold tracking-wider uppercase">{title}</span>
-          {badge !== undefined && (
-            <span className="rounded-full bg-white/60 px-1.5 py-0.5 text-[10px] font-bold dark:bg-black/20">
-              {badge}
-            </span>
-          )}
-        </div>
-        <ChevronDown
-          className={`h-4 w-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-        />
-      </button>
     )
   }
 

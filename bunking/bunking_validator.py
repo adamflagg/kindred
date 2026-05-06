@@ -472,7 +472,10 @@ class BunkingValidator:
                 bunkmate = person_by_id.get(other.person_cm_id)
                 if bunkmate is None or bunkmate.grade is None:
                     continue
-                grades.append(int(bunkmate.grade))
+                try:
+                    grades.append(int(bunkmate.grade))
+                except TypeError, ValueError:
+                    continue
             bunkmate_grades_canon[pid_int] = grades
 
         def _is_satisfied(request: BunkRequest) -> bool:
@@ -665,14 +668,19 @@ class BunkingValidator:
         # the bucket is "unsatisfied" only when total > 0 AND zero satisfied. Partial satisfaction
         # (≥1 of N) classifies as "satisfied" and must NOT appear here, otherwise the drill-down
         # contradicts `campers_with_unsatisfied_material_parent_requests` above.
-        stats.unsatisfied_material_parent_persons = sorted(
-            (
-                {"cm_id": int(pid), "name": p.name if (p := person_by_id.get(pid)) else f"Person {pid}"}
-                for pid, reqs in material_parent_by_person.items()
-                if reqs and not satisfied_material_parent_by_person.get(pid)
-            ),
-            key=lambda entry: entry["name"],
-        )
+        unmet_persons: list[dict[str, Any]] = []
+        for pid, reqs in material_parent_by_person.items():
+            if not reqs or satisfied_material_parent_by_person.get(pid):
+                continue
+            try:
+                cm_id = int(pid)
+            except TypeError, ValueError:
+                # Non-numeric requester id — same data-hygiene class the canonical
+                # predicate already absorbs. Skip rather than crash the summary.
+                continue
+            person = person_by_id.get(pid)
+            unmet_persons.append({"cm_id": cm_id, "name": person.name if person else f"Person {pid}"})
+        stats.unsatisfied_material_parent_persons = sorted(unmet_persons, key=lambda entry: entry["name"])
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

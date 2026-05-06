@@ -685,3 +685,32 @@ def test_assignment_with_non_numeric_cm_id_is_skipped() -> None:
     # Must not raise — bad row is skipped, good row is processed.
     resp = session_satisfaction([999], 2026, None, pb)
     assert 1 in resp.campers
+
+
+def test_assignment_with_dict_style_expand_is_processed() -> None:
+    """get_person_from_expand / get_bunk_from_expand are documented to handle BOTH
+    object-style and dict-style expanded payloads. The aggregator must mirror that
+    contract — using `getattr(person_data, "cm_id", None)` silently returns None
+    for dict payloads, dropping valid assignments under the "missing cm_id" warning.
+    """
+    from types import SimpleNamespace
+
+    persons = [_person(1, 10), _person(2, 10)]
+    good = _assignment(1, 10)
+    # Dict-style expand payload — both `expand` and inner relation values are dicts.
+    dict_style = SimpleNamespace(
+        id="adict",
+        cm_id=2 * 1000 + 10,
+        person="p_dict",
+        bunk="b_dict",
+        session="s1",
+        expand={
+            "person": {"id": "p_dict", "cm_id": 2},
+            "bunk": {"id": "b_dict", "cm_id": 10},
+        },
+    )
+    pb = _build_pb_mock(persons, [good, dict_style], [])
+    resp = session_satisfaction([999], 2026, None, pb)
+    # Both assignments must surface; dict-style must NOT be silently dropped.
+    assert 1 in resp.campers
+    assert 2 in resp.campers

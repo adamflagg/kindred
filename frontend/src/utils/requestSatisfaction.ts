@@ -122,13 +122,16 @@ export function computeRequestSatisfaction({
  */
 export function resolveBadgeBucket(
   bucket: RequestBucket | undefined,
-  req: { source_field?: string | null; source?: string | null }
+  req: { source_field?: string | null; source?: string | null; request_type?: string | null }
 ): { isMaterialAgePref: boolean; isStaffBadge: boolean } {
   if (bucket === 'material_parent') return { isMaterialAgePref: true, isStaffBadge: false }
   if (bucket === 'staff') return { isMaterialAgePref: false, isStaffBadge: true }
   if (bucket === undefined) {
+    // The P badge is for parent age preferences only — a regular bunk_with row also
+    // has source_field='bunk_with' but isn't a parent badge. Restrict the fallback
+    // to age_preference rows, matching the pre-#1158 inline logic.
     return {
-      isMaterialAgePref: req.source_field === 'bunk_with',
+      isMaterialAgePref: req.request_type === 'age_preference' && req.source_field === 'bunk_with',
       isStaffBadge: req.source === 'staff',
     }
   }
