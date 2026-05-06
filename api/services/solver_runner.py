@@ -121,14 +121,18 @@ async def run_solver_task_v2(
             input_data=solver_input, config_service=config_service, debug_constraints=debug_constraints or {}
         )
 
-        # Run solver with time limit
-        result = solver.solve(time_limit_seconds=time_limit)
+        # The OR-Tools solver is synchronous and CPU-bound — running it
+        # directly on the event loop blocks every other request to this
+        # uvicorn worker (status polls, /health, the container HEALTHCHECK
+        # probe) for the full solve duration. Offload to a thread so the
+        # event loop stays responsive.
+        result = await asyncio.to_thread(solver.solve, time_limit_seconds=time_limit)
 
         if result is None:
             # Try to identify the cause of infeasibility
             logger.warning("Solver failed - running infeasibility analysis...")
             try:
-                cause = solver.find_infeasibility_cause(time_limit_seconds=10)
+                cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
                 logger.error(f"Infeasibility analysis result: {cause}")
             except Exception as e:
                 logger.error(f"Failed to run infeasibility analysis: {e}")
