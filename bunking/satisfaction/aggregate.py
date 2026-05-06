@@ -38,7 +38,6 @@ logger = get_logger(__name__)
 
 _PB_RECORD_ID_PATTERN = r"^[a-zA-Z0-9]{15}$"
 _PB_RECORD_ID_RE = re.compile(_PB_RECORD_ID_PATTERN)
-_PB_FETCH_TIMEOUT_S = 30.0
 
 
 def _coerce_str(v: Any) -> str:
@@ -247,12 +246,12 @@ def session_satisfaction(
             query_params={"filter": requests_filter},
         )
         try:
-            assignments = assignments_future.result(timeout=_PB_FETCH_TIMEOUT_S)
+            assignments = assignments_future.result(timeout=30.0)
         except Exception:
             logger.exception("failed to fetch %s", assignments_collection)
             raise
         try:
-            raw_requests = requests_future.result(timeout=_PB_FETCH_TIMEOUT_S)
+            raw_requests = requests_future.result(timeout=30.0)
         except Exception:
             logger.exception("failed to fetch %s", BUNK_REQUESTS)
             raise

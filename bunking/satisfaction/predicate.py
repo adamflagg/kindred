@@ -52,6 +52,10 @@ def is_request_satisfied(
         ValueError: if request is missing requester_id (and requester_person_cm_id),
             if request_type is unknown, if request_type is 'age_preference' and
             bunkmate_grades is None, or if requester_grade is outside 0-12.
+
+    Note:
+        `source_field` is not read here; bucket classification is the caller's
+        responsibility (see bunking.satisfaction.aggregate.camper_satisfaction).
     """
     raw = request.get("requester_id")
     if raw is None:

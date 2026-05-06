@@ -4,7 +4,7 @@
  * This component orchestrates data fetching through hooks and
  * delegates rendering to extracted UI components.
  */
-import { useContext } from 'react'
+import { useContext, useEffect } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
@@ -281,10 +281,11 @@ export default function CamperDetail() {
     staleTime: 0,
   })
 
-  // Log person fetch error if any
-  if (personError) {
-    console.error('Error fetching person:', personError)
-  }
+  useEffect(() => {
+    if (personError) {
+      console.error('Error fetching person:', personError)
+    }
+  }, [personError])
 
   // Select primary camper: prefer enrolled, fall back to first attendee
   const camper = enrolledCampers[0] ?? allAttendees[0] ?? null

@@ -15,6 +15,7 @@ The scoring logic mirrors the solver's objective function:
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -135,23 +136,27 @@ def evaluate_scenario_score(
         bunkmate_grades_map: dict[int, list[int]] | None = None
         if request_type == RequestType.AGE_PREFERENCE.value:
             requester_bunk = person_to_bunk.get(requester_id)
-            grades_for_requester: list[int] = []
+            grades: list[int] = []
             if requester_bunk is not None:
                 for pid in bunk_to_persons[requester_bunk]:
                     if pid != requester_id and pid in person_by_cm_id:
                         grade = person_by_cm_id[pid].get("grade")
                         if grade is not None:
-                            grades_for_requester.append(int(grade))
-            bunkmate_grades_map = {requester_id: grades_for_requester}
+                            grades.append(int(grade))
+            bunkmate_grades_map = {requester_id: grades}
 
-        request_for_predicate = dict(request)
         # Backfill when the field is missing OR present-and-None. PB rows can
         # carry requester_grade=None explicitly (legacy rows pre-backfill); the
         # bare `not in` check missed those, treating age_preference as unsatisfied.
-        if request_for_predicate.get("requester_grade") is None:
+        # Skip the dict copy on the common path where requester_grade is already set.
+        request_for_predicate: Mapping[str, Any] = request
+        if request.get("requester_grade") is None:
             person_for_grade = person_by_cm_id.get(requester_id)
             if person_for_grade is not None:
-                request_for_predicate["requester_grade"] = person_for_grade.get("grade")
+                request_for_predicate = {
+                    **request,
+                    "requester_grade": person_for_grade.get("grade"),
+                }
 
         try:
             is_satisfied = is_request_satisfied(
