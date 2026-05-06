@@ -223,3 +223,99 @@ func TestHook_StatusFlipFlipsPartner(t *testing.T) {
 		t.Errorf("after A→B flip to declined: A→B expected is_reciprocal=false, got true")
 	}
 }
+
+// Test 5 — Cross-session: A→B in session 1, B→A in session 2 → neither reciprocal.
+func TestHook_CrossSessionNotReciprocal(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	col, _ := app.FindCollectionByNameOrId("bunk_requests")
+	rowAB := core.NewRecord(col)
+	rowAB.Set("requester_id", 100)
+	rowAB.Set("requestee_id", 200)
+	rowAB.Set("request_type", "bunk_with")
+	rowAB.Set("status", "resolved")
+	rowAB.Set("year", 2026)
+	rowAB.Set("session_id", 1235404)
+	rowAB.Set("is_reciprocal", false)
+	if err := app.Save(rowAB); err != nil {
+		t.Fatal(err)
+	}
+
+	rowBA := core.NewRecord(col)
+	rowBA.Set("requester_id", 200)
+	rowBA.Set("requestee_id", 100)
+	rowBA.Set("request_type", "bunk_with")
+	rowBA.Set("status", "resolved")
+	rowBA.Set("year", 2026)
+	rowBA.Set("session_id", 9999999) // DIFFERENT session
+	rowBA.Set("is_reciprocal", false)
+	if err := app.Save(rowBA); err != nil {
+		t.Fatal(err)
+	}
+
+	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if gotAB.GetBool("is_reciprocal") || gotBA.GetBool("is_reciprocal") {
+		t.Errorf("cross-session: expected both reciprocal=false, got AB=%v BA=%v",
+			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
+	}
+}
+
+// Test 6 — Cross-type: A→B bunk_with, B→A not_bunk_with → neither reciprocal.
+func TestHook_CrossTypeNotReciprocal(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "not_bunk_with", "resolved")
+
+	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if gotAB.GetBool("is_reciprocal") || gotBA.GetBool("is_reciprocal") {
+		t.Errorf("cross-type: expected both reciprocal=false, got AB=%v BA=%v",
+			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
+	}
+}
+
+// Test 7 — age_preference: hook is a no-op, no errors.
+func TestHook_AgePreferenceNoop(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	col, _ := app.FindCollectionByNameOrId("bunk_requests")
+	r := core.NewRecord(col)
+	r.Set("requester_id", 100)
+	r.Set("requestee_id", 0) // age_preference has no requestee
+	r.Set("request_type", "age_preference")
+	r.Set("status", "resolved")
+	r.Set("year", 2026)
+	r.Set("session_id", 1235404)
+	r.Set("is_reciprocal", false)
+
+	if err := app.Save(r); err != nil {
+		t.Fatalf("age_preference save (with hook): %v", err)
+	}
+	got, _ := app.FindRecordById("bunk_requests", r.Id)
+	if got.GetBool("is_reciprocal") {
+		t.Errorf("age_preference: expected reciprocal=false, got true")
+	}
+}
