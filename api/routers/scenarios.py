@@ -236,8 +236,6 @@ async def list_scenarios(
             for s in scenarios
         ]
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error listing scenarios: {e}", exc_info=True)
         raise
@@ -513,6 +511,7 @@ async def update_scenario_assignment(
     Frontend sends CampMinder IDs which are looked up to get PocketBase IDs.
     """
     logger.info(f"update_scenario_assignment called: scenario_id={scenario_id}, update={update}")
+    existing: list[Any] = []
     try:
         # Build session context from the update request (validates session/year)
         ctx = await build_session_context(update.session_cm_id, update.year, pb)
@@ -641,14 +640,12 @@ async def update_scenario_assignment(
             )
             logger.error(f"Scenario ID: {scenario_id}, Update: {update}")
         raise pb_error_to_http(e)
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error updating assignment: {e}", exc_info=True)
-        logger.error(f"Scenario ID: {scenario_id}")
-        logger.error(f"Update data: {update}")
-        if "existing" in locals():
-            logger.error(f"Existing assignments: {existing}")
+        logger.error(
+            f"Error updating assignment: {e}",
+            extra={"scenario_id": scenario_id, "update": str(update), "existing_count": len(existing)},
+            exc_info=True,
+        )
         raise
 
 

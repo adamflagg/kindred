@@ -1,6 +1,6 @@
 """Tests for name_utils module - last_name_matches with Jaro-Winkler fuzzy matching."""
 
-from bunking.sync.bunk_request_processor.shared.name_utils import last_name_matches
+from bunking.sync.bunk_request_processor.shared.name_utils import last_name_jw_raw_score, last_name_matches
 
 
 class TestLastNameMatchesExisting:
@@ -74,3 +74,22 @@ class TestLastNameMatchesJaroWinkler:
         assert last_name_matches("Kiefer", "Kieffer", threshold=0.99) is False
         # Loose threshold should accept more
         assert last_name_matches("Kiefer", "Kieffer", threshold=0.80) is True
+
+
+class TestLastNameJwRawScore:
+    """last_name_jw_raw_score is a public API (no leading underscore)."""
+
+    def test_identical_names_score_one(self):
+        assert last_name_jw_raw_score("Smith", "Smith") == 1.0
+
+    def test_similar_names_high_score(self):
+        score = last_name_jw_raw_score("Kiefer", "Kieffer")
+        assert score > 0.9
+
+    def test_unrelated_names_low_score(self):
+        score = last_name_jw_raw_score("Smith", "Jones")
+        assert score < 0.8
+
+    def test_returns_float_in_unit_interval(self):
+        score = last_name_jw_raw_score("Garcia", "Garza")
+        assert 0.0 <= score <= 1.0

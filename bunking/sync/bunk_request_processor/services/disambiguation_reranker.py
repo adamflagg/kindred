@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..core.models import Person
-from ..shared.name_utils import _last_name_jw_raw_score, parse_name, split_last_name_words
+from ..shared.name_utils import last_name_jw_raw_score, parse_name, split_last_name_words
 
 # Minimum JW similarity for a candidate's last name to pass the filter
 JW_LAST_NAME_FLOOR = 0.70
@@ -36,7 +36,7 @@ def _last_name_jw_score(target_last: str, candidate_last: str) -> float:
 
     Handles compound/hyphenated names:
     1. Word prefix match → 1.0 (e.g. "Godoy" matches "Godoy Abbott")
-    2. JW on normalized forms + hyphen-split parts via _last_name_jw_raw_score
+    2. JW on normalized forms + hyphen-split parts via last_name_jw_raw_score
     """
     if not target_last or not candidate_last:
         return 0.0
@@ -58,7 +58,7 @@ def _last_name_jw_score(target_last: str, candidate_last: str) -> float:
                 return 1.0
 
     # Strategy 2: JW on normalized forms (including hyphen-split parts)
-    return _last_name_jw_raw_score(target_last, candidate_last)
+    return last_name_jw_raw_score(target_last, candidate_last)
 
 
 def rerank_disambiguation_candidates(
