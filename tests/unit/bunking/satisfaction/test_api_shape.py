@@ -21,6 +21,14 @@ class TestPerRequestStatus:
         assert s.satisfied
         assert s.bucket is RequestBucket.MATERIAL_PARENT
 
+    def test_empty_request_id_rejected(self) -> None:
+        """Scan-it round 3 #7: empty request_id would collide on the frontend's
+        bucketByRequestId Map (multiple empty-id rows overwrite each other).
+        Reject at the boundary so PB schema regressions surface as 422.
+        """
+        with pytest.raises(ValidationError, match="request_id"):
+            PerRequestStatus(request_id="", bucket=RequestBucket.MATERIAL_PARENT, satisfied=True)
+
 
 class TestBucketCount:
     def test_valid(self) -> None:
@@ -70,13 +78,35 @@ class TestCamperSatisfaction:
 class TestCamperSatisfactionCountedBuckets:
     def test_camper_satisfaction_rejects_missing_counted_bucket(self) -> None:
         """counted_totals must contain every key in COUNTED_BUCKETS."""
-        with pytest.raises((ValueError, Exception), match="missing buckets"):
+        with pytest.raises(ValidationError, match="missing buckets"):
             CamperSatisfaction(
                 person_cm_id=1,
                 per_request=[],
                 counted_totals={
                     RequestBucket.MATERIAL_PARENT: BucketCount(satisfied=0, total=0)
                     # STAFF missing
+                },
+                immaterial=BucketCount(satisfied=0, total=0),
+                flags=SatisfactionFlags(
+                    parent_min_one_violation=False,
+                    staff_unsatisfied_alert=False,
+                    has_any_counted_request=False,
+                ),
+            )
+
+    def test_camper_satisfaction_rejects_extra_counted_bucket(self) -> None:
+        """Scan-it round 3 #10: counted_totals must equal COUNTED_BUCKETS, not
+        be a superset. An extra bucket like IMMATERIAL_PARENT in counted_totals
+        would silently inflate sums (visible-uncounted requests get counted).
+        """
+        with pytest.raises(ValidationError, match="unexpected buckets"):
+            CamperSatisfaction(
+                person_cm_id=1,
+                per_request=[],
+                counted_totals={
+                    RequestBucket.MATERIAL_PARENT: BucketCount(satisfied=0, total=0),
+                    RequestBucket.STAFF: BucketCount(satisfied=0, total=0),
+                    RequestBucket.IMMATERIAL_PARENT: BucketCount(satisfied=1, total=1),
                 },
                 immaterial=BucketCount(satisfied=0, total=0),
                 flags=SatisfactionFlags(

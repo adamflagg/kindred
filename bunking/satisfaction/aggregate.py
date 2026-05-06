@@ -76,11 +76,18 @@ def _coerce_row(r: Any) -> BunkRequestRow:
     (which PB can return for legacy rows) become "" instead of the literal
     string "None" — the latter would defeat downstream missing-field
     fallbacks (bucket.classify_request, source-field backfill).
+
+    Raises ValueError when requester_id is missing or None — the row cannot
+    be aggregated without it. session_satisfaction catches this and skips
+    the row so one bad row doesn't 500 the whole /api/satisfaction call.
     """
+    raw_requester = r.get("requester_id") if isinstance(r, dict) else getattr(r, "requester_id", None)
+    if raw_requester is None:
+        raise ValueError("row missing requester_id; cannot aggregate")
     if isinstance(r, dict):
         return BunkRequestRow(
             id=_coerce_str(r.get("id")),
-            requester_id=int(r["requester_id"]),
+            requester_id=int(raw_requester),
             requestee_id=r.get("requestee_id"),
             request_type=_coerce_str(r.get("request_type")),
             source_field=_coerce_str(r.get("source_field")),
@@ -89,7 +96,7 @@ def _coerce_row(r: Any) -> BunkRequestRow:
         )
     return BunkRequestRow(
         id=_coerce_str(getattr(r, "id", None)),
-        requester_id=int(r.requester_id),
+        requester_id=int(raw_requester),
         requestee_id=getattr(r, "requestee_id", None),
         request_type=_coerce_str(getattr(r, "request_type", None)),
         source_field=_coerce_str(getattr(r, "source_field", None)),
@@ -202,6 +209,17 @@ def session_satisfaction(
     if scenario_id is not None and not _PB_RECORD_ID_RE.fullmatch(scenario_id):
         raise ValueError(f"invalid scenario_id {scenario_id!r}; must match {_PB_RECORD_ID_RE.pattern}")
 
+    # Same defense-in-depth for year — interpolated raw into PB filter strings
+    # (`year = {year}`), so a non-int caller (test/script bypassing the router)
+    # could inject filter syntax. Coerce + range-check matching the router's
+    # ge=2000, le=2100.
+    try:
+        year = int(year)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid year {year!r}; must be an int") from exc
+    if not 2000 <= year <= 2100:
+        raise ValueError(f"invalid year {year}; must be between 2000 and 2100")
+
     # Coerce session ids to int defensively in case a caller passes a stringly-typed list.
     session_cm_ids = [int(sid) for sid in session_cm_ids]
 
@@ -297,7 +315,12 @@ def session_satisfaction(
 
     requests_by_requester: dict[int, list[BunkRequestRow]] = defaultdict(list)
     for r in raw_requests:
-        row = _coerce_row(r)
+        try:
+            row = _coerce_row(r)
+        except ValueError as exc:
+            row_id = (r.get("id") if isinstance(r, dict) else getattr(r, "id", None)) or "<unknown>"
+            logger.warning("skipping malformed bunk_request: %s (request_id=%s)", exc, row_id)
+            continue
         rid = row["requester_id"]
         if row.get("requester_grade") is None:
             row["requester_grade"] = person_grades.get(rid)

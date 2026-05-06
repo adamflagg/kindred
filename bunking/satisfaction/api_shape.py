@@ -20,7 +20,9 @@ from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket
 class PerRequestStatus(BaseModel):
     """Satisfaction status of a single bunk request."""
 
-    request_id: str = Field(..., description="PocketBase record id of the bunk_request row.")
+    # min_length=1 so PB-schema regressions producing empty ids surface as 422
+    # instead of silent collisions on the frontend's bucketByRequestId Map.
+    request_id: str = Field(..., min_length=1, description="PocketBase record id of the bunk_request row.")
     bucket: RequestBucket
     satisfied: bool
 
@@ -67,9 +69,17 @@ class CamperSatisfaction(BaseModel):
 
     @model_validator(mode="after")
     def _check_counted_keys(self) -> CamperSatisfaction:
-        missing = COUNTED_BUCKETS - set(self.counted_totals.keys())
+        # Equality, not subset — extra buckets like IMMATERIAL_PARENT in
+        # counted_totals would silently inflate sums (visible-uncounted requests
+        # would be counted), violating the "covers material_parent + staff per
+        # COUNTED_BUCKETS" contract.
+        keys = set(self.counted_totals.keys())
+        missing = COUNTED_BUCKETS - keys
+        extra = keys - COUNTED_BUCKETS
         if missing:
             raise ValueError(f"counted_totals missing buckets: {sorted(missing)}")
+        if extra:
+            raise ValueError(f"counted_totals has unexpected buckets: {sorted(extra)}")
         return self
 
 

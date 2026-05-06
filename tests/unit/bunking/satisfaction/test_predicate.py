@@ -228,7 +228,13 @@ class TestAgePreferenceRequesterGradeNoneInRow:
 
 
 @pytest.mark.parametrize(("a_bunk", "b_bunk"), [(10, 10), (10, 11), (10, None)])
-def test_bunk_with_and_not_bunk_with_are_inverses(a_bunk: int | None, b_bunk: int | None) -> None:
+def test_bunk_with_and_not_bunk_with_are_inverses_when_requester_assigned(
+    a_bunk: int | None, b_bunk: int | None
+) -> None:
+    """When the requester is assigned, bunk_with and not_bunk_with are exact
+    inverses. When the requester is UNASSIGNED, both early-return False at
+    predicate.py:54-55 — see test_unassigned_requester_yields_dual_false below.
+    """
     p2b = {1: a_bunk} if a_bunk is not None else {}
     if b_bunk is not None:
         p2b[2] = b_bunk
@@ -240,3 +246,21 @@ def test_bunk_with_and_not_bunk_with_are_inverses(a_bunk: int | None, b_bunk: in
     }
     not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "not_bunk_with"}
     assert is_request_satisfied(bunk_with, p2b) == (not is_request_satisfied(not_bunk_with, p2b))
+
+
+def test_unassigned_requester_yields_dual_false() -> None:
+    """Edge of the inverse property: an unassigned requester causes BOTH
+    bunk_with and not_bunk_with to return False (the requester-not-in-p2b
+    early return fires before the type-specific branch). They are not
+    inverses in this case. Documented to lock the behavior.
+    """
+    p2b = {2: 10}  # only the requestee is assigned
+    bunk_with = {
+        "requester_id": 1,
+        "requestee_id": 2,
+        "request_type": "bunk_with",
+        "source_field": "bunk_with",
+    }
+    not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "not_bunk_with"}
+    assert is_request_satisfied(bunk_with, p2b) is False
+    assert is_request_satisfied(not_bunk_with, p2b) is False

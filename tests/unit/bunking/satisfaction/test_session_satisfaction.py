@@ -182,6 +182,69 @@ class TestMultiSession:
         with pytest.raises(ValueError, match="session_cm_ids must contain at least one id"):
             session_satisfaction(session_cm_ids=[], year=2026, scenario_id=None, pb_client=pb)
 
+    def test_non_int_year_rejected_before_any_pb_query(self) -> None:
+        """Scan-it round 3 #14: year is interpolated into PB filter strings
+        without validation. Router validates with ge/le, but session_satisfaction
+        is callable directly by tests/scripts (mirrors the existing scenario_id
+        defense-in-depth at lines 202-203).
+
+        Defense-in-depth must reject BEFORE any pb_client.collection() call so
+        a malformed filter string never reaches PocketBase.
+        """
+        pb = _build_pb_mock([], [], [])
+        with pytest.raises((ValueError, TypeError), match="year"):
+            session_satisfaction(
+                session_cm_ids=[999],
+                year="2026'; DROP TABLE bunk_assignments; --",  # type: ignore[arg-type]
+                scenario_id=None,
+                pb_client=pb,
+            )
+        # Verify no PB queries were issued — validation fires first.
+        pb.collection.assert_not_called()
+
+
+class TestMalformedRowSkipped:
+    """Scan-it round 3 #1: a row missing requester_id raised KeyError in
+    _coerce_row, which propagated up and 500'd the whole /api/satisfaction
+    response. Per the docstring contract ("one malformed row should not 500
+    the whole call"), the bad row must be logged and skipped while good
+    rows in the same response are still processed.
+    """
+
+    def test_row_missing_requester_id_skipped_good_rows_succeed(self) -> None:
+        persons = [_person(1, 10), _person(2, 10)]
+        assignments = [_assignment(1, 100), _assignment(2, 100)]
+        good_request = {
+            "id": "r_good",
+            "requester_id": 1,
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": "bunk_with",
+            "year": 2026,
+            "session_id": 999,
+            "merged_into": "",
+        }
+        bad_request = {
+            "id": "r_bad",
+            # requester_id absent — legacy row / schema regression
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": "bunk_with",
+            "year": 2026,
+            "session_id": 999,
+            "merged_into": "",
+        }
+        pb = _build_pb_mock(persons, assignments, [good_request, bad_request])
+
+        # Must not raise — bad row is skipped, good row is processed.
+        resp = session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=None, pb_client=pb)
+
+        # Good row's bucket survives
+        assert 1 in resp.campers
+        camper1 = resp.campers[1]
+        assert camper1.counted_totals[RequestBucket.MATERIAL_PARENT].total == 1
+        assert camper1.counted_totals[RequestBucket.MATERIAL_PARENT].satisfied == 1
+
 
 class TestAllRequestTypeVariants:
     """Verify each (request_type, source_field) combination lands in the right bucket.

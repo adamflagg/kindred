@@ -184,6 +184,47 @@ class TestCoerceRowNoneSourceField:
         assert coerced["request_type"] == ""
 
 
+class TestCoerceRowMissingRequesterId:
+    """Scan-it round 3 #1: _coerce_row raised KeyError/AttributeError on rows
+    missing requester_id, bypassing session_satisfaction's per-row error
+    handling and 500ing the entire /api/satisfaction call. Contract:
+    _coerce_row raises a typed ValueError so the caller can catch + skip.
+    """
+
+    def test_dict_missing_requester_id_raises_valueerror(self) -> None:
+        row = {
+            "id": "r1",
+            # requester_id intentionally absent
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": "bunk_with",
+        }
+        with pytest.raises(ValueError, match="requester_id"):
+            _coerce_row(row)
+
+    def test_dict_none_requester_id_raises_valueerror(self) -> None:
+        row = {
+            "id": "r1",
+            "requester_id": None,
+            "requestee_id": 2,
+            "request_type": "bunk_with",
+            "source_field": "bunk_with",
+        }
+        with pytest.raises(ValueError, match="requester_id"):
+            _coerce_row(row)
+
+    def test_object_missing_requester_id_raises_valueerror(self) -> None:
+        class Row:
+            id = "r1"
+            # requester_id intentionally absent
+            requestee_id = 2
+            request_type = "bunk_with"
+            source_field = "bunk_with"
+
+        with pytest.raises(ValueError, match="requester_id"):
+            _coerce_row(Row())
+
+
 class TestCamperSatisfactionMissingSourceField:
     """Finding #10: req["source_field"] subscript raises KeyError for raw dict.
 

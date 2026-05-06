@@ -22,7 +22,7 @@ class SocialGraphNode(BaseModel):
     centrality: float = 0.0
     clustering: float = 0.0
     community: int | None = None
-    satisfaction_status: str | None = None  # 'satisfied' | 'isolated' | 'no_requests'
+    satisfaction_status: str | None = None  # 'satisfied' | 'unsatisfied' | 'no_requests'
     # Stage 2 parent-paramount split. parent_satisfaction_status drives the graph
     # node border color in the frontend; staff_satisfaction_status is emitted but
     # intentionally not rendered (Stage 2 scope decision).

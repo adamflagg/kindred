@@ -39,6 +39,10 @@ function renderProvider(sessionCmId: number) {
 beforeEach(() => {
   fetchSpy.mockClear()
   getFullListSpy.mockClear()
+  // Scan-it round 3 #12: mockAuth is mutated in-place by each test; without
+  // a reset, ordering becomes load-bearing and `--shuffle` would break tests.
+  mockAuth.user = null
+  mockAuth.isLoading = true
 })
 
 describe('BunkRequestProvider query gating', () => {

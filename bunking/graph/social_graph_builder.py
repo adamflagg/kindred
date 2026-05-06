@@ -68,11 +68,15 @@ def _backfill_source_field(request_type: str, source_field: str | None) -> str:
     """
     if source_field:
         return source_field
+    # Legacy `age_preference` request_type maps to `socialize_with` source_field
+    # — per bucket.py docstring, the parent "socialize with / age preference"
+    # dropdown lives under socialize_with. Returning "age_preference" here
+    # would produce an invalid source_field that bucket.classify_request rejects.
     mapping = {
         "bunk_with": "bunk_with",
         "not_bunk_with": "not_bunk_with",
         "socialize_with": "socialize_with",
-        "age_preference": "age_preference",
+        "age_preference": "socialize_with",
     }
     if request_type in mapping:
         return mapping[request_type]
@@ -117,7 +121,8 @@ def _build_request_edge_attrs(
         "reciprocal": reciprocal,
         "source": getattr(request, "source", None),
         "source_field": sf,
-        "request_type": getattr(request, "request_type", "bunk_with"),
+        # `or` instead of getattr default so explicit-None becomes the default.
+        "request_type": getattr(request, "request_type", None) or "bunk_with",
         "request_id": getattr(request, "id", ""),
         "requester_id": requester_id,
         "requestee_id": requestee_id,
@@ -890,7 +895,8 @@ class SocialGraphBuilder:
         aggregate_status_map: dict[Any, str] = {}
 
         node_requests: dict[int, list[dict[str, Any]]] = {int(n): [] for n in self.graph.nodes()}
-        predicate_known_types = ("bunk_with", "not_bunk_with", "age_preference")
+        # age_preference rows are filtered above; the predicate handles only these two.
+        predicate_known_types = ("bunk_with", "not_bunk_with")
 
         for u, v, data in self.graph.edges(data=True):
             if data.get("edge_type") != "request":
@@ -899,7 +905,12 @@ class SocialGraphBuilder:
             # they're scored by the solver, not surfaced in graph node colors.
             if data.get("request_type") == "age_preference":
                 continue
-            raw_request_type = data.get("request_type", "bunk_with")
+            # Coerce explicit-None request_type to "" so the backfill helper sees a
+            # consistent "missing" signal (matches the call site at line 107-110).
+            # Empty string falls through the helper's mapping and triggers the warning
+            # path → socialize_with (IMMATERIAL bucket), which is the correct
+            # "missing data" treatment (parent_satisfaction_status stays no_requests).
+            raw_request_type = data.get("request_type") or ""
             resolved_source_field = _backfill_source_field(raw_request_type, data.get("source_field"))
             # Unknown request_type would crash the predicate (ValueError). The
             # predicate only handles bunk_with / not_bunk_with / age_preference;
@@ -931,9 +942,14 @@ class SocialGraphBuilder:
                 # If requestee is missing on a reciprocal row, derive from the edge's other endpoint.
                 if row_requestee is None:
                     row_requestee = int(v) if int(u) == row_requester else int(u)
+                # PerRequestStatus.request_id has min_length=1 (#7) — synthesize
+                # a stable per-edge id when the edge doesn't carry a real PB id.
+                # Real prod data always has an id; the fallback is for graph-only
+                # synthetic edges (e.g. tests, edges constructed without a row).
+                row_id = row.get("request_id") or f"edge:{row_requester}:{int(row_requestee)}"
                 node_requests[row_requester].append(
                     {
-                        "id": row.get("request_id") or "",
+                        "id": row_id,
                         "requester_id": row_requester,
                         "requestee_id": int(row_requestee),
                         "request_type": resolved_request_type,

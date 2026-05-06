@@ -5,7 +5,18 @@ Replaces the inline branching in:
 - bunking/graph/social_graph_builder.py (_calculate_node_metrics._bucket)
 - frontend/src/utils/computeSatisfiedRequestInfo.ts (deleted by this refactor)
 
+frontend/src/utils/requestSatisfaction.ts is the parallel TypeScript
+implementation pending #1155 (OpenAPI codegen). Keep its branching in sync
+with this module manually until that codegen lands.
+
 Behavior is identical to those predicates — no behavior delta tolerated.
+
+requester_id / requestee_id zero handling — intentional asymmetry:
+- requester_id == 0 is treated as a literal id (no fallback chain).
+- requestee_id == 0 falls through `or request.get("requested_person_cm_id")`.
+Production cm_ids are always positive, so the asymmetry has no practical
+effect; the docstring just records the intent so future readers don't
+silently flip one branch and break the other.
 """
 
 from __future__ import annotations
