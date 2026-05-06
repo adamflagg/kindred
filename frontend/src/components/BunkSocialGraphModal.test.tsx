@@ -1,7 +1,7 @@
 /**
  * Tests for BunkSocialGraphModal helpers and navigation guard.
  *
- * getBunkType and extractSortKey are now module-scope helpers and can be
+ * getBunkType and extractSortKey are exported module-scope helpers and can be
  * exercised without standing up cytoscape or React providers. The guard
  * behavior (missing currentBunk → empty sessionBunks) is verified by
  * importing the helpers directly and asserting the logic they encode.
@@ -12,35 +12,7 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-
-// Re-export the module-scope helpers via a small re-export shim so tests can
-// import them without standing up the full component. We import the same
-// symbols that the component uses.
-//
-// NOTE: The helpers are not currently exported from the component file
-// (they are module-scope but not `export`-ed). We test the same logic inline
-// here to match the spec exactly, and we also test the file directly.
-// If helpers are exported in the future, these tests should import them.
-
-// ─── Inline replicas (must match BunkSocialGraphModal.tsx exactly) ────────────
-// These mirror the hoisted module-scope functions. If the component
-// implementation changes these functions, the tests below will catch the drift.
-
-const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-  if (!name) return 'B'
-  if (name.includes('AG') || name.startsWith('AG')) return 'AG'
-  if (name.startsWith('G-')) return 'G'
-  if (name.startsWith('B-')) return 'B'
-  return 'B'
-}
-
-const extractSortKey = (name: string): { primary: number; secondary: string } => {
-  if (name.includes('Alph')) return { primary: -2, secondary: name }
-  if (name.includes('Bet')) return { primary: -1, secondary: name }
-  const match = name.match(/[GB]-(\d+)/)
-  if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
-  return { primary: 999, secondary: name }
-}
+import { getBunkType, extractSortKey } from './BunkSocialGraphModal'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
 // Mirrors the useMemo body in BunkSocialGraphModal so we can assert the

@@ -100,16 +100,18 @@ const EDGE_COLORS: Record<string, string> = {
 }
 
 // Helpers hoisted to module scope: they reference no closure values and were
-// previously redeclared on every useMemo recompute.
-const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
+// previously redeclared on every useMemo recompute. Exported for unit tests.
+// eslint-disable-next-line react-refresh/only-export-components
+export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
   if (!name) return 'B'
-  if (name.includes('AG') || name.startsWith('AG')) return 'AG'
+  if (name.includes('AG')) return 'AG'
   if (name.startsWith('G-')) return 'G'
   if (name.startsWith('B-')) return 'B'
   return 'B'
 }
 
-const extractSortKey = (name: string): { primary: number; secondary: string } => {
+// eslint-disable-next-line react-refresh/only-export-components
+export const extractSortKey = (name: string): { primary: number; secondary: string } => {
   if (name.includes('Alph')) return { primary: -2, secondary: name }
   if (name.includes('Bet')) return { primary: -1, secondary: name }
   const match = name.match(/[GB]-(\d+)/)
@@ -181,10 +183,7 @@ export default function BunkSocialGraphModal({
         throw new Error(`Session with CampMinder ID ${sessionCmId} not found for year ${year}`)
       }
 
-      const session = sessionResp.items[0]
-      if (!session) {
-        throw new Error(`Session with CampMinder ID ${sessionCmId} not found for year ${year}`)
-      }
+      const session = sessionResp.items[0]!
 
       // Get bunk plans for this session using relation expansion
       const filter = `session.cm_id = ${session.cm_id} && year = ${year}`
@@ -244,7 +243,7 @@ export default function BunkSocialGraphModal({
       .map((bunk) => ({
         cm_id: bunk.cm_id,
         name: bunk.name || '',
-        gender: getBunkType(bunk.name || '') === 'G' ? 'F' : 'M',
+        gender: currentBunkType === 'G' ? 'F' : 'M',
       }))
   }, [allBunks, bunkCmId])
 
@@ -550,7 +549,7 @@ export default function BunkSocialGraphModal({
   }
 
   // Check if this is an AG bunk or single bunk session
-  const isAGBunk = bunkName.includes('AG') || bunkName.startsWith('AG')
+  const isAGBunk = bunkName.includes('AG')
   const hideNavigation = isAGBunk || sessionBunks.length === 0
 
   // Use Activity to preserve state when hidden while unmounting effects
@@ -631,7 +630,7 @@ export default function BunkSocialGraphModal({
                     <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-gray-400" />
                     <h3 className="mb-2 text-lg font-medium">No Campers Found</h3>
                     <p className="text-sm">
-                      {bunkName.includes('AG') || bunkName.startsWith('AG')
+                      {bunkName.includes('AG')
                         ? 'This AG bunk does not have any assigned campers yet.'
                         : 'This bunk does not have any assigned campers for this session.'}
                     </p>

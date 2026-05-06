@@ -61,7 +61,7 @@ import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
 import { useBunkRequestContext } from '../hooks'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
+import type { BunkmateInfo } from '../utils/requestSatisfaction'
 import { queryKeys } from '../utils/queryKeys'
 
 // Panel-augmented bunk request: extends the PB `BunkRequestsResponse` (the
@@ -681,30 +681,31 @@ export default function CamperDetailsPanel({
   // for session-agnostic callers (graph modals, full-page camper view).
   const effectiveAssignedBunkCmId = assignedBunkCmId ?? camper?.assigned_bunk_cm_id ?? null
 
+  // Compute satisfaction info once — both bucketByRequestId and camperAlerts consume it.
+  const satInfo = useMemo(
+    () => getSatisfiedRequestInfo(camper?.person_cm_id ?? 0),
+    [camper?.person_cm_id, getSatisfiedRequestInfo]
+  )
+
   // Per-row bucket lookup so age-pref P/S badges read the centralized
   // classification (CamperSatisfaction.per_request[i].bucket) instead of
   // re-deriving from raw source_field/source — same pattern as
   // BunkingStatusPanel (#1159).
-  const bucketByRequestId = useMemo(() => {
-    const info = getSatisfiedRequestInfo(camper?.person_cm_id ?? 0)
-    return new Map<string, RequestBucket>(info.per_request.map((p) => [p.request_id, p.bucket]))
-  }, [camper?.person_cm_id, getSatisfiedRequestInfo])
+  const bucketByRequestId = useMemo(
+    () => new Map<string, RequestBucket>(satInfo.per_request.map((p) => [p.request_id, p.bucket])),
+    [satInfo]
+  )
 
-  const camperAlerts = useMemo(() => {
-    const requestInfo = getSatisfiedRequestInfo(camper?.person_cm_id ?? 0)
-    return buildCamperAlerts({
-      assignedBunkCmId: effectiveAssignedBunkCmId,
-      requestInfo,
-      lockState,
-      lockGroupSize,
-    })
-  }, [
-    effectiveAssignedBunkCmId,
-    camper?.person_cm_id,
-    lockState,
-    lockGroupSize,
-    getSatisfiedRequestInfo,
-  ])
+  const camperAlerts = useMemo(
+    () =>
+      buildCamperAlerts({
+        assignedBunkCmId: effectiveAssignedBunkCmId,
+        requestInfo: satInfo,
+        lockState,
+        lockGroupSize,
+      }),
+    [effectiveAssignedBunkCmId, satInfo, lockState, lockGroupSize]
+  )
 
   // Loading state
   if (camperLoading) {

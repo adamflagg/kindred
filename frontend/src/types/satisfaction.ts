@@ -32,8 +32,6 @@ export interface CamperSatisfaction {
   counted_totals: { material_parent: BucketCount; staff: BucketCount }
   immaterial: BucketCount
   flags: SatisfactionFlags
-  /** Present and true only on emptyCamperSatisfaction fallback values. */
-  _is_empty?: true
 }
 
 export interface SatisfactionResponse {
@@ -58,5 +56,4 @@ export const emptyCamperSatisfaction = (personCmId: number): CamperSatisfaction 
     staff_unsatisfied_alert: false,
     has_any_counted_request: false,
   },
-  _is_empty: true,
 })

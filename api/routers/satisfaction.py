@@ -1,13 +1,8 @@
 """Satisfaction Router — GET /api/satisfaction.
 
-Returns per-camper satisfaction state for a session × scenario combo. Used by
-the frontend BunkRequestProvider as the single source of truth for alert
-triangles, sidebar slices, and per-request Met/Unmet pills, replacing the
-deleted frontend predicates.
-
-Mirrors social_graph.py's auth + scenario routing pattern. Uses
-SessionContext to widen scope to AG-related sessions automatically — a main
-session with AG children gets satisfaction computed across the cluster.
+Returns per-camper satisfaction state for a session × scenario combo.
+Uses SessionContext to widen scope to AG-related sessions automatically — a
+main session with AG children gets satisfaction computed across the cluster.
 """
 
 from __future__ import annotations
@@ -20,11 +15,10 @@ from fastapi import APIRouter, Depends, Query
 
 from api.dependencies import pb
 from api.services.session_context import build_session_context
-from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
-from bunking.satisfaction import session_satisfaction
+from bunking.satisfaction import PB_RECORD_ID_PATTERN, session_satisfaction
 from bunking.satisfaction.api_shape import SatisfactionResponse
 
 logger = get_logger(__name__)
@@ -40,10 +34,9 @@ async def get_satisfaction(
         str | None,
         Query(
             description="PocketBase scenario id; omit for production assignments.",
-            pattern=r"^[a-zA-Z0-9]{15}$",
+            pattern=PB_RECORD_ID_PATTERN,
         ),
     ] = None,
-    _user: AuthUser = Depends(get_current_user),
     _: None = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SatisfactionResponse:
     """Compute per-camper satisfaction for a session × scenario.
@@ -51,10 +44,9 @@ async def get_satisfaction(
     Scope automatically widens to AG-related sessions via SessionContext, so
     a main session with AG children returns satisfaction for all campers in
     the cluster.
-
+    """
     # TODO(perf): consider etag/304 short-circuit using max(updated) of bunk_requests
     # + bunk_assignments as a cache key for repeat polling.
-    """
     start = time.perf_counter()
 
     ctx = await build_session_context(session, year, pb)

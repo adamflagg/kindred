@@ -23,7 +23,7 @@ from api.constants.collections import (
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
-from bunking.satisfaction import RequestBucket, camper_satisfaction
+from bunking.satisfaction import BucketCount, RequestBucket, camper_satisfaction
 from bunking.satisfaction.aggregate import bucket_status
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from pocketbase import PocketBase
@@ -54,11 +54,22 @@ class FriendGroupDetection:
     metadata: dict[str, Any]
 
 
+# Mirrors bunking.satisfaction.bucket. Used to backfill source_field for legacy
+# edges whose upstream PB row predates the source_field column or has it null.
+# `age_preference` maps to `socialize_with` — per bucket.py, the parent
+# "socialize with / age preference" dropdown lives under socialize_with.
+# Returning "age_preference" would produce an invalid source_field that
+# bucket.classify_request rejects.
+_REQUEST_TYPE_TO_SOURCE_FIELD: dict[str, str] = {
+    "bunk_with": "bunk_with",
+    "not_bunk_with": "not_bunk_with",
+    "socialize_with": "socialize_with",
+    "age_preference": "socialize_with",
+}
+
+
 def _backfill_source_field(request_type: str, source_field: str | None) -> str:
     """Derive source_field from request_type when the row's source_field is missing.
-
-    Mapping mirrors bunking.satisfaction.bucket. Used for legacy edges whose
-    upstream PB row predates the source_field column or has it null.
 
     Unknown request_types fall back to "socialize_with" (IMMATERIAL bucket —
     visible-but-uncounted) rather than the counted MATERIAL_PARENT bucket. A
@@ -68,18 +79,9 @@ def _backfill_source_field(request_type: str, source_field: str | None) -> str:
     """
     if source_field:
         return source_field
-    # Legacy `age_preference` request_type maps to `socialize_with` source_field
-    # — per bucket.py docstring, the parent "socialize with / age preference"
-    # dropdown lives under socialize_with. Returning "age_preference" here
-    # would produce an invalid source_field that bucket.classify_request rejects.
-    mapping = {
-        "bunk_with": "bunk_with",
-        "not_bunk_with": "not_bunk_with",
-        "socialize_with": "socialize_with",
-        "age_preference": "socialize_with",
-    }
-    if request_type in mapping:
-        return mapping[request_type]
+    result = _REQUEST_TYPE_TO_SOURCE_FIELD.get(request_type)
+    if result is not None:
+        return result
     logger.warning(
         "unknown request_type with null source_field; classifying as socialize_with (immaterial): %r",
         request_type,
@@ -87,7 +89,7 @@ def _backfill_source_field(request_type: str, source_field: str | None) -> str:
     return "socialize_with"
 
 
-def _build_request_edge_attrs(
+def build_request_edge_attrs(
     request: Any,
     *,
     reciprocal: bool,
@@ -104,8 +106,8 @@ def _build_request_edge_attrs(
     raw_requestee = getattr(request, "requestee_id", None)
     requester_id = int(raw_requester) if raw_requester is not None else None
     requestee_id = int(raw_requestee) if raw_requestee is not None else None
-    # Finding #13: an empty-string request_type silently coerced to "bunk_with"
-    # via `or` and the backfill warning never fired. Pass the raw value through
+    # An empty-string request_type would silently coerce to "bunk_with" via `or`
+    # and the backfill warning would never fire. Pass the raw value through
     # so _backfill_source_field can warn on empty/None equally.
     raw_request_type = getattr(request, "request_type", None)
     sf = _backfill_source_field(
@@ -115,7 +117,6 @@ def _build_request_edge_attrs(
     attrs: dict[str, Any] = {
         "weight": weight,
         "edge_type": "request",
-        "edge_types": ["request"],
         "priority": getattr(request, "priority", 5),
         "confidence": getattr(request, "confidence_score", 1.0),
         "reciprocal": reciprocal,
@@ -383,7 +384,7 @@ class SocialGraphBuilder:
                     priority = getattr(request, "priority", 5)
                     weight = 1.0 + (priority / 10.0)
 
-                    # Finding #5: a reciprocal pair carries TWO requests (one per direction).
+                    # A reciprocal pair carries TWO requests (one per direction).
                     # Storing only pair_requests[0] as the edge's requester drops the
                     # second camper's row in _calculate_node_metrics' per-requester filter,
                     # leaving them with parent_satisfaction_status="no_requests" instead of
@@ -419,7 +420,7 @@ class SocialGraphBuilder:
                         bunk_graph.add_edge(
                             person1,
                             person2,
-                            **_build_request_edge_attrs(
+                            **build_request_edge_attrs(
                                 request,
                                 reciprocal=True,
                                 weight=weight,
@@ -457,7 +458,7 @@ class SocialGraphBuilder:
                             bunk_graph.add_edge(
                                 requester,
                                 requestee,
-                                **_build_request_edge_attrs(request, reciprocal=False, weight=weight),
+                                **build_request_edge_attrs(request, reciprocal=False, weight=weight),
                             )
                             request_count += 1
                             logger.info(f"Added request edge #{request_count}: {requester} -> {requestee}")
@@ -504,9 +505,7 @@ class SocialGraphBuilder:
                                         logger.info(f"Added sibling as secondary type: {source} -> {target}")
                                 else:
                                     # No existing edge, create sibling edge
-                                    bunk_graph.add_edge(
-                                        source, target, weight=1.5, edge_type="sibling", edge_types=["sibling"]
-                                    )
+                                    bunk_graph.add_edge(source, target, weight=1.5, edge_type="sibling")
                                     sibling_count += 1
 
                             logger.info(f"Added separate sibling edges: {members[i]} <-> {members[j]}")
@@ -713,7 +712,7 @@ class SocialGraphBuilder:
                 self.graph.add_edge(
                     requester,
                     requestee,
-                    **_build_request_edge_attrs(
+                    **build_request_edge_attrs(
                         request,
                         reciprocal=getattr(request, "is_reciprocal", False),
                         weight=weight,
@@ -861,21 +860,9 @@ class SocialGraphBuilder:
                 component_map[node] = len(component)
         nx.set_node_attributes(self.graph, component_map, "component_size")
 
-        # Calculate request satisfaction via the source_field-based bucket policy
-        # in bunking.satisfaction.aggregate (the #1041 single source of truth).
-        #
-        # Per-node statuses produced:
-        #   parent_satisfaction_status — based on MATERIAL_PARENT bucket
-        #     (source_field == "bunk_with" only)
-        #   staff_satisfaction_status  — based on STAFF bucket
-        #     (source_field in {not_bunk_with, bunking_notes, internal_notes})
-        #   satisfaction_status        — aggregate over counted buckets
-        #     (material_parent + staff; immaterial_parent / socialize_with is
-        #     visible per-request but excluded from totals)
-        #
-        # Each status is one of: "satisfied" (≥1 in-bucket request satisfied),
-        # "unsatisfied" (in-bucket request(s) exist, none satisfied), or
-        # "no_requests" (no in-bucket request edges).
+        # Calculate per-node satisfaction statuses using the bucket policy in
+        # bunking.satisfaction.aggregate (canonical module for COUNTED_BUCKETS /
+        # IMMATERIAL policy). See that module for status semantics.
         # Build person_to_bunk from graph node attrs (only assigned campers).
         person_to_bunk: dict[int, int] = {
             int(n): int(self.graph.nodes[n]["bunk_cm_id"])
@@ -895,8 +882,6 @@ class SocialGraphBuilder:
         aggregate_status_map: dict[Any, str] = {}
 
         node_requests: dict[int, list[dict[str, Any]]] = {int(n): [] for n in self.graph.nodes()}
-        # age_preference rows are filtered above; the predicate handles only these two.
-        predicate_known_types = ("bunk_with", "not_bunk_with")
 
         for u, v, data in self.graph.edges(data=True):
             if data.get("edge_type") != "request":
@@ -918,10 +903,12 @@ class SocialGraphBuilder:
             # predicate level (its result lands in IMMATERIAL and is discarded by
             # COUNTED_BUCKETS anyway). Normalize unknowns to bunk_with — the
             # backfill warning above is the observable signal that this happened.
-            resolved_request_type = raw_request_type if raw_request_type in predicate_known_types else "bunk_with"
+            resolved_request_type = (
+                raw_request_type if raw_request_type in {"bunk_with", "not_bunk_with"} else "bunk_with"
+            )
 
             # Reciprocal pairs carry one tuple per direction so both campers'
-            # requests survive (Finding #5). Non-reciprocal edges fall back to the
+            # requests survive. Non-reciprocal edges fall back to the
             # single (requester_id, request_id) on the edge itself.
             edge_rows = data.get("reciprocal_rows") or [
                 {
@@ -955,7 +942,6 @@ class SocialGraphBuilder:
                         "request_type": resolved_request_type,
                         "source_field": resolved_source_field,
                         "requester_grade": self.graph.nodes[row_requester].get("grade"),
-                        "age_preference_target": data.get("age_preference_target"),
                     }
                 )
 
@@ -974,12 +960,7 @@ class SocialGraphBuilder:
             # COUNTED_BUCKETS policy.
             counted_total = sum(c.total for c in sat.counted_totals.values())
             counted_satisfied = sum(c.satisfied for c in sat.counted_totals.values())
-            if counted_total == 0:
-                aggregate_status_map[node] = "no_requests"
-            elif counted_satisfied > 0:
-                aggregate_status_map[node] = "satisfied"
-            else:
-                aggregate_status_map[node] = "unsatisfied"
+            aggregate_status_map[node] = bucket_status(BucketCount(satisfied=counted_satisfied, total=counted_total))
 
         nx.set_node_attributes(self.graph, parent_status_map, "parent_satisfaction_status")
         nx.set_node_attributes(self.graph, staff_status_map, "staff_satisfaction_status")

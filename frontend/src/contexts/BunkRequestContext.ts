@@ -2,12 +2,6 @@ import { createContext } from 'react'
 import type { BunkRequest } from '../types/app-types'
 import type { CamperSatisfaction } from '../types/satisfaction'
 
-// Bunkmate info needed for satisfaction calculation
-export interface BunkmateInfo {
-  cmId: number
-  grade: number | null
-}
-
 interface BunkRequestContextValue {
   // All requests for the session
   allRequests: BunkRequest[]

@@ -200,13 +200,16 @@ def _fake_request(requester_id: int, requestee_id: int, source: str | None = "fa
     Pass source_field= explicitly to override.
     """
     request_type = str(overrides.get("request_type", "bunk_with"))
+    # Only structurally valid (request_type, source) → source_field pairings are
+    # listed here. Callers testing invalid/edge-case paths must pass source_field=
+    # explicitly rather than relying on this default map.
     default_source_field = {
         ("bunk_with", "parent"): "bunk_with",
-        ("bunk_with", "staff"): "not_bunk_with",
+        # ("bunk_with", "staff"): removed — semantically invalid (type/field disagree)
         ("not_bunk_with", "parent"): "not_bunk_with",
         ("not_bunk_with", "staff"): "not_bunk_with",
         ("socialize_with", "parent"): "socialize_with",
-        ("age_preference", "parent"): "age_preference",
+        # ("age_preference", "parent"): removed — "age_preference" is not a valid source_field
     }.get((request_type, source or "parent"), "bunk_with")
     attrs: dict[str, object] = {
         "id": f"r-{requester_id}-{requestee_id}",
@@ -237,7 +240,7 @@ def test_node_emits_parent_satisfaction_status_unsatisfied_when_only_parent_unsa
 
 
 def test_node_emits_staff_satisfaction_status_unsatisfied_when_only_staff_unsat() -> None:
-    """Audit-pass-3 inverted semantics for not_bunk_with: same-bunk = violation
+    """Inverted semantics for not_bunk_with: same-bunk = violation
     (unsatisfied). The default _populate maps source="staff" to
     request_type="not_bunk_with", so put 1 and 2 in the same bunk to trigger
     a violation."""
@@ -856,7 +859,7 @@ def test_build_bunk_graph_includes_not_bunk_with_as_violation() -> None:
                 qp = kwargs.get("query_params") or (args[0] if args else {})
                 flt = str(qp.get("filter", "")) if isinstance(qp, dict) else ""
                 captured_filters.append(flt)
-                # Audit-pass-3: the bunk_graph fetch now includes both
+                # The bunk_graph fetch now includes both
                 # request_type values; the DB returns whatever matches.
                 # The not_bunk_with row should come back and produce a
                 # red-line edge in the graph.

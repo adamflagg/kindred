@@ -114,10 +114,14 @@ vi.mock('../hooks/useScenario', () => ({
   useScenario: () => ({ currentScenario: null }),
 }))
 
-let mockFetchWithAuth: (url: string) => Promise<Response> = () =>
+// Default response — campers map empty so getSatisfiedRequestInfo returns
+// the EMPTY fallback. Reset in beforeEach so suite-level mutations don't leak.
+const _defaultMockFetchWithAuth = () =>
   Promise.resolve(
     new Response(JSON.stringify({ campers: {}, session_cm_id: 0, year: 2026, scenario_id: null }))
   )
+
+let mockFetchWithAuth: (url: string) => Promise<Response> = _defaultMockFetchWithAuth
 
 vi.mock('../hooks/useApiWithAuth', () => ({
   useApiWithAuth: () => ({ fetchWithAuth: (url: string) => mockFetchWithAuth(url) }),
@@ -143,13 +147,6 @@ function renderDetail() {
     </QueryClientProvider>
   )
 }
-
-// Default response — campers map empty so getSatisfiedRequestInfo returns
-// the EMPTY fallback. Reset in beforeEach so suite-level mutations don't leak.
-const _defaultMockFetchWithAuth = () =>
-  Promise.resolve(
-    new Response(JSON.stringify({ campers: {}, session_cm_id: 0, year: 2026, scenario_id: null }))
-  )
 
 beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }

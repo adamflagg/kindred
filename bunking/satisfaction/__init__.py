@@ -8,10 +8,12 @@ Public API:
 - bucket_status — single-bucket 3-state classification helper
 - BucketCount, CamperSatisfaction, PerRequestStatus, SatisfactionFlags,
   SatisfactionResponse — Pydantic API shapes
+- PB_RECORD_ID_PATTERN — shared regex pattern for PocketBase record ID validation
 
 Consumers: bunking.solver, bunking.graph, api.routers.satisfaction.
 """
 
+from bunking.satisfaction.aggregate import _PB_RECORD_ID_PATTERN as PB_RECORD_ID_PATTERN
 from bunking.satisfaction.aggregate import bucket_status, camper_satisfaction, session_satisfaction
 from bunking.satisfaction.api_shape import (
     BucketCount,
@@ -29,6 +31,7 @@ from bunking.satisfaction.predicate import is_request_satisfied
 
 __all__ = [
     "COUNTED_BUCKETS",
+    "PB_RECORD_ID_PATTERN",
     "BucketCount",
     "CamperSatisfaction",
     "PerRequestStatus",

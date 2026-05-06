@@ -225,7 +225,7 @@ class TestCoerceRowMissingRequesterId:
             _coerce_row(Row())
 
 
-class TestCamperSatisfactionMissingSourceField:
+def test_dict_without_source_field_does_not_raise_keyerror() -> None:
     """Finding #10: req["source_field"] subscript raises KeyError for raw dict.
 
     `camper_satisfaction` accepts `list[BunkRequestRow] | list[dict[str, Any]]`.
@@ -233,23 +233,21 @@ class TestCamperSatisfactionMissingSourceField:
     missing source_field — they should see the same missing-field signal that
     coerced rows surface (i.e. classify_request(""))
     """
-
-    def test_dict_without_source_field_does_not_raise_keyerror(self) -> None:
-        row = {
-            "id": "r1",
-            "requester_id": 1,
-            "requestee_id": 2,
-            "request_type": "bunk_with",
-            # source_field intentionally absent
-        }
-        with pytest.raises(ValueError, match="unknown source_field"):
-            # classify_request raises ValueError for unknown source_field — that's the
-            # contract. KeyError would be a regression.
-            camper_satisfaction(
-                person_cm_id=1,
-                person_requests=[row],
-                person_to_bunk={1: 100, 2: 100},
-            )
+    row = {
+        "id": "r1",
+        "requester_id": 1,
+        "requestee_id": 2,
+        "request_type": "bunk_with",
+        # source_field intentionally absent
+    }
+    with pytest.raises(ValueError, match="unknown source_field"):
+        # classify_request raises ValueError for unknown source_field — that's the
+        # contract. KeyError would be a regression.
+        camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[row],
+            person_to_bunk={1: 100, 2: 100},
+        )
 
 
 class TestCamperSatisfactionPredicateExceptionHandling:

@@ -47,7 +47,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
         return []
       }
     },
-    staleTime: 1 * 60 * 1000,
+    staleTime: 60 * 1000,
     gcTime: 10 * 60 * 1000,
     enabled: !!user && !isAuthLoading && sessionCmId > 0,
   })
@@ -81,8 +81,9 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
   const requestsByPerson = useMemo(() => {
     const map = new Map<number, BunkRequest[]>()
     allRequests.forEach((request) => {
-      const existing = map.get(request.requester_id) ?? []
-      map.set(request.requester_id, [...existing, request])
+      const list = map.get(request.requester_id)
+      if (list) list.push(request)
+      else map.set(request.requester_id, [request])
     })
     return map
   }, [allRequests])

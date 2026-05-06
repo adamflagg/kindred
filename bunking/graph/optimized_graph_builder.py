@@ -22,7 +22,7 @@ from api.constants.collections import (
 )
 from bunking.logging_config import get_logger
 
-from .social_graph_builder import SocialGraphBuilder, _build_request_edge_attrs
+from .social_graph_builder import SocialGraphBuilder, build_request_edge_attrs
 
 logger = get_logger(__name__)
 
@@ -180,7 +180,7 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                     for r in requests_by_target.get(person_id, [])
                 )
 
-                edge_attrs = _build_request_edge_attrs(
+                edge_attrs = build_request_edge_attrs(
                     request,
                     reciprocal=reciprocal,
                     weight=self._calculate_edge_weight(request, reciprocal),

@@ -148,36 +148,33 @@ class TestGradeSanityBound:
             )
 
 
-class TestUnknownRequestType:
-    def test_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="unknown request_type"):
-            is_request_satisfied(_req("nonsense", 1, 2), person_to_bunk={1: 100, 2: 100})
+def test_unknown_request_type_raises_value_error() -> None:
+    with pytest.raises(ValueError, match="unknown request_type"):
+        is_request_satisfied(_req("nonsense", 1, 2), person_to_bunk={1: 100, 2: 100})
 
 
-class TestRequesteeIdFallthroughZero:
+def test_requestee_id_zero_falls_through_to_requested_person_cm_id() -> None:
     """Finding #6: requestee_id=0 is a valid sentinel; falsy `or` chain
     coerces it to None, breaking the requested_person_cm_id fallthrough.
     Symmetric with the requester_id fix in commit bc496365.
     """
-
-    def test_requestee_id_zero_falls_through_to_requested_person_cm_id(self) -> None:
-        # PB rows can carry requestee_id=0 with a non-zero requested_person_cm_id;
-        # the predicate must read requested_person_cm_id in that case (same as the
-        # requester_id path now does).
-        request: dict[str, Any] = {
-            "requester_id": 1,
-            "requestee_id": 0,
-            "requested_person_cm_id": 2,
-            "request_type": "bunk_with",
-            "source_field": "bunk_with",
-        }
-        # 1 and 2 in same bunk → satisfied. If the falsy `or` swallows 0
-        # without falling through, requestee_id_raw becomes None and the
-        # predicate returns False.
-        assert is_request_satisfied(request, person_to_bunk={1: 100, 2: 100}) is True
+    # PB rows can carry requestee_id=0 with a non-zero requested_person_cm_id;
+    # the predicate must read requested_person_cm_id in that case (same as the
+    # requester_id path now does).
+    request: dict[str, Any] = {
+        "requester_id": 1,
+        "requestee_id": 0,
+        "requested_person_cm_id": 2,
+        "request_type": "bunk_with",
+        "source_field": "bunk_with",
+    }
+    # 1 and 2 in same bunk → satisfied. If the falsy `or` swallows 0
+    # without falling through, requestee_id_raw becomes None and the
+    # predicate returns False.
+    assert is_request_satisfied(request, person_to_bunk={1: 100, 2: 100}) is True
 
 
-class TestUnknownRequestTypeFallbackContract:
+def test_bunk_with_request_with_socialize_with_source_field_does_not_raise() -> None:
     """Finding #14: When social_graph_builder fetches a row with an unknown
     request_type, _backfill_source_field falls it back to source_field=
     'socialize_with' AND _calculate_node_metrics normalizes request_type to
@@ -186,45 +183,41 @@ class TestUnknownRequestTypeFallbackContract:
     predicate accepts (request_type='bunk_with', source_field='socialize_with')
     without raising. Lock that contract here.
     """
-
-    def test_bunk_with_request_with_socialize_with_source_field_does_not_raise(self) -> None:
-        request: dict[str, Any] = {
-            "requester_id": 1,
-            "requestee_id": 2,
-            "request_type": "bunk_with",
-            "source_field": "socialize_with",
-        }
-        # Predicate must not raise; satisfied/unsatisfied is fine — the row will
-        # land in IMMATERIAL via classify_request and be excluded from COUNTED_BUCKETS.
-        is_request_satisfied(request, person_to_bunk={1: 100, 2: 100})
+    request: dict[str, Any] = {
+        "requester_id": 1,
+        "requestee_id": 2,
+        "request_type": "bunk_with",
+        "source_field": "socialize_with",
+    }
+    # Predicate must not raise; satisfied/unsatisfied is fine — the row will
+    # land in IMMATERIAL via classify_request and be excluded from COUNTED_BUCKETS.
+    is_request_satisfied(request, person_to_bunk={1: 100, 2: 100})
 
 
-class TestAgePreferenceRequesterGradeNoneInRow:
+def test_requester_grade_explicit_none_returns_false() -> None:
     """Finding #3 (related): score_evaluator backfills requester_grade only when
     the key is missing — but PB rows can carry the key with value=None. This
     test pins the predicate's contract: an explicit None requester_grade returns
     False (not raises), so the score_evaluator backfill is the right fix point.
     """
-
-    def test_requester_grade_explicit_none_returns_false(self) -> None:
-        # An age_preference row with requester_grade explicitly None must not raise;
-        # it must return False so the caller can decide whether to backfill or skip.
-        request: dict[str, Any] = {
-            "requester_id": 1,
-            "requestee_id": 0,
-            "request_type": "age_preference",
-            "source_field": "socialize_with",
-            "age_preference_target": "older",
-            "requester_grade": None,
-        }
-        assert (
-            is_request_satisfied(
-                request,
-                person_to_bunk={1: 100},
-                bunkmate_grades={1: [11, 12]},
-            )
-            is False
+    # An age_preference row with requester_grade explicitly None must not raise;
+    # it must return False so the caller can decide whether to backfill or skip.
+    request: dict[str, Any] = {
+        "requester_id": 1,
+        "requestee_id": 0,
+        "request_type": "age_preference",
+        "source_field": "socialize_with",
+        "age_preference_target": "older",
+        "requester_grade": None,
+    }
+    assert (
+        is_request_satisfied(
+            request,
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [11, 12]},
         )
+        is False
+    )
 
 
 @pytest.mark.parametrize(("a_bunk", "b_bunk"), [(10, 10), (10, 11), (10, None)])

@@ -17,8 +17,12 @@
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 import { formatGradeOrdinal } from './gradeUtils'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
-import type { BunkmateInfo } from '../contexts/BunkRequestContext'
 import type { SatisfactionResult } from '../hooks/camper/types'
+
+export interface BunkmateInfo {
+  cmId: number
+  grade: number | null
+}
 
 export interface ComputeRequestSatisfactionInputs {
   request: EnhancedBunkRequest

@@ -109,13 +109,8 @@ export function BunkingStatusPanel({
   // Slice totals come from the centralized aggregator (`/api/satisfaction`),
   // not from re-bucketing rows here. This is the single source of truth shared
   // with the bunking-board card and graph node states (#1159).
-  const slices = useMemo(
-    () => ({
-      materialParent: camperSatisfaction.counted_totals.material_parent,
-      staff: camperSatisfaction.counted_totals.staff,
-    }),
-    [camperSatisfaction]
-  )
+  const materialParent = camperSatisfaction.counted_totals.material_parent
+  const staff = camperSatisfaction.counted_totals.staff
 
   // Per-row bucket lookup so age-pref P/S badges read the centralized
   // classification (CamperSatisfaction.per_request[i].bucket) instead of
@@ -129,8 +124,8 @@ export function BunkingStatusPanel({
     [camperSatisfaction]
   )
 
-  const showParent = slices.materialParent.total > 0
-  const showStaff = slices.staff.total > 0
+  const showParent = materialParent.total > 0
+  const showStaff = staff.total > 0
   const showSummary = showParent || showStaff
 
   // R3: targetPerson enrichment strategy (Case b): EnhancedBunkRequest carries
@@ -249,17 +244,17 @@ export function BunkingStatusPanel({
             {showParent && showStaff ? (
               <div className="grid grid-cols-[1fr_1px_1fr] items-center">
                 <div className="px-4">
-                  <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+                  <SliceLine label="Parent request satisfaction:" slice={materialParent} />
                 </div>
                 <div className="bg-border self-stretch" />
                 <div className="px-4">
-                  <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+                  <SliceLine label="Staff request satisfaction:" slice={staff} />
                 </div>
               </div>
             ) : showParent ? (
-              <SliceLine label="Parent request satisfaction:" slice={slices.materialParent} />
+              <SliceLine label="Parent request satisfaction:" slice={materialParent} />
             ) : (
-              <SliceLine label="Staff request satisfaction:" slice={slices.staff} />
+              <SliceLine label="Staff request satisfaction:" slice={staff} />
             )}
           </div>
         )}

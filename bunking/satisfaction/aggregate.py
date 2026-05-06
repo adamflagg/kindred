@@ -36,7 +36,8 @@ from bunking.satisfaction.predicate import is_request_satisfied
 
 logger = get_logger(__name__)
 
-_PB_RECORD_ID_RE = re.compile(r"^[a-zA-Z0-9]{15}$")
+_PB_RECORD_ID_PATTERN = r"^[a-zA-Z0-9]{15}$"
+_PB_RECORD_ID_RE = re.compile(_PB_RECORD_ID_PATTERN)
 _PB_FETCH_TIMEOUT_S = 30.0
 
 
@@ -84,24 +85,18 @@ def _coerce_row(r: Any) -> BunkRequestRow:
     raw_requester = r.get("requester_id") if isinstance(r, dict) else getattr(r, "requester_id", None)
     if raw_requester is None:
         raise ValueError("row missing requester_id; cannot aggregate")
-    if isinstance(r, dict):
-        return BunkRequestRow(
-            id=_coerce_str(r.get("id")),
-            requester_id=int(raw_requester),
-            requestee_id=r.get("requestee_id"),
-            request_type=_coerce_str(r.get("request_type")),
-            source_field=_coerce_str(r.get("source_field")),
-            age_preference_target=r.get("age_preference_target"),
-            requester_grade=r.get("requester_grade"),
-        )
+
+    def _get(key: str, default: Any = None) -> Any:
+        return r.get(key, default) if isinstance(r, dict) else getattr(r, key, default)
+
     return BunkRequestRow(
-        id=_coerce_str(getattr(r, "id", None)),
+        id=_coerce_str(_get("id")),
         requester_id=int(raw_requester),
-        requestee_id=getattr(r, "requestee_id", None),
-        request_type=_coerce_str(getattr(r, "request_type", None)),
-        source_field=_coerce_str(getattr(r, "source_field", None)),
-        age_preference_target=getattr(r, "age_preference_target", None),
-        requester_grade=getattr(r, "requester_grade", None),
+        requestee_id=_get("requestee_id"),
+        request_type=_coerce_str(_get("request_type")),
+        source_field=_coerce_str(_get("source_field")),
+        age_preference_target=_get("age_preference_target"),
+        requester_grade=_get("requester_grade"),
     )
 
 
@@ -242,19 +237,15 @@ def session_satisfaction(
 
     # Task 36: fetch assignments + requests in parallel — they are independent queries.
     # persons must come AFTER assignments because we scope it to person_to_bunk.keys().
-    def _fetch_assignments() -> list[Any]:
-        rows: list[Any] = pb_client.collection(assignments_collection).get_full_list(
-            query_params={"filter": assignments_filter}
-        )
-        return rows
-
-    def _fetch_requests() -> list[Any]:
-        rows: list[Any] = pb_client.collection(BUNK_REQUESTS).get_full_list(query_params={"filter": requests_filter})
-        return rows
-
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        assignments_future = executor.submit(_fetch_assignments)
-        requests_future = executor.submit(_fetch_requests)
+        assignments_future = executor.submit(
+            pb_client.collection(assignments_collection).get_full_list,
+            query_params={"filter": assignments_filter},
+        )
+        requests_future = executor.submit(
+            pb_client.collection(BUNK_REQUESTS).get_full_list,
+            query_params={"filter": requests_filter},
+        )
         try:
             assignments = assignments_future.result(timeout=_PB_FETCH_TIMEOUT_S)
         except Exception:
