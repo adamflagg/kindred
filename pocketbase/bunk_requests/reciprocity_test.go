@@ -319,3 +319,65 @@ func TestHook_AgePreferenceNoop(t *testing.T) {
 		t.Errorf("age_preference: expected reciprocal=false, got true")
 	}
 }
+
+// Test 8 — Self-referential row: hook is a no-op, no errors.
+func TestHook_SelfReferentialNoop(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	r := makeRequest(t, app, 100, 100, "bunk_with", "resolved") // requester == requestee
+
+	got, _ := app.FindRecordById("bunk_requests", r.Id)
+	if got.GetBool("is_reciprocal") {
+		t.Errorf("self-referential: expected reciprocal=false, got true")
+	}
+}
+
+// Test 9 — Idempotency: invoking the helper directly on an already-correct
+// pair should produce zero saves and not error.
+func TestRecomputePairReciprocity_IdempotentOnAlreadyCorrect(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	// Both should already be reciprocal=true after hooks fire from Save.
+	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if !gotAB.GetBool("is_reciprocal") || !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected both reciprocal=true, got AB=%v BA=%v",
+			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
+	}
+
+	abUpdated := gotAB.GetDateTime("updated").Time()
+	baUpdated := gotBA.GetDateTime("updated").Time()
+
+	// Direct invocation on already-correct pair.
+	if err := RecomputePairReciprocity(app, 2026, 1235404, 100, 200, "bunk_with"); err != nil {
+		t.Fatalf("RecomputePairReciprocity: %v", err)
+	}
+
+	gotAB2, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotBA2, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+
+	// updated timestamp should not have moved if no save happened.
+	if !gotAB2.GetDateTime("updated").Time().Equal(abUpdated) {
+		t.Errorf("idempotent call wrote A→B unnecessarily; updated changed")
+	}
+	if !gotBA2.GetDateTime("updated").Time().Equal(baUpdated) {
+		t.Errorf("idempotent call wrote B→A unnecessarily; updated changed")
+	}
+}
