@@ -41,6 +41,7 @@ import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
 import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
 import type { SatisfactionMap } from '../hooks/camper/types'
+import type { RequestBucket } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -680,6 +681,15 @@ export default function CamperDetailsPanel({
   // for session-agnostic callers (graph modals, full-page camper view).
   const effectiveAssignedBunkCmId = assignedBunkCmId ?? camper?.assigned_bunk_cm_id ?? null
 
+  // Per-row bucket lookup so age-pref P/S badges read the centralized
+  // classification (CamperSatisfaction.per_request[i].bucket) instead of
+  // re-deriving from raw source_field/source — same pattern as
+  // BunkingStatusPanel (#1159).
+  const bucketByRequestId = useMemo(() => {
+    const info = getSatisfiedRequestInfo(camper?.person_cm_id ?? 0)
+    return new Map<string, RequestBucket>(info.per_request.map((p) => [p.request_id, p.bucket]))
+  }, [camper?.person_cm_id, getSatisfiedRequestInfo])
+
   const camperAlerts = useMemo(() => {
     const requestInfo = getSatisfiedRequestInfo(camper?.person_cm_id ?? 0)
     return buildCamperAlerts({
@@ -965,8 +975,10 @@ export default function CamperDetailsPanel({
                         satisfaction={satisfaction?.status ?? null}
                         satisfactionLoading={satisfactionLoading}
                         satisfactionDetail={satisfaction?.detail}
-                        isMaterialAgePreference={req.source_field === 'bunk_with'}
-                        staffAgeBadge={req.source === 'staff'}
+                        isMaterialAgePreference={
+                          bucketByRequestId.get(req.id) === 'material_parent'
+                        }
+                        staffAgeBadge={bucketByRequestId.get(req.id) === 'staff'}
                       />
                     )
                   })}

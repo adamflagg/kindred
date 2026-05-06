@@ -50,12 +50,21 @@ function makeRequest(overrides: Partial<EnhancedBunkRequest>): EnhancedBunkReque
 }
 
 /**
- * Build a CamperSatisfaction whose counted_totals match the legacy
- * source_field/source classification so existing tests preserve their intent
- * after #1159 (slices now read counted_totals directly). Tests that want to
- * exercise the divergence between counted_totals and the row list pass an
- * explicit `camperSatisfaction` to renderPanelWith.
+ * Build a CamperSatisfaction whose counted_totals AND per_request match the
+ * source_field bucket classification — same policy as the Python aggregator's
+ * `bunking.satisfaction.bucket._BUCKET_MAP`. Tests that want to exercise the
+ * divergence between bucket-derived state and the raw row's source_field
+ * (e.g. #1159 age-badge precedence) pass an explicit `camperSatisfaction` to
+ * renderPanelWith.
  */
+function classifyBucket(
+  req: EnhancedBunkRequest
+): 'material_parent' | 'immaterial_parent' | 'staff' {
+  if (req.source_field === 'bunk_with') return 'material_parent'
+  if (req.source_field === 'socialize_with') return 'immaterial_parent'
+  return 'staff'
+}
+
 function buildCamperSatisfactionFromRequests(
   requests: EnhancedBunkRequest[],
   satisfactionData: Record<string, { status: string }>
@@ -64,13 +73,16 @@ function buildCamperSatisfactionFromRequests(
     mpSat = 0,
     stTotal = 0,
     stSat = 0
+  const per_request: CamperSatisfaction['per_request'] = []
   for (const req of requests) {
     if (req.status !== 'resolved') continue
     const sat = satisfactionData[req.id]?.status === 'satisfied'
-    if (req.source_field === 'bunk_with') {
+    const bucket = classifyBucket(req)
+    per_request.push({ request_id: req.id, bucket, satisfied: sat })
+    if (bucket === 'material_parent') {
       mpTotal++
       if (sat) mpSat++
-    } else if (req.source === 'staff') {
+    } else if (bucket === 'staff') {
       stTotal++
       if (sat) stSat++
     }
@@ -78,6 +90,7 @@ function buildCamperSatisfactionFromRequests(
   const empty = emptyCamperSatisfaction(12345)
   return {
     ...empty,
+    per_request,
     counted_totals: {
       material_parent: { total: mpTotal, satisfied: mpSat },
       staff: { total: stTotal, satisfied: stSat },
@@ -393,6 +406,57 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
     })
     expect(screen.queryByText(/Parent request satisfaction:/i)).toBeNull()
     expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — #1159 age-pref badges read per_request.bucket', () => {
+  it('renders S badge when per_request bucket=staff even though source_field=bunk_with', () => {
+    // Mismatched fixture: row's source_field says bunk_with (would set P badge
+    // under the old per-row classification) but the centralized aggregator
+    // classified it as bucket=staff. Bucket wins → S badge, not P.
+    const ageReq = makeRequest({
+      id: 'mismatched',
+      request_type: 'age_preference',
+      source_field: 'bunk_with',
+      source: 'family',
+      age_preference_target: 'older',
+    })
+    const camperSatisfaction: CamperSatisfaction = {
+      ...emptyCamperSatisfaction(12345),
+      per_request: [{ request_id: 'mismatched', bucket: 'staff', satisfied: false }],
+    }
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    expect(screen.queryByText('P')).toBeNull()
+    expect(screen.getByText('S')).toBeInTheDocument()
+  })
+
+  it('renders P badge when per_request bucket=material_parent even though source=staff', () => {
+    // Inverse fixture: source='staff' (would set S badge under old code) but
+    // bucket=material_parent → P badge.
+    const ageReq = makeRequest({
+      id: 'mismatched-2',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      source: 'staff',
+      age_preference_target: 'younger',
+    })
+    const camperSatisfaction: CamperSatisfaction = {
+      ...emptyCamperSatisfaction(12345),
+      per_request: [{ request_id: 'mismatched-2', bucket: 'material_parent', satisfied: false }],
+    }
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction,
+    })
+    expect(screen.queryByText('S')).toBeNull()
+    expect(screen.getByText('P')).toBeInTheDocument()
   })
 })
 

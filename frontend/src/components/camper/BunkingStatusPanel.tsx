@@ -12,7 +12,7 @@ import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDivide
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { SatisfactionMap } from '../../hooks/camper/types'
-import type { BucketCount, CamperSatisfaction } from '../../types/satisfaction'
+import type { BucketCount, CamperSatisfaction, RequestBucket } from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -114,6 +114,18 @@ export function BunkingStatusPanel({
       materialParent: camperSatisfaction.counted_totals.material_parent,
       staff: camperSatisfaction.counted_totals.staff,
     }),
+    [camperSatisfaction]
+  )
+
+  // Per-row bucket lookup so age-pref P/S badges read the centralized
+  // classification (CamperSatisfaction.per_request[i].bucket) instead of
+  // re-deriving from raw source_field/source — the duplication #1041/#1159
+  // exists to eliminate.
+  const bucketByRequestId = useMemo(
+    () =>
+      new Map<string, RequestBucket>(
+        camperSatisfaction.per_request.map((p) => [p.request_id, p.bucket])
+      ),
     [camperSatisfaction]
   )
 
@@ -294,6 +306,7 @@ export function BunkingStatusPanel({
             )}
             {ageRows.map((req) => {
               const sat = satisfactionData[req.id]
+              const bucket = bucketByRequestId.get(req.id)
               return (
                 <BunkRequestRow
                   key={req.id}
@@ -303,8 +316,8 @@ export function BunkingStatusPanel({
                   showSatisfaction={true}
                   satisfactionLoading={satisfactionLoading}
                   satisfactionDetail={sat?.detail}
-                  isMaterialAgePreference={req.source_field === 'bunk_with'}
-                  staffAgeBadge={req.source === 'staff'}
+                  isMaterialAgePreference={bucket === 'material_parent'}
+                  staffAgeBadge={bucket === 'staff'}
                 />
               )
             })}

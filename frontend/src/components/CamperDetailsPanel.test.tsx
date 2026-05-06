@@ -742,6 +742,29 @@ describe('CamperDetailsPanel', () => {
         },
       ]
       setupR3Mocks(bunkRequests)
+      // After #1159, age-pref P/S badges read per_request[i].bucket from the
+      // centralized aggregator, not raw source_field. Mirror what
+      // session_satisfaction would emit for this row.
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-age-p',
+            bucket: 'material_parent',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 1 },
+          staff: { satisfied: 0, total: 0 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: true,
+          staff_unsatisfied_alert: false,
+          has_any_counted_request: true,
+        },
+      }))
 
       render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
       expect(await screen.findByText('P')).toBeInTheDocument()
@@ -771,9 +794,82 @@ describe('CamperDetailsPanel', () => {
         },
       ]
       setupR3Mocks(bunkRequests)
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-age-s',
+            bucket: 'staff',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 1 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: true,
+          has_any_counted_request: true,
+        },
+      }))
 
       render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
       expect(await screen.findByText('S')).toBeInTheDocument()
+    })
+
+    it('age-pref badge follows per_request.bucket, not raw source_field (#1159)', async () => {
+      // Mismatched fixture: source_field=bunk_with would set P under the old
+      // per-row classification, but the centralized aggregator's bucket=staff
+      // wins → S badge, not P.
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'r3-mismatch',
+          requester_id: 100,
+          requestee_id: 0,
+          request_type: 'age_preference',
+          source_field: 'bunk_with',
+          source: 'family',
+          age_preference_target: 'older',
+          status: 'resolved',
+          priority: 1,
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.9,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupR3Mocks(bunkRequests)
+      mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
+        person_cm_id: personCmId,
+        per_request: [
+          {
+            request_id: 'r3-mismatch',
+            bucket: 'staff',
+            satisfied: false,
+          } as PerRequestStatus,
+        ],
+        counted_totals: {
+          material_parent: { satisfied: 0, total: 0 },
+          staff: { satisfied: 0, total: 1 },
+        },
+        immaterial: { satisfied: 0, total: 0 },
+        flags: {
+          parent_min_one_violation: false,
+          staff_unsatisfied_alert: true,
+          has_any_counted_request: true,
+        },
+      }))
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+      expect(await screen.findByText('S')).toBeInTheDocument()
+      expect(screen.queryByText('P')).toBeNull()
     })
 
     it('does NOT render any new "Parent request satisfaction:" summary line in the sidebar', async () => {
