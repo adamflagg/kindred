@@ -67,7 +67,7 @@ describe('derivePhase', () => {
       const fresh: DebugPipelineRun = {
         run_id: 'r-cron-recent',
         created: ago(5),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(2)
       expect(derivePhase(sync, fresh, csvUploadStartedAt).phase).toBe('idle')
@@ -113,7 +113,7 @@ describe('derivePhase', () => {
       const fresh: DebugPipelineRun = {
         run_id: 'r-cron',
         created: ago(1),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       expect(derivePhase(sync, fresh, null).phase).toBe('idle')
     })
@@ -159,7 +159,7 @@ describe('derivePhase', () => {
       const stale: DebugPipelineRun = {
         run_id: 'old',
         created: ago(60),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(6)
       expect(derivePhase(sync, stale, csvUploadStartedAt).phase).toBe('matching')
@@ -175,7 +175,7 @@ describe('derivePhase', () => {
       const fresh: DebugPipelineRun = {
         run_id: 'r1',
         created: ago(1),
-        status_breakdown: { status_resolved: 20, status_pending: 6, status_declined: 2 },
+        status_breakdown: { resolved: 20, pending: 6, declined: 2 },
       }
       const csvUploadStartedAt = ago(6)
       const result = derivePhase(sync, fresh, csvUploadStartedAt)
@@ -209,7 +209,7 @@ describe('derivePhase', () => {
       const stale: DebugPipelineRun = {
         run_id: 'r-stale',
         created: ago(50),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(61)
       expect(derivePhase(sync, stale, csvUploadStartedAt).phase).toBe('error')
@@ -226,7 +226,7 @@ describe('derivePhase', () => {
       const tooLate: DebugPipelineRun = {
         run_id: 'r3',
         created: ago(50),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(121)
       expect(derivePhase(sync, tooLate, csvUploadStartedAt).phase).toBe('error')
@@ -243,7 +243,7 @@ describe('derivePhase', () => {
       const debug: DebugPipelineRun = {
         run_id: 'r-boundary',
         created: ago(30),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(91)
       expect(derivePhase(sync, debug, csvUploadStartedAt).phase).toBe('done')
@@ -260,7 +260,7 @@ describe('derivePhase', () => {
       const debug: DebugPipelineRun = {
         run_id: 'r-just-past',
         created: new Date(Date.now() - 29.99 * 60_000).toISOString(),
-        status_breakdown: { status_resolved: 1, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(91)
       expect(derivePhase(sync, debug, csvUploadStartedAt).phase).toBe('error')
@@ -277,7 +277,7 @@ describe('derivePhase', () => {
       const orphan: DebugPipelineRun = {
         run_id: 'r2',
         created: ago(20),
-        status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+        status_breakdown: { resolved: 5, pending: 1, declined: 0 },
       }
       // Long-running uploads can outlast the upload marker — proximity is checked, but
       // orphan grace recovery is itself evidence the upload's matching ran. Pass a
@@ -296,7 +296,7 @@ describe('derivePhase', () => {
       const dedup: DebugPipelineRun = {
         run_id: 'r4',
         created: ago(0.5),
-        status_breakdown: { status_resolved: 0, status_pending: 0, status_declined: 0 },
+        status_breakdown: { resolved: 0, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(3)
       const result = derivePhase(sync, dedup, csvUploadStartedAt)
@@ -453,7 +453,7 @@ describe('fetchLatestDebugRun', () => {
             id: 'pb-id',
             run_id: 'run-abc',
             created: '2026-04-27T19:05:00Z',
-            status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+            status_breakdown: { resolved: 5, pending: 1, declined: 0 },
             year: 2026,
             trace_count: 6,
           },
@@ -465,7 +465,7 @@ describe('fetchLatestDebugRun', () => {
     expect(res).toEqual({
       run_id: 'run-abc',
       created: '2026-04-27T19:05:00Z',
-      status_breakdown: { status_resolved: 5, status_pending: 1, status_declined: 0 },
+      status_breakdown: { resolved: 5, pending: 1, declined: 0 },
     })
   })
 
@@ -498,7 +498,7 @@ describe('fetchLatestDebugRun', () => {
     expect(await fetchLatestDebugRun(mock)).toBeNull()
   })
 
-  it('returns null when status_breakdown.status_resolved is non-numeric', async () => {
+  it('returns null when status_breakdown.resolved is non-numeric', async () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -506,11 +506,62 @@ describe('fetchLatestDebugRun', () => {
           {
             run_id: 'run-bad-type',
             created: '2026-04-27T19:05:00Z',
-            status_breakdown: { status_resolved: 'five', status_pending: 0, status_declined: 0 },
+            status_breakdown: { resolved: 'five', pending: 0, declined: 0 },
           },
         ],
       }),
     } as Response)
     expect(await fetchLatestDebugRun(mock)).toBeNull()
+  })
+
+  // Regression: trace_collector.py writes status_breakdown with unprefixed keys
+  // (resolved/pending/declined/skipped/deduped). The frontend previously expected
+  // a status_-prefixed shape and rejected every real row, causing the indicator
+  // to surface "Matching step did not complete" 10 minutes after sync completion
+  // even though processing had succeeded.
+  it('parses the production status_breakdown shape (unprefixed keys from trace_collector.py)', async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'pb-id',
+            run_id: 'run-prod',
+            created: '2026-04-27T19:05:00Z',
+            status_breakdown: { resolved: 200, pending: 12, declined: 8, skipped: 3, deduped: 1 },
+          },
+        ],
+        totalItems: 1,
+      }),
+    } as Response)
+    const res = await fetchLatestDebugRun(mock)
+    expect(res).not.toBeNull()
+    expect(res?.run_id).toBe('run-prod')
+    expect(res?.status_breakdown.resolved).toBe(200)
+    expect(res?.status_breakdown.pending).toBe(12)
+    expect(res?.status_breakdown.declined).toBe(8)
+  })
+})
+
+describe('derivePhase with production status_breakdown shape', () => {
+  it("returns 'done' when fresh debug row arrives with unprefixed keys (regression for #1043)", () => {
+    const sync: SyncJobStatus = {
+      name: 'bunk_requests',
+      status: 'completed',
+      startedAt: ago(5),
+      finishedAt: ago(3),
+    }
+    const fresh: DebugPipelineRun = {
+      run_id: 'r-prod',
+      created: ago(1),
+      status_breakdown: { resolved: 200, pending: 12, declined: 8 },
+    }
+    const csvUploadStartedAt = ago(6)
+    const result = derivePhase(sync, fresh, csvUploadStartedAt)
+    expect(result.phase).toBe('done')
+    expect(result).toMatchObject({
+      counts: { total: 220, autoMatched: 208, needReview: 12 },
+      runId: 'r-prod',
+    })
   })
 })
