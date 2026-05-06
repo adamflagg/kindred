@@ -150,3 +150,38 @@ func registerHooksOnApp(app core.App) {
 		return e.Next()
 	})
 }
+
+// Test 3 — #1059 direct reproduction: pair both reciprocal=true, delete one,
+// surviving partner's flag should flip to false.
+func TestHook_DeletionFlipsPartner(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	// Sanity: both reciprocal after pair complete.
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("setup precondition: expected B→A reciprocal=true, got false")
+	}
+
+	// Delete A→B; hook should fire and recompute B→A.
+	if err := app.Delete(rowAB); err != nil {
+		t.Fatalf("delete AB: %v", err)
+	}
+
+	gotBA, err = app.FindRecordById("bunk_requests", rowBA.Id)
+	if err != nil {
+		t.Fatalf("reload BA: %v", err)
+	}
+	if gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after A→B delete: B→A expected is_reciprocal=false, got true (#1059 bug)")
+	}
+}
