@@ -461,5 +461,146 @@ class TestGraphCacheManagerBunkScenario(unittest.TestCase):
         assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id=None) is not None
 
 
+class TestGraphCacheManagerInvalidateScenario(unittest.TestCase):
+    """Surgical scenario-scoped invalidation.
+
+    Issue: after a solver re-run + apply, ``bunk_assignments_draft`` rows for
+    that scenario change but the cached session/bunk graphs in the scenario
+    slot are served stale for up to TTL (15 min). ``invalidate_scenario``
+    drops *only* that scenario's session key plus all bunk keys for the same
+    session+year+scenario, leaving prod and other scenarios untouched.
+    """
+
+    def setUp(self):
+        self.cache = GraphCacheManager(ttl_seconds=60, max_cache_size=20)
+
+        self.prod_graph = nx.DiGraph()
+        self.prod_graph.add_nodes_from([1, 2, 3])
+
+        self.scenario_graph = nx.DiGraph()
+        self.scenario_graph.add_nodes_from([10, 11, 12])
+
+        self.bunk_graph_a = nx.DiGraph()
+        self.bunk_graph_a.add_nodes_from([10, 11])
+
+        self.bunk_graph_b = nx.DiGraph()
+        self.bunk_graph_b.add_nodes_from([12])
+
+    def test_invalidate_scenario_drops_session_key(self):
+        """The session graph cached under the scenario slot is removed."""
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is not None
+
+        count = self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        assert count == 1
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is None
+
+    def test_invalidate_scenario_drops_all_bunk_keys_for_scenario(self):
+        """All bunk graphs for the same scenario+session+year are removed."""
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.bunk_graph_a, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(102, 12345, 2025, self.bunk_graph_b, scenario_id="scn_abc")
+
+        count = self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        assert count == 2
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(102, 12345, 2025, scenario_id="scn_abc") is None
+
+    def test_invalidate_scenario_drops_session_and_bunks_together(self):
+        """One call drops both the session entry and every bunk entry for that scenario."""
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.bunk_graph_a, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(102, 12345, 2025, self.bunk_graph_b, scenario_id="scn_abc")
+
+        count = self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        assert count == 3
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(102, 12345, 2025, scenario_id="scn_abc") is None
+
+    def test_invalidate_scenario_preserves_prod_cache(self):
+        """Production cache for the same session+year is untouched."""
+        self.cache.cache_session_graph(12345, 2025, self.prod_graph)  # prod
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.prod_graph)  # prod
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.bunk_graph_a, scenario_id="scn_abc")
+
+        self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        # Prod still cached
+        assert self.cache.get_session_graph(12345, 2025) is not None
+        assert self.cache.get_bunk_graph(101, 12345, 2025) is not None
+        # Scenario gone
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc") is None
+
+    def test_invalidate_scenario_preserves_other_scenarios(self):
+        """Other scenarios for the same session+year are untouched."""
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.bunk_graph_a, scenario_id="scn_abc")
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_xyz")
+        self.cache.cache_bunk_graph(101, 12345, 2025, self.bunk_graph_b, scenario_id="scn_xyz")
+
+        self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        # Other scenario survives
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_xyz") is not None
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_xyz") is not None
+        # Targeted scenario gone
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(101, 12345, 2025, scenario_id="scn_abc") is None
+
+    def test_invalidate_scenario_preserves_other_sessions(self):
+        """Same scenario id used in a different session is not invalidated.
+
+        This is a defensive guard — in practice each scenario binds to one
+        session — but the cache key parser must not false-match.
+        """
+        self.cache.cache_session_graph(11111, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(101, 11111, 2025, self.bunk_graph_a, scenario_id="scn_abc")
+        self.cache.cache_session_graph(22222, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_bunk_graph(101, 22222, 2025, self.bunk_graph_b, scenario_id="scn_abc")
+
+        self.cache.invalidate_scenario(11111, 2025, "scn_abc")
+
+        assert self.cache.get_session_graph(11111, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_bunk_graph(101, 11111, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_session_graph(22222, 2025, scenario_id="scn_abc") is not None
+        assert self.cache.get_bunk_graph(101, 22222, 2025, scenario_id="scn_abc") is not None
+
+    def test_invalidate_scenario_preserves_other_years(self):
+        """Same scenario id reused across years is not cross-invalidated."""
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="scn_abc")
+        self.cache.cache_session_graph(12345, 2026, self.scenario_graph, scenario_id="scn_abc")
+
+        self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="scn_abc") is None
+        assert self.cache.get_session_graph(12345, 2026, scenario_id="scn_abc") is not None
+
+    def test_invalidate_scenario_no_match_returns_zero(self):
+        """Calling on an empty/unmatched scenario returns 0."""
+        self.cache.cache_session_graph(12345, 2025, self.prod_graph)  # prod only
+
+        count = self.cache.invalidate_scenario(12345, 2025, "scn_abc")
+
+        assert count == 0
+        assert self.cache.get_session_graph(12345, 2025) is not None  # prod intact
+
+    def test_invalidate_scenario_does_not_match_scenario_id_substring(self):
+        """A scenario id that's a prefix of another id must not over-match."""
+        # 'abc' and 'abcd' are distinct slugs in cache keys. Splitting on '_' and
+        # comparing the slug field exactly guards against a substring match.
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="abc")
+        self.cache.cache_session_graph(12345, 2025, self.scenario_graph, scenario_id="abcd")
+
+        self.cache.invalidate_scenario(12345, 2025, "abc")
+
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="abc") is None
+        assert self.cache.get_session_graph(12345, 2025, scenario_id="abcd") is not None
+
+
 if __name__ == "__main__":
     unittest.main()
