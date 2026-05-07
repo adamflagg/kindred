@@ -1141,7 +1141,6 @@ Analyze solver run results for patterns and issues.
     "satisfied_requests": 85,
     "total_requests": 100,
     "satisfaction_rate": 0.85,
-    "friend_group_cohesion": 0.72,
     "isolated_campers": 3,
     "constraint_violations": []
   }
