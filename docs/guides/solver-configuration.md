@@ -23,11 +23,6 @@ Define hard and soft constraints for cabin assignments:
 - **Grade Ratio Limit** (`constraint.grade_ratio.max_percentage`): Max percentage of cabin from single grade
 - **Grade Ratio Penalty** (`constraint.grade_ratio.penalty`): Penalty weight for violations
 
-#### Friend Group Constraints
-- **Max Friend Group Size** (`constraint.friend_group.max_dominance`): Largest group before considering splitting
-- **Min Friend Group Size** (`constraint.friend_group.min_dominance`): Minimum size to trigger dominance checks
-- **Require Pair Connection** (`constraint.friend_group.require_pair_connection`): Require mutual connections
-
 #### Request Satisfaction
 - **Must Satisfy One** (`constraint.must_satisfy_one.enabled`): Require at least one request satisfied per camper
 - **Satisfaction Penalty** (`constraint.must_satisfy_one.penalty`): Penalty for leaving a camper unsatisfied (default: 100,000)
@@ -68,11 +63,6 @@ Prevent gaming the system with multiple requests:
 
 ### 4. Solver Settings
 Technical solver configuration:
-
-#### Friend Group Splitting
-- **Split Threshold** (`solver.friend_group.split_threshold`): Size to trigger splitting (6-14)
-- **Split Strategy** (`solver.friend_group.split_strategy`): "balanced" or "sequential"
-- **Min Subgroup Size** (`solver.friend_group.min_subgroup_size`): Minimum size after split (2-8)
 
 #### Debug Settings
 - **Debug Enabled** (`solver.debug.enabled`): Enable detailed logging

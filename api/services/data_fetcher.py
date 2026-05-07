@@ -366,7 +366,6 @@ def prepare_direct_solver_input(
             grade=getattr(person, "grade", 0),
             birthdate=getattr(person, "birthdate", ""),
             gender=getattr(person, "gender", None),
-            friend_group_id=None,
             session_cm_id=session_cm_id_val if session_cm_id_val is not None else 0,
         )
         persons.append(direct_person)
@@ -444,7 +443,6 @@ def prepare_direct_solver_input(
             status=getattr(req, "status", "pending"),
             original_text=getattr(req, "original_text", None),
             age_preference_target=getattr(req, "age_preference_target", None),
-            friend_group_id=getattr(req, "friend_group_id", None),
             source_field=getattr(req, "source_field", None),
         )
         for req in requests

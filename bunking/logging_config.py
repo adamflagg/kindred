@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from typing import ClassVar
@@ -90,13 +91,25 @@ class ISO8601Formatter(logging.Formatter):
 
 
 class HealthCheckFilter(logging.Filter):
-    """Filter to suppress health check logs at INFO level.
+    """Filter to suppress high-frequency access log noise at INFO level.
 
-    Health check endpoints generate a lot of noise (every 10-15 seconds).
-    This filter suppresses them unless LOG_LEVEL=DEBUG is set.
+    Covers two recurring sources:
+    - Health check endpoints (every 10-15 seconds from Docker probes).
+    - Solver run status polls (~1/s for the duration of every solve).
+
+    Only successful (200) GET requests are filtered. ``HEALTH_EXACT_PATHS``
+    matches whole paths so ``/healthz`` or ``/api/healthcheck`` stay visible;
+    ``HEALTH_PATH_PREFIXES`` matches the per-run solver poll (the UUID-bearing
+    suffix) without catching the bare POST that kicks off a run.
+
+    Set LOG_LEVEL=DEBUG to see all access logs.
     """
 
-    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
+    HEALTH_EXACT_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
+    HEALTH_PATH_PREFIXES: ClassVar[tuple[str, ...]] = ("/api/solver/run/",)
+    _ACCESS_LOG_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r'"(?P<method>[A-Z]+) (?P<path>\S+) HTTP/\d\.\d" (?P<status>\d{3})'
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Filter out health check logs at INFO level.
@@ -107,13 +120,28 @@ class HealthCheckFilter(logging.Filter):
         Returns:
             True if the record should be logged, False to suppress
         """
-        # Always allow DEBUG level logs (when debug is enabled)
-        if record.levelno == logging.DEBUG:
+        # In DEBUG/TRACE mode, keep all access logs visible. Uvicorn access
+        # records are always INFO regardless of LOG_LEVEL, so we must check
+        # the root logger's effective level rather than `record.levelno`.
+        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
             return True
 
-        # Check if this is an access log for health endpoints
-        message = record.getMessage()
-        return all(not (path in message and ("GET" in message or "200" in message)) for path in self.HEALTH_PATHS)
+        # Suppression is only intended for INFO access-log noise; pass through
+        # anything at WARNING or higher (and the artificial DEBUG records).
+        if record.levelno != logging.INFO:
+            return True
+
+        # Parse the uvicorn access-log line; if it doesn't match, leave it alone.
+        match = self._ACCESS_LOG_RE.search(record.getMessage())
+        if not match:
+            return True
+        if match.group("method") != "GET" or match.group("status") != "200":
+            return True
+
+        path = match.group("path")
+        if path in self.HEALTH_EXACT_PATHS:
+            return False
+        return not any(path.startswith(prefix) for prefix in self.HEALTH_PATH_PREFIXES)
 
 
 def configure_logging(
