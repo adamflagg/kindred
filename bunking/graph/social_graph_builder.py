@@ -35,7 +35,7 @@ class SocialEdge:
     """Represents a relationship between two campers"""
 
     weight: float
-    edge_type: str  # 'request', 'sibling', 'school' (removed 'historical')
+    edge_type: str  # 'request'
     year: int
     metadata: dict[str, Any]
 
@@ -660,113 +660,6 @@ class SocialGraphBuilder:
                         year=year,
                     ),
                 )
-
-    def _add_sibling_edges(self, year: int, session_cm_id: int) -> None:
-        """Add edges between siblings using household_id from PocketBase persons collection."""
-        # Get all nodes in graph
-        node_ids = list(self.graph.nodes())
-
-        # Group persons by household_id
-        family_groups = defaultdict(list)
-        for node_id in node_ids:
-            person = self.person_cache.get(node_id, {})
-            family_id = person.get("household_id", 0)
-
-            # Only group if household_id is valid (> 0)
-            if family_id and family_id > 0:
-                family_groups[family_id].append(node_id)
-
-        # Add edges between all family members
-        sibling_count = 0
-        for family_id, members in family_groups.items():
-            if len(members) < 2:
-                continue  # No siblings if only one family member
-
-            # Create edges between all pairs in the family
-            for i in range(len(members)):
-                for j in range(i + 1, len(members)):
-                    self.graph.add_edge(
-                        members[i], members[j], weight=0.3, edge_type="sibling", year=year, family_id=family_id
-                    )
-                    sibling_count += 1
-
-        logger.info(f"Added {sibling_count} sibling edges based on household_id")
-
-    def _add_classmate_edges(self, year: int, session_cm_id: int) -> None:
-        """Add edges between potential classmates based on school, city, and state"""
-        # Get all nodes in graph
-        node_ids = list(self.graph.nodes())
-        logger.info(f"Checking for school connections among {len(node_ids)} campers")
-
-        school_matches = 0
-
-        # Count people with school data for debugging
-        people_with_schools = sum(1 for node_id in node_ids if self.person_cache.get(node_id, {}).get("school"))
-        logger.info(f"Found {people_with_schools} campers with school data")
-
-        # Check each pair of campers
-        for i in range(len(node_ids)):
-            for j in range(i + 1, len(node_ids)):
-                person1 = self.person_cache.get(node_ids[i], {})
-                person2 = self.person_cache.get(node_ids[j], {})
-
-                # Skip if already connected
-                if self.graph.has_edge(node_ids[i], node_ids[j]):
-                    continue
-
-                # Get school info
-                school1 = person1.get("school", "").strip()
-                school2 = person2.get("school", "").strip()
-
-                # Skip if no school info for either person
-                if not school1 or not school2:
-                    continue
-
-                # Get location data from discrete address columns. The legacy JSON
-                # `address` field was removed in migration 1500000054_remove_json_fields.js
-                # (#1156); the persons collection now exposes `address_city` and
-                # `address_state` as flat columns directly on the record.
-                city1 = (person1.get("address_city") or "").strip()
-                city2 = (person2.get("address_city") or "").strip()
-                state1 = (person1.get("address_state") or "").strip()
-                state2 = (person2.get("address_state") or "").strip()
-
-                # Skip if missing any location data
-                if not (city1 and city2 and state1 and state2):
-                    continue
-
-                # Get grades
-                grade1 = person1.get("grade", 0)
-                grade2 = person2.get("grade", 0)
-
-                # Check for same school AND same city AND same state AND similar grade (within 1 year)
-                if (
-                    school1.lower() == school2.lower()
-                    and city1.lower() == city2.lower()
-                    and state1.lower() == state2.lower()
-                    and abs(grade1 - grade2) <= 1
-                ):
-                    # Same school - they're classmates!
-                    self.graph.add_edge(
-                        node_ids[i],
-                        node_ids[j],
-                        weight=0.3,
-                        edge_type="school",
-                        year=year,
-                        metadata={
-                            "school": school1,
-                            "city": city1,
-                            "state": state1,
-                            "informational_only": True,  # Mark as informational edge
-                        },
-                    )
-                    school_matches += 1
-                    if school_matches <= 5:  # Log first few matches
-                        logger.info(
-                            f"Found school match: {person1.get('first_name', '')} {person1.get('last_name', '')} and {person2.get('first_name', '')} {person2.get('last_name', '')} at {school1}"
-                        )
-
-        logger.info(f"Added {school_matches} school-based classmate edges")
 
     def _calculate_node_metrics(self) -> None:
         """Calculate and store node-level metrics"""
