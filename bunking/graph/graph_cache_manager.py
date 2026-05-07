@@ -240,6 +240,59 @@ class GraphCacheManager:
 
             return len(keys_to_remove)
 
+    def invalidate_scenario(self, session_cm_id: int, year: int, scenario_id: str) -> int:
+        """Invalidate cached graphs for a single scenario+session+year.
+
+        Drops both the session graph and every bunk graph cached under the
+        scenario slot, leaving production cache (``slug == "prod"``) and other
+        scenarios for the same session+year untouched.
+
+        Slug comparison is exact (positional, not substring) so a scenario id
+        that is a prefix of another (``"abc"`` vs ``"abcd"``) cannot
+        false-match — same guarantee as ``invalidate_session``'s bunk match.
+
+        Returns:
+            Number of graphs invalidated
+        """
+        if not scenario_id:
+            return 0
+
+        slug = self._scenario_slug(scenario_id)
+        session_str = str(session_cm_id)
+        year_str = str(year)
+        session_key = f"session_{session_str}_{year_str}_{slug}"
+
+        with self._lock:
+            keys_to_remove: list[str] = []
+            for key in self._cache:
+                if key == session_key:
+                    keys_to_remove.append(key)
+                    continue
+                if key.startswith("bunk_"):
+                    # Slug is the trailing segment; PocketBase ids are
+                    # alphanumeric in production but the slug field is a
+                    # free-form string, so rejoin parts[4:] to compare
+                    # exactly even when it contains underscores.
+                    parts = key.split("_")
+                    if (
+                        len(parts) >= 5
+                        and parts[2] == session_str
+                        and parts[3] == year_str
+                        and "_".join(parts[4:]) == slug
+                    ):
+                        keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                self._evict(key)
+
+            if keys_to_remove:
+                logger.info(
+                    f"Invalidated {len(keys_to_remove)} graphs for scenario {scenario_id} "
+                    f"(session {session_cm_id}, year {year})"
+                )
+
+            return len(keys_to_remove)
+
     def invalidate_bunk(self, bunk_cm_id: int) -> int:
         """Invalidate all cached graphs for a bunk.
 
