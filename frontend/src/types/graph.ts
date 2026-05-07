@@ -28,15 +28,13 @@ export interface GraphEdge {
   source: number
   target: number
   weight: number
-  /** Edge type. Valid values: 'request' | 'historical' | 'classmate_city' | 'classmate_state' | 'bundled'.
-   *  'sibling' is intentionally excluded: sibling edges are filtered at the API
-   *  response boundary (#1094) and will never appear in graph API responses. */
+  /** Edge type. Always 'request' — the API only emits request edges. */
   edge_type: string
   reciprocal: boolean
   request_type?: string // 'bunk_with' | 'not_bunk_with' for edge_type='request' edges
   confidence?: number // AI confidence score for request edges
   priority?: number // Priority level for request edges
-  metadata?: Record<string, unknown> // Additional edge metadata (e.g., location for classmate edges)
+  metadata?: Record<string, unknown> // Additional edge metadata
   // Legacy fields that may still be referenced
   is_reciprocal?: boolean
 }
