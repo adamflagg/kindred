@@ -101,7 +101,6 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/feedback/
 !pocketbase/config/
 !pocketbase/bunk_requests/
-!pocketbase/locked_groups/
 !pocketbase/cmd/
 !pocketbase/README.md
 # JS tooling for migrations/hooks linting

@@ -21,7 +21,6 @@ import (
 	// Import our packages
 	bunkrequests "github.com/camp/kindred/pocketbase/bunk_requests"
 	"github.com/camp/kindred/pocketbase/feedback"
-	lockedgroups "github.com/camp/kindred/pocketbase/locked_groups"
 	"github.com/camp/kindred/pocketbase/logging"
 	"github.com/camp/kindred/pocketbase/rbac"
 	"github.com/camp/kindred/pocketbase/sync"
@@ -157,10 +156,6 @@ func main() {
 	// Register bunk_requests reciprocity hook (keeps is_reciprocal accurate
 	// after any write — closes #1059, supports #1069 status flips).
 	bunkrequests.RegisterHooks(app)
-
-	// Register locked_group_members one-group-per-camper-per-scenario hook
-	// (returns friendly 409 when a camper is added to a second group — closes #1047).
-	lockedgroups.RegisterHooks(app)
 
 	// Start scheduler after the app is fully initialized
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
