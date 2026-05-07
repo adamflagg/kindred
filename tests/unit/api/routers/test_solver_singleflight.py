@@ -19,14 +19,12 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.rbac.permissions import ALL_PERMISSIONS
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -45,10 +43,8 @@ def _mock_admin_user() -> AuthUser:
     return user
 
 
-def _make_app(router: Any, solver_runs_state: dict[str, Any]) -> FastAPI:
+def _make_app(router: Any) -> FastAPI:
     """Minimal FastAPI app with global exception handler and patched solver_runs."""
-    from api.routers import solver as solver_module
-
     app = FastAPI()
 
     @app.exception_handler(Exception)
@@ -65,7 +61,7 @@ def _solver_client(solver_runs_state: dict[str, Any]) -> Iterator[TestClient]:
     """Return a TestClient for the solver router with patched solver_runs."""
     from api.routers.solver import router
 
-    app = _make_app(router, solver_runs_state)
+    app = _make_app(router)
     with (
         patch("api.routers.solver.solver_runs", solver_runs_state),
         # Prevent real background tasks from executing
