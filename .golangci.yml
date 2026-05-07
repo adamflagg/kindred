@@ -64,6 +64,8 @@ linters:
       ignore-package-globs:
         # PocketBase router event methods (e.JSON, e.NoContent, etc.) are terminal HTTP responses
         - github.com/pocketbase/pocketbase/tools/router
+        # PocketBase hook chain propagation — e.Next() passes through the middleware chain, already has context
+        - github.com/pocketbase/pocketbase/tools/hook
         # CampMinder client errors are wrapped by callers (ExecuteWithRetry adds context)
         - github.com/camp/kindred/pocketbase/campminder
       ignore-sig-regexps:

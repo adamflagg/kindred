@@ -53,11 +53,11 @@ func TestBackfill_FixesStaleRow(t *testing.T) {
 	r.Set("year", 2026)
 	r.Set("session_id", 1235404)
 	r.Set("is_reciprocal", true) // <-- STALE
-	if err := app.Save(r); err != nil {
+	if err = app.Save(r); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := bunkrequests.BackfillAll(app); err != nil {
+	if _, err = bunkrequests.BackfillAll(app); err != nil {
 		t.Fatalf("backfill: %v", err)
 	}
 
