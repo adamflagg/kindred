@@ -162,14 +162,6 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
-      selector: 'edge[edge_type = "bundled"]',
-      style: {
-        width: 3,
-        'line-style': 'solid',
-        'line-dash-pattern': [6, 3],
-      },
-    },
-    {
       selector: '.scope-hidden',
       style: {
         opacity: 0,
@@ -437,10 +429,9 @@ export function createGraphElements(
   }))
 
   // Filter and create edges based on visibility settings.
-  // Sibling edges are filtered at the API response boundary (#1094) and will
-  // never appear in edgeData here — no client-side defensive filter needed.
+  // The API only emits 'request' edges; this filter respects per-type
+  // visibility toggles in case the type union is widened in the future.
   const visibleEdges = edgeData.filter((edge) => {
-    // Unknown edge types default to visible; sibling is filtered server-side (#1094)
     const setting = showEdges[edge.edge_type as keyof ShowEdgesSettings]
     return setting !== false
   })
