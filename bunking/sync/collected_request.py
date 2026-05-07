@@ -16,7 +16,7 @@ class CollectedRequest:
     requester_cm_id: int
     request_type: str  # 'bunk_with', 'not_bunk_with', 'age_preference', etc.
     year: int
-    source: str  # 'csv', 'friend_group', 'manual', 'conflict_resolution'
+    source: str  # 'csv', 'manual', 'conflict_resolution'
 
     # Optional fields
     requested_cm_id: int | None = None
@@ -38,9 +38,6 @@ class CollectedRequest:
     # Complex fields
     metadata: dict[str, Any] = field(default_factory=dict)
     keywords_found: list[str] = field(default_factory=list)
-
-    # Friend group specific
-    friend_group_id: str | None = None
 
     # Tracking
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -108,11 +105,6 @@ class CollectedRequest:
         # For age preference requests, populate the age_preference_target field from metadata
         if self.request_type == "age_preference" and self.metadata.get("target"):
             db_dict["age_preference_target"] = self.metadata["target"]
-
-        # Only include friend_group_id if we have a valid ID
-        # PocketBase relation fields should be omitted if empty
-        if self.friend_group_id:
-            db_dict["friend_group_id"] = self.friend_group_id
 
         # Store csv_source_field in ai_reasoning if available
         if "csv_source_field" in self.metadata:

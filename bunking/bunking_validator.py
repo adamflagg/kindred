@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from bunking.logging_config import get_logger
-from bunking.models import Bunk, BunkAssignment, BunkRequest, FriendGroup, Person, Session
+from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
 from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.core.models import RequestSource
@@ -104,8 +104,6 @@ class ValidationStatistics(BaseModel):
     bunks_under_capacity: int = 0
     locked_bunks: int = 0
     campers_with_no_requests: int = 0
-    friend_groups_split: int = 0
-    friend_groups_intact: int = 0
     # Multi-session support
     session_breakdown: list[SessionBreakdown] = Field(default_factory=list)
     total_capacity: int = 0
@@ -960,17 +958,6 @@ class BunkingValidator:
                             affected_ids=[bunk.campminder_id],
                         )
                     )
-
-    def _validate_friend_groups(
-        self,
-        friend_groups: list[FriendGroup],
-        assignments_by_person: dict[str, BunkAssignment],
-        stats: ValidationStatistics,
-        issues: list[ValidationIssue],
-    ) -> None:
-        """Deprecated - friend groups now handled by NetworkX social graph"""
-        # Friend groups validation removed - now handled by NetworkX social graph
-        pass
 
     def _compute_session_breakdown(
         self,

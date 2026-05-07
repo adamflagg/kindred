@@ -27,8 +27,7 @@ class DirectBunkRequest(BaseModel):
     # Additional fields for context
     original_text: str | None = None
     age_preference_target: str | None = None  # 'older', 'younger'
-    friend_group_id: str | None = None
-    request_source: str | None = None  # 'csv_explicit', 'socialize_field', 'prior_year', 'manual_entry', 'friend_group'
+    request_source: str | None = None  # 'csv_explicit', 'socialize_field', 'prior_year', 'manual_entry'
     source_field: str | None = None  # Which CSV field it came from
     csv_source_fields: list[str] | None = None  # Actual CSV fields that contributed to this request
     ai_reasoning: dict[str, Any] | None = None  # AI reasoning data including csv_source_fields
@@ -43,7 +42,6 @@ class DirectPerson(BaseModel):
     grade: int
     birthdate: str
     gender: str | None = None  # 'M', 'F', etc.
-    friend_group_id: str | None = None
     session_cm_id: int  # Track which session this person is enrolled in
 
     @property
