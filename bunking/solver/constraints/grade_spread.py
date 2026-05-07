@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from bunking.logging_config import get_logger
+from bunking.solver.penalties import grade_spread_penalty
 
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk
@@ -103,8 +104,10 @@ def add_grade_spread_soft_constraint(ctx: SolverContext, objective_terms: list[A
     """
     max_unique_grades = ctx.config.get_constraint("grade_spread", "max_spread", default=2)
 
-    # Get penalty weight for violations
-    penalty_weight = ctx.config.get_int("constraint.grade_spread.penalty", default=3000)
+    # Penalty for excess unique grades. Read via the centralized accessor so
+    # this OR-Tools cost contribution stays in lockstep with the post-solve
+    # evaluators (see bunking/solver/penalties.py).
+    penalty_weight = grade_spread_penalty()
 
     logger.debug(f"Adding grade spread soft constraints (max {max_unique_grades} grades, penalty: {penalty_weight})")
 

@@ -12,13 +12,21 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
+from bunking.config import ConfigLoader
 from bunking.solver.constraints.cabin_capacity import (
     add_cabin_capacity_constraints,
     add_cabin_capacity_soft_constraint,
 )
 from bunking.solver.constraints.gender import add_gender_constraints
 
-from ..conftest import build_solver_context, create_bunk, create_person, is_infeasible, is_optimal_or_feasible
+from ..conftest import (
+    MinimalConfigLoader,
+    build_solver_context,
+    create_bunk,
+    create_person,
+    is_infeasible,
+    is_optimal_or_feasible,
+)
 
 
 class TestHardCapacityConstraint:
@@ -172,31 +180,37 @@ class TestSoftCapacityConstraint:
         # Soft constraint will penalize 13th and 14th camper
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=14)
 
+        config_overrides = {
+            "constraint.cabin_capacity.max": 14,
+            "constraint.cabin_capacity.standard": 12,
+            "constraint.cabin_capacity.mode": "soft",
+            "constraint.cabin_capacity.penalty": 50000,
+        }
         ctx = build_solver_context(
             persons=campers,
             bunks=[bunk],
-            config_overrides={
-                "constraint.cabin_capacity.max": 14,
-                "constraint.cabin_capacity.standard": 12,
-                "constraint.cabin_capacity.mode": "soft",
-                "constraint.cabin_capacity.penalty": 50000,
-            },
+            config_overrides=config_overrides,
         )
 
-        # Apply hard capacity (max) and soft penalties
-        add_cabin_capacity_constraints(ctx)
-        objective_terms: list[cp_model.LinearExprT] = []
-        add_cabin_capacity_soft_constraint(ctx, objective_terms)
+        # The soft constraint reads its penalty via the centralized
+        # ``cabin_capacity_penalty()`` accessor, which goes through
+        # ``ConfigLoader.get_instance()``. Mirror the ctx.config overrides into
+        # the global loader so the centralized read sees the same values.
+        with ConfigLoader.use(MinimalConfigLoader(config_overrides)):  # type: ignore[arg-type]
+            # Apply hard capacity (max) and soft penalties
+            add_cabin_capacity_constraints(ctx)
+            objective_terms: list[cp_model.LinearExprT] = []
+            add_cabin_capacity_soft_constraint(ctx, objective_terms)
 
-        # Add objective to maximize (with penalties as negative)
-        ctx.model.Maximize(sum(objective_terms))
+            # Add objective to maximize (with penalties as negative)
+            ctx.model.Maximize(sum(objective_terms))
 
-        # Solve
-        solver = cp_model.CpSolver()
-        status = solver.Solve(ctx.model)
+            # Solve
+            solver = cp_model.CpSolver()
+            status = solver.Solve(ctx.model)
 
-        # Should be feasible (allows up to 14)
-        assert is_optimal_or_feasible(status)
+            # Should be feasible (allows up to 14)
+            assert is_optimal_or_feasible(status)
 
     def test_prevents_exceeding_max_even_in_soft_mode(self):
         """Even in soft mode, cannot exceed max capacity."""

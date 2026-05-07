@@ -12,12 +12,20 @@ from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
+from bunking.config import ConfigLoader
 from bunking.solver.constraints.grade_spread import (
     add_grade_spread_constraints,
     add_grade_spread_soft_constraint,
 )
 
-from ..conftest import build_solver_context, create_bunk, create_person, is_infeasible, is_optimal_or_feasible
+from ..conftest import (
+    MinimalConfigLoader,
+    build_solver_context,
+    create_bunk,
+    create_person,
+    is_infeasible,
+    is_optimal_or_feasible,
+)
 
 
 class TestHardGradeSpreadConstraint:
@@ -169,28 +177,33 @@ class TestSoftGradeSpreadConstraint:
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)
 
+        config_overrides = {
+            "constraint.grade_spread.max_spread": 2,
+            "constraint.grade_spread.penalty": 3000,
+        }
         ctx = build_solver_context(
             persons=campers,
             bunks=[bunk],
-            config_overrides={
-                "constraint.grade_spread.max_spread": 2,
-                "constraint.grade_spread.penalty": 3000,
-            },
+            config_overrides=config_overrides,
         )
 
-        # Don't add hard constraint, only soft
-        objective_terms: list[cp_model.LinearExprT] = []
-        add_grade_spread_soft_constraint(ctx, objective_terms)
+        # The soft constraint reads its penalty via the centralized
+        # ``grade_spread_penalty()`` accessor (ConfigLoader.get_instance()),
+        # so mirror the ctx.config overrides into the global loader.
+        with ConfigLoader.use(MinimalConfigLoader(config_overrides)):  # type: ignore[arg-type]
+            # Don't add hard constraint, only soft
+            objective_terms: list[cp_model.LinearExprT] = []
+            add_grade_spread_soft_constraint(ctx, objective_terms)
 
-        # Add objective (the penalty terms)
-        if objective_terms:
-            ctx.model.Maximize(sum(objective_terms))
+            # Add objective (the penalty terms)
+            if objective_terms:
+                ctx.model.Maximize(sum(objective_terms))
 
-        solver = cp_model.CpSolver()
-        status = solver.Solve(ctx.model)
+            solver = cp_model.CpSolver()
+            status = solver.Solve(ctx.model)
 
-        # Should be feasible (soft mode doesn't prevent it)
-        assert is_optimal_or_feasible(status)
+            # Should be feasible (soft mode doesn't prevent it)
+            assert is_optimal_or_feasible(status)
 
     def test_soft_mode_prefers_lower_spread(self):
         """Soft mode should prefer solutions with fewer unique grades."""
@@ -207,36 +220,38 @@ class TestSoftGradeSpreadConstraint:
             create_bunk(cm_id=2002, name="B-2", gender="M", capacity=12),
         ]
 
+        config_overrides = {
+            "constraint.grade_spread.max_spread": 2,
+            "constraint.grade_spread.penalty": 3000,
+        }
         ctx = build_solver_context(
             persons=campers,
             bunks=bunks,
-            config_overrides={
-                "constraint.grade_spread.max_spread": 2,
-                "constraint.grade_spread.penalty": 3000,
-            },
+            config_overrides=config_overrides,
         )
 
-        objective_terms: list[cp_model.LinearExprT] = []
-        add_grade_spread_soft_constraint(ctx, objective_terms)
+        with ConfigLoader.use(MinimalConfigLoader(config_overrides)):  # type: ignore[arg-type]
+            objective_terms: list[cp_model.LinearExprT] = []
+            add_grade_spread_soft_constraint(ctx, objective_terms)
 
-        if objective_terms:
-            ctx.model.Maximize(sum(objective_terms))
+            if objective_terms:
+                ctx.model.Maximize(sum(objective_terms))
 
-        solver = cp_model.CpSolver()
-        status = solver.Solve(ctx.model)
+            solver = cp_model.CpSolver()
+            status = solver.Solve(ctx.model)
 
-        assert is_optimal_or_feasible(status)
+            assert is_optimal_or_feasible(status)
 
-        # Verify each bunk has at most 2 unique grades
-        for bunk in bunks:
-            bunk_idx = ctx.bunk_idx_map[bunk.campminder_id]
-            grades_in_bunk = set()
-            for camper in campers:
-                person_idx = ctx.person_idx_map[camper.campminder_person_id]
-                if solver.Value(ctx.assignments[(person_idx, bunk_idx)]) == 1:
-                    grades_in_bunk.add(camper.grade)
-            # Should find solution with <=2 grades per bunk
-            assert len(grades_in_bunk) <= 2
+            # Verify each bunk has at most 2 unique grades
+            for bunk in bunks:
+                bunk_idx = ctx.bunk_idx_map[bunk.campminder_id]
+                grades_in_bunk = set()
+                for camper in campers:
+                    person_idx = ctx.person_idx_map[camper.campminder_person_id]
+                    if solver.Value(ctx.assignments[(person_idx, bunk_idx)]) == 1:
+                        grades_in_bunk.add(camper.grade)
+                # Should find solution with <=2 grades per bunk
+                assert len(grades_in_bunk) <= 2
 
 
 class TestGradeSpreadWithMixedBunks:
