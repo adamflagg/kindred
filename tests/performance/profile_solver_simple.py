@@ -79,7 +79,6 @@ def run_single_scenario(profiler, name, num_campers=500, num_cabins=42, cabin_ca
 
         if result.get("solution_found"):
             logger.info(f"  Requests Satisfied: {result.get('satisfaction_rate', 0):.1%}")
-            logger.info(f"  Friend Groups Together: {result.get('friend_group_rate', 0):.1%}")
             logger.info(f"  Cabins Used: {result.get('cabins_used', 0)}")
 
     return result
