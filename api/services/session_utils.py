@@ -75,6 +75,6 @@ async def get_related_session_ids(session_cm_id: int, year: int, pb_client: Pock
         logger.debug(f"Session {session_cm_id} ({session_name}) year {year} has related AG sessions: {related_ids}")
 
     except Exception as e:
-        logger.error(f"Error finding related sessions for {session_cm_id}: {e}")
+        logger.error(f"Error finding related sessions for {session_cm_id}: {e}", exc_info=True)
 
     return related_ids
