@@ -40,7 +40,7 @@ from ..constants.collections import (
     PERSONS,
     SAVED_SCENARIOS,
 )
-from ..dependencies import pb, solver_runs
+from ..dependencies import graph_cache, pb, solver_runs
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
 from ..utils.pb_error import pb_error_to_http
@@ -182,6 +182,12 @@ async def create_scenario(
                     }
 
                 await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).create, draft_data)
+
+        # Defensively invalidate the new scenario's cache slot. A brand-new
+        # scenario should not have any cached graph yet, but if its id reuses
+        # one that was deleted recently the slot could carry over — costing
+        # ~µs to drop, much cheaper than serving a stale graph.
+        graph_cache.invalidate_scenario(int(request.session_cm_id), int(ctx.year), scenario.id)
 
         return SavedScenario(
             id=scenario.id,
@@ -475,7 +481,14 @@ async def delete_scenario(
 ) -> dict[str, str]:
     """Delete a scenario and all its data."""
     try:
-        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
+        # Expand session up front so we can grab session.cm_id for the
+        # post-delete cache invalidation without a second round-trip.
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
+        scenario_session = getattr(scenario, "session", None)
+        scenario_session_cm_id: int | None = None
+        if scenario_session is not None and hasattr(scenario_session, "cm_id"):
+            scenario_session_cm_id = int(getattr(scenario_session, "cm_id", 0)) or None
+        scenario_year = int(getattr(scenario, "year", 0)) or None
 
         # Delete all related draft assignments first
         draft_assignments = await asyncio.to_thread(
@@ -488,6 +501,11 @@ async def delete_scenario(
 
         # Delete the scenario
         await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).delete, scenario_id)
+
+        # Drop the cache slot so the next request rebuilds (or short-circuits
+        # to "scenario not found" cleanly instead of serving a phantom graph).
+        if scenario_session_cm_id is not None and scenario_year is not None:
+            graph_cache.invalidate_scenario(scenario_session_cm_id, scenario_year, scenario_id)
 
         return {"message": f"Scenario '{getattr(scenario, 'name', scenario_id)}' deleted successfully"}
 
@@ -544,10 +562,18 @@ async def update_scenario_assignment(
             query_params={"filter": f'scenario = "{scenario_id}" && person = "{person_pb_id}" && year = {ctx.year}'},
         )
 
+        # Helper: drop the cache slot whenever this call mutates the draft.
+        # Single-record edits change bunk membership for one camper, which
+        # alters parent-compound grouping in the rendered graph; the cache
+        # must rebuild against current DB on the next request.
+        def _invalidate() -> None:
+            graph_cache.invalidate_scenario(int(session_cm_id), int(ctx.year), scenario_id)
+
         if update.bunk_id is None:
             # Remove assignment
             if existing:
                 await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, existing[0].id)
+                _invalidate()
                 return {"message": "Assignment removed", "person_id": update.person_id, "changed": True}
             else:
                 return {"message": "No change needed", "person_id": update.person_id, "changed": False}
@@ -575,6 +601,7 @@ async def update_scenario_assignment(
                     update_assignment_data["assignment_locked"] = update.locked
 
                 await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).update, record_id, update_assignment_data)
+                _invalidate()
 
                 return {
                     "message": "Assignment updated successfully",
@@ -623,6 +650,7 @@ async def update_scenario_assignment(
                     )
                     logger.error(f"Assignment data was: {new_assignment}")
                     raise
+                _invalidate()
 
                 return {
                     "message": "Assignment created successfully",
@@ -742,8 +770,12 @@ async def clear_scenario(
 ) -> dict[str, str | int]:
     """Clear all assignments in a scenario."""
     try:
-        # Verify scenario exists (raises 404 if not found)
-        await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id)
+        # Expand session so we have cm_id for cache invalidation below.
+        scenario = await asyncio.to_thread(pb.collection(SAVED_SCENARIOS).get_one, scenario_id, {"expand": "session"})
+        scenario_session = getattr(scenario, "session", None)
+        scenario_session_cm_id: int | None = None
+        if scenario_session is not None and hasattr(scenario_session, "cm_id"):
+            scenario_session_cm_id = int(getattr(scenario_session, "cm_id", 0)) or None
 
         # Use year from request for scoping (required field now)
         filter_str = f'scenario = "{scenario_id}" && year = {request.year}'
@@ -756,6 +788,11 @@ async def clear_scenario(
         for assignment in assignments:
             await asyncio.to_thread(pb.collection(BUNK_ASSIGNMENTS_DRAFT).delete, assignment.id)
             deleted_count += 1
+
+        # Drop this scenario's cache slot so the next graph request rebuilds
+        # against the now-empty draft set.
+        if scenario_session_cm_id is not None:
+            graph_cache.invalidate_scenario(scenario_session_cm_id, int(request.year), scenario_id)
 
         return {
             "message": f"Cleared {deleted_count} assignments from scenario for year {request.year}",

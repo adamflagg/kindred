@@ -40,7 +40,7 @@ from ..constants.collections import (
     SOLVER_RUNS,
 )
 from ..constants.filters import ACTIVE_ENROLLED_FILTER
-from ..dependencies import pb, solver_runs
+from ..dependencies import graph_cache, pb, solver_runs
 from ..schemas import (
     ClearAssignmentsRequest,
     MultiSessionSolverRequest,
@@ -671,6 +671,17 @@ async def apply_solver_results(
 
     table_name = "bunk_assignments_draft" if scenario else "bunk_assignments"
     assignments_dict: dict[str, Any] = assignments if isinstance(assignments, dict) else {}
+
+    # Drop the matching graph cache slot so the next /social-graph request
+    # rebuilds from current DB. Without this the cached NetworkX graph carries
+    # the previous draft's bunk_cm_id node attrs for up to TTL (15 min) — the
+    # symptom is "everyone in a big lump" because bubble grouping no longer
+    # matches the active scenario's assignments.
+    if scenario:
+        graph_cache.invalidate_scenario(int(session_cm_id), run_year, scenario)
+    else:
+        graph_cache.invalidate_session(int(session_cm_id), run_year)
+
     return {"message": f"Applied {len(assignments_dict)} assignments to {table_name}"}
 
 
@@ -846,6 +857,15 @@ async def clear_session_assignments(
             breakdown.append(
                 {"session_cm_id": sid, "session_name": session_names.get(sid, f"Session {sid}"), "deleted_count": count}
             )
+
+        # Invalidate the graph cache for every related session — clearing
+        # assignments materially changes the social graph, so any cached
+        # rendering would be stale.
+        for sid in ctx.related_session_ids:
+            if request.scenario:
+                graph_cache.invalidate_scenario(int(sid), int(ctx.year), request.scenario)
+            else:
+                graph_cache.invalidate_session(int(sid), int(ctx.year))
 
         return {
             "message": f"Cleared {total_deleted} assignments across {len(ctx.related_session_ids)} related sessions",
