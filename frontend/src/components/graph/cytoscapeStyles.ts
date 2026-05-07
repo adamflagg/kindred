@@ -162,7 +162,7 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
-      selector: 'edge[type = "bundled"]',
+      selector: 'edge[edge_type = "bundled"]',
       style: {
         width: 3,
         'line-style': 'solid',
