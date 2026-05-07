@@ -155,38 +155,10 @@ migrate((app) => {
       expanded_by_default: false
     },
     {
-      section_key: "ai-processing",
-      title: "AI Processing",
-      description: "Configure AI-powered request parsing and analysis",
-      display_order: 11,
-      expanded_by_default: false
-    },
-    {
-      section_key: "batch-processing",
-      title: "Batch Processing Weights",
-      description: "Fine-tune constraint weights for batch solving",
-      display_order: 12,
-      expanded_by_default: false
-    },
-    {
-      section_key: "penalties",
-      title: "Violation Penalties",
-      description: "Configure penalties for various constraint violations",
+      section_key: "cabin-occupancy",
+      title: "Cabin Minimum Occupancy",
+      description: "Rules for minimum cabin occupancy and under-fill penalties",
       display_order: 13,
-      expanded_by_default: false
-    },
-    {
-      section_key: "spread-controls",
-      title: "Spread Controls",
-      description: "Advanced spread penalty configuration",
-      display_order: 14,
-      expanded_by_default: false
-    },
-    {
-      section_key: "system-settings",
-      title: "System Settings",
-      description: "Configure system-wide settings",
-      display_order: 15,
       expanded_by_default: false
     },
     // AI-specific sections - clearly separated from solver sections
@@ -226,10 +198,24 @@ migrate((app) => {
       expanded_by_default: false
     },
     {
-      section_key: "ai-batch-processing",
-      title: "AI Batch Processing",
-      description: "Batch size, rate limiting, and concurrent processing settings",
-      display_order: 26,
+      section_key: "ai-request-parsing",
+      title: "AI Request Parsing",
+      description: "Settings for AI parsing of bunk requests from raw text",
+      display_order: 27,
+      expanded_by_default: false
+    },
+    {
+      section_key: "history-tracking",
+      title: "Historical Context & Tracking",
+      description: "Settings for incorporating historical bunking and request data",
+      display_order: 28,
+      expanded_by_default: false
+    },
+    {
+      section_key: "ui-preferences",
+      title: "UI Preferences",
+      description: "User interface preferences and display settings",
+      display_order: 29,
       expanded_by_default: false
     }
   ];
