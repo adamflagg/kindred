@@ -18,12 +18,6 @@ export function ConfirmActionPopover({
 }: ConfirmActionPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
-  // Stable ref so the keydown/mousedown handlers never go stale,
-  // keeping isOpen as the sole dep and avoiding listener churn on parent re-renders.
-  const onCancelRef = useRef(onCancel)
-  useEffect(() => {
-    onCancelRef.current = onCancel
-  })
 
   useEffect(() => {
     if (!isOpen) return
@@ -33,7 +27,7 @@ export function ConfirmActionPopover({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onCancelRef.current()
+        onCancel()
       } else if (e.key === 'Tab') {
         const buttons = popoverRef.current
           ? Array.from(popoverRef.current.querySelectorAll<HTMLElement>('button'))
@@ -52,7 +46,7 @@ export function ConfirmActionPopover({
     function handleMouseDown(e: MouseEvent) {
       const target = e.target as Node
       if (popoverRef.current && !popoverRef.current.contains(target)) {
-        onCancelRef.current()
+        onCancel()
       }
     }
 
@@ -61,7 +55,7 @@ export function ConfirmActionPopover({
     // a floating, orphaned popover. capture:true catches scrolls on any
     // scrollable ancestor (e.g. modal body), which don't bubble.
     function handleScroll() {
-      onCancelRef.current()
+      onCancel()
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -74,7 +68,7 @@ export function ConfirmActionPopover({
       document.removeEventListener('scroll', handleScroll, true)
       previouslyFocused?.focus()
     }
-  }, [isOpen])
+  }, [isOpen, onCancel])
 
   if (!isOpen) return null
 

@@ -545,6 +545,8 @@ export default function RequestReviewPanel({
     },
   })
 
+  const handleConfirmCancel = useCallback(() => setConfirmPopover(null), [setConfirmPopover])
+
   const handleAction = useCallback(
     ({
       id,
@@ -2021,7 +2023,7 @@ export default function RequestReviewPanel({
           collapseRow(requestId)
           setConfirmPopover(null)
         }}
-        onCancel={() => setConfirmPopover(null)}
+        onCancel={handleConfirmCancel}
       />
 
       {bulkConfirm && (

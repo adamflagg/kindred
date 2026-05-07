@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
@@ -158,6 +158,8 @@ export function AllCamperRequestsModal({
     anchorRect: Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>
     requestId: string
   } | null>(null)
+
+  const handleConfirmCancel = useCallback(() => setConfirmPopover(null), [setConfirmPopover])
 
   const updateRequestMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) =>
@@ -372,7 +374,7 @@ export function AllCamperRequestsModal({
                   : { status: 'declined', request_locked: false },
             })
           }}
-          onCancel={() => setConfirmPopover(null)}
+          onCancel={handleConfirmCancel}
         />
       )}
     </Modal>
