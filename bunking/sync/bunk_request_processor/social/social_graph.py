@@ -40,20 +40,6 @@ RELATIONSHIP_WEIGHTS = {
 }
 
 
-class FriendGroup:
-    """Represents a detected friend group in the social network"""
-
-    def __init__(self, members: set[int], density: float, cohesion: float):
-        self.members = members
-        self.density = density
-        self.cohesion = cohesion
-        self.size = len(members)
-        self.id = f"group_{min(members)}_{len(members)}"
-
-    def __repr__(self) -> str:
-        return f"FriendGroup(size={self.size}, density={self.density:.2f})"
-
-
 class SocialGraph:
     """Native V2 implementation of social graph analysis.
 
@@ -85,8 +71,6 @@ class SocialGraph:
         # Cache for performance
         self._ego_networks: dict[int, nx.Graph] = {}
         self._shortest_paths: dict[tuple[int, int], int | None] = {}
-        self._friend_groups: dict[int, list[FriendGroup]] = {}  # session_cm_id -> List[FriendGroup]
-
         # Statistics per session
         self._stats: dict[int, dict[str, Any]] = {}
 
@@ -555,87 +539,6 @@ class SocialGraph:
 
         return signals
 
-    def detect_friend_groups(self, session_cm_id: int, min_size: int = 3, max_size: int = 8) -> list[FriendGroup]:
-        """Detect natural friend groups using community detection for a specific session.
-
-        Args:
-            session_cm_id: The session to analyze
-            min_size: Minimum group size
-            max_size: Maximum group size
-
-        Returns:
-            List of detected friend groups
-        """
-        if not self._initialized:
-            raise RuntimeError("Graph not initialized. Call initialize() first.")
-
-        graph = self.graphs.get(session_cm_id)
-        if not graph:
-            logger.warning(f"No graph available for session {session_cm_id}")
-            return []
-
-        # Check cache
-        if session_cm_id in self._friend_groups:
-            return [g for g in self._friend_groups[session_cm_id] if min_size <= g.size <= max_size]
-
-        groups = []
-
-        # Use Louvain community detection
-        try:
-            import community as community_louvain
-
-            partition = community_louvain.best_partition(graph)
-
-            # Group nodes by community
-            communities: dict[int, set[int]] = {}
-            for node, comm_id in partition.items():
-                if comm_id not in communities:
-                    communities[comm_id] = set()
-                communities[comm_id].add(node)
-
-            # Convert to FriendGroup objects
-            for comm_id, members in communities.items():
-                if min_size <= len(members) <= max_size:
-                    # Calculate group metrics
-                    subgraph = graph.subgraph(members)
-                    density = nx.density(subgraph)
-                    cohesion = self._calculate_cohesion(subgraph)
-
-                    group = FriendGroup(members, density, cohesion)
-                    groups.append(group)
-
-        except ImportError:
-            # Fallback to clique-based detection
-            logger.info("Using clique-based friend group detection")
-            groups = self._detect_groups_by_cliques(graph, min_size, max_size)
-
-        # Cache results
-        if session_cm_id not in self._friend_groups:
-            self._friend_groups[session_cm_id] = []
-        self._friend_groups[session_cm_id] = groups
-
-        return groups
-
-    def _detect_groups_by_cliques(self, graph: nx.Graph, min_size: int, max_size: int) -> list[FriendGroup]:
-        """Fallback friend group detection using cliques"""
-        groups = []
-
-        # Find all maximal cliques
-        cliques = list(nx.find_cliques(graph))
-
-        # Filter by size and convert to FriendGroups
-        for clique in cliques:
-            if min_size <= len(clique) <= max_size:
-                members = set(clique)
-                subgraph = graph.subgraph(members)
-                density = nx.density(subgraph)  # Always 1.0 for cliques
-                cohesion = self._calculate_cohesion(subgraph)
-
-                group = FriendGroup(members, density, cohesion)
-                groups.append(group)
-
-        return groups
-
     def _calculate_cohesion(self, subgraph: nx.Graph) -> float:
         """Calculate group cohesion metric"""
         if subgraph.number_of_nodes() < 2:
@@ -655,37 +558,6 @@ class SocialGraph:
         cohesion = (num_edges / max_possible_edges) * avg_weight
         result: float = min(1.0, cohesion)
         return result
-
-    def find_isolated_campers(self, session_cm_id: int, threshold: int = 1) -> list[int]:
-        """Find campers with few or no connections in a specific session.
-
-        Args:
-            session_cm_id: The session to analyze
-            threshold: Maximum number of connections to be considered isolated
-
-        Returns:
-            List of isolated camper IDs
-        """
-        if not self._initialized:
-            raise RuntimeError("Graph not initialized. Call initialize() first.")
-
-        graph = self.graphs.get(session_cm_id)
-        if not graph:
-            logger.warning(f"No graph available for session {session_cm_id}")
-            return []
-
-        isolated = []
-
-        for node in graph.nodes():
-            degree = graph.degree(node)
-            if degree <= threshold:
-                isolated.append(node)
-
-        return isolated
-
-    def get_graph_metrics(self) -> dict[int, dict[str, Any]]:
-        """Get comprehensive graph metrics"""
-        return self._stats.copy()
 
     def _get_ego_network(self, node: int, session_cm_id: int, radius: int = 1) -> set[int]:
         """Get cached ego network for a node in a specific session"""
