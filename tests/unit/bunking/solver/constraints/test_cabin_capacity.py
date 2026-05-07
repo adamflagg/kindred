@@ -180,7 +180,7 @@ class TestSoftCapacityConstraint:
         # Soft constraint will penalize 13th and 14th camper
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=14)
 
-        config_overrides = {
+        config_overrides: dict[str, int | float | str | bool] = {
             "constraint.cabin_capacity.max": 14,
             "constraint.cabin_capacity.standard": 12,
             "constraint.cabin_capacity.mode": "soft",

@@ -8,9 +8,6 @@ two paths cannot drift out of sync.
 
 from __future__ import annotations
 
-import pytest
-
-from bunking.config import ConfigLoader
 from bunking.solver.penalties import (
     cabin_capacity_penalty,
     grade_spread_penalty,
@@ -19,9 +16,9 @@ from bunking.solver.penalties import (
 )
 
 
-def _set(mock_config, key: str, value: int) -> None:
+def _set(mock_config: object, key: str, value: int) -> None:
     """Set a key on the MockConfigLoader (no .set helper exists)."""
-    mock_config._config[key] = value
+    mock_config._config[key] = value  # type: ignore[attr-defined]
 
 
 def test_cabin_capacity_penalty_reads_canonical_key(mock_config):

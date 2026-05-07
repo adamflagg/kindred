@@ -177,7 +177,7 @@ class TestSoftGradeSpreadConstraint:
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)
 
-        config_overrides = {
+        config_overrides: dict[str, int | float | str | bool] = {
             "constraint.grade_spread.max_spread": 2,
             "constraint.grade_spread.penalty": 3000,
         }
@@ -220,7 +220,7 @@ class TestSoftGradeSpreadConstraint:
             create_bunk(cm_id=2002, name="B-2", gender="M", capacity=12),
         ]
 
-        config_overrides = {
+        config_overrides: dict[str, int | float | str | bool] = {
             "constraint.grade_spread.max_spread": 2,
             "constraint.grade_spread.penalty": 3000,
         }

@@ -18,7 +18,7 @@ score matches what the solver actually optimized.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 import pytest
 
