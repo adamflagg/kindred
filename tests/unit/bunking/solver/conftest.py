@@ -106,17 +106,17 @@ class MinimalConfigLoader:
         key = f"constraint.{constraint_type}.{param}"
         return self.get_int(key, default)
 
-    def get_soft_constraint_weight(self, constraint_name: str, default: int | None = None) -> int:
+    def get_soft_constraint_weight(self, constraint_name: str) -> int:
         """Get soft constraint weight value for the given constraint."""
         weight_mappings = {
             "age_spread": "constraint.age_spread.penalty",
             "grade_spread": "constraint.grade_spread.penalty",
+            "age_grade_flow": "constraint.age_grade_flow.weight",
+            "grade_cohesion": "constraint.grade_cohesion.weight",
+            "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        result = self.get_int(key, default=0)
-        if result == 0 and default is not None:
-            return default
-        return result
+        return self.get_int(key, default=100)
 
 
 def create_person(

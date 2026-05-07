@@ -380,16 +380,22 @@ class ConfigLoader:
         key = f"constraint.{constraint_type}.{param}"
         return self.get_int(key, default=default)
 
-    def get_soft_constraint_weight(self, constraint_name: str, default: int | None = None) -> int:
+    def get_soft_constraint_weight(self, constraint_name: str) -> int:
         """
         Get soft constraint weight value for the given constraint.
 
+        All mapped keys are required in CONFIG_SCHEMA and seeded in the migration,
+        so no default fallback is needed or allowed — missing keys fail loudly.
+
         Args:
-            constraint_name: Name of the constraint (e.g., "level_progression").
-            default: Optional default value if key not found.
+            constraint_name: Name of the constraint (e.g., "age_spread").
 
         Returns:
             Constraint weight as integer.
+
+        Raises:
+            UnknownKeyError: If the resolved key is not in CONFIG_SCHEMA.
+            MissingKeyError: If the required key is absent from the database.
         """
         weight_mappings = {
             "isolated_camper_prevention": "constraint.isolated_camper_ratio.penalty",
@@ -402,7 +408,7 @@ class ConfigLoader:
         }
 
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, default=default)
+        return self.get_int(key)
 
     def _query_database_raw(self, key: str) -> Any | None:
         """

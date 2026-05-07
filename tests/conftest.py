@@ -240,16 +240,17 @@ class MockConfigLoader:
     def get_constraint(self, constraint_type: str, param: str) -> int:
         return self.get_int(f"constraint.{constraint_type}.{param}", default=10)
 
-    def get_soft_constraint_weight(self, constraint_name: str, default: int = 100) -> int:
+    def get_soft_constraint_weight(self, constraint_name: str) -> int:
         weight_mappings = {
             # level_progression removed - uses no_regression_penalty, not progression_weight
             "age_grade_flow": "constraint.age_grade_flow.weight",
             "grade_cohesion": "constraint.grade_cohesion.weight",
             "grade_spread": "constraint.grade_spread.penalty",
             "age_spread": "constraint.age_spread.penalty",
+            "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, default)
+        return self.get_int(key, 100)
 
     def get_ai_config(self) -> dict[str, object]:
         return {
