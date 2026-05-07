@@ -6,8 +6,6 @@ import { formatReason, MUTUAL_BADGE_CLASSES } from '../utils/dispositionColors'
 import { hasMatchedRequestTarget } from '../utils/bunkRequest'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
-export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'unknown' | 'checking'
-
 export interface BunkRequestRowProps {
   /** The bunk request record to render. */
   request: BunkRequestsResponse
@@ -15,14 +13,15 @@ export interface BunkRequestRowProps {
   targetPerson?: PersonsResponse | null
   /** When true, renders a "you are here" highlight ring. */
   isCurrent?: boolean
-  /** Satisfaction status — only rendered when `showSatisfaction` is true. */
-  satisfaction?: SatisfactionStatus | null
+  /**
+   * Whether the request is satisfied. Only rendered when `showSatisfaction` is true.
+   * `null` ⇒ no pill (unknown / unassigned / missing-from-lookup).
+   */
+  satisfied?: boolean | null
   /** Whether to render the satisfaction icon (typically true for confirmed rows in the modal). */
   showSatisfaction?: boolean
-  /** Whether satisfaction is still being checked (shows spinner). */
-  satisfactionLoading?: boolean
-  /** Optional detail text for the satisfaction tooltip. */
-  satisfactionDetail?: string | undefined
+  /** Optional detail text for the satisfaction tooltip (e.g. "Same bunk", "No grade on file"). */
+  detail?: string | null
   /**
    * When provided, renders the row as a <button> and calls this on click.
    * The click event stops propagation so the surrounding expanded-row toggler is not fired.
@@ -87,41 +86,26 @@ function typeDot(requestType: string) {
   )
 }
 
-function MetPill({
-  satisfaction,
-  satisfactionLoading,
-  satisfactionDetail,
-}: {
-  satisfaction: SatisfactionStatus | null
-  satisfactionLoading: boolean
-  satisfactionDetail?: string | undefined
-}) {
-  if (satisfactionLoading) {
+function MetPill({ satisfied, detail }: { satisfied: boolean | null; detail: string | null }) {
+  if (satisfied === null) return null
+
+  const tooltip = detail ?? undefined
+  if (satisfied) {
     return (
-      <span className="ml-auto" title={satisfactionDetail}>
-        <span className="border-muted-foreground/30 border-t-primary inline-block h-3 w-3 animate-spin rounded-full border" />
-      </span>
-    )
-  }
-  if (satisfaction === 'satisfied') {
-    return (
-      <span className="ml-auto" title={satisfactionDetail}>
+      <span className="ml-auto" title={tooltip}>
         <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
           Met
         </span>
       </span>
     )
   }
-  if (satisfaction === 'not_satisfied') {
-    return (
-      <span className="ml-auto" title={satisfactionDetail}>
-        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-          Unmet
-        </span>
+  return (
+    <span className="ml-auto" title={tooltip}>
+      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+        Unmet
       </span>
-    )
-  }
-  return null
+    </span>
+  )
 }
 
 /**
@@ -133,10 +117,9 @@ export function BunkRequestRow({
   request,
   targetPerson,
   isCurrent = false,
-  satisfaction = null,
+  satisfied = null,
   showSatisfaction = false,
-  satisfactionLoading = false,
-  satisfactionDetail,
+  detail = null,
   onSelect,
   badge,
   isMaterialAgePreference = false,
@@ -186,13 +169,7 @@ export function BunkRequestRow({
           campers
         </span>
         {badge}
-        {showSatisfaction && (
-          <MetPill
-            satisfaction={satisfaction}
-            satisfactionLoading={satisfactionLoading}
-            satisfactionDetail={satisfactionDetail}
-          />
-        )}
+        {showSatisfaction && <MetPill satisfied={satisfied} detail={detail} />}
       </>
     )
     return (
@@ -261,13 +238,7 @@ export function BunkRequestRow({
       {badge}
 
       {/* "Met" pill on right when satisfied (nothing for unmet/unknown). */}
-      {showSatisfaction && (
-        <MetPill
-          satisfaction={satisfaction}
-          satisfactionLoading={satisfactionLoading}
-          satisfactionDetail={satisfactionDetail}
-        />
-      )}
+      {showSatisfaction && <MetPill satisfied={satisfied} detail={detail} />}
     </>
   )
 

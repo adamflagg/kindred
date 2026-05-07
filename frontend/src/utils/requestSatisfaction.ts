@@ -1,10 +1,31 @@
 /**
  * Per-request satisfaction — frontend decision tree.
  *
+ * @deprecated TODO(#1155) — eliminate after OpenAPI codegen lands.
+ *
+ * Sole remaining consumer of `computeRequestSatisfaction`:
+ * `CamperDetailsPanel.tsx` Path 1 (`hasClientView` draft drag preview),
+ * which needs synchronous predicate evaluation against an in-memory bunk
+ * assignment map that has not been persisted to PB yet.
+ *
+ * Path 2 (persisted state) was migrated to `/api/satisfaction` via
+ * `BunkRequestProvider.getSatisfiedRequestInfo` (PR #1158/#1160). The
+ * `useSatisfactionData` hook that previously called this util is gone.
+ *
+ * A server-side `POST /api/satisfaction/preview` endpoint was considered
+ * during the #1160 brainstorm but rejected: a network round-trip per drag
+ * interaction would be a real UX regression for what is today a 0ms
+ * client-local computation.
+ *
+ * When #1155 (OpenAPI codegen) lands, re-evaluate: either (a) generate a
+ * matching TS predicate from `bunking.satisfaction.predicate.evaluate_request`
+ * to keep the synchronous local path, or (b) revisit the server-preview
+ * endpoint approach.
+ *
  * The canonical Python implementation is
- * `bunking.satisfaction.predicate.is_request_satisfied`. This function
- * mirrors that logic for client-side use (scenario-aware in-memory views,
- * CamperDetailsPanel, BunkRequestProvider.getSatisfiedRequestInfo).
+ * `bunking.satisfaction.predicate.evaluate_request` (returns
+ * `(satisfied, detail)`). The bool projection
+ * `is_request_satisfied` is preserved for the solver hot path.
  *
  * Keep this in sync with the Python implementation manually until #1155
  * (FastAPI OpenAPI codegen) replaces both with generated types and a

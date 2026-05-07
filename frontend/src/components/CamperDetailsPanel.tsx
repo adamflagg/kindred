@@ -42,10 +42,9 @@ import { toAppCamper } from '../utils/transforms'
 import { isConfirmedRequest } from '../utils/bunkRequest'
 import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
 import { resolveBadgeBucket } from '../utils/requestSatisfaction'
-import { useSatisfactionData } from '../hooks/camper/useSatisfactionData'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
-import type { SatisfactionMap } from '../hooks/camper/types'
-import type { RequestBucket } from '../types/satisfaction'
+import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
+import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -631,24 +630,10 @@ export default function CamperDetailsPanel({
   //   1. Scenario-aware caller (BunkingBoardByArea) passes `getBunkForPerson`
   //      and `assignedBunkCmId` — we compute synchronously from the active
   //      view, so the pill matches whatever's on screen (live or draft).
-  //   2. Session-agnostic callers (graph modals, full-page view) — fall back
-  //      to `useSatisfactionData`, which fetches live assignments from PB.
+  //   2. Session-agnostic callers (graph modals, full-page view) — read from
+  //      BunkRequestProvider's /api/satisfaction response (no extra fetch).
   // Defined ABOVE the early-return paths to keep hook order stable.
-  // When the parent provides a scenario closure, route through it for both
-  // assigned and unassigned campers. This avoids firing a wasted PB
-  // `bunk_assignments` fetch for every unassigned-camper sidebar open from the
-  // board — `clientSatisfactionData` already early-returns `null` when
-  // `assignedBunkCmId == null`, falling back to an empty satisfaction map.
   const hasClientView = getBunkForPerson != null
-
-  const { satisfactionData: pbSatisfaction, isLoading: pbLoading } = useSatisfactionData(
-    hasClientView ? undefined : camper?.person_cm_id, // disables the query
-    camper?.assigned_bunk_cm_id,
-    camper?.session_cm_id,
-    camper?.grade,
-    currentYear,
-    bunkRequests.map(pbToEnhanced)
-  )
 
   // Derived request partitions — declared here so renderContent() (defined below)
   // and the embedded early-return both see them. Previously these were declared
@@ -682,24 +667,33 @@ export default function CamperDetailsPanel({
         : []
   const bunkCampersKey = effectiveBunkCampers.map((c) => `${c.cmId}:${c.grade ?? ''}`).join(',')
 
-  const clientSatisfactionData = useMemo<SatisfactionMap | null>(() => {
+  // Path 1 — draft drag preview, synchronous from in-memory state.
+  // Still uses the residual TS predicate (computeRequestSatisfaction —
+  // annotated `TODO(#1155)` for elimination after OpenAPI codegen lands).
+  const clientLookup = useMemo<((id: string) => SatisfactionEntry) | null>(() => {
     if (!hasClientView || !camper || assignedBunkCmId == null) return null
     const requesterBunkmates = effectiveBunkCampers.filter((c) => c.cmId !== camper.person_cm_id)
-    const out: SatisfactionMap = {}
+    const adapted = new Map<string, SatisfactionEntry>()
     for (const req of bunkRequests) {
       const targetBunkCmId =
         req.requestee_id && req.requestee_id > 0
           ? (getBunkForPerson?.(req.requestee_id) ?? null)
           : null
-      out[req.id] = computeRequestSatisfaction({
+      const result = computeRequestSatisfaction({
         request: pbToEnhanced(req),
         requesterBunkCmId: assignedBunkCmId,
         requesterBunkmates,
         targetBunkCmId,
         requesterGrade: camper.grade,
       })
+      // Adapt SatisfactionStatus → {satisfied, detail}.
+      let satisfied: boolean | null
+      if (result.status === 'satisfied') satisfied = true
+      else if (result.status === 'not_satisfied') satisfied = false
+      else satisfied = null // 'unknown' / 'checking'
+      adapted.set(req.id, { satisfied, detail: result.detail ?? null })
     }
-    return out
+    return (id: string) => adapted.get(id) ?? { satisfied: null, detail: null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     hasClientView,
@@ -711,8 +705,17 @@ export default function CamperDetailsPanel({
     getBunkForPerson,
   ])
 
-  const satisfactionData: SatisfactionMap = clientSatisfactionData ?? pbSatisfaction
-  const satisfactionLoading: boolean = clientSatisfactionData ? false : pbLoading
+  // Path 2 — read directly from BunkRequestProvider, no PB fetch.
+  // Replaces the deleted useSatisfactionData call entirely. Backend rows
+  // surface even when the camper is unassigned (`detail="Requester not
+  // assigned"` for every row); honest rendering matches the API contract.
+  const pbLookup = useMemo<(id: string) => SatisfactionEntry>(() => {
+    if (!camper) return () => ({ satisfied: null, detail: null })
+    const info = getSatisfiedRequestInfo(camper.person_cm_id)
+    return buildSatisfactionLookup(info.per_request)
+  }, [camper, getSatisfiedRequestInfo])
+
+  const getRequestSatisfaction = clientLookup ?? pbLookup
 
   // Prefer scenario-aware assignment from the parent (e.g. BunkingBoardByArea
   // passes the active scenario's bunk). Falls back to the live PB assignment
@@ -928,32 +931,30 @@ export default function CamperDetailsPanel({
                   {/* Parent ↑ │ ⬇ Staff divider between the two peer groups, plus a
                       quieter "Age preference" divider above the age tail section. */}
                   {parentRows.map((req) => {
-                    const satisfaction = satisfactionData[req.id]
+                    const sat = getRequestSatisfaction(req.id)
                     return (
                       <BunkRequestRow
                         key={req.id}
                         request={req}
                         targetPerson={req.targetPerson ?? null}
                         showSatisfaction={isConfirmedRequest(req)}
-                        satisfaction={satisfaction?.status ?? null}
-                        satisfactionLoading={satisfactionLoading}
-                        satisfactionDetail={satisfaction?.detail}
+                        satisfied={sat.satisfied}
+                        detail={sat.detail}
                       />
                     )
                   })}
 
                   {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
                   {staffRows.map((req) => {
-                    const satisfaction = satisfactionData[req.id]
+                    const sat = getRequestSatisfaction(req.id)
                     return (
                       <BunkRequestRow
                         key={req.id}
                         request={req}
                         targetPerson={req.targetPerson ?? null}
                         showSatisfaction={isConfirmedRequest(req)}
-                        satisfaction={satisfaction?.status ?? null}
-                        satisfactionLoading={satisfactionLoading}
-                        satisfactionDetail={satisfaction?.detail}
+                        satisfied={sat.satisfied}
+                        detail={sat.detail}
                       />
                     )
                   })}
@@ -962,7 +963,7 @@ export default function CamperDetailsPanel({
                     <AgePreferenceDivider />
                   )}
                   {ageRows.map((req) => {
-                    const satisfaction = satisfactionData[req.id]
+                    const sat = getRequestSatisfaction(req.id)
                     const { isMaterialAgePref, isStaffBadge } = resolveBadgeBucket(
                       bucketByRequestId.get(req.id),
                       req
@@ -972,9 +973,8 @@ export default function CamperDetailsPanel({
                         key={req.id}
                         request={req}
                         showSatisfaction={true}
-                        satisfaction={satisfaction?.status ?? null}
-                        satisfactionLoading={satisfactionLoading}
-                        satisfactionDetail={satisfaction?.detail}
+                        satisfied={sat.satisfied}
+                        detail={sat.detail}
                         isMaterialAgePreference={isMaterialAgePref}
                         staffAgeBadge={isStaffBadge}
                       />

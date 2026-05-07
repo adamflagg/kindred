@@ -40,7 +40,6 @@ vi.mock('../hooks/camper', () => ({
     error: null,
   }),
   useAllBunkRequests: () => ({ allBunkRequests: [], isLoading: false, error: null }),
-  useSatisfactionData: () => ({ satisfactionData: {}, satisfactionLoading: false }),
 }))
 
 vi.mock('../hooks/useCamperCohorts', () => ({

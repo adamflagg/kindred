@@ -4,7 +4,7 @@
  * This component orchestrates data fetching through hooks and
  * delegates rendering to extracted UI components.
  */
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useMemo } from 'react'
 import { Link, useParams } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Calendar } from 'lucide-react'
@@ -25,10 +25,10 @@ import {
   useSiblings,
   useOriginalBunkData,
   useAllBunkRequests,
-  useSatisfactionData,
 } from '../hooks/camper'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
-import type { SatisfactionMap } from '../hooks/camper/types'
+import type { SatisfactionEntry } from '../types/satisfaction'
+import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
 
 // Import extracted UI components
 import {
@@ -69,8 +69,6 @@ interface CamperDetailBodyProps {
   currentYear: number
   person: PersonsResponse | undefined
   allBunkRequests: EnhancedBunkRequest[]
-  satisfactionData: SatisfactionMap
-  satisfactionLoading: boolean
   originalBunkData: OriginalBunkData | null | undefined
   siblings: SiblingWithEnrollment[]
   siblingsLoading: boolean
@@ -90,8 +88,6 @@ function CamperDetailBody({
   currentYear,
   person,
   allBunkRequests,
-  satisfactionData,
-  satisfactionLoading,
   originalBunkData,
   siblings,
   siblingsLoading,
@@ -103,6 +99,17 @@ function CamperDetailBody({
   // Safe: this component is always rendered inside BunkRequestProvider (see CamperDetail).
   const bunkRequestCtx = useContext(BunkRequestContext)!
   const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
+
+  // Single source of truth for per-row satisfaction pills: read directly from
+  // BunkRequestProvider's /api/satisfaction response. Replaces the previous
+  // useSatisfactionData hook which independently fetched bunk_assignments.
+  // Surfaces backend rows even when the camper is unassigned (the API returns
+  // `(satisfied=false, detail="Requester not assigned")` for those rows —
+  // honest rendering, matches the rest of the consolidated flow).
+  const getRequestSatisfaction = useMemo<(id: string) => SatisfactionEntry>(
+    () => buildSatisfactionLookup(camperSatisfaction.per_request),
+    [camperSatisfaction.per_request]
+  )
 
   // Computed values - use discrete columns instead of JSON parsing
   const location = getLocationDisplay(
@@ -185,8 +192,7 @@ function CamperDetailBody({
                 sessionShortName={sessionShortName}
                 allBunkRequests={allBunkRequests}
                 agePreferenceRequests={agePreferenceRequests}
-                satisfactionData={satisfactionData}
-                satisfactionLoading={satisfactionLoading}
+                getRequestSatisfaction={getRequestSatisfaction}
                 camperSatisfaction={camperSatisfaction}
               />
 
@@ -273,16 +279,6 @@ export default function CamperDetail() {
 
   // Fetch all bunk requests using extracted hook
   const { allBunkRequests } = useAllBunkRequests(camper?.person_cm_id, currentYear)
-
-  // Fetch satisfaction data using extracted hook
-  const { satisfactionData, isLoading: satisfactionLoading } = useSatisfactionData(
-    camper?.person_cm_id,
-    camper?.assigned_bunk_cm_id,
-    camper?.session_cm_id,
-    camper?.grade,
-    currentYear,
-    allBunkRequests
-  )
 
   // Fetch siblings using extracted hook
   const {
@@ -377,8 +373,6 @@ export default function CamperDetail() {
         currentYear={currentYear}
         person={person}
         allBunkRequests={allBunkRequests}
-        satisfactionData={satisfactionData}
-        satisfactionLoading={satisfactionLoading}
         originalBunkData={originalBunkData}
         siblings={siblings}
         siblingsLoading={siblingsLoading}

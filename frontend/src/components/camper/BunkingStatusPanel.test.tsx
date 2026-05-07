@@ -16,7 +16,7 @@ import { describe, it, expect } from 'vitest'
 import { BunkingStatusPanel } from './BunkingStatusPanel'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
-import type { CamperSatisfaction } from '../../types/satisfaction'
+import type { CamperSatisfaction, SatisfactionEntry } from '../../types/satisfaction'
 import { emptyCamperSatisfaction } from '../../types/satisfaction'
 
 function makeCamper(): Camper {
@@ -59,6 +59,9 @@ function makeCamperSatisfaction(overrides?: Partial<CamperSatisfaction>): Camper
   return { ...empty, ...overrides }
 }
 
+/** Empty lookup — every request returns {satisfied: null, detail: null}, no pills. */
+const emptyLookup = (): SatisfactionEntry => ({ satisfied: null, detail: null })
+
 function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
   return render(
     <MemoryRouter>
@@ -67,8 +70,7 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
         sessionShortName="S1"
         allBunkRequests={allBunkRequests}
         agePreferenceRequests={[]}
-        satisfactionData={{}}
-        satisfactionLoading={false}
+        getRequestSatisfaction={emptyLookup}
         camperSatisfaction={makeCamperSatisfaction()}
       />
     </MemoryRouter>
@@ -78,10 +80,8 @@ function renderPanel(allBunkRequests: EnhancedBunkRequest[]) {
 interface RenderPanelOptions {
   allBunkRequests: EnhancedBunkRequest[]
   agePreferenceRequests?: EnhancedBunkRequest[]
-  satisfactionData: Record<
-    string,
-    { status: 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'; detail?: string }
-  >
+  /** Map from request id → SatisfactionEntry. Missing keys default to {null, null}. */
+  satisfactionData: Record<string, SatisfactionEntry>
   camperSatisfaction?: CamperSatisfaction
 }
 
@@ -91,6 +91,8 @@ function renderPanelWith({
   satisfactionData,
   camperSatisfaction,
 }: RenderPanelOptions) {
+  const getRequestSatisfaction = (id: string): SatisfactionEntry =>
+    satisfactionData[id] ?? { satisfied: null, detail: null }
   return render(
     <MemoryRouter>
       <BunkingStatusPanel
@@ -98,8 +100,7 @@ function renderPanelWith({
         sessionShortName="S1"
         allBunkRequests={allBunkRequests}
         agePreferenceRequests={agePreferenceRequests}
-        satisfactionData={satisfactionData}
-        satisfactionLoading={false}
+        getRequestSatisfaction={getRequestSatisfaction}
         camperSatisfaction={camperSatisfaction ?? makeCamperSatisfaction()}
       />
     </MemoryRouter>
@@ -192,8 +193,8 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       }),
     ]
     const satisfactionData = {
-      p1: { status: 'satisfied' as const, detail: '' },
-      s1: { status: 'satisfied' as const, detail: '' },
+      p1: { satisfied: true, detail: null },
+      s1: { satisfied: true, detail: null },
     }
     const camperSatisfaction = makeCamperSatisfaction({
       counted_totals: {
@@ -215,7 +216,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         source: 'family',
       }),
     ]
-    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { p1: { satisfied: true, detail: null } }
     const camperSatisfaction = makeCamperSatisfaction({
       counted_totals: {
         material_parent: { total: 1, satisfied: 1 },
@@ -236,7 +237,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         source: 'staff',
       }),
     ]
-    const satisfactionData = { s1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { s1: { satisfied: true, detail: null } }
     const camperSatisfaction = makeCamperSatisfaction({
       counted_totals: {
         material_parent: { total: 0, satisfied: 0 },
@@ -256,7 +257,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       source: 'family',
       age_preference_target: 'older',
     })
-    const satisfactionData = { b1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { b1: { satisfied: true, detail: null } }
     renderPanelWith({
       allBunkRequests: [bestEffortAgePref],
       agePreferenceRequests: [bestEffortAgePref],
@@ -274,7 +275,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       source: 'family',
       age_preference_target: 'older',
     })
-    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { a1: { satisfied: true, detail: null } }
     renderPanelWith({
       allBunkRequests: [materialAgePref],
       agePreferenceRequests: [materialAgePref],
@@ -291,7 +292,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       source: 'staff',
       age_preference_target: 'younger',
     })
-    const satisfactionData = { a2: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { a2: { satisfied: true, detail: null } }
     const camperSatisfaction = makeCamperSatisfaction({
       counted_totals: {
         material_parent: { total: 0, satisfied: 0 },
@@ -316,7 +317,7 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         source: 'family',
       }),
     ]
-    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { p1: { satisfied: true, detail: null } }
     const camperSatisfaction = makeCamperSatisfaction({
       counted_totals: {
         material_parent: { total: 1, satisfied: 1 },
@@ -355,7 +356,7 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
     }
     renderPanelWith({
       allBunkRequests: [onlyRow],
-      satisfactionData: { p1: { status: 'satisfied', detail: '' } },
+      satisfactionData: { p1: { satisfied: true, detail: null } },
       camperSatisfaction,
     })
     expect(screen.getByText('3/5 met')).toBeInTheDocument()
@@ -528,7 +529,7 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
     ]
     renderPanelWith({
       allBunkRequests,
-      satisfactionData: { p1: { status: 'satisfied', detail: '' } },
+      satisfactionData: { p1: { satisfied: true, detail: null } },
       camperSatisfaction: emptyCamperSatisfaction(12345),
     })
     // 1 satisfied (p1), 2 total → "1/2 met" must appear.
@@ -610,8 +611,8 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       }),
     ]
     const satisfactionData = {
-      p1: { status: 'satisfied' as const, detail: '' },
-      s1: { status: 'satisfied' as const, detail: '' },
+      p1: { satisfied: true, detail: null },
+      s1: { satisfied: true, detail: null },
     }
     const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
 
@@ -668,7 +669,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         } as unknown as Partial<EnhancedBunkRequest>),
       }),
     ]
-    const satisfactionData = { p1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { p1: { satisfied: true, detail: null } }
     const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
     // The Parent ↑ │ ⬇ Staff divider only renders when both groups exist.
     // With only parent rows present, the font-mono divider container should
@@ -707,7 +708,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       }),
     ]
     const satisfactionData = Object.fromEntries(
-      allBunkRequests.map((r) => [r.id, { status: 'satisfied' as const, detail: '' }])
+      allBunkRequests.map((r) => [r.id, { satisfied: true, detail: null }])
     )
     const { container } = renderPanelWith({ allBunkRequests, satisfactionData })
     const text = container.textContent ?? ''
@@ -725,7 +726,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
     })
     const allBunkRequests = [ageReq]
     const agePreferenceRequests = [ageReq]
-    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { a1: { satisfied: true, detail: null } }
     const { container } = renderPanelWith({
       allBunkRequests,
       agePreferenceRequests,
@@ -745,7 +746,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
     })
     const allBunkRequests = [ageReq]
     const agePreferenceRequests = [ageReq]
-    const satisfactionData = { a1: { status: 'satisfied' as const, detail: '' } }
+    const satisfactionData = { a1: { satisfied: true, detail: null } }
     renderPanelWith({ allBunkRequests, agePreferenceRequests, satisfactionData })
     expect(screen.getByText('S')).toBeInTheDocument()
   })
@@ -795,5 +796,75 @@ describe('BunkingStatusPanel — session-scoped row list (#1161)', () => {
 
     expect(screen.getByText('Liam Garcia')).toBeTruthy()
     expect(screen.queryByText('Olivia Chen')).toBeNull()
+  })
+})
+
+describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
+  it('passes satisfied/detail from lookup to MetPill rows', () => {
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'rq1',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        requestee_id: 67890,
+      }),
+      makeRequest({
+        id: 'rq2',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        requestee_id: 67891,
+        requestedPersonName: 'Olivia Chen',
+      }),
+    ]
+    renderPanelWith({
+      allBunkRequests: requests,
+      satisfactionData: {
+        rq1: { satisfied: true, detail: 'Same bunk' },
+        rq2: { satisfied: false, detail: 'Different bunks' },
+      },
+    })
+    expect(screen.getByText('Met')).toBeInTheDocument()
+    expect(screen.getByText('Unmet')).toBeInTheDocument()
+  })
+
+  it('renders no pill when lookup returns {satisfied: null}', () => {
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'rq1',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: 'bunk_with',
+        source: 'family',
+        requestee_id: 67890,
+      }),
+    ]
+    // Empty satisfactionData → lookup returns {null, null} for every id.
+    renderPanelWith({ allBunkRequests: requests, satisfactionData: {} })
+    expect(screen.queryByText('Met')).not.toBeInTheDocument()
+    expect(screen.queryByText('Unmet')).not.toBeInTheDocument()
+  })
+
+  it('renders Unmet with "No grade on file" tooltip for grade-less age preference', () => {
+    const ageReq = makeRequest({
+      id: 'agepref',
+      status: 'resolved',
+      request_type: 'age_preference',
+      age_preference_target: 'older',
+      source_field: 'socialize_with',
+      source: 'family',
+    })
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {
+        agepref: { satisfied: false, detail: 'No grade on file' },
+      },
+    })
+    const pill = screen.getByText('Unmet')
+    expect(pill.parentElement).toHaveAttribute('title', 'No grade on file')
   })
 })
