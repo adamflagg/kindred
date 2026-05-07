@@ -39,15 +39,12 @@ class SocialGraphEdge(BaseModel):
     source: int
     target: int
     weight: float
-    edge_type: str  # 'request', 'historical', 'classmate_city', 'classmate_state'
-    # Note: 'sibling' is intentionally excluded — sibling edges remain in the
-    # in-memory graph for name-resolution (confidence boost) but are filtered
-    # at the API response boundary before reaching the frontend.
+    edge_type: str  # 'request'
     reciprocal: bool = False
     confidence: float | None = None  # AI confidence score for request edges
     priority: int | None = None  # Priority level for request edges
     request_type: str | None = None  # 'bunk_with' | 'not_bunk_with' for type='request' edges
-    metadata: dict[str, Any] = {}  # Additional edge metadata (e.g., location for classmate edges)
+    metadata: dict[str, Any] = {}  # Additional edge metadata
     cross_scope: bool = False  # True for edges crossing the active scope boundary
 
 

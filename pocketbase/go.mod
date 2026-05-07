@@ -1,6 +1,6 @@
 module github.com/camp/kindred/pocketbase
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/pocketbase/dbx v1.12.0

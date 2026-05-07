@@ -65,17 +65,9 @@ class TestLiveMethodsPreserved:
         """_add_request_edges is exercised by satisfaction tests directly."""
         assert hasattr(SocialGraphBuilder, "_add_request_edges")
 
-    def test_add_classmate_edges_still_exists(self) -> None:
-        """_add_classmate_edges is exercised by classmate-edge tests directly."""
-        assert hasattr(SocialGraphBuilder, "_add_classmate_edges")
-
     def test_add_camper_nodes_still_exists(self) -> None:
         """_add_camper_nodes is a helper used internally and by tests."""
         assert hasattr(SocialGraphBuilder, "_add_camper_nodes")
-
-    def test_add_sibling_edges_still_exists(self) -> None:
-        """_add_sibling_edges remains a helper for graph composition."""
-        assert hasattr(SocialGraphBuilder, "_add_sibling_edges")
 
 
 class TestBuildBunkGraphIndependentOfBundleEdges:
