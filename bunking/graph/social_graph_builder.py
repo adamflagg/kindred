@@ -904,4 +904,3 @@ class SocialGraphBuilder:
         nx.set_node_attributes(self.graph, parent_status_map, "parent_satisfaction_status")
         nx.set_node_attributes(self.graph, staff_status_map, "staff_satisfaction_status")
         nx.set_node_attributes(self.graph, aggregate_status_map, "satisfaction_status")
-
