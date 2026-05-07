@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import GraphControls from './GraphControls'
 
@@ -119,7 +120,6 @@ describe('GraphControls rendering', () => {
     })
 
     it('opens a menu with "Fit to graph" and "Current view" on click', async () => {
-      const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
       await user.click(screen.getByTitle(/download as png/i))
@@ -129,7 +129,6 @@ describe('GraphControls rendering', () => {
 
     it('invokes onDownload("fit") when "Fit to graph" is clicked', async () => {
       const onDownload = vi.fn()
-      const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(<GraphControls {...baseProps} onDownload={onDownload} />)
       await user.click(screen.getByTitle(/download as png/i))
@@ -140,7 +139,6 @@ describe('GraphControls rendering', () => {
 
     it('invokes onDownload("viewport") when "Current view" is clicked', async () => {
       const onDownload = vi.fn()
-      const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(<GraphControls {...baseProps} onDownload={onDownload} />)
       await user.click(screen.getByTitle(/download as png/i))
@@ -149,7 +147,6 @@ describe('GraphControls rendering', () => {
     })
 
     it('closes the menu after a selection', async () => {
-      const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(<GraphControls {...baseProps} onDownload={vi.fn()} />)
       await user.click(screen.getByTitle(/download as png/i))
@@ -158,7 +155,6 @@ describe('GraphControls rendering', () => {
     })
 
     it('closes the menu when clicking outside', async () => {
-      const { default: userEvent } = await import('@testing-library/user-event')
       const user = userEvent.setup()
       render(
         <div>
