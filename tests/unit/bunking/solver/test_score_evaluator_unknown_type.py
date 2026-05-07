@@ -1,8 +1,55 @@
 """Regression: unknown request_type must not abort the entire scenario score."""
 
 import logging
+from typing import ClassVar
 
+import pytest
+
+from bunking.config import ConfigLoader
 from bunking.solver.score_evaluator import evaluate_scenario_score
+
+
+class _MinimalConfig:
+    """Stub that provides everything score_evaluator reads.
+
+    These tests previously called ``evaluate_scenario_score`` without a
+    ``config=`` parameter, relying on ``ConfigLoader.get_instance()``. After the
+    B1/B2/B4 centralization, the four canonical penalty keys must also be
+    available via the global loader, so install this stub via
+    ``ConfigLoader.use(...)`` for the duration of each test.
+    """
+
+    _values: ClassVar[dict[str, int | float]] = {
+        "objective.enable_diminishing_returns": 1,
+        "objective.first_request_multiplier": 10,
+        "objective.second_request_multiplier": 5,
+        "objective.third_plus_request_multiplier": 1,
+        "objective.source_multipliers.share_bunk_with": 1.5,
+        "objective.source_multipliers.do_not_share_with": 1.5,
+        "objective.source_multipliers.bunking_notes": 1.2,
+        "objective.source_multipliers.internal_notes": 1.0,
+        "objective.source_multipliers.socialize_preference": 0.8,
+        "constraint.grade_spread.penalty": 100,
+        "constraint.grade_spread.max_spread": 2,
+        "constraint.cabin_capacity.penalty": 500,
+        "constraint.cabin_capacity.standard": 12,
+        "constraint.cabin_minimum_occupancy.min": 8,
+        "constraint.cabin_minimum_occupancy.penalty": 50,
+    }
+
+    def get_int(self, key: str, default: int | None = None) -> int:
+        v = self._values.get(key)
+        return int(v) if v is not None else (default if default is not None else 0)
+
+    def get_float(self, key: str, default: float | None = None) -> float:
+        v = self._values.get(key)
+        return float(v) if v is not None else (default if default is not None else 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _install_minimal_loader():
+    with ConfigLoader.use(_MinimalConfig()):  # type: ignore[arg-type]
+        yield
 
 
 def test_unknown_request_type_treated_as_unsatisfied(caplog):

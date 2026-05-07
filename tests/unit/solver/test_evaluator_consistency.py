@@ -88,3 +88,73 @@ def test_grade_spread_module_does_not_read_canonical_key_directly():
     assert 'get_int("constraint.grade_spread.penalty"' not in src, (
         "grade_spread.py must read the penalty via grade_spread_penalty(), not via a direct config.get_int() call."
     )
+
+
+# --- Evaluator migration (Task 3.3, B1/B2/B4) ----------------------------------
+# The post-solve evaluators previously read four LEGACY keys with their own
+# hardcoded fallbacks (penalty.grade_spread, penalty.over_capacity,
+# penalty.under_occupancy, constraint.cabin_occupancy.minimum). They must now
+# read the four CANONICAL keys via the centralized accessors so the displayed
+# score matches what the OR-Tools constraints actually optimized.
+
+
+def test_objective_evaluator_imports_centralized_accessors():
+    import bunking.solver.objective_evaluator as obj_mod
+
+    for name in (
+        "cabin_capacity_penalty",
+        "min_occupancy_penalty",
+        "min_occupancy_threshold",
+        "grade_spread_penalty",
+    ):
+        assert hasattr(obj_mod, name), f"objective_evaluator.py must import {name} from bunking.solver.penalties"
+
+
+def test_score_evaluator_imports_centralized_accessors():
+    import bunking.solver.score_evaluator as score_mod
+
+    for name in (
+        "cabin_capacity_penalty",
+        "min_occupancy_penalty",
+        "min_occupancy_threshold",
+        "grade_spread_penalty",
+    ):
+        assert hasattr(score_mod, name), f"score_evaluator.py must import {name} from bunking.solver.penalties"
+
+
+def test_objective_evaluator_drops_legacy_penalty_keys():
+    """The four legacy keys must no longer be read in objective_evaluator."""
+    import inspect
+
+    import bunking.solver.objective_evaluator as obj_mod
+
+    src = inspect.getsource(obj_mod)
+    for legacy_key in (
+        '"penalty.grade_spread_per_grade"',
+        '"penalty.over_capacity"',
+        '"penalty.under_occupancy"',
+        '"constraint.cabin_occupancy.minimum"',
+    ):
+        assert legacy_key not in src, (
+            f"objective_evaluator.py still reads legacy key {legacy_key} — "
+            "must read the canonical key via the centralized accessor."
+        )
+
+
+def test_score_evaluator_drops_legacy_penalty_keys():
+    """The four legacy keys must no longer be read in score_evaluator."""
+    import inspect
+
+    import bunking.solver.score_evaluator as score_mod
+
+    src = inspect.getsource(score_mod)
+    for legacy_key in (
+        '"penalty.grade_spread"',
+        '"penalty.over_capacity"',
+        '"penalty.under_occupancy"',
+        '"constraint.cabin_occupancy.minimum"',
+    ):
+        assert legacy_key not in src, (
+            f"score_evaluator.py still reads legacy key {legacy_key} — "
+            "must read the canonical key via the centralized accessor."
+        )

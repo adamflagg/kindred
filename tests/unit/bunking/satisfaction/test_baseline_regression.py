@@ -42,7 +42,16 @@ def _save_or_compare(name: str, actual: dict[str, Any]) -> None:
 
 
 class _MinimalConfig:
-    """Minimal config stub for score_evaluator — returns all defaults."""
+    """Minimal config stub for score_evaluator — returns all defaults.
+
+    Includes BOTH the legacy keys (for back-compat with anything still
+    reading them) AND the canonical keys that score_evaluator now reads
+    via the centralized accessors in ``bunking.solver.penalties``. The
+    canonical values are intentionally identical to the legacy values
+    here so this baseline JSON stays byte-identical across the B1/B2/B4
+    centralization. Callers that want to test the production magnitudes
+    (50000/2000/3000) should set those canonical keys explicitly.
+    """
 
     _defaults: ClassVar[dict[str, int | float]] = {
         "objective.enable_diminishing_returns": 1,
@@ -54,12 +63,21 @@ class _MinimalConfig:
         "objective.source_multipliers.bunking_notes": 1.2,
         "objective.source_multipliers.internal_notes": 1.0,
         "objective.source_multipliers.socialize_preference": 0.8,
+        # Legacy keys (no longer read by score_evaluator after B1/B2/B4 fix)
         "penalty.grade_spread": 100,
-        "constraint.grade_spread.max_spread": 2,
         "penalty.over_capacity": 500,
-        "constraint.cabin_capacity.standard": 12,
         "constraint.cabin_occupancy.minimum": 8,
         "penalty.under_occupancy": 50,
+        # Canonical keys used by the centralized accessors. Values match
+        # the legacy ones above so this snapshot test pins behavior, not
+        # production magnitudes.
+        "constraint.grade_spread.penalty": 100,
+        "constraint.cabin_capacity.penalty": 500,
+        "constraint.cabin_minimum_occupancy.min": 8,
+        "constraint.cabin_minimum_occupancy.penalty": 50,
+        # Other canonical keys
+        "constraint.grade_spread.max_spread": 2,
+        "constraint.cabin_capacity.standard": 12,
     }
 
     def get_int(self, key: str, default: int | None = None) -> int:
@@ -82,15 +100,22 @@ def test_solver_score_baseline(
     synthetic_requests: list[dict[str, Any]],
 ) -> None:
     """Pin solver score breakdown for the synthetic fixture."""
+    from bunking.config import ConfigLoader
     from bunking.solver.score_evaluator import evaluate_scenario_score
 
-    breakdown = evaluate_scenario_score(
-        requests=synthetic_requests,
-        assignments=synthetic_assignments,
-        persons=synthetic_persons,
-        bunks=synthetic_bunks,
-        config=_MinimalConfig(),
-    )
+    minimal = _MinimalConfig()
+    # The score_evaluator's centralized accessors (grade_spread_penalty,
+    # cabin_capacity_penalty, etc.) read via ConfigLoader.get_instance(),
+    # so install our _MinimalConfig there in addition to passing it
+    # through the `config=` parameter.
+    with ConfigLoader.use(minimal):  # type: ignore[arg-type]
+        breakdown = evaluate_scenario_score(
+            requests=synthetic_requests,
+            assignments=synthetic_assignments,
+            persons=synthetic_persons,
+            bunks=synthetic_bunks,
+            config=minimal,
+        )
     # Snapshot the full ScoreBreakdown — partial snapshots let parts of the
     # solver contract regress silently (#16).
     actual = {

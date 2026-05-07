@@ -24,6 +24,12 @@ from typing import Any
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
+from bunking.solver.penalties import (
+    cabin_capacity_penalty,
+    grade_spread_penalty,
+    min_occupancy_penalty,
+    min_occupancy_threshold,
+)
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -405,9 +411,14 @@ class ObjectiveEvaluator:
         person_by_cm_id: dict[int, dict[str, Any]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate grade spread soft constraint penalty."""
+        """Calculate grade spread soft constraint penalty.
+
+        Reads via the centralized ``grade_spread_penalty()`` accessor so this
+        replicates the OR-Tools cost contribution exactly. The formula is
+        rewritten in Task 3.4 to use unique-grade-count instead of range.
+        """
         max_spread = self.config.get_int("constraint.grade_spread.max_spread", default=2)
-        penalty_per_grade = self.config.get_int("penalty.grade_spread_per_grade", default=100)
+        penalty_per_grade = grade_spread_penalty()
 
         total_penalty = 0
 
@@ -432,8 +443,12 @@ class ObjectiveEvaluator:
         bunk_to_persons: dict[int, list[int]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate over-capacity soft constraint penalty."""
-        penalty_per_person = self.config.get_int("penalty.over_capacity", default=500)
+        """Calculate over-capacity soft constraint penalty.
+
+        Reads via the centralized ``cabin_capacity_penalty()`` accessor so this
+        replicates the OR-Tools cost contribution exactly (B1/B2 fix).
+        """
+        penalty_per_person = cabin_capacity_penalty()
         default_capacity = self.config.get_int("constraint.cabin_capacity.standard", default=12)
 
         total_penalty = 0
@@ -454,9 +469,15 @@ class ObjectiveEvaluator:
         bunk_to_persons: dict[int, list[int]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate under-occupancy penalty (prefer fuller bunks)."""
-        min_occupancy = self.config.get_int("constraint.cabin_occupancy.minimum", default=8)
-        penalty_per_person = self.config.get_int("penalty.under_occupancy", default=50)
+        """Calculate under-occupancy penalty (prefer fuller bunks).
+
+        Reads via the centralized ``min_occupancy_threshold()`` and
+        ``min_occupancy_penalty()`` accessors so this replicates the OR-Tools
+        cost contribution exactly (B4 fix; the previous read of the legacy
+        ``constraint.cabin_occupancy.minimum`` was a stale alias).
+        """
+        min_occupancy = min_occupancy_threshold()
+        penalty_per_person = min_occupancy_penalty()
 
         total_penalty = 0
 

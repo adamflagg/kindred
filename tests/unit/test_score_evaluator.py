@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import pytest
 
+from bunking.config import ConfigLoader
 from bunking.solver.score_evaluator import (
     ScoreBreakdown,
     _calculate_penalties,
@@ -14,6 +15,33 @@ from bunking.solver.score_evaluator import (
     evaluate_scenario_score,
 )
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+
+class _CanonicalKeyConfig:
+    """Stub loader for the four centralized penalty keys.
+
+    The score_evaluator reads grade_spread / over_capacity / under_occupancy /
+    min_occupancy via the centralized accessors in ``bunking.solver.penalties``,
+    which use ``ConfigLoader.get_instance()``. Tests in this module install one
+    of these via ``ConfigLoader.use(...)`` so the canonical reads see the same
+    numeric values the local MagicMock config does (matched values keep the
+    tests' magnitude assertions stable across the B1/B2/B4 centralization).
+    """
+
+    _values: ClassVar[dict[str, int]] = {
+        "constraint.grade_spread.penalty": 100,
+        "constraint.cabin_capacity.penalty": 500,
+        "constraint.cabin_minimum_occupancy.min": 8,
+        "constraint.cabin_minimum_occupancy.penalty": 50,
+    }
+
+    def get_int(self, key: str, default: int | None = None) -> int:
+        v = self._values.get(key)
+        return int(v) if v is not None else (default if default is not None else 0)
+
+    def get_float(self, key: str, default: float | None = None) -> float:
+        v = self._values.get(key)
+        return float(v) if v is not None else (default if default is not None else 0.0)
 
 
 class TestGetSourceFields:
@@ -38,17 +66,37 @@ class TestGetSourceFields:
 class TestCalculatePenalties:
     """Tests for _calculate_penalties function."""
 
+    @pytest.fixture(autouse=True)
+    def _install_canonical_loader(self):
+        """Install the canonical-keys stub for the centralized accessors."""
+        with ConfigLoader.use(_CanonicalKeyConfig()):  # type: ignore[arg-type]
+            yield
+
     @pytest.fixture
     def mock_config(self):
-        """Create a mock config with default penalty values."""
+        """Create a mock config with default penalty values.
+
+        Includes both legacy and canonical keys at matched values so that
+        tests can pass this directly to ``_calculate_penalties`` via the
+        ``config=`` parameter (used for non-centralized reads such as
+        ``constraint.grade_spread.max_spread`` and
+        ``constraint.cabin_capacity.standard``).
+        """
         config = MagicMock()
         config.get_int.side_effect = lambda key, default=0: {
+            # Legacy keys (no longer read by score_evaluator)
             "penalty.grade_spread": 100,
-            "constraint.grade_spread.max_spread": 2,
             "penalty.over_capacity": 500,
-            "constraint.cabin_capacity.standard": 12,
             "constraint.cabin_occupancy.minimum": 8,
             "penalty.under_occupancy": 50,
+            # Canonical keys read via centralized accessors
+            "constraint.grade_spread.penalty": 100,
+            "constraint.cabin_capacity.penalty": 500,
+            "constraint.cabin_minimum_occupancy.min": 8,
+            "constraint.cabin_minimum_occupancy.penalty": 50,
+            # Other keys still read via the config= parameter
+            "constraint.grade_spread.max_spread": 2,
+            "constraint.cabin_capacity.standard": 12,
         }.get(key, default)
         return config
 
@@ -149,9 +197,19 @@ class TestCalculatePenalties:
 class TestEvaluateScenarioScore:
     """Tests for the main evaluate_scenario_score function."""
 
+    @pytest.fixture(autouse=True)
+    def _install_canonical_loader(self):
+        """Install the canonical-keys stub for the centralized accessors."""
+        with ConfigLoader.use(_CanonicalKeyConfig()):  # type: ignore[arg-type]
+            yield
+
     @pytest.fixture
     def mock_config(self):
-        """Create a mock config with default values."""
+        """Create a mock config with default values.
+
+        Includes both legacy and canonical keys at matched values; the
+        centralized accessor path is covered by the autouse fixture above.
+        """
         config = MagicMock()
 
         def get_int_side_effect(key, default=0):
@@ -160,12 +218,18 @@ class TestEvaluateScenarioScore:
                 "objective.first_request_multiplier": 10,
                 "objective.second_request_multiplier": 5,
                 "objective.third_plus_request_multiplier": 1,
+                # Legacy keys
                 "penalty.grade_spread": 100,
-                "constraint.grade_spread.max_spread": 2,
                 "penalty.over_capacity": 500,
-                "constraint.cabin_capacity.standard": 12,
                 "constraint.cabin_occupancy.minimum": 8,
                 "penalty.under_occupancy": 50,
+                # Canonical keys (matched values)
+                "constraint.grade_spread.penalty": 100,
+                "constraint.cabin_capacity.penalty": 500,
+                "constraint.cabin_minimum_occupancy.min": 8,
+                "constraint.cabin_minimum_occupancy.penalty": 50,
+                "constraint.grade_spread.max_spread": 2,
+                "constraint.cabin_capacity.standard": 12,
             }
             return values.get(key, default)
 

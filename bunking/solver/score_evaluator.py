@@ -22,6 +22,12 @@ from typing import Any
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.satisfaction import is_request_satisfied
+from bunking.solver.penalties import (
+    cabin_capacity_penalty,
+    grade_spread_penalty,
+    min_occupancy_penalty,
+    min_occupancy_threshold,
+)
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -251,8 +257,9 @@ def _calculate_penalties(
     """Calculate soft constraint penalties for the current state."""
     penalties: dict[str, int] = {}
 
-    # Grade spread penalty
-    grade_spread_penalty = config.get_int("penalty.grade_spread", default=100)
+    # Grade spread penalty (B3 — formula rewrite happens in Task 3.4).
+    # Read via the centralized accessor so this matches the OR-Tools cost.
+    grade_spread_penalty_weight = grade_spread_penalty()
     max_grade_spread = config.get_int("constraint.grade_spread.max_spread", default=2)
 
     grade_spread_violations = 0
@@ -269,10 +276,10 @@ def _calculate_penalties(
                 grade_spread_violations += 1
 
     if grade_spread_violations > 0:
-        penalties["grade_spread"] = grade_spread_violations * grade_spread_penalty
+        penalties["grade_spread"] = grade_spread_violations * grade_spread_penalty_weight
 
-    # Capacity penalty
-    capacity_penalty = config.get_int("penalty.over_capacity", default=500)
+    # Capacity penalty (B1/B2 fix — read via the centralized accessor)
+    capacity_penalty = cabin_capacity_penalty()
     standard_capacity = config.get_int("constraint.cabin_capacity.standard", default=12)
 
     over_capacity_count = 0
@@ -285,9 +292,10 @@ def _calculate_penalties(
     if over_capacity_count > 0:
         penalties["over_capacity"] = over_capacity_count * capacity_penalty
 
-    # Under-occupancy penalty (prefer fuller bunks)
-    min_occupancy = config.get_int("constraint.cabin_occupancy.minimum", default=8)
-    under_occupancy_penalty = config.get_int("penalty.under_occupancy", default=50)
+    # Under-occupancy penalty (B4 fix — prefer fuller bunks).
+    # Read via centralized accessors so this matches the OR-Tools cost.
+    min_occupancy = min_occupancy_threshold()
+    under_occupancy_penalty = min_occupancy_penalty()
 
     under_occupancy_count = 0
     for bunk_cm_id, person_ids in bunk_to_persons.items():
