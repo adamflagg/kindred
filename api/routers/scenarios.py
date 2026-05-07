@@ -690,12 +690,25 @@ async def solve_scenario(
         session_cm_id: int = getattr(scenario, "session_cm_id", 0)
         scenario_year: int = getattr(scenario, "year", 0)
 
+        # Single-flight guard: reject duplicate in-progress runs for the same session.
+        # Mirrors the guard in solver.py:run_solver — uses the unified "session_cm_id" key
+        # so that both the regular solver path and the scenario path see each other's runs.
+        for run in solver_runs.values():
+            if run.get("session_cm_id") == session_cm_id and run.get("status") in {"pending", "running"}:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "detail": f"Solver already running for session {session_cm_id}",
+                        "in_progress_run_id": run["id"],
+                    },
+                )
+
         run_id = str(uuid4())
         solver_runs[run_id] = {
             "id": run_id,
             "status": "pending",
             "scenario": scenario_id,
-            "session_id": session_cm_id,
+            "session_cm_id": session_cm_id,
             "year": scenario_year,
             "started_at": datetime.now(UTC),
         }

@@ -369,3 +369,169 @@ class TestRunMultiSessionSolverSingleFlight:
             )
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+
+
+# ---------------------------------------------------------------------------
+# Cross-path guard tests: scenario run vs. /api/solver/run
+# ---------------------------------------------------------------------------
+#
+# Bug: scenarios.py wrote the solver_runs entry with key "session_id" instead
+# of "session_cm_id".  The guard in solver.py reads "session_cm_id", so a
+# running scenario solve was invisible to it.
+#
+# Test A: In-progress scenario run must block /api/solver/run for same session.
+# Test B: In-progress scenario run must block a SECOND scenario run for same session.
+
+
+@contextmanager
+def _scenario_client(solver_runs_state: dict[str, Any]) -> Iterator[TestClient]:
+    """Return a TestClient for the scenarios router with patched solver_runs and pb."""
+    from api.routers.scenarios import router
+
+    mock_pb = MagicMock()
+    mock_scenario = MagicMock()
+    mock_scenario.session_cm_id = 5001
+    mock_scenario.year = 2026
+    mock_pb.collection.return_value.get_one.return_value = mock_scenario
+
+    app = _make_app(router)
+    with (
+        patch("api.routers.scenarios.solver_runs", solver_runs_state),
+        patch("api.routers.scenarios.pb", mock_pb),
+        patch("api.routers.scenarios.run_solver_task_v2"),
+    ):
+        yield TestClient(app, raise_server_exceptions=False)
+
+
+class TestScenarioSolverSingleFlight:
+    """Cross-path and scenario-vs-scenario single-flight guard tests.
+
+    These verify the two guard gaps identified post-PR #1189:
+    1. scenario run key "session_id" was invisible to /api/solver/run guard (uses "session_cm_id")
+    2. /api/scenarios/{id}/solve had no guard against duplicate scenario runs
+    """
+
+    # ------------------------------------------------------------------
+    # Test A: in-progress scenario run must block /api/solver/run
+    # ------------------------------------------------------------------
+
+    def test_A_scenario_endpoint_writes_session_cm_id_key(self) -> None:
+        """POST /api/scenarios/{id}/solve must write "session_cm_id" (not "session_id") to solver_runs.
+
+        Root cause of the guard gap: scenarios.py wrote solver_runs entries with
+        key "session_id" instead of "session_cm_id".  The guard in solver.py reads
+        "session_cm_id", so a running scenario solve was invisible to it.
+        This test verifies the write uses the correct unified key after the fix.
+        """
+        shared_solver_runs: dict[str, Any] = {}
+
+        with _scenario_client(shared_solver_runs) as client:
+            resp = client.post("/api/scenarios/test-scenario-uuid/solve")
+
+        assert resp.status_code == 200, f"Expected 200 on first call: {resp.status_code}: {resp.text}"
+        # After a successful solve kick-off, exactly one entry must be in solver_runs
+        assert len(shared_solver_runs) == 1, f"Expected 1 entry in solver_runs, got {len(shared_solver_runs)}"
+        run_entry = next(iter(shared_solver_runs.values()))
+        # The critical assertion: key must be "session_cm_id", not "session_id"
+        assert "session_cm_id" in run_entry, (
+            f"solver_runs entry must use key 'session_cm_id'. Got keys: {list(run_entry.keys())}"
+        )
+        assert "session_id" not in run_entry, (
+            f"solver_runs entry must NOT use the old 'session_id' key. Got keys: {list(run_entry.keys())}"
+        )
+        assert run_entry["session_cm_id"] == 5001  # matches mock_scenario.session_cm_id
+
+    def test_A_scenario_run_blocks_solver_run_for_same_session(self) -> None:
+        """POST /api/solver/run must return 409 when a scenario run is in-progress for the same session.
+
+        Root cause: scenarios.py wrote solver_runs entries with key "session_id"
+        (not "session_cm_id"), so the guard in solver.py could not see them.
+        After the fix, the key is "session_cm_id" and the guard fires correctly.
+        """
+        scenario_run_id = "scenario-run-in-progress"
+        # Scenario run stored with the correct "session_cm_id" key (after fix)
+        solver_runs_state: dict[str, Any] = {
+            scenario_run_id: {
+                "id": scenario_run_id,
+                "session_cm_id": 5001,
+                "status": "running",
+                "scenario": "some-scenario-uuid",
+            }
+        }
+
+        with _solver_client(solver_runs_state) as client:
+            resp = client.post(
+                "/api/solver/run",
+                json={"session_cm_id": 5001, "year": 2026},
+            )
+
+        assert resp.status_code == 409, (
+            f"Expected 409 — scenario run should block solver/run. Got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        detail = body["detail"]
+        assert detail["detail"] == "Solver already running for session 5001"
+        assert detail["in_progress_run_id"] == scenario_run_id
+
+    def test_A_scenario_run_does_not_block_solver_run_for_different_session(self) -> None:
+        """POST /api/solver/run must succeed when the in-progress scenario run is for a different session."""
+        scenario_run_id = "scenario-run-other-session"
+        solver_runs_state: dict[str, Any] = {
+            scenario_run_id: {
+                "id": scenario_run_id,
+                "session_cm_id": 9999,  # different session
+                "status": "running",
+                "scenario": "some-scenario-uuid",
+            }
+        }
+
+        with _solver_client(solver_runs_state) as client:
+            resp = client.post(
+                "/api/solver/run",
+                json={"session_cm_id": 5001, "year": 2026},
+            )
+
+        assert resp.status_code == 200, (
+            f"Expected 200 — different session should not be blocked. Got {resp.status_code}: {resp.text}"
+        )
+
+    # ------------------------------------------------------------------
+    # Test B: scenario endpoint must block duplicate scenario runs
+    # ------------------------------------------------------------------
+
+    def test_B_scenario_run_blocks_second_scenario_run_for_same_session(self) -> None:
+        """POST /api/scenarios/{id}/solve must return 409 when a run is already in-progress for the same session.
+
+        The scenario endpoint had no single-flight guard at all prior to the fix.
+        """
+        existing_scenario_run_id = "existing-scenario-run"
+        solver_runs_state: dict[str, Any] = {
+            existing_scenario_run_id: {
+                "id": existing_scenario_run_id,
+                "session_cm_id": 5001,  # same session as mock_scenario.session_cm_id
+                "status": "running",
+                "scenario": "other-scenario-uuid",
+            }
+        }
+
+        with _scenario_client(solver_runs_state) as client:
+            resp = client.post("/api/scenarios/new-scenario-uuid/solve")
+
+        assert resp.status_code == 409, (
+            f"Expected 409 — scenario endpoint must guard against duplicate runs. Got {resp.status_code}: {resp.text}"
+        )
+        body = resp.json()
+        detail = body["detail"]
+        assert detail["detail"] == "Solver already running for session 5001"
+        assert detail["in_progress_run_id"] == existing_scenario_run_id
+
+    def test_B_scenario_run_allowed_when_no_in_progress_run_for_session(self) -> None:
+        """POST /api/scenarios/{id}/solve must succeed when no run is in-progress for the session."""
+        solver_runs_state: dict[str, Any] = {}
+
+        with _scenario_client(solver_runs_state) as client:
+            resp = client.post("/api/scenarios/new-scenario-uuid/solve")
+
+        assert resp.status_code == 200, (
+            f"Expected 200 — no existing run should allow the scenario solve. Got {resp.status_code}: {resp.text}"
+        )
