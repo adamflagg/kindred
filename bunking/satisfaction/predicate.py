@@ -27,6 +27,74 @@ from typing import Any
 from bunking.utils.age_preference import is_age_preference_satisfied
 
 
+def evaluate_request(
+    request: Mapping[str, Any],
+    person_to_bunk: dict[int, int],
+    *,
+    bunkmate_grades: dict[int, list[int]] | None = None,
+) -> tuple[bool, str | None]:
+    """Return (satisfied, detail) for a request.
+
+    `detail` is a short human-readable explanation suitable for a UI tooltip
+    (e.g. "Same bunk", "Different bunks", "No grade on file"). The bool
+    projection is available via `is_request_satisfied` for the solver hot
+    path and validator adapter (no tuple-allocation overhead in those callers).
+
+    Args / Raises: see `is_request_satisfied`.
+    """
+    raw = request.get("requester_id")
+    if raw is None:
+        raw = request.get("requester_person_cm_id")
+    if raw is None:
+        raise ValueError("request missing requester_id")
+    requester_id = int(raw)
+    requestee_id_raw = request.get("requestee_id") or request.get("requested_person_cm_id")
+    request_type = request.get("request_type", "")
+
+    if requester_id not in person_to_bunk:
+        return False, "Requester not assigned"
+
+    if request_type == "bunk_with":
+        if not requestee_id_raw:
+            return False, "Target not assigned"
+        requestee_id = int(requestee_id_raw)
+        if requestee_id not in person_to_bunk:
+            return False, "Target not assigned"
+        if person_to_bunk[requester_id] == person_to_bunk[requestee_id]:
+            return True, "Same bunk"
+        return False, "Different bunks"
+
+    if request_type == "not_bunk_with":
+        if not requestee_id_raw:
+            return False, "Target not assigned"
+        requestee_id = int(requestee_id_raw)
+        if requestee_id not in person_to_bunk:
+            return True, "Target not assigned"  # unassigned — no conflict possible
+        if person_to_bunk[requester_id] != person_to_bunk[requestee_id]:
+            return True, "Different bunks"
+        return False, "Same bunk"
+
+    if request_type == "age_preference":
+        target = request.get("age_preference_target")
+        if not target:
+            return False, "No target set"
+        if bunkmate_grades is None:
+            raise ValueError("bunkmate_grades is required for age_preference requests")
+        # NOTE: holds the requester's bunkmates' grades (not the requester's own grade —
+        # that's `requester_grade` below). Renamed from the previous misleading
+        # `requester_grades`.
+        bunkmates_for_requester = bunkmate_grades.get(requester_id, [])
+        requester_grade = request.get("requester_grade")
+        if requester_grade is None:
+            return False, "No grade on file"
+        grade_int = int(requester_grade)
+        if grade_int not in range(0, 13):
+            raise ValueError(f"requester_grade {grade_int} out of valid range 0-12")
+        return is_age_preference_satisfied(grade_int, bunkmates_for_requester, str(target))
+
+    raise ValueError(f"unknown request_type {request_type!r}")
+
+
 def is_request_satisfied(
     request: Mapping[str, Any],
     person_to_bunk: dict[int, int],
@@ -34,6 +102,11 @@ def is_request_satisfied(
     bunkmate_grades: dict[int, list[int]] | None = None,
 ) -> bool:
     """Return whether `request` is satisfied under the given assignments.
+
+    Bool projection of `evaluate_request` — preserved as a separate symbol for
+    the solver hot path (`bunking/solver/score_evaluator.py`) and the
+    bunking_validator adapter, where the detail string is unused and the
+    tuple allocation is unwanted.
 
     Args:
         request: Bunk request row. Must have `requester_id`, `requestee_id`,
@@ -57,51 +130,4 @@ def is_request_satisfied(
         `source_field` is not read here; bucket classification is the caller's
         responsibility (see bunking.satisfaction.aggregate.camper_satisfaction).
     """
-    raw = request.get("requester_id")
-    if raw is None:
-        raw = request.get("requester_person_cm_id")
-    if raw is None:
-        raise ValueError("request missing requester_id")
-    requester_id = int(raw)
-    requestee_id_raw = request.get("requestee_id") or request.get("requested_person_cm_id")
-    request_type = request.get("request_type", "")
-
-    if requester_id not in person_to_bunk:
-        return False
-
-    if request_type == "bunk_with":
-        if not requestee_id_raw:
-            return False
-        requestee_id = int(requestee_id_raw)
-        if requestee_id not in person_to_bunk:
-            return False
-        return person_to_bunk[requester_id] == person_to_bunk[requestee_id]
-
-    if request_type == "not_bunk_with":
-        if not requestee_id_raw:
-            return False
-        requestee_id = int(requestee_id_raw)
-        if requestee_id not in person_to_bunk:
-            return True  # requestee unassigned — no conflict possible
-        return person_to_bunk[requester_id] != person_to_bunk[requestee_id]
-
-    if request_type == "age_preference":
-        target = request.get("age_preference_target")
-        if not target:
-            return False
-        if bunkmate_grades is None:
-            raise ValueError("bunkmate_grades is required for age_preference requests")
-        # NOTE: holds the requester's bunkmates' grades (not the requester's own grade —
-        # that's `requester_grade` below). Renamed from the previous misleading
-        # `requester_grades`.
-        bunkmates_for_requester = bunkmate_grades.get(requester_id, [])
-        requester_grade = request.get("requester_grade")
-        if requester_grade is None:
-            return False
-        grade_int = int(requester_grade)
-        if grade_int not in range(0, 13):
-            raise ValueError(f"requester_grade {grade_int} out of valid range 0-12")
-        satisfied, _ = is_age_preference_satisfied(grade_int, bunkmates_for_requester, str(target))
-        return satisfied
-
-    raise ValueError(f"unknown request_type {request_type!r}")
+    return evaluate_request(request, person_to_bunk, bunkmate_grades=bunkmate_grades)[0]

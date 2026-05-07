@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from bunking.satisfaction.predicate import is_request_satisfied
+from bunking.satisfaction.predicate import evaluate_request, is_request_satisfied
 
 
 def _req(
@@ -257,3 +257,114 @@ def test_unassigned_requester_yields_dual_false() -> None:
     not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "not_bunk_with"}
     assert is_request_satisfied(bunk_with, p2b) is False
     assert is_request_satisfied(not_bunk_with, p2b) is False
+
+
+class TestEvaluateRequest:
+    """Truth-table tests for evaluate_request — returns (satisfied, detail)."""
+
+    def test_requester_unassigned_returns_false_with_detail(self) -> None:
+        result = evaluate_request(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={2: 100},  # 1 unassigned
+        )
+        assert result == (False, "Requester not assigned")
+
+    def test_bunk_with_requestee_id_missing_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("bunk_with", 1),  # no requestee_id
+            person_to_bunk={1: 100},
+        )
+        assert result == (False, "Target not assigned")
+
+    def test_bunk_with_requestee_unassigned_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={1: 100},  # 2 unassigned
+        )
+        assert result == (False, "Target not assigned")
+
+    def test_bunk_with_different_bunks_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 101},
+        )
+        assert result == (False, "Different bunks")
+
+    def test_bunk_with_same_bunk_returns_true(self) -> None:
+        result = evaluate_request(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 100},
+        )
+        assert result == (True, "Same bunk")
+
+    def test_not_bunk_with_requestee_id_missing_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("not_bunk_with", 1),
+            person_to_bunk={1: 100},
+        )
+        assert result == (False, "Target not assigned")
+
+    def test_not_bunk_with_requestee_unassigned_returns_true(self) -> None:
+        result = evaluate_request(
+            _req("not_bunk_with", 1, 2),
+            person_to_bunk={1: 100},  # 2 unassigned — no conflict possible
+        )
+        assert result == (True, "Target not assigned")
+
+    def test_not_bunk_with_different_bunks_returns_true(self) -> None:
+        result = evaluate_request(
+            _req("not_bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 101},
+        )
+        assert result == (True, "Different bunks")
+
+    def test_not_bunk_with_same_bunk_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("not_bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 100},
+        )
+        assert result == (False, "Same bunk")
+
+    def test_age_preference_no_target_returns_false(self) -> None:
+        result = evaluate_request(
+            _req("age_preference", 1, requester_grade=5),  # no age_preference_target
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [4, 6]},
+        )
+        assert result == (False, "No target set")
+
+    def test_age_preference_no_grade_returns_false_with_detail(self) -> None:
+        result = evaluate_request(
+            _req("age_preference", 1, age_preference_target="older"),  # no requester_grade
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [4, 6]},
+        )
+        assert result == (False, "No grade on file")
+
+    def test_age_preference_evaluated_returns_underlying_tuple(self) -> None:
+        # Bunkmates older than requester (grade 5) — should be satisfied.
+        result = evaluate_request(
+            _req("age_preference", 1, age_preference_target="older", requester_grade=5),
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [6, 7]},
+        )
+        # is_age_preference_satisfied returns (bool, str); we just verify it's a 2-tuple
+        # of (bool, non-empty str). The exact detail string is owned by age_preference.py.
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], bool)
+        assert isinstance(result[1], str)
+        assert len(result[1]) > 0
+
+    def test_is_request_satisfied_wrapper_returns_bool_projection(self) -> None:
+        """Regression: is_request_satisfied stays bool-only after refactor."""
+        bool_result = is_request_satisfied(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 100},
+        )
+        tuple_result = evaluate_request(
+            _req("bunk_with", 1, 2),
+            person_to_bunk={1: 100, 2: 100},
+        )
+        assert bool_result is True
+        assert bool_result == tuple_result[0]
