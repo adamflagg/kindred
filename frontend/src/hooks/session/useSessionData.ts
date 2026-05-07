@@ -271,6 +271,10 @@ export function useBunkRequestsCount({
   agSessions,
 }: UseBunkRequestsCountOptions) {
   return useQuery({
+    // subSessions still listed in the cache key so the query refetches if the
+    // hierarchy changes, even though we no longer aggregate them into the
+    // count — keeps the badge in sync with `relatedSessionIds` on the Requests
+    // tab, which only bundles AG children of the parent.
     queryKey: queryKeys.bunkRequestsCount(
       selectedSession ?? '',
       currentYear,
@@ -299,23 +303,15 @@ export function useBunkRequestsCount({
         return getRequestsCount(parseInt(selectedSession, 10))
       }
 
-      // For main sessions, aggregate from main + sub + AG sessions
-      let totalCount = 0
+      // Main session: count = self + AG children only. Embedded sub-sessions
+      // (Session 2a, Taste of Camp 2) are independent — they have their own
+      // session view and their own count, so don't double-count them under
+      // the parent. Matches the `relatedSessionIds` scoping on the Requests
+      // tab.
+      let totalCount = await getRequestsCount(parseInt(selectedSession, 10))
 
-      // Main session
-      totalCount += await getRequestsCount(parseInt(selectedSession, 10))
-
-      // Sub-sessions
-      if (subSessions.length > 0) {
-        const subCountPromises = subSessions.map((s) => getRequestsCount(s.cm_id))
-        const subCounts = await Promise.all(subCountPromises)
-        totalCount += subCounts.reduce((a, b) => a + b, 0)
-      }
-
-      // AG sessions
       if (agSessions.length > 0) {
-        const agCountPromises = agSessions.map((s) => getRequestsCount(s.cm_id))
-        const agCounts = await Promise.all(agCountPromises)
+        const agCounts = await Promise.all(agSessions.map((s) => getRequestsCount(s.cm_id)))
         totalCount += agCounts.reduce((a, b) => a + b, 0)
       }
 

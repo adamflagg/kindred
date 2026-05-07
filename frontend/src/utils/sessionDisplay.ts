@@ -2,30 +2,20 @@ import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
 
 /**
- * Get a canonical short display name for a session, handling all session types.
+ * Canonical short display name for a session — used by the camper page (full +
+ * pop-in modal headers), the journey timeline current row, and any other
+ * surface that needs a single source of truth for the chip-style label.
  *
- * Returns a concise session identifier suitable for UI display (e.g., in headers, quick stats).
- * Converges logic from CamperDetail.tsx and CamperDetailsPanel.tsx.
+ * Behavior:
+ *   - AG sessions are abbreviated via `shortenSessionName` because the raw AG
+ *     name ("All-Gender Cabin-Session 2 (7th & 8th grades)") is too long for a
+ *     header chip. Result is e.g. "AG 2 (7-8)".
+ *   - Every other session type returns its raw `name` unchanged. Real-world
+ *     names are already concise ("Session 2", "Session 2a", "Taste of Camp 2",
+ *     "Teen Adventure Quests"), and the trailing digit on Taste of Camp is
+ *     meaningful — Taste of Camp 1 and Taste of Camp 2 are different sessions.
  *
- * @param session The session object (with at least session_type and name fields)
- * @returns Short name (e.g., "Quest", "AG", "Session 2", "Session 2a", "Taste of Camp")
- *          or null if session is undefined/falsy
- *
- * @example
- *   getSessionShortName({ session_type: 'main', name: 'Session 2' })
- *   // → "Session 2"
- *
- *   getSessionShortName({ session_type: 'quest', name: 'Teen Adventure Quests' })
- *   // → "Teen Adventure Quests"
- *
- *   getSessionShortName({ session_type: 'ag', name: 'All-Gender Cabin-Session 2' })
- *   // → "All-Gender Cabin-Session 2"
- *
- *   getSessionShortName({ session_type: 'embedded', name: 'Session 2a' })
- *   // → "Session 2a"
- *
- *   getSessionShortName(undefined)
- *   // → null
+ * @returns Short name, or null if no session/name to display.
  */
 export function getSessionShortName(
   session:
@@ -37,28 +27,12 @@ export function getSessionShortName(
 ): string | null {
   if (!session) return null
 
-  // Quest sessions: return as-is (they don't follow "Session N" pattern)
+  if (session.session_type === 'ag') {
+    return session.name ? shortenSessionName(session.name) : 'AG'
+  }
+
   if (session.session_type === 'quest') return session.name ?? 'Quest'
 
-  // AG sessions: return name as-is (e.g., "All-Gender Cabin-Session 2")
-  if (session.session_type === 'ag') return session.name ?? 'AG'
-
-  // Embedded sessions: extract "Session 2a" pattern
-  if (session.session_type === 'embedded') {
-    const match = session.name?.match(/([23][ab])/i)
-    if (match) return `Session ${match[1]}`
-  }
-
-  // Main sessions: extract session number
-  if (session.session_type === 'main') {
-    const match = session.name?.match(/(\d+)/)
-    if (match) return `Session ${match[1]}`
-  }
-
-  // Taste of Camp pattern (name-based, not type-based)
-  if (session.name?.toLowerCase().includes('taste')) return 'Taste of Camp'
-
-  // Fallback: return name as-is, or null if no name
   return session.name ?? null
 }
 

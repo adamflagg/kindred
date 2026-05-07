@@ -604,19 +604,14 @@ export default function CamperDetailsPanel({
     return getSessionShortNameUtil(camper?.expand?.session ?? undefined)
   }
 
-  /** Get short display name for an enrollment's session. */
+  /** Short display name for an enrollment's session — same util as the header. */
   const getEnrollmentShortName = (enrollment: CurrentEnrollment): string => {
-    if (enrollment.sessionType === 'ag') return enrollment.sessionName
-    if (enrollment.sessionType === 'embedded') {
-      const match = enrollment.sessionName.match(/([23][ab])/i)
-      if (match) return `Session ${match[1]}`
-    }
-    if (enrollment.sessionType === 'main') {
-      const match = enrollment.sessionName.match(/(\d+)/)
-      if (match) return `Session ${match[1]}`
-    }
-    if (enrollment.sessionName.toLowerCase().includes('taste')) return 'Taste of Camp'
-    return enrollment.sessionName || 'Unknown'
+    return (
+      getSessionShortNameUtil({
+        session_type: enrollment.sessionType,
+        name: enrollment.sessionName,
+      }) ?? 'Unknown'
+    )
   }
 
   // Lock group context — used to compute friend-group alert

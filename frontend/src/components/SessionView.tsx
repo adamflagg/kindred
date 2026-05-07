@@ -354,9 +354,16 @@ export default function SessionView() {
               <BunkRequestProvider sessionCmId={selectedSessionCmId}>
                 <RequestReviewPanel
                   sessionId={selectedSessionCmId}
+                  // Only AG children bundle into the parent's request review.
+                  // Embedded sub-sessions (Session 2a, Taste of Camp 2) are
+                  // independent — they share the parent's start or end date
+                  // (which is exactly why date-overlap classified them as
+                  // embedded), but they're shorter programs with their own
+                  // bunking, not full-duration sub-cabins. AG sessions ARE
+                  // full-duration sub-cabins of the parent and stay bundled.
                   relatedSessionIds={
                     selectedSession === session.cm_id.toString()
-                      ? [...subSessions.map((s) => s.cm_id), ...agSessions.map((s) => s.cm_id)]
+                      ? agSessions.map((s) => s.cm_id)
                       : []
                   }
                   year={currentYear}
