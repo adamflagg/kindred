@@ -221,20 +221,19 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 5. **Family camps excluded** in syncs for performance
 6. **Config is database-driven** - PocketBase `config` table, not JSON files. AI settings via env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`)
 7. **AI model** - GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
-8. **CSV history tracking** - `csv_history/` tracks changes, 30-day auto-cleanup, saves 70-90% AI costs
-9. **Token caching** - CampMinder JWT cached in `~/.campminder_token_cache.json`
-10. **Year-aware syncs** - Uses `season_id` from config; ready for new year with config update
-11. **Sequential session syncs** - Sessions 1-4 run sequentially with independent history
-12. **WAL checkpoint** - Required after database modifications
-13. **PocketBase filter syntax** - ALWAYS spaces around operators (`field = value` not `field=value`)
-14. **IPv4 in production** - Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
-15. **React auth guards** - Check `isLoading` from `useAuth()` before authenticated API calls
-16. **React Query keys** - Use centralized keys from `frontend/src/utils/queryKeys.ts`
-17. **Attendee filtering** - Solver uses `status_id = 2` for active enrolled attendees
-18. **Git hooks** - Run `./scripts/setup-git-hooks.sh` once to install lefthook; config in `.lefthook.yml`
-19. **Python line length** - 120 chars (configured in `ruff.toml`), enforced by ruff format
-20. **Frontend tests** - Vitest (not Jest); `npm run test` for watch mode, `npx vitest run` for one-shot
-21. **Spelling: "cancelled"** - PocketBase fields use British spelling (`cancelled_count`). Go linter allows it via `.golangci.yml` extra-words. Use `cancelled` consistently, not `canceled`
+8. **Token caching** - CampMinder JWT cached in `~/.campminder_token_cache.json`
+9. **Year-aware syncs** - Uses `season_id` from config; ready for new year with config update
+10. **Sequential session syncs** - Sessions 1-4 run sequentially with independent history
+11. **WAL checkpoint** - Required after database modifications
+12. **PocketBase filter syntax** - ALWAYS spaces around operators (`field = value` not `field=value`)
+13. **IPv4 in production** - Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
+14. **React auth guards** - Check `isLoading` from `useAuth()` before authenticated API calls
+15. **React Query keys** - Use centralized keys from `frontend/src/utils/queryKeys.ts`
+16. **Attendee filtering** - Solver uses `status_id = 2` for active enrolled attendees
+17. **Git hooks** - Run `./scripts/setup-git-hooks.sh` once to install lefthook; config in `.lefthook.yml`
+18. **Python line length** - 120 chars (configured in `ruff.toml`), enforced by ruff format
+19. **Frontend tests** - Vitest (not Jest); `npm run test` for watch mode, `npx vitest run` for one-shot
+20. **Spelling: "cancelled"** - PocketBase fields use British spelling (`cancelled_count`). Go linter allows it via `.golangci.yml` extra-words. Use `cancelled` consistently, not `canceled`
 
 ## Session Types and Bunking Structure
 

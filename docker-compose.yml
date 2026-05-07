@@ -83,10 +83,11 @@ services:
     volumes:
       - ${APPDATA_DIR}/kindred/pocketbase:/pb_data:ro
       - ${APPDATA_DIR}/kindred/config:/config:ro
+      # Solver run logs read back via /api/solver/logs/{session_id}; must persist across restarts.
+      # Host dir must be owned 65532:65532 (matches the api container's nonroot uid/gid).
+      - ${APPDATA_DIR}/kindred/api-logs:/app/logs
     tmpfs:
       - /tmp:size=64m,uid=65532,gid=65532
-      - /app/logs:size=64m,uid=65532,gid=65532
-      - /app/csv_history:size=64m,uid=65532,gid=65532
     environment:
       - POCKETBASE_URL=http://pocketbase:8090
       - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL}
