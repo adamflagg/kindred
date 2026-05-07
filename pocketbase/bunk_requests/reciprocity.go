@@ -62,7 +62,12 @@ func RecomputePairReciprocity(
 }
 
 // findRow returns the bunk_request matching the given coordinates, or nil if
-// no row exists. If multiple match (dedup miss), returns the first.
+// no row exists. Production allows multiple rows per directed pair when
+// they originate from different source_field values (the unique index
+// includes source_field). When that happens this helper returns the
+// lowest-id row deterministically — sufficient for "is the other direction
+// resolved?" since all sibling rows in the same direction share the same
+// pair coordinates.
 func findRow(app core.App, year, sessionID, requester, requestee int, requestType string) (*core.Record, error) {
 	filter := "year = {:year} && session_id = {:sessionID} && " +
 		"requester_id = {:requester} && requestee_id = {:requestee} && " +
@@ -70,7 +75,7 @@ func findRow(app core.App, year, sessionID, requester, requestee int, requestTyp
 	records, err := app.FindRecordsByFilter(
 		"bunk_requests",
 		filter,
-		"",
+		"id",
 		1,
 		0,
 		map[string]any{

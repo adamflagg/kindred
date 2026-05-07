@@ -41,7 +41,10 @@ func TestBackfill_FixesStaleRow(t *testing.T) {
 
 	// Insert a row that's intentionally stale: is_reciprocal=true on a row
 	// whose partner does NOT exist. Mirrors the production bug pattern.
-	col, _ := app.FindCollectionByNameOrId("bunk_requests")
+	col, err := app.FindCollectionByNameOrId("bunk_requests")
+	if err != nil {
+		t.Fatalf("find collection: %v", err)
+	}
 	r := core.NewRecord(col)
 	r.Set("requester_id", 100)
 	r.Set("requestee_id", 200)
@@ -58,7 +61,10 @@ func TestBackfill_FixesStaleRow(t *testing.T) {
 		t.Fatalf("backfill: %v", err)
 	}
 
-	got, _ := app.FindRecordById("bunk_requests", r.Id)
+	got, err := app.FindRecordById("bunk_requests", r.Id)
+	if err != nil {
+		t.Fatalf("reload row: %v", err)
+	}
 	if got.GetBool("is_reciprocal") {
 		t.Errorf("backfill failed to fix stale row: still is_reciprocal=true")
 	}

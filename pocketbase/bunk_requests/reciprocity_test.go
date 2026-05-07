@@ -1,11 +1,54 @@
 package bunkrequests
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
+
+// countPreUpdateCache reports the number of entries currently held in the
+// package-private preUpdateCache. Used by tests that assert no cache leak
+// across hook invocations.
+func countPreUpdateCache() int {
+	n := 0
+	preUpdateCache.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	return n
+}
+
+// drainPreUpdateCache empties preUpdateCache so cross-test pollution can't
+// affect leak assertions in this package's tests.
+func drainPreUpdateCache() {
+	preUpdateCache.Range(func(k, _ any) bool {
+		preUpdateCache.Delete(k)
+		return true
+	})
+}
+
+// mustFindRecord reloads a bunk_requests row by id and fails the test on
+// any read error — replaces the noisy `_` discard pattern.
+func mustFindRecord(t *testing.T, app core.App, id string) *core.Record {
+	t.Helper()
+	r, err := app.FindRecordById("bunk_requests", id)
+	if err != nil {
+		t.Fatalf("FindRecordById %q: %v", id, err)
+	}
+	return r
+}
+
+// mustFindCollection returns the bunk_requests collection or fails the test.
+func mustFindCollection(t *testing.T, app core.App) *core.Collection {
+	t.Helper()
+	col, err := app.FindCollectionByNameOrId("bunk_requests")
+	if err != nil {
+		t.Fatalf("FindCollectionByNameOrId: %v", err)
+	}
+	return col
+}
 
 // setupBunkRequestsCollection creates a minimal bunk_requests collection in
 // the test app — only the fields the reciprocity hook reads/writes. The
@@ -116,7 +159,7 @@ func TestHook_FiresOnCreate(t *testing.T) {
 
 	// At this point only A→B exists; the hook fired but B→A doesn't exist
 	// yet, so A→B's flag stays false.
-	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotAB := mustFindRecord(t, app, rowAB.Id)
 	if gotAB.GetBool("is_reciprocal") {
 		t.Errorf("after lone A→B insert: expected is_reciprocal=false, got true")
 	}
@@ -124,8 +167,8 @@ func TestHook_FiresOnCreate(t *testing.T) {
 	// Now insert B→A. Hook fires, recompute finds both rows resolved → both flip.
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
 
-	gotAB, _ = app.FindRecordById("bunk_requests", rowAB.Id)
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotAB = mustFindRecord(t, app, rowAB.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if !gotAB.GetBool("is_reciprocal") {
 		t.Errorf("after pair complete: A→B expected is_reciprocal=true, got false")
 	}
@@ -140,7 +183,11 @@ func TestHook_FiresOnCreate(t *testing.T) {
 func registerHooksOnApp(app core.App) {
 	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		captureOldCoords(e)
-		return e.Next()
+		err := e.Next()
+		if err != nil && e.Record != nil && e.Record.Id != "" {
+			preUpdateCache.Delete(e.Record.Id)
+		}
+		return err
 	})
 	app.OnRecordAfterCreateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		runRecompute(e)
@@ -172,21 +219,17 @@ func TestHook_DeletionFlipsPartner(t *testing.T) {
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
 
 	// Sanity: both reciprocal after pair complete.
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if !gotBA.GetBool("is_reciprocal") {
 		t.Fatalf("setup precondition: expected B→A reciprocal=true, got false")
 	}
 
 	// Delete A→B; hook should fire and recompute B→A.
-	err = app.Delete(rowAB)
-	if err != nil {
+	if err := app.Delete(rowAB); err != nil {
 		t.Fatalf("delete AB: %v", err)
 	}
 
-	gotBA, err = app.FindRecordById("bunk_requests", rowBA.Id)
-	if err != nil {
-		t.Fatalf("reload BA: %v", err)
-	}
+	gotBA = mustFindRecord(t, app, rowBA.Id)
 	if gotBA.GetBool("is_reciprocal") {
 		t.Errorf("after A→B delete: B→A expected is_reciprocal=false, got true (#1059 bug)")
 	}
@@ -209,7 +252,7 @@ func TestHook_StatusFlipFlipsPartner(t *testing.T) {
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
 
 	// Sanity check.
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if !gotBA.GetBool("is_reciprocal") {
 		t.Fatalf("precondition: expected B→A reciprocal=true")
 	}
@@ -220,11 +263,11 @@ func TestHook_StatusFlipFlipsPartner(t *testing.T) {
 		t.Fatalf("save flipped AB: %v", err)
 	}
 
-	gotBA, _ = app.FindRecordById("bunk_requests", rowBA.Id)
+	gotBA = mustFindRecord(t, app, rowBA.Id)
 	if gotBA.GetBool("is_reciprocal") {
 		t.Errorf("after A→B flip to declined: B→A expected is_reciprocal=false, got true")
 	}
-	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
+	gotAB := mustFindRecord(t, app, rowAB.Id)
 	if gotAB.GetBool("is_reciprocal") {
 		t.Errorf("after A→B flip to declined: A→B expected is_reciprocal=false, got true")
 	}
@@ -241,7 +284,7 @@ func TestHook_CrossSessionNotReciprocal(t *testing.T) {
 	setupBunkRequestsCollection(t, app)
 	registerHooksOnApp(app)
 
-	col, _ := app.FindCollectionByNameOrId("bunk_requests")
+	col := mustFindCollection(t, app)
 	rowAB := core.NewRecord(col)
 	rowAB.Set("requester_id", 100)
 	rowAB.Set("requestee_id", 200)
@@ -266,8 +309,8 @@ func TestHook_CrossSessionNotReciprocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotAB := mustFindRecord(t, app, rowAB.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if gotAB.GetBool("is_reciprocal") || gotBA.GetBool("is_reciprocal") {
 		t.Errorf("cross-session: expected both reciprocal=false, got AB=%v BA=%v",
 			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
@@ -288,8 +331,8 @@ func TestHook_CrossTypeNotReciprocal(t *testing.T) {
 	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
 	rowBA := makeRequest(t, app, 200, 100, "not_bunk_with", "resolved")
 
-	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotAB := mustFindRecord(t, app, rowAB.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if gotAB.GetBool("is_reciprocal") || gotBA.GetBool("is_reciprocal") {
 		t.Errorf("cross-type: expected both reciprocal=false, got AB=%v BA=%v",
 			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
@@ -307,7 +350,7 @@ func TestHook_AgePreferenceNoop(t *testing.T) {
 	setupBunkRequestsCollection(t, app)
 	registerHooksOnApp(app)
 
-	col, _ := app.FindCollectionByNameOrId("bunk_requests")
+	col := mustFindCollection(t, app)
 	r := core.NewRecord(col)
 	r.Set("requester_id", 100)
 	r.Set("requestee_id", 0) // age_preference has no requestee
@@ -320,7 +363,7 @@ func TestHook_AgePreferenceNoop(t *testing.T) {
 	if err := app.Save(r); err != nil {
 		t.Fatalf("age_preference save (with hook): %v", err)
 	}
-	got, _ := app.FindRecordById("bunk_requests", r.Id)
+	got := mustFindRecord(t, app, r.Id)
 	if got.GetBool("is_reciprocal") {
 		t.Errorf("age_preference: expected reciprocal=false, got true")
 	}
@@ -339,7 +382,7 @@ func TestHook_SelfReferentialNoop(t *testing.T) {
 
 	r := makeRequest(t, app, 100, 100, "bunk_with", "resolved") // requester == requestee
 
-	got, _ := app.FindRecordById("bunk_requests", r.Id)
+	got := mustFindRecord(t, app, r.Id)
 	if got.GetBool("is_reciprocal") {
 		t.Errorf("self-referential: expected reciprocal=false, got true")
 	}
@@ -361,8 +404,8 @@ func TestRecomputePairReciprocity_IdempotentOnAlreadyCorrect(t *testing.T) {
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
 
 	// Both should already be reciprocal=true after hooks fire from Save.
-	gotAB, _ := app.FindRecordById("bunk_requests", rowAB.Id)
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotAB := mustFindRecord(t, app, rowAB.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if !gotAB.GetBool("is_reciprocal") || !gotBA.GetBool("is_reciprocal") {
 		t.Fatalf("precondition: expected both reciprocal=true, got AB=%v BA=%v",
 			gotAB.GetBool("is_reciprocal"), gotBA.GetBool("is_reciprocal"))
@@ -376,8 +419,8 @@ func TestRecomputePairReciprocity_IdempotentOnAlreadyCorrect(t *testing.T) {
 		t.Fatalf("RecomputePairReciprocity: %v", err)
 	}
 
-	gotAB2, _ := app.FindRecordById("bunk_requests", rowAB.Id)
-	gotBA2, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotAB2 := mustFindRecord(t, app, rowAB.Id)
+	gotBA2 := mustFindRecord(t, app, rowBA.Id)
 
 	// updated timestamp should not have moved if no save happened.
 	if !gotAB2.GetDateTime("updated").Time().Equal(abUpdated) {
@@ -385,6 +428,43 @@ func TestRecomputePairReciprocity_IdempotentOnAlreadyCorrect(t *testing.T) {
 	}
 	if !gotBA2.GetDateTime("updated").Time().Equal(baUpdated) {
 		t.Errorf("idempotent call wrote B→A unnecessarily; updated changed")
+	}
+}
+
+// Test 11 — Failed update must not leak preUpdateCache entries.
+//
+// captureOldCoords stashes pre-mutation coords keyed by record ID before
+// e.Next() runs. If e.Next() returns an error, AfterUpdateSuccess never
+// fires and the LoadAndDelete inside runRecompute never clears the entry —
+// the package-global sync.Map leaks one entry per failed update.
+func TestHook_FailedUpdateDoesNotLeakCache(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	row := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+
+	// Bind a second OnRecordUpdate hook that returns an error so the chain's
+	// e.Next() inside captureOldCoords' wrapper sees a failure.
+	forceErr := errors.New("force update failure")
+	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
+		return forceErr
+	})
+
+	drainPreUpdateCache()
+
+	row.Set("status", "declined")
+	if err := app.Save(row); !errors.Is(err, forceErr) {
+		t.Fatalf("expected forced update failure, got %v", err)
+	}
+
+	if got := countPreUpdateCache(); got != 0 {
+		t.Errorf("preUpdateCache leak: expected 0 entries after failed update, got %d", got)
 	}
 }
 
@@ -409,7 +489,7 @@ func TestHook_RequesterIDMutationRecomputesOldPair(t *testing.T) {
 	// Precondition: pair (100, 200) both resolved → both reciprocal=true.
 	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
-	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	gotBA := mustFindRecord(t, app, rowBA.Id)
 	if !gotBA.GetBool("is_reciprocal") {
 		t.Fatalf("precondition: B→A expected reciprocal=true, got false")
 	}
@@ -418,15 +498,11 @@ func TestHook_RequesterIDMutationRecomputesOldPair(t *testing.T) {
 	// now orphaned: B→A still points at requester 100, but no row at (100, 200)
 	// exists any more. B→A's is_reciprocal must flip to false.
 	rowAB.Set("requester_id", 300)
-	err = app.Save(rowAB)
-	if err != nil {
+	if err := app.Save(rowAB); err != nil {
 		t.Fatalf("save mutated AB: %v", err)
 	}
 
-	gotBA, err = app.FindRecordById("bunk_requests", rowBA.Id)
-	if err != nil {
-		t.Fatalf("reload BA: %v", err)
-	}
+	gotBA = mustFindRecord(t, app, rowBA.Id)
 	if gotBA.GetBool("is_reciprocal") {
 		t.Errorf("after requester_id mutation: B→A expected is_reciprocal=false (old pair orphaned), got true")
 	}

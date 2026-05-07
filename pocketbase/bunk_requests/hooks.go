@@ -31,7 +31,13 @@ var preUpdateCache sync.Map // map[string]pairCoords
 func RegisterHooks(app *pocketbase.PocketBase) {
 	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		captureOldCoords(e)
-		return e.Next()
+		err := e.Next()
+		if err != nil && e.Record != nil && e.Record.Id != "" {
+			// AfterUpdateSuccess won't fire, so cleanup the cache entry
+			// captureOldCoords just stored — otherwise it leaks.
+			preUpdateCache.Delete(e.Record.Id)
+		}
+		return err
 	})
 	app.OnRecordAfterCreateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		runRecompute(e)
@@ -59,7 +65,17 @@ func captureOldCoords(e *core.RecordEvent) {
 		return
 	}
 	old, err := e.App.FindRecordById("bunk_requests", r.Id)
-	if err != nil || old == nil {
+	if err != nil {
+		// Best-effort: a failed read here means the post-update recompute
+		// won't see the OLD pair coords, so an ID-mutating update could
+		// orphan a stale partner row. Log so drift is at least traceable.
+		slog.Warn("captureOldCoords: pre-update read failed",
+			"record_id", r.Id,
+			"error", err,
+		)
+		return
+	}
+	if old == nil {
 		return
 	}
 	preUpdateCache.Store(r.Id, pairCoords{
