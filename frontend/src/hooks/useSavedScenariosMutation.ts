@@ -273,7 +273,13 @@ async function copyLockedGroupsToScenario(
   for (const sourceMember of sourceMembers) {
     const newGroupId = groupIdMap.get(sourceMember.group)
     if (!newGroupId) {
-      // The source group failed to create — skip its members.
+      // The source group failed to create — record each orphaned member as a
+      // failure too, so the aggregate count reflects the actual damage rather
+      // than just the single failed group create.
+      memberErrors.push({
+        assignment: sourceMember,
+        error: new Error(`Skipped: parent locked group ${sourceMember.group} failed to copy`),
+      })
       continue
     }
 

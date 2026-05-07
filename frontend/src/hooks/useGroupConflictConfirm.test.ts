@@ -272,4 +272,126 @@ describe('useGroupConflictConfirm', () => {
       expect(options?.filter ?? '').toContain('scenario-xyz')
     })
   })
+
+  describe('checkConflict — concurrent calls', () => {
+    it('resolves the prior pending promise as "cancelled" when a second call supersedes it', async () => {
+      // Both calls hit a conflict and would open a dialog.  The first call's
+      // resolver must not be silently dropped — release it as 'cancelled' so the
+      // awaiter cannot hang.
+      const existingMember = makeMember('attendee-emma', 'group-existing')
+      const existingGroup = makeGroup('group-existing', 'Garcia, Smith')
+
+      getCollection('locked_group_members').getFullList.mockResolvedValue([existingMember])
+      getCollection('locked_groups').getFullList.mockResolvedValue([existingGroup])
+
+      const { result } = renderHook(() => useGroupConflictConfirm())
+
+      let firstPromise: Promise<string | null>
+      act(() => {
+        firstPromise = result.current.checkConflict({
+          attendeePbId: 'attendee-emma',
+          targetGroupId: 'group-new-1',
+          targetGroupName: 'First',
+          scenarioId: SCENARIO_ID,
+        })
+      })
+
+      // Wait for the first dialog to be installed
+      await waitFor(() => {
+        expect(result.current.dialogState.isOpen).toBe(true)
+      })
+
+      // Start a second concurrent call — should resolve the first as 'cancelled'
+      let secondPromise: Promise<string | null>
+      act(() => {
+        secondPromise = result.current.checkConflict({
+          attendeePbId: 'attendee-liam',
+          targetGroupId: 'group-new-2',
+          targetGroupName: 'Second',
+          scenarioId: SCENARIO_ID,
+        })
+      })
+
+      let firstOutcome: string | null | undefined
+      await act(async () => {
+        firstOutcome = await firstPromise!
+      })
+      expect(firstOutcome).toBe('cancelled')
+
+      // The second call's dialog should still be open and resolvable
+      await waitFor(() => {
+        expect(result.current.dialogState.isOpen).toBe(true)
+      })
+      act(() => {
+        result.current.dialogState.onConfirm()
+      })
+
+      let secondOutcome: string | null | undefined
+      await act(async () => {
+        secondOutcome = await secondPromise!
+      })
+      expect(secondOutcome).toBe('confirmed')
+    })
+  })
+
+  describe('checkConflict — unmount cleanup', () => {
+    it('resolves a pending dialog as "cancelled" when the host unmounts', async () => {
+      const existingMember = makeMember('attendee-emma', 'group-existing')
+      const existingGroup = makeGroup('group-existing', 'Garcia, Smith')
+
+      getCollection('locked_group_members').getFullList.mockResolvedValueOnce([existingMember])
+      getCollection('locked_groups').getFullList.mockResolvedValueOnce([existingGroup])
+
+      const { result, unmount } = renderHook(() => useGroupConflictConfirm())
+
+      let checkPromise: Promise<string | null>
+      act(() => {
+        checkPromise = result.current.checkConflict({
+          attendeePbId: 'attendee-emma',
+          targetGroupId: 'group-new',
+          targetGroupName: 'Johnson, Garcia',
+          scenarioId: SCENARIO_ID,
+        })
+      })
+
+      await waitFor(() => {
+        expect(result.current.dialogState.isOpen).toBe(true)
+      })
+
+      // Unmount mid-dialog — the pending promise must resolve as 'cancelled'
+      // so callers don't hang forever.
+      unmount()
+
+      let outcome: string | null | undefined
+      await act(async () => {
+        outcome = await checkPromise!
+      })
+      expect(outcome).toBe('cancelled')
+    })
+  })
+
+  describe('checkConflict — PB fetch failure (safe degradation)', () => {
+    it('returns null when the members fetch rejects (treats failure as no conflict)', async () => {
+      // If PocketBase is down, blocking the create flow with an opaque error is
+      // worse than silently allowing the create — the user can still verify by
+      // visually inspecting their groups.  Match the #481 pattern: log + degrade.
+      const fetchError = new Error('network blip')
+      getCollection('locked_group_members').getFullList.mockRejectedValueOnce(fetchError)
+
+      const { result } = renderHook(() => useGroupConflictConfirm())
+
+      let outcome: string | null | undefined
+      await act(async () => {
+        outcome = await result.current.checkConflict({
+          attendeePbId: 'attendee-emma',
+          targetGroupId: 'group-new',
+          targetGroupName: 'Johnson, Garcia',
+          scenarioId: SCENARIO_ID,
+        })
+      })
+
+      expect(outcome).toBeNull()
+      expect(result.current.dialogState.isOpen).toBe(false)
+    })
+  })
 })

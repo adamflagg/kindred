@@ -359,12 +359,23 @@ describe('#1046: copyScenarioToScenario also copies locked friend groups', () =>
     // All 3 members created
     expect(membersCol.create).toHaveBeenCalledTimes(3)
 
-    // Members point to the NEW group IDs (not the old source IDs).
+    // Each member ends up attached to the correct mapped destination group —
+    // not just "any new id, but not the old one."  This catches a swap where
+    // every member would point to the same wrong destination group.
     const memberCalls = (membersCol.create as Mock).mock.calls as Array<[Record<string, unknown>]>
-    const newGroupIds = new Set(memberCalls.map((call) => call[0]['group']))
-    // The new group IDs should NOT include the old source IDs.
-    expect(newGroupIds.has('grp-A')).toBe(false)
-    expect(newGroupIds.has('grp-B')).toBe(false)
+    const liamGroupNewId = "new-group-for-Liam's Group"
+    const oliviaGroupNewId = "new-group-for-Olivia's Group"
+    const tuples = memberCalls.map((call) => ({
+      group: call[0]['group'],
+      attendee: call[0]['attendee'],
+    }))
+    expect(tuples).toEqual(
+      expect.arrayContaining([
+        { group: liamGroupNewId, attendee: 'attendee-liam' },
+        { group: liamGroupNewId, attendee: 'attendee-riley' },
+        { group: oliviaGroupNewId, attendee: 'attendee-olivia' },
+      ])
+    )
   })
 
   it('member create error: aggregates and throws after the loop', async () => {
@@ -399,6 +410,49 @@ describe('#1046: copyScenarioToScenario also copies locked friend groups', () =>
 
     // Both member creates attempted (no short-circuit on first error).
     expect(membersCol.create).toHaveBeenCalledTimes(2)
+  })
+
+  it('group create fails: members of that group are reported as skipped failures, not silently dropped', async () => {
+    // When a group create fails, its members must NOT be silently skipped
+    // because the aggregate error message would under-report the damage.
+    const sourceGroups = [
+      { id: 'grp-A', name: 'GroupA', color: '#bfdbfe', session: 'pb-session-1', year: 2025 },
+      { id: 'grp-B', name: 'GroupB', color: '#bbf7d0', session: 'pb-session-1', year: 2025 },
+    ]
+    const sourceMembers = [
+      { id: 'mem-1', group: 'grp-A', attendee: 'attendee-liam', year: 2025 },
+      { id: 'mem-2', group: 'grp-A', attendee: 'attendee-riley', year: 2025 },
+      { id: 'mem-3', group: 'grp-B', attendee: 'attendee-olivia', year: 2025 },
+    ]
+    setupCopySession('dest-id', [], sourceGroups, sourceMembers)
+
+    // Make ONLY the first group create fail.  Members of grp-A (mem-1, mem-2)
+    // should be reported as failures because the parent group never copied;
+    // mem-3 (in grp-B) should still be copied successfully.
+    const groupsCol = getCollection('locked_groups')
+    let groupCallIndex = 0
+    groupsCol.create.mockReset()
+    groupsCol.create.mockImplementation(async (data: Record<string, unknown>) => {
+      if (groupCallIndex++ === 0) throw new Error('simulated group conflict')
+      return { id: `new-group-for-${String(data['name'] ?? 'x')}`, ...data }
+    })
+
+    const { result } = renderHook(() => useCreateScenario(), { wrapper: createWrapper() })
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          name: 'Skipped Members Copy',
+          session_cm_id: 1000001,
+          year: 2025,
+          copyOptions: { fromScenario: 'source-scenario-id' },
+        })
+        // 1 failed group + 2 skipped members = 3 total failures.
+      ).rejects.toThrow(/Failed to copy 3/)
+    })
+
+    // Only mem-3 (in successfully copied grp-B) should have been created.
+    const membersCol = getCollection('locked_group_members')
+    expect(membersCol.create).toHaveBeenCalledTimes(1)
   })
 
   it('fromProduction=true does NOT copy friend groups', async () => {

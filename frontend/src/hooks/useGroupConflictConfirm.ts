@@ -22,7 +22,7 @@
  * ```
  */
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { pb } from '../lib/pocketbase'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -93,6 +93,14 @@ export function useGroupConflictConfirm(): UseGroupConflictConfirmReturn {
     resolveRef.current = null
   }, [])
 
+  // Release any pending dialog awaiter on unmount so callers don't hang forever.
+  useEffect(() => {
+    return () => {
+      resolveRef.current?.('cancelled')
+      resolveRef.current = null
+    }
+  }, [])
+
   const checkConflict = useCallback(
     async ({
       attendeePbId,
@@ -107,10 +115,19 @@ export function useGroupConflictConfirm(): UseGroupConflictConfirmReturn {
         scenario: scenarioId,
       })
 
-      const members = await pb.collection('locked_group_members').getFullList<MemberRecord>({
-        filter,
-        expand: 'group',
-      })
+      // Treat fetch failure as no-conflict (safe degradation, mirrors the
+      // pattern from PR #481): blocking the create flow on a transient PB blip
+      // is worse than letting staff verify visually after the fact.
+      let members: MemberRecord[]
+      try {
+        members = await pb.collection('locked_group_members').getFullList<MemberRecord>({
+          filter,
+          expand: 'group',
+        })
+      } catch (err) {
+        console.warn('useGroupConflictConfirm: members fetch failed, skipping check', err)
+        return null
+      }
 
       // Find any membership that is NOT in the target group
       const conflictMember = members.find((m) => m.group !== targetGroupId)
@@ -133,6 +150,11 @@ export function useGroupConflictConfirm(): UseGroupConflictConfirmReturn {
       } catch {
         // Non-critical — fall back to generic label
       }
+
+      // If a prior call is still awaiting user response, release it as
+      // 'cancelled' before installing the new resolver — otherwise the old
+      // awaiter would hang forever.
+      resolveRef.current?.('cancelled')
 
       // Open dialog and wait for user response
       setExistingGroupName(conflictGroupName)
