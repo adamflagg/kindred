@@ -12,8 +12,12 @@ import { BunkRequestRow } from '../BunkRequestRow'
 import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
-import type { SatisfactionMap } from '../../hooks/camper/types'
-import type { BucketCount, CamperSatisfaction, RequestBucket } from '../../types/satisfaction'
+import type {
+  BucketCount,
+  CamperSatisfaction,
+  RequestBucket,
+  SatisfactionEntry,
+} from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
@@ -50,8 +54,13 @@ interface BunkingStatusPanelProps {
   sessionShortName: string
   allBunkRequests: EnhancedBunkRequest[]
   agePreferenceRequests: EnhancedBunkRequest[]
-  satisfactionData: SatisfactionMap
-  satisfactionLoading: boolean
+  /**
+   * Lookup function returning {satisfied, detail} for a given request id.
+   * Callers build this from BunkRequestProvider.getSatisfiedRequestInfo (Path 2)
+   * or from computeRequestSatisfaction (Path 1, draft drag — only
+   * CamperDetailsPanel with hasClientView=true uses this).
+   */
+  getRequestSatisfaction: (requestId: string) => SatisfactionEntry
   /**
    * Authoritative per-camper bucket counts from `/api/satisfaction`. Slice
    * totals on this panel must read from `counted_totals` to stay aligned with
@@ -66,8 +75,7 @@ export function BunkingStatusPanel({
   sessionShortName,
   allBunkRequests,
   agePreferenceRequests,
-  satisfactionData,
-  satisfactionLoading,
+  getRequestSatisfaction,
   camperSatisfaction,
 }: BunkingStatusPanelProps) {
   // The per-camper list must agree with the summary above — both filter to
@@ -143,10 +151,10 @@ export function BunkingStatusPanel({
     const bunkWithRows = summaryRequests.filter((r) => r.source_field === 'bunk_with')
     if (bunkWithRows.length === 0) return centralizedMaterialParent
     const satisfied = bunkWithRows.filter(
-      (r) => satisfactionData[r.id]?.status === 'satisfied'
+      (r) => getRequestSatisfaction(r.id).satisfied === true
     ).length
     return { total: bunkWithRows.length, satisfied }
-  }, [aggregatorEmpty, centralizedMaterialParent, summaryRequests, satisfactionData])
+  }, [aggregatorEmpty, centralizedMaterialParent, summaryRequests, getRequestSatisfaction])
 
   const showParent = materialParent.total > 0
   const showStaff = staff.total > 0
@@ -287,7 +295,7 @@ export function BunkingStatusPanel({
         {parentRows.length > 0 || staffRows.length > 0 || ageRows.length > 0 ? (
           <div className="space-y-1">
             {parentRows.map((req) => {
-              const sat = satisfactionData[req.id]
+              const sat = getRequestSatisfaction(req.id)
               return (
                 <BunkRequestRow
                   key={req.id}
@@ -296,26 +304,24 @@ export function BunkingStatusPanel({
                   // uses camelCase requestedPersonName (not the PB snake_case field), so
                   // we pass the targetPerson we already computed in partitionInput.
                   targetPerson={req.targetPerson as unknown as PersonsResponse | null}
-                  satisfaction={sat?.status ?? null}
+                  satisfied={sat.satisfied}
+                  detail={sat.detail}
                   showSatisfaction={isConfirmedRequest(req)}
-                  satisfactionLoading={satisfactionLoading}
-                  satisfactionDetail={sat?.detail}
                 />
               )
             })}
 
             {parentRows.length > 0 && staffRows.length > 0 && <ParentStaffDivider />}
             {staffRows.map((req) => {
-              const sat = satisfactionData[req.id]
+              const sat = getRequestSatisfaction(req.id)
               return (
                 <BunkRequestRow
                   key={req.id}
                   request={req as unknown as BunkRequestsResponse}
                   targetPerson={req.targetPerson as unknown as PersonsResponse | null}
-                  satisfaction={sat?.status ?? null}
+                  satisfied={sat.satisfied}
+                  detail={sat.detail}
                   showSatisfaction={isConfirmedRequest(req)}
-                  satisfactionLoading={satisfactionLoading}
-                  satisfactionDetail={sat?.detail}
                 />
               )
             })}
@@ -324,7 +330,7 @@ export function BunkingStatusPanel({
               <AgePreferenceDivider />
             )}
             {ageRows.map((req) => {
-              const sat = satisfactionData[req.id]
+              const sat = getRequestSatisfaction(req.id)
               const { isMaterialAgePref, isStaffBadge } = resolveBadgeBucket(
                 bucketByRequestId.get(req.id),
                 req
@@ -334,10 +340,9 @@ export function BunkingStatusPanel({
                   key={req.id}
                   request={req as unknown as BunkRequestsResponse}
                   targetPerson={req.targetPerson as unknown as PersonsResponse | null}
-                  satisfaction={sat?.status ?? null}
+                  satisfied={sat.satisfied}
+                  detail={sat.detail}
                   showSatisfaction={true}
-                  satisfactionLoading={satisfactionLoading}
-                  satisfactionDetail={sat?.detail}
                   isMaterialAgePreference={isMaterialAgePref}
                   staffAgeBadge={isStaffBadge}
                 />
