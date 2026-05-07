@@ -126,7 +126,7 @@ describe('createGraphElements', () => {
     {
       source: 2,
       target: 3,
-      edge_type: 'historical',
+      edge_type: 'request',
       priority: 2,
       confidence: 0.7,
       reciprocal: false,
@@ -228,10 +228,8 @@ describe('createGraphElements', () => {
       request: false,
     })
 
-    // The fixture has one 'request' edge (filtered out) and one 'historical'
-    // edge (passes through — type isn't in showEdges, so it isn't filtered).
-    expect(edges).toHaveLength(1)
-    expect(edges[0]?.data.edge_type).toBe('historical')
+    // Both fixture edges are 'request' type; with the toggle off, none survive.
+    expect(edges).toHaveLength(0)
   })
 
   it('includes all edges when all types are enabled', () => {
