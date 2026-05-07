@@ -133,10 +133,23 @@ export function CssVerticalBarChart({
               const barHeightPx = (item.value / axisMax) * drawingHeight
               const label = labelFormat ? labelFormat(item) : String(item.value)
 
+              const sparseHoverClass =
+                columnSizing.mode === 'sparse'
+                  ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}`
+                  : ''
+              const columnClass = [
+                'relative flex h-full flex-col items-center justify-end',
+                columnSizing.maxWidth ? '' : 'flex-1',
+                isClickable && 'cursor-pointer',
+                sparseHoverClass,
+              ]
+                .filter(Boolean)
+                .join(' ')
+
               return (
                 <div
                   key={index}
-                  className={`relative flex h-full flex-col items-center justify-end ${columnSizing.maxWidth ? '' : 'flex-1'} ${isClickable ? 'cursor-pointer' : ''} ${columnSizing.mode === 'sparse' ? `rounded transition-colors duration-150 ${hoveredIndex === index ? 'bg-foreground/[0.06]' : ''}` : ''}`}
+                  className={columnClass}
                   style={{
                     ...(columnSizing.maxWidth
                       ? { maxWidth: `${columnSizing.maxWidth}px`, width: '100%' }

@@ -107,6 +107,18 @@ export function GeoDetailList({
                       }
                     : undefined
 
+                  let highlightClass = ''
+                  if (isSelected) highlightClass = 'bg-primary/10'
+                  else if (isClickable) highlightClass = 'hover:bg-muted/30'
+
+                  const rowClass = [
+                    'border-border border-t transition-colors',
+                    isClickable && 'cursor-pointer',
+                    highlightClass,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+
                   return (
                     <tr
                       key={item.name}
@@ -123,7 +135,7 @@ export function GeoDetailList({
                       }
                       tabIndex={isClickable ? 0 : undefined}
                       role={isClickable ? 'button' : undefined}
-                      className={`border-border border-t transition-colors ${isClickable ? 'cursor-pointer' : ''} ${isSelected ? 'bg-primary/10' : isClickable ? 'hover:bg-muted/30' : ''} `}
+                      className={rowClass}
                     >
                       <td className="text-foreground px-4 py-2">{item.name}</td>
                       <td className="text-foreground px-4 py-2 text-right font-medium">
