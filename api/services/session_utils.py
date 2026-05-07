@@ -62,11 +62,19 @@ async def get_related_session_ids(session_cm_id: int, year: int, pb_client: Pock
             query_params={"filter": f'session_type = "ag" && parent_id = {session_cm_id} && year = {year}'},
         )
 
-        related_ids.extend(getattr(session, "cm_id", 0) for session in ag_sessions)
+        for session in ag_sessions:
+            cm_id = getattr(session, "cm_id", None)
+            if cm_id is None or cm_id <= 0:
+                logger.warning(
+                    f"AG session linked to parent {session_cm_id} year {year} is missing a valid cm_id "
+                    f"(got {cm_id!r}) — skipping to avoid emitting session_id=0 in downstream filters"
+                )
+                continue
+            related_ids.append(cm_id)
 
         logger.debug(f"Session {session_cm_id} ({session_name}) year {year} has related AG sessions: {related_ids}")
 
     except Exception as e:
-        logger.error(f"Error finding related sessions for {session_cm_id}: {e}")
+        logger.error(f"Error finding related sessions for {session_cm_id}: {e}", exc_info=True)
 
     return related_ids
