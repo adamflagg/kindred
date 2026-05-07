@@ -27,9 +27,11 @@ migrate(
     );
     for (const record of records) {
       const metadata = record.get("metadata") || {};
-      metadata.section = "ai-validation-rules";
-      record.set("metadata", metadata);
-      app.save(record);
+      if (metadata.section !== "ai-validation-rules") {
+        metadata.section = "ai-validation-rules";
+        record.set("metadata", metadata);
+        app.save(record);
+      }
     }
   },
 );
