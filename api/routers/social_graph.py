@@ -267,7 +267,7 @@ async def get_session_social_graph(
                         source=source,
                         target=target,
                         weight=data.get("weight", 1.0),
-                        type=edge_type,
+                        edge_type=edge_type,
                         reciprocal=graph.has_edge(target, source),
                         confidence=data.get("metadata", {}).get("request", {}).get("confidence"),
                         priority=data.get("metadata", {}).get("request", {}).get("priority"),
@@ -284,7 +284,7 @@ async def get_session_social_graph(
                         source=source,
                         target=target,
                         weight=data.get("weight", 1.0),
-                        type=edge_type,
+                        edge_type=edge_type,
                         reciprocal=graph.has_edge(target, source),
                         confidence=data.get("confidence"),
                         priority=data.get("priority"),
@@ -541,7 +541,7 @@ async def get_bunk_social_graph(
                         source=source,
                         target=target,
                         weight=data.get("weight", 1.0),
-                        type=primary_type,
+                        edge_type=primary_type,
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence") if is_request else None,
                         priority=data.get("priority") if is_request else None,
@@ -556,7 +556,7 @@ async def get_bunk_social_graph(
                             source=source,
                             target=target,
                             weight=1.0,
-                            type=secondary_type,
+                            edge_type=secondary_type,
                             reciprocal=is_reciprocal,
                             confidence=data.get("request_confidence"),
                             priority=data.get("request_priority"),
@@ -570,7 +570,7 @@ async def get_bunk_social_graph(
                         source=source,
                         target=target,
                         weight=data.get("weight", 1.0),
-                        type=edge_type,
+                        edge_type=edge_type,
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence"),
                         priority=data.get("priority"),
@@ -581,7 +581,7 @@ async def get_bunk_social_graph(
         # Log final edge counts
         edge_type_summary: dict[str, int] = {}
         for edge in edges:
-            edge_type_summary[edge.type] = edge_type_summary.get(edge.type, 0) + 1
+            edge_type_summary[edge.edge_type] = edge_type_summary.get(edge.edge_type, 0) + 1
         logger.info(f"Final edges being sent to frontend: {edge_type_summary}, total={len(edges)}")
 
         # Calculate bunk-specific metrics

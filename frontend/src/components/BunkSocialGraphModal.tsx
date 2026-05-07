@@ -71,7 +71,7 @@ interface GraphEdge {
   source: number
   target: number
   weight: number
-  type: string
+  edge_type: string
   reciprocal: boolean
   confidence?: number
   priority?: number
@@ -430,7 +430,7 @@ export default function BunkSocialGraphModal({
           id: `edge-${edgeIndex++}`,
           source: `node-${edge.source}`,
           target: `node-${edge.target}`,
-          type: edge.type,
+          edge_type: edge.edge_type,
         },
       })
     })

@@ -294,11 +294,11 @@ class TestCrossScopeEdgeModel:
     """
 
     def test_minimal_construction(self) -> None:
-        """Required fields: source, target, type. Everything else has defaults."""
-        edge = CrossScopeEdge(source=1, target=2, type="request")
+        """Required fields: source, target, edge_type. Everything else has defaults."""
+        edge = CrossScopeEdge(source=1, target=2, edge_type="request")
         assert edge.source == 1
         assert edge.target == 2
-        assert edge.type == "request"
+        assert edge.edge_type == "request"
         assert edge.weight == 1.0
         assert edge.reciprocal is False
         assert edge.cross_scope is True
@@ -308,7 +308,7 @@ class TestCrossScopeEdgeModel:
         edge = CrossScopeEdge(
             source=10,
             target=20,
-            type="request",
+            edge_type="request",
             weight=2.5,
             request_type="bunk_with",
             priority=5,
@@ -323,28 +323,28 @@ class TestCrossScopeEdgeModel:
     def test_cross_scope_false_is_rejected(self) -> None:
         """Pydantic should reject cross_scope=False since the field is Literal[True]."""
         with pytest.raises(ValidationError):
-            CrossScopeEdge(source=1, target=2, type="request", cross_scope=False)
+            CrossScopeEdge(source=1, target=2, edge_type="request", cross_scope=False)
 
     def test_missing_source_raises(self) -> None:
         with pytest.raises(ValidationError):
-            CrossScopeEdge(target=2, type="request")  # type: ignore[call-arg]
+            CrossScopeEdge(target=2, edge_type="request")  # type: ignore[call-arg]
 
     def test_missing_target_raises(self) -> None:
         with pytest.raises(ValidationError):
-            CrossScopeEdge(source=1, type="request")  # type: ignore[call-arg]
+            CrossScopeEdge(source=1, edge_type="request")  # type: ignore[call-arg]
 
-    def test_missing_type_raises(self) -> None:
+    def test_missing_edge_type_raises(self) -> None:
         with pytest.raises(ValidationError):
             CrossScopeEdge(source=1, target=2)  # type: ignore[call-arg]
 
     def test_optional_fields_default_to_none(self) -> None:
-        edge = CrossScopeEdge(source=1, target=2, type="historical")
+        edge = CrossScopeEdge(source=1, target=2, edge_type="historical")
         assert edge.request_type is None
         assert edge.priority is None
         assert edge.confidence is None
 
     def test_serialises_to_dict_with_cross_scope_true(self) -> None:
-        edge = CrossScopeEdge(source=1, target=2, type="request")
+        edge = CrossScopeEdge(source=1, target=2, edge_type="request")
         d = edge.model_dump()
         assert d["cross_scope"] is True
         assert d["source"] == 1
@@ -358,8 +358,8 @@ class TestSocialGraphResponseCrossScopeEdgesTyped:
     def test_accepts_cross_scope_edge_instances(self) -> None:
         """list[CrossScopeEdge] — model instances accepted."""
         edges = [
-            CrossScopeEdge(source=1, target=3, type="request"),
-            CrossScopeEdge(source=2, target=4, type="sibling", reciprocal=True),
+            CrossScopeEdge(source=1, target=3, edge_type="request"),
+            CrossScopeEdge(source=2, target=4, edge_type="sibling", reciprocal=True),
         ]
         resp = SocialGraphResponse(
             nodes=[],
@@ -373,7 +373,7 @@ class TestSocialGraphResponseCrossScopeEdgesTyped:
 
     def test_accepts_raw_dicts_via_pydantic_coercion(self) -> None:
         """Pydantic v2 coerces compatible dicts into CrossScopeEdge instances."""
-        raw = [{"source": 1, "target": 3, "type": "request"}]
+        raw = [{"source": 1, "target": 3, "edge_type": "request"}]
         resp = SocialGraphResponse(
             nodes=[],
             edges=[],
@@ -385,7 +385,7 @@ class TestSocialGraphResponseCrossScopeEdgesTyped:
         assert resp.cross_scope_edges[0].cross_scope is True
 
     def test_rejects_dict_missing_required_fields(self) -> None:
-        """Dict without 'type' fails Pydantic validation for CrossScopeEdge."""
+        """Dict without 'edge_type' fails Pydantic validation for CrossScopeEdge."""
         with pytest.raises(ValidationError):
             SocialGraphResponse(
                 nodes=[],
@@ -424,7 +424,7 @@ class TestApplyScopeReturnsCrossScopeEdgeObjects:
         _, cross, _ = apply_scope(g, in_scope_bunk_cm_ids={100}, include_cross_scope=True)
         by_pair = {(e.source, e.target): e for e in cross}
         e12 = by_pair[(1, 2)]
-        assert e12.type == "request"
+        assert e12.edge_type == "request"
         assert e12.priority == 3
         assert e12.confidence == 0.8
         assert e12.request_type == "bunk_with"
