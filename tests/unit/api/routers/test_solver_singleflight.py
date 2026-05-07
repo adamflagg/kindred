@@ -415,7 +415,7 @@ class TestScenarioSolverSingleFlight:
     # Test A: in-progress scenario run must block /api/solver/run
     # ------------------------------------------------------------------
 
-    def test_A_scenario_endpoint_writes_session_cm_id_key(self) -> None:
+    def test_a_scenario_endpoint_writes_session_cm_id_key(self) -> None:
         """POST /api/scenarios/{id}/solve must write "session_cm_id" (not "session_id") to solver_runs.
 
         Root cause of the guard gap: scenarios.py wrote solver_runs entries with
@@ -441,7 +441,7 @@ class TestScenarioSolverSingleFlight:
         )
         assert run_entry["session_cm_id"] == 5001  # matches mock_scenario.session_cm_id
 
-    def test_A_scenario_run_blocks_solver_run_for_same_session(self) -> None:
+    def test_a_scenario_run_blocks_solver_run_for_same_session(self) -> None:
         """POST /api/solver/run must return 409 when a scenario run is in-progress for the same session.
 
         Root cause: scenarios.py wrote solver_runs entries with key "session_id"
@@ -473,7 +473,7 @@ class TestScenarioSolverSingleFlight:
         assert detail["detail"] == "Solver already running for session 5001"
         assert detail["in_progress_run_id"] == scenario_run_id
 
-    def test_A_scenario_run_does_not_block_solver_run_for_different_session(self) -> None:
+    def test_a_scenario_run_does_not_block_solver_run_for_different_session(self) -> None:
         """POST /api/solver/run must succeed when the in-progress scenario run is for a different session."""
         scenario_run_id = "scenario-run-other-session"
         solver_runs_state: dict[str, Any] = {
@@ -499,7 +499,7 @@ class TestScenarioSolverSingleFlight:
     # Test B: scenario endpoint must block duplicate scenario runs
     # ------------------------------------------------------------------
 
-    def test_B_scenario_run_blocks_second_scenario_run_for_same_session(self) -> None:
+    def test_b_scenario_run_blocks_second_scenario_run_for_same_session(self) -> None:
         """POST /api/scenarios/{id}/solve must return 409 when a run is already in-progress for the same session.
 
         The scenario endpoint had no single-flight guard at all prior to the fix.
@@ -525,7 +525,7 @@ class TestScenarioSolverSingleFlight:
         assert detail["detail"] == "Solver already running for session 5001"
         assert detail["in_progress_run_id"] == existing_scenario_run_id
 
-    def test_B_scenario_run_allowed_when_no_in_progress_run_for_session(self) -> None:
+    def test_b_scenario_run_allowed_when_no_in_progress_run_for_session(self) -> None:
         """POST /api/scenarios/{id}/solve must succeed when no run is in-progress for the session."""
         solver_runs_state: dict[str, Any] = {}
 
