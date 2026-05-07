@@ -257,26 +257,28 @@ def _calculate_penalties(
     """Calculate soft constraint penalties for the current state."""
     penalties: dict[str, int] = {}
 
-    # Grade spread penalty (B3 — formula rewrite happens in Task 3.4).
-    # Read via the centralized accessor so this matches the OR-Tools cost.
+    # Grade spread penalty (B3 fix). Mirrors the OR-Tools cost term in
+    # ``bunking/solver/constraints/grade_spread.py:add_grade_spread_soft_constraint``,
+    # which uses ``excess = max(0, unique_grade_count - max_unique_grades)``
+    # and contributes ``-penalty_weight * excess`` to the objective. The
+    # previous formula counted bunks with ANY range > max_spread once each,
+    # which both over-counted in some cases (range=5 but unique=2) and
+    # under-counted in others (range=2 but unique=3 with two equal-distance
+    # gaps).
     grade_spread_penalty_weight = grade_spread_penalty()
-    max_grade_spread = config.get_int("constraint.grade_spread.max_spread", default=2)
+    max_unique_grades = config.get_int("constraint.grade_spread.max_spread", default=2)
 
-    grade_spread_violations = 0
+    total_grade_spread_excess = 0
     for bunk_cm_id, person_ids in bunk_to_persons.items():
-        grades: list[int] = []
-        for pid in person_ids:
-            if pid in person_by_cm_id:
-                grade = person_by_cm_id[pid].get("grade")
-                if grade is not None:
-                    grades.append(grade)
-        if len(grades) >= 2:
-            spread = max(grades) - min(grades)
-            if spread > max_grade_spread:
-                grade_spread_violations += 1
+        unique_grades = {
+            person_by_cm_id[pid].get("grade")
+            for pid in person_ids
+            if pid in person_by_cm_id and person_by_cm_id[pid].get("grade") is not None
+        }
+        total_grade_spread_excess += max(0, len(unique_grades) - max_unique_grades)
 
-    if grade_spread_violations > 0:
-        penalties["grade_spread"] = grade_spread_violations * grade_spread_penalty_weight
+    if total_grade_spread_excess > 0:
+        penalties["grade_spread"] = total_grade_spread_excess * grade_spread_penalty_weight
 
     # Capacity penalty (B1/B2 fix — read via the centralized accessor)
     capacity_penalty = cabin_capacity_penalty()

@@ -120,11 +120,18 @@ class TestCalculatePenalties:
         assert "under_occupancy" in penalties
 
     def test_grade_spread_violation(self, mock_config):
-        """Test grade spread penalty calculation."""
+        """Test grade spread penalty calculation.
+
+        After the B3 fix, penalty scales with the number of EXCESS unique
+        grades rather than counting each violating bunk once. Here the
+        bunk has 4 unique grades {3, 5, 7, 8}; with max=2, excess=2, so
+        penalty = 2 * 100 = 200. Under the old (range-based) formula this
+        was counted as a single violation worth 100.
+        """
         person_to_bunk = {1: 100, 2: 100, 3: 100, 4: 100}
         bunk_to_persons = {100: [1, 2, 3, 4]}
         person_by_cm_id = {
-            1: {"cm_id": 1, "grade": 3},  # Wide spread: 3 to 8 = 5 grades
+            1: {"cm_id": 1, "grade": 3},  # 4 unique grades: {3, 5, 7, 8}
             2: {"cm_id": 2, "grade": 5},
             3: {"cm_id": 3, "grade": 7},
             4: {"cm_id": 4, "grade": 8},
@@ -133,9 +140,9 @@ class TestCalculatePenalties:
 
         penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
 
-        # Grade spread 5 > max 2, so one violation = 100 penalty
+        # 4 unique grades, max=2 → excess=2 → penalty = 2 * 100 = 200.
         assert "grade_spread" in penalties
-        assert penalties["grade_spread"] == 100
+        assert penalties["grade_spread"] == 200
 
     def test_over_capacity_violation(self, mock_config):
         """Test over capacity penalty calculation."""
@@ -529,7 +536,12 @@ class TestEvaluateScenarioScore:
         assert result.field_scores[SourceField.BUNKING_NOTES]["satisfied"] == 0
 
     def test_penalties_applied(self, mock_config):
-        """Test that penalties are subtracted from total score."""
+        """Test that penalties are subtracted from total score.
+
+        After the B3 fix, grade_spread counts UNIQUE GRADES not range, so
+        we need at least max_unique_grades+1 distinct grades in one bunk to
+        trigger a penalty. With max=2 we put 3 distinct grades in one bunk.
+        """
         requests = [
             {
                 "requester_id": 1,
@@ -542,10 +554,12 @@ class TestEvaluateScenarioScore:
         assignments = [
             {"person_cm_id": 1, "bunk_cm_id": 100},
             {"person_cm_id": 2, "bunk_cm_id": 100},
+            {"person_cm_id": 3, "bunk_cm_id": 100},
         ]
         persons = [
-            {"cm_id": 1, "grade": 3},  # Wide grade spread
-            {"cm_id": 2, "grade": 8},
+            {"cm_id": 1, "grade": 3},  # 3 distinct grades → 1 excess
+            {"cm_id": 2, "grade": 5},
+            {"cm_id": 3, "grade": 8},
         ]
         bunks = [{"cm_id": 100, "max_size": 12}]
 

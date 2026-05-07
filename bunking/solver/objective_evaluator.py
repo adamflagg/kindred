@@ -411,30 +411,32 @@ class ObjectiveEvaluator:
         person_by_cm_id: dict[int, dict[str, Any]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate grade spread soft constraint penalty.
+        """Calculate grade spread soft constraint penalty (B3 fix).
 
-        Reads via the centralized ``grade_spread_penalty()`` accessor so this
-        replicates the OR-Tools cost contribution exactly. The formula is
-        rewritten in Task 3.4 to use unique-grade-count instead of range.
+        Mirrors the OR-Tools cost term in
+        ``bunking/solver/constraints/grade_spread.py:add_grade_spread_soft_constraint``,
+        which uses ``excess = max(0, unique_grade_count - max_unique_grades)``
+        and contributes ``-penalty_weight * excess`` to the objective.
+
+        Previously this method computed grade spread as ``max(grades) -
+        min(grades)``, which over-counts whenever non-adjacent grades are
+        present (e.g. ``{5, 5, 5, 10, 10}``: range=5 but only 2 unique
+        grades). The post-solve score therefore disagreed with what the
+        solver was actually optimizing.
         """
-        max_spread = self.config.get_int("constraint.grade_spread.max_spread", default=2)
+        max_unique_grades = self.config.get_int("constraint.grade_spread.max_spread", default=2)
         penalty_per_grade = grade_spread_penalty()
 
         total_penalty = 0
 
         for person_ids in bunk_to_persons.values():
-            grades: list[int] = []
-            for pid in person_ids:
-                if pid in person_by_cm_id:
-                    grade = person_by_cm_id[pid].get("grade")
-                    if grade is not None:
-                        grades.append(grade)
-
-            if len(grades) >= 2:
-                spread = max(grades) - min(grades)
-                if spread > max_spread:
-                    excess = spread - max_spread
-                    total_penalty += excess * penalty_per_grade
+            unique_grades = {
+                person_by_cm_id[pid].get("grade")
+                for pid in person_ids
+                if pid in person_by_cm_id and person_by_cm_id[pid].get("grade") is not None
+            }
+            excess = max(0, len(unique_grades) - max_unique_grades)
+            total_penalty += excess * penalty_per_grade
 
         return total_penalty
 

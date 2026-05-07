@@ -293,19 +293,26 @@ class TestEvaluateScenarioScore:
         assert high_priority.request_satisfaction_score > low_priority.request_satisfaction_score
 
     def test_grade_spread_penalty(self, mock_config):
-        """Bunks with grade spread > max should incur penalty."""
+        """Bunks with too many unique grades should incur penalty.
+
+        After the B3 fix, the formula uses unique-grade-count, not range:
+        2 unique grades (even far apart) is fine; 3+ unique grades with
+        max=2 triggers a penalty.
+        """
         from bunking.solver.score_evaluator import evaluate_scenario_score
 
-        # Grade spread of 4 exceeds max of 2
+        # 3 unique grades exceeds max of 2 → 1 excess grade → penalty applied
         result = evaluate_scenario_score(
             requests=[],
             assignments=[
                 {"person_cm_id": 100, "bunk_cm_id": 1},
                 {"person_cm_id": 200, "bunk_cm_id": 1},
+                {"person_cm_id": 300, "bunk_cm_id": 1},
             ],
             persons=[
                 {"cm_id": 100, "grade": 3, "gender": "M"},
-                {"cm_id": 200, "grade": 7, "gender": "M"},  # Spread = 4
+                {"cm_id": 200, "grade": 5, "gender": "M"},
+                {"cm_id": 300, "grade": 7, "gender": "M"},
             ],
             bunks=[{"cm_id": 1, "name": "B-1", "gender": "M", "max_size": 12}],
             config=mock_config,
