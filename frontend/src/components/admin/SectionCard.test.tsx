@@ -3,9 +3,10 @@
  * Verifies that object-typed config values are NOT rendered as [object Object].
  */
 import { render, screen } from '@testing-library/react'
-import { vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { SectionCard } from './SectionCard'
 import type { ConfigSection, ConfigWithMetadata } from '../../hooks/useSolverConfig'
+import type { IsoAutoDateString } from '../../types/pocketbase-types'
 
 const makeItem = (overrides: Partial<ConfigWithMetadata> = {}): ConfigWithMetadata => ({
   id: 'rec123',
@@ -14,8 +15,8 @@ const makeItem = (overrides: Partial<ConfigWithMetadata> = {}): ConfigWithMetada
   config_key: 'session_1344559',
   value: 42,
   description: 'A test config',
-  created: '2026-01-01T00:00:00Z',
-  updated: '2026-01-01T00:00:00Z',
+  created: '2026-01-01T00:00:00Z' as unknown as IsoAutoDateString,
+  updated: '2026-01-01T00:00:00Z' as unknown as IsoAutoDateString,
   metadata: { section: 'session-budget', friendly_name: 'Session Budget' },
   ...overrides,
 })
@@ -35,7 +36,6 @@ describe('SectionCard object-value guard', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const objectItem = makeItem({
-      config_key: 'budget.2026.session_1344559',
       // Cast to unknown first to work around strict typing — simulates runtime drift
       value: { participant_goal: 200, session_fee: 5800 } as unknown as number,
     })
@@ -53,11 +53,8 @@ describe('SectionCard object-value guard', () => {
     // Should NOT render the raw object toString representation
     expect(screen.queryByText(/\[object Object\]/i)).toBeNull()
 
-    // Should have warned with the config key
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('budget.2026.session_1344559'),
-      expect.anything()
-    )
+    // Should have warned with the config key (and only the key — no value, to avoid leaking)
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('budget.2026.session_1344559'))
 
     consoleSpy.mockRestore()
   })

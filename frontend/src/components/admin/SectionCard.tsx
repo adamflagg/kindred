@@ -32,7 +32,7 @@ export function SectionCard({
     const fullKey = [item.category, item.subcategory, item.config_key].filter(Boolean).join('.')
     const editedValue = editedValues[fullKey]
     if (item.value !== null && typeof item.value === 'object') {
-      console.warn(`Config row ${fullKey} has object-typed value; not rendering`, item.value)
+      console.warn(`Config row ${fullKey} has object-typed value; not rendering`)
       return null
     }
     const currentValue = editedValue ?? String(item.value)
