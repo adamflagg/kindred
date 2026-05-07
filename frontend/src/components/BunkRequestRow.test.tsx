@@ -123,25 +123,25 @@ describe('BunkRequestRow', () => {
     expect(screen.queryByText('mutual')).not.toBeInTheDocument()
   })
 
-  it('renders "Met" pill when showSatisfaction and satisfied', () => {
+  it('renders "Met" pill when showSatisfaction and satisfied=true', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
         targetPerson={makePerson()}
         showSatisfaction={true}
-        satisfaction="satisfied"
+        satisfied={true}
       />
     )
     expect(screen.getByText('Met')).toBeInTheDocument()
   })
 
-  it('renders red "Unmet" pill when showSatisfaction and not_satisfied', () => {
+  it('renders red "Unmet" pill when showSatisfaction and satisfied=false', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
         targetPerson={makePerson()}
         showSatisfaction={true}
-        satisfaction="not_satisfied"
+        satisfied={false}
       />
     )
     const pill = screen.getByText('Unmet')
@@ -150,13 +150,13 @@ describe('BunkRequestRow', () => {
     expect(pill.className).toMatch(/text-red-700/)
   })
 
-  it('renders nothing on the right when showSatisfaction and unknown', () => {
+  it('renders nothing on the right when showSatisfaction and satisfied=null', () => {
     render(
       <BunkRequestRow
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
         targetPerson={makePerson()}
         showSatisfaction={true}
-        satisfaction="unknown"
+        satisfied={null}
       />
     )
     expect(screen.queryByText('Met')).not.toBeInTheDocument()
@@ -169,11 +169,55 @@ describe('BunkRequestRow', () => {
         request={makeRequest({ status: 'resolved', requestee_id: 200 })}
         targetPerson={makePerson()}
         showSatisfaction={false}
-        satisfaction="satisfied"
+        satisfied={true}
       />
     )
     expect(screen.queryByText('Met')).not.toBeInTheDocument()
     expect(screen.queryByText('Unmet')).not.toBeInTheDocument()
+  })
+
+  it('renders detail string in tooltip on Met pill', () => {
+    render(
+      <BunkRequestRow
+        request={makeRequest({ status: 'resolved', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        showSatisfaction={true}
+        satisfied={true}
+        detail="Same bunk"
+      />
+    )
+    const pill = screen.getByText('Met')
+    expect(pill.parentElement).toHaveAttribute('title', 'Same bunk')
+  })
+
+  it('renders detail string in tooltip on Unmet pill', () => {
+    render(
+      <BunkRequestRow
+        request={makeRequest({ status: 'resolved', requestee_id: 200 })}
+        targetPerson={makePerson()}
+        showSatisfaction={true}
+        satisfied={false}
+        detail="Different bunks"
+      />
+    )
+    const pill = screen.getByText('Unmet')
+    expect(pill.parentElement).toHaveAttribute('title', 'Different bunks')
+  })
+
+  it('renders Unmet with "No grade on file" tooltip for grade-less age preference', () => {
+    render(
+      <BunkRequestRow
+        request={makeRequest({
+          request_type: 'age_preference',
+          age_preference_target: 'older',
+        })}
+        showSatisfaction={true}
+        satisfied={false}
+        detail="No grade on file"
+      />
+    )
+    const pill = screen.getByText('Unmet')
+    expect(pill.parentElement).toHaveAttribute('title', 'No grade on file')
   })
 
   it('renders "Prefers bunking with older campers" for age_preference request', () => {
