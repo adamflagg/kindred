@@ -324,6 +324,37 @@ describe('Modal', () => {
     })
   })
 
+  describe('portal rendering (z-index escape)', () => {
+    // Regression guard for #1024: the modal must render via createPortal so
+    // it escapes the stacking context of any z-[60] panel it may nest inside
+    // (e.g. CamperDetailsPanel). Without portaling, the modal's z-50 wrapper
+    // sits inside the panel's stacking context and can be visually layered
+    // below sibling overlays.
+    it('renders into document.body, not the local container', () => {
+      const { container } = render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Portal content</p>
+        </Modal>
+      )
+
+      // The render container should NOT contain the modal — it lives in body
+      expect(container.querySelector('[role="dialog"]')).toBeNull()
+      // But the modal IS in the document
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    it('uses z-[100] so it sits above z-[60] panels (e.g. CamperDetailsPanel)', () => {
+      render(
+        <Modal isOpen={true} onClose={() => {}}>
+          <p>Content</p>
+        </Modal>
+      )
+
+      const dialog = screen.getByRole('dialog')
+      expect(dialog).toHaveClass('z-[100]')
+    })
+  })
+
   describe('scrollable option', () => {
     it('applies overflow-y-auto when scrollable is true', () => {
       render(

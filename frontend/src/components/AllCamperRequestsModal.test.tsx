@@ -272,11 +272,15 @@ describe('AllCamperRequestsModal framing (no read-only language)', () => {
       },
     ]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
-    const { container } = renderModal()
+    renderModal()
     await screen.findByRole('button', { name: /^approve$/i })
-    expect(container.textContent?.toLowerCase()).not.toContain('read-only')
-    expect(container.textContent?.toLowerCase()).not.toContain('read only')
-    expect(container.textContent?.toLowerCase()).not.toContain('use the main table to take actions')
+    // Modal portals into document.body, so query the dialog itself rather than
+    // the test render container (which would make these negative assertions
+    // trivially pass).
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent?.toLowerCase()).not.toContain('read-only')
+    expect(dialog.textContent?.toLowerCase()).not.toContain('read only')
+    expect(dialog.textContent?.toLowerCase()).not.toContain('use the main table to take actions')
   })
 })
 

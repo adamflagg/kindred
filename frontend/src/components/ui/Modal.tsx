@@ -1,6 +1,7 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ModalProps {
   isOpen: boolean
@@ -89,9 +90,11 @@ export function Modal({
 
   const resolvedLabelledBy = ariaLabelledBy ?? (hasSimpleTitle ? 'modal-title' : undefined)
 
-  return (
+  // Portal to document.body so the modal escapes any parent stacking context
+  // (e.g. z-[60] CamperDetailsPanel). z-[100] keeps us above documented panels.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-labelledby={resolvedLabelledBy}
@@ -173,7 +176,8 @@ export function Modal({
         {/* Footer */}
         {footer && <div data-testid="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
