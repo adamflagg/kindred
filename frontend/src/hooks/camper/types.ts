@@ -39,6 +39,14 @@ export interface OriginalBunkData {
 }
 
 // Satisfaction check types
+//
+// @deprecated TODO(#1155) — sole remaining consumers are
+// `requestSatisfaction.ts` (the computeRequestSatisfaction predicate kept
+// for `CamperDetailsPanel`'s draft drag preview path) and the Path 1 lookup
+// adapter in `CamperDetailsPanel`. When OpenAPI codegen lands and the
+// residual TS predicate goes away, these types are expected to disappear in
+// favor of `SatisfactionEntry` / `PerRequestStatus` in
+// `frontend/src/types/satisfaction.ts`.
 export type SatisfactionStatus = 'satisfied' | 'not_satisfied' | 'checking' | 'unknown'
 
 export interface SatisfactionResult {
