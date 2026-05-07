@@ -23,4 +23,3 @@ export {
   type EnhancedBunkRequest,
   type UseAllBunkRequestsResult,
 } from './useAllBunkRequests'
-export { useSatisfactionData, type UseSatisfactionDataResult } from './useSatisfactionData'
