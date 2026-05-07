@@ -539,26 +539,6 @@ class SocialGraph:
 
         return signals
 
-    def _calculate_cohesion(self, subgraph: nx.Graph) -> float:
-        """Calculate group cohesion metric"""
-        if subgraph.number_of_nodes() < 2:
-            return 0.0
-
-        # Cohesion based on average edge weight
-        total_weight = sum(data.get("weight", 1.0) for _, _, data in subgraph.edges(data=True))
-        num_edges = subgraph.number_of_edges()
-
-        if num_edges == 0:
-            return 0.0
-
-        avg_weight = total_weight / num_edges
-        max_possible_edges = (subgraph.number_of_nodes() * (subgraph.number_of_nodes() - 1)) / 2
-
-        # Normalize by density and average weight
-        cohesion = (num_edges / max_possible_edges) * avg_weight
-        result: float = min(1.0, cohesion)
-        return result
-
     def _get_ego_network(self, node: int, session_cm_id: int, radius: int = 1) -> set[int]:
         """Get cached ego network for a node in a specific session"""
         graph = self.graphs.get(session_cm_id)

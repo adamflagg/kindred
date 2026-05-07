@@ -160,25 +160,6 @@ class MockFactory:
         return MockFactory.create_pocketbase_record("bunk_requests", defaults)
 
     @staticmethod
-    def create_mock_friend_group(**kwargs: Any) -> Any:
-        """Create a mock friend group object"""
-        defaults: dict[str, Any] = {
-            "id": "fg_test",
-            "name": "Test Friend Group",
-            "session_cm_id": 1,
-            "year": 2025,
-            "member_cm_ids": [12345, 12346, 12347],
-            "description": "Test friend group",
-            "is_active": True,
-            "created_by": "test_user",
-            "created": datetime.now().isoformat() + "Z",
-            "updated": datetime.now().isoformat() + "Z",
-        }
-        defaults.update(kwargs)
-
-        return MockFactory.create_pocketbase_record("friend_groups", defaults)
-
-    @staticmethod
     def create_solver_camper(camper_id: str = "1", **kwargs: Any) -> Camper:
         """Create a mock Camper object for solver"""
         # Import here to avoid circular imports

@@ -23,7 +23,6 @@ from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.social.social_graph import (
     RELATIONSHIP_WEIGHTS,
-    FriendGroup,
     RelationshipType,
     SocialGraph,
 )
@@ -68,39 +67,6 @@ class TestRelationshipWeights:
         assert RELATIONSHIP_WEIGHTS[RelationshipType.BUNK_REQUEST] == 1.0
 
 
-class TestFriendGroup:
-    """Tests for FriendGroup dataclass."""
-
-    def test_friend_group_creation(self):
-        """FriendGroup can be created with required fields."""
-        members = {1, 2, 3, 4}
-        group = FriendGroup(members=members, density=0.8, cohesion=0.6)
-
-        assert group.members == members
-        assert group.density == 0.8
-        assert group.cohesion == 0.6
-        assert group.size == 4
-
-    def test_friend_group_id_generation(self):
-        """FriendGroup ID is based on min member ID and size."""
-        members = {5, 10, 15}
-        group = FriendGroup(members=members, density=0.5, cohesion=0.5)
-
-        assert group.id == "group_5_3"
-
-    def test_friend_group_repr(self):
-        """FriendGroup repr shows size and density."""
-        group = FriendGroup(members={1, 2, 3}, density=0.75, cohesion=0.5)
-        assert "size=3" in repr(group)
-        assert "density=0.75" in repr(group)
-
-    def test_friend_group_single_member(self):
-        """FriendGroup handles single member set."""
-        group = FriendGroup(members={1}, density=0.0, cohesion=0.0)
-        assert group.size == 1
-        assert group.id == "group_1_1"
-
-
 class TestSocialGraphInit:
     """Tests for SocialGraph initialization."""
 
@@ -130,7 +96,6 @@ class TestSocialGraphInit:
 
         assert graph._ego_networks == {}
         assert graph._shortest_paths == {}
-        assert graph._friend_groups == {}
         assert graph._stats == {}
 
 
@@ -336,161 +301,6 @@ class TestShortestPathCache:
         dist2 = sg._get_shortest_path_length(3, 1, 1234)
 
         assert dist1 == dist2
-
-
-class TestFriendGroupDetection:
-    """Tests for friend group detection."""
-
-    def test_detect_groups_not_initialized(self):
-        """Raises error if graph not initialized."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            sg.detect_friend_groups(1234)
-
-    def test_detect_groups_no_graph(self):
-        """Returns empty list if no graph for session."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        sg._initialized = True
-
-        groups = sg.detect_friend_groups(9999)
-
-        assert groups == []
-
-    def test_detect_groups_by_cliques_fallback(self):
-        """Clique-based detection works as fallback."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
-        sg._initialized = True
-
-        # Create a graph with a clear clique
-        G = nx.Graph()
-        G.add_edges_from([(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)])  # Clique of 4
-        sg.graphs[1234] = G
-
-        groups = sg._detect_groups_by_cliques(G, min_size=3, max_size=5)
-
-        assert len(groups) >= 1
-        # Should find the 4-node clique
-        sizes = [g.size for g in groups]
-        assert 4 in sizes
-
-    def test_detect_groups_caches_result(self):
-        """Friend groups are cached per session."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
-        sg._initialized = True
-
-        # Create a graph with a clique so there's something to cache
-        G = nx.Graph()
-        G.add_edges_from([(1, 2), (1, 3), (2, 3)])
-        sg.graphs[1234] = G
-
-        # First call
-        sg.detect_friend_groups(1234, min_size=3, max_size=5)
-        # Check cache
-        assert 1234 in sg._friend_groups
-
-
-class TestIsolatedCamperDetection:
-    """Tests for finding isolated campers."""
-
-    def test_find_isolated_not_initialized(self):
-        """Raises error if graph not initialized."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-
-        with pytest.raises(RuntimeError, match="not initialized"):
-            sg.find_isolated_campers(1234)
-
-    def test_find_isolated_no_graph(self):
-        """Returns empty list if no graph for session."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        sg._initialized = True
-
-        isolated = sg.find_isolated_campers(9999)
-
-        assert isolated == []
-
-    def test_find_isolated_with_threshold(self):
-        """Finds campers with connections <= threshold."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
-        sg._initialized = True
-
-        G = nx.Graph()
-        G.add_node(1)  # No connections
-        G.add_edge(2, 3)  # 2 and 3 have 1 connection each
-        G.add_edges_from([(4, 5), (4, 6), (4, 7)])  # 4 has 3 connections
-        sg.graphs[1234] = G
-
-        # threshold=0: only truly isolated
-        isolated_0 = sg.find_isolated_campers(1234, threshold=0)
-        assert 1 in isolated_0
-        assert 2 not in isolated_0
-
-        # threshold=1: nodes with 0 or 1 connection
-        isolated_1 = sg.find_isolated_campers(1234, threshold=1)
-        assert 1 in isolated_1
-        assert 2 in isolated_1
-        assert 3 in isolated_1
-        assert 4 not in isolated_1
-
-
-class TestCalculateCohesion:
-    """Tests for group cohesion calculation."""
-
-    def test_cohesion_empty_graph(self):
-        """Empty graph has zero cohesion."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        G = nx.Graph()
-
-        cohesion = sg._calculate_cohesion(G)
-
-        assert cohesion == 0.0
-
-    def test_cohesion_single_node(self):
-        """Single node graph has zero cohesion."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        G = nx.Graph()
-        G.add_node(1)
-
-        cohesion = sg._calculate_cohesion(G)
-
-        assert cohesion == 0.0
-
-    def test_cohesion_complete_graph(self):
-        """Complete graph with weight 1.0 has high cohesion."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        G = nx.complete_graph(4)
-        # Add weights
-        for u, v in G.edges():
-            G[u][v]["weight"] = 1.0
-
-        cohesion = sg._calculate_cohesion(G)
-
-        assert cohesion == 1.0
-
-
-class TestGetGraphMetrics:
-    """Tests for get_graph_metrics method."""
-
-    def test_returns_copy_of_stats(self):
-        """Returns a copy, not the original dict."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025)
-        sg._stats = {"test": 123}  # type: ignore[dict-item]
-
-        metrics = sg.get_graph_metrics()
-
-        assert metrics == {"test": 123}  # type: ignore[comparison-overlap]
-        assert metrics is not sg._stats
 
 
 class TestCalculateEdgeWeight:
@@ -996,35 +806,6 @@ class TestSocialSignalsEdgeCases:
         # Should have ego network info and density
         assert signals["ego_network_size"] == 3
         assert signals["network_density"] > 0
-
-
-class TestDetectGroupsWithLouvain:
-    """Tests for friend group detection with Louvain fallback."""
-
-    def test_detect_groups_uses_cliques_on_import_error(self):
-        """Falls back to cliques when community module unavailable."""
-        mock_pb = Mock()
-        sg = SocialGraph(pb=mock_pb, year=2025, session_cm_ids=[1234])
-        sg._initialized = True
-
-        G = nx.Graph()
-        G.add_edges_from(
-            [
-                (1, 2),
-                (1, 3),
-                (2, 3),  # Triangle
-                (4, 5),
-                (4, 6),
-                (5, 6),  # Another triangle
-            ]
-        )
-        sg.graphs[1234] = G
-
-        # This will use clique detection (either Louvain or fallback)
-        groups = sg.detect_friend_groups(1234, min_size=3, max_size=5)
-
-        # Should find triangles
-        assert len(groups) >= 1
 
 
 class TestNoPathScenarios:

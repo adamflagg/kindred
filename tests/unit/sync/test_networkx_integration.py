@@ -33,66 +33,6 @@ class TestSocialGraphBuilder:
         assert isinstance(builder.person_cache, dict)
         assert isinstance(builder.attendee_cache, dict)
 
-    def test_detect_friend_groups_empty_graph(self, builder):
-        """Test detection on empty graph"""
-        detections = builder.detect_friend_groups()
-
-        assert len(detections) == 0
-
-    def test_detect_via_communities_simple(self, builder):
-        """Test Louvain community detection with simple graph"""
-        # Build a simple graph with two communities
-        builder.graph.add_edge(1, 2, weight=1.0)
-        builder.graph.add_edge(2, 3, weight=1.0)
-        builder.graph.add_edge(3, 1, weight=1.0)  # Triangle 1-2-3
-
-        builder.graph.add_edge(4, 5, weight=1.0)
-        builder.graph.add_edge(5, 6, weight=1.0)
-        builder.graph.add_edge(6, 4, weight=1.0)  # Triangle 4-5-6
-
-        # Weak connection between communities
-        builder.graph.add_edge(3, 4, weight=0.1)
-
-        groups = builder._detect_via_communities(min_size=3, max_size=8)
-
-        # Should detect two communities
-        assert len(groups) >= 1  # At least one community
-        assert all(len(g) >= 3 for g in groups)  # All meet min size
-
-    def test_analyze_group_cohesion(self, builder):
-        """Test group analysis and cohesion calculation"""
-        # Create a complete graph (clique)
-        members = {1, 2, 3, 4}
-        for i in members:
-            for j in members:
-                if i < j:
-                    builder.graph.add_edge(i, j, weight=1.0)
-
-        detection = builder._analyze_group(members, ignore_threshold=0.5, manual_threshold=0.7, auto_threshold=0.9)
-
-        assert detection is not None
-        assert detection.cohesion_score == 1.0  # Complete graph
-        assert detection.detection_method == "clique"
-        assert detection.recommendation == "natural_group"
-        assert len(detection.missing_connections) == 0
-
-    def test_analyze_group_below_threshold(self, builder):
-        """Test group that doesn't meet threshold"""
-        # Create a sparse group
-        members = {1, 2, 3, 4}
-        builder.graph.add_edge(1, 2, weight=1.0)
-        builder.graph.add_edge(3, 4, weight=1.0)
-        # Only 2 edges out of 6 possible = 0.33 cohesion
-
-        detection = builder._analyze_group(
-            members,
-            ignore_threshold=0.5,  # Will be below this
-            manual_threshold=0.7,
-            auto_threshold=0.9,
-        )
-
-        assert detection is None  # Below ignore threshold
-
 
 class TestNetworkXIntegration:
     """Integration tests for NetworkX with sync process"""

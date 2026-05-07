@@ -33,8 +33,8 @@ def run_single_scenario(profiler, name, num_campers=500, num_cabins=42, cabin_ca
 
     # Generate test data
     logger.info("Generating test data...")
-    campers, friend_groups = profiler.generate_test_campers(num_campers)
-    logger.info(f"Created {len(campers)} campers with {len(friend_groups)} friend groups")
+    campers = profiler.generate_test_campers(num_campers)
+    logger.info(f"Created {len(campers)} campers")
 
     # Capture solver output
     solver_output = StringIO()
@@ -44,7 +44,7 @@ def run_single_scenario(profiler, name, num_campers=500, num_cabins=42, cabin_ca
 
     # Run solver with output capture
     with redirect_stdout(solver_output), redirect_stderr(solver_errors):
-        result = profiler.profile_solver(campers, friend_groups, num_cabins=num_cabins, cabin_capacity=cabin_capacity)
+        result = profiler.profile_solver(campers, num_cabins=num_cabins, cabin_capacity=cabin_capacity)
 
     total_time = time.time() - start_time
 
