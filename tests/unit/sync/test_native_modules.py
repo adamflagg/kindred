@@ -35,7 +35,7 @@ class TestNativeV2Modules:
             source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=1,
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             metadata={"ai_parsed": True},
         )
 

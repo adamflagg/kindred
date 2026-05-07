@@ -52,6 +52,38 @@ class RequestSource(Enum):
     STAFF = "staff"
 
 
+_SOURCE_FIELD_MAP: dict[str, RequestSource] = {
+    "bunk_with": RequestSource.FAMILY,
+    "socialize_with": RequestSource.FAMILY,
+    "not_bunk_with": RequestSource.STAFF,
+    "bunking_notes": RequestSource.STAFF,
+    "internal_notes": RequestSource.STAFF,
+}
+
+
+def source_from_field(source_field: str) -> RequestSource:
+    """Derive RequestSource from a source_field value.
+
+    This is the authoritative 5→2 mapping that makes RequestSource a
+    deterministic projection of source_field rather than an independent axis.
+
+    Args:
+        source_field: One of the 5 canonical SourceField values.
+
+    Returns:
+        RequestSource.FAMILY for parent-visible fields (bunk_with, socialize_with).
+        RequestSource.STAFF for staff-written fields (not_bunk_with, bunking_notes,
+        internal_notes).
+
+    Raises:
+        ValueError: If source_field is not one of the 5 known values.
+    """
+    try:
+        return _SOURCE_FIELD_MAP[source_field]
+    except KeyError:
+        raise ValueError(f"unknown source_field: {source_field!r}") from None
+
+
 class RequestStatus(Enum):
     """Status of a bunk request
 

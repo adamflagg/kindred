@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { formatSourceField } from '../utils/formatSourceField'
+import { sourceFromField } from '../utils/sourceFromField'
 import { invalidateRequestQueries } from '../utils/queryKeys'
 import { highlightSourceText } from '../utils/highlightSourceText'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -1354,7 +1355,11 @@ export default function RequestReviewPanel({
                               </div>
                               <div>
                                 <span className="font-medium">Source:</span>{' '}
-                                <span className="text-muted-foreground">{request.source}</span>
+                                <span className="text-muted-foreground">
+                                  {request.source_field
+                                    ? sourceFromField(request.source_field)
+                                    : request.source}
+                                </span>
                               </div>
                               {request.original_text && (
                                 <div>
@@ -1739,7 +1744,12 @@ export default function RequestReviewPanel({
 
                                 {/* Metadata */}
                                 <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
-                                  <span>Source: {request.source}</span>
+                                  <span>
+                                    Source:{' '}
+                                    {request.source_field
+                                      ? sourceFromField(request.source_field)
+                                      : request.source}
+                                  </span>
                                   {request.resolution_method && (
                                     <span>
                                       via{' '}

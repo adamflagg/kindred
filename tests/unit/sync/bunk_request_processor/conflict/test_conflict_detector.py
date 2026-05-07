@@ -28,7 +28,7 @@ def make_parsed_request(
         request_type=request_type,
         target_name=target_name or text,
         age_preference=None,
-        source_field="share_bunk_with",
+        source_field="bunk_with",
         source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,

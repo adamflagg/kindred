@@ -8,7 +8,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 
-from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType
+from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType, source_from_field
 from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
@@ -280,7 +280,7 @@ class Deduplicator:
         primary.metadata["is_merged_duplicate"] = True
 
         # Track duplicate sources (legacy, for backwards compatibility)
-        duplicate_sources = [r.source.value for r in duplicates]
+        duplicate_sources = [source_from_field(r.source_field).value for r in duplicates]
         primary.metadata["duplicate_sources"] = duplicate_sources
 
         # Find highest confidence among all requests
@@ -291,7 +291,7 @@ class Deduplicator:
             # Find which source had the highest confidence
             for req in all_requests:
                 if req.confidence_score == highest_conf:
-                    primary.metadata["confidence_boosted_from"] = req.source.value
+                    primary.metadata["confidence_boosted_from"] = source_from_field(req.source_field).value
                     break
             primary.confidence_score = highest_conf
 

@@ -37,6 +37,7 @@
  */
 import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 import { formatGradeOrdinal } from './gradeUtils'
+import { sourceFromField } from './sourceFromField'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { SatisfactionResult } from '../hooks/camper/types'
 import type { RequestBucket } from '../types/satisfaction'
@@ -153,7 +154,10 @@ export function resolveBadgeBucket(
     // to age_preference rows, matching the pre-#1158 inline logic.
     return {
       isMaterialAgePref: req.request_type === 'age_preference' && req.source_field === 'bunk_with',
-      isStaffBadge: req.source === 'staff',
+      isStaffBadge:
+        req.source_field != null
+          ? sourceFromField(req.source_field) === 'staff'
+          : req.source === 'staff',
     }
   }
   // bucket === 'immaterial_parent' → no badges (best-effort socialize_with).

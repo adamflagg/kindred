@@ -80,7 +80,7 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record in DB - use a proper BunkRequest object
         existing_record = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
@@ -131,7 +131,7 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
@@ -179,7 +179,7 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
@@ -212,7 +212,7 @@ class TestOrchestratorMergeOnSave:
         Normal flow: create new bunk_request and add source link.
         """
         request = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             metadata={
                 "original_request_id": "orig_req_789",
             },
@@ -242,7 +242,7 @@ class TestOrchestratorMergeOnSave:
     def test_new_request_source_link_is_primary(self) -> None:
         """Test that new requests have their source link marked as primary."""
         request = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             metadata={
                 "original_request_id": "orig_req_789",
             },
@@ -276,7 +276,7 @@ class TestOrchestratorMergeOnSave:
             bunk_request_id="new_pb_id_999",
             original_request_id="orig_req_789",
             is_primary=True,
-            source_field="share_bunk_with",
+            source_field="bunk_with",
         )
 
     def test_locked_request_skips_auto_merge(self) -> None:
@@ -344,7 +344,7 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest with lower confidence
         existing_record = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             confidence_score=0.85,  # Lower than new request
         )
         existing_record.id = "existing_pb_id_123"
@@ -386,7 +386,7 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"

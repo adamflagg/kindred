@@ -60,7 +60,7 @@ def _create_parsed_request(
         request_type=request_type,
         target_name=target_name,
         age_preference=None,
-        source_field="share_bunk_with",
+        source_field="bunk_with",
         source=RequestSource.FAMILY,  # FAMILY = share_bunk_with field
         confidence=confidence,
         csv_position=0,
@@ -433,7 +433,7 @@ class TestPhase1FailureTracking:
                     request_type=RequestType.BUNK_WITH,
                     target_name="Sarah",
                     age_preference=None,
-                    source_field="share_bunk_with",
+                    source_field="bunk_with",
                     source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
