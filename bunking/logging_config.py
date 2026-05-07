@@ -114,8 +114,15 @@ class HealthCheckFilter(logging.Filter):
         Returns:
             True if the record should be logged, False to suppress
         """
-        # Always allow DEBUG level logs (when debug is enabled)
-        if record.levelno == logging.DEBUG:
+        # In DEBUG/TRACE mode, keep all access logs visible. Uvicorn access
+        # records are always INFO regardless of LOG_LEVEL, so we must check
+        # the root logger's effective level rather than `record.levelno`.
+        if logging.getLogger().getEffectiveLevel() <= logging.DEBUG:
+            return True
+
+        # Suppression is only intended for INFO access-log noise; pass through
+        # anything at WARNING or higher (and the artificial DEBUG records).
+        if record.levelno != logging.INFO:
             return True
 
         # Check if this is an access log for health endpoints. Anchor on the

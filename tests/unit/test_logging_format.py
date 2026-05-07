@@ -290,6 +290,33 @@ class TestHealthCheckFilter:
         result = filter_instance.filter(record)
         assert result is True, "Failing health checks must remain visible at INFO"
 
+    def test_log_level_debug_bypasses_suppression(self):
+        """When the root logger is at DEBUG, INFO access logs must pass through.
+
+        Uvicorn emits access logs at INFO level regardless of LOG_LEVEL, so the
+        bypass cannot rely on record.levelno — it must check the effective level.
+        """
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+        root = logging.getLogger()
+        prev_level = root.level
+        root.setLevel(logging.DEBUG)
+        try:
+            record = logging.LogRecord(
+                name="uvicorn.access",
+                level=logging.INFO,
+                pathname="",
+                lineno=0,
+                msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd HTTP/1.1" 200',
+                args=(),
+                exc_info=None,
+            )
+            result = filter_instance.filter(record)
+            assert result is True, "DEBUG mode must show all access logs"
+        finally:
+            root.setLevel(prev_level)
+
 
 class TestConfigureLogging:
     """Test the configure_logging function."""
