@@ -341,7 +341,11 @@ def test_camper_satisfaction_threads_detail_for_bunk_with() -> None:
 
 
 def test_camper_satisfaction_threads_detail_for_unsatisfied_not_bunk_with() -> None:
-    """Unsatisfied not_bunk_with surfaces 'Same bunk' detail (the violation reason)."""
+    """Unsatisfied not_bunk_with surfaces 'Same bunk (conflict!)' detail (the violation reason).
+
+    Mirrors the TS predicate in `frontend/src/utils/requestSatisfaction.ts` so
+    Path 1 (drag preview) and Path 2 (persisted) tooltips agree.
+    """
     req = _req("rq1", "not_bunk_with", 1, 2, "not_bunk_with")
     result = camper_satisfaction(
         person_cm_id=1,
@@ -349,7 +353,7 @@ def test_camper_satisfaction_threads_detail_for_unsatisfied_not_bunk_with() -> N
         person_to_bunk={1: 100, 2: 100},  # both in same bunk = violation
     )
     assert result.per_request[0].satisfied is False
-    assert result.per_request[0].detail == "Same bunk"
+    assert result.per_request[0].detail == "Same bunk (conflict!)"
 
 
 def test_camper_satisfaction_malformed_request_has_none_detail() -> None:

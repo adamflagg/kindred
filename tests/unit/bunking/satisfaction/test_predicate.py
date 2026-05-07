@@ -323,7 +323,7 @@ class TestEvaluateRequest:
             _req("not_bunk_with", 1, 2),
             person_to_bunk={1: 100, 2: 100},
         )
-        assert result == (False, "Same bunk")
+        assert result == (False, "Same bunk (conflict!)")
 
     def test_age_preference_no_target_returns_false(self) -> None:
         result = evaluate_request(

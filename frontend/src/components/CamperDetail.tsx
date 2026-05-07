@@ -28,6 +28,7 @@ import {
 } from '../hooks/camper'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { SatisfactionEntry } from '../types/satisfaction'
+import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
 
 // Import extracted UI components
 import {
@@ -102,18 +103,13 @@ function CamperDetailBody({
   // Single source of truth for per-row satisfaction pills: read directly from
   // BunkRequestProvider's /api/satisfaction response. Replaces the previous
   // useSatisfactionData hook which independently fetched bunk_assignments.
-  const getRequestSatisfaction = useMemo<(id: string) => SatisfactionEntry>(() => {
-    if (camper.assigned_bunk_cm_id == null) {
-      // Unassigned requester — no pills (preserves prior useSatisfactionData behavior).
-      return () => ({ satisfied: null, detail: null })
-    }
-    const byId = new Map(camperSatisfaction.per_request.map((p) => [p.request_id, p]))
-    return (id: string) => {
-      const entry = byId.get(id)
-      if (!entry) return { satisfied: null, detail: null }
-      return { satisfied: entry.satisfied, detail: entry.detail ?? null }
-    }
-  }, [camper.assigned_bunk_cm_id, camperSatisfaction.per_request])
+  // Surfaces backend rows even when the camper is unassigned (the API returns
+  // `(satisfied=false, detail="Requester not assigned")` for those rows —
+  // honest rendering, matches the rest of the consolidated flow).
+  const getRequestSatisfaction = useMemo<(id: string) => SatisfactionEntry>(
+    () => buildSatisfactionLookup(camperSatisfaction.per_request),
+    [camperSatisfaction.per_request]
+  )
 
   // Computed values - use discrete columns instead of JSON parsing
   const location = getLocationDisplay(

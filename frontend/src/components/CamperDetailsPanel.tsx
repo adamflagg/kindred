@@ -43,6 +43,7 @@ import { isConfirmedRequest } from '../utils/bunkRequest'
 import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
 import { resolveBadgeBucket } from '../utils/requestSatisfaction'
 import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
+import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
@@ -705,18 +706,13 @@ export default function CamperDetailsPanel({
   ])
 
   // Path 2 — read directly from BunkRequestProvider, no PB fetch.
-  // Replaces the deleted useSatisfactionData call entirely.
+  // Replaces the deleted useSatisfactionData call entirely. Backend rows
+  // surface even when the camper is unassigned (`detail="Requester not
+  // assigned"` for every row); honest rendering matches the API contract.
   const pbLookup = useMemo<(id: string) => SatisfactionEntry>(() => {
-    if (!camper || camper.assigned_bunk_cm_id == null) {
-      return () => ({ satisfied: null, detail: null })
-    }
+    if (!camper) return () => ({ satisfied: null, detail: null })
     const info = getSatisfiedRequestInfo(camper.person_cm_id)
-    const byId = new Map(info.per_request.map((p) => [p.request_id, p]))
-    return (id: string) => {
-      const entry = byId.get(id)
-      if (!entry) return { satisfied: null, detail: null }
-      return { satisfied: entry.satisfied, detail: entry.detail ?? null }
-    }
+    return buildSatisfactionLookup(info.per_request)
   }, [camper, getSatisfiedRequestInfo])
 
   const getRequestSatisfaction = clientLookup ?? pbLookup
