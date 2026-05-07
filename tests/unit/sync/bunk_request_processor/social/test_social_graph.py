@@ -2,13 +2,10 @@
 
 Tests cover:
 - RelationshipType enum and weights
-- FriendGroup dataclass
 - Graph initialization and building
 - Metrics calculation
 - Social signals calculation
 - Ego network and shortest path caching
-- Friend group detection
-- Isolated camper detection
 """
 
 from __future__ import annotations

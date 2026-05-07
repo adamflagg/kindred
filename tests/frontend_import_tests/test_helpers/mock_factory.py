@@ -170,7 +170,6 @@ class MockFactory:
             "name": f"Camper {camper_id}",
             "age": 10,
             "grade": 5,
-            "friend_group_id": None,
         }
         defaults.update(kwargs)
 
