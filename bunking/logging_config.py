@@ -90,13 +90,20 @@ class ISO8601Formatter(logging.Formatter):
 
 
 class HealthCheckFilter(logging.Filter):
-    """Filter to suppress health check logs at INFO level.
+    """Filter to suppress high-frequency access log noise at INFO level.
 
-    Health check endpoints generate a lot of noise (every 10-15 seconds).
-    This filter suppresses them unless LOG_LEVEL=DEBUG is set.
+    Covers two recurring sources:
+    - Health check endpoints (every 10-15 seconds from Docker probes).
+    - Solver run status polls (~1/s for the duration of every solve).
+
+    The trailing slash on ``/api/solver/run/`` matches only the per-run
+    GET (which always carries a UUID), not the bare POST that kicks off
+    a run — so dispatch and apply lines stay visible.
+
+    Set LOG_LEVEL=DEBUG to see all access logs.
     """
 
-    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
+    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health", "/api/solver/run/"}
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Filter out health check logs at INFO level.

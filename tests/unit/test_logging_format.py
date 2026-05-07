@@ -214,6 +214,44 @@ class TestHealthCheckFilter:
         result = filter_instance.filter(record)
         assert result is True, "Health checks should pass at DEBUG level"
 
+    def test_suppresses_solver_run_poll(self):
+        """GET /api/solver/run/<uuid> polls fire ~1/s for the duration of a solve and flood logs."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 200',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is False, "Solver run status polls should be suppressed at INFO"
+
+    def test_allows_solver_run_post(self):
+        """POST /api/solver/run (kicking off a run) must remain visible — distinct path shape."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:41182 - "POST /api/solver/run HTTP/1.1" 200',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "POST /api/solver/run kickoff should not be suppressed"
+
 
 class TestConfigureLogging:
     """Test the configure_logging function."""
