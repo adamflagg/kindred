@@ -15,9 +15,9 @@
 import type { PerRequestStatus, SatisfactionEntry } from '../types/satisfaction'
 
 export function buildSatisfactionLookup(
-  per_request: PerRequestStatus[]
+  perRequest: PerRequestStatus[]
 ): (id: string) => SatisfactionEntry {
-  const byId = new Map(per_request.map((p) => [p.request_id, p]))
+  const byId = new Map(perRequest.map((p) => [p.request_id, p]))
   return (id: string) => {
     const entry = byId.get(id)
     if (!entry) return { satisfied: null, detail: null }

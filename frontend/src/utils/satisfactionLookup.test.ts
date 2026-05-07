@@ -4,10 +4,10 @@ import type { PerRequestStatus } from '../types/satisfaction'
 
 describe('buildSatisfactionLookup', () => {
   it('returns satisfied + detail for a known request_id', () => {
-    const per_request: PerRequestStatus[] = [
+    const perRequest: PerRequestStatus[] = [
       { request_id: 'r1', bucket: 'material_parent', satisfied: true, detail: 'Same bunk' },
     ]
-    const lookup = buildSatisfactionLookup(per_request)
+    const lookup = buildSatisfactionLookup(perRequest)
     expect(lookup('r1')).toEqual({ satisfied: true, detail: 'Same bunk' })
   })
 
@@ -17,10 +17,10 @@ describe('buildSatisfactionLookup', () => {
   })
 
   it('coerces undefined detail to null', () => {
-    const per_request: PerRequestStatus[] = [
+    const perRequest: PerRequestStatus[] = [
       { request_id: 'r1', bucket: 'material_parent', satisfied: false },
     ]
-    const lookup = buildSatisfactionLookup(per_request)
+    const lookup = buildSatisfactionLookup(perRequest)
     expect(lookup('r1')).toEqual({ satisfied: false, detail: null })
   })
 
@@ -30,7 +30,7 @@ describe('buildSatisfactionLookup', () => {
     // behavior in CamperDetail / CamperDetailsPanel short-circuited to
     // {satisfied: null, detail: null} when assigned_bunk_cm_id was null,
     // suppressing legitimate API-provided detail strings.
-    const per_request: PerRequestStatus[] = [
+    const perRequest: PerRequestStatus[] = [
       {
         request_id: 'r1',
         bucket: 'material_parent',
@@ -38,7 +38,7 @@ describe('buildSatisfactionLookup', () => {
         detail: 'Requester not assigned',
       },
     ]
-    const lookup = buildSatisfactionLookup(per_request)
+    const lookup = buildSatisfactionLookup(perRequest)
     expect(lookup('r1')).toEqual({
       satisfied: false,
       detail: 'Requester not assigned',
