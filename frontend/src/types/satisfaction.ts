@@ -12,6 +12,30 @@ export interface PerRequestStatus {
   request_id: string
   bucket: RequestBucket
   satisfied: boolean
+  /**
+   * Short human-readable explanation suitable for a UI tooltip
+   * (e.g. "Same bunk", "Different bunks", "No grade on file").
+   * Mirrors bunking/satisfaction/api_shape.py:PerRequestStatus.detail
+   * which is `str | None` with `default=None` — older clients that don't
+   * send detail are valid; consumers must treat absent / null / undefined
+   * as "no tooltip".
+   */
+  detail?: string | null
+}
+
+/**
+ * Shared lookup-result shape for per-row satisfaction pills.
+ *
+ * `satisfied=null` means "no pill" (unknown / unassigned / missing-from-lookup).
+ *
+ * Consumed by:
+ * - `MetPill` component (`BunkRequestRow.tsx`) — render input
+ * - `BunkingStatusPanel.getRequestSatisfaction` prop — return type
+ * - `CamperDetail` / `CamperDetailsPanel` lookup builders — emitted shape
+ */
+export interface SatisfactionEntry {
+  satisfied: boolean | null
+  detail: string | null
 }
 
 export interface BucketCount {
