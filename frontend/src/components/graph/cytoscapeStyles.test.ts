@@ -118,7 +118,7 @@ describe('createGraphElements', () => {
     {
       source: 1,
       target: 2,
-      type: 'request',
+      edge_type: 'request',
       priority: 1,
       confidence: 0.9,
       reciprocal: true,
@@ -126,7 +126,7 @@ describe('createGraphElements', () => {
     {
       source: 2,
       target: 3,
-      type: 'historical',
+      edge_type: 'historical',
       priority: 2,
       confidence: 0.7,
       reciprocal: false,
@@ -145,7 +145,7 @@ describe('createGraphElements', () => {
   ): GraphEdgeData => ({
     source,
     target,
-    type: 'request',
+    edge_type: 'request',
     priority: 1,
     confidence: 0.9,
     reciprocal,
@@ -327,13 +327,20 @@ describe('createGraphElements', () => {
 
   it('emits cross-scope edges + ghost nodes with cross_scope=true so the renderer can ghost them', () => {
     const inScope: GraphEdgeData[] = [
-      { source: 1, target: 2, type: 'request', priority: 1, confidence: 0.9, reciprocal: false },
+      {
+        source: 1,
+        target: 2,
+        edge_type: 'request',
+        priority: 1,
+        confidence: 0.9,
+        reciprocal: false,
+      },
     ]
     const cross = [
       {
         source: 1,
         target: 99,
-        type: 'request',
+        edge_type: 'request',
         weight: 1,
         request_type: null,
         priority: null,

@@ -39,7 +39,7 @@ class SocialGraphEdge(BaseModel):
     source: int
     target: int
     weight: float
-    type: str  # 'request', 'historical', 'classmate_city', 'classmate_state'
+    edge_type: str  # 'request', 'historical', 'classmate_city', 'classmate_state'
     # Note: 'sibling' is intentionally excluded — sibling edges remain in the
     # in-memory graph for name-resolution (confidence boost) but are filtered
     # at the API response boundary before reaching the frontend.

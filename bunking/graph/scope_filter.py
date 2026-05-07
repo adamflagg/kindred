@@ -34,7 +34,7 @@ class CrossScopeEdge(BaseModel):
 
     source: int
     target: int
-    type: str
+    edge_type: str
     weight: float = 1.0
     request_type: str | None = None
     priority: int | None = None
@@ -137,7 +137,7 @@ def apply_scope(
                         source=source,
                         target=target,
                         weight=data.get("weight", 1.0),
-                        type=data.get("edge_type", "request"),
+                        edge_type=data.get("edge_type", "request"),
                         request_type=data.get("request_type"),
                         priority=data.get("priority"),
                         confidence=data.get("confidence"),

@@ -355,7 +355,7 @@ class TestBunkGraphSiblingEdgeFilter:
         payload = response.json()
         edges = payload.get("edges", [])
 
-        sibling_edges = [e for e in edges if e.get("type") == "sibling"]
+        sibling_edges = [e for e in edges if e.get("edge_type") == "sibling"]
         assert sibling_edges == [], (
             f"Bunk graph response must not include sibling edges, but found {len(sibling_edges)}: {sibling_edges}"
         )
@@ -373,7 +373,7 @@ class TestBunkGraphSiblingEdgeFilter:
         payload = response.json()
         edges = payload.get("edges", [])
 
-        request_edges = [e for e in edges if e.get("type") == "request"]
+        request_edges = [e for e in edges if e.get("edge_type") == "request"]
         assert len(request_edges) >= 1, (
             "At least one request edge must remain in the bunk graph response — only sibling edges should be stripped"
         )
@@ -397,14 +397,14 @@ class TestBunkGraphSiblingEdgeFilter:
         payload = response.json()
         edges = payload.get("edges", [])
 
-        sibling_edges = [e for e in edges if e.get("type") == "sibling"]
+        sibling_edges = [e for e in edges if e.get("edge_type") == "sibling"]
         assert sibling_edges == [], (
             f"Secondary sibling edges must also be stripped from bunk graph response, "
             f"but found {len(sibling_edges)}: {sibling_edges}"
         )
 
         # The primary request edge should still be present
-        request_edges = [e for e in edges if e.get("type") == "request"]
+        request_edges = [e for e in edges if e.get("edge_type") == "request"]
         assert len(request_edges) >= 1, (
             "Primary request edge must survive even when secondary_type='sibling' is dropped"
         )
@@ -431,7 +431,7 @@ class TestSessionSocialGraphSiblingEdgeFilter:
         payload = response.json()
         edges = payload.get("edges", [])
 
-        sibling_edges = [e for e in edges if e.get("type") == "sibling"]
+        sibling_edges = [e for e in edges if e.get("edge_type") == "sibling"]
         assert sibling_edges == [], (
             f"Session social-graph response must not include sibling edges, "
             f"but found {len(sibling_edges)}: {sibling_edges}"
@@ -450,7 +450,7 @@ class TestSessionSocialGraphSiblingEdgeFilter:
         payload = response.json()
         edges = payload.get("edges", [])
 
-        request_edges = [e for e in edges if e.get("type") == "request"]
+        request_edges = [e for e in edges if e.get("edge_type") == "request"]
         assert len(request_edges) >= 1, (
             "At least one request edge must remain in the session graph response — "
             "only sibling edges should be stripped"

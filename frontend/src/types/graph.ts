@@ -31,14 +31,13 @@ export interface GraphEdge {
   /** Edge type. Valid values: 'request' | 'historical' | 'classmate_city' | 'classmate_state' | 'bundled'.
    *  'sibling' is intentionally excluded: sibling edges are filtered at the API
    *  response boundary (#1094) and will never appear in graph API responses. */
-  type: string
+  edge_type: string
   reciprocal: boolean
-  request_type?: string // 'bunk_with' | 'not_bunk_with' for type='request' edges
+  request_type?: string // 'bunk_with' | 'not_bunk_with' for edge_type='request' edges
   confidence?: number // AI confidence score for request edges
   priority?: number // Priority level for request edges
   metadata?: Record<string, unknown> // Additional edge metadata (e.g., location for classmate edges)
   // Legacy fields that may still be referenced
-  edge_type?: string
   is_reciprocal?: boolean
 }
 
@@ -56,7 +55,7 @@ export interface GraphMetrics {
 export interface CrossScopeEdge {
   source: number
   target: number
-  type: string
+  edge_type: string
   weight: number
   request_type: string | null
   priority: number | null

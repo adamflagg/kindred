@@ -71,7 +71,7 @@ interface GraphEdge {
   source: number
   target: number
   weight: number
-  type: string
+  edge_type: string
   reciprocal: boolean
   confidence?: number
   priority?: number
@@ -323,26 +323,26 @@ export default function BunkSocialGraphModal({
           style: {
             width: 2, // Uniform width for all edges
             'line-color': (ele: EdgeSingular) => {
-              const type = ele.data('type')
-              return EDGE_COLORS[type] ?? '#95a5a6'
+              const edgeType = ele.data('edge_type')
+              return EDGE_COLORS[edgeType] ?? '#95a5a6'
             },
             'target-arrow-shape': (ele: EdgeSingular) => {
-              const type = ele.data('type')
-              return type === 'request' ? 'triangle' : 'none'
+              const edgeType = ele.data('edge_type')
+              return edgeType === 'request' ? 'triangle' : 'none'
             },
             'target-arrow-color': (ele: EdgeSingular) => {
-              const type = ele.data('type')
-              return EDGE_COLORS[type] ?? '#95a5a6'
+              const edgeType = ele.data('edge_type')
+              return EDGE_COLORS[edgeType] ?? '#95a5a6'
             },
             'source-arrow-shape': (ele: EdgeSingular) => {
               // Show arrow at source for reciprocal requests
-              const type = ele.data('type')
+              const edgeType = ele.data('edge_type')
               const reciprocal = ele.data('reciprocal')
-              return type === 'request' && reciprocal ? 'triangle' : 'none'
+              return edgeType === 'request' && reciprocal ? 'triangle' : 'none'
             },
             'source-arrow-color': (ele: EdgeSingular) => {
-              const type = ele.data('type')
-              return EDGE_COLORS[type] ?? '#95a5a6'
+              const edgeType = ele.data('edge_type')
+              return EDGE_COLORS[edgeType] ?? '#95a5a6'
             },
             'line-opacity': (ele: EdgeSingular) => {
               const confidence = ele.data('confidence') ?? 0.5
@@ -430,7 +430,7 @@ export default function BunkSocialGraphModal({
           id: `edge-${edgeIndex++}`,
           source: `node-${edge.source}`,
           target: `node-${edge.target}`,
-          type: edge.type,
+          edge_type: edge.edge_type,
         },
       })
     })

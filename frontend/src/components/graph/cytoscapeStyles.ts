@@ -25,11 +25,11 @@ export interface GraphNodeData {
 export interface GraphEdgeData {
   source: number
   target: number
-  type: string
+  edge_type: string
   priority: number
   confidence: number
   reciprocal: boolean
-  /** For type='request' edges: 'bunk_with' or 'not_bunk_with'. */
+  /** For edge_type='request' edges: 'bunk_with' or 'not_bunk_with'. */
   request_type?: string
 }
 
@@ -162,7 +162,7 @@ export function getCytoscapeStyles({ showLabels }: CytoscapeStyleOptions): Style
       },
     },
     {
-      selector: 'edge[type = "bundled"]',
+      selector: 'edge[edge_type = "bundled"]',
       style: {
         width: 3,
         'line-style': 'solid',
@@ -441,7 +441,7 @@ export function createGraphElements(
   // never appear in edgeData here — no client-side defensive filter needed.
   const visibleEdges = edgeData.filter((edge) => {
     // Unknown edge types default to visible; sibling is filtered server-side (#1094)
-    const setting = showEdges[edge.type as keyof ShowEdgesSettings]
+    const setting = showEdges[edge.edge_type as keyof ShowEdgesSettings]
     return setting !== false
   })
 
@@ -462,7 +462,7 @@ export function createGraphElements(
   // Works on both GraphEdgeData and CrossScopeEdgeData (the relevant fields
   // are identically named on both shapes).
   const sameKind = (a: GraphEdgeData | CrossScopeEdgeData, b: GraphEdgeData | CrossScopeEdgeData) =>
-    a.type === b.type && (a.request_type ?? null) === (b.request_type ?? null)
+    a.edge_type === b.edge_type && (a.request_type ?? null) === (b.request_type ?? null)
 
   const edges: EdgeElement[] = []
   let edgeIndex = 0
@@ -475,7 +475,7 @@ export function createGraphElements(
       id: `edge-${edgeIndex++}`,
       source: e.source.toString(),
       target: e.target.toString(),
-      edge_type: e.type,
+      edge_type: e.edge_type,
       priority: e.priority,
       confidence: e.confidence,
       is_reciprocal: flags.is_reciprocal,
@@ -497,7 +497,7 @@ export function createGraphElements(
       id: `cross-edge-${edgeIndex++}`,
       source: e.source.toString(),
       target: e.target.toString(),
-      edge_type: e.type,
+      edge_type: e.edge_type,
       ...(e.priority != null ? { priority: e.priority } : {}),
       ...(e.confidence != null ? { confidence: e.confidence } : {}),
       is_reciprocal: flags.is_reciprocal,
