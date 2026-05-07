@@ -13,6 +13,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
+import { getSessionShortName } from '../utils/sessionDisplay'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -60,32 +61,6 @@ function formatPronouns(camper: {
   if (camper.gender_pronoun_name) return camper.gender_pronoun_name
   // Return "No Preference" instead of falling back to assumed pronouns
   return 'No Preference'
-}
-
-/**
- * Get session display name for quick stats
- */
-function getSessionShortName(
-  session:
-    | {
-        session_type?: string
-        name?: string
-      }
-    | undefined
-): string {
-  if (!session) return 'Unknown'
-  if (session.session_type === 'quest') return session.name ?? 'Quest'
-  if (session.session_type === 'ag') return session.name ?? 'AG'
-  if (session.session_type === 'embedded') {
-    const match = session.name?.match(/([23][ab])/i)
-    if (match) return `Session ${match[1]}`
-  }
-  if (session.session_type === 'main') {
-    const match = session.name?.match(/(\d+)/)
-    if (match) return `Session ${match[1]}`
-  }
-  if (session.name?.toLowerCase().includes('taste')) return 'Taste of Camp'
-  return session.name ?? 'Unknown'
 }
 
 interface CamperDetailBodyProps {
@@ -136,10 +111,10 @@ function CamperDetailBody({
   )
   const congregation = person?.normalized_congregation ?? null
   const pronouns = formatPronouns(camper)
-  const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined)
+  const sessionShortName = getSessionShortName(camper.expand?.session ?? undefined) ?? 'Unknown'
   const allSessionNames =
     enrolledCampers.length > 1
-      ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined))
+      ? enrolledCampers.map((c) => getSessionShortName(c.expand?.session ?? undefined) ?? 'Unknown')
       : undefined
   // BunkingStatusPanel surfaces only resolved rows. The admin
   // ParsedRequestsPanel below still consumes the unfiltered allBunkRequests
