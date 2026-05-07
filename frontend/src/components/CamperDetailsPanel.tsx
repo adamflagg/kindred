@@ -24,7 +24,10 @@ import {
 } from '../utils/genderUtils'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { formatAge } from '../utils/age'
-import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
+import {
+  getSessionDisplayNameFromString,
+  getSessionShortName as getSessionShortNameUtil,
+} from '../utils/sessionDisplay'
 import { VALID_SUMMER_SESSION_TYPES } from '../constants/sessionTypes'
 import type {
   PersonsResponse,
@@ -599,19 +602,7 @@ export default function CamperDetailsPanel({
   )
 
   const getSessionShortName = () => {
-    const session = camper?.expand?.session
-    if (!session) return null
-    if (session.session_type === 'ag') return session.name
-    if (session.session_type === 'embedded') {
-      const match = session.name.match(/([23][ab])/i)
-      if (match) return `Session ${match[1]}`
-    }
-    if (session.session_type === 'main') {
-      const match = session.name.match(/(\d+)/)
-      if (match) return `Session ${match[1]}`
-    }
-    if (session.name.toLowerCase().includes('taste')) return 'Taste of Camp'
-    return session.name || 'Unknown'
+    return getSessionShortNameUtil(camper?.expand?.session ?? undefined)
   }
 
   /** Get short display name for an enrollment's session. */
