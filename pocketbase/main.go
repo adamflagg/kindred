@@ -19,6 +19,7 @@ import (
 	"github.com/pocketbase/pocketbase/tools/hook"
 
 	// Import our packages
+	bunkrequests "github.com/camp/kindred/pocketbase/bunk_requests"
 	"github.com/camp/kindred/pocketbase/feedback"
 	"github.com/camp/kindred/pocketbase/logging"
 	"github.com/camp/kindred/pocketbase/rbac"
@@ -151,6 +152,10 @@ func main() {
 
 	// Register RBAC hooks for permission cache recomputation
 	rbac.RegisterHooks(app)
+
+	// Register bunk_requests reciprocity hook (keeps is_reciprocal accurate
+	// after any write — closes #1059, supports #1069 status flips).
+	bunkrequests.RegisterHooks(app)
 
 	// Start scheduler after the app is fully initialized
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
