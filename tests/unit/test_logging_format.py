@@ -214,6 +214,147 @@ class TestHealthCheckFilter:
         result = filter_instance.filter(record)
         assert result is True, "Health checks should pass at DEBUG level"
 
+    def test_suppresses_solver_run_poll(self):
+        """GET /api/solver/run/<uuid> polls fire ~1/s for the duration of a solve and flood logs."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 200',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is False, "Solver run status polls should be suppressed at INFO"
+
+    def test_allows_solver_run_post(self):
+        """POST /api/solver/run (kicking off a run) must remain visible — distinct path shape."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:41182 - "POST /api/solver/run HTTP/1.1" 200',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "POST /api/solver/run kickoff should not be suppressed"
+
+    def test_allows_failing_solver_run_poll(self):
+        """Failing GETs on the poll endpoint (4xx/5xx) must stay visible — only successful 200 polls are noise."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 500',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "Failing solver run polls must remain visible at INFO"
+
+    def test_allows_failing_health_check(self):
+        """Failing GETs on /health (4xx/5xx) must stay visible too."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /health HTTP/1.1" 503',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "Failing health checks must remain visible at INFO"
+
+    def test_does_not_suppress_healthz_lookalike(self):
+        """/healthz must not be suppressed — HEALTH_PATHS uses /health, but substring matching would catch it."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /healthz HTTP/1.1" 200 OK',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "/healthz must not be filtered (only exact /health)"
+
+    def test_does_not_suppress_healthcheck_lookalike(self):
+        """/api/healthcheck must not be suppressed by the /api/health entry."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /api/healthcheck HTTP/1.1" 200 OK',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "/api/healthcheck must not be filtered (only exact /api/health)"
+
+    def test_log_level_debug_bypasses_suppression(self):
+        """When the root logger is at DEBUG, INFO access logs must pass through.
+
+        Uvicorn emits access logs at INFO level regardless of LOG_LEVEL, so the
+        bypass cannot rely on record.levelno — it must check the effective level.
+        """
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+        root = logging.getLogger()
+        prev_level = root.level
+        root.setLevel(logging.DEBUG)
+        try:
+            record = logging.LogRecord(
+                name="uvicorn.access",
+                level=logging.INFO,
+                pathname="",
+                lineno=0,
+                msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 200',
+                args=(),
+                exc_info=None,
+            )
+            result = filter_instance.filter(record)
+            assert result is True, "DEBUG mode must show all access logs"
+        finally:
+            root.setLevel(prev_level)
+
 
 class TestConfigureLogging:
     """Test the configure_logging function."""
