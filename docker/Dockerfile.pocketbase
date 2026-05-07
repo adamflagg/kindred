@@ -3,6 +3,10 @@
 # =============================================================================
 FROM dhi.io/golang:1.26-dev AS go-builder
 
+# Allow Go to auto-download the toolchain pinned in go.mod when the base image
+# ships an older patch version (dhi.io golang tags lag upstream by a few patches).
+ENV GOTOOLCHAIN=auto
+
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
