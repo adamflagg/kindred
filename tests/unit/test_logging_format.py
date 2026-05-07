@@ -346,7 +346,7 @@ class TestHealthCheckFilter:
                 level=logging.INFO,
                 pathname="",
                 lineno=0,
-                msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd HTTP/1.1" 200',
+                msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 200',
                 args=(),
                 exc_info=None,
             )
