@@ -69,6 +69,19 @@ async def run_solver(
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> SolverResponse:
     """Run the bunking solver for a session."""
+    # Single-flight guard: reject duplicate in-progress runs for the same session.
+    # FastAPI serializes coroutines on the event loop and solver_runs is in-process,
+    # so no locking is needed beyond a plain dict scan.
+    for run in solver_runs.values():
+        if run.get("session_cm_id") == request.session_cm_id and run.get("status") in {"pending", "running"}:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"Solver already running for session {request.session_cm_id}",
+                    "in_progress_run_id": run["id"],
+                },
+            )
+
     run_id = str(uuid4())
 
     # Get time limit from config if not specified in request
@@ -706,6 +719,20 @@ async def run_multi_session_solver(
                 session_groups[sex_eligible].append(session)
         else:
             session_groups["all"] = child_sessions
+
+        # Single-flight guard: check all child sessions before dispatching any run.
+        # Reject the entire request if any child session already has a pending/running solve.
+        for session in child_sessions:
+            candidate_cm_id = getattr(session, "cm_id", 0)
+            for run in solver_runs.values():
+                if run.get("session_cm_id") == candidate_cm_id and run.get("status") in {"pending", "running"}:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "detail": f"Solver already running for session {candidate_cm_id}",
+                            "in_progress_run_id": run["id"],
+                        },
+                    )
 
         run_ids: dict[str, list[dict[str, Any]]] = {}
         for sex_group, sessions in session_groups.items():
