@@ -290,6 +290,44 @@ class TestHealthCheckFilter:
         result = filter_instance.filter(record)
         assert result is True, "Failing health checks must remain visible at INFO"
 
+    def test_does_not_suppress_healthz_lookalike(self):
+        """/healthz must not be suppressed — HEALTH_PATHS uses /health, but substring matching would catch it."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /healthz HTTP/1.1" 200 OK',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "/healthz must not be filtered (only exact /health)"
+
+    def test_does_not_suppress_healthcheck_lookalike(self):
+        """/api/healthcheck must not be suppressed by the /api/health entry."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /api/healthcheck HTTP/1.1" 200 OK',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "/api/healthcheck must not be filtered (only exact /api/health)"
+
     def test_log_level_debug_bypasses_suppression(self):
         """When the root logger is at DEBUG, INFO access logs must pass through.
 

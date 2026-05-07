@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from typing import ClassVar
@@ -96,14 +97,19 @@ class HealthCheckFilter(logging.Filter):
     - Health check endpoints (every 10-15 seconds from Docker probes).
     - Solver run status polls (~1/s for the duration of every solve).
 
-    The trailing slash on ``/api/solver/run/`` matches only the per-run
-    GET (which always carries a UUID), not the bare POST that kicks off
-    a run — so dispatch and apply lines stay visible.
+    Only successful (200) GET requests are filtered. ``HEALTH_EXACT_PATHS``
+    matches whole paths so ``/healthz`` or ``/api/healthcheck`` stay visible;
+    ``HEALTH_PATH_PREFIXES`` matches the per-run solver poll (the UUID-bearing
+    suffix) without catching the bare POST that kicks off a run.
 
     Set LOG_LEVEL=DEBUG to see all access logs.
     """
 
-    HEALTH_PATHS: ClassVar[set[str]] = {"/health", "/api/health", "/api/solver/run/"}
+    HEALTH_EXACT_PATHS: ClassVar[set[str]] = {"/health", "/api/health"}
+    HEALTH_PATH_PREFIXES: ClassVar[tuple[str, ...]] = ("/api/solver/run/",)
+    _ACCESS_LOG_RE: ClassVar[re.Pattern[str]] = re.compile(
+        r'"(?P<method>[A-Z]+) (?P<path>\S+) HTTP/\d\.\d" (?P<status>\d{3})'
+    )
 
     def filter(self, record: logging.LogRecord) -> bool:
         """Filter out health check logs at INFO level.
@@ -125,11 +131,17 @@ class HealthCheckFilter(logging.Filter):
         if record.levelno != logging.INFO:
             return True
 
-        # Check if this is an access log for health endpoints. Anchor on the
-        # uvicorn format `"GET /path HTTP/1.1" 200 OK` so 4xx/5xx polls and
-        # non-GET methods on the same path stay visible.
-        message = record.getMessage()
-        return all(not (path in message and '"GET ' in message and '" 200' in message) for path in self.HEALTH_PATHS)
+        # Parse the uvicorn access-log line; if it doesn't match, leave it alone.
+        match = self._ACCESS_LOG_RE.search(record.getMessage())
+        if not match:
+            return True
+        if match.group("method") != "GET" or match.group("status") != "200":
+            return True
+
+        path = match.group("path")
+        if path in self.HEALTH_EXACT_PATHS:
+            return False
+        return not any(path.startswith(prefix) for prefix in self.HEALTH_PATH_PREFIXES)
 
 
 def configure_logging(
