@@ -1,6 +1,7 @@
 package bunkrequests
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -9,6 +10,10 @@ import (
 // BackfillAll iterates every distinct (year, session_id, request_type, A, B)
 // tuple in bunk_requests and calls RecomputePairReciprocity for each.
 // Idempotent — safe to re-run.
+//
+// Returns the total number of tuples processed. If any individual recompute
+// fails, the loop continues but BackfillAll returns a non-nil error so the
+// CLI exit status reflects the partial failure.
 func BackfillAll(app core.App) (int, error) {
 	type tuple struct {
 		Year        int    `db:"year"`
@@ -32,19 +37,24 @@ func BackfillAll(app core.App) (int, error) {
 		  AND requester_id != requestee_id
 	`).All(&tuples)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("query distinct pair tuples: %w", err)
 	}
 
+	var failed int
 	for _, t := range tuples {
 		if err := RecomputePairReciprocity(
 			app, t.Year, t.SessionID, t.PersonA, t.PersonB, t.RequestType,
 		); err != nil {
+			failed++
 			slog.Warn("pair recompute failed",
 				"year", t.Year, "session", t.SessionID,
 				"a", t.PersonA, "b", t.PersonB, "type", t.RequestType,
 				"error", err,
 			)
 		}
+	}
+	if failed > 0 {
+		return len(tuples), fmt.Errorf("backfill incomplete: %d of %d pair recomputes failed", failed, len(tuples))
 	}
 	return len(tuples), nil
 }

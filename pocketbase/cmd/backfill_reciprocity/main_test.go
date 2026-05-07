@@ -23,7 +23,7 @@ func setupBunkRequestsCollection(t *testing.T, app core.App) {
 		Values: []string{"pending", "resolved", "declined"}, MaxSelect: 1,
 	})
 	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	col.Fields.Add(&core.NumberField{Name: "session_id"})
+	col.Fields.Add(&core.NumberField{Name: "session_id", Required: true})
 	col.Fields.Add(&core.BoolField{Name: "is_reciprocal"})
 	if err := app.Save(col); err != nil {
 		t.Fatalf("setup: %v", err)

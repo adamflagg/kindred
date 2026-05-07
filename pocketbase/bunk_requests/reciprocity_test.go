@@ -28,7 +28,7 @@ func setupBunkRequestsCollection(t *testing.T, app core.App) {
 		MaxSelect: 1,
 	})
 	col.Fields.Add(&core.NumberField{Name: "year", Required: true})
-	col.Fields.Add(&core.NumberField{Name: "session_id"})
+	col.Fields.Add(&core.NumberField{Name: "session_id", Required: true})
 	col.Fields.Add(&core.BoolField{Name: "is_reciprocal"})
 	if err := app.Save(col); err != nil {
 		t.Fatalf("setupBunkRequestsCollection: save: %v", err)
@@ -73,7 +73,8 @@ func TestRecomputePairReciprocity_CreatesPair(t *testing.T) {
 	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
 
 	// Call helper directly — it should fix both rows.
-	if err := RecomputePairReciprocity(app, 2026, 1235404, 100, 200, "bunk_with"); err != nil {
+	err = RecomputePairReciprocity(app, 2026, 1235404, 100, 200, "bunk_with")
+	if err != nil {
 		t.Fatalf("RecomputePairReciprocity: %v", err)
 	}
 
@@ -133,10 +134,14 @@ func TestHook_FiresOnCreate(t *testing.T) {
 	}
 }
 
-// registerHooksOnApp wires the same three success hooks RegisterHooks does,
-// but takes a core.App (which the *tests.TestApp implements). We can't pass
-// *tests.TestApp to RegisterHooks because it expects *pocketbase.PocketBase.
+// registerHooksOnApp wires the same hooks RegisterHooks does, but takes a
+// core.App (which the *tests.TestApp implements). We can't pass *tests.TestApp
+// to RegisterHooks because it expects *pocketbase.PocketBase.
 func registerHooksOnApp(app core.App) {
+	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
+		captureOldCoords(e)
+		return e.Next()
+	})
 	app.OnRecordAfterCreateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		runRecompute(e)
 		return e.Next()
@@ -173,7 +178,8 @@ func TestHook_DeletionFlipsPartner(t *testing.T) {
 	}
 
 	// Delete A→B; hook should fire and recompute B→A.
-	if err := app.Delete(rowAB); err != nil {
+	err = app.Delete(rowAB)
+	if err != nil {
 		t.Fatalf("delete AB: %v", err)
 	}
 
@@ -379,5 +385,49 @@ func TestRecomputePairReciprocity_IdempotentOnAlreadyCorrect(t *testing.T) {
 	}
 	if !gotBA2.GetDateTime("updated").Time().Equal(baUpdated) {
 		t.Errorf("idempotent call wrote B→A unnecessarily; updated changed")
+	}
+}
+
+// Test 10 — ID mutation orphans the old partner.
+//
+// If the requester_id (or requestee_id) on an existing row is mutated, the
+// hook's post-update recompute targets only the NEW pair coords. The OLD
+// partner row, whose pair is now broken (its mate's coords no longer match),
+// is silently left with stale is_reciprocal=true. The fix is for runRecompute
+// to also recompute the OLD coords (from e.Record.Original()) when they differ
+// from the new coords.
+func TestHook_RequesterIDMutationRecomputesOldPair(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	// Precondition: pair (100, 200) both resolved → both reciprocal=true.
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+	gotBA, _ := app.FindRecordById("bunk_requests", rowBA.Id)
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: B→A expected reciprocal=true, got false")
+	}
+
+	// Mutate A→B's requester_id from 100 → 300. The (100, 200) pair coords are
+	// now orphaned: B→A still points at requester 100, but no row at (100, 200)
+	// exists any more. B→A's is_reciprocal must flip to false.
+	rowAB.Set("requester_id", 300)
+	err = app.Save(rowAB)
+	if err != nil {
+		t.Fatalf("save mutated AB: %v", err)
+	}
+
+	gotBA, err = app.FindRecordById("bunk_requests", rowBA.Id)
+	if err != nil {
+		t.Fatalf("reload BA: %v", err)
+	}
+	if gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after requester_id mutation: B→A expected is_reciprocal=false (old pair orphaned), got true")
 	}
 }

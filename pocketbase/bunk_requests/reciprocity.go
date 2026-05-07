@@ -64,9 +64,12 @@ func RecomputePairReciprocity(
 // findRow returns the bunk_request matching the given coordinates, or nil if
 // no row exists. If multiple match (dedup miss), returns the first.
 func findRow(app core.App, year, sessionID, requester, requestee int, requestType string) (*core.Record, error) {
+	filter := "year = {:year} && session_id = {:sessionID} && " +
+		"requester_id = {:requester} && requestee_id = {:requestee} && " +
+		"request_type = {:requestType}"
 	records, err := app.FindRecordsByFilter(
 		"bunk_requests",
-		"year = {:year} && session_id = {:sessionID} && requester_id = {:requester} && requestee_id = {:requestee} && request_type = {:requestType}",
+		filter,
 		"",
 		1,
 		0,
@@ -79,7 +82,7 @@ func findRow(app core.App, year, sessionID, requester, requestee int, requestTyp
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("find bunk_requests: %w", err)
 	}
 	if len(records) == 0 {
 		return nil, nil
@@ -99,5 +102,8 @@ func setIfChanged(app core.App, row *core.Record, target bool) error {
 		return nil
 	}
 	row.Set("is_reciprocal", target)
-	return app.Save(row)
+	if err := app.Save(row); err != nil {
+		return fmt.Errorf("save is_reciprocal: %w", err)
+	}
+	return nil
 }
