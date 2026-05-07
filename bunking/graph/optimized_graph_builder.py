@@ -193,10 +193,6 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
 
                 edge_data.append((person_id, requestee, edge_attrs))
 
-        # Add sibling edges
-        sibling_edges = self._batch_find_sibling_edges(list(persons_map.values()))
-        edge_data.extend(sibling_edges)
-
         # Batch add all edges at once
         self.graph.add_edges_from(edge_data)
         logger.debug(f"Added {len(edge_data)} edges to graph")
@@ -254,35 +250,6 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
                 logger.error(f"Error fetching requests batch: {e}")
 
         return all_requests
-
-    def _batch_find_sibling_edges(self, persons: list[Any]) -> list[tuple[int, int, dict[str, Any]]]:
-        """Find sibling relationships efficiently."""
-        sibling_edges: list[tuple[int, int, dict[str, Any]]] = []
-
-        # Group by family_id
-        family_groups: dict[int, list[int]] = defaultdict(list)
-        for person in persons:
-            family_id = getattr(person, "family_id", None)
-            cm_id = getattr(person, "cm_id", None)
-            if family_id and cm_id is not None:
-                family_groups[family_id].append(cm_id)
-
-        # Create edges for siblings
-        for family_id, members in family_groups.items():
-            if len(members) > 1:
-                # Create edges between all siblings
-                for i in range(len(members)):
-                    for j in range(i + 1, len(members)):
-                        if members[i] in self.graph and members[j] in self.graph:
-                            edge_attrs = {
-                                "weight": 1.5,
-                                "edge_type": "sibling",
-                                "reciprocal": True,
-                                "family_id": family_id,
-                            }
-                            sibling_edges.append((members[i], members[j], edge_attrs))
-
-        return sibling_edges
 
     def update_node_position(
         self, person_cm_id: int, new_bunk_cm_id: int, session_cm_id: int, year: int
