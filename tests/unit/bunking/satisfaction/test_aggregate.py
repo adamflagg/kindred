@@ -324,3 +324,50 @@ def test_per_request_status_has_detail_field() -> None:
         satisfied=False,
     )
     assert entry2.detail is None
+
+
+def test_camper_satisfaction_threads_detail_for_bunk_with() -> None:
+    """detail strings from evaluate_request must surface in per_request output."""
+    # Two campers in the same bunk — bunk_with should be satisfied with "Same bunk".
+    req = _req("rq1", "bunk_with", 1, 2, "bunk_with")
+    result = camper_satisfaction(
+        person_cm_id=1,
+        person_requests=[req],
+        person_to_bunk={1: 100, 2: 100},
+    )
+    assert len(result.per_request) == 1
+    assert result.per_request[0].satisfied is True
+    assert result.per_request[0].detail == "Same bunk"
+
+
+def test_camper_satisfaction_threads_detail_for_unsatisfied_not_bunk_with() -> None:
+    """Unsatisfied not_bunk_with surfaces 'Same bunk' detail (the violation reason)."""
+    req = _req("rq1", "not_bunk_with", 1, 2, "not_bunk_with")
+    result = camper_satisfaction(
+        person_cm_id=1,
+        person_requests=[req],
+        person_to_bunk={1: 100, 2: 100},  # both in same bunk = violation
+    )
+    assert result.per_request[0].satisfied is False
+    assert result.per_request[0].detail == "Same bunk"
+
+
+def test_camper_satisfaction_malformed_request_has_none_detail() -> None:
+    """Malformed rows logged as warning + treated as unsatisfied keep detail=None."""
+    bad_age = {
+        "id": "r_bad_age",
+        "requester_id": 1,
+        "requestee_id": 0,
+        "request_type": "age_preference",
+        "source_field": "socialize_with",
+        "age_preference_target": "older",
+        "requester_grade": 99,  # out of range 0-12 — raises ValueError in predicate
+    }
+    result = camper_satisfaction(
+        person_cm_id=1,
+        person_requests=[bad_age],
+        person_to_bunk={1: 100},
+        bunkmate_grades={1: [10, 11]},
+    )
+    assert result.per_request[0].satisfied is False
+    assert result.per_request[0].detail is None

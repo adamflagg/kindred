@@ -23,6 +23,7 @@
       "per_request": [
         {
           "bucket": "material_parent",
+          "detail": null,
           "request_id": "r1",
           "satisfied": true
         }

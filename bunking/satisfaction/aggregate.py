@@ -33,7 +33,7 @@ from bunking.satisfaction.api_shape import (
     SatisfactionResponse,
 )
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
-from bunking.satisfaction.predicate import is_request_satisfied
+from bunking.satisfaction.predicate import evaluate_request
 
 logger = get_logger(__name__)
 
@@ -126,8 +126,9 @@ def camper_satisfaction(
 
     for req in person_requests:
         bucket = classify_request(_coerce_str(req.get("source_field")))
+        detail: str | None = None
         try:
-            satisfied = is_request_satisfied(req, person_to_bunk, bunkmate_grades=bunkmate_grades)
+            satisfied, detail = evaluate_request(req, person_to_bunk, bunkmate_grades=bunkmate_grades)
         except ValueError as exc:
             # One malformed row should not 500 the whole /api/satisfaction call.
             # Solver's score_evaluator wraps with the same try/except — match that.
@@ -137,7 +138,9 @@ def camper_satisfaction(
                 req.get("id"),
             )
             satisfied = False
-        per_request.append(PerRequestStatus(request_id=str(req.get("id", "")), bucket=bucket, satisfied=satisfied))
+        per_request.append(
+            PerRequestStatus(request_id=str(req.get("id", "")), bucket=bucket, satisfied=satisfied, detail=detail)
+        )
         if bucket in COUNTED_BUCKETS:
             counted[bucket].append(satisfied)
         else:
