@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 
-import community as community_louvain
 import networkx as nx
 
 from api.constants.collections import (
