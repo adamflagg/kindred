@@ -147,6 +147,123 @@ class TestNodeMetricsPerSourceBuckets:
 
 
 # ---------------------------------------------------------------------------
+# Reciprocal pairs: each parallel edge can carry its own reciprocal_rows
+# ---------------------------------------------------------------------------
+
+
+def _make_graph_with_parallel_reciprocal_pairs(
+    *,
+    same_bunk: bool,
+) -> tuple[SocialGraphBuilder, nx.Graph]:
+    """Two parallel reciprocal edges between nodes 1 and 2, one per source_field.
+
+    Each edge models a reciprocal pair (A→B + B→A) collapsed into a single
+    edge with `reciprocal_rows` carrying both directions — exactly how
+    `build_session_graph` constructs reciprocal pairs in production.
+
+    Edge 1: source_field='bunk_with'      reciprocal_rows=[1→2 parent, 2→1 parent]
+    Edge 2: source_field='bunking_notes'  reciprocal_rows=[1→2 staff,  2→1 staff]
+
+    With nx.Graph the second add_edge would overwrite the first; with
+    nx.MultiGraph both edges persist and `_calculate_node_metrics` iterates
+    both, recovering all four rows.
+    """
+    bunk2 = 10 if same_bunk else 11
+    builder = SocialGraphBuilder(pb=MagicMock())
+    g = builder.graph
+    g.add_node(1, bunk_cm_id=10, grade=5)
+    g.add_node(2, bunk_cm_id=bunk2, grade=5)
+
+    # Edge 1: parent reciprocal pair
+    g.add_edge(
+        1,
+        2,
+        edge_type="request",
+        request_type="bunk_with",
+        source_field="bunk_with",
+        request_id="req-parent-1",
+        requester_id=1,
+        requestee_id=2,
+        weight=5.0,
+        reciprocal_rows=[
+            {"request_id": "req-parent-1", "requester_id": 1, "requestee_id": 2},
+            {"request_id": "req-parent-2", "requester_id": 2, "requestee_id": 1},
+        ],
+    )
+    # Edge 2: staff reciprocal pair
+    g.add_edge(
+        1,
+        2,
+        edge_type="request",
+        request_type="bunk_with",
+        source_field="bunking_notes",
+        request_id="req-staff-1",
+        requester_id=1,
+        requestee_id=2,
+        weight=5.0,
+        reciprocal_rows=[
+            {"request_id": "req-staff-1", "requester_id": 1, "requestee_id": 2},
+            {"request_id": "req-staff-2", "requester_id": 2, "requestee_id": 1},
+        ],
+    )
+    return builder, g
+
+
+class TestParallelReciprocalRows:
+    """Reciprocal_rows on each parallel edge must all be processed.
+
+    Regression guard: nx.Graph would have collapsed the two parallel edges,
+    silently discarding one source_field's reciprocal rows entirely. With
+    nx.MultiGraph both edges' reciprocal_rows survive and contribute to both
+    requesters' bucket counts.
+    """
+
+    def test_two_parallel_edges_each_carry_reciprocal_rows(self) -> None:
+        """Both parallel edges must store their own reciprocal_rows array."""
+        _, g = _make_graph_with_parallel_reciprocal_pairs(same_bunk=True)
+        edge_recip = [data.get("reciprocal_rows") for _, _, data in g.edges(data=True)]
+        assert len(edge_recip) == 2, f"Expected 2 parallel edges, got {len(edge_recip)}"
+        assert all(rows is not None for rows in edge_recip), "Both edges must carry reciprocal_rows"
+        # The parent and staff reciprocal arrays are distinguishable by request_id prefix.
+        all_request_ids = {row["request_id"] for rows in edge_recip if rows for row in rows}
+        assert all_request_ids == {"req-parent-1", "req-parent-2", "req-staff-1", "req-staff-2"}, (
+            f"Lost reciprocal rows: got {all_request_ids}"
+        )
+
+    def test_both_directions_satisfied_in_both_buckets(self) -> None:
+        """Same bunk: nodes 1 AND 2 each show satisfied parent + staff buckets."""
+        builder, g = _make_graph_with_parallel_reciprocal_pairs(same_bunk=True)
+        builder._calculate_node_metrics()
+        for node_id in (1, 2):
+            node = g.nodes[node_id]
+            assert node.get("parent_satisfaction_status") == "satisfied", (
+                f"node {node_id} parent_satisfaction_status="
+                f"{node.get('parent_satisfaction_status')!r}; reciprocal parent row missing"
+            )
+            assert node.get("staff_satisfaction_status") == "satisfied", (
+                f"node {node_id} staff_satisfaction_status="
+                f"{node.get('staff_satisfaction_status')!r}; reciprocal staff row missing"
+            )
+
+    def test_both_directions_unsatisfied_in_both_buckets(self) -> None:
+        """Different bunks: nodes 1 AND 2 each show unsatisfied parent + staff buckets."""
+        builder, g = _make_graph_with_parallel_reciprocal_pairs(same_bunk=False)
+        builder._calculate_node_metrics()
+        for node_id in (1, 2):
+            node = g.nodes[node_id]
+            assert node.get("parent_satisfaction_status") == "unsatisfied", (
+                f"node {node_id} parent_satisfaction_status="
+                f"{node.get('parent_satisfaction_status')!r}; "
+                "different-bunk reciprocal parent row should be unsatisfied"
+            )
+            assert node.get("staff_satisfaction_status") == "unsatisfied", (
+                f"node {node_id} staff_satisfaction_status="
+                f"{node.get('staff_satisfaction_status')!r}; "
+                "different-bunk reciprocal staff row should be unsatisfied"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Regression: existing single-edge behavior is unchanged
 # ---------------------------------------------------------------------------
 
