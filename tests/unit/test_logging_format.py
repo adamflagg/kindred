@@ -252,6 +252,44 @@ class TestHealthCheckFilter:
         result = filter_instance.filter(record)
         assert result is True, "POST /api/solver/run kickoff should not be suppressed"
 
+    def test_allows_failing_solver_run_poll(self):
+        """Failing GETs on the poll endpoint (4xx/5xx) must stay visible — only successful 200 polls are noise."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='172.20.0.4:36134 - "GET /api/solver/run/2e8660bd-fea0-45d9-a622-09c69e67b961 HTTP/1.1" 500',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "Failing solver run polls must remain visible at INFO"
+
+    def test_allows_failing_health_check(self):
+        """Failing GETs on /health (4xx/5xx) must stay visible too."""
+        from bunking.logging_config import HealthCheckFilter
+
+        filter_instance = HealthCheckFilter()
+
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg='127.0.0.1:56948 - "GET /health HTTP/1.1" 503',
+            args=(),
+            exc_info=None,
+        )
+
+        result = filter_instance.filter(record)
+        assert result is True, "Failing health checks must remain visible at INFO"
+
 
 class TestConfigureLogging:
     """Test the configure_logging function."""

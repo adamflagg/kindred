@@ -118,9 +118,11 @@ class HealthCheckFilter(logging.Filter):
         if record.levelno == logging.DEBUG:
             return True
 
-        # Check if this is an access log for health endpoints
+        # Check if this is an access log for health endpoints. Anchor on the
+        # uvicorn format `"GET /path HTTP/1.1" 200 OK` so 4xx/5xx polls and
+        # non-GET methods on the same path stay visible.
         message = record.getMessage()
-        return all(not (path in message and ("GET" in message or "200" in message)) for path in self.HEALTH_PATHS)
+        return all(not (path in message and '"GET ' in message and '" 200' in message) for path in self.HEALTH_PATHS)
 
 
 def configure_logging(
