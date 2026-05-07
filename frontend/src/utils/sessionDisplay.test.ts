@@ -357,7 +357,7 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionShortName(null as any)).toBe(null)
     })
 
-    it('should handle quest sessions', () => {
+    it('should return raw name for quest sessions', () => {
       expect(getSessionShortName(s({ session_type: 'quest', name: 'Teen Adventure Quests' }))).toBe(
         'Teen Adventure Quests'
       )
@@ -367,56 +367,65 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionShortName(s({ session_type: 'quest' }))).toBe('Quest')
     })
 
-    it('should handle AG sessions', () => {
+    it('should shorten AG session names', () => {
+      expect(
+        getSessionShortName(
+          s({ session_type: 'ag', name: 'All-Gender Cabin-Session 2 (7th & 8th grades)' })
+        )
+      ).toBe('AG 2 (7-8)')
+      expect(
+        getSessionShortName(
+          s({ session_type: 'ag', name: 'All-Gender Cabin-Session 4 (4th - 6th grades)' })
+        )
+      ).toBe('AG 4 (4-6)')
+    })
+
+    it('should shorten AG sessions without grade ranges', () => {
       expect(
         getSessionShortName(s({ session_type: 'ag', name: 'All-Gender Cabin-Session 2' }))
-      ).toBe('All-Gender Cabin-Session 2')
+      ).toBe('AG 2')
     })
 
     it('should fallback to "AG" for AG session without name', () => {
       expect(getSessionShortName(s({ session_type: 'ag' }))).toBe('AG')
     })
 
-    it('should extract embedded session pattern (Session 2a)', () => {
+    it('should return raw name for embedded sessions (Session 2a)', () => {
       expect(getSessionShortName(s({ session_type: 'embedded', name: 'Session 2a' }))).toBe(
         'Session 2a'
       )
     })
 
-    it('should extract embedded session pattern (Session 3b)', () => {
-      expect(getSessionShortName(s({ session_type: 'embedded', name: 'Session 3b' }))).toBe(
-        'Session 3b'
+    it('should return raw name for embedded Taste of Camp 2 (no suffix stripping)', () => {
+      expect(getSessionShortName(s({ session_type: 'embedded', name: 'Taste of Camp 2' }))).toBe(
+        'Taste of Camp 2'
       )
     })
 
-    it('should fallback to name for embedded session without pattern match', () => {
-      expect(getSessionShortName(s({ session_type: 'embedded', name: 'Special Session' }))).toBe(
-        'Special Session'
-      )
-    })
-
-    it('should extract main session number', () => {
+    it('should return raw name for main sessions', () => {
       expect(getSessionShortName(s({ session_type: 'main', name: 'Session 2' }))).toBe('Session 2')
     })
 
-    it('should extract main session number from full name', () => {
+    it('should return raw name for main Taste of Camp 1 (no suffix stripping)', () => {
+      expect(getSessionShortName(s({ session_type: 'main', name: 'Taste of Camp 1' }))).toBe(
+        'Taste of Camp 1'
+      )
+    })
+
+    it('should return raw name even when it contains digits and parens', () => {
+      // Real-world AG names are shortened, but other types keep their raw text.
       expect(
-        getSessionShortName(
-          s({
-            session_type: 'main',
-            name: 'Session 2 (Grades 4-6) June 1-14',
-          })
-        )
-      ).toBe('Session 2')
+        getSessionShortName(s({ session_type: 'main', name: 'Session 2 (Grades 4-6) June 1-14' }))
+      ).toBe('Session 2 (Grades 4-6) June 1-14')
     })
 
-    it('should handle "Taste of Camp" pattern regardless of session_type', () => {
-      expect(getSessionShortName(s({ name: 'Taste of Camp' }))).toBe('Taste of Camp')
-      expect(getSessionShortName(s({ name: 'Taste of Camp 2' }))).toBe('Taste of Camp')
-      expect(getSessionShortName(s({ name: 'TASTE of Camp' }))).toBe('Taste of Camp')
+    it('should preserve case for non-AG sessions', () => {
+      expect(getSessionShortName(s({ session_type: 'main', name: 'TASTE OF CAMP 2' }))).toBe(
+        'TASTE OF CAMP 2'
+      )
     })
 
-    it('should return name as-is for unknown session types', () => {
+    it('should return name as-is for family/other unknown session types', () => {
       expect(getSessionShortName(s({ session_type: 'family', name: 'Family Camp 1' }))).toBe(
         'Family Camp 1'
       )
@@ -428,16 +437,18 @@ describe('sessionDisplay utilities', () => {
       expect(getSessionShortName(s({ session_type: 'unknown' }))).toBe(null)
     })
 
-    it('should prioritize session_type over name pattern for quest', () => {
-      // Even if name contains "taste", quest type takes precedence
-      expect(
-        getSessionShortName(s({ session_type: 'quest', name: 'Quest: Taste Adventure' }))
-      ).toBe('Quest: Taste Adventure')
-    })
-
-    it('should handle case-insensitive taste pattern matching', () => {
-      expect(getSessionShortName(s({ name: 'TASTE OF CAMP' }))).toBe('Taste of Camp')
-      expect(getSessionShortName(s({ name: 'taste of camp 3' }))).toBe('Taste of Camp')
+    it('should not strip suffix for taste-named sessions of any type', () => {
+      // Regression: previously "Taste of Camp 2" was collapsed to "Taste of Camp"
+      // by a name-based check. Raw name is the desired behavior — the suffix
+      // is meaningful (1 vs 2 are different sessions).
+      expect(getSessionShortName(s({ name: 'Taste of Camp 1' }))).toBe('Taste of Camp 1')
+      expect(getSessionShortName(s({ name: 'Taste of Camp 2' }))).toBe('Taste of Camp 2')
+      expect(getSessionShortName(s({ session_type: 'main', name: 'Taste of Camp 1' }))).toBe(
+        'Taste of Camp 1'
+      )
+      expect(getSessionShortName(s({ session_type: 'embedded', name: 'Taste of Camp 2' }))).toBe(
+        'Taste of Camp 2'
+      )
     })
   })
 })
