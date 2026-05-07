@@ -54,7 +54,6 @@ class Camper(BaseModel):
     requests: list[Request] = Field(default_factory=list)
     priority_type: PriorityType | None = None
     is_new: bool = False  # Whether camper is new or returning
-    friend_group_id: str | None = None  # ID of friend group if member of one
     previous_level: int | None = None  # Previous bunk level for returning campers
 
     @field_validator("priority_type")
@@ -320,23 +319,11 @@ class Division(BaseModel):
     gender: str | None = None
 
 
-class FriendGroup(BaseModel):
-    """Friend group model matching PocketBase schema."""
-
-    id: str | None = None
-    name: str
-    session_cm_id: str
-    year: int
-    member_cm_ids: list[str] = Field(default_factory=list)
-    notes: str | None = None
-
-
 # Solution Analysis Models
 class WarningType(Enum):
     """Types of warnings that can be generated"""
 
     HIGH_ISOLATION = "high_isolation"
-    SPLIT_FRIEND_GROUP = "split_friend_group"
     LOW_SATISFACTION = "low_satisfaction"
     LEVEL_REGRESSION = "level_regression"
     UNBALANCED_BUNK = "unbalanced_bunk"
@@ -378,15 +365,6 @@ class BunkHealth(BaseModel):
         return (self.cohesion_score + self.satisfaction_rate - isolation_penalty) / 2
 
 
-class FriendGroupAnalysis(BaseModel):
-    """Analysis of friend group preservation"""
-
-    preserved_groups: list[str] = Field(default_factory=list)
-    split_groups: list[str] = Field(default_factory=list)
-    group_distribution: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
-    preservation_rate: float = Field(ge=0.0, le=1.0)
-
-
 class IsolationAnalysis(BaseModel):
     """Analysis of camper isolation"""
 
@@ -422,7 +400,6 @@ class LevelProgressionAnalysis(BaseModel):
 class SolutionReport(BaseModel):
     """Comprehensive solution analysis report"""
 
-    friend_group_analysis: FriendGroupAnalysis
     isolation_analysis: IsolationAnalysis
     satisfaction_analysis: SatisfactionAnalysis
     level_progression_analysis: LevelProgressionAnalysis
@@ -434,7 +411,6 @@ class SolutionReport(BaseModel):
     def summary_metrics(self) -> dict[str, float]:
         """Get summary metrics for quick overview"""
         return {
-            "friend_group_preservation": self.friend_group_analysis.preservation_rate,
             "isolation_rate": self.isolation_analysis.isolation_rate,
             "satisfaction_rate": self.satisfaction_analysis.overall_satisfaction_rate,
             "progression_rate": self.level_progression_analysis.progression_rate,

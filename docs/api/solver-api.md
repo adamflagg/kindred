@@ -658,82 +658,6 @@ Reset all configuration values to defaults.
 
 ---
 
-### Friend Group Management
-
-#### GET /api/friend-groups
-Get friend groups for a session.
-
-**Query Parameters:**
-- `session_cm_id` (required): CampMinder session ID
-- `year` (required): Camp year
-- `include_inactive` (optional, default=false): Include deactivated groups
-
-**Response:**
-```json
-[
-  {
-    "id": "fg123",
-    "name": "Cabin 3 Returners",
-    "session_cm_id": 1000001,
-    "year": 2025,
-    "member_cm_ids": [12345, 12346, 12347],
-    "completeness_score": 0.83,
-    "stability_score": 0.90,
-    "is_active": true,
-    "manually_created": false
-  }
-]
-```
-
----
-
-#### GET /api/friend-groups/{group_id}
-Get details of a specific friend group.
-
-**Response includes:**
-- Group metadata
-- Member details with current bunk assignments
-- Connection analysis
-- History if available
-
----
-
-#### POST /api/friend-groups
-Create a manual friend group.
-
-**Request Body:**
-```json
-{
-  "name": "Special Needs Group",
-  "session_cm_id": 1000001,
-  "year": 2025,
-  "member_cm_ids": [12345, 12346],
-  "manually_created": true,
-  "notes": "Medical compatibility required"
-}
-```
-
----
-
-#### PUT /api/friend-groups/{group_id}
-Update a friend group.
-
-**Request Body:**
-```json
-{
-  "name": "Updated Name",
-  "member_cm_ids": [12345, 12346, 12347, 12348],
-  "is_active": true
-}
-```
-
----
-
-#### DELETE /api/friend-groups/{group_id}
-Deactivate a friend group.
-
----
-
 ### Request Conflicts
 
 #### GET /api/conflicts
@@ -1063,68 +987,6 @@ Analyze individual's social network.
 }
 ```
 
-### Enhanced Friend Group Detection
-
-```http
-POST /api/sessions/{session_cm_id}/detect-friend-groups
-```
-
-Detect friend groups using NetworkX algorithms.
-
-#### Query Parameters
-- `year` (optional): Target year
-- `min_size` (optional): Minimum group size (default: 3)
-- `max_size` (optional): Maximum group size (default: 8)
-- `auto_create` (optional): Automatically create groups above threshold
-- `method` (optional): Detection method - louvain, clique, or hybrid (default: hybrid)
-- `background` (optional): Run in background (default: true)
-
-#### Response (202 Accepted - Background)
-```json
-{
-  "detection_id": "det_123abc",
-  "status": "pending",
-  "message": "Friend group detection started in background"
-}
-```
-
-#### Response (200 OK - Synchronous)
-```json
-{
-  "detection_id": "det_123abc",
-  "status": "completed",
-  "groups_found": 12,
-  "coverage": 0.85,
-  "stats": {
-    "total_campers": 100,
-    "campers_in_groups": 85,
-    "average_group_size": 5.2,
-    "largest_group": 8,
-    "smallest_group": 3
-  }
-}
-```
-
-### Detection Status
-
-```http
-GET /social-graph/detection/{detection_id}
-```
-
-Track friend group detection progress.
-
-#### Response (200 OK)
-```json
-{
-  "detection_id": "det_123abc",
-  "status": "in_progress",
-  "progress": 0.65,
-  "phase": "Community detection",
-  "groups_found": 8,
-  "time_elapsed": 2.5
-}
-```
-
 ### Solver Run Analysis
 
 ```http
@@ -1141,7 +1003,6 @@ Analyze solver run results for patterns and issues.
     "satisfied_requests": 85,
     "total_requests": 100,
     "satisfaction_rate": 0.85,
-    "friend_group_cohesion": 0.72,
     "isolated_campers": 3,
     "constraint_violations": []
   }

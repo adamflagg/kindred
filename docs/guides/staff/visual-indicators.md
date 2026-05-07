@@ -7,7 +7,6 @@ This guide explains the visual indicators used throughout Kindred to help staff 
 - [Camper Indicators](#camper-indicators)
 - [Bunk Indicators](#bunk-indicators)
 - [Request Indicators](#request-indicators)
-- [Friend Group Indicators](#friend-group-indicators)
 - [Status Colors](#status-colors)
 - [Interactive Features](#interactive-features)
 
@@ -17,7 +16,6 @@ Visual indicators provide at-a-glance information about:
 - Camper request status
 - Bunk capacity and composition
 - Request priorities and confidence
-- Friend group health
 - Potential issues requiring attention
 
 ## Camper Indicators
@@ -139,45 +137,6 @@ Visual indicators provide at-a-glance information about:
 
 **Hover to view** full parse notes
 
-## Friend Group Indicators
-
-### Completeness Meter
-
-**Visual**: Circular progress indicator
-
-**Color coding**:
-- 🟢 Green (>60%): Well-connected group
-- 🟡 Yellow (40-60%): Needs attention
-- 🔴 Red (<40%): At risk of deactivation
-
-**Shows**: X% with exact percentage
-
-### Group Size Badge
-
-**Visual**: Number in circle
-
-**Color coding**:
-- Green (2-10): Optimal size
-- Yellow (11): Near capacity
-- Red (12+): Must split
-
-### Stability Indicator
-
-**Visual**: Line graph icon
-
-**Shows**:
-- 📈 Trending up: Increasing stability
-- ➡️ Stable: Consistent over time
-- 📉 Trending down: Decreasing stability
-
-### Status Indicators
-
-**Icons**:
-- ✅ **Active**: Group is active
-- ⏸️ **Inactive**: Temporarily disabled
-- 🔒 **Locked**: Protected from changes
-- 👤 **Manual**: Created by staff
-
 ## Status Colors
 
 ### Universal Color Scheme
@@ -238,10 +197,6 @@ Visual indicators provide at-a-glance information about:
 **Request items**:
 - Click: Expand/collapse details
 - Action buttons: Approve/reject
-
-**Friend groups**:
-- Click: View members
-- Edit button: Modify group
 
 ### Drag and Drop
 

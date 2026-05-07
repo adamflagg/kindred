@@ -86,10 +86,9 @@ class TestNativeV2Modules:
         assert session_cm_id in graph.graphs
         assert graph.graphs[session_cm_id] is not None
 
-        # Check metrics were calculated (returns dict keyed by session_cm_id)
-        all_metrics = graph.get_graph_metrics()
-        assert session_cm_id in all_metrics
-        metrics = all_metrics[session_cm_id]
+        # Check metrics were calculated (stored in _stats keyed by session_cm_id)
+        assert session_cm_id in graph._stats
+        metrics = graph._stats[session_cm_id]
         assert "node_count" in metrics
         assert "edge_count" in metrics
         assert "density" in metrics

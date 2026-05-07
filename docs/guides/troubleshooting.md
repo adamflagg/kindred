@@ -356,31 +356,6 @@ git pull
 uv run python scripts/sync/sync_bunk_requests.py
 ```
 
-#### Friend Groups Not Showing
-**Symptoms**: Friend Groups tab shows "No friend groups found"
-**Causes**:
-1. Friend groups haven't been created yet
-2. Filter syntax issues
-
-**Solution**:
-```bash
-# Run bunk requests sync to populate friend groups
-uv run python scripts/sync/sync_bunk_requests.py
-
-# Verify friend groups were created
-uv run python -c "
-import os
-from pocketbase import PocketBase
-pb = PocketBase('http://127.0.0.1:8090')
-pb.admins.auth_with_password(
-    os.getenv('POCKETBASE_ADMIN_EMAIL', 'admin@camp.local'),
-    os.getenv('POCKETBASE_ADMIN_PASSWORD', 'campbunking123')
-)
-result = pb.collection('friend_groups').get_list(1, 10)
-print(f'Total friend groups: {result.total_items}')
-"
-```
-
 ### Request Review Issues
 
 #### Confidence Filter Not Working
