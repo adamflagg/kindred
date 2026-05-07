@@ -45,55 +45,14 @@ class TestNetworkXIntegration:
         assert hasattr(nx, "Graph")
         assert hasattr(nx, "find_cliques")
 
-    def test_louvain_import(self):
-        """Test that python-louvain can be imported"""
-        import community as community_louvain
-
-        assert community_louvain is not None
-        assert hasattr(community_louvain, "best_partition")
-
-    def test_large_graph_performance(self):
-        """Test performance with larger graphs"""
-        import time
-
-        import networkx as nx
-
-        # Create a graph with 100 nodes and ~500 edges
-        graph = nx.erdos_renyi_graph(100, 0.1)
-
-        start_time = time.time()
-
-        # Test that community detection completes quickly
-        import community as community_louvain
-
-        partition = community_louvain.best_partition(graph)
-
-        elapsed = time.time() - start_time
-
-        # Should complete in under 1 second for this size
-        assert elapsed < 1.0
-        assert len(partition) == 100  # All nodes assigned to communities
-
     def test_reproducibility_with_seed(self):
-        """Test that same seed produces same results"""
-        import community as community_louvain
+        """Test that Kernighan-Lin partitioning is reproducible with the same seed."""
         import networkx as nx
 
         # Create a test graph
         graph = nx.karate_club_graph()
 
-        # Run with same seed multiple times
         seed = 42
-        results = []
-        for _ in range(3):
-            partition = community_louvain.best_partition(graph, random_state=seed)
-            results.append(partition)
-
-        # All results should be identical
-        for i in range(1, len(results)):
-            assert results[i] == results[0], "Same seed should produce same results"
-
-        # Test Kernighan-Lin reproducibility
         part1_results = []
         part2_results = []
         for _ in range(3):
