@@ -6,9 +6,10 @@ services:
   init-permissions:
     image: busybox:latest
     container_name: kindred-init-permissions
-    command: ["sh", "-c", "chown -R 65532:65532 /pb_data"]
+    command: ["sh", "-c", "chown -R 65532:65532 /pb_data /api_logs"]
     volumes:
       - kindred-pb-data:/pb_data
+      - kindred-api-logs:/api_logs
     restart: "no"
     networks:
       - kindred-local
@@ -97,10 +98,10 @@ services:
         condition: service_completed_successfully
     volumes:
       - kindred-pb-data:/pb_data:ro
+      # Solver run logs read back via /api/solver/logs/{session_id}; must persist across restarts.
+      - kindred-api-logs:/app/logs
     tmpfs:
       - /tmp:size=64m,uid=65532,gid=65532
-      - /app/logs:size=64m,uid=65532,gid=65532
-      - /app/csv_history:size=64m,uid=65532,gid=65532
     environment:
       - POCKETBASE_URL=http://pocketbase:8090
       - POCKETBASE_ADMIN_EMAIL=${POCKETBASE_ADMIN_EMAIL:-admin@test.local}
@@ -164,3 +165,4 @@ networks:
 
 volumes:
   kindred-pb-data:
+  kindred-api-logs:

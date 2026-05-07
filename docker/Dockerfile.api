@@ -20,7 +20,7 @@ FROM chainguard/wolfi-base:latest
 
 # hadolint ignore=DL3018
 RUN apk add --no-cache python-3.14 libstdc++ curl \
-    && mkdir -p /app/logs /app/csv_history \
+    && mkdir -p /app/logs \
     && chown -R nonroot:nonroot /app
 
 WORKDIR /app
