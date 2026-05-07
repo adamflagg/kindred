@@ -137,7 +137,7 @@ class SocialGraphBuilder:
 
     def __init__(self, pb: PocketBase, random_seed: int | None = None):
         self.pb = pb
-        self.graph = nx.Graph()
+        self.graph = nx.MultiGraph()
         self.current_year = datetime.now(tz=UTC).year
         self.person_cache: dict[int, dict[str, Any]] = {}
         self.attendee_cache: dict[int, list[dict[str, Any]]] = {}
@@ -836,11 +836,14 @@ class SocialGraphBuilder:
         # Clustering coefficient (how connected are a node's neighbors)
         # nx.clustering(G) always returns dict[node, float] when passed a graph;
         # cast to resolve pyright's ambiguous overload (float|int|dict).
-        clustering = cast(dict[Any, float], nx.clustering(self.graph))
+        # nx.clustering does not support multigraphs — collapse to a simple graph
+        # first. nx.Graph(multigraph) picks one edge per pair (the last one added),
+        # which is fine for clustering (structural topology, not per-edge data).
+        clustering = cast(dict[Any, float], nx.clustering(nx.Graph(self.graph)))
         nx.set_node_attributes(self.graph, clustering, "clustering")
 
         # Connected component size — use weakly_connected_components for directed graphs
-        # (OptimizedSocialGraphBuilder uses nx.DiGraph; the parent path uses nx.Graph).
+        # (OptimizedSocialGraphBuilder uses nx.DiGraph; the parent path uses nx.MultiGraph).
         # Without this branch, nx.connected_components raises NetworkXNotImplemented on
         # DiGraph inputs and the satisfaction_status loop below never runs — leaving every
         # node's status null and every frontend border falling back to the default color.
@@ -1105,10 +1108,13 @@ class SocialGraphBuilder:
         avg_degree = sum(subgraph.degree(n) for n in members_list) / len(members_list)
 
         # Find core subgroup using densest_subgraph (NetworkX 3.6+)
+        # densest_subgraph does not support multigraphs — collapse to simple graph
+        # first. Structural density (not per-edge count) is what matters here.
         core_info = None
         if len(members_list) >= 4:
             try:
-                density, core_nodes = nx.approximation.densest_subgraph(subgraph)
+                simple_subgraph = nx.Graph(subgraph) if isinstance(subgraph, nx.MultiGraph) else subgraph
+                density, core_nodes = nx.approximation.densest_subgraph(simple_subgraph)
                 core_info = {
                     "core_members": list(core_nodes),
                     "core_density": density,
@@ -1168,12 +1174,14 @@ class SocialGraphBuilder:
             density = nx.density(self.graph)
 
         # Calculate clustering coefficient
+        # nx.average_clustering does not support multigraphs or digraphs — collapse
+        # to a simple undirected graph first. nx.Graph(G) retains one edge per pair,
+        # which is sufficient for the structural clustering measure.
         if is_directed:
-            # For directed graphs, convert to undirected for clustering calculation
-            undirected = self.graph.to_undirected()
-            avg_clustering = nx.average_clustering(undirected)
+            simple_undirected = nx.Graph(self.graph.to_undirected())
         else:
-            avg_clustering = nx.average_clustering(self.graph)
+            simple_undirected = nx.Graph(self.graph)
+        avg_clustering = nx.average_clustering(simple_undirected)
 
         return {
             "node_count": n,
@@ -1353,8 +1361,10 @@ class SocialGraphBuilder:
             }
 
         try:
-            # NetworkX 3.6+ densest_subgraph returns (density, node_set)
-            density, core_nodes = nx.approximation.densest_subgraph(search_graph)
+            # NetworkX 3.6+ densest_subgraph returns (density, node_set).
+            # densest_subgraph does not support multigraphs — collapse to simple graph.
+            simple_search = nx.Graph(search_graph) if isinstance(search_graph, nx.MultiGraph) else search_graph
+            density, core_nodes = nx.approximation.densest_subgraph(simple_search)
 
             # Calculate peripheral members (in original set but not in core)
             all_members = set(search_graph.nodes())
