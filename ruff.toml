@@ -67,7 +67,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 # Per-file ignores
 [lint.per-file-ignores]
 "tests/**/*.py" = ["E402", "T201", "N806", "RUF005", "RUF059", "S101", "S105", "S106", "S107", "S108", "S110", "S112", "S113", "S311", "S324", "S603", "S607", "DTZ001", "DTZ005", "PT011", "PERF401"]
-"scripts/**/*.py" = ["T20", "S", "DTZ005", "PERF401"]
+"scripts/**/*.py" = ["T20", "S", "DTZ005", "PERF401", "N999"]  # N999: script names can have hyphens (not Python module names)
 "scripts/cleanup_orphaned_configs.py" = ["E402"]
 "scripts/populate_new_solver_config.py" = ["E402"]
 "test_solver_hang.py" = ["E402"]

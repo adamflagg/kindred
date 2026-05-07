@@ -91,6 +91,7 @@ describe('createGraphElements', () => {
       satisfaction_status: 'satisfied',
       bunk_cm_id: 100,
       community: 1,
+      first_year: false,
     },
     {
       id: 2,
@@ -101,6 +102,7 @@ describe('createGraphElements', () => {
       satisfaction_status: 'partial',
       bunk_cm_id: 100,
       community: 1,
+      first_year: false,
     },
     {
       id: 3,
@@ -109,8 +111,9 @@ describe('createGraphElements', () => {
       centrality: 0.2,
       clustering: 0.1,
       satisfaction_status: 'unsatisfied',
-      bunk_cm_id: undefined,
+      bunk_cm_id: null,
       community: 2,
+      first_year: false,
     },
   ]
 
@@ -122,6 +125,9 @@ describe('createGraphElements', () => {
       priority: 1,
       confidence: 0.9,
       reciprocal: true,
+      weight: 1,
+      metadata: {},
+      cross_scope: false,
     },
     {
       source: 2,
@@ -130,6 +136,9 @@ describe('createGraphElements', () => {
       priority: 2,
       confidence: 0.7,
       reciprocal: false,
+      weight: 1,
+      metadata: {},
+      cross_scope: false,
     },
   ]
 
@@ -150,6 +159,9 @@ describe('createGraphElements', () => {
     confidence: 0.9,
     reciprocal,
     request_type,
+    weight: 1,
+    metadata: {},
+    cross_scope: false,
   })
 
   it('creates parent nodes for bunks', () => {
@@ -179,6 +191,7 @@ describe('createGraphElements', () => {
       satisfaction_status: 'satisfied',
       bunk_cm_id: bunkId,
       community: 1,
+      first_year: false,
     })
     const { parentNodes } = createGraphElements(
       [camper(1, 100), camper(2, 101), camper(3, 102), camper(4, 103)],
@@ -332,6 +345,9 @@ describe('createGraphElements', () => {
         priority: 1,
         confidence: 0.9,
         reciprocal: false,
+        weight: 1,
+        metadata: {},
+        cross_scope: false,
       },
     ]
     const cross = [
@@ -357,6 +373,7 @@ describe('createGraphElements', () => {
         satisfaction_status: 'no_requests',
         bunk_cm_id: 999,
         community: 0,
+        first_year: false,
       },
     ]
     const { edges } = createGraphElements(mockNodes, inScope, mockBunksData, {
@@ -433,6 +450,7 @@ describe('createGraphElements', () => {
         staff_satisfaction_status: 'unsatisfied',
         bunk_cm_id: 100,
         community: 1,
+        first_year: false,
       },
     ]
     const { nodes } = createGraphElements(nodesWithSplits, [], mockBunksData, {
