@@ -29,6 +29,15 @@ var preUpdateCache sync.Map // map[string]pairCoords
 // RegisterHooks wires reciprocity-recompute hooks onto the bunk_requests
 // collection. Errors are logged via slog and never block the underlying write.
 func RegisterHooks(app *pocketbase.PocketBase) {
+	wireHooks(app)
+	slog.Info("bunk_requests reciprocity hooks registered")
+}
+
+// wireHooks attaches all 4 reciprocity BindFunc calls to any core.App
+// implementation. Extracted so that both RegisterHooks (production) and the
+// test suite (which uses *tests.TestApp, not *pocketbase.PocketBase) share a
+// single hook-binding implementation.
+func wireHooks(app core.App) {
 	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
 		captureOldCoords(e)
 		err := e.Next()
@@ -51,8 +60,6 @@ func RegisterHooks(app *pocketbase.PocketBase) {
 		runRecompute(e)
 		return e.Next()
 	})
-
-	slog.Info("bunk_requests reciprocity hooks registered")
 }
 
 // captureOldCoords reads the pre-mutation pair coords directly from the DB

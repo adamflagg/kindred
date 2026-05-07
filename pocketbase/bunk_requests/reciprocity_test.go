@@ -181,26 +181,7 @@ func TestHook_FiresOnCreate(t *testing.T) {
 // core.App (which the *tests.TestApp implements). We can't pass *tests.TestApp
 // to RegisterHooks because it expects *pocketbase.PocketBase.
 func registerHooksOnApp(app core.App) {
-	app.OnRecordUpdate("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
-		captureOldCoords(e)
-		err := e.Next()
-		if err != nil && e.Record != nil && e.Record.Id != "" {
-			preUpdateCache.Delete(e.Record.Id)
-		}
-		return err
-	})
-	app.OnRecordAfterCreateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
-		runRecompute(e)
-		return e.Next()
-	})
-	app.OnRecordAfterUpdateSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
-		runRecompute(e)
-		return e.Next()
-	})
-	app.OnRecordAfterDeleteSuccess("bunk_requests").BindFunc(func(e *core.RecordEvent) error {
-		runRecompute(e)
-		return e.Next()
-	})
+	wireHooks(app)
 }
 
 // Test 3 — #1059 direct reproduction: pair both reciprocal=true, delete one,
