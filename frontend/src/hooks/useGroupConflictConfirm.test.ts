@@ -268,7 +268,7 @@ describe('useGroupConflictConfirm', () => {
       const callArgs = getCollection('locked_group_members').getFullList.mock.calls[0]
       // Should have been called with options containing a filter
       expect(callArgs).toBeDefined()
-      const options = callArgs[0] as { filter?: string; expand?: string }
+      const options = (callArgs as [{ filter?: string; expand?: string }] | undefined)?.[0]
       expect(options?.filter ?? '').toContain('scenario-xyz')
     })
   })
