@@ -48,8 +48,8 @@ class ConfigLoader:
         loader = ConfigLoader.get_instance()
 
         # Typed accessors
-        timeout = loader.get_int("solver.time_limit.seconds")
-        enabled = loader.get_bool("smart_local_resolution.enabled")
+        enabled = loader.get_int("smart_local_resolution.enabled")
+        weight = loader.get_float("smart_local_resolution.connection_score_weight")
 
         # Test substitution
         with ConfigLoader.use(mock_loader):
@@ -252,7 +252,7 @@ class ConfigLoader:
         Get a configuration value.
 
         Args:
-            key: Configuration key (e.g., "solver.time_limit.seconds")
+            key: Configuration key (e.g., "smart_local_resolution.enabled")
 
         Returns:
             The typed configuration value
@@ -379,20 +379,6 @@ class ConfigLoader:
         """
         key = f"constraint.{constraint_type}.{param}"
         return self.get_int(key, default=default)
-
-    def get_solver_param(self, param_type: str, subtype: str) -> int:
-        """
-        Get a solver parameter value.
-
-        Args:
-            param_type: Parameter type (e.g., "time_limit").
-            subtype: Subtype (e.g., "seconds").
-
-        Returns:
-            Solver parameter value as integer.
-        """
-        key = f"solver.{param_type}.{subtype}"
-        return self.get_int(key)
 
     def get_soft_constraint_weight(self, constraint_name: str, default: int | None = None) -> int:
         """
@@ -570,7 +556,7 @@ class ConfigLoader:
         Update a configuration value in the database.
 
         Args:
-            key: Dot-notation key (e.g., "solver.time_limit.seconds").
+            key: Dot-notation key (e.g., "smart_local_resolution.enabled").
             value: New value to set.
 
         Raises:

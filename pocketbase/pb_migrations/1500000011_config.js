@@ -173,7 +173,6 @@ migrate((app) => {
     'constraint.must_satisfy_one.penalty': 'Request Satisfaction Penalty',
 
     // Constraint Settings - Cabin Capacity
-    'constraint.cabin_capacity.enabled': 'Enforce Cabin Capacity',
     'constraint.cabin_capacity.mode': 'Cabin Capacity Mode',
     'constraint.cabin_capacity.max': 'Maximum Cabin Size',
     'constraint.cabin_capacity.standard': 'Standard Cabin Size',
@@ -182,11 +181,9 @@ migrate((app) => {
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Max Grade Spread',
     'spread.max_age_months': 'Max Age Difference (months)',
-    'constraint.age_spread.enabled': 'Enforce Age Spread Limits',
     'constraint.age_spread.penalty': 'Age Spread Violation Penalty',
     'constraint.age_spread.preferred_months': 'Preferred Age Spread (months)',
     'constraint.age_spread.preferred_bonus': 'Preferred Age Spread Bonus',
-    'constraint.grade_spread.enabled': 'Enforce Grade Spread Limits',
     'constraint.grade_spread.mode': 'Grade Spread Mode',
     'constraint.grade_spread.penalty': 'Grade Spread Violation Penalty',
     'constraint.grade_ratio.max_percentage': 'Max Single Grade Percentage',
@@ -223,11 +220,6 @@ migrate((app) => {
     // Solver Settings - Core (execution_mode removed, num_workers moved to .env)
     'solver.auto_apply_enabled': 'Auto-Apply Results',
     'solver.auto_apply_timeout': 'Auto-Apply Delay (seconds)',
-    'solver.time_limit.seconds': 'Solver Time Limit',
-
-    // Soft Constraint Weights (penalty_multiplier removed - never applied)
-    'soft.grade_spread.penalty': 'Soft Grade Spread Penalty',
-    'soft.age_spread.penalty': 'Soft Age Spread Penalty',
 
     // Smart Local Resolution (NetworkX)
     'smart_local_resolution.enabled': 'Enable Smart Name Resolution',
@@ -255,7 +247,6 @@ migrate((app) => {
     'constraint.must_satisfy_one.penalty': 'How heavily the optimizer penalizes leaving a camper without any requests fulfilled. Higher = tries harder to satisfy everyone.',
 
     // Constraint Settings - Cabin Capacity
-    'constraint.cabin_capacity.enabled': 'Whether to enforce cabin capacity limits',
     'constraint.cabin_capacity.mode': 'Hard constraint prevents exceeding, soft adds penalty',
     'constraint.cabin_capacity.max': 'Maximum allowed campers per cabin (with override)',
     'constraint.cabin_capacity.standard': 'Standard cabin size for planning',
@@ -264,11 +255,9 @@ migrate((app) => {
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Maximum grade difference allowed in bunks and bunk requests (e.g., 2 means 6th and 7th grade only)',
     'spread.max_age_months': 'Maximum age difference in months allowed in bunks and bunk requests',
-    'constraint.age_spread.enabled': 'Whether to enforce maximum age difference in cabins',
     'constraint.age_spread.penalty': 'Penalty weight for exceeding age spread limit',
     'constraint.age_spread.preferred_months': 'Cabins at or below this spread earn a bonus (0 = disabled). Must be less than Max Age Difference.',
     'constraint.age_spread.preferred_bonus': 'Objective bonus for each cabin within the preferred age spread. Higher = solver tries harder to form tight age groups.',
-    'constraint.grade_spread.enabled': 'Whether to enforce maximum grade spread in cabins',
     'constraint.grade_spread.mode': 'Hard constraint prevents exceeding, soft adds penalty',
     'constraint.grade_spread.penalty': 'Penalty weight for exceeding grade spread limit',
     'constraint.grade_ratio.max_percentage': 'Maximum percentage of cabin that can be from a single grade',
@@ -305,11 +294,6 @@ migrate((app) => {
     // Solver Settings - Core (execution_mode removed, num_workers moved to SOLVER_NUM_WORKERS env var)
     'solver.auto_apply_enabled': 'Automatically apply solver results without confirmation prompt',
     'solver.auto_apply_timeout': 'Seconds to wait before auto-applying results (0 = immediate)',
-    'solver.time_limit.seconds': 'Maximum time in seconds for solver to find a solution',
-
-    // Soft Constraint Weights (penalty_multiplier removed - never applied)
-    'soft.grade_spread.penalty': 'Penalty for soft grade spread violations',
-    'soft.age_spread.penalty': 'Penalty for soft age spread violations',
 
     // Smart Local Resolution (NetworkX)
     'smart_local_resolution.enabled': 'Use social graph analysis for ambiguous name resolution',
@@ -338,7 +322,6 @@ migrate((app) => {
     'constraint.must_satisfy_one.penalty': 'core-constraints',
 
     // Cabin Capacity
-    'constraint.cabin_capacity.enabled': 'cabin-capacity',
     'constraint.cabin_capacity.mode': 'cabin-capacity',
     'constraint.cabin_capacity.max': 'cabin-capacity',
     'constraint.cabin_capacity.standard': 'cabin-capacity',
@@ -347,18 +330,13 @@ migrate((app) => {
     // Age & Grade (unified spread limits)
     'spread.max_grade': 'age-grade',
     'spread.max_age_months': 'age-grade',
-    'constraint.age_spread.enabled': 'age-grade',
     'constraint.age_spread.penalty': 'age-grade',
     'constraint.age_spread.preferred_months': 'age-grade',
     'constraint.age_spread.preferred_bonus': 'age-grade',
-    'constraint.grade_spread.enabled': 'age-grade',
     'constraint.grade_spread.mode': 'age-grade',
     'constraint.grade_spread.penalty': 'age-grade',
     'constraint.grade_ratio.max_percentage': 'age-grade',
     'constraint.grade_ratio.penalty': 'age-grade',
-    'soft.grade_spread.penalty': 'age-grade',
-    'soft.age_spread.penalty': 'age-grade',
-
     // Cabin Minimum Occupancy
     'constraint.cabin_minimum_occupancy.enabled': 'cabin-occupancy',
     'constraint.cabin_minimum_occupancy.min': 'cabin-occupancy',
@@ -388,7 +366,6 @@ migrate((app) => {
     // Solver Execution (execution_mode removed, num_workers moved to .env)
     'solver.auto_apply_enabled': 'solver-execution',
     'solver.auto_apply_timeout': 'solver-execution',
-    'solver.time_limit.seconds': 'solver-execution',
 
     // Smart Resolution
     'smart_local_resolution.enabled': 'smart-resolution',
@@ -926,27 +903,6 @@ migrate((app) => {
       min: 0,
       max: 30
     },
-    "solver.time_limit.seconds": {
-      value: 60,
-      description: "Maximum time in seconds for solver to find a solution",
-      min: 1,
-      max: 600
-    },
-
-    // Soft constraint configurations (penalty_multiplier removed - never applied)
-    "soft.grade_spread.penalty": {
-      value: 3000,
-      description: "Penalty for soft grade spread constraint",
-      min: 0,
-      max: 10000
-    },
-    "soft.age_spread.penalty": {
-      value: 2500,
-      description: "Penalty for soft age spread constraint",
-      min: 0,
-      max: 10000
-    },
-
     // Smart Local Resolution (NetworkX) configurations
     "smart_local_resolution.enabled": {
       value: 1,

@@ -135,24 +135,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # caused campers to skip past correct grade placements. Regression is now
     # handled by flat penalty only (no_regression + no_regression_penalty).
     # =========================================================================
-    # SOLVER CONSTRAINTS - Overflow Preference
-    # =========================================================================
-    "constraint.overflow_preference.penalty": ConfigKey(
-        key="constraint.overflow_preference.penalty",
-        config_type=ConfigType.INT,
-        required=False,
-        description="Penalty per camper above threshold in lower-half bunks",
-        min_value=0,
-    ),
-    "constraint.overflow_preference.threshold": ConfigKey(
-        key="constraint.overflow_preference.threshold",
-        config_type=ConfigType.INT,
-        required=False,
-        description="Camper count threshold before overflow penalty applies",
-        min_value=1,
-        max_value=20,
-    ),
-    # =========================================================================
     # SOLVER CONSTRAINTS - Cabin Capacity
     # =========================================================================
     "constraint.cabin_capacity.max": ConfigKey(
@@ -350,14 +332,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         required=True,
         description="Timeout before auto-applying in seconds (0=immediate)",
         min_value=0,
-    ),
-    "solver.time_limit.seconds": ConfigKey(
-        key="solver.time_limit.seconds",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Maximum solver runtime in seconds",
-        min_value=1,
-        max_value=600,
     ),
     # =========================================================================
     # SMART LOCAL RESOLUTION (NetworkX-based name resolution)
