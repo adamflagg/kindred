@@ -76,6 +76,7 @@ from ..social.social_graph import SocialGraph
 from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 from .reconciliation import log_obr_reconciliation
+from .target_decline import run_target_decline_phase
 
 logger = get_logger(__name__)
 
@@ -1675,6 +1676,19 @@ class RequestOrchestrator:
         # #943: emit a single top-level OBR -> BR reconciliation line so the
         # full pipeline math is verifiable from the log alone.
         log_obr_reconciliation(self._stats)
+
+        # Phase C (#1069): sweep bunk_requests for stale rows where the
+        # requestee is no longer attending or now in a different session,
+        # and decline them in place. Sidecar: usually empty, never fails
+        # the pipeline.
+        try:
+            target_decline_stats = run_target_decline_phase(self.pb, self.year)
+            self._stats["target_declined_count"] = target_decline_stats.get("declined_count", 0)
+            self._stats["target_declined_errors"] = target_decline_stats.get("error_count", 0)
+        except Exception:
+            logger.exception("target_decline phase raised; continuing")
+            self._stats["target_declined_count"] = 0
+            self._stats["target_declined_errors"] = 1
 
         # Log cache statistics if monitor is available
         if self.cache_monitor:
