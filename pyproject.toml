@@ -185,7 +185,6 @@ module = [
     "jellyfish.*",
     "fuzzywuzzy.*",
     "Levenshtein.*",
-    "community.*",
 ]
 ignore_missing_imports = true
 

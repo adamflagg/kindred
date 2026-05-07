@@ -45,16 +45,6 @@ class TestNetworkXIntegration:
         assert hasattr(nx, "Graph")
         assert hasattr(nx, "find_cliques")
 
-    def test_louvain_not_installed(self):
-        """python-louvain (community) was dropped in #1203; must not be importable.
-
-        All production callers of community_louvain.best_partition were deleted
-        in #1197. If community detection is ever needed again, use
-        nx.community.louvain_communities from NetworkX 3 instead.
-        """
-        with pytest.raises(ImportError):
-            import community as community_louvain  # noqa: F401
-
     def test_reproducibility_with_seed(self):
         """Test that Kernighan-Lin partitioning is reproducible with the same seed."""
         import networkx as nx
