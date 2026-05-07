@@ -303,3 +303,24 @@ class TestCamperSatisfactionPredicateExceptionHandling:
         assert result.immaterial.total == 1
         assert result.immaterial.satisfied == 0
         assert result.per_request[0].satisfied is False
+
+
+def test_per_request_status_has_detail_field() -> None:
+    """Regression: PerRequestStatus must accept and round-trip detail."""
+    from bunking.satisfaction.api_shape import PerRequestStatus
+
+    entry = PerRequestStatus(
+        request_id="abc",
+        bucket=RequestBucket.MATERIAL_PARENT,
+        satisfied=True,
+        detail="Same bunk",
+    )
+    assert entry.detail == "Same bunk"
+
+    # detail is optional (forward-compat with older clients).
+    entry2 = PerRequestStatus(
+        request_id="abc",
+        bucket=RequestBucket.MATERIAL_PARENT,
+        satisfied=False,
+    )
+    assert entry2.detail is None

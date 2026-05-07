@@ -25,6 +25,14 @@ class PerRequestStatus(BaseModel):
     request_id: str = Field(..., min_length=1, description="PocketBase record id of the bunk_request row.")
     bucket: RequestBucket
     satisfied: bool
+    detail: str | None = Field(
+        default=None,
+        description=(
+            "Short human-readable explanation suitable for a UI tooltip "
+            "(e.g. 'Same bunk', 'Different bunks', 'No grade on file'). "
+            "Optional for forward-compat — older clients ignore."
+        ),
+    )
 
 
 class BucketCount(BaseModel):
