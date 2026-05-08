@@ -218,7 +218,7 @@ func runHistorySync(app core.App) error {
 		return fmt.Errorf("history-sync: %w", err)
 	}
 	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
-		slog.Warn("history-sync WAL checkpoint failed", "err", err)
+		return fmt.Errorf("history-sync WAL checkpoint failed: %w", err)
 	}
 	return nil
 }
