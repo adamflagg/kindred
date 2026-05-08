@@ -354,7 +354,7 @@ describe('createGraphElements', () => {
       {
         source: 1,
         target: 99,
-        edge_type: 'request',
+        edge_type: 'request' as const,
         weight: 1,
         request_type: null,
         priority: null,
