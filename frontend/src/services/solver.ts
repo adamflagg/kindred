@@ -1,4 +1,26 @@
 import type { Constraint, SolverRun } from '../types/app-types'
+import type { SweepRequest, SweepResponse } from '../types/api-generated'
+
+export type { SweepRequest, SweepResponse }
+
+export async function postRunSweep(req: SweepRequest): Promise<SweepResponse> {
+  const res = await fetch('/api/solver/run-sweep', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`Sweep request failed: ${res.status}`)
+  return (await res.json()) as SweepResponse
+}
+
+export async function postCancelSweep(sweepId: string): Promise<void> {
+  const res = await fetch(`/api/solver/run-sweep/${sweepId}/cancel`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`Sweep cancel failed: ${res.status}`)
+}
 
 interface CapacityBreakdownItem {
   campers: number

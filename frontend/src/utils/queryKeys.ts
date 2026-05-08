@@ -495,3 +495,17 @@ export const userDataOptions = {
 // Legacy aliases for backward compatibility
 export const heavyQueryOptions = syncDataOptions
 export const realtimeQueryOptions = userDataOptions
+
+// ---------------------------------------------------------------------------
+// Solver runs (debug view) — see frontend/src/hooks/useSolverRuns.ts
+// ---------------------------------------------------------------------------
+
+export interface SolverRunsFilters {
+  sessionId?: number
+  sourceKind?: 'production' | 'scenario' | 'all'
+  sweepId?: string
+  hideFailed?: boolean
+  since?: string
+}
+
+export const solverRunsKey = (filters?: SolverRunsFilters) => ['solverRuns', filters ?? {}] as const
