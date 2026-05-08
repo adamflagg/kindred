@@ -17,7 +17,7 @@ from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
 from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
-from bunking.sync.bunk_request_processor.core.models import RequestSource
+from bunking.sync.bunk_request_processor.core.models import RequestSource, source_from_field
 from bunking.sync.bunk_request_processor.shared.constants import (
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
@@ -523,9 +523,12 @@ class BunkingValidator:
 
                 # Bin by source_field for material vs best-effort parent tracking.
                 # material = bunk_with source_field; best_effort = socialize_with source_field.
-                # Staff binning uses RequestSource enum as before.
-                is_staff = request.source == RequestSource.STAFF.value
+                # Staff binning derived from source_field via source_from_field helper (#1142).
                 raw_source_field = getattr(request, "source_field", None)
+                try:
+                    is_staff = source_from_field(raw_source_field) == RequestSource.STAFF if raw_source_field else False
+                except ValueError:
+                    is_staff = False
 
                 # Warn when a resolved age_preference row has no source_field.
                 # The legacy fallback that treated these as best_effort has been removed (#1086).
