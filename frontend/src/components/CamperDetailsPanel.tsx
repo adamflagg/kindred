@@ -41,9 +41,12 @@ import { Collections } from '../types/pocketbase-types'
 import { toAppCamper } from '../utils/transforms'
 import { isConfirmedRequest } from '../utils/bunkRequest'
 import { partitionRequestsBySource } from '../utils/partitionRequestsBySource'
-import { resolveBadgeBucket } from '../utils/requestSatisfaction'
-import { computeRequestSatisfaction } from '../utils/requestSatisfaction'
-import { buildSatisfactionLookup } from '../utils/satisfactionLookup'
+import {
+  resolveBadgeBucket,
+  evaluateRequest,
+  buildSatisfactionLookup,
+  type BunkmateInfo,
+} from '../utils/satisfactionLookup'
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useYear } from '../hooks/useCurrentYear'
@@ -64,7 +67,6 @@ import { AllCamperRequestsModal } from './AllCamperRequestsModal'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { buildCamperAlerts } from '../utils/camperAlertUtils'
 import { useBunkRequestContext } from '../hooks'
-import type { BunkmateInfo } from '../utils/requestSatisfaction'
 import { queryKeys } from '../utils/queryKeys'
 
 // Panel-augmented bunk request: extends the PB `BunkRequestsResponse` (the
@@ -72,8 +74,8 @@ import { queryKeys } from '../utils/queryKeys'
 // enrichment as the canonical `EnhancedBunkRequest`, plus `targetPerson` so
 // the row can render the avatar/name without re-querying. The `pbToEnhanced`
 // helper below converts between the PB shape and the app-types
-// `EnhancedBunkRequest` shape that `useSatisfactionData` /
-// `computeRequestSatisfaction` accept — fields the satisfaction code reads
+// `EnhancedBunkRequest` shape that `evaluateRequest` accepts — fields the
+// satisfaction code reads
 // (`request_type`, `requestee_id`, `age_preference_target`, `id`, `status`)
 // are identical between the two shapes, so the conversion is structural.
 type PanelBunkRequest = BunkRequestsResponse & {
@@ -658,8 +660,8 @@ export default function CamperDetailsPanel({
   const bunkCampersKey = effectiveBunkCampers.map((c) => `${c.cmId}:${c.grade ?? ''}`).join(',')
 
   // Path 1 — draft drag preview, synchronous from in-memory state.
-  // Still uses the residual TS predicate (computeRequestSatisfaction —
-  // annotated `TODO(#1155)` for elimination after OpenAPI codegen lands).
+  // Uses the TS predicate (evaluateRequest), guarded against drift from the
+  // Python counterpart by the shared-fixture parity tests.
   const clientLookup = useMemo<((id: string) => SatisfactionEntry) | null>(() => {
     if (!hasClientView || !camper || assignedBunkCmId == null) return null
     const requesterBunkmates = effectiveBunkCampers.filter((c) => c.cmId !== camper.person_cm_id)
@@ -669,7 +671,7 @@ export default function CamperDetailsPanel({
         req.requestee_id && req.requestee_id > 0
           ? (getBunkForPerson?.(req.requestee_id) ?? null)
           : null
-      const result = computeRequestSatisfaction({
+      const result = evaluateRequest({
         request: pbToEnhanced(req),
         requesterBunkCmId: assignedBunkCmId,
         requesterBunkmates,
