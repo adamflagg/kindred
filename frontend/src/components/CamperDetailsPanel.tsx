@@ -28,7 +28,7 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { VALID_SUMMER_SESSION_TYPES } from '../constants/sessionTypes'
+import { buildSummerSessionTypeFilter } from '../constants/sessionTypes'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -267,10 +267,7 @@ export default function CamperDetailsPanel({
       if (persons.length === 0) throw new Error('Person not found')
       const person = persons[0] as PersonsResponse
 
-      // Filter to only valid summer session types (main, embedded, ag) - excludes Family Camp
-      const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
-        (t) => `session.session_type = "${t}"`
-      ).join(' || ')
+      const sessionTypeFilter = buildSummerSessionTypeFilter()
       const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({
         filter: `person_id = ${personId} && year = ${currentYear} && (${sessionTypeFilter})`,
         expand: 'session',
@@ -483,9 +480,7 @@ export default function CamperDetailsPanel({
 
       const siblingsWithEnrollment = await Promise.all(
         siblingPersons.map(async (siblingPerson) => {
-          const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
-            (t) => `session.session_type = "${t}"`
-          ).join(' || ')
+          const sessionTypeFilter = buildSummerSessionTypeFilter()
           const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
 
           try {

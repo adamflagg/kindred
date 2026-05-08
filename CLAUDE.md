@@ -218,7 +218,7 @@ Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
 2. **Use uv** - `uv sync` to install, `uv run <cmd>` to execute
 3. **CampMinder IDs** - All relationships use CM IDs, never PocketBase IDs
 4. **Sync order matters** - sessions → attendees → persons → bunks → plans → assignments → requests
-5. **Family camps excluded** in syncs for performance
+5. **Family-camp data syncs** alongside summer data — summer-camp views must filter `session_type` against `VALID_SUMMER_SESSION_TYPES` (frontend) / `valid_summer_session_types` equivalents to avoid leaking family-camp sessions, attendees, or bunks
 6. **Config is database-driven** - PocketBase `config` table, not JSON files. AI settings via env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`)
 7. **AI model** - GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
 8. **Token caching** - CampMinder JWT cached in `~/.campminder_token_cache.json`
