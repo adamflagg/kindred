@@ -125,6 +125,21 @@ func main() {
 		Dir:          migrationsDir,
 	})
 
+	// History-sync hook: keep prod's _migrations table in sync with the
+	// on-disk migration file list on every server boot. PB's built-in
+	// `migrate history-sync` (RemoveMissingAppliedMigrations) deletes rows
+	// for files no longer present. Idempotent — no-op on clean DBs. Used by
+	// the consolidate-migrations skill to self-heal prod's migration history
+	// after consolidation merges drop intermediate migration files. See
+	// docs/superpowers/specs/2026-05-08-migration-consolidation-design.md.
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		runner := core.NewMigrationsRunner(e.App, core.AppMigrations)
+		if err := runner.Run("history-sync"); err != nil {
+			slog.Warn("history-sync hook failed", "err", err)
+		}
+		return e.Next()
+	})
+
 	// Config initialization now handled by migrations
 
 	// ---------------------------------------------------------------
