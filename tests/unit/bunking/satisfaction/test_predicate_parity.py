@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -32,7 +32,7 @@ _FIXTURE_PATH = (
 
 def _load_fixture() -> list[dict[str, Any]]:
     with _FIXTURE_PATH.open() as f:
-        return json.load(f)
+        return cast(list[dict[str, Any]], json.load(f))
 
 
 @pytest.mark.parametrize("case", _load_fixture(), ids=lambda c: c["name"])

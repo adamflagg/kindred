@@ -183,7 +183,7 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   })
 
   it('handles all RequestBucket values without throwing', () => {
-    const buckets: (RequestBucket | undefined)[] = [
+    const buckets: Array<RequestBucket | undefined> = [
       'material_parent',
       'immaterial_parent',
       'staff',
