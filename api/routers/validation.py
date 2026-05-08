@@ -155,7 +155,6 @@ async def validate_bunking(
                 division_cm_id=str(getattr(bunk_data, "division_id", None))
                 if getattr(bunk_data, "division_id", None)
                 else None,
-                max_size=getattr(bunk_data, "max_size", 12),
                 is_locked=getattr(bunk_data, "is_locked", False),
             )
             bunks.append(bunk)

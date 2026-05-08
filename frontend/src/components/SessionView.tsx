@@ -33,6 +33,7 @@ import {
   type BunkArea,
 } from './session'
 import { useSolverConfigValue } from '../hooks/useSolverConfig'
+import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { CamperHistoryProvider } from '../providers/CamperHistoryProvider'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
@@ -83,10 +84,9 @@ export default function SessionView() {
   // Fetch solver config values
   const autoApplyEnabled = useSolverConfigValue('solver.auto_apply_enabled', true) as boolean
   const autoApplyTimeout = useSolverConfigValue('solver.auto_apply_timeout', 0) as number
-  const defaultBunkCapacity = useSolverConfigValue(
-    'constraint.cabin_capacity.standard',
-    12
-  ) as number
+  // Hardcoded constant (Phase 2 cabin-capacity cleanup); previously read
+  // `constraint.cabin_capacity.standard` from the config table.
+  const defaultBunkCapacity = DEFAULT_BUNK_CAPACITY
 
   // Solver progress modal
   const solverProgress = useSolverProgress()

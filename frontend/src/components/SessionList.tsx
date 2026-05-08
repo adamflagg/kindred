@@ -17,6 +17,7 @@ import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { sessionNameToUrl } from '../utils/sessionUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { getFormattedSessionName } from '../utils/sessionDisplay'
 import { getCampNameShort } from '../config/branding'
 import type {
@@ -500,13 +501,12 @@ export default function SessionList() {
             filter: `(${sessionFilter}) && year = ${currentYear}`,
           })
 
-        const capacityConfig = await pb
-          .collection('config')
-          .getFirstListItem(
-            `category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"`
-          )
-          .catch(() => null)
-        const bunkCapacity = capacityConfig?.value ? Number(capacityConfig.value) : 12
+        // Phase 2 cabin-capacity cleanup: previously queried
+        // `category="constraint" && subcategory="cabin_capacity" && config_key="default"`
+        // which never existed in the config table (the seeded row used
+        // `config_key="standard"`), so this always silently fell back to 12.
+        // Now uses the constant directly.
+        const bunkCapacity = DEFAULT_BUNK_CAPACITY
 
         const totalCampers = attendees.length
         const assignedCampers = assignments.length

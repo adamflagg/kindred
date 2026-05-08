@@ -8,7 +8,7 @@ from .age_grade_flow import add_age_grade_flow_objective
 from .age_preference import add_age_preference_penalties, add_age_preference_satisfaction_vars
 from .base import ConstraintBuilder, ObjectiveBuilder, SolverContext
 from .bunk_requests import add_bunk_request_satisfaction_vars
-from .cabin_capacity import add_cabin_capacity_constraints, add_cabin_capacity_soft_constraint
+from .cabin_capacity import add_cabin_capacity_constraints
 from .cabin_occupancy import (
     add_cabin_minimum_occupancy_constraints,
     add_cabin_minimum_occupancy_soft_penalty,
@@ -25,7 +25,6 @@ __all__ = [
     "add_age_preference_satisfaction_vars",
     "add_bunk_request_satisfaction_vars",
     "add_cabin_capacity_constraints",
-    "add_cabin_capacity_soft_constraint",
     "add_cabin_minimum_occupancy_constraints",
     "add_cabin_minimum_occupancy_soft_penalty",
     "add_grade_adjacency_constraints",

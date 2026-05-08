@@ -1,26 +1,22 @@
 """
 Unit tests for cabin capacity constraints.
 
-Tests both hard and soft capacity modes:
-- Hard mode: Strict max capacity - solver fails if exceeded
-- Soft mode: Allows overflow up to max but penalizes assignments beyond standard capacity
-
-Also tests the unavoidable overflow exception where extra campers are exempt from penalty.
+Hard-only after Phase 2 cleanup: solver caps at
+``min(bunk.capacity, DEFAULT_BUNK_CAPACITY)`` and the soft penalty path was
+deleted along with ``constraint.cabin_capacity.{mode, penalty}``. The
+"never used soft" rationale is captured in
+``docs/reference/solver-config-decisions.md``.
 """
 
 from __future__ import annotations
 
 from ortools.sat.python import cp_model
 
-from bunking.config import ConfigLoader
-from bunking.solver.constraints.cabin_capacity import (
-    add_cabin_capacity_constraints,
-    add_cabin_capacity_soft_constraint,
-)
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+from bunking.solver.constraints.cabin_capacity import add_cabin_capacity_constraints
 from bunking.solver.constraints.gender import add_gender_constraints
 
 from ..conftest import (
-    MinimalConfigLoader,
     build_solver_context,
     create_bunk,
     create_person,
@@ -139,106 +135,28 @@ class TestHardCapacityConstraint:
         assert count2 <= 4
         assert count1 + count2 == 6
 
-    def test_respects_max_capacity_config(self):
-        """Hard constraint respects max capacity from config even if bunk.capacity is higher."""
-        # Bunk has capacity 20, but config max is 14
+    def test_caps_at_default_even_when_bunk_capacity_higher(self):
+        """Hard constraint caps at DEFAULT_BUNK_CAPACITY even if bunk.capacity is higher.
+
+        Phase 2: this used to test that the config ``constraint.cabin_capacity.max``
+        clamped per-bunk capacity. The config key was deleted; the constant
+        ``DEFAULT_BUNK_CAPACITY`` is now the cap (=12). A bunk with capacity 20
+        gets clamped to 12 — placing more than 12 campers is infeasible.
+        """
         campers = [
             create_person(cm_id=1001 + i, first_name=f"Camper{i}", last_name="Test", gender="M", grade=5)
-            for i in range(16)  # More than config max (14)
+            for i in range(DEFAULT_BUNK_CAPACITY + 1)  # 13 campers — one over the cap
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=20)
 
-        ctx = build_solver_context(
-            persons=campers,
-            bunks=[bunk],
-            config_overrides={"constraint.cabin_capacity.max": 14},
-        )
+        ctx = build_solver_context(persons=campers, bunks=[bunk])
 
-        # Apply capacity constraint
         add_cabin_capacity_constraints(ctx)
 
-        # Solve
         solver = cp_model.CpSolver()
         status = solver.Solve(ctx.model)
 
-        # Should be INFEASIBLE - 16 > 14 (config max)
-        assert is_infeasible(status)
-
-
-class TestSoftCapacityConstraint:
-    """Test soft cabin capacity constraints with penalties."""
-
-    def test_allows_overflow_up_to_max(self):
-        """Soft constraint allows overflow up to max capacity."""
-        # 14 campers, bunk with capacity 14 (max), standard is 12
-        # Soft constraint penalizes the 2 over standard but allows it
-        campers = [
-            create_person(cm_id=1001 + i, first_name=f"Camper{i}", last_name="Test", gender="M", grade=5)
-            for i in range(14)
-        ]
-        # Set bunk capacity to max (14) - hard constraint allows this
-        # Soft constraint will penalize 13th and 14th camper
-        bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=14)
-
-        config_overrides: dict[str, int | float | str | bool] = {
-            "constraint.cabin_capacity.max": 14,
-            "constraint.cabin_capacity.standard": 12,
-            "constraint.cabin_capacity.mode": "soft",
-            "constraint.cabin_capacity.penalty": 50000,
-        }
-        ctx = build_solver_context(
-            persons=campers,
-            bunks=[bunk],
-            config_overrides=config_overrides,
-        )
-
-        # The soft constraint reads its penalty via the centralized
-        # ``cabin_capacity_penalty()`` accessor, which goes through
-        # ``ConfigLoader.get_instance()``. Mirror the ctx.config overrides into
-        # the global loader so the centralized read sees the same values.
-        with ConfigLoader.use(MinimalConfigLoader(config_overrides)):  # type: ignore[arg-type]
-            # Apply hard capacity (max) and soft penalties
-            add_cabin_capacity_constraints(ctx)
-            objective_terms: list[cp_model.LinearExprT] = []
-            add_cabin_capacity_soft_constraint(ctx, objective_terms)
-
-            # Add objective to maximize (with penalties as negative)
-            ctx.model.Maximize(sum(objective_terms))
-
-            # Solve
-            solver = cp_model.CpSolver()
-            status = solver.Solve(ctx.model)
-
-            # Should be feasible (allows up to 14)
-            assert is_optimal_or_feasible(status)
-
-    def test_prevents_exceeding_max_even_in_soft_mode(self):
-        """Even in soft mode, cannot exceed max capacity."""
-        # 15 campers, bunk with max capacity 14
-        campers = [
-            create_person(cm_id=1001 + i, first_name=f"Camper{i}", last_name="Test", gender="M", grade=5)
-            for i in range(15)
-        ]
-        bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)
-
-        ctx = build_solver_context(
-            persons=campers,
-            bunks=[bunk],
-            config_overrides={
-                "constraint.cabin_capacity.max": 14,
-                "constraint.cabin_capacity.standard": 12,
-                "constraint.cabin_capacity.mode": "soft",
-            },
-        )
-
-        # Apply hard capacity constraint
-        add_cabin_capacity_constraints(ctx)
-
-        # Solve
-        solver = cp_model.CpSolver()
-        status = solver.Solve(ctx.model)
-
-        # Should be INFEASIBLE - 15 > 14 max
+        # Solver caps at DEFAULT_BUNK_CAPACITY (=12); 13 campers in 1 bunk is infeasible
         assert is_infeasible(status)
 
 

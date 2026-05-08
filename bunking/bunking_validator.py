@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
 from bunking.satisfaction.predicate import is_request_satisfied
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.core.models import RequestSource, source_from_field
 from bunking.sync.bunk_request_processor.shared.constants import (
@@ -300,8 +301,11 @@ class BunkingValidator:
                 all_sessions, bunk_plans, persons, assignments_by_person, bunks, assignments_by_bunk, stats, attendees
             )
 
-        # Calculate total capacity and utilization
-        stats.total_capacity = sum(bunk.max_size for bunk in bunks)
+        # Calculate total capacity and utilization. DEFAULT_BUNK_CAPACITY is
+        # the hardcoded standard (Phase 2 cabin-capacity cleanup); previously
+        # this read ``DEFAULT_BUNK_CAPACITY`` which always defaulted to 12 because the
+        # PB ``bunks`` collection had no capacity column.
+        stats.total_capacity = len(bunks) * DEFAULT_BUNK_CAPACITY
         stats.used_capacity = stats.assigned_campers
         if stats.total_capacity > 0:
             stats.capacity_utilization_rate = stats.used_capacity / stats.total_capacity
@@ -319,23 +323,23 @@ class BunkingValidator:
         for bunk in bunks:
             assigned_count = len(assignments_by_bunk.get(bunk.campminder_id, []))
 
-            if assigned_count > bunk.max_size:
+            if assigned_count > DEFAULT_BUNK_CAPACITY:
                 stats.bunks_over_capacity += 1
                 issues.append(
                     ValidationIssue(
                         severity=ValidationSeverity.ERROR,
                         type="capacity_violation",
-                        message=f"Bunk {bunk.name} is over capacity ({assigned_count}/{bunk.max_size})",
+                        message=f"Bunk {bunk.name} is over capacity ({assigned_count}/{DEFAULT_BUNK_CAPACITY})",
                         details={
                             "bunk_id": bunk.campminder_id,
                             "bunk_name": bunk.name,
                             "assigned": assigned_count,
-                            "max_size": bunk.max_size,
+                            "max_size": DEFAULT_BUNK_CAPACITY,
                         },
                         affected_ids=[bunk.campminder_id],
                     )
                 )
-            elif assigned_count == bunk.max_size:
+            elif assigned_count == DEFAULT_BUNK_CAPACITY:
                 stats.bunks_at_capacity += 1
             else:
                 stats.bunks_under_capacity += 1
@@ -1031,7 +1035,7 @@ class BunkingValidator:
 
             for bunk in bunks:
                 if int(bunk.campminder_id) in session_bunk_ids:
-                    session_capacity += bunk.max_size
+                    session_capacity += DEFAULT_BUNK_CAPACITY
                     session_used += len(assignments_by_bunk.get(bunk.campminder_id, []))
 
             breakdown.total_capacity = session_capacity

@@ -9,7 +9,6 @@ two paths cannot drift out of sync.
 from __future__ import annotations
 
 from bunking.solver.penalties import (
-    cabin_capacity_penalty,
     grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,
@@ -19,11 +18,6 @@ from bunking.solver.penalties import (
 def _set(mock_config: object, key: str, value: int) -> None:
     """Set a key on the MockConfigLoader (no .set helper exists)."""
     mock_config._config[key] = value  # type: ignore[attr-defined]
-
-
-def test_cabin_capacity_penalty_reads_canonical_key(mock_config):
-    _set(mock_config, "constraint.cabin_capacity.penalty", 12345)
-    assert cabin_capacity_penalty() == 12345
 
 
 def test_min_occupancy_penalty_reads_canonical_key(mock_config):
@@ -43,8 +37,8 @@ def test_min_occupancy_threshold_reads_canonical_key(mock_config):
 
 def test_accessors_use_get_instance(mock_config):
     """The accessors must read via ConfigLoader.get_instance(), not a snapshot."""
-    _set(mock_config, "constraint.cabin_capacity.penalty", 1)
-    assert cabin_capacity_penalty() == 1
-    _set(mock_config, "constraint.cabin_capacity.penalty", 2)
+    _set(mock_config, "constraint.grade_spread.penalty", 1)
+    assert grade_spread_penalty() == 1
+    _set(mock_config, "constraint.grade_spread.penalty", 2)
     # If the accessor cached the previous read, this would still return 1.
-    assert cabin_capacity_penalty() == 2
+    assert grade_spread_penalty() == 2

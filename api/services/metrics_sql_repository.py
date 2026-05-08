@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from bunking.logging_config import get_logger
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
 logger = get_logger(__name__)
 
@@ -342,22 +343,14 @@ class MetricsSQLRepository:
     # ------------------------------------------------------------------
 
     async def fetch_capacity_config(self) -> int:
-        """Fetch default cabin capacity from config table."""
-        rows = self._query(
-            """SELECT value FROM config
-               WHERE category = 'constraint'
-                 AND subcategory = 'cabin_capacity'
-                 AND config_key = 'default'
-               LIMIT 1""",
-        )
-        if rows and rows[0]["value"]:
-            try:
-                raw = rows[0]["value"]
-                parsed = json.loads(raw) if isinstance(raw, str) else raw
-                return int(parsed)
-            except ValueError, TypeError, json.JSONDecodeError:
-                pass
-        return 12
+        """Return the default bunk capacity.
+
+        Phase 2 cabin-capacity cleanup: previously queried a
+        ``config_key="default"`` row that was never seeded, so this always
+        silently fell back to 12. Now returns ``DEFAULT_BUNK_CAPACITY``
+        directly.
+        """
+        return DEFAULT_BUNK_CAPACITY
 
     # ------------------------------------------------------------------
     # 8. fetch_status_transitions
