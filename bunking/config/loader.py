@@ -18,7 +18,6 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .errors import (
-    ConfigError,
     DatabaseUnavailableError,
     MissingKeyError,
     UnknownKeyError,
