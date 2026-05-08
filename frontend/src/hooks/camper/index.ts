@@ -4,14 +4,7 @@
  */
 
 // Types
-export type {
-  HistoricalRecord,
-  OriginalBunkData,
-  SatisfactionStatus,
-  SatisfactionResult,
-  SatisfactionMap,
-  SiblingWithEnrollment,
-} from './types'
+export type { HistoricalRecord, OriginalBunkData, SiblingWithEnrollment } from './types'
 
 // Hooks
 export { useCamperEnrollment, type UseCamperEnrollmentResult } from './useCamperEnrollment'

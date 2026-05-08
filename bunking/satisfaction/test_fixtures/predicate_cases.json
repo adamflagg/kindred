@@ -1,0 +1,128 @@
+[
+  {
+    "name": "bunk_with same bunk",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "bunk_with"
+    },
+    "person_to_bunk": { "100": 50, "200": 50 },
+    "expected_satisfied": true,
+    "expected_detail": "Same bunk"
+  },
+  {
+    "name": "bunk_with different bunks",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "bunk_with"
+    },
+    "person_to_bunk": { "100": 50, "200": 51 },
+    "expected_satisfied": false,
+    "expected_detail": "Different bunks"
+  },
+  {
+    "name": "bunk_with target unassigned",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "bunk_with"
+    },
+    "person_to_bunk": { "100": 50 },
+    "expected_satisfied": false,
+    "expected_detail": "Target not assigned"
+  },
+  {
+    "name": "not_bunk_with different bunks",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "not_bunk_with"
+    },
+    "person_to_bunk": { "100": 50, "200": 51 },
+    "expected_satisfied": true,
+    "expected_detail": "Different bunks"
+  },
+  {
+    "name": "not_bunk_with same bunk conflict",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "not_bunk_with"
+    },
+    "person_to_bunk": { "100": 50, "200": 50 },
+    "expected_satisfied": false,
+    "expected_detail": "Same bunk (conflict!)"
+  },
+  {
+    "name": "not_bunk_with target unassigned",
+    "request": {
+      "requester_id": 100,
+      "requestee_id": 200,
+      "request_type": "not_bunk_with"
+    },
+    "person_to_bunk": { "100": 50 },
+    "expected_satisfied": true,
+    "expected_detail": "Target not assigned"
+  },
+  {
+    "name": "age_preference older satisfied (has older bunkmates)",
+    "request": {
+      "requester_id": 100,
+      "request_type": "age_preference",
+      "age_preference_target": "older",
+      "requester_grade": 7
+    },
+    "person_to_bunk": { "100": 50 },
+    "bunkmate_grades": { "100": [8, 9] },
+    "expected_satisfied": true
+  },
+  {
+    "name": "age_preference older not satisfied (only younger bunkmates)",
+    "request": {
+      "requester_id": 100,
+      "request_type": "age_preference",
+      "age_preference_target": "older",
+      "requester_grade": 7
+    },
+    "person_to_bunk": { "100": 50 },
+    "bunkmate_grades": { "100": [5, 6] },
+    "expected_satisfied": false
+  },
+  {
+    "name": "age_preference older satisfied (all same grade as requester)",
+    "request": {
+      "requester_id": 100,
+      "request_type": "age_preference",
+      "age_preference_target": "older",
+      "requester_grade": 7
+    },
+    "person_to_bunk": { "100": 50 },
+    "bunkmate_grades": { "100": [7, 7] },
+    "expected_satisfied": true
+  },
+  {
+    "name": "age_preference younger satisfied (has younger bunkmates)",
+    "request": {
+      "requester_id": 100,
+      "request_type": "age_preference",
+      "age_preference_target": "younger",
+      "requester_grade": 7
+    },
+    "person_to_bunk": { "100": 50 },
+    "bunkmate_grades": { "100": [5, 6] },
+    "expected_satisfied": true
+  },
+  {
+    "name": "age_preference younger not satisfied (only older bunkmates)",
+    "request": {
+      "requester_id": 100,
+      "request_type": "age_preference",
+      "age_preference_target": "younger",
+      "requester_grade": 7
+    },
+    "person_to_bunk": { "100": 50 },
+    "bunkmate_grades": { "100": [9, 10] },
+    "expected_satisfied": false
+  }
+]

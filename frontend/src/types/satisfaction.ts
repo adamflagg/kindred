@@ -1,26 +1,42 @@
 /**
- * Satisfaction response types — hand-mirrored from bunking/satisfaction/api_shape.py.
+ * Satisfaction response types — re-exported from codegen.
  *
- * #1155 will replace this with codegen from FastAPI's OpenAPI spec. Until
- * then, keep these in sync manually with the Pydantic models. Drift between
- * the two files will cause runtime errors, not type errors.
+ * Source of truth: `bunking/satisfaction/api_shape.py` (Pydantic models)
+ * → `frontend/src/types/api-generated.ts` (openapi-typescript output)
+ * → this file (semantic aliases for ergonomic imports).
+ *
+ * Drift between Python and TS is now caught at codegen time, not at runtime.
+ *
+ * `SatisfactionEntry` and `emptyCamperSatisfaction` are consumer-side helpers
+ * that don't exist in the API shape — they live here because consumer code
+ * expects them at this import path.
  */
+import type { components } from './api-generated'
 
-export type RequestBucket = 'material_parent' | 'immaterial_parent' | 'staff'
+export type RequestBucket = components['schemas']['RequestBucket']
+export type PerRequestStatus = components['schemas']['PerRequestStatus']
+export type BucketCount = components['schemas']['BucketCount']
+export type SatisfactionFlags = components['schemas']['SatisfactionFlags']
+/**
+ * Codegen lowers Python's `dict[RequestBucket, BucketCount]` to an open index
+ * signature, which makes every key access `T | undefined`. The Pydantic model
+ * enforces that exactly `COUNTED_BUCKETS` (`material_parent`, `staff`) are
+ * present at runtime — see `bunking/satisfaction/api_shape.py:CamperSatisfaction`.
+ * Narrow `counted_totals` here so consumers don't have to defend against the
+ * loose codegen shape on every access.
+ */
+export type CamperSatisfaction = Omit<
+  components['schemas']['CamperSatisfaction'],
+  'counted_totals'
+> & {
+  counted_totals: { material_parent: BucketCount; staff: BucketCount }
+}
 
-export interface PerRequestStatus {
-  request_id: string
-  bucket: RequestBucket
-  satisfied: boolean
-  /**
-   * Short human-readable explanation suitable for a UI tooltip
-   * (e.g. "Same bunk", "Different bunks", "No grade on file").
-   * Mirrors bunking/satisfaction/api_shape.py:PerRequestStatus.detail
-   * which is `str | None` with `default=None` — older clients that don't
-   * send detail are valid; consumers must treat absent / null / undefined
-   * as "no tooltip".
-   */
-  detail?: string | null
+export type SatisfactionResponse = Omit<
+  components['schemas']['SatisfactionResponse'],
+  'campers'
+> & {
+  campers: Record<string, CamperSatisfaction>
 }
 
 /**
@@ -36,34 +52,6 @@ export interface PerRequestStatus {
 export interface SatisfactionEntry {
   satisfied: boolean | null
   detail: string | null
-}
-
-export interface BucketCount {
-  satisfied: number
-  total: number
-}
-
-export interface SatisfactionFlags {
-  parent_min_one_violation: boolean
-  staff_unsatisfied_alert: boolean
-  has_any_counted_request: boolean
-}
-
-export interface CamperSatisfaction {
-  person_cm_id: number
-  per_request: PerRequestStatus[]
-  // Covers COUNTED_BUCKETS only; see top-level `immaterial` for uncounted data.
-  counted_totals: { material_parent: BucketCount; staff: BucketCount }
-  immaterial: BucketCount
-  flags: SatisfactionFlags
-}
-
-export interface SatisfactionResponse {
-  // keys are JSON-stringified cm_ids; consumers iterating must parseInt
-  campers: Record<string, CamperSatisfaction>
-  session_cm_id: number
-  year: number
-  scenario_id: string | null
 }
 
 /** Defensive fallback when a person isn't in the response. */
