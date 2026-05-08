@@ -13,6 +13,8 @@ import {
   getPronounCategory,
   getPronounColorClasses,
   getPronounBadgeClasses,
+  formatGenderFull,
+  formatGenderShort,
 } from './genderUtils'
 import type { Camper } from '../types/app-types'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -210,5 +212,44 @@ describe('getPronounBadgeClasses', () => {
     ],
   ])('returns correct badge classes for %s', (category, expected) => {
     expect(getPronounBadgeClasses(category as any)).toBe(expected)
+  })
+})
+
+describe('formatGenderFull', () => {
+  it('maps M to Male', () => {
+    expect(formatGenderFull('M')).toBe('Male')
+  })
+
+  it('maps F to Female', () => {
+    expect(formatGenderFull('F')).toBe('Female')
+  })
+
+  it('maps anything else to Non-Binary', () => {
+    expect(formatGenderFull('X')).toBe('Non-Binary')
+    expect(formatGenderFull(undefined)).toBe('Non-Binary')
+    expect(formatGenderFull(null)).toBe('Non-Binary')
+    expect(formatGenderFull('')).toBe('Non-Binary')
+  })
+
+  it('ignores prototype keys (no inherited-property leakage)', () => {
+    expect(formatGenderFull('toString')).toBe('Non-Binary')
+    expect(formatGenderFull('hasOwnProperty')).toBe('Non-Binary')
+    expect(formatGenderFull('__proto__')).toBe('Non-Binary')
+  })
+})
+
+describe('formatGenderShort', () => {
+  it('maps M to M', () => {
+    expect(formatGenderShort('M')).toBe('M')
+  })
+
+  it('maps F to F', () => {
+    expect(formatGenderShort('F')).toBe('F')
+  })
+
+  it('maps anything else to NB', () => {
+    expect(formatGenderShort('X')).toBe('NB')
+    expect(formatGenderShort(undefined)).toBe('NB')
+    expect(formatGenderShort(null)).toBe('NB')
   })
 })

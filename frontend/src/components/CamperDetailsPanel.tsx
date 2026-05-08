@@ -21,6 +21,7 @@ import {
   getGenderIdentityDisplay,
   getGenderCategory,
   getGenderBadgeClasses,
+  formatGenderShort,
 } from '../utils/genderUtils'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { formatAge } from '../utils/age'
@@ -1290,7 +1291,7 @@ export default function CamperDetailsPanel({
                 </button>
               </div>
               <div className="text-forest-100 mt-1 flex items-center gap-2 text-xs">
-                <span>{camper.gender === 'M' ? 'M' : camper.gender === 'F' ? 'F' : 'NB'}</span>
+                <span>{formatGenderShort(camper.gender)}</span>
                 <span>•</span>
                 <span>{camper.pronouns ?? 'No Preference'}</span>
                 <span>•</span>

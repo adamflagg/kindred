@@ -4,6 +4,7 @@
  */
 import type { Core, NodeSingular } from 'cytoscape'
 import type { LayoutWorkerInput } from '../../workers/layoutWorker'
+import { labelDensityThreshold } from './constants'
 import type { ParentNodeElement, CamperNodeElement, EdgeElement } from './cytoscapeStyles'
 
 export interface FcoseOptionsParams {
@@ -182,7 +183,7 @@ export function setupGraphEventHandlers(
   // Dynamic label visibility based on zoom (skip parent nodes - they have fixed labels)
   cy.on('zoom', () => {
     const zoom = cy.zoom()
-    const threshold = zoom < 0.5 ? 0.8 : zoom < 0.7 ? 0.6 : 0.4
+    const threshold = labelDensityThreshold(zoom)
 
     cy.nodes()
       .filter((n) => !n.data('isBunkParent'))

@@ -467,8 +467,12 @@ function IssueGroup({
   }
 
   const styles = getSeverityStyles()
-  const Icon =
-    severity === 'error' ? AlertTriangle : severity === 'warning' ? AlertCircle : Activity
+  const severityIcons = {
+    error: AlertTriangle,
+    warning: AlertCircle,
+    info: Activity,
+  } as const
+  const Icon = severityIcons[severity as keyof typeof severityIcons] ?? Activity
 
   return (
     <div className={`rounded-xl border ${styles.border} overflow-hidden`}>

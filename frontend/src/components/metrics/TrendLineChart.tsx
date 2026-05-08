@@ -18,6 +18,7 @@ import { useMemo } from 'react'
 import type { YearMetrics } from '../../types/metrics'
 import { ChartCard } from './ChartCard'
 import { getNiceTicks, calculateVerticalLayout } from './cssChartUtils'
+import { formatLabelListValue, formatLabelListPercent } from '../../utils/chartFormatters'
 
 const COLORS = {
   total: 'hsl(160, 100%, 35%)', // Primary green
@@ -185,9 +186,7 @@ export function TrendLineChart({
                 position="top"
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
-                formatter={(value) =>
-                  typeof value === 'number' ? value.toLocaleString() : String(value ?? '')
-                }
+                formatter={formatLabelListValue}
               />
             </Line>
           )}
@@ -209,9 +208,7 @@ export function TrendLineChart({
                   position="top"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) =>
-                    typeof value === 'number' ? value.toLocaleString() : String(value ?? '')
-                  }
+                  formatter={formatLabelListValue}
                 />
               </Line>
               <Line
@@ -229,9 +226,7 @@ export function TrendLineChart({
                   position="bottom"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) =>
-                    typeof value === 'number' ? value.toLocaleString() : String(value ?? '')
-                  }
+                  formatter={formatLabelListValue}
                 />
               </Line>
             </>
@@ -254,9 +249,7 @@ export function TrendLineChart({
                   position="top"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) =>
-                    typeof value === 'number' ? value.toLocaleString() : String(value ?? '')
-                  }
+                  formatter={formatLabelListValue}
                 />
               </Line>
               <Line
@@ -274,9 +267,7 @@ export function TrendLineChart({
                   position="bottom"
                   className="text-xs"
                   fill="hsl(var(--muted-foreground))"
-                  formatter={(value) =>
-                    typeof value === 'number' ? value.toLocaleString() : String(value ?? '')
-                  }
+                  formatter={formatLabelListValue}
                 />
               </Line>
             </>
@@ -298,9 +289,7 @@ export function TrendLineChart({
                 position="top"
                 className="text-xs"
                 fill="hsl(var(--muted-foreground))"
-                formatter={(value) =>
-                  typeof value === 'number' ? `${value.toFixed(1)}%` : String(value ?? '')
-                }
+                formatter={formatLabelListPercent}
               />
             </Line>
           )}

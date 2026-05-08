@@ -158,12 +158,25 @@ export function Phase3Detail({
   const ranCount = data.filter((i) => i.ran).length
   const resolvedCount = data.filter((i) => i.result === 'resolved').length
 
+  let phaseStatus: 'not_run' | 'skipped' | 'ran'
+  let phaseStatusLabel: string
+  if (data.length === 0) {
+    phaseStatus = 'not_run'
+    phaseStatusLabel = 'not run'
+  } else if (ranCount === 0) {
+    phaseStatus = 'skipped'
+    phaseStatusLabel = 'skipped'
+  } else {
+    phaseStatus = 'ran'
+    phaseStatusLabel = `${ranCount} ran`
+  }
+
   return (
     <div className="space-y-5">
       <PhaseHeader
         phase="phase3"
-        status={data.length === 0 ? 'not_run' : ranCount === 0 ? 'skipped' : 'ran'}
-        statusLabel={data.length === 0 ? 'not run' : ranCount === 0 ? 'skipped' : `${ranCount} ran`}
+        status={phaseStatus}
+        statusLabel={phaseStatusLabel}
         metrics={
           data.length > 0 && ranCount > 0 ? (
             <>

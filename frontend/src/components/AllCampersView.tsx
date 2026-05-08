@@ -41,6 +41,7 @@ import type { BunksResponse } from '../types/pocketbase-types'
 import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
 import { buildCsvContent, downloadCsv, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
+import { filterSexLabel, filterSexCsvSegment } from '../utils/filterSexFormat'
 
 // Helper function to properly case a name
 function properCase(str: string | undefined): string {
@@ -433,7 +434,7 @@ export default function AllCampersView() {
             <Listbox value={filterSex} onChange={(v) => setFilterSex(v)}>
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
-                  <span>{filterSex === 'all' ? 'All' : filterSex === 'M' ? 'Boys' : 'Girls'}</span>
+                  <span>{filterSexLabel(filterSex)}</span>
                   <ChevronDown className="text-muted-foreground h-4 w-4" />
                 </ListboxButton>
                 <ListboxOptions className="listbox-options w-auto min-w-[100px]">
@@ -533,7 +534,7 @@ export default function AllCampersView() {
                 onClick={() => {
                   const rows = buildCamperRows(filteredCampers as Camper[], allSessions)
                   const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
-                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  const genderPart = filterSexCsvSegment(filterSex)
                   downloadCsv(csv, `all-campers${genderPart}-${todayIso()}.csv`)
                 }}
                 className="btn-ghost flex items-center gap-1.5 px-2 py-1.5 text-sm"
