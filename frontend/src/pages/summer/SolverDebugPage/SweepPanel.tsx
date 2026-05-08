@@ -1,0 +1,186 @@
+import { Zap } from 'lucide-react'
+import { useState } from 'react'
+
+export interface SweepPanelSession {
+  id: string
+  cm_id: number
+  session_name: string
+  year: number
+  attendee_count: number
+}
+
+export interface SweepPanelScenario {
+  id: string
+  name: string
+  session_id: number
+}
+
+export interface SweepPanelPayload {
+  session_id?: number
+  scenario_id?: string
+  time_budgets: number[]
+  label?: string
+}
+
+export interface SweepPanelProps {
+  sessions: SweepPanelSession[]
+  scenarios: SweepPanelScenario[]
+  onRunSweep: (req: SweepPanelPayload) => void
+  onCancelSweep: (sweepId: string) => void
+  inFlightSweep: { sweep_id: string; completed: number; total: number } | null
+}
+
+const DEFAULT_BUDGETS = [30, 60, 180, 300]
+
+export function SweepPanel({
+  sessions,
+  scenarios,
+  onRunSweep,
+  onCancelSweep,
+  inFlightSweep,
+}: SweepPanelProps) {
+  // Default to the last session in the list (typically most recent / highest cm_id)
+  const [sessionCmId, setSessionCmId] = useState<number>(sessions[sessions.length - 1]?.cm_id ?? 0)
+  const [sourceValue, setSourceValue] = useState<string>('production')
+  const [budgets, setBudgets] = useState<number[]>(DEFAULT_BUDGETS)
+  const [label, setLabel] = useState<string>('')
+
+  const sessionScenarios = scenarios.filter((s) => s.session_id === sessionCmId)
+
+  const handleRun = () => {
+    const payload: SweepPanelPayload = {
+      time_budgets: budgets,
+    }
+    if (label) payload.label = label
+    if (sourceValue === 'production') {
+      payload.session_id = sessionCmId
+    } else {
+      payload.scenario_id = sourceValue
+    }
+    onRunSweep(payload)
+  }
+
+  const removeBudget = (b: number) => setBudgets(budgets.filter((x) => x !== b))
+  const addBudget = () => {
+    const next = window.prompt('Add budget in seconds (e.g., 90):')
+    const n = next ? parseInt(next, 10) : NaN
+    if (Number.isFinite(n) && n > 0) setBudgets([...budgets, n].sort((a, b) => a - b))
+  }
+
+  return (
+    <div className="shadow-lodge rounded-xl border border-gray-200 bg-white p-5">
+      <div className="mb-4 flex items-start justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+            <Zap className="h-4 w-4" /> Run benchmark sweep
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Sequential runs at each time budget. Inputs frozen at kickoff.
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-12 items-end gap-4">
+        <div className="col-span-3">
+          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+            Session
+          </label>
+          <select
+            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+            value={sessionCmId}
+            onChange={(e) => setSessionCmId(Number(e.target.value))}
+          >
+            {sessions.map((s) => (
+              <option key={s.id} value={s.cm_id}>
+                {s.session_name} — {s.year} ({s.attendee_count})
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="col-span-4">
+          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+            Source
+          </label>
+          <select
+            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+            value={sourceValue}
+            onChange={(e) => setSourceValue(e.target.value)}
+          >
+            <optgroup label="Live data">
+              <option value="production">Production</option>
+            </optgroup>
+            {sessionScenarios.length > 0 ? (
+              <optgroup label="Saved scenarios for the selected session">
+                {sessionScenarios.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    scenario "{s.name}"
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+        </div>
+        <div className="col-span-3">
+          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+            Time budgets
+          </label>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {budgets.map((b) => (
+              <button
+                key={b}
+                onClick={() => removeBudget(b)}
+                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-sm font-medium text-amber-900"
+                title="click to remove"
+              >
+                {b}s ×
+              </button>
+            ))}
+            <button
+              onClick={addBudget}
+              className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-sm text-gray-500 hover:border-gray-400"
+            >
+              + add
+            </button>
+          </div>
+        </div>
+        <div className="col-span-2">
+          <button
+            onClick={handleRun}
+            className="from-forest-500 to-forest-700 w-full rounded-lg bg-gradient-to-br px-4 py-2 text-sm font-semibold text-white shadow-md"
+          >
+            ▶ Run sweep
+          </button>
+        </div>
+        <div className="col-span-12">
+          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+            Label (optional)
+          </label>
+          <input
+            className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. post-grade-spread-cleanup"
+          />
+        </div>
+      </div>
+
+      {inFlightSweep ? (
+        <div className="bg-forest-50 border-forest-200 mt-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm">
+          <div className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          <span className="text-forest-700 font-medium">
+            Sweep {inFlightSweep.sweep_id} in progress
+          </span>
+          <span className="text-gray-600">
+            — {inFlightSweep.completed} of {inFlightSweep.total} complete
+          </span>
+          <button
+            onClick={() => onCancelSweep(inFlightSweep.sweep_id)}
+            className="ml-auto rounded border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100"
+          >
+            ⨯ Cancel after current
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
