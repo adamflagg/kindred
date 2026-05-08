@@ -25,6 +25,7 @@ import { CssVerticalGroupedBarChart } from '../../../components/metrics/CssVerti
 import { Loader2, AlertCircle } from 'lucide-react'
 import { aggregateCityEnrollmentByRegion, REGION_DISPLAY_NAMES } from '../../../utils/regionUtils'
 import { getYearColor, YEAR_PALETTE } from '../../../utils/yearColors'
+import { trendDirection } from '../../../utils/trendDirection'
 import type { YearEnrollment } from '../../../types/metrics'
 
 interface GroupedChartItem {
@@ -241,14 +242,14 @@ export default function TrendsOverview() {
           title="Total Change"
           value={totalChange > 0 ? `+${totalChange}` : totalChange.toString()}
           subtitle={`${percentChange}% over ${data.years.length} years`}
-          trend={totalChange > 0 ? 'up' : totalChange < 0 ? 'down' : 'neutral'}
+          trend={trendDirection(totalChange)}
           trendValue={`${percentChange}%`}
         />
         <MetricCard
           title="Avg. Annual Growth"
           value={Number(avgGrowth) > 0 ? `+${avgGrowth}` : avgGrowth}
           subtitle="Campers per year"
-          trend={Number(avgGrowth) > 0 ? 'up' : Number(avgGrowth) < 0 ? 'down' : 'neutral'}
+          trend={trendDirection(avgGrowth)}
         />
       </div>
 

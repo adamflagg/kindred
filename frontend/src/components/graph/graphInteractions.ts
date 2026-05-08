@@ -3,6 +3,7 @@
  * Extracted from SocialNetworkGraph.tsx
  */
 import type { Core, NodeSingular } from 'cytoscape'
+import { labelDensityThreshold } from './constants'
 
 /**
  * Adjust label positions to prevent overlap
@@ -156,7 +157,7 @@ export function setupZoomBasedLabels(cy: Core): void {
 
   cy.on('zoom', () => {
     const zoom = cy.zoom()
-    const threshold = zoom < 0.5 ? 0.8 : zoom < 0.7 ? 0.6 : 0.4
+    const threshold = labelDensityThreshold(zoom)
 
     cy.nodes()
       .filter((n) => !n.data('isBunkParent'))

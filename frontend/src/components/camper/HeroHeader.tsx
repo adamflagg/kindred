@@ -8,6 +8,7 @@ import { CampMinderIcon } from '../icons'
 import { StatusBadge } from '../StatusBadge'
 import { getAvatarColor, getInitial } from '../../utils/avatarUtils'
 import { formatAge } from '../../utils/age'
+import { formatGenderFull } from '../../utils/genderUtils'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
@@ -73,8 +74,8 @@ export function HeroHeader({
                 </p>
               )}
             <p className="text-forest-100 mt-2 text-base sm:text-lg">
-              {camper.gender === 'M' ? 'Male' : camper.gender === 'F' ? 'Female' : 'Non-Binary'} •{' '}
-              {pronouns} • {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{' '}
+              {formatGenderFull(camper.gender)} • {pronouns} •{' '}
+              {formatAge(getDisplayAgeForYear(camper, currentYear) ?? 0)} •{' '}
               {formatGradeOrdinal(camper.grade)} Grade
             </p>
           </div>

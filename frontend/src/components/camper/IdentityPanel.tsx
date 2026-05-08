@@ -18,6 +18,7 @@ import {
   Users,
 } from 'lucide-react'
 import { formatAge } from '../../utils/age'
+import { formatGenderFull } from '../../utils/genderUtils'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
 import { getDisplayAgeForYear } from '../../utils/displayAge'
 import { useYear } from '../../hooks/useCurrentYear'
@@ -122,9 +123,7 @@ export function IdentityPanel({
                 Sex / Gender Identity
               </div>
               <div className="text-sm">
-                <span className="font-medium">
-                  {camper.gender === 'M' ? 'Male' : camper.gender === 'F' ? 'Female' : 'Non-Binary'}
-                </span>
+                <span className="font-medium">{formatGenderFull(camper.gender)}</span>
                 {' • '}
                 <span className="text-muted-foreground">
                   {camper.gender_identity_write_in && camper.gender_identity_write_in.trim() !== ''

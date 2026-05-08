@@ -2,6 +2,12 @@ import { Users, Home, TrendingUp, AlertCircle, UserCheck } from 'lucide-react'
 import { getGenderIdentityDisplay, getGenderCategory } from '../utils/genderUtils'
 import type { Bunk, Camper } from '../types/app-types'
 
+function utilizationColor(utilization: number): 'red' | 'yellow' | 'purple' {
+  if (utilization >= 90) return 'red'
+  if (utilization >= 70) return 'yellow'
+  return 'purple'
+}
+
 interface SessionStatsProps {
   bunks: Bunk[]
   campers: Camper[]
@@ -63,7 +69,7 @@ export default function SessionStats({ bunks, campers, defaultCapacity = 12 }: S
       value: `${utilization.toFixed(0)}%`,
       detail: `${assignedCampers.length}/${effectiveCapacity} beds`,
       icon: TrendingUp,
-      color: utilization >= 90 ? 'red' : utilization >= 70 ? 'yellow' : 'purple',
+      color: utilizationColor(utilization),
       progress: utilization,
     },
     {

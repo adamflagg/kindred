@@ -15,6 +15,7 @@ import { getDisplayAgeForYear } from '../utils/displayAge'
 import type { Camper, Bunk, Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
+import { filterSexLabel, filterSexCsvSegment } from '../utils/filterSexFormat'
 
 // Bunk area color based on bunk prefix with dark mode support
 function getBunkAreaColor(bunkName: string | undefined): string {
@@ -222,7 +223,7 @@ export default function CampersView({
             <Listbox value={filterSex} onChange={(v) => setFilterSex(v)}>
               <div className="relative">
                 <ListboxButton className="listbox-button-compact">
-                  <span>{filterSex === 'all' ? 'All' : filterSex === 'M' ? 'Boys' : 'Girls'}</span>
+                  <span>{filterSexLabel(filterSex)}</span>
                   <ChevronDown className="text-muted-foreground h-4 w-4" />
                 </ListboxButton>
                 <ListboxOptions className="listbox-options w-auto min-w-[100px]">
@@ -316,7 +317,7 @@ export default function CampersView({
                   const rows = buildCamperRows(filteredCampers, sessions)
                   const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
                   const sessionSlug = _session ? slugify(_session.name) : 'session'
-                  const genderPart = filterSex === 'M' ? '-boys' : filterSex === 'F' ? '-girls' : ''
+                  const genderPart = filterSexCsvSegment(filterSex)
                   let bunkPart = ''
                   if (filterBunk === 'unassigned') {
                     bunkPart = '-unassigned'

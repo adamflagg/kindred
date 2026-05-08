@@ -25,7 +25,10 @@ export function HistoricalDetail({
   isRunning,
 }: HistoricalDetailProps) {
   const status = data.ran ? 'ran' : 'skipped'
-  const statusLabel = !data.ran ? 'skipped' : data.boost_applied ? 'boosted' : 'no boost'
+  let statusLabel: string
+  if (!data.ran) statusLabel = 'skipped'
+  else if (data.boost_applied) statusLabel = 'boosted'
+  else statusLabel = 'no boost'
 
   return (
     <div className="space-y-5">

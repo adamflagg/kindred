@@ -43,7 +43,9 @@ function resolveCurrentYearCampers(
   camperFallback: Camper | null
 ): Camper[] {
   const display = toDisplayList(filterEnrollmentsByStatus(allAttendees, (c) => c.attendee_status))
-  return display.length > 0 ? display : camperFallback ? [camperFallback] : []
+  if (display.length > 0) return display
+  if (camperFallback) return [camperFallback]
+  return []
 }
 
 export interface UseCamperHistoryResult {
