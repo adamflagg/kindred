@@ -10,7 +10,7 @@
 #
 # Philosophy:
 #   pre-commit  = auto-format (fix it for me)
-#   pre-push    = "does it compile/type-check?" + fast linters (~2s each)
+#   pre-push    = "does it compile/type-check?" + fast linters (~2s each) + auto-sync generated artifacts
 #   CI          = comprehensive gate (all linters, all tests, security audits)
 #
 # Escape hatches:
@@ -62,6 +62,7 @@ pre-commit:
             exit 1
           fi
         done
+
 
 # ─── Commit-msg: conventional commit validation ──────────────────────
 commit-msg:
@@ -121,31 +122,34 @@ pre-push:
         - "pocketbase/package.json"
       run: npm run lint
 
+    # Verify generated API types match the current Python schema.
+    # Regenerates to a temp file (no on-disk mutation) so this can run safely
+    # alongside `type-check` in the parallel group.
+    # Regen failure → hard block; drift → hard block with regen instructions.
     api-types-freshness:
       glob:
         - "api/**/*.py"
         - "bunking/**/*.py"
-        - "frontend/src/types/api-generated.ts"
       run: |
-        # Regenerate and diff. Warn on drift but NEVER fail (exit 0).
-        # This is intentionally WARN-ONLY — CI is the strict gate.
-        if ! npm run generate:api-types --prefix frontend > /tmp/kindred-api-types-regen.log 2>&1; then
+        REGEN_LOG=$(mktemp)
+        REGEN_DIR=$(mktemp -d)
+        REGEN_OUT="$REGEN_DIR/api-generated.ts"
+        trap 'rm -rf "$REGEN_LOG" "$REGEN_DIR"' EXIT
+        if ! node frontend/scripts/generate-api-types.js --output "$REGEN_OUT" > "$REGEN_LOG" 2>&1; then
           echo ""
-          echo "⚠️  API types freshness check skipped — regen failed."
-          echo "   Last 10 lines of regen output:"
-          tail -n 10 /tmp/kindred-api-types-regen.log | sed 's/^/     /'
-          echo "   (Push proceeds; CI will catch any real drift.)"
+          echo "❌  API types regen failed — fix schema errors before pushing."
+          tail -n 10 "$REGEN_LOG" | sed 's/^/   /'
           echo ""
-          exit 0
+          exit 1
         fi
-        if ! git diff --quiet -- frontend/src/types/api-generated.ts 2>/dev/null; then
+        if ! diff -q "$REGEN_OUT" frontend/src/types/api-generated.ts >/dev/null 2>&1; then
           echo ""
-          echo "⚠️  API types are stale — generated types don't match current Python schemas."
+          echo "❌  API types are stale — generated types don't match current Python schemas."
           echo "   Run: cd frontend && npm run generate:api-types"
-          echo "   Then commit the updated src/types/api-generated.ts before pushing."
+          echo "   Then commit the updated src/types/api-generated.ts and re-push."
           echo ""
+          exit 1
         fi
-        exit 0
 
     behind-origin:
       only:
