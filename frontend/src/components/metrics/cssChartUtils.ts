@@ -29,6 +29,13 @@ export function getYAxisMarginLeft(width: YAxisWidth = 'w-8'): string {
   return width === 'w-10' ? '3rem' : '2.5rem'
 }
 
+function pickNiceResidual(residual: number): number {
+  if (residual <= 1.5) return 1
+  if (residual <= 3) return 2
+  if (residual <= 7) return 5
+  return 10
+}
+
 /**
  * Calculate nice tick values for a chart axis.
  * Returns evenly spaced round numbers from 0 to at least `max`.
@@ -38,8 +45,7 @@ export function getNiceTicks(max: number, count = 5): number[] {
   const rawInterval = max / count
   const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)))
   const residual = rawInterval / magnitude
-  const niceResidual = residual <= 1.5 ? 1 : residual <= 3 ? 2 : residual <= 7 ? 5 : 10
-  const interval = niceResidual * magnitude
+  const interval = pickNiceResidual(residual) * magnitude
   const ticks: number[] = []
   for (let v = 0; v <= max; v += interval) {
     const rounded = Math.round(v)
@@ -177,7 +183,7 @@ export interface VerticalChartLayout {
 export function calculateVerticalLayout(
   height: number,
   options?: {
-    /** Height for x-axis labels: 34 for straight labels, 60 for rotated. */
+    /** Height for x-axis labels: 34 for straight labels, 72 for rotated (X_AXIS_HEIGHT_ROTATED). */
     xAxisHeight?: number
     /** Space above bars for value labels. */
     topPadding?: number
