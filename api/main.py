@@ -26,6 +26,7 @@ from bunking.auth_middleware import (
     create_auth_middleware,
     get_current_user,
 )
+from bunking.config import ConfigLoader
 from bunking.logging_config import configure_logging, get_logger
 
 from .dependencies import (
@@ -52,7 +53,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not settings.skip_pb_auth:
         await authenticate_pb()
         refresh_task = await start_pb_token_refresh()
-        logger.info("Config initialization handled by PocketBase on startup")
+        ConfigLoader.initialize(
+            pocketbase_url=settings.pocketbase_url,
+            validate_on_init=True,
+        )
+        logger.info("ConfigLoader initialized with validate_on_init=True")
     else:
         logger.warning("Skipping PocketBase authentication (SKIP_PB_AUTH=true)")
         auth_state.pb_client = pb

@@ -14,6 +14,7 @@ from ..shared.constants import (
     ACTIVE_ENROLLMENT_STATUSES,
     INACTIVE_ENROLLMENT_STATUSES,
     PENDING_ENROLLMENT_STATUSES,
+    SourceField,
 )
 
 
@@ -50,6 +51,38 @@ class RequestSource(Enum):
 
     FAMILY = "family"
     STAFF = "staff"
+
+
+_SOURCE_FIELD_MAP: dict[str, RequestSource] = {
+    SourceField.BUNK_WITH: RequestSource.FAMILY,
+    SourceField.SOCIALIZE_WITH: RequestSource.FAMILY,
+    SourceField.NOT_BUNK_WITH: RequestSource.STAFF,
+    SourceField.BUNKING_NOTES: RequestSource.STAFF,
+    SourceField.INTERNAL_NOTES: RequestSource.STAFF,
+}
+
+
+def source_from_field(source_field: str) -> RequestSource:
+    """Derive RequestSource from a source_field value.
+
+    This is the authoritative 5→2 mapping that makes RequestSource a
+    deterministic projection of source_field rather than an independent axis.
+
+    Args:
+        source_field: One of the 5 canonical SourceField values.
+
+    Returns:
+        RequestSource.FAMILY for parent-visible fields (bunk_with, socialize_with).
+        RequestSource.STAFF for staff-written fields (not_bunk_with, bunking_notes,
+        internal_notes).
+
+    Raises:
+        ValueError: If source_field is not one of the 5 known values.
+    """
+    try:
+        return _SOURCE_FIELD_MAP[source_field]
+    except KeyError:
+        raise ValueError(f"unknown source_field: {source_field!r}") from None
 
 
 class RequestStatus(Enum):

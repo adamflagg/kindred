@@ -8,7 +8,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 
-from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType
+from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType, source_from_field
 from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
@@ -18,6 +18,19 @@ SOURCE_PRIORITY = {
     RequestSource.FAMILY: 2,  # Origin of intent — parent input is authoritative
     RequestSource.STAFF: 1,  # Corroboration / observation — preserved as metadata
 }
+
+
+def _resolve_source(req: BunkRequest) -> str:
+    """Best-effort source string for metadata, never raises.
+
+    Mirrors the validator pattern (bunking_validator.py:527-531) — falls back
+    to the in-memory `req.source` when `source_field` is empty or unknown so
+    a single legacy/malformed row can't abort the whole dedup pass.
+    """
+    try:
+        return source_from_field(req.source_field).value
+    except ValueError:
+        return req.source.value
 
 
 def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bool:
@@ -279,8 +292,11 @@ class Deduplicator:
         primary.metadata["merged_sources"] = merged_sources
         primary.metadata["is_merged_duplicate"] = True
 
-        # Track duplicate sources (legacy, for backwards compatibility)
-        duplicate_sources = [r.source.value for r in duplicates]
+        # Track duplicate sources (legacy, for backwards compatibility).
+        # Falls back to req.source.value when source_field is unknown/empty so
+        # one bad row can't abort the whole merge — mirrors the validator's
+        # try/except pattern at bunking_validator.py:527-531.
+        duplicate_sources = [_resolve_source(r) for r in duplicates]
         primary.metadata["duplicate_sources"] = duplicate_sources
 
         # Find highest confidence among all requests
@@ -291,7 +307,7 @@ class Deduplicator:
             # Find which source had the highest confidence
             for req in all_requests:
                 if req.confidence_score == highest_conf:
-                    primary.metadata["confidence_boosted_from"] = req.source.value
+                    primary.metadata["confidence_boosted_from"] = _resolve_source(req)
                     break
             primary.confidence_score = highest_conf
 

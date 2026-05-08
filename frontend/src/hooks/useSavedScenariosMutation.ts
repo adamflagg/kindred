@@ -1,7 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { pb, getCurrentUser } from '../lib/pocketbase'
 import type { SavedScenario } from '../types/app-types'
-import type { BunkAssignmentsDraftRecord } from '../types/pocketbase-types'
+import type {
+  BunkAssignmentsDraftRecord,
+  LockedGroupMembersRecord,
+  LockedGroupsRecord,
+} from '../types/pocketbase-types'
 
 interface CreateScenarioParams {
   name: string
@@ -148,6 +152,8 @@ async function copyProductionToScenario(sessionCmId: number, scenarioId: string,
 // no clear error surface. Mirrors `copyProductionToScenario` below:
 // sequential `for..of await`, per-item try/catch, accumulated errors,
 // aggregate throw at the end.
+//
+// Also copies locked friend groups — see #1046.
 async function copyScenarioToScenario(fromScenarioId: string, toScenarioId: string, year: number) {
   // Get source scenario assignments for the specific year.
   // The stored fields on bunk_assignments_draft are already relation IDs
@@ -193,6 +199,113 @@ async function copyScenarioToScenario(fromScenarioId: string, toScenarioId: stri
   if (errors.length > 0) {
     console.error(`Failed to copy ${errors.length}/${sourceAssignments.length} assignments`)
     throw new Error(`Failed to copy ${errors.length} assignments. Check console for details.`)
+  }
+
+  // ── Copy locked friend groups (#1046) ───────────────────────────────────
+  await copyLockedGroupsToScenario(fromScenarioId, toScenarioId, year)
+}
+
+// copyLockedGroupsToScenario copies all locked_groups (and their members) from
+// one scenario to another. Errors are accumulated and thrown at the end so
+// partial-success state is reported rather than silently dropped.
+//
+// Production-source copies are skipped via the callsite (copyProductionToScenario
+// does not call this function).
+async function copyLockedGroupsToScenario(
+  fromScenarioId: string,
+  toScenarioId: string,
+  year: number
+) {
+  // ── 1. Fetch source groups ───────────────────────────────────────────────
+  const sourceGroups = await pb.collection<LockedGroupsRecord>('locked_groups').getFullList({
+    filter: `scenario = "${fromScenarioId}" && year = ${year}`,
+  })
+
+  if (sourceGroups.length === 0) {
+    return
+  }
+
+  console.log(`Copying ${sourceGroups.length} locked groups to scenario ${toScenarioId}`)
+
+  // ── 2. Create new groups and build oldId → newId map ─────────────────────
+  const groupIdMap = new Map<string, string>() // old group id → new group id
+  const groupErrors: AssignmentError[] = []
+
+  for (const sourceGroup of sourceGroups) {
+    const groupData: Record<string, unknown> = {
+      scenario: toScenarioId,
+      name: sourceGroup.name,
+      color: sourceGroup.color,
+      session: sourceGroup.session,
+      year: sourceGroup.year,
+    }
+
+    try {
+      const newGroup = await pb.collection<LockedGroupsRecord>('locked_groups').create(groupData)
+      groupIdMap.set(sourceGroup.id, newGroup.id)
+    } catch (error) {
+      const pbError = error as PbLooseError
+      console.error('Failed to create locked group:', {
+        groupData,
+        originalGroup: sourceGroup,
+        error: pbError.response?.data ?? pbError.message ?? error,
+      })
+      groupErrors.push({ assignment: sourceGroup, error })
+    }
+  }
+
+  // ── 3. Fetch source members for all source groups ────────────────────────
+  const sourceGroupIds = sourceGroups.map((g) => g.id)
+  // PocketBase filter: group IN (id1, id2, ...) using multiple OR clauses
+  const memberFilter = sourceGroupIds.map((id) => `group = "${id}"`).join(' || ')
+
+  const sourceMembers = await pb
+    .collection<LockedGroupMembersRecord>('locked_group_members')
+    .getFullList({
+      filter: memberFilter,
+    })
+
+  console.log(`Copying ${sourceMembers.length} locked group members`)
+
+  // ── 4. Create new members using the id map ───────────────────────────────
+  const memberErrors: AssignmentError[] = []
+
+  for (const sourceMember of sourceMembers) {
+    const newGroupId = groupIdMap.get(sourceMember.group)
+    if (!newGroupId) {
+      // The source group failed to create — record each orphaned member as a
+      // failure too, so the aggregate count reflects the actual damage rather
+      // than just the single failed group create.
+      memberErrors.push({
+        assignment: sourceMember,
+        error: new Error(`Skipped: parent locked group ${sourceMember.group} failed to copy`),
+      })
+      continue
+    }
+
+    const memberData: Record<string, unknown> = {
+      group: newGroupId,
+      attendee: sourceMember.attendee,
+    }
+
+    try {
+      await pb.collection('locked_group_members').create(memberData)
+    } catch (error) {
+      const pbError = error as PbLooseError
+      console.error('Failed to create locked group member:', {
+        memberData,
+        originalMember: sourceMember,
+        error: pbError.response?.data ?? pbError.message ?? error,
+      })
+      memberErrors.push({ assignment: sourceMember, error })
+    }
+  }
+
+  const totalErrors = groupErrors.length + memberErrors.length
+  const totalItems = sourceGroups.length + sourceMembers.length
+  if (totalErrors > 0) {
+    console.error(`Failed to copy ${totalErrors}/${totalItems} locked group items`)
+    throw new Error(`Failed to copy ${totalErrors} locked group items. Check console for details.`)
   }
 }
 

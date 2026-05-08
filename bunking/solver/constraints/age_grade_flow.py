@@ -42,7 +42,7 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
         objective_terms: List to append bonus terms to
     """
     # Check if age/grade flow is enabled in config
-    grade_target_weight = ctx.config.get_soft_constraint_weight("age_grade_flow", default=300)
+    grade_target_weight = ctx.config.get_soft_constraint_weight("age_grade_flow")
     if grade_target_weight <= 0:
         return
 

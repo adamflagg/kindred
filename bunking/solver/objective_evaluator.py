@@ -275,7 +275,7 @@ class ObjectiveEvaluator:
 
         Exactly mirrors add_age_grade_flow_objective() logic.
         """
-        grade_target_weight = self.config.get_soft_constraint_weight("age_grade_flow", default=300)
+        grade_target_weight = self.config.get_soft_constraint_weight("age_grade_flow")
 
         if grade_target_weight <= 0:
             return 0, {"enabled": False}

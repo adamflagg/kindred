@@ -71,7 +71,7 @@ def _create_bunk_request(
         priority=priority,
         confidence_score=confidence,
         source=source,
-        source_field="share_bunk_with",
+        source_field="bunk_with",
         csv_position=1,
         year=2025,
         status=RequestStatus.RESOLVED,

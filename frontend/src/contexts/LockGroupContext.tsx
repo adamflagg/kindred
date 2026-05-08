@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
 import { useScenario } from '../hooks/useScenario'
+import { useGroupConflictConfirm } from '../hooks/useGroupConflictConfirm'
+import { GroupConflictDialog } from '../components/GroupConflictDialog'
 import type {
   LockedGroupsResponse,
   LockedGroupMembersResponse,
@@ -97,6 +99,11 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [isLockPanelOpen, setIsLockPanelOpen] = useState(false)
   const [prevScenarioId, setPrevScenarioId] = useState(scenarioId)
+
+  // Conflict-confirm hook — drives the "camper already in another group" dialog
+  const conflictConfirm = useGroupConflictConfirm()
+  // Name of the camper currently in the conflict dialog (for display only)
+  const [conflictCamperName, setConflictCamperName] = useState('')
 
   // Clear pending campers when scenario changes (render-time check)
   if (scenarioId !== prevScenarioId) {
@@ -290,10 +297,20 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         return
       }
 
-      // Check if camper is already in a group
-      if (camperToGroup.has(camper.person_cm_id)) {
-        toast.error('Camper is already in a friend group')
-        return
+      // If camper is already in a different group in this scenario, confirm with staff
+      // before proceeding (the solver merges overlapping groups transitively).
+      const existingGroup = camperToGroup.get(camper.person_cm_id)
+      if (existingGroup && existingGroup.id !== groupId && scenarioId) {
+        const targetGroup = groups.find((g) => g.id === groupId)
+        const targetGroupName = targetGroup?.name ?? 'this group'
+        setConflictCamperName(camper.name ?? camper.first_name ?? 'Camper')
+        const outcome = await conflictConfirm.checkConflict({
+          attendeePbId,
+          targetGroupId: groupId,
+          targetGroupName,
+          scenarioId,
+        })
+        if (outcome === 'cancelled') return
       }
 
       try {
@@ -325,7 +342,16 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         toast.error('Failed to add camper to group')
       }
     },
-    [isDraftMode, camperToGroup, queryClient, scenarioId, sessionPbId, currentYear, groups]
+    [
+      isDraftMode,
+      camperToGroup,
+      queryClient,
+      scenarioId,
+      sessionPbId,
+      currentYear,
+      groups,
+      conflictConfirm,
+    ]
   )
 
   const value: LockGroupContextValue = {
@@ -363,7 +389,19 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     isDraftMode,
   }
 
-  return <LockGroupContext.Provider value={value}>{children}</LockGroupContext.Provider>
+  return (
+    <LockGroupContext.Provider value={value}>
+      {children}
+      <GroupConflictDialog
+        isOpen={conflictConfirm.dialogState.isOpen}
+        camperName={conflictCamperName}
+        existingGroupName={conflictConfirm.dialogState.existingGroupName}
+        targetGroupName={conflictConfirm.dialogState.targetGroupName}
+        onConfirm={conflictConfirm.dialogState.onConfirm}
+        onCancel={conflictConfirm.dialogState.onCancel}
+      />
+    </LockGroupContext.Provider>
+  )
 }
 
 export default LockGroupContext
