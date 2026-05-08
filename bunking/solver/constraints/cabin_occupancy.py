@@ -14,6 +14,7 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.solver.penalties import min_occupancy_penalty, min_occupancy_threshold
 
 from .base import SolverContext
 from .helpers import is_ag_session_bunk
@@ -42,7 +43,7 @@ def add_cabin_minimum_occupancy_constraints(
         logger.info("Cabin minimum occupancy constraints DISABLED by config")
         return bunk_is_used
 
-    min_occupancy = ctx.config.get_int("constraint.cabin_minimum_occupancy.min", default=8)
+    min_occupancy = min_occupancy_threshold()
     force_all_used = ctx.config.get_constraint("cabin_minimum_occupancy", "force_all_used", default=True)
 
     # Count bunks and campers per gender for force_all_used logic
@@ -155,9 +156,9 @@ def add_cabin_minimum_occupancy_soft_penalty(
     if not bunk_is_used:
         return
 
-    min_occupancy = ctx.config.get_int("constraint.cabin_minimum_occupancy.min", default=8)
+    min_occupancy = min_occupancy_threshold()
     preferred_occupancy = ctx.config.get_int("constraint.cabin_minimum_occupancy.preferred", default=10)
-    penalty_weight = ctx.config.get_int("constraint.cabin_minimum_occupancy.penalty", default=2000)
+    penalty_weight = min_occupancy_penalty()
 
     # No soft penalty if preferred == min
     if preferred_occupancy <= min_occupancy:

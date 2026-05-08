@@ -5,33 +5,25 @@
 import type { NodeSingular, EdgeSingular, StylesheetStyle } from 'cytoscape'
 import { GRADE_COLORS, EDGE_COLORS, STATUS_COLORS } from './constants'
 import { formatGradeOrdinal } from '../../utils/gradeUtils'
-import type { CrossScopeEdge } from '../../types/graph'
+import type {
+  ApiSocialGraphNode,
+  ApiSocialGraphEdge,
+  ApiCrossScopeEdge,
+} from '../../types/api-types'
 
-/** Input node data from API */
-export interface GraphNodeData {
-  id: number
-  name: string
-  grade: number
-  centrality: number
-  clustering: number
-  satisfaction_status: string
-  parent_satisfaction_status?: string
-  staff_satisfaction_status?: string
-  bunk_cm_id: number | undefined
-  community: number
-}
+/**
+ * Input node data from API.
+ * Type alias for the generated `ApiSocialGraphNode` — eliminates hand-mirroring.
+ * Generated from `api/schemas/social_graph.py:SocialGraphNode` via openapi-typescript.
+ */
+export type GraphNodeData = ApiSocialGraphNode
 
-/** Input edge data from API */
-export interface GraphEdgeData {
-  source: number
-  target: number
-  edge_type: string
-  priority: number
-  confidence: number
-  reciprocal: boolean
-  /** For edge_type='request' edges: 'bunk_with' or 'not_bunk_with'. */
-  request_type?: string
-}
+/**
+ * Input edge data from API.
+ * Type alias for the generated `ApiSocialGraphEdge` — eliminates hand-mirroring.
+ * Generated from `api/schemas/social_graph.py:SocialGraphEdge` via openapi-typescript.
+ */
+export type GraphEdgeData = ApiSocialGraphEdge
 
 /** Edge visibility settings */
 export interface ShowEdgesSettings {
@@ -289,17 +281,17 @@ export interface CamperNodeElement {
     id: string
     label: string
     name: string
-    grade: number
+    grade: number | null | undefined
     centrality: number
     clustering: number
-    satisfaction_status: string
-    parent_satisfaction_status: string | undefined
-    staff_satisfaction_status: string | undefined
+    satisfaction_status: string | null | undefined
+    parent_satisfaction_status: string | null | undefined
+    staff_satisfaction_status: string | null | undefined
     /** Set on out-of-scope endpoints of cross-scope edges. Renders ghosted
      *  but stays clickable so the user can open the detail panel. */
     cross_scope?: boolean
-    bunk_cm_id: number | undefined
-    community: number
+    bunk_cm_id: number | null | undefined
+    community: number | null | undefined
     parent: string | undefined
   }
 }
@@ -324,11 +316,14 @@ export interface EdgeElement {
   }
 }
 
-/** Edge straddling the active scope (one endpoint in scope, one outside).
- *  Returned as a distinct list by the API so we can ghost them visually
- *  without polluting the layout's edge weight. Wire shape is exported as
- *  `CrossScopeEdge` from `../../types/graph` — this is the same type. */
-export type CrossScopeEdgeData = CrossScopeEdge
+/**
+ * Edge straddling the active scope (one endpoint in scope, one outside).
+ * Returned as a distinct list by the API so we can ghost them visually
+ * without polluting the layout's edge weight.
+ * Type alias for the generated `ApiCrossScopeEdge` — eliminates hand-mirroring.
+ * Generated from `bunking/graph/scope_filter.py:CrossScopeEdge` via openapi-typescript.
+ */
+export type CrossScopeEdgeData = ApiCrossScopeEdge
 
 /** Result of createGraphElements */
 export interface GraphElements {
@@ -467,8 +462,9 @@ export function createGraphElements(
       source: e.source.toString(),
       target: e.target.toString(),
       edge_type: e.edge_type,
-      priority: e.priority,
-      confidence: e.confidence,
+      // priority and confidence are nullable in the generated types (null → undefined)
+      ...(e.priority != null ? { priority: e.priority } : {}),
+      ...(e.confidence != null ? { confidence: e.confidence } : {}),
       is_reciprocal: flags.is_reciprocal,
       ...(e.request_type ? { request_type: e.request_type } : {}),
       ...(flags.multi ? { multi: true } : {}),

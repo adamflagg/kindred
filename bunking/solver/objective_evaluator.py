@@ -24,6 +24,12 @@ from typing import Any
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
+from bunking.solver.penalties import (
+    cabin_capacity_penalty,
+    grade_spread_penalty,
+    min_occupancy_penalty,
+    min_occupancy_threshold,
+)
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
@@ -405,25 +411,32 @@ class ObjectiveEvaluator:
         person_by_cm_id: dict[int, dict[str, Any]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate grade spread soft constraint penalty."""
-        max_spread = self.config.get_int("constraint.grade_spread.max_spread", default=2)
-        penalty_per_grade = self.config.get_int("penalty.grade_spread_per_grade", default=100)
+        """Calculate grade spread soft constraint penalty (B3 fix).
+
+        Mirrors the OR-Tools cost term in
+        ``bunking/solver/constraints/grade_spread.py:add_grade_spread_soft_constraint``,
+        which uses ``excess = max(0, unique_grade_count - max_unique_grades)``
+        and contributes ``-penalty_weight * excess`` to the objective.
+
+        Previously this method computed grade spread as ``max(grades) -
+        min(grades)``, which over-counts whenever non-adjacent grades are
+        present (e.g. ``{5, 5, 5, 10, 10}``: range=5 but only 2 unique
+        grades). The post-solve score therefore disagreed with what the
+        solver was actually optimizing.
+        """
+        max_unique_grades = self.config.get_int("constraint.grade_spread.max_spread", default=2)
+        penalty_per_grade = grade_spread_penalty()
 
         total_penalty = 0
 
         for person_ids in bunk_to_persons.values():
-            grades: list[int] = []
-            for pid in person_ids:
-                if pid in person_by_cm_id:
-                    grade = person_by_cm_id[pid].get("grade")
-                    if grade is not None:
-                        grades.append(grade)
-
-            if len(grades) >= 2:
-                spread = max(grades) - min(grades)
-                if spread > max_spread:
-                    excess = spread - max_spread
-                    total_penalty += excess * penalty_per_grade
+            unique_grades = {
+                person_by_cm_id[pid].get("grade")
+                for pid in person_ids
+                if pid in person_by_cm_id and person_by_cm_id[pid].get("grade") is not None
+            }
+            excess = max(0, len(unique_grades) - max_unique_grades)
+            total_penalty += excess * penalty_per_grade
 
         return total_penalty
 
@@ -432,8 +445,12 @@ class ObjectiveEvaluator:
         bunk_to_persons: dict[int, list[int]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate over-capacity soft constraint penalty."""
-        penalty_per_person = self.config.get_int("penalty.over_capacity", default=500)
+        """Calculate over-capacity soft constraint penalty.
+
+        Reads via the centralized ``cabin_capacity_penalty()`` accessor so this
+        replicates the OR-Tools cost contribution exactly (B1/B2 fix).
+        """
+        penalty_per_person = cabin_capacity_penalty()
         default_capacity = self.config.get_int("constraint.cabin_capacity.standard", default=12)
 
         total_penalty = 0
@@ -454,9 +471,15 @@ class ObjectiveEvaluator:
         bunk_to_persons: dict[int, list[int]],
         bunk_by_cm_id: dict[int, dict[str, Any]],
     ) -> int:
-        """Calculate under-occupancy penalty (prefer fuller bunks)."""
-        min_occupancy = self.config.get_int("constraint.cabin_occupancy.minimum", default=8)
-        penalty_per_person = self.config.get_int("penalty.under_occupancy", default=50)
+        """Calculate under-occupancy penalty (prefer fuller bunks).
+
+        Reads via the centralized ``min_occupancy_threshold()`` and
+        ``min_occupancy_penalty()`` accessors so this replicates the OR-Tools
+        cost contribution exactly (B4 fix; the previous read of the legacy
+        ``constraint.cabin_occupancy.minimum`` was a stale alias).
+        """
+        min_occupancy = min_occupancy_threshold()
+        penalty_per_person = min_occupancy_penalty()
 
         total_penalty = 0
 
