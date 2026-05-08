@@ -76,6 +76,7 @@ from ..social.social_graph import SocialGraph
 from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 from .reconciliation import log_obr_reconciliation
+from .target_decline import run_target_decline_phase
 
 logger = get_logger(__name__)
 
@@ -306,6 +307,9 @@ class RequestOrchestrator:
             "ai_high_confidence": 0,
             "ai_manual_review": 0,
             "phase1_failed": 0,
+            # Phase C target-decline sidecar (#1069)
+            "target_declined_count": 0,
+            "target_declined_errors": 0,
         }
         self._phase1_first_error: str | None = None
 
@@ -1675,6 +1679,26 @@ class RequestOrchestrator:
         # #943: emit a single top-level OBR -> BR reconciliation line so the
         # full pipeline math is verifiable from the log alone.
         log_obr_reconciliation(self._stats)
+
+        # Phase C (#1069): sweep bunk_requests for stale rows where the
+        # requestee is no longer attending or now in a different session,
+        # and decline them in place. Sidecar: usually empty, never fails
+        # the pipeline. Skipped under dry_run since it issues real writes.
+        if dry_run:
+            logger.info("=== Skipping Phase C target-decline (dry_run=True) ===")
+        else:
+            try:
+                target_decline_stats = run_target_decline_phase(self.pb, self.year)
+                self._stats["target_declined_count"] = target_decline_stats.get("declined_count", 0)
+                self._stats["target_declined_errors"] = target_decline_stats.get("error_count", 0)
+            except Exception:
+                logger.exception("target_decline phase raised; continuing")
+                self._stats["target_declined_errors"] = 1
+            logger.info(
+                f"Phase C target-decline: "
+                f"declined={self._stats['target_declined_count']}, "
+                f"errors={self._stats['target_declined_errors']}"
+            )
 
         # Log cache statistics if monitor is available
         if self.cache_monitor:

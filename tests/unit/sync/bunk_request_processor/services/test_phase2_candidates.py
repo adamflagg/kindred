@@ -58,7 +58,7 @@ def _parsed_request(
         request_type=request_type,
         target_name=target_name,
         age_preference=age_preference,
-        source_field="share_bunk_with",
+        source_field="bunk_with",
         source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,

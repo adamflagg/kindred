@@ -59,7 +59,7 @@ class TestSessionCompatibilityRule:
             priority=3,
             confidence_score=0.95,
             source=RequestSource.FAMILY,
-            source_field="share_bunk_with",
+            source_field="bunk_with",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,

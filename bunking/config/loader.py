@@ -18,7 +18,6 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from .errors import (
-    ConfigError,
     DatabaseUnavailableError,
     MissingKeyError,
     UnknownKeyError,
@@ -48,8 +47,8 @@ class ConfigLoader:
         loader = ConfigLoader.get_instance()
 
         # Typed accessors
-        timeout = loader.get_int("solver.time_limit.seconds")
-        enabled = loader.get_bool("smart_local_resolution.enabled")
+        enabled = loader.get_int("smart_local_resolution.enabled")
+        weight = loader.get_float("smart_local_resolution.connection_score_weight")
 
         # Test substitution
         with ConfigLoader.use(mock_loader):
@@ -126,8 +125,10 @@ class ConfigLoader:
             MissingKeyError: If required keys are missing
         """
         if cls._initialized:
-            # Allow re-initialization in tests
+            # Already initialized — skip full re-init but still run validation if requested.
             logger.debug("ConfigLoader already initialized, returning existing instance")
+            if validate_on_init and cls._instance is not None:
+                cls._instance._validate_all_required_keys()
             return cls._instance  # type: ignore
 
         # Set environment variables if provided
@@ -237,7 +238,9 @@ class ConfigLoader:
             if invalid_values:
                 error_parts.append(f"Invalid values ({len(invalid_values)}): {invalid_values}")
 
-            raise ConfigError("Configuration validation failed.\n" + "\n".join(error_parts))
+            if missing_keys:
+                raise MissingKeyError("Configuration validation failed.\n" + "\n".join(error_parts))
+            raise ValidationError("Configuration validation failed.\n" + "\n".join(error_parts))
 
         self._validated = True
         logger.info(f"Validated {len(required_keys)} required config keys")
@@ -252,7 +255,7 @@ class ConfigLoader:
         Get a configuration value.
 
         Args:
-            key: Configuration key (e.g., "solver.time_limit.seconds")
+            key: Configuration key (e.g., "smart_local_resolution.enabled")
 
         Returns:
             The typed configuration value
@@ -380,33 +383,24 @@ class ConfigLoader:
         key = f"constraint.{constraint_type}.{param}"
         return self.get_int(key, default=default)
 
-    def get_solver_param(self, param_type: str, subtype: str) -> int:
-        """
-        Get a solver parameter value.
-
-        Args:
-            param_type: Parameter type (e.g., "time_limit").
-            subtype: Subtype (e.g., "seconds").
-
-        Returns:
-            Solver parameter value as integer.
-        """
-        key = f"solver.{param_type}.{subtype}"
-        return self.get_int(key)
-
-    def get_soft_constraint_weight(self, constraint_name: str, default: int | None = None) -> int:
+    def get_soft_constraint_weight(self, constraint_name: str) -> int:
         """
         Get soft constraint weight value for the given constraint.
 
+        All mapped keys are required in CONFIG_SCHEMA and seeded in the migration,
+        so no default fallback is needed or allowed — missing keys fail loudly.
+
         Args:
-            constraint_name: Name of the constraint (e.g., "level_progression").
-            default: Optional default value if key not found.
+            constraint_name: Name of the constraint (e.g., "age_spread").
 
         Returns:
             Constraint weight as integer.
+
+        Raises:
+            UnknownKeyError: If the resolved key is not in CONFIG_SCHEMA.
+            MissingKeyError: If the required key is absent from the database.
         """
         weight_mappings = {
-            "isolated_camper_prevention": "constraint.isolated_camper_ratio.penalty",
             # level_progression removed - uses no_regression_penalty via constraint module
             "must_satisfy_one": "constraint.must_satisfy_one.penalty",
             "age_grade_flow": "constraint.age_grade_flow.weight",
@@ -416,7 +410,7 @@ class ConfigLoader:
         }
 
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, default=default)
+        return self.get_int(key)
 
     def _query_database_raw(self, key: str) -> Any | None:
         """
@@ -570,7 +564,7 @@ class ConfigLoader:
         Update a configuration value in the database.
 
         Args:
-            key: Dot-notation key (e.g., "solver.time_limit.seconds").
+            key: Dot-notation key (e.g., "smart_local_resolution.enabled").
             value: New value to set.
 
         Raises:

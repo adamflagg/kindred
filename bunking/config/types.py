@@ -27,7 +27,7 @@ class ConfigKey:
     Definition of a configuration key with validation rules.
 
     Attributes:
-        key: The dot-notation config key (e.g., "solver.time_limit.seconds")
+        key: The dot-notation config key (e.g., "smart_local_resolution.enabled")
         config_type: The expected type of the value
         required: If True, key must exist in database (no fallback)
         description: Human-readable description

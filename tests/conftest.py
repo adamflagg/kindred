@@ -166,6 +166,7 @@ TEST_CONFIG = {
     "constraint.must_satisfy_one.enabled": 1,
     "constraint.must_satisfy_one.fallback_to_age": 1,
     "constraint.must_satisfy_one.ignore_impossible_requests": 1,
+    "constraint.must_satisfy_one.penalty": 100000,
     "constraint.level_progression.no_regression": 1,
     "constraint.level_progression.no_regression_penalty": 800,
     "constraint.cabin_capacity.max": 14,
@@ -189,7 +190,6 @@ TEST_CONFIG = {
     # Solver settings
     "solver.auto_apply_enabled": 1,
     "solver.auto_apply_timeout": 0,
-    "solver.time_limit.seconds": 30,
     # Smart local resolution
     "smart_local_resolution.enabled": 1,
     "smart_local_resolution.significant_connection_threshold": 5,
@@ -241,19 +241,17 @@ class MockConfigLoader:
     def get_constraint(self, constraint_type: str, param: str) -> int:
         return self.get_int(f"constraint.{constraint_type}.{param}", default=10)
 
-    def get_solver_param(self, param_type: str, subtype: str) -> int:
-        return self.get_int(f"solver.{param_type}.{subtype}", default=30)
-
-    def get_soft_constraint_weight(self, constraint_name: str, default: int = 100) -> int:
+    def get_soft_constraint_weight(self, constraint_name: str) -> int:
         weight_mappings = {
             # level_progression removed - uses no_regression_penalty, not progression_weight
             "age_grade_flow": "constraint.age_grade_flow.weight",
             "grade_cohesion": "constraint.grade_cohesion.weight",
             "grade_spread": "constraint.grade_spread.penalty",
             "age_spread": "constraint.age_spread.penalty",
+            "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, default)
+        return self.get_int(key)
 
     def get_ai_config(self) -> dict[str, object]:
         return {
@@ -282,7 +280,7 @@ def mock_config():
             # mock_config is already active via context manager
             from bunking.config import ConfigLoader
             config = ConfigLoader.get_instance()
-            assert config.get_int("solver.time_limit.seconds") == 30
+            assert config.get_int("smart_local_resolution.enabled") == 1
     """
     from bunking.config import ConfigLoader
 

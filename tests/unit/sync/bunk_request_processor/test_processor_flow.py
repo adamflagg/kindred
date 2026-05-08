@@ -268,7 +268,7 @@ class DiagnosticRunner:
                 requester_cm_id=12345,
                 requester_first_name="Test",
                 requester_last_name="User",
-                source_field="share_bunk_with",
+                source_field="bunk_with",
                 raw_text="John Smith",
                 year=2025,
             )
@@ -341,7 +341,7 @@ class DiagnosticRunner:
                 requester_cm_id=12345,
                 requester_first_name="Test",
                 requester_last_name="User",
-                source_field="share_bunk_with",
+                source_field="bunk_with",
                 raw_text="John Smith",
                 year=2025,
                 parsed_names=[ParsedName(first_name="John", last_name="Smith", request_type=RequestType.BUNK_WITH)],
