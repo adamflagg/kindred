@@ -186,7 +186,7 @@ Before committing any migration:
 
 ## Migration Consolidation
 
-When `pb_migrations/` accumulates many modify-migrations for the same table, run the `consolidate-migrations` skill (machine-local at `~/.claude/skills/consolidate-migrations/`) to fold them into the table's original CREATE migration. Each round is empirically verified by spinning up two scratch DBs (one with the proposed merged set, one with the current set) and diffing their `_collections` schemas — the merge is rejected if it would change the table's shape.
+When `pb_migrations/` accumulates many modify-migrations for the same table, run the `consolidate-migrations` skill (tracked in this repo at `.claude/skills/consolidate-migrations/`) to fold them into the table's original CREATE migration. Each round is empirically verified by spinning up two scratch DBs (one with the proposed merged set, one with the current set) and diffing their `_collections` schemas — the merge is rejected if it would change the table's shape.
 
 Skill artifacts:
 - Tracking doc (gitignored): `docs/plans/migration-consolidation.md` — backlog, per-round history, multi-table cross-cutting findings

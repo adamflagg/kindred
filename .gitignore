@@ -169,7 +169,9 @@ coverage.xml
 *.pkl
 *.cache
 .playwright-mcp/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 .superpowers
 docs/superpowers/
 
