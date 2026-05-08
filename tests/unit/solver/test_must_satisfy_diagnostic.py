@@ -81,6 +81,7 @@ def _request(
     *,
     request_type: str = "bunk_with",
     source_field: str = "bunk_with",
+    status: str = "resolved",
 ) -> DirectBunkRequest:
     return DirectBunkRequest(
         id=req_id,
@@ -89,7 +90,7 @@ def _request(
         request_type=request_type,
         session_cm_id=session,
         year=2026,
-        status="resolved",
+        status=status,
         source_field=source_field,
     )
 
@@ -288,6 +289,87 @@ class TestMustSatisfyDiagnosticSplit:
         assert _violation_details(solver, CAT_NO_POSSIBLE) == []
         assert _violation_details(solver, CAT_MATERIAL_PARENT_UNMET) == []
         assert _violation_details(solver, CAT_OTHER_UNMET) == []
+
+    def test_pending_or_declined_requests_excluded_from_diagnostic(self, mock_config):
+        """Diagnostic mirrors the solver's resolved-only scope.
+
+        `data_fetcher.py:140` filters bunk_requests to ``status="resolved"`` before
+        the solver sees them — pending/declined never reach the constraint module
+        in production. The diagnostic should match: a camper whose only requests
+        are pending or declined must NOT show up in any of the three categories.
+        Otherwise we'd be flagging "no satisfied requests" against a request set
+        the solver was never asked to satisfy.
+
+        This also collapses the "type A: cross-session" case in practice — the
+        bunk_request_processor auto-DECLINES cross-session bunk_with at sync
+        time, so they'd be filtered out here regardless.
+        """
+        # 1001 has only pending requests. 1002 has only declined requests.
+        # Neither should appear in any diagnostic category.
+        input_data = DirectSolverInput(
+            persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
+            requests=[
+                _request("rA", 1001, 1003, 100, source_field="bunk_with", status="pending"),
+                _request("rB", 1002, 1003, 100, source_field="bunk_with", status="declined"),
+            ],
+            bunks=[_bunk(2001, 100), _bunk(2002, 100)],
+        )
+        solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
+
+        # Place 1001/1002 separate from 1003 — would be unsatisfied if they counted.
+        assignments = [
+            _assignment(1001, 2001, 100),
+            _assignment(1002, 2001, 100),
+            _assignment(1003, 2002, 100),
+        ]
+
+        solver._check_must_satisfy_one_violations(assignments)
+
+        # Neither camper appears in any category — their requests aren't in solver scope.
+        assert _violation_details(solver, CAT_NO_POSSIBLE) == []
+        assert _violation_details(solver, CAT_MATERIAL_PARENT_UNMET) == []
+        assert _violation_details(solver, CAT_OTHER_UNMET) == []
+        # Summary counts reflect only resolved requests.
+        summary = solver.request_validation_summary
+        assert summary.get("unsatisfied_no_possible") == 0
+        assert summary.get("unsatisfied_material_parent_unmet") == 0
+        assert summary.get("unsatisfied_other_unmet") == 0
+
+    def test_only_resolved_request_counted_when_camper_has_mixed_statuses(self, mock_config):
+        """A camper with one resolved + one pending request is judged on the resolved one.
+
+        If the resolved request is satisfied, the camper passes — the pending
+        request neither helps nor hurts. If the resolved request is unsatisfied
+        and the camper has no other resolved possible, they're flagged on the
+        resolved one's bucket.
+        """
+        # 1001 has:
+        #   - resolved bunk_with → 1002 (unsatisfied, different bunks)
+        #   - pending bunk_with → 1003 (would-be-satisfied if counted, but pending so ignored)
+        input_data = DirectSolverInput(
+            persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
+            requests=[
+                _request("r-resolved", 1001, 1002, 100, source_field="bunk_with", status="resolved"),
+                _request("r-pending", 1001, 1003, 100, source_field="bunk_with", status="pending"),
+            ],
+            bunks=[_bunk(2001, 100), _bunk(2002, 100)],
+        )
+        solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
+
+        # 1001 + 1003 in B-2001 (would satisfy the pending), 1002 in B-2002 (resolved unsatisfied).
+        assignments = [
+            _assignment(1001, 2001, 100),
+            _assignment(1003, 2001, 100),
+            _assignment(1002, 2002, 100),
+        ]
+
+        solver._check_must_satisfy_one_violations(assignments)
+
+        # Despite the pending request being "satisfied" by accident, the resolved one isn't —
+        # so the camper IS flagged.
+        material = _violation_details(solver, CAT_MATERIAL_PARENT_UNMET)
+        assert len(material) == 1
+        assert "1001" in material[0]
 
     def test_request_validation_summary_carries_breakdown(self, mock_config):
         """`request_validation_summary` exposes counts so the JSON log carries the breakdown.

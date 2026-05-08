@@ -957,23 +957,31 @@ class DirectBunkingSolver:
     def _check_must_satisfy_one_violations(self, assignments: list[DirectBunkAssignment]) -> None:
         """Post-solve diagnostic: split unsatisfied campers into actionable buckets.
 
+        Mirrors the solver's resolved-only scope (``data_fetcher.py:140``
+        filters bunk_requests to ``status="resolved"`` before they reach the
+        solver). Pending and declined requests are not the solver's concern,
+        so the diagnostic ignores them entirely. This also collapses the
+        cross-session "no possible" case in practice — those are auto-DECLINED
+        by the bunk_request_processor at sync time and never reach this loop
+        as resolved.
+
         Three populations were previously emitted under one ``must_satisfy_one``
         warning, which conflated solver-actionable failures with parent-input
         issues. This split surfaces:
 
-        - ``must_satisfy_one_no_possible`` (info): all the camper's requests
-          are structurally impossible (cross-session target, target absent
-          from solver, malformed). The soft constraint at
-          ``must_satisfy.py:91-94`` already skips these — they were never
-          solver-actionable. Severity downgraded to info; staff fixes the
-          parent's input data.
+        - ``must_satisfy_one_no_possible`` (info): the camper's resolved
+          requests are all structurally impossible from the solver's
+          perspective. With upstream resolution working correctly this
+          should be near-empty in production — non-empty values indicate a
+          data-hygiene regression where a request marked ``resolved`` is in
+          fact unsatisfiable.
         - ``must_satisfy_one_material_parent_unmet`` (warning): camper has
-          ≥1 possible MATERIAL_PARENT request (``bunk_with``) and the solver
-          satisfied none. Headline staff failure mode per the parent-paramount
-          design.
-        - ``must_satisfy_one_other_unmet`` (info): camper has only non-material
-          possible requests (STAFF or IMMATERIAL_PARENT) and the solver
-          satisfied none. Lower-priority signal.
+          ≥1 resolved possible MATERIAL_PARENT request (``bunk_with``) and
+          the solver satisfied none. Headline staff failure mode per the
+          parent-paramount design.
+        - ``must_satisfy_one_other_unmet`` (info): camper has only resolved
+          non-material possible requests (STAFF or IMMATERIAL_PARENT) and
+          the solver satisfied none. Lower-priority signal.
 
         Counts are also surfaced in ``request_validation_summary`` so the
         structured solver-log JSON carries the breakdown.
@@ -990,17 +998,21 @@ class DirectBunkingSolver:
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
-            if not requests:
-                continue
-            if len(all_satisfied.get(person_cm_id, [])) > 0:
+            # Restrict to resolved requests — pending/declined aren't part of the solver's scope.
+            resolved_requests = [r for r in requests if r.status == "resolved"]
+            if not resolved_requests:
                 continue
 
-            possible = self.possible_requests.get(person_cm_id, [])
-            if not possible:
+            resolved_ids = {r.id for r in resolved_requests}
+            if any(rid in resolved_ids for rid in all_satisfied.get(person_cm_id, [])):
+                continue
+
+            resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
+            if not resolved_possible:
                 no_possible.append(person_cm_id)
                 continue
 
-            if any(_is_material_parent(r) for r in possible):
+            if any(_is_material_parent(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)
