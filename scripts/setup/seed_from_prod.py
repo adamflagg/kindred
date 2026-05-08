@@ -111,9 +111,10 @@ def seed_from_prod(
         sys.exit(1)
 
     # Reset ownership on prod copy (VPS dumps land owned by the container uid),
-    # then WAL-checkpoint the prod DB.
-    _ensure_owned_by_current_user(prod_db)
-    _checkpoint_and_cleanup_wal(prod_db)
+    # then WAL-checkpoint the prod DB. Both mutate prod, so skip in dry-run.
+    if not dry_run:
+        _ensure_owned_by_current_user(prod_db)
+        _checkpoint_and_cleanup_wal(prod_db)
 
     # Discover data tables in both databases
     dev_conn = sqlite3.connect(dev_db)
