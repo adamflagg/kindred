@@ -101,14 +101,12 @@ export function useCamperEnrollment(
         // an exact session_cm_id match won't exist. Only fire this when the
         // person has a single summer attendee — with 2+ attendees, an unmatched
         // fallback would attach one session's bunk to another. Defense in
-        // depth: also require the assignment's session_type to be a valid
-        // summer type, in case a non-summer row slipped through the query.
+        // depth: also require the assignment's session_type to be AG specifically.
         if (!assignment && personAssignments.length > 0 && attendees.length === 1) {
-          assignment = personAssignments.find((a) =>
-            isValidSummerSession(
-              (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
-            )
-          )
+          assignment = personAssignments.find((a) => {
+            const sessionType = (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
+            return isValidSummerSession(sessionType) && sessionType === 'ag'
+          })
         }
 
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
