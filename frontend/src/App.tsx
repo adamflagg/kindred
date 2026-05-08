@@ -58,6 +58,7 @@ const ManageRegistrationPage = lazy(() =>
 const WeekendHousingDashboard = lazy(() => import('./pages/WeekendHousingDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
+const ParseAnalysisPage = lazy(() => import('./pages/summer/ParseAnalysisPage'))
 const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
 // Camp Analytics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
@@ -371,6 +372,24 @@ function App() {
                               />
                               <Route
                                 path="prompts"
+                                element={
+                                  <Navigate to="/summer/debug/parse-analysis" replace />
+                                }
+                              />
+                              <Route
+                                path="parse-analysis"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <ParseAnalysisPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="prompt-editor"
                                 element={
                                   <AdminRoute>
                                     <ErrorBoundary>

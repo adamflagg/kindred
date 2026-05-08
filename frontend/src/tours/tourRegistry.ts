@@ -4,7 +4,9 @@ import type { TourId, TourDefinition, LayerId, LayerDefinition } from './types'
 const routeToTour: Record<string, TourId> = {
   '/summer/debug': 'debug',
   '/summer/debug/pipeline': 'debug',
-  '/summer/debug/prompts': 'debug',
+  '/summer/debug/parse-analysis': 'debug',
+  '/summer/debug/prompt-editor': 'debug',
+  '/summer/debug/solver': 'debug',
   // Retention
   '/analytics/retention': 'retention-overview',
   '/analytics/retention/flow': 'retention-flow',
