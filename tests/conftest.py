@@ -166,6 +166,7 @@ TEST_CONFIG = {
     "constraint.must_satisfy_one.enabled": 1,
     "constraint.must_satisfy_one.fallback_to_age": 1,
     "constraint.must_satisfy_one.ignore_impossible_requests": 1,
+    "constraint.must_satisfy_one.penalty": 100000,
     "constraint.level_progression.no_regression": 1,
     "constraint.level_progression.no_regression_penalty": 800,
     "constraint.cabin_capacity.max": 14,

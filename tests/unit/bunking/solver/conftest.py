@@ -66,6 +66,8 @@ class MinimalConfigLoader:
             "constraint.age_spread.penalty": 1500,
             "constraint.age_spread.preferred_months": 0,
             "constraint.age_spread.preferred_bonus": 0,
+            "constraint.must_satisfy_one.penalty": 100000,
+            "constraint.age_grade_flow.weight": 10,
         }
         if overrides:
             self._defaults.update(overrides)
@@ -116,7 +118,7 @@ class MinimalConfigLoader:
             "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, default=100)
+        return self.get_int(key)
 
 
 def create_person(
