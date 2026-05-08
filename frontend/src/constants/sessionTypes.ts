@@ -18,6 +18,17 @@ export function isValidSummerSession(sessionType: string): boolean {
   return VALID_SUMMER_SESSION_TYPES.includes(sessionType as ValidSummerSessionType)
 }
 
+/**
+ * Build a PocketBase OR-clause restricting `session.session_type` to valid
+ * summer types (main/embedded/ag/quest). Use when querying collections
+ * expanded through a session relation (attendees, bunk_assignments,
+ * bunk_requests). Callers should wrap the result in `(...)` when combining
+ * with `&&` clauses.
+ */
+export function buildSummerSessionTypeFilter(): string {
+  return VALID_SUMMER_SESSION_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
+}
+
 // ============================================================================
 // Metrics view mode constants
 // ============================================================================

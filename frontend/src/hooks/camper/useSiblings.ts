@@ -5,7 +5,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
+import { buildSummerSessionTypeFilter } from '../../constants/sessionTypes'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -58,9 +58,7 @@ export function useSiblings(
       const siblingsWithEnrollment = await Promise.all(
         siblingPersons.map(async (siblingPerson) => {
           // Check if this sibling has any enrollment in valid summer sessions
-          const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
-            (t) => `session.session_type = "${t}"`
-          ).join(' || ')
+          const sessionTypeFilter = buildSummerSessionTypeFilter()
           const enrollmentFilter = `person_id = ${siblingPerson.cm_id} && year = ${currentYear} && (${sessionTypeFilter})`
 
           try {

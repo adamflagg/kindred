@@ -26,46 +26,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Validate commit message format (conventional commits with scopes)
-  commit-lint:
-    name: Commit Message Lint
-    runs-on: ubuntu-latest
-    # Skip for Dependabot PRs (uses its own commit format)
-    if: github.actor != 'dependabot[bot]'
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      with:
-        fetch-depth: 0  # Full history for commit range
-        persist-credentials: false
-
-    - name: Setup Node.js
-      uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
-      with:
-        node-version: '22'
-
-    - name: Install commitlint
-      run: npm ci
-
-    - name: Validate commits
-      run: |
-        # For PRs, check all commits in the PR
-        # For pushes, check just the pushed commits
-        if [ "${{ github.event_name }}" = "pull_request" ]; then
-          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-        else
-          # For direct pushes, check the last commit
-          # Handle initial commit (no parent) gracefully
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            npx commitlint --from HEAD~1 --to HEAD --verbose
-          else
-            echo "⚠️ Initial commit detected (no parent) - skipping commit lint"
-            echo "   Commit message: $(git log -1 --format=%s)"
-          fi
-        fi
-
-  # Validate PR title follows conventional commit format
-  # This is the actual gate that matters since squash merge uses the PR title
+  # PR title is the only commit message gate that matters: squash merge uses
+  # the PR title as the commit message on main, so per-commit lint on PR
+  # branches is dead weight (commits get collapsed). Local lefthook
+  # commit-msg hook still runs for human discipline.
   pr-title-lint:
     name: PR Title Lint
     runs-on: ubuntu-latest
@@ -588,14 +552,13 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [commit-lint, pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests]
+    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests]
     if: always()
     runs-on: ubuntu-latest
     steps:
     - name: Check status
       env:
         DETECT_CHANGES: ${{ needs.detect-changes.result }}
-        COMMIT_LINT: ${{ needs.commit-lint.result }}
         PR_TITLE_LINT: ${{ needs.pr-title-lint.result }}
         SECRET_SCAN: ${{ needs.secret-scan.result }}
         PYTHON_LINT: ${{ needs.python-lint.result }}
@@ -609,11 +572,6 @@ jobs:
         # and CI passes with zero validation (the paths-filter incident of March 2026)
         if [ "$DETECT_CHANGES" != "success" ]; then
           echo "::error::Change detection failed — no lint or test jobs ran. Check paths-filter action."
-          exit 1
-        fi
-        # commit-lint: blocking — non-conventional commits break changelog generation
-        if [ "$COMMIT_LINT" != "success" ] && [ "$COMMIT_LINT" != "skipped" ]; then
-          echo "::error::Commit message format issue detected. Use: type(scope): description"
           exit 1
         fi
         # pr-title-lint: blocking — squash merge uses PR title as commit message on main

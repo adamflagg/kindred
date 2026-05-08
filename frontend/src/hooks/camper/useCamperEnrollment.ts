@@ -5,7 +5,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { VALID_SUMMER_SESSION_TYPES } from '../../constants/sessionTypes'
+import { buildSummerSessionTypeFilter, isValidSummerSession } from '../../constants/sessionTypes'
 import { queryKeys } from '../../utils/queryKeys'
 import { normalizeGender } from '../../utils/genderUtils'
 
@@ -53,9 +53,7 @@ export function useCamperEnrollment(
 
       // Query attendees with enrollment status check - source of truth for enrollment
       // Filter to only valid summer session types (main, embedded, ag)
-      const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
-        (t) => `session.session_type = "${t}"`
-      ).join(' || ')
+      const sessionTypeFilter = buildSummerSessionTypeFilter()
       const filter = `person_id = ${personCmId} && year = ${currentYear} && (${sessionTypeFilter})`
 
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
@@ -73,20 +71,17 @@ export function useCamperEnrollment(
         throw new Error(`Person with CampMinder ID ${personCmId} not found`)
       }
 
-      // Load all assignments for this person with expand to get bunk and session info
-      const assignmentFilter = `year = ${currentYear}`
-      const allAssignments = await pb
+      // Load this person's assignments for valid summer session types only.
+      // Restricting by session_type prevents family-camp bunks (which sync but
+      // are out-of-scope for the summer bunking views) from leaking onto a
+      // summer attendee row via the AG fallback below.
+      const assignmentFilter = `person.cm_id = ${personCmId} && year = ${currentYear} && (${sessionTypeFilter})`
+      const personAssignments = await pb
         .collection<BunkAssignmentsResponse>('bunk_assignments')
         .getFullList({
           filter: assignmentFilter,
           expand: 'person,session,bunk',
         })
-
-      // Filter assignments for this person (using person CM ID from expanded person)
-
-      const personAssignments = allAssignments.filter(
-        (a) => (a.expand as AssignmentExpand | undefined)?.person?.cm_id === personCmId
-      )
 
       // Transform attendees to campers
       const allCampers = attendees.map((attendee) => {
@@ -102,10 +97,21 @@ export function useCamperEnrollment(
             (a.expand as AssignmentExpand | undefined)?.session?.cm_id === expandedSession?.cm_id
         )
 
-        // If no match found (e.g., AG campers with parent session assignments),
-        // fall back to any assignment for this person in the current year
-        if (!assignment && personAssignments.length > 0) {
-          assignment = personAssignments[0] // Person only has one bunk per year
+        // Fallback: AG campers' bunks live under the parent main session, so
+        // an exact session_cm_id match won't exist. Restrict to AG attendees
+        // with no other summer attendee — a non-AG attendee whose bunk doesn't
+        // match exactly should show no bunk, not borrow another session's.
+        if (
+          !assignment &&
+          personAssignments.length > 0 &&
+          attendees.length === 1 &&
+          expandedSession?.session_type === 'ag'
+        ) {
+          assignment = personAssignments.find((a) =>
+            isValidSummerSession(
+              (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
+            )
+          )
         }
 
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
