@@ -47,6 +47,62 @@ from .solution import analyze_solution, calculate_satisfied_requests
 logger = get_logger(__name__)
 
 
+# Known CP-SAT constraint oneof variants. The pybind wrapper exposes
+# ``has_<name>()`` methods rather than the older protobuf ``WhichOneof``.
+_CONSTRAINT_TYPES = (
+    "bool_and",
+    "bool_or",
+    "bool_xor",
+    "linear",
+    "all_diff",
+    "at_most_one",
+    "exactly_one",
+    "automaton",
+    "circuit",
+    "cumulative",
+    "dummy_constraint",
+    "element",
+    "int_div",
+    "int_mod",
+    "int_prod",
+    "interval",
+    "inverse",
+    "lin_max",
+    "no_overlap",
+    "no_overlap_2d",
+    "reservoir",
+    "routes",
+    "table",
+)
+
+
+def _count_constraint_types(proto: Any) -> dict[str, int]:
+    """Count CP-SAT model constraints grouped by their oneof type name.
+
+    Used both for INFEASIBLE diagnostics and for the always-on stats capture
+    that surfaces in the solver debug tab.
+    """
+    counts: dict[str, int] = {}
+    for c in proto.constraints:
+        for kind in _CONSTRAINT_TYPES:
+            checker = getattr(c, f"has_{kind}", None)
+            if callable(checker) and checker():
+                counts[kind] = counts.get(kind, 0) + 1
+                break
+    return counts
+
+
+def _compute_optimality_gap(objective: float | None, best_bound: float | None) -> float | None:
+    """Relative gap between solution and proven best bound.
+
+    Returns ``|obj - bound| / max(|obj|, 1)`` as a float in ``[0, ∞)``,
+    or ``None`` if either input is ``None``. The frontend formats as percent.
+    """
+    if objective is None or best_bound is None:
+        return None
+    return abs(objective - best_bound) / max(abs(objective), 1.0)
+
+
 def _is_material_parent(request: DirectBunkRequest) -> bool:
     """True iff a request's source_field classifies as MATERIAL_PARENT.
 
@@ -721,14 +777,8 @@ class DirectBunkingSolver:
 
                 # Try to find minimal infeasible subset
                 logger.info("Attempting to identify conflicting constraints...")
-                # Log some basic stats about constraints
-                proto = self.model.Proto()
-                bool_and_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_and")
-                bool_or_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_or")
-                linear_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "linear")
-                logger.info(
-                    f"Constraint types: bool_and={bool_and_count}, bool_or={bool_or_count}, linear={linear_count}"
-                )
+                type_counts = _count_constraint_types(self.model.Proto())
+                logger.info("Constraint types: " + ", ".join(f"{k}={v}" for k, v in sorted(type_counts.items())))
 
             except Exception as e:
                 logger.error(f"Failed to export model: {e}")
