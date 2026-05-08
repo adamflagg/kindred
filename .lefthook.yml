@@ -9,8 +9,8 @@
 #   post-merge  — worktree cleanup notifications
 #
 # Philosophy:
-#   pre-commit  = auto-format (fix it for me) + auto-sync generated artifacts
-#   pre-push    = "does it compile/type-check?" + fast linters (~2s each)
+#   pre-commit  = auto-format (fix it for me)
+#   pre-push    = "does it compile/type-check?" + fast linters (~2s each) + auto-sync generated artifacts
 #   CI          = comprehensive gate (all linters, all tests, security audits)
 #
 # Escape hatches:
@@ -63,26 +63,6 @@ pre-commit:
           fi
         done
 
-    # Auto-sync generated API types when Python schema files change.
-    # Regen failure → hard block; drift → auto-stage the updated file.
-    api-types-freshness:
-      glob:
-        - "api/**/*.py"
-        - "bunking/**/*.py"
-      run: |
-        REGEN_LOG=$(mktemp)
-        trap 'rm -f "$REGEN_LOG"' EXIT
-        if ! npm run generate:api-types --prefix frontend > "$REGEN_LOG" 2>&1; then
-          echo ""
-          echo "❌  API types regen failed — fix schema errors before committing."
-          tail -n 10 "$REGEN_LOG" | sed 's/^/   /'
-          echo ""
-          exit 1
-        fi
-        if ! git diff --quiet -- frontend/src/types/api-generated.ts 2>/dev/null; then
-          git add frontend/src/types/api-generated.ts
-          echo "✅  api-generated.ts was stale — auto-updated and staged."
-        fi
 
 # ─── Commit-msg: conventional commit validation ──────────────────────
 commit-msg:
@@ -141,6 +121,28 @@ pre-push:
         - "pocketbase/pb_hooks/*.js"
         - "pocketbase/package.json"
       run: npm run lint
+
+    # Auto-sync generated API types: regen against current schema, auto-commit if stale.
+    # Regen failure → hard block; drift → auto-commit the updated file (included in the push).
+    api-types-freshness:
+      glob:
+        - "api/**/*.py"
+        - "bunking/**/*.py"
+      run: |
+        REGEN_LOG=$(mktemp)
+        trap 'rm -f "$REGEN_LOG"' EXIT
+        if ! npm run generate:api-types --prefix frontend > "$REGEN_LOG" 2>&1; then
+          echo ""
+          echo "❌  API types regen failed — fix schema errors before pushing."
+          tail -n 10 "$REGEN_LOG" | sed 's/^/   /'
+          echo ""
+          exit 1
+        fi
+        if ! git diff --quiet HEAD -- frontend/src/types/api-generated.ts 2>/dev/null; then
+          git add frontend/src/types/api-generated.ts
+          git commit --no-verify -m "chore(frontend): auto-regen api-generated.ts"
+          echo "✅  api-generated.ts was stale — auto-committed updated types (included in push)."
+        fi
 
     behind-origin:
       only:
