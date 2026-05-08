@@ -258,6 +258,20 @@ CampMinder reuses session IDs across years. Year field prevents data contaminati
 
 > **MANDATORY:** Read `docs/reference/pocketbase-migrations.md` before writing ANY migration. PocketBase v0.23+ changed field property syntax — using old `options: {}` wrapper pattern causes silent data truncation.
 
+## PocketBase Migration Numbering Rule
+
+New migrations MUST use a number greater than the highest filename in `pocketbase/pb_migrations/` on `origin/main`. Do not fill numbering gaps left by past consolidations.
+
+```bash
+HIGHEST=$(git ls-tree -r origin/main pocketbase/pb_migrations/ \
+  | awk '{print $4}' | grep -oE '15000[0-9]{5}' | sort -u | tail -1)
+NEXT=$((HIGHEST + 1))
+```
+
+Within an unmerged PR you may iterate, rename, or renumber your own new migrations freely — reset the dev DB to re-apply if you change a filename or content. Once merged to `main`, the file is frozen; if a competing PR landed on `main` first and took your number, bump above the new HEAD.
+
+History: gaps may exist from migration consolidation runs (skill: `consolidate-migrations`, gitignored tracking doc: `docs/plans/migration-consolidation.md`). Those numbers are NOT free for reuse — they're "burned" to preserve a monotonically increasing record. The OnServe history-sync hook in `pocketbase/main.go` keeps prod's `_migrations` table in sync with the on-disk file list automatically on every server boot.
+
 ## 🚨 CRITICAL: Worktree and Branch Rules
 
 **These rules are NON-NEGOTIABLE. Violating them can corrupt work from parallel agents.**
