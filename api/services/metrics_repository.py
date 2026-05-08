@@ -24,6 +24,7 @@ from api.constants.collections import (
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.reconstruction import parse_date_only
 from bunking.logging_config import get_logger
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
 if TYPE_CHECKING:
     from pocketbase import PocketBase
@@ -210,22 +211,15 @@ class MetricsRepository:
         )
 
     async def fetch_capacity_config(self) -> int:
-        """Fetch default cabin capacity from config table.
+        """Return the default bunk capacity.
 
-        Looks for category="constraint", subcategory="cabin_capacity", key="default".
-
-        Returns:
-            Default capacity value (12 if config not found).
+        Phase 2 cabin-capacity cleanup: previously queried
+        ``category="constraint" && subcategory="cabin_capacity" && config_key="default"``
+        which was never seeded (the seed row used ``config_key="standard"``),
+        so this always silently fell back to 12. Now returns the
+        ``DEFAULT_BUNK_CAPACITY`` constant directly.
         """
-        try:
-            config = await asyncio.to_thread(
-                self.pb.collection(CONFIG).get_first_list_item,
-                'category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"',
-            )
-            return int(config.value) if config and config.value else 12
-        except Exception:
-            # Config not found or error - return default
-            return 12
+        return DEFAULT_BUNK_CAPACITY
 
     async def fetch_attendees_with_persons(
         self,

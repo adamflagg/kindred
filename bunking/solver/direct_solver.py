@@ -27,7 +27,6 @@ from .callbacks import SolverProgressCallback
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
-from .constraints.cabin_capacity import add_cabin_capacity_soft_constraint
 from .constraints.cabin_occupancy import (
     add_cabin_minimum_occupancy_constraints,
     add_cabin_minimum_occupancy_soft_penalty,
@@ -322,37 +321,16 @@ class DirectBunkingSolver:
         else:
             logger.warning("DEBUG: Session boundary constraints DISABLED")
 
-        # 3. Bunk capacity constraints
-        capacity_mode = self.config.get_str("constraint.cabin_capacity.mode", default="hard")
-
-        if capacity_mode == "hard":
-            self.constraint_logger.log_constraint(
-                "hard", "cabin_capacity", f"Cabin capacity constraints for {len(self.bunks)} bunks"
+        # 3. Bunk capacity constraints — hard cap at bunk.capacity (always 12
+        # via DEFAULT_BUNK_CAPACITY today; future per-bunk variance lives here).
+        self.constraint_logger.log_constraint(
+            "hard", "cabin_capacity", f"Cabin capacity constraints for {len(self.bunks)} bunks"
+        )
+        for bunk_idx, bunk in enumerate(self.bunks):
+            self.model.Add(
+                sum(self.assignments[(person_idx, bunk_idx)] for person_idx in range(len(self.person_ids)))
+                <= bunk.capacity
             )
-            for bunk_idx, bunk in enumerate(self.bunks):
-                self.model.Add(
-                    sum(self.assignments[(person_idx, bunk_idx)] for person_idx in range(len(self.person_ids)))
-                    <= bunk.capacity
-                )
-        else:
-            # Soft mode - enforce max capacity as hard limit, penalize over standard
-            max_capacity = self.config.get_int("constraint.cabin_capacity.max", default=14)
-            self.constraint_logger.log_constraint(
-                "soft",
-                "cabin_capacity",
-                f"Cabin capacity soft constraints for {len(self.bunks)} bunks (max: {max_capacity})",
-            )
-            for bunk_idx, bunk in enumerate(self.bunks):
-                occupancy_expr = sum(
-                    self.assignments[(person_idx, bunk_idx)] for person_idx in range(len(self.person_ids))
-                )
-
-                # Hard constraint: In soft mode, allow up to max_capacity
-                # This allows overflow beyond the bunk's standard capacity
-                self.model.Add(occupancy_expr <= max_capacity)
-
-                # Soft constraint: Track overcrowding beyond standard capacity
-                # This will be penalized in the objective function
 
         # 3.5. Minimum occupancy constraint for non-AG bunks
         # Staff never put fewer than ~8 campers in a cabin
@@ -561,10 +539,9 @@ class DirectBunkingSolver:
         if grade_spread_mode == "soft":
             add_grade_spread_soft_constraint(ctx, objective_terms)
 
-        # Add cabin capacity soft constraint if configured
-        capacity_mode = self.config.get_str("constraint.cabin_capacity.mode", default="hard")
-        if capacity_mode == "soft":
-            add_cabin_capacity_soft_constraint(ctx, objective_terms)
+        # NOTE: cabin_capacity soft constraint removed in Phase 2. Solver caps
+        # at DEFAULT_BUNK_CAPACITY (hard); staff manual edits cap at
+        # MAX_BUNK_CAPACITY in the assignments UI.
 
         # Add cabin minimum occupancy soft penalty (prefer fuller bunks)
         add_cabin_minimum_occupancy_soft_penalty(ctx, objective_terms, self.bunk_is_used)

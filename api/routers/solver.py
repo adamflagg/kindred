@@ -25,10 +25,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
-from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
 from ..constants.collections import (
     ATTENDEES,
@@ -332,11 +332,10 @@ async def pre_validate_solver(
         )
         logger.info(f"Pre-validate: Found {len(bunk_plans)} bunk plans")
 
-        # Calculate capacity: bunk_plans count × default capacity (from config)
-        # This matches the frontend's capacity calculation approach
-        config_loader = ConfigLoader.get_instance()
-        default_capacity = config_loader.get_int("constraint.cabin_capacity.standard", default=12)
-        total_capacity = len(bunk_plans) * default_capacity
+        # Calculate capacity: bunk_plans count × DEFAULT_BUNK_CAPACITY.
+        # Hardcoded constant (Phase 2 cabin-capacity cleanup); previously read
+        # from `constraint.cabin_capacity.standard`.
+        total_capacity = len(bunk_plans) * DEFAULT_BUNK_CAPACITY
 
         # Gender-segmented capacity analysis (Boys/Girls/AG)
         # Count campers by gender, EXCLUDING AG session enrollees from boys/girls
@@ -379,9 +378,9 @@ async def pre_validate_solver(
                 elif bunk_gender in ("Mixed", "AG"):
                     ag_bunks += 1
 
-        boys_capacity = boys_bunks * default_capacity
-        girls_capacity = girls_bunks * default_capacity
-        ag_capacity = ag_bunks * default_capacity
+        boys_capacity = boys_bunks * DEFAULT_BUNK_CAPACITY
+        girls_capacity = girls_bunks * DEFAULT_BUNK_CAPACITY
+        ag_capacity = ag_bunks * DEFAULT_BUNK_CAPACITY
 
         # Build capacity breakdown (Boys, Girls, and AG)
         capacity_breakdown = {
