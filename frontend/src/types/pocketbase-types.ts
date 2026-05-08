@@ -224,7 +224,6 @@ export type BunkAssignmentsRecord = {
   cm_id?: number
   created: IsoAutoDateString
   id: string
-  is_deleted?: boolean
   person: RecordIdString
   session: RecordIdString
   updated: IsoAutoDateString

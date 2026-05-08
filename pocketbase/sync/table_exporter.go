@@ -645,7 +645,6 @@ func GetReadableYearExports() []ExportConfig {
 				{Field: "session", Header: "Session", Type: FieldTypeRelation, RelatedCol: "camp_sessions", RelatedField: "name"},
 				{Field: "bunk", Header: "Bunk ID", Type: FieldTypeForeignKeyID, RelatedCol: "bunks"},
 				{Field: "bunk", Header: "Bunk", Type: FieldTypeRelation, RelatedCol: "bunks", RelatedField: "name"},
-				{Field: "is_deleted", Header: "Is Deleted", Type: FieldTypeBool},
 			},
 		},
 		// Financial Transactions - comprehensive export

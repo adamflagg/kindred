@@ -12,6 +12,17 @@ import (
 // Test constants for fictional data
 const testSynagogue = "Temple Beth El"
 
+// TestBunkAssignmentsHistoryFilter verifies the filter scopes by year only.
+// is_deleted has been dropped from the bunk_assignments schema; the filter
+// must not reference it.
+func TestBunkAssignmentsHistoryFilter(t *testing.T) {
+	got := bunkAssignmentsHistoryFilter(2025)
+	want := "year = 2025"
+	if got != want {
+		t.Errorf("bunkAssignmentsHistoryFilter(2025) = %q, want %q", got, want)
+	}
+}
+
 // TestCamperHistorySync_Name verifies the service name is correct
 func TestCamperHistorySync_Name(t *testing.T) {
 	// The service name must be "camper_history" for orchestrator integration

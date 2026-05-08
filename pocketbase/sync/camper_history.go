@@ -622,13 +622,19 @@ func (c *CamperHistorySync) loadPersonDemographics(
 	return result, nil
 }
 
+// bunkAssignmentsHistoryFilter returns the PocketBase filter expression for
+// loading bunk assignments to aggregate into camper_history.
+func bunkAssignmentsHistoryFilter(year int) string {
+	return fmt.Sprintf("year = %d", year)
+}
+
 // loadBunkAssignmentsBySession loads bunk assignments keyed by (person PB ID, session PB ID, year)
 func (c *CamperHistorySync) loadBunkAssignmentsBySession(
 	ctx context.Context, year int,
 ) (map[bunkAssignmentKey]bunkAssignment, error) {
 	result := make(map[bunkAssignmentKey]bunkAssignment)
 
-	filter := fmt.Sprintf("year = %d && is_deleted = false", year)
+	filter := bunkAssignmentsHistoryFilter(year)
 
 	page := 1
 	perPage := 500
