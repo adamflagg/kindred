@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,7 +12,7 @@ from api.services.run_tagging import build_run_details
 @pytest.mark.asyncio
 async def test_production_run_with_no_sweep() -> None:
     pb = MagicMock()
-    pb.collection.return_value.get_full_list = AsyncMock(
+    pb.collection.return_value.get_full_list = MagicMock(
         return_value=[MagicMock(config_key="constraint.grade_spread.max", config_value="2")]
     )
 
@@ -40,7 +40,7 @@ async def test_production_run_with_no_sweep() -> None:
 @pytest.mark.asyncio
 async def test_scenario_run_with_sweep() -> None:
     pb = MagicMock()
-    pb.collection.return_value.get_full_list = AsyncMock(return_value=[])
+    pb.collection.return_value.get_full_list = MagicMock(return_value=[])
 
     with patch("api.services.run_tagging.get_git_sha", return_value="def5678"):
         details = await build_run_details(
@@ -63,7 +63,7 @@ async def test_scenario_run_with_sweep() -> None:
 @pytest.mark.asyncio
 async def test_scenario_with_no_name_falls_back_to_id() -> None:
     pb = MagicMock()
-    pb.collection.return_value.get_full_list = AsyncMock(return_value=[])
+    pb.collection.return_value.get_full_list = MagicMock(return_value=[])
 
     with patch("api.services.run_tagging.get_git_sha", return_value="abc"):
         details = await build_run_details(

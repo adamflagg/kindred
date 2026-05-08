@@ -7,6 +7,7 @@ weeks later — you can see exactly which knobs were set when the run executed.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from bunking.logging_config import get_logger
@@ -18,10 +19,11 @@ async def snapshot_solver_config(pb: Any) -> dict[str, str]:
     """Return all solver_config rows as ``{config_key: config_value}``.
 
     Best-effort: returns ``{}`` if the fetch fails so a transient PB outage
-    doesn't prevent solver runs from being persisted.
+    doesn't prevent solver runs from being persisted. The PocketBase client
+    used in this codebase is sync, so we offload the call to a thread.
     """
     try:
-        records = await pb.collection("solver_config").get_full_list()
+        records = await asyncio.to_thread(pb.collection("solver_config").get_full_list)
         return {r.config_key: r.config_value for r in records}
     except Exception as e:
         logger.warning("solver_config snapshot failed: %s", e)
