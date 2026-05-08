@@ -587,11 +587,13 @@ class TestSimplifiedSourcePriority:
         return Deduplicator()
 
     def test_family_over_staff_tiebreaker(self):
-        """Test that FAMILY source wins over STAFF in dedup tiebreaker (#1088 parent-paramount).
+        """Test that bunk_with (material parent, rank 4) outranks not_bunk_with
+        (staff exclusion, rank 3) in dedup tiebreak (#1142 materiality model).
 
-        When same (requester, requestee, type, session, year) comes from both
-        FAMILY and STAFF sources, FAMILY should win — origin of intent is authoritative.
-        Staff corroborates but does not supersede parent input.
+        When same (requester, requestee, type, session, year) appears in both
+        bunk_with and not_bunk_with source_fields, bunk_with wins — material
+        parent intent is the highest-rank source_field. Test name preserved
+        for CI stability; original rationale was FAMILY > STAFF (#1088).
         """
         family_request = BunkRequest(
             requester_cm_id=12345,
@@ -679,21 +681,28 @@ class TestSimplifiedSourcePriority:
         assert result.kept_requests[0].confidence_score == 0.98
         assert result.statistics["duplicates_removed"] == 1
 
-    def test_source_priority_only_staff_and_family(self):
-        """Test that SOURCE_PRIORITY only contains STAFF and FAMILY, with FAMILY paramount.
+    def test_source_field_priority_structure(self):
+        """SOURCE_FIELD_PRIORITY contains all 5 source fields with materiality-based ordering.
 
-        NOTES category should not exist - bunking_notes and internal_notes
-        should map to STAFF source. FAMILY has higher priority than STAFF (#1088).
+        Locks the Stage 3 ordering: bunk_with (material parent) > not_bunk_with
+        (staff exclusion) > bunking_notes/internal_notes (staff observation, tied) >
+        socialize_with (immaterial parent). Confidence breaks ties within rank.
         """
-        from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_PRIORITY
+        from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_FIELD_PRIORITY
 
-        # Should only have two entries
-        assert len(SOURCE_PRIORITY) == 2
-        assert RequestSource.STAFF in SOURCE_PRIORITY
-        assert RequestSource.FAMILY in SOURCE_PRIORITY
+        # All 5 canonical source_field values must be present
+        assert len(SOURCE_FIELD_PRIORITY) == 5
+        assert SourceField.BUNK_WITH in SOURCE_FIELD_PRIORITY
+        assert SourceField.NOT_BUNK_WITH in SOURCE_FIELD_PRIORITY
+        assert SourceField.BUNKING_NOTES in SOURCE_FIELD_PRIORITY
+        assert SourceField.INTERNAL_NOTES in SOURCE_FIELD_PRIORITY
+        assert SourceField.SOCIALIZE_WITH in SOURCE_FIELD_PRIORITY
 
-        # FAMILY should have higher priority than STAFF (#1088 parent-paramount)
-        assert SOURCE_PRIORITY[RequestSource.FAMILY] > SOURCE_PRIORITY[RequestSource.STAFF]
+        # Materiality ordering
+        assert SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH]
+        assert SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
+        assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] == SOURCE_FIELD_PRIORITY[SourceField.INTERNAL_NOTES]
+        assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] > SOURCE_FIELD_PRIORITY[SourceField.SOCIALIZE_WITH]
 
     def test_notes_enum_removed(self):
         """Test that RequestSource.NOTES no longer exists.
@@ -703,6 +712,152 @@ class TestSimplifiedSourcePriority:
         """
         # NOTES should not be a valid enum value
         assert not hasattr(RequestSource, "NOTES")
+
+    def test_not_bunk_with_beats_socialize_with_in_dedup(self):
+        """Stage 3 ordering: not_bunk_with (STAFF exclusion, rank 3) outranks
+        socialize_with (FAMILY immaterial, rank 1) regardless of confidence.
+
+        Same dedup key (same requester/year/session, AGE_PREFERENCE).
+        Lower-confidence not_bunk_with row must win over higher-confidence
+        socialize_with row — proves rank dominates confidence.
+        """
+        not_bunk_with_req = BunkRequest(
+            requester_cm_id=44444,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=4,
+            confidence_score=0.70,  # Lower confidence
+            source=RequestSource.STAFF,
+            source_field=SourceField.NOT_BUNK_WITH,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "younger"},
+        )
+
+        socialize_with_req = BunkRequest(
+            requester_cm_id=44444,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.95,  # Higher confidence
+            source=RequestSource.FAMILY,
+            source_field=SourceField.SOCIALIZE_WITH,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "younger"},
+        )
+
+        deduplicator = Deduplicator()
+        result = deduplicator.deduplicate_batch([socialize_with_req, not_bunk_with_req])
+
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].source_field == SourceField.NOT_BUNK_WITH, (
+            f"Expected not_bunk_with to win over socialize_with; got {result.kept_requests[0].source_field}"
+        )
+
+    def test_bunking_notes_beats_socialize_with_in_dedup(self):
+        """Stage 3 ordering: bunking_notes (STAFF observation, rank 2) outranks
+        socialize_with (FAMILY immaterial, rank 1) regardless of confidence.
+
+        Same dedup key (same requester/year/session, AGE_PREFERENCE).
+        Lower-confidence bunking_notes row must win over higher-confidence
+        socialize_with row.
+        """
+        bunking_notes_req = BunkRequest(
+            requester_cm_id=55555,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=2,
+            confidence_score=0.70,  # Lower confidence
+            source=RequestSource.STAFF,
+            source_field=SourceField.BUNKING_NOTES,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "older"},
+        )
+
+        socialize_with_req = BunkRequest(
+            requester_cm_id=55555,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            session_cm_id=1000002,
+            priority=1,
+            confidence_score=0.95,  # Higher confidence
+            source=RequestSource.FAMILY,
+            source_field=SourceField.SOCIALIZE_WITH,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=True,
+            metadata={"age_preference": "older"},
+        )
+
+        deduplicator = Deduplicator()
+        result = deduplicator.deduplicate_batch([socialize_with_req, bunking_notes_req])
+
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].source_field == SourceField.BUNKING_NOTES, (
+            f"Expected bunking_notes to win over socialize_with; got {result.kept_requests[0].source_field}"
+        )
+
+    def test_bunking_notes_and_internal_notes_tied_confidence_breaks(self):
+        """Stage 3 ordering: bunking_notes and internal_notes share rank 2.
+        Confidence breaks the tie within rank.
+
+        Same dedup key (same requester/requestee/year/session, BUNK_WITH).
+        Higher-confidence internal_notes row wins because the rank tie defers
+        to the confidence_score secondary sort.
+        """
+        bunking_notes_req = BunkRequest(
+            requester_cm_id=66666,
+            requested_cm_id=77777,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=2,
+            confidence_score=0.85,  # Lower confidence
+            source=RequestSource.STAFF,
+            source_field=SourceField.BUNKING_NOTES,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"original_text": "wants to bunk with target"},
+        )
+
+        internal_notes_req = BunkRequest(
+            requester_cm_id=66666,
+            requested_cm_id=77777,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=2,
+            confidence_score=0.95,  # Higher confidence
+            source=RequestSource.STAFF,
+            source_field=SourceField.INTERNAL_NOTES,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={"original_text": "internal: bunk with target"},
+        )
+
+        deduplicator = Deduplicator()
+        result = deduplicator.deduplicate_batch([bunking_notes_req, internal_notes_req])
+
+        assert len(result.kept_requests) == 1
+        survivor = result.kept_requests[0]
+        assert survivor.source_field == SourceField.INTERNAL_NOTES, (
+            f"Expected higher-confidence internal_notes to win on confidence tiebreak; got {survivor.source_field}"
+        )
+        assert survivor.confidence_score == 0.95
 
 
 class TestDatabaseDuplicateMerge:
@@ -765,8 +920,13 @@ class TestAgePreferenceDeduplication:
         """Test that age_preference from different sources ARE deduplicated.
 
         This is the bug fix test. Previously, age_preference requests from bunking_notes
-        and ret_parent_socialize_with_best had different dedup keys and both attempted
-        to save to the DB, violating the unique constraint.
+        and socialize_with had different dedup keys and both attempted to save to the
+        DB, violating the unique constraint.
+
+        Under #1142 Stage 3 materiality ordering: bunking_notes (rank 2, staff
+        observation) outranks socialize_with (rank 1, immaterial parent). The
+        bunking_notes row survives as primary; confidence is boosted to max via
+        merge_metadata.
         """
         # Age preference from bunking_notes (AI-parsed)
         ai_parsed = BunkRequest(
@@ -777,7 +937,7 @@ class TestAgePreferenceDeduplication:
             priority=1,
             confidence_score=0.85,
             source=RequestSource.STAFF,
-            source_field="bunking_notes",  # AI-parsed from staff notes
+            source_field=SourceField.BUNKING_NOTES,  # AI-parsed from staff notes
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -794,7 +954,7 @@ class TestAgePreferenceDeduplication:
             priority=1,
             confidence_score=1.0,  # Dropdown is 100% confidence
             source=RequestSource.FAMILY,
-            source_field="ret_parent_socialize_with_best",  # Dropdown field
+            source_field=SourceField.SOCIALIZE_WITH,  # Dropdown field (immaterial parent)
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -808,11 +968,12 @@ class TestAgePreferenceDeduplication:
         assert len(result.kept_requests) == 1
         assert result.statistics["duplicates_removed"] == 1
 
-        # FAMILY wins over STAFF (#1088 parent-paramount)
+        # bunking_notes (rank 2) outranks socialize_with (rank 1) under #1142 Stage 3
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.FAMILY
+        assert kept.source == RequestSource.STAFF
+        assert kept.source_field == SourceField.BUNKING_NOTES
 
-        # But confidence is boosted to max from all sources
+        # Confidence is boosted to max from all sources via merge_metadata
         assert kept.confidence_score == 1.0
 
         # Metadata should be merged
@@ -821,14 +982,17 @@ class TestAgePreferenceDeduplication:
     def test_age_preference_conflicting_values_highest_priority_wins(self, deduplicator):
         """Test that conflicting age preferences resolve to highest priority source.
 
-        Edge case: What if bunking_notes says "older" but dropdown says "younger"?
-        Higher priority source wins (FAMILY > STAFF, #1088 parent-paramount).
+        Edge case: bunking_notes says "older" and socialize_with says "younger".
+        Under #1142 Stage 3 materiality ordering, bunking_notes (rank 2, staff
+        observation) outranks socialize_with (rank 1, immaterial parent), so
+        the bunking_notes row's "older" value survives.
+
         Note: the conflict-target demotion path (_is_conflicting_age_preference_pair)
         only fires for BUNK_WITH vs SOCIALIZE_WITH source fields — this case uses
-        bunking_notes vs ret_parent_socialize_with_best, so it falls through to the
-        normal tiebreak and FAMILY wins as primary.
+        bunking_notes vs socialize_with, so it falls through to the normal tiebreak.
+        Confidence is still boosted to max via merge_metadata.
         """
-        # AI-parsed says "older" (STAFF source)
+        # AI-parsed says "older" (STAFF source, bunking_notes — rank 2)
         older_request = BunkRequest(
             requester_cm_id=12345,
             requested_cm_id=None,
@@ -837,7 +1001,7 @@ class TestAgePreferenceDeduplication:
             priority=1,
             confidence_score=0.80,
             source=RequestSource.STAFF,
-            source_field="bunking_notes",
+            source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -845,16 +1009,16 @@ class TestAgePreferenceDeduplication:
             metadata={"age_preference": "older"},
         )
 
-        # Dropdown says "younger" (FAMILY source)
+        # Dropdown says "younger" (FAMILY source, socialize_with — rank 1)
         younger_request = BunkRequest(
             requester_cm_id=12345,
             requested_cm_id=None,
             request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
             priority=1,
-            confidence_score=1.0,  # Higher confidence
+            confidence_score=1.0,  # Higher confidence — but rank dominates
             source=RequestSource.FAMILY,
-            source_field="ret_parent_socialize_with_best",
+            source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -864,12 +1028,13 @@ class TestAgePreferenceDeduplication:
 
         result = deduplicator.deduplicate_batch([older_request, younger_request])
 
-        # Deduplicated - FAMILY wins (#1088 parent-paramount flip)
+        # Deduplicated — bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
         assert len(result.kept_requests) == 1
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.FAMILY
-        assert kept.metadata["age_preference"] == "younger"
-        # Confidence already highest on the family record
+        assert kept.source == RequestSource.STAFF
+        assert kept.source_field == SourceField.BUNKING_NOTES
+        assert kept.metadata["age_preference"] == "older"
+        # Confidence boosted to max from all sources via merge_metadata
         assert kept.confidence_score == 1.0
 
     def test_age_preference_same_source_same_field_deduplicated(self, deduplicator):
@@ -1040,8 +1205,10 @@ class TestAgePreferenceDeduplication:
 
         Even though is_placeholder=True, multiple AGE_PREFERENCE requests for the same
         requester/session/year from different sources should deduplicate to 1.
+
+        Under #1142 Stage 3, bunking_notes (rank 2) outranks socialize_with (rank 1).
         """
-        # AI-parsed from bunking_notes (STAFF source)
+        # AI-parsed from bunking_notes (STAFF source — rank 2)
         ai_parsed = BunkRequest(
             requester_cm_id=12345,
             requested_cm_id=None,
@@ -1050,7 +1217,7 @@ class TestAgePreferenceDeduplication:
             priority=1,
             confidence_score=0.85,
             source=RequestSource.STAFF,
-            source_field="bunking_notes",
+            source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -1058,7 +1225,7 @@ class TestAgePreferenceDeduplication:
             metadata={"age_preference": "older", "origin": "ai_parsed"},
         )
 
-        # Dropdown selection (FAMILY source)
+        # Dropdown selection (FAMILY source, socialize_with — rank 1)
         dropdown = BunkRequest(
             requester_cm_id=12345,
             requested_cm_id=None,
@@ -1067,7 +1234,7 @@ class TestAgePreferenceDeduplication:
             priority=1,
             confidence_score=1.0,
             source=RequestSource.FAMILY,
-            source_field="ret_parent_socialize_with_best",
+            source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -1083,8 +1250,9 @@ class TestAgePreferenceDeduplication:
             f"Possible bugs: double-add or no dedup across sources."
         )
         assert result.statistics["duplicates_removed"] == 1
-        # FAMILY wins over STAFF (#1088 parent-paramount)
-        assert result.kept_requests[0].source == RequestSource.FAMILY
+        # bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
+        assert result.kept_requests[0].source == RequestSource.STAFF
+        assert result.kept_requests[0].source_field == SourceField.BUNKING_NOTES
 
 
 class TestParentAgePreferenceDeduplication:
@@ -1181,16 +1349,22 @@ class TestParentAgePreferenceDeduplication:
             "Family source must win over staff socialize_with; SOURCE_PRIORITY (family > staff) dominates"
         )
 
-    def test_confidence_still_tiebreaks_when_both_non_bunk_with(self, deduplicator):
-        """When neither request is from bunk_with, confidence remains the final tiebreaker."""
+    def test_rank_dominates_confidence_when_both_non_bunk_with(self, deduplicator):
+        """Even when neither request is bunk_with, source_field rank dominates confidence.
+
+        Under #1142 Stage 3 materiality ordering, bunking_notes (rank 2) outranks
+        socialize_with (rank 1). The lower-confidence bunking_notes row wins —
+        confidence only breaks ties WITHIN the same rank (e.g., bunking_notes
+        vs internal_notes, both rank 2).
+        """
         high_conf = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
         low_conf = self._age_pref(SourceField.BUNKING_NOTES, confidence=0.75)
 
         result = deduplicator.deduplicate_batch([low_conf, high_conf])
 
         assert len(result.kept_requests) == 1
-        # Neither is bunk_with → confidence decides (1.0 beats 0.75)
-        assert result.kept_requests[0].source_field == SourceField.SOCIALIZE_WITH
+        # bunking_notes (rank 2) beats socialize_with (rank 1) regardless of confidence
+        assert result.kept_requests[0].source_field == SourceField.BUNKING_NOTES
 
 
 class TestConflictTargetDemotion:
@@ -1378,12 +1552,13 @@ class TestFamilyParamountTiebreak:
         return Deduplicator()
 
     def test_family_beats_staff_bunk_with_tiebreak(self, deduplicator):
-        """When a FAMILY bunk_with and a STAFF bunking_notes share the same dedup key,
-        the FAMILY row must survive as primary.
+        """When a bunk_with row and a bunking_notes row share the same dedup key,
+        the bunk_with row must survive as primary (#1142 materiality model).
 
         Scenario: Emma Johnson's parent submits "bunk with Liam Garcia" via the family
-        form (source_field=bunk_with). Staff also notes it in bunking_notes.
-        The parent-sourced row must win — origin of intent is authoritative.
+        form (source_field=bunk_with, rank 4). Staff also notes it in bunking_notes
+        (rank 2). bunk_with outranks bunking_notes — material parent intent wins.
+        Test name preserved for CI stability; original rationale was FAMILY > STAFF.
         """
         family_request = BunkRequest(
             requester_cm_id=11111,
@@ -1456,12 +1631,14 @@ class TestFamilyParamountTiebreak:
         )
 
     def test_family_beats_staff_age_preference_tiebreak(self, deduplicator):
-        """When a FAMILY age_preference (AI-parsed from bunk_with prose) and a STAFF
-        age_preference (from bunking_notes) share the same dedup key, FAMILY wins.
+        """When an age_preference row from bunk_with and one from bunking_notes
+        share the same dedup key, the bunk_with row wins (#1142 materiality model).
 
         Scenario: Liam Garcia's parent writes "prefers younger bunk-mates" in the
-        bunk_with text field (AI-parsed to age_preference/FAMILY). Staff also notes
-        the same preference in bunking_notes (STAFF). The parent-sourced row must win.
+        bunk_with text field (AI-parsed to age_preference, rank 4). Staff also notes
+        the same preference in bunking_notes (rank 2). bunk_with outranks
+        bunking_notes — material parent intent wins. Test name preserved for CI
+        stability; original rationale was FAMILY > STAFF.
         """
         family_age_pref = BunkRequest(
             requester_cm_id=33333,
