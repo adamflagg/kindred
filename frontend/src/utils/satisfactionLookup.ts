@@ -165,15 +165,14 @@ export function evaluateRequest({
  */
 export function resolveBadgeBucket(
   bucket: RequestBucket | undefined,
-  req: { source_field?: string | null; source?: string | null; request_type?: string | null }
+  req: { source_field?: string | null; request_type?: string | null }
 ): { isMaterialAgePref: boolean; isStaffBadge: boolean } {
   if (bucket === 'material_parent') return { isMaterialAgePref: true, isStaffBadge: false }
   if (bucket === 'staff') return { isMaterialAgePref: false, isStaffBadge: true }
   if (bucket === undefined) {
-    const derived = safeSourceFromField(req.source_field)
     return {
       isMaterialAgePref: req.request_type === 'age_preference' && req.source_field === 'bunk_with',
-      isStaffBadge: derived !== null ? derived === 'staff' : req.source === 'staff',
+      isStaffBadge: safeSourceFromField(req.source_field) === 'staff',
     }
   }
   return { isMaterialAgePref: false, isStaffBadge: false }

@@ -137,20 +137,18 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   it('material_parent bucket → P badge regardless of source_field', () => {
     const result = resolveBadgeBucket('material_parent', {
       source_field: 'bunking_notes',
-      source: 'staff',
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 
   it('staff bucket → S badge regardless of source_field', () => {
-    const result = resolveBadgeBucket('staff', { source_field: 'bunk_with', source: 'family' })
+    const result = resolveBadgeBucket('staff', { source_field: 'bunk_with' })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
   })
 
   it('immaterial_parent bucket → no badges', () => {
     const result = resolveBadgeBucket('immaterial_parent', {
       source_field: 'bunk_with',
-      source: 'staff',
     })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
@@ -158,21 +156,19 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   it('undefined bucket + age_preference + source_field=bunk_with → P badge (fallback)', () => {
     const result = resolveBadgeBucket(undefined, {
       source_field: 'bunk_with',
-      source: 'family',
       request_type: 'age_preference',
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 
   it('undefined bucket + source=staff → S badge (fallback)', () => {
-    const result = resolveBadgeBucket(undefined, { source_field: 'bunking_notes', source: 'staff' })
+    const result = resolveBadgeBucket(undefined, { source_field: 'bunking_notes' })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
   })
 
   it('undefined bucket + neither → no badges', () => {
     const result = resolveBadgeBucket(undefined, {
       source_field: 'socialize_with',
-      source: 'family',
     })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
@@ -197,7 +193,6 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   it('undefined bucket + bunk_with request_type + source_field=bunk_with → no P badge', () => {
     const result = resolveBadgeBucket(undefined, {
       source_field: 'bunk_with',
-      source: 'family',
       request_type: 'bunk_with',
     })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
@@ -206,27 +201,21 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   it('undefined bucket + age_preference request_type + source_field=bunk_with → P badge', () => {
     const result = resolveBadgeBucket(undefined, {
       source_field: 'bunk_with',
-      source: 'family',
       request_type: 'age_preference',
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 
-  it('undefined bucket + empty source_field + source=staff → falls back to source', () => {
-    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'staff' })
-    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
-  })
-
-  it('undefined bucket + empty source_field + source=family → no staff badge', () => {
-    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'family' })
+  it('undefined bucket + empty source_field → no badges (#1142 stage 4)', () => {
+    // Stage 4 dropped the `source` column; no fallback exists for unknown source_field.
+    const result = resolveBadgeBucket(undefined, { source_field: '' })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
 
-  it('undefined bucket + unknown source_field + source=staff → falls back to source', () => {
+  it('undefined bucket + unknown source_field → no badges (#1142 stage 4)', () => {
     const result = resolveBadgeBucket(undefined, {
       source_field: 'legacy_unknown_field',
-      source: 'staff',
     })
-    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
 })
