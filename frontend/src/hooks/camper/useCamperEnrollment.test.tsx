@@ -263,6 +263,39 @@ describe('useCamperEnrollment', () => {
     expect(expectDefined(att3a, 'session 3a attendee').assigned_bunk_cm_id).toBeUndefined()
   })
 
+  it('does not fire the fallback for a non-AG single attendee with a mismatched summer assignment', async () => {
+    // A single embedded attendee whose only summer assignment is for a
+    // different session must not borrow that bunk via the fallback.
+    mockAttendeesGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'att_2a',
+        sessionPbId: 'sess_2a',
+        sessionCmId: 1356533,
+        sessionType: 'embedded',
+      }),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([
+      makeAssignment({
+        id: 'asn_other',
+        sessionPbId: 'sess_other',
+        sessionCmId: 1300000,
+        sessionType: 'main',
+        bunkPbId: 'bunk_other',
+        bunkCmId: 7000077,
+        bunkName: 'Cabin 7',
+      }),
+    ])
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.allAttendees).toHaveLength(1)
+    expect(expectDefined(result.current.allAttendees[0]).assigned_bunk_cm_id).toBeUndefined()
+  })
+
   it('preserves the AG fallback: summer attendee with no exact session match still gets a summer bunk', async () => {
     // The original purpose of the fallback: an AG-typed attendee whose bunk
     // assignment is recorded under the parent main session.

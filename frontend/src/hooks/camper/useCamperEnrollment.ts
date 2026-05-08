@@ -98,15 +98,20 @@ export function useCamperEnrollment(
         )
 
         // Fallback: AG campers' bunks live under the parent main session, so
-        // an exact session_cm_id match won't exist. Only fire this when the
-        // person has a single summer attendee — with 2+ attendees, an unmatched
-        // fallback would attach one session's bunk to another. Defense in
-        // depth: also require the assignment's session_type to be AG specifically.
-        if (!assignment && personAssignments.length > 0 && attendees.length === 1) {
-          assignment = personAssignments.find((a) => {
-            const sessionType = (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
-            return isValidSummerSession(sessionType) && sessionType === 'ag'
-          })
+        // an exact session_cm_id match won't exist. Restrict to AG attendees
+        // with no other summer attendee — a non-AG attendee whose bunk doesn't
+        // match exactly should show no bunk, not borrow another session's.
+        if (
+          !assignment &&
+          personAssignments.length > 0 &&
+          attendees.length === 1 &&
+          expandedSession?.session_type === 'ag'
+        ) {
+          assignment = personAssignments.find((a) =>
+            isValidSummerSession(
+              (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
+            )
+          )
         }
 
         const assignedBunk = (assignment?.expand as AssignmentExpand | undefined)?.bunk
