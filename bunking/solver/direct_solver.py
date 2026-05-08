@@ -53,7 +53,8 @@ def _is_material_parent(request: DirectBunkRequest) -> bool:
     Defensive: missing or unknown source_field returns False. Used by the
     post-solve diagnostic to bucket unsatisfied campers — surfacing as a
     diagnostic miscount is preferable to crashing the solver run on a
-    data-hygiene edge case.
+    data-hygiene edge case. Unknown values are logged so a new source_field
+    added to the schema before the bucket map is updated leaves a trace.
     """
     sf = request.source_field
     if not sf:
@@ -61,6 +62,11 @@ def _is_material_parent(request: DirectBunkRequest) -> bool:
     try:
         return classify_request(sf) == RequestBucket.MATERIAL_PARENT
     except ValueError:
+        logger.debug(
+            "_is_material_parent: unknown source_field %r on request %s — treating as non-material",
+            sf,
+            request.id,
+        )
         return False
 
 
@@ -994,6 +1000,11 @@ class DirectBunkingSolver:
         no_possible: list[int] = []
         material_parent_unmet: list[int] = []
         other_unmet: list[int] = []
+        # Per-camper resolved-possible count, used for the violation message text.
+        # The unfiltered self.possible_requests dict can include pending/declined
+        # entries (validation doesn't filter by status), so reading its length
+        # directly would overstate the number shown in the diagnostic.
+        resolved_possible_count: dict[int, int] = {}
 
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
@@ -1012,6 +1023,7 @@ class DirectBunkingSolver:
                 no_possible.append(person_cm_id)
                 continue
 
+            resolved_possible_count[person_cm_id] = len(resolved_possible)
             if any(_is_material_parent(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
@@ -1045,7 +1057,7 @@ class DirectBunkingSolver:
             )
             for person_cm_id in material_parent_unmet[:10]:
                 person = self.input.person_by_cm_id[person_cm_id]
-                possible_count = len(self.possible_requests.get(person_cm_id, []))
+                possible_count = resolved_possible_count[person_cm_id]
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_material_parent_unmet",
                     f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
@@ -1061,7 +1073,7 @@ class DirectBunkingSolver:
             )
             for person_cm_id in other_unmet[:10]:
                 person = self.input.person_by_cm_id[person_cm_id]
-                possible_count = len(self.possible_requests.get(person_cm_id, []))
+                possible_count = resolved_possible_count[person_cm_id]
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_other_unmet",
                     f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",

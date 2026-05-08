@@ -426,3 +426,86 @@ class TestMustSatisfyDiagnosticSplit:
         assert summary.get("unsatisfied_no_possible") == 1
         assert summary.get("unsatisfied_material_parent_unmet") == 1
         assert summary.get("unsatisfied_other_unmet") == 1
+
+    def test_violation_message_count_excludes_non_resolved_possibles(self, mock_config):
+        """The ``possible_count`` rendered in the violation message must reflect
+        resolved-only possibles, mirroring the diagnostic's resolved-only scope.
+
+        A camper with one resolved-unsatisfied bunk_with AND one pending-possible
+        bunk_with should be reported as having "1 possible requests" — not 2 —
+        because the diagnostic doesn't consider pending requests at all.
+        """
+        # 1001 has:
+        #   - resolved bunk_with → 1002 (unsatisfied: different bunks)
+        #   - pending bunk_with → 1003 (would be possible-but-pending)
+        # Both are structurally feasible (same session) so both land in
+        # possible_requests[1001]. Only the resolved one should drive the count
+        # shown in the violation message.
+        input_data = DirectSolverInput(
+            persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
+            requests=[
+                _request("r-resolved", 1001, 1002, 100, source_field="bunk_with", status="resolved"),
+                _request("r-pending", 1001, 1003, 100, source_field="bunk_with", status="pending"),
+            ],
+            bunks=[_bunk(2001, 100), _bunk(2002, 100)],
+        )
+        solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
+        # Sanity: validation classified both as possible (no status filter at validate time).
+        assert len(solver.possible_requests[1001]) == 2
+
+        # Place 1001 alone in 2001, 1002 + 1003 elsewhere → resolved request unsatisfied.
+        assignments = [
+            _assignment(1001, 2001, 100),
+            _assignment(1002, 2002, 100),
+            _assignment(1003, 2002, 100),
+        ]
+
+        solver._check_must_satisfy_one_violations(assignments)
+
+        material = _violation_details(solver, CAT_MATERIAL_PARENT_UNMET)
+        assert len(material) == 1
+        # The message must show the resolved-only count of 1, not the unfiltered 2.
+        assert "1 possible requests" in material[0]
+        assert "2 possible requests" not in material[0]
+
+    def test_unknown_source_field_treated_as_non_material(self, mock_config):
+        """Unknown ``source_field`` values must not crash the diagnostic.
+
+        ``_is_material_parent`` defensively swallows ``ValueError`` from
+        ``classify_request`` — an unknown source_field should route the camper
+        to ``other_unmet`` rather than aborting the run. This guards against
+        silent regressions if a new source_field is added to the schema before
+        the bucket map is updated.
+        """
+        # 1001 has a single resolved bunk_with-ish request whose source_field is
+        # an entirely unknown string. The structural type (request_type) is still
+        # bunk_with so it lands in possible_requests; classification falls back.
+        input_data = DirectSolverInput(
+            persons=[_person(1001, 100), _person(1002, 100)],
+            requests=[
+                _request(
+                    "r1",
+                    1001,
+                    1002,
+                    100,
+                    request_type="bunk_with",
+                    source_field="some_future_unmapped_field",
+                ),
+            ],
+            bunks=[_bunk(2001, 100), _bunk(2002, 100)],
+        )
+        solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
+        assert len(solver.possible_requests[1001]) == 1
+
+        # Different bunks → unsatisfied.
+        assignments = [_assignment(1001, 2001, 100), _assignment(1002, 2002, 100)]
+
+        solver._check_must_satisfy_one_violations(assignments)
+
+        # Unknown source_field → non-material → other_unmet (not material_parent_unmet).
+        assert _violation_details(solver, CAT_MATERIAL_PARENT_UNMET) == []
+        other = _violation_details(solver, CAT_OTHER_UNMET)
+        assert len(other) == 1
+        assert "1001" in other[0]
+        sev = solver.constraint_logger.violations[CAT_OTHER_UNMET][0]["severity"]
+        assert sev == "info"
