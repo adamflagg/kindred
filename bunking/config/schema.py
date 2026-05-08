@@ -113,6 +113,14 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         min_value=0,
         max_value=1,
     ),
+    "constraint.must_satisfy_one.penalty": ConfigKey(
+        key="constraint.must_satisfy_one.penalty",
+        config_type=ConfigType.INT,
+        required=True,
+        description="Penalty for leaving a camper with no requests satisfied",
+        min_value=0,
+        max_value=500000,
+    ),
     # =========================================================================
     # SOLVER CONSTRAINTS - Level Progression
     # =========================================================================

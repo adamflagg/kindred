@@ -142,7 +142,7 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         ctx.model.Add(sum(all_sat_vars) >= 1).OnlyEnforceIf(violation.Not())
 
         # Add as soft constraint with configurable penalty
-        weight = ctx.config.get_soft_constraint_weight("must_satisfy_one", default=100000)
+        weight = ctx.config.get_soft_constraint_weight("must_satisfy_one")
         ctx.soft_constraint_violations[f"must_satisfy_{person_cm_id}"] = (violation, weight)
 
         constraints_added += 1

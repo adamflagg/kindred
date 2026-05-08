@@ -42,7 +42,7 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
     max_age_spread_months = ctx.config.get_constraint("age_spread", "months", default=24)
 
     # Get weight for age spread violations - high weight to prioritize
-    age_spread_weight = ctx.config.get_soft_constraint_weight("age_spread", default=4000)
+    age_spread_weight = ctx.config.get_soft_constraint_weight("age_spread")
 
     # New: preferred (soft-bonus) threshold
     preferred_age_spread_months = ctx.config.get_constraint("age_spread", "preferred_months", default=0)
