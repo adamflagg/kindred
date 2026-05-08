@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildSatisfactionLookup } from './satisfactionLookup'
-import type { PerRequestStatus } from '../types/satisfaction'
+import { buildSatisfactionLookup, evaluateRequest, resolveBadgeBucket } from './satisfactionLookup'
+import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import type { PerRequestStatus, RequestBucket } from '../types/satisfaction'
 
 describe('buildSatisfactionLookup', () => {
   it('returns satisfied + detail for a known request_id', () => {
@@ -43,5 +44,189 @@ describe('buildSatisfactionLookup', () => {
       satisfied: false,
       detail: 'Requester not assigned',
     })
+  })
+})
+
+function req(partial: Partial<EnhancedBunkRequest>): EnhancedBunkRequest {
+  return {
+    id: 'r-1',
+    request_type: 'bunk_with',
+    requestee_id: 0,
+    age_preference_target: '',
+    status: 'resolved',
+    ...partial,
+  } as unknown as EnhancedBunkRequest
+}
+
+describe('evaluateRequest — unknown-state branches (TS-only, not parity-tested)', () => {
+  it('returns unknown when requester has no bunk (any request type)', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'bunk_with', requestee_id: 200 }),
+      requesterBunkCmId: null,
+      requesterBunkmates: [],
+      targetBunkCmId: 42,
+      requesterGrade: 7,
+    })
+    expect(result.status).toBe('unknown')
+    expect(result.detail).toBe('Requester not assigned')
+  })
+
+  it('returns unknown for bunk_with with no requestee', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'bunk_with', requestee_id: 0 }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [],
+      targetBunkCmId: null,
+      requesterGrade: 7,
+    })
+    expect(result.status).toBe('unknown')
+  })
+
+  it('returns unknown for not_bunk_with with no requestee', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'not_bunk_with', requestee_id: 0 }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [],
+      targetBunkCmId: null,
+      requesterGrade: 7,
+    })
+    expect(result.status).toBe('unknown')
+  })
+
+  it('returns unknown for age_preference with no grade on file', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'age_preference', age_preference_target: 'older' }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [{ cmId: 200, grade: 8 }],
+      targetBunkCmId: null,
+      requesterGrade: null,
+    })
+    expect(result.status).toBe('unknown')
+    expect(result.detail).toBe('No grade on file')
+  })
+
+  it('returns not_satisfied for age_preference with empty bunk roster', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'age_preference', age_preference_target: 'older' }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [],
+      targetBunkCmId: null,
+      requesterGrade: 7,
+    })
+    expect(result.status).toBe('not_satisfied')
+    expect(result.detail).toBe('No bunkmates assigned yet')
+  })
+
+  it('age_preference satisfied detail is wrapped with bunk-grade breakdown', () => {
+    const result = evaluateRequest({
+      request: req({ request_type: 'age_preference', age_preference_target: 'older' }),
+      requesterBunkCmId: 42,
+      requesterBunkmates: [
+        { cmId: 200, grade: 8 },
+        { cmId: 201, grade: 9 },
+      ],
+      targetBunkCmId: null,
+      requesterGrade: 7,
+    })
+    expect(result.status).toBe('satisfied')
+    expect(result.detail).toMatch(/^Bunk: .*— /)
+  })
+})
+
+describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fallback', () => {
+  it('material_parent bucket → P badge regardless of source_field', () => {
+    const result = resolveBadgeBucket('material_parent', {
+      source_field: 'bunking_notes',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
+  })
+
+  it('staff bucket → S badge regardless of source_field', () => {
+    const result = resolveBadgeBucket('staff', { source_field: 'bunk_with', source: 'family' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('immaterial_parent bucket → no badges', () => {
+    const result = resolveBadgeBucket('immaterial_parent', {
+      source_field: 'bunk_with',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + age_preference + source_field=bunk_with → P badge (fallback)', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'age_preference',
+    })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
+  })
+
+  it('undefined bucket + source=staff → S badge (fallback)', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: 'bunking_notes', source: 'staff' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('undefined bucket + neither → no badges', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'socialize_with',
+      source: 'family',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + missing source fields → no badges', () => {
+    const result = resolveBadgeBucket(undefined, {})
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('handles all RequestBucket values without throwing', () => {
+    const buckets: (RequestBucket | undefined)[] = [
+      'material_parent',
+      'immaterial_parent',
+      'staff',
+      undefined,
+    ]
+    for (const b of buckets) {
+      expect(() => resolveBadgeBucket(b, {})).not.toThrow()
+    }
+  })
+
+  it('undefined bucket + bunk_with request_type + source_field=bunk_with → no P badge', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'bunk_with',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + age_preference request_type + source_field=bunk_with → P badge', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'bunk_with',
+      source: 'family',
+      request_type: 'age_preference',
+    })
+    expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
+  })
+
+  it('undefined bucket + empty source_field + source=staff → falls back to source', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'staff' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('undefined bucket + empty source_field + source=family → no staff badge', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'family' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + unknown source_field + source=staff → falls back to source', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'legacy_unknown_field',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
   })
 })
