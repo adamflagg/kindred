@@ -71,13 +71,28 @@ export function assertNeverSessionType(x: never): never {
 // Session-object predicates (accept a Session or session-shaped object)
 // ============================================================================
 
+/** Minimal shape: anything with a `session_type` field. */
+export interface SessionLike {
+  session_type?: string | null
+}
+
+/** Session shape with a `parent_id` — needed for AG parent/child relationships. */
+export interface SessionChildLike extends SessionLike {
+  parent_id?: number | null
+}
+
+/** Session shape with a `cm_id` — used as the parent in AG parent/child checks. */
+export interface SessionParentLike {
+  cm_id: number
+}
+
 /** True for main, embedded, ag — the "at camp" sessions on Day1/Forecast/Metrics */
-export function isAtCampSession(session: { session_type?: string | null }): boolean {
+export function isAtCampSession(session: SessionLike): boolean {
   return AT_CAMP_TYPES.includes(session.session_type as (typeof AT_CAMP_TYPES)[number])
 }
 
 /** True for quest sessions only */
-export function isQuestSession(session: { session_type?: string | null }): boolean {
+export function isQuestSession(session: SessionLike): boolean {
   return session.session_type === 'quest'
 }
 
@@ -85,37 +100,37 @@ export function isQuestSession(session: { session_type?: string | null }): boole
  * True for sessions that appear in the /campers picker dropdown:
  * main, embedded, quest. AG is excluded (grouped with parent main).
  */
-export function isInDropdown(session: { session_type?: string | null }): boolean {
+export function isInDropdown(session: SessionLike): boolean {
   return DROPDOWN_TYPES.includes(session.session_type as (typeof DROPDOWN_TYPES)[number])
 }
 
 /** True for summer-camp sessions: main, embedded, ag, quest */
-export function isSummerCampSession(session: { session_type?: string | null }): boolean {
+export function isSummerCampSession(session: SessionLike): boolean {
   return SUMMER_CAMP_TYPES.includes(session.session_type as (typeof SUMMER_CAMP_TYPES)[number])
 }
 
 /** True for teen programs: tli, teen */
-export function isTeenProgram(session: { session_type?: string | null }): boolean {
+export function isTeenProgram(session: SessionLike): boolean {
   return TEEN_PROGRAM_TYPES.includes(session.session_type as (typeof TEEN_PROGRAM_TYPES)[number])
 }
 
 /** True for embedded sessions only */
-export function isEmbeddedSession(session: { session_type?: string | null }): boolean {
+export function isEmbeddedSession(session: SessionLike): boolean {
   return session.session_type === 'embedded'
 }
 
 /** True for main sessions only */
-export function isMainSession(session: { session_type?: string | null }): boolean {
+export function isMainSession(session: SessionLike): boolean {
   return session.session_type === 'main'
 }
 
 /** True for ag sessions only */
-export function isAgSession(session: { session_type?: string | null }): boolean {
+export function isAgSession(session: SessionLike): boolean {
   return session.session_type === 'ag'
 }
 
 /** True for main or embedded sessions — the "core camp" pair used in some filter contexts */
-export function isMainOrEmbedded(session: { session_type?: string | null }): boolean {
+export function isMainOrEmbedded(session: SessionLike): boolean {
   return session.session_type === 'main' || session.session_type === 'embedded'
 }
 
@@ -123,10 +138,7 @@ export function isMainOrEmbedded(session: { session_type?: string | null }): boo
  * True when `child` is an AG session that belongs to `parent`.
  * Matches on `child.parent_id === parent.cm_id` AND `child.session_type === 'ag'`.
  */
-export function isAgChildOf(
-  child: { session_type?: string | null; parent_id?: number | null },
-  parent: { cm_id: number }
-): boolean {
+export function isAgChildOf(child: SessionChildLike, parent: SessionParentLike): boolean {
   return child.session_type === 'ag' && child.parent_id === parent.cm_id
 }
 

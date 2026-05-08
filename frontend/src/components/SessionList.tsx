@@ -514,7 +514,7 @@ export default function SessionList() {
         const unassignedCampers = totalCampers - assignedCampers
 
         const filteredBunkPlans = bunkPlans.filter((bp) => {
-          if (!isMainSession) return true
+          if (!isMain) return true
           const bunkGender = bp.expand.bunk?.gender.toLowerCase() ?? ''
           const isAgBunk = ['ag', 'mixed', 'all-gender', 'nb'].includes(bunkGender)
           if (bp.session === session.id) return !isAgBunk

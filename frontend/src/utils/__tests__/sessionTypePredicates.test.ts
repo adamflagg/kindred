@@ -110,12 +110,7 @@ describe('typed set exports', () => {
   })
 
   it('SESSION_TYPE_LITERALS exports all known literals for exhaustiveness checks', () => {
-    expect(SESSION_TYPE_LITERALS).toContain('main')
-    expect(SESSION_TYPE_LITERALS).toContain('embedded')
-    expect(SESSION_TYPE_LITERALS).toContain('ag')
-    expect(SESSION_TYPE_LITERALS).toContain('quest')
-    expect(SESSION_TYPE_LITERALS).toContain('tli')
-    expect(SESSION_TYPE_LITERALS).toContain('teen')
+    expect([...SESSION_TYPE_LITERALS].sort()).toEqual([...ALL_TYPES].sort())
     // 'taste' is NOT a session_type value — it's a name-match pattern
     expect(SESSION_TYPE_LITERALS).not.toContain('taste')
   })
