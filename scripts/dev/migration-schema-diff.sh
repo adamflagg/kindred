@@ -53,8 +53,15 @@ DUMP_A=$(mktemp -t pb-dump-a-XXXX.json)
 DUMP_B=$(mktemp -t pb-dump-b-XXXX.json)
 trap 'rm -f "$DUMP_A" "$DUMP_B"' EXIT
 
-sqlite3 "$DB_A" "$DUMP_SQL" | jq -S . > "$DUMP_A"
-sqlite3 "$DB_B" "$DUMP_SQL" | jq -S . > "$DUMP_B"
+# Strip auto-generated secret fields (per-DB-random token signing keys
+# nested inside collection options like authToken.secret, fileToken.secret,
+# verificationToken.secret, etc.). Our migrations don't intentionally set
+# any field named "secret", so this is safe and eliminates a major drift
+# source between independently-applied scratch DBs.
+SCRUB_FILTER='walk(if type == "object" and has("secret") then .secret = "<scrubbed>" else . end)'
+
+sqlite3 "$DB_A" "$DUMP_SQL" | jq -S "$SCRUB_FILTER" > "$DUMP_A"
+sqlite3 "$DB_B" "$DUMP_SQL" | jq -S "$SCRUB_FILTER" > "$DUMP_B"
 
 if diff -u "$DUMP_A" "$DUMP_B"; then
   echo "schemas match"

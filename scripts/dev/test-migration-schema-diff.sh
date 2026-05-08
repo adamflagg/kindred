@@ -68,4 +68,29 @@ else
 fi
 
 echo
+echo "=== TEST 4: per-DB-random secrets in options.* should NOT cause false positive ==="
+# Reset to identical DBs, then drift only the auto-generated token secrets
+cp "$SCRATCH/db_a/data.db" "$SCRATCH/db_b/data.db"
+sqlite3 "$SCRATCH/db_a/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":86400,\"secret\":\"AAAAAAAAAA\"},\"verificationToken\":{\"duration\":259200,\"secret\":\"BBBBBBBBBB\"}}' WHERE name = 'foo';"
+sqlite3 "$SCRATCH/db_b/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":86400,\"secret\":\"ZZZZZZZZZZ\"},\"verificationToken\":{\"duration\":259200,\"secret\":\"YYYYYYYYYY\"}}' WHERE name = 'foo';"
+if "$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b"; then
+  echo "PASS: per-DB-random secret drift ignored"
+else
+  echo "FAIL: per-DB-random secret drift caused false positive"
+  exit 1
+fi
+
+echo
+echo "=== TEST 5: real options drift (e.g. duration change) SHOULD cause failure ==="
+cp "$SCRATCH/db_a/data.db" "$SCRATCH/db_b/data.db"
+sqlite3 "$SCRATCH/db_a/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":86400,\"secret\":\"X\"}}' WHERE name = 'foo';"
+sqlite3 "$SCRATCH/db_b/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":99999,\"secret\":\"X\"}}' WHERE name = 'foo';"
+if "$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b"; then
+  echo "FAIL: real options drift NOT detected"
+  exit 1
+else
+  echo "PASS: real options drift detected even with secret-stripping"
+fi
+
+echo
 echo "All tests passed."
