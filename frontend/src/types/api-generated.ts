@@ -2381,8 +2381,11 @@ export interface components {
       source: number
       /** Target */
       target: number
-      /** Edge Type */
-      edge_type: string
+      /**
+       * Edge Type
+       * @constant
+       */
+      edge_type: 'request'
       /**
        * Weight
        * @default 1
