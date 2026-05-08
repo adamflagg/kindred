@@ -587,11 +587,13 @@ class TestSimplifiedSourcePriority:
         return Deduplicator()
 
     def test_family_over_staff_tiebreaker(self):
-        """Test that FAMILY source wins over STAFF in dedup tiebreaker (#1088 parent-paramount).
+        """Test that bunk_with (material parent, rank 4) outranks not_bunk_with
+        (staff exclusion, rank 3) in dedup tiebreak (#1142 materiality model).
 
-        When same (requester, requestee, type, session, year) comes from both
-        FAMILY and STAFF sources, FAMILY should win — origin of intent is authoritative.
-        Staff corroborates but does not supersede parent input.
+        When same (requester, requestee, type, session, year) appears in both
+        bunk_with and not_bunk_with source_fields, bunk_with wins — material
+        parent intent is the highest-rank source_field. Test name preserved
+        for CI stability; original rationale was FAMILY > STAFF (#1088).
         """
         family_request = BunkRequest(
             requester_cm_id=12345,
@@ -1550,12 +1552,13 @@ class TestFamilyParamountTiebreak:
         return Deduplicator()
 
     def test_family_beats_staff_bunk_with_tiebreak(self, deduplicator):
-        """When a FAMILY bunk_with and a STAFF bunking_notes share the same dedup key,
-        the FAMILY row must survive as primary.
+        """When a bunk_with row and a bunking_notes row share the same dedup key,
+        the bunk_with row must survive as primary (#1142 materiality model).
 
         Scenario: Emma Johnson's parent submits "bunk with Liam Garcia" via the family
-        form (source_field=bunk_with). Staff also notes it in bunking_notes.
-        The parent-sourced row must win — origin of intent is authoritative.
+        form (source_field=bunk_with, rank 4). Staff also notes it in bunking_notes
+        (rank 2). bunk_with outranks bunking_notes — material parent intent wins.
+        Test name preserved for CI stability; original rationale was FAMILY > STAFF.
         """
         family_request = BunkRequest(
             requester_cm_id=11111,
@@ -1628,12 +1631,14 @@ class TestFamilyParamountTiebreak:
         )
 
     def test_family_beats_staff_age_preference_tiebreak(self, deduplicator):
-        """When a FAMILY age_preference (AI-parsed from bunk_with prose) and a STAFF
-        age_preference (from bunking_notes) share the same dedup key, FAMILY wins.
+        """When an age_preference row from bunk_with and one from bunking_notes
+        share the same dedup key, the bunk_with row wins (#1142 materiality model).
 
         Scenario: Liam Garcia's parent writes "prefers younger bunk-mates" in the
-        bunk_with text field (AI-parsed to age_preference/FAMILY). Staff also notes
-        the same preference in bunking_notes (STAFF). The parent-sourced row must win.
+        bunk_with text field (AI-parsed to age_preference, rank 4). Staff also notes
+        the same preference in bunking_notes (rank 2). bunk_with outranks
+        bunking_notes — material parent intent wins. Test name preserved for CI
+        stability; original rationale was FAMILY > STAFF.
         """
         family_age_pref = BunkRequest(
             requester_cm_id=33333,
