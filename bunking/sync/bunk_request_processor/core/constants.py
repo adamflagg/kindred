@@ -9,15 +9,6 @@ from __future__ import annotations
 # For DB-based session queries, use SessionRepository.get_valid_bunking_session_ids()
 VALID_SESSION_TYPES = {"main", "embedded", "ag"}
 
-# Source field (V2) to RequestSource mapping
-SOURCE_FIELD_TO_SOURCE = {
-    "bunk_with": "family",
-    "not_bunk_with": "family",
-    "socialize_with": "parent",
-    "internal_notes": "staff-notes",
-    "bunking_notes": "staff-notes",
-}
-
 # Priority keywords that indicate high importance
 # These should match the keywords in ai_config.json priority_overrides.keywords
 # plus common variations that parents use
