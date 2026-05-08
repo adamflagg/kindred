@@ -373,9 +373,7 @@ function App() {
                               />
                               <Route
                                 path="prompts"
-                                element={
-                                  <Navigate to="/summer/debug/parse-analysis" replace />
-                                }
+                                element={<Navigate to="/summer/debug/parse-analysis" replace />}
                               />
                               <Route
                                 path="parse-analysis"

@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_VISIBLE_COLUMNS } from './SolverFiltersBar'
 import { SolverRunsTable } from './SolverRunsTable'
+import { DEFAULT_VISIBLE_COLUMNS } from './solverColumns'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 

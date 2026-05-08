@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_VISIBLE_COLUMNS, SolverFiltersBar } from './SolverFiltersBar'
+import { SolverFiltersBar } from './SolverFiltersBar'
+import { DEFAULT_VISIBLE_COLUMNS } from './solverColumns'
 
 describe('SolverFiltersBar', () => {
   it('renders filter dropdowns and column picker toggle', () => {

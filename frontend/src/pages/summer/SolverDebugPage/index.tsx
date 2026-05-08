@@ -10,7 +10,8 @@ import type { SolverRunsFilters } from '../../../utils/queryKeys'
 
 import { DrillDownDrawer } from './DrillDownDrawer'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
-import { DEFAULT_VISIBLE_COLUMNS, SolverFiltersBar } from './SolverFiltersBar'
+import { SolverFiltersBar } from './SolverFiltersBar'
+import { DEFAULT_VISIBLE_COLUMNS } from './solverColumns'
 import { SolverRunsTable } from './SolverRunsTable'
 import { SweepPanel, type SweepPanelPayload } from './SweepPanel'
 
