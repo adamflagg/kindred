@@ -12,6 +12,7 @@ from collections import defaultdict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk, should_exempt_edge_bunk_from_ratio
@@ -37,8 +38,11 @@ def add_grade_ratio_constraints(ctx: SolverContext) -> None:
     # Get penalty weight for violations
     penalty_weight = ctx.config.get_constraint("grade_ratio", "penalty", default=5000)
 
-    # Get standard capacity for edge exemption threshold calculation
-    standard_capacity = ctx.config.get_int("constraint.cabin_capacity.standard", default=12)
+    # Standard capacity for edge exemption threshold calculation.
+    # Hardcoded constant (Phase 2 cabin-capacity cleanup); previously read
+    # from `constraint.cabin_capacity.standard`, now collapsed since it never
+    # changed at runtime.
+    standard_capacity = DEFAULT_BUNK_CAPACITY
 
     logger.debug(
         f"Adding grade ratio soft constraints with max percentage: {max_percentage:.0%}, penalty: {penalty_weight}"

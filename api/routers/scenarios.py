@@ -29,6 +29,7 @@ from bunking.models import (
 )
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from bunking.solver.objective_evaluator import evaluate_objective
 
 from ..constants.collections import (
@@ -354,7 +355,7 @@ async def evaluate_score(
                 "cm_id": getattr(b, "cm_id", None),
                 "name": getattr(b, "name", None),
                 "gender": getattr(b, "gender", None),
-                "capacity": getattr(b, "max_size", None),
+                "capacity": DEFAULT_BUNK_CAPACITY,
                 "session_cm_id": session_id,  # For age/grade flow calculation
             }
             for b in bunks_raw

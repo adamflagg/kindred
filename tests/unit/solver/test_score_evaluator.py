@@ -322,24 +322,11 @@ class TestEvaluateScenarioScore:
         assert result.penalties["grade_spread"] > 0
         assert result.soft_penalty_score > 0
 
-    def test_over_capacity_penalty(self, mock_config):
-        """Bunks over capacity should incur penalty."""
-        from bunking.solver.score_evaluator import evaluate_scenario_score
-
-        # 13 campers in a bunk with max 12
-        assignments = [{"person_cm_id": i, "bunk_cm_id": 1} for i in range(1, 14)]
-        persons = [{"cm_id": i, "grade": 5, "gender": "M"} for i in range(1, 14)]
-
-        result = evaluate_scenario_score(
-            requests=[],
-            assignments=assignments,
-            persons=persons,
-            bunks=[{"cm_id": 1, "name": "B-1", "gender": "M", "max_size": 12}],
-            config=mock_config,
-        )
-
-        assert "over_capacity" in result.penalties
-        assert result.penalties["over_capacity"] > 0
+    # Phase 2 cabin-capacity cleanup: removed test_over_capacity_penalty —
+    # the soft-cabin-capacity path was deleted and the score evaluator no
+    # longer reports an "over_capacity" penalty term. Solver now enforces
+    # capacity as a hard constraint at DEFAULT_BUNK_CAPACITY, so an
+    # over-capacity assignment cannot appear in a solved scenario.
 
     def test_diminishing_returns(self, mock_config):
         """Multiple satisfied requests for same person should have diminishing returns."""

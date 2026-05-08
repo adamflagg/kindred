@@ -66,10 +66,12 @@ def _solver_client(solver_runs_state: dict[str, Any]) -> Iterator[TestClient]:
         patch("api.routers.solver.solver_runs", solver_runs_state),
         # Prevent real background tasks from executing
         patch("api.routers.solver.run_solver_task_v2"),
-        # Prevent ConfigLoader from touching disk/env
-        patch("api.routers.solver.ConfigLoader") as mock_cfg,
     ):
-        mock_cfg.return_value.get_int.return_value = 60
+        # Phase 2 cabin-capacity cleanup: solver.py no longer imports
+        # ConfigLoader (the only consumer was the cabin_capacity.standard
+        # read for pre-validate, which now uses the DEFAULT_BUNK_CAPACITY
+        # constant). The previous patch.object("ConfigLoader") and the
+        # mock_cfg.get_int(60) assertion are obsolete.
         yield TestClient(app, raise_server_exceptions=False)
 
 
@@ -271,9 +273,9 @@ def _multi_session_client(solver_runs_state: dict[str, Any], child_sessions: lis
         patch("api.routers.solver.solver_runs", solver_runs_state),
         patch("api.routers.solver.pb", mock_pb),
         patch("api.routers.solver.run_solver_task_v2"),
-        patch("api.routers.solver.ConfigLoader") as mock_cfg,
     ):
-        mock_cfg.return_value.get_int.return_value = 60
+        # Phase 2 cabin-capacity cleanup: solver.py no longer imports
+        # ConfigLoader; the previous patch.object("ConfigLoader") is obsolete.
         yield TestClient(app, raise_server_exceptions=False)
 
 

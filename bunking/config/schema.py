@@ -145,36 +145,14 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Cabin Capacity
     # =========================================================================
-    "constraint.cabin_capacity.max": ConfigKey(
-        key="constraint.cabin_capacity.max",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Maximum campers per cabin (hard limit)",
-        min_value=1,
-        max_value=30,
-    ),
-    "constraint.cabin_capacity.standard": ConfigKey(
-        key="constraint.cabin_capacity.standard",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Standard cabin capacity for planning",
-        min_value=1,
-        max_value=30,
-    ),
-    "constraint.cabin_capacity.mode": ConfigKey(
-        key="constraint.cabin_capacity.mode",
-        config_type=ConfigType.STRING,
-        required=True,
-        description="Capacity enforcement mode",
-        allowed_values=["hard", "soft"],
-    ),
-    "constraint.cabin_capacity.penalty": ConfigKey(
-        key="constraint.cabin_capacity.penalty",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Penalty for exceeding standard capacity",
-        min_value=0,
-    ),
+    # Phase 2 cleanup: cabin_capacity.{max, standard, mode, penalty} were all
+    # removed in favor of two hardcoded constants in
+    # bunking/solver/constants.py — DEFAULT_BUNK_CAPACITY (solver hard cap and
+    # grade-ratio reference, =12) and MAX_BUNK_CAPACITY (staff-edit ceiling
+    # in the assignments UI, =14). The soft-constraint code path that read
+    # mode/penalty was deleted; per-bunk variance was never wired (Bunk
+    # model's max_size was a Pydantic-only fiction). If you ever need
+    # per-bunk variance, add a real PB column on bunks and wire it up.
     # =========================================================================
     # SOLVER CONSTRAINTS - Cabin Minimum Occupancy
     # =========================================================================

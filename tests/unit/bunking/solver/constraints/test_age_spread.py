@@ -369,11 +369,12 @@ class TestNew12moPreferredThreshold:
         Bunk A: 2 campers, 8mo spread → earns bonus
         Bunk B: 2 campers, 20mo spread → no bonus
         """
-        bunk_a = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=4)
-        bunk_b = create_bunk(cm_id=2002, name="B-2", gender="M", capacity=4)
+        # Force exactly 2 campers per bunk by setting per-bunk capacity to 2.
+        # Phase 2 cabin-capacity cleanup deleted the global cabin_capacity.*
+        # config keys, so per-bunk capacity is the only knob.
+        bunk_a = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=2)
+        bunk_b = create_bunk(cm_id=2002, name="B-2", gender="M", capacity=2)
 
-        # Lock campers to specific bunks via 2-person bunks and single-gender
-        # We'll lock via capacity to force specific assignments
         campers = [
             _person_with_age_months(1001, 144),  # 12y 0m → bunk A
             _person_with_age_months(1002, 152),  # 12y 8m → bunk A (8mo spread)
@@ -389,11 +390,6 @@ class TestNew12moPreferredThreshold:
                 "constraint.age_spread.preferred_months": 12,
                 "constraint.age_spread.penalty": 1500,
                 "constraint.age_spread.preferred_bonus": 500,
-                # Force capacity=2 so each bunk gets exactly 2 campers
-                "constraint.cabin_capacity.max": 2,
-                "constraint.cabin_capacity.standard": 2,
-                "constraint.cabin_capacity.mode": "hard",
-                "constraint.cabin_capacity.penalty": 0,
             },
         )
 

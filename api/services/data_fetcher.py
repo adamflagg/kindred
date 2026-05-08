@@ -25,6 +25,7 @@ from bunking.direct_solver import (
     HistoricalBunkingRecord,
 )
 from bunking.logging_config import get_logger
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from pocketbase import PocketBase
 
 from ..dependencies import pb
@@ -422,7 +423,7 @@ def prepare_direct_solver_input(
                     id=bunk.id,
                     campminder_id=bunk.cm_id,
                     name=bunk.name,
-                    capacity=getattr(bunk, "max_size", 12),
+                    capacity=DEFAULT_BUNK_CAPACITY,
                     area=getattr(bunk, "area", None),
                     gender=getattr(bunk, "gender", None),
                     session_cm_id=session_cm_id,

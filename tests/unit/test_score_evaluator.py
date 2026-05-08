@@ -144,25 +144,11 @@ class TestCalculatePenalties:
         assert "grade_spread" in penalties
         assert penalties["grade_spread"] == 200
 
-    def test_over_capacity_violation(self, mock_config):
-        """Test over capacity penalty calculation."""
-        # 5 persons in a bunk with max_size=3
-        person_to_bunk = {1: 100, 2: 100, 3: 100, 4: 100, 5: 100}
-        bunk_to_persons = {100: [1, 2, 3, 4, 5]}
-        person_by_cm_id = {
-            1: {"cm_id": 1, "grade": 5},
-            2: {"cm_id": 2, "grade": 5},
-            3: {"cm_id": 3, "grade": 5},
-            4: {"cm_id": 4, "grade": 5},
-            5: {"cm_id": 5, "grade": 5},
-        }
-        bunk_by_cm_id = {100: {"cm_id": 100, "max_size": 3}}
-
-        penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
-
-        # 5 - 3 = 2 over capacity, 2 * 500 = 1000
-        assert "over_capacity" in penalties
-        assert penalties["over_capacity"] == 1000
+    # Phase 2 cabin-capacity cleanup: removed test_over_capacity_violation —
+    # the score evaluator no longer reports an "over_capacity" penalty term.
+    # The soft cabin_capacity path was deleted; solver enforces capacity as a
+    # hard constraint at DEFAULT_BUNK_CAPACITY, so over-capacity assignments
+    # cannot appear in solved scenarios.
 
     def test_under_occupancy_penalty(self, mock_config):
         """Test under occupancy penalty calculation."""
