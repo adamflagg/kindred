@@ -250,7 +250,7 @@ class MockConfigLoader:
             "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
-        return self.get_int(key, 100)
+        return self.get_int(key)
 
     def get_ai_config(self) -> dict[str, object]:
         return {

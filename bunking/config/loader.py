@@ -126,8 +126,10 @@ class ConfigLoader:
             MissingKeyError: If required keys are missing
         """
         if cls._initialized:
-            # Allow re-initialization in tests
+            # Already initialized — skip full re-init but still run validation if requested.
             logger.debug("ConfigLoader already initialized, returning existing instance")
+            if validate_on_init and cls._instance is not None:
+                cls._instance._validate_all_required_keys()
             return cls._instance  # type: ignore
 
         # Set environment variables if provided
@@ -237,7 +239,9 @@ class ConfigLoader:
             if invalid_values:
                 error_parts.append(f"Invalid values ({len(invalid_values)}): {invalid_values}")
 
-            raise ConfigError("Configuration validation failed.\n" + "\n".join(error_parts))
+            if missing_keys:
+                raise MissingKeyError("Configuration validation failed.\n" + "\n".join(error_parts))
+            raise ValidationError("Configuration validation failed.\n" + "\n".join(error_parts))
 
         self._validated = True
         logger.info(f"Validated {len(required_keys)} required config keys")
@@ -398,7 +402,6 @@ class ConfigLoader:
             MissingKeyError: If the required key is absent from the database.
         """
         weight_mappings = {
-            "isolated_camper_prevention": "constraint.isolated_camper_ratio.penalty",
             # level_progression removed - uses no_regression_penalty via constraint module
             "must_satisfy_one": "constraint.must_satisfy_one.penalty",
             "age_grade_flow": "constraint.age_grade_flow.weight",

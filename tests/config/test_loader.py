@@ -8,6 +8,7 @@ implementation (removing the `default=` kwarg) is in place.
 from __future__ import annotations
 
 import inspect
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -48,21 +49,21 @@ class TestLoaderFailsLoudOnMissingRequiredKey:
     """
 
     def test_validate_on_init_true_raises_on_missing_required_key(self) -> None:
-        """initialize(validate_on_init=True) must raise when a required key is absent."""
+        """initialize(validate_on_init=True) must raise MissingKeyError when a required key is absent."""
         ConfigLoader.reset()
-        with pytest.raises((MissingKeyError, Exception)) as exc_info:
-            # This will fail because there is no real PocketBase to connect to.
-            # We verify it raises — any error from the validation path is acceptable
-            # in a unit-test context without a live DB.
-            ConfigLoader.initialize(
-                pocketbase_url="http://127.0.0.1:19999",  # unreachable port
-                validate_on_init=True,
-            )
-        # The error should be about DB connectivity or missing keys, not a TypeError
-        # from passing `default=` kwargs.
-        assert exc_info.type is not TypeError, (
-            "Got TypeError — caller may still be passing `default=` to the method after the signature was updated."
-        )
+        # Inject a fake PB client whose get_first_list_item() always raises (record not
+        # found), so _query_database_raw returns None for every key, causing MissingKeyError.
+        fake_collection = MagicMock()
+        fake_collection.get_first_list_item.side_effect = Exception("not found")
+        fake_pb = MagicMock()
+        fake_pb.collection.return_value = fake_collection
+
+        with patch("bunking.config.loader.PocketBase", return_value=fake_pb):
+            with pytest.raises(MissingKeyError):
+                ConfigLoader.initialize(
+                    pocketbase_url="http://127.0.0.1:19999",
+                    validate_on_init=True,
+                )
         ConfigLoader.reset()
 
     def test_validate_on_init_is_default_true(self) -> None:
