@@ -4,7 +4,7 @@ from pathlib import Path
 
 from bunking.config.schema import CONFIG_SCHEMA
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 MAIN_MIGRATION = REPO_ROOT / "pocketbase/pb_migrations/1500000011_config.js"
 
 

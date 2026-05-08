@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 SECTIONS_MIGRATION = REPO_ROOT / "pocketbase/pb_migrations/1500000012_config_sections.js"
 MAIN_MIGRATION = REPO_ROOT / "pocketbase/pb_migrations/1500000011_config.js"
 
