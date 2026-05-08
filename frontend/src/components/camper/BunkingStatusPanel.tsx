@@ -7,7 +7,7 @@ import { Heart, Home, Clock, CheckCircle } from 'lucide-react'
 import { sessionNameToUrl } from '../../utils/sessionUtils'
 import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource'
 import { isConfirmedRequest } from '../../utils/bunkRequest'
-import { resolveBadgeBucket } from '../../utils/requestSatisfaction'
+import { resolveBadgeBucket } from '../../utils/satisfactionLookup'
 import { BunkRequestRow } from '../BunkRequestRow'
 import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
@@ -58,7 +58,7 @@ interface BunkingStatusPanelProps {
   /**
    * Lookup function returning {satisfied, detail} for a given request id.
    * Callers build this from BunkRequestProvider.getSatisfiedRequestInfo (Path 2)
-   * or from computeRequestSatisfaction (Path 1, draft drag — only
+   * or from evaluateRequest (Path 1, draft drag — only
    * CamperDetailsPanel with hasClientView=true uses this).
    */
   getRequestSatisfaction: (requestId: string) => SatisfactionEntry
