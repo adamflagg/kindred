@@ -1,0 +1,53 @@
+/// <reference path="../pb_data/types.d.ts" />
+/**
+ * Migration: Drop the redundant `source` field from `bunk_requests`.
+ *
+ * `RequestSource` (FAMILY/STAFF) is a deterministic 5→2 projection of
+ * `source_field` and is now derived at every read site via the
+ * `source_from_field()` helper. The column adds no information.
+ *
+ * Stage 4 of #1142.
+ */
+
+migrate(
+  (app) => {
+    const collection = app.findCollectionByNameOrId("bunk_requests");
+    if (collection.fields.getByName("source")) {
+      collection.fields.removeByName("source");
+      app.save(collection);
+      console.log("[migration #1142 stage 4] dropped bunk_requests.source field");
+    } else {
+      console.log("[migration #1142 stage 4] bunk_requests.source field already absent (no-op)");
+    }
+  },
+  (app) => {
+    // Rollback: re-add the source field as a 2-value select, backfill from source_field.
+    const collection = app.findCollectionByNameOrId("bunk_requests");
+    if (collection.fields.getByName("source")) {
+      console.log("[migration #1142 stage 4 rollback] source field already present (no-op)");
+      return;
+    }
+
+    collection.fields.add(new Field({
+      type: "select",
+      name: "source",
+      required: false,
+      presentable: false,
+      maxSelect: 1,
+      values: ["family", "staff"]
+    }));
+    app.save(collection);
+
+    const db = app.db();
+    db.newQuery(`
+      UPDATE bunk_requests
+      SET source = CASE
+        WHEN source_field IN ('bunk_with', 'socialize_with') THEN 'family'
+        WHEN source_field IN ('not_bunk_with', 'bunking_notes', 'internal_notes') THEN 'staff'
+        ELSE 'family'
+      END
+    `).execute();
+
+    console.log("[migration #1142 stage 4 rollback] re-added source field and backfilled from source_field");
+  }
+);
