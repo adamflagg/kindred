@@ -781,7 +781,7 @@ class TestBuildMetadataSourceFragment:
             age_preference=None,
             confidence=0.9,
             source=RequestSource.FAMILY,
-            source_field="bunk_with",
+            source_field="not_bunk_with",
             csv_position=0,
             metadata={"source_fragment": "NOT Jake"},
         )

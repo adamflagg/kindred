@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { sourceFromField } from '../sourceFromField'
+import { safeSourceFromField, sourceFromField } from '../sourceFromField'
 
 describe('sourceFromField', () => {
   describe('FAMILY classifications', () => {
@@ -55,5 +55,28 @@ describe('sourceFromField', () => {
     it('throws for empty string', () => {
       expect(() => sourceFromField('')).toThrow('unknown source_field')
     })
+  })
+})
+
+describe('safeSourceFromField', () => {
+  it('returns mapped value for known field', () => {
+    expect(safeSourceFromField('bunk_with')).toBe('family')
+    expect(safeSourceFromField('not_bunk_with')).toBe('staff')
+  })
+
+  it('returns null for unknown field instead of throwing', () => {
+    expect(safeSourceFromField('unknown_field')).toBeNull()
+  })
+
+  it('returns null for empty string instead of throwing', () => {
+    expect(safeSourceFromField('')).toBeNull()
+  })
+
+  it('returns null for null', () => {
+    expect(safeSourceFromField(null)).toBeNull()
+  })
+
+  it('returns null for undefined', () => {
+    expect(safeSourceFromField(undefined)).toBeNull()
   })
 })

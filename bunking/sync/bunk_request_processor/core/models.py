@@ -14,6 +14,7 @@ from ..shared.constants import (
     ACTIVE_ENROLLMENT_STATUSES,
     INACTIVE_ENROLLMENT_STATUSES,
     PENDING_ENROLLMENT_STATUSES,
+    SourceField,
 )
 
 
@@ -53,11 +54,11 @@ class RequestSource(Enum):
 
 
 _SOURCE_FIELD_MAP: dict[str, RequestSource] = {
-    "bunk_with": RequestSource.FAMILY,
-    "socialize_with": RequestSource.FAMILY,
-    "not_bunk_with": RequestSource.STAFF,
-    "bunking_notes": RequestSource.STAFF,
-    "internal_notes": RequestSource.STAFF,
+    SourceField.BUNK_WITH: RequestSource.FAMILY,
+    SourceField.SOCIALIZE_WITH: RequestSource.FAMILY,
+    SourceField.NOT_BUNK_WITH: RequestSource.STAFF,
+    SourceField.BUNKING_NOTES: RequestSource.STAFF,
+    SourceField.INTERNAL_NOTES: RequestSource.STAFF,
 }
 
 

@@ -47,6 +47,7 @@ def _create_bunk_request(
     confidence: float = 0.95,
     source: RequestSource = RequestSource.FAMILY,
     priority: int = 3,
+    source_field: str = "bunk_with",
 ) -> BunkRequest:
     """Helper to create BunkRequest objects for testing"""
     return BunkRequest(
@@ -57,7 +58,7 @@ def _create_bunk_request(
         priority=priority,
         confidence_score=confidence,
         source=source,
-        source_field="bunk_with",
+        source_field=source_field,
         csv_position=1,
         year=2025,
         status=RequestStatus.RESOLVED,

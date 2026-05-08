@@ -35,3 +35,14 @@ export function sourceFromField(sourceField: string): RequestSource {
   }
   return result
 }
+
+/**
+ * Best-effort variant: returns null instead of throwing when the input is
+ * empty, null, undefined, or unknown. Use in render paths where a single bad
+ * row shouldn't crash the surrounding component — caller falls back to
+ * `request.source` or another safe default.
+ */
+export function safeSourceFromField(sourceField: string | null | undefined): RequestSource | null {
+  if (!sourceField) return null
+  return SOURCE_FIELD_MAP[sourceField] ?? null
+}

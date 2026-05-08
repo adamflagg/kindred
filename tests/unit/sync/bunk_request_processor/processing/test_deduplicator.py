@@ -242,6 +242,37 @@ class TestDeduplicator:
         assert kept.metadata["shared"] == "base"  # Primary wins
         assert kept.metadata["duplicate_sources"] == ["family"]
 
+    def test_merge_metadata_with_empty_source_field(self, deduplicator, base_request):
+        """Empty/unknown source_field on a duplicate must not crash the merge.
+
+        Regression: source_from_field() raises ValueError on unknown values.
+        Legacy DB rows can have source_field="" — without a guard, one bad row
+        aborts the entire dedup pass.
+        """
+        duplicate = BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=67890,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            priority=2,
+            confidence_score=0.99,  # Higher than base, exercises confidence_boosted_from path too
+            source=RequestSource.FAMILY,
+            source_field="",  # Empty string — would raise ValueError without the guard
+            csv_position=1,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            is_placeholder=False,
+            metadata={},
+        )
+
+        result = deduplicator.deduplicate_batch([base_request, duplicate])
+
+        assert len(result.kept_requests) == 1
+        kept = result.kept_requests[0]
+        # Falls back to req.source.value rather than raising.
+        assert kept.metadata["duplicate_sources"] == ["family"]
+        assert kept.metadata["confidence_boosted_from"] == "family"
+
     def test_multiple_duplicate_groups(self, deduplicator):
         """Test handling multiple separate duplicate groups (same source)"""
         # Group 1 - same requester/target, same source (FAMILY)

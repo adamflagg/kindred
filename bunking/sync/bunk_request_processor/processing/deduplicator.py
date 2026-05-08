@@ -20,6 +20,19 @@ SOURCE_PRIORITY = {
 }
 
 
+def _resolve_source(req: BunkRequest) -> str:
+    """Best-effort source string for metadata, never raises.
+
+    Mirrors the validator pattern (bunking_validator.py:527-531) — falls back
+    to the in-memory `req.source` when `source_field` is empty or unknown so
+    a single legacy/malformed row can't abort the whole dedup pass.
+    """
+    try:
+        return source_from_field(req.source_field).value
+    except ValueError:
+        return req.source.value
+
+
 def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bool:
     """Return True when the group is exactly two AGE_PREFERENCE requests — one from
     SourceField.BUNK_WITH and one from SourceField.SOCIALIZE_WITH — and their
@@ -279,8 +292,11 @@ class Deduplicator:
         primary.metadata["merged_sources"] = merged_sources
         primary.metadata["is_merged_duplicate"] = True
 
-        # Track duplicate sources (legacy, for backwards compatibility)
-        duplicate_sources = [source_from_field(r.source_field).value for r in duplicates]
+        # Track duplicate sources (legacy, for backwards compatibility).
+        # Falls back to req.source.value when source_field is unknown/empty so
+        # one bad row can't abort the whole merge — mirrors the validator's
+        # try/except pattern at bunking_validator.py:527-531.
+        duplicate_sources = [_resolve_source(r) for r in duplicates]
         primary.metadata["duplicate_sources"] = duplicate_sources
 
         # Find highest confidence among all requests
@@ -291,7 +307,7 @@ class Deduplicator:
             # Find which source had the highest confidence
             for req in all_requests:
                 if req.confidence_score == highest_conf:
-                    primary.metadata["confidence_boosted_from"] = source_from_field(req.source_field).value
+                    primary.metadata["confidence_boosted_from"] = _resolve_source(req)
                     break
             primary.confidence_score = highest_conf
 

@@ -62,7 +62,7 @@ def _create_parse_request(
     requester_cm_id: int = 11111,
     requester_name: str = "Test Requester",
     requester_grade: str = "5",
-    field_name: str = "share_bunk_with",
+    field_name: str = "bunk_with",
     session_cm_id: int = 1000002,
     session_name: str = "Session 2",
     year: int = 2025,

@@ -303,4 +303,25 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
+
+  // Regression: source_field=='' is truthy via `!= null`, so the previous
+  // implementation called sourceFromField('') which throws, crashing the panel.
+  // Fall back to req.source instead of throwing.
+  it('undefined bucket + empty source_field + source=staff → falls back to source', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'staff' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
+
+  it('undefined bucket + empty source_field + source=family → no staff badge', () => {
+    const result = resolveBadgeBucket(undefined, { source_field: '', source: 'family' })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + unknown source_field + source=staff → falls back to source', () => {
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'legacy_unknown_field',
+      source: 'staff',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
+  })
 })

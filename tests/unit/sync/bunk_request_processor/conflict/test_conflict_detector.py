@@ -23,12 +23,13 @@ def make_parsed_request(
     target_name: str | None = None,
 ) -> ParsedRequest:
     """Helper to create a ParsedRequest with required fields"""
+    source_field = "not_bunk_with" if request_type == RequestType.NOT_BUNK_WITH else "bunk_with"
     return ParsedRequest(
         raw_text=text,
         request_type=request_type,
         target_name=target_name or text,
         age_preference=None,
-        source_field="bunk_with",
+        source_field=source_field,
         source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,
