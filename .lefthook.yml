@@ -63,6 +63,27 @@ pre-commit:
           fi
         done
 
+    # Auto-sync generated API types when Python schema files change.
+    # Regen failure → hard block; drift → auto-stage the updated file.
+    api-types-freshness:
+      glob:
+        - "api/**/*.py"
+        - "bunking/**/*.py"
+      run: |
+        REGEN_LOG=$(mktemp)
+        trap 'rm -f "$REGEN_LOG"' EXIT
+        if ! npm run generate:api-types --prefix frontend > "$REGEN_LOG" 2>&1; then
+          echo ""
+          echo "❌  API types regen failed — fix schema errors before committing."
+          tail -n 10 "$REGEN_LOG" | sed 's/^/   /'
+          echo ""
+          exit 1
+        fi
+        if ! git diff --quiet -- frontend/src/types/api-generated.ts 2>/dev/null; then
+          git add frontend/src/types/api-generated.ts
+          echo "✅  api-generated.ts was stale — auto-updated and staged."
+        fi
+
 # ─── Commit-msg: conventional commit validation ──────────────────────
 commit-msg:
   commands:
@@ -120,27 +141,6 @@ pre-push:
         - "pocketbase/pb_hooks/*.js"
         - "pocketbase/package.json"
       run: npm run lint
-
-    api-types-freshness:
-      glob:
-        - "api/**/*.py"
-        - "bunking/**/*.py"
-      run: |
-        if ! npm run generate:api-types --prefix frontend > /tmp/kindred-api-types-regen.log 2>&1; then
-          echo ""
-          echo "❌  API types regen failed — fix schema errors before pushing."
-          tail -n 10 /tmp/kindred-api-types-regen.log | sed 's/^/   /'
-          echo ""
-          exit 1
-        fi
-        if ! git diff --quiet -- frontend/src/types/api-generated.ts 2>/dev/null; then
-          echo ""
-          echo "❌  api-generated.ts is stale — regenerate and commit before pushing:"
-          echo "    npm run generate:api-types --prefix frontend"
-          echo "    git add frontend/src/types/api-generated.ts && git commit"
-          echo ""
-          exit 1
-        fi
 
     behind-origin:
       only:
