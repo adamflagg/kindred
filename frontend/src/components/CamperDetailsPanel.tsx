@@ -662,8 +662,15 @@ export default function CamperDetailsPanel({
   // Path 1 — draft drag preview, synchronous from in-memory state.
   // Uses the TS predicate (evaluateRequest), guarded against drift from the
   // Python counterpart by the shared-fixture parity tests.
+  //
+  // We deliberately do NOT early-return when `assignedBunkCmId == null`. The
+  // unassigned-requester case is handled inside `evaluateRequest` (returns
+  // `status='unknown'` → no pill), which matches the drag-preview UX intent.
+  // Falling through to `pbLookup` here would render persisted red "Requester
+  // not assigned" pills during an active drag — see `evaluateRequest`'s
+  // JSDoc on the 4-state SatisfactionStatus.
   const clientLookup = useMemo<((id: string) => SatisfactionEntry) | null>(() => {
-    if (!hasClientView || !camper || assignedBunkCmId == null) return null
+    if (!hasClientView || !camper) return null
     const requesterBunkmates = effectiveBunkCampers.filter((c) => c.cmId !== camper.person_cm_id)
     const adapted = new Map<string, SatisfactionEntry>()
     for (const req of bunkRequests) {
@@ -673,7 +680,7 @@ export default function CamperDetailsPanel({
           : null
       const result = evaluateRequest({
         request: pbToEnhanced(req),
-        requesterBunkCmId: assignedBunkCmId,
+        requesterBunkCmId: assignedBunkCmId ?? null,
         requesterBunkmates,
         targetBunkCmId,
         requesterGrade: camper.grade,

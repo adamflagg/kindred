@@ -57,7 +57,7 @@ interface BunkingStatusPanelProps {
   /**
    * Lookup function returning {satisfied, detail} for a given request id.
    * Callers build this from BunkRequestProvider.getSatisfiedRequestInfo (Path 2)
-   * or from computeRequestSatisfaction (Path 1, draft drag — only
+   * or from evaluateRequest (Path 1, draft drag — only
    * CamperDetailsPanel with hasClientView=true uses this).
    */
   getRequestSatisfaction: (requestId: string) => SatisfactionEntry
