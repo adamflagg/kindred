@@ -8,15 +8,20 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 
-from ..core.models import BunkRequest, RequestSource, RequestStatus, RequestType, source_from_field
+from ..core.models import BunkRequest, RequestStatus, RequestType, source_from_field
 from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
-# Source priority order (higher number = higher priority)
-# Used for deduplication tiebreaker only — FAMILY is authoritative (parent-paramount).
-SOURCE_PRIORITY = {
-    RequestSource.FAMILY: 2,  # Origin of intent — parent input is authoritative
-    RequestSource.STAFF: 1,  # Corroboration / observation — preserved as metadata
+# Source field priority for dedup tiebreak.
+# Materiality model: material parent intent > staff exclusion > staff
+# observation > immaterial parent input. Higher number = higher priority.
+# confidence_score breaks ties within rank.
+SOURCE_FIELD_PRIORITY = {
+    SourceField.BUNK_WITH: 4,  # material parent
+    SourceField.NOT_BUNK_WITH: 3,  # staff exclusion
+    SourceField.BUNKING_NOTES: 2,  # staff observation (tied with internal_notes)
+    SourceField.INTERNAL_NOTES: 2,  # staff observation (tied with bunking_notes)
+    SourceField.SOCIALIZE_WITH: 1,  # immaterial parent
 }
 
 
@@ -182,16 +187,13 @@ class Deduplicator:
                     # they are kept as distinct records for staff review.
                     continue
 
-                # Tiebreak order (descending): SOURCE_PRIORITY, then bunk_with-source
-                # preference (Stage 1 fix for parent age_pref dedupe), then confidence.
-                # SOURCE_PRIORITY dominates first, so the bunk_with bias only changes
-                # outcomes within same-source ties — most commonly parent-vs-parent
-                # age_pref (where bunk_with prose beats the socialize_with checkbox).
+                # Tiebreak: SOURCE_FIELD_PRIORITY (materiality rank), then confidence.
+                # bunk_with > not_bunk_with > bunking_notes/internal_notes (tied) >
+                # socialize_with. Within rank, higher confidence wins.
                 sorted_requests = sorted(
                     group_requests,
                     key=lambda r: (
-                        SOURCE_PRIORITY.get(r.source, 0),
-                        1 if r.source_field == SourceField.BUNK_WITH else 0,
+                        SOURCE_FIELD_PRIORITY.get(r.source_field, 0),
                         r.confidence_score,
                     ),
                     reverse=True,
