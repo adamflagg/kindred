@@ -12,19 +12,21 @@
  * Source: api/schemas/social_graph.py + bunking/graph/scope_filter.py
  *
  * ── Pydantic ↔ TypeScript gotcha ─────────────────────────────────────────────
- * Codegen treats Pydantic fields with a default value as REQUIRED in
- * TypeScript, even though they're omittable on the server side.
- * E.g. `metadata: dict = {}` and `cross_scope: bool = False` both become
- * required keys in the generated type.
+ * `@hey-api/openapi-ts` treats Pydantic fields with a default value as
+ * OPTIONAL in TypeScript (the key may be omitted, and the value type
+ * stays non-nullable). E.g. `cross_scope: bool = False` becomes
+ * `cross_scope?: boolean` and `centrality: float = 0.0` becomes
+ * `centrality?: number`.
  *
- * Practical implication: any code that *constructs* one of these objects
- * (test fixtures, mocks, cached scenarios) must include every defaulted
- * field — TS will not let you omit it. Adding a new defaulted-but-not-
- * `Optional[...]` field to a Pydantic schema is therefore a TS-breaking
- * change for every consumer that builds these shapes by hand.
- *
- * To make a field truly optional in TS, mark it `Optional[T] = None` in
- * Python (then it becomes `T | null` and the key becomes optional).
+ * Practical implications:
+ *   - Code that *reads* these fields should provide a fallback matching
+ *     the Python default (e.g. `node.centrality ?? 0`) — the server
+ *     always populates them, but TS can't know that.
+ *   - Code that *constructs* these objects (test fixtures, mocks) MAY
+ *     omit defaulted keys entirely.
+ *   - To make a field nullable on the wire (key always present, value
+ *     can be null), mark it `Optional[T] = None` in Python — the key
+ *     becomes optional AND the value type becomes `T | null`.
  */
 
 import type {

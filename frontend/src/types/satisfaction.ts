@@ -24,19 +24,28 @@ export type RequestBucket = RequestBucketGen
 export type PerRequestStatus = PerRequestStatusGen
 export type BucketCount = BucketCountGen
 export type SatisfactionFlags = SatisfactionFlagsGen
+
 /**
- * Codegen lowers Python's `dict[RequestBucket, BucketCount]` to an open index
- * signature, which makes every key access `T | undefined`. The Pydantic model
- * enforces that exactly `COUNTED_BUCKETS` (`material_parent`, `staff`) are
- * present at runtime — see `bunking/satisfaction/api_shape.py:CamperSatisfaction`.
- * Narrow `counted_totals` here so consumers don't have to defend against the
- * loose codegen shape on every access.
+ * Counted-bucket totals — the Pydantic model enforces that exactly
+ * `material_parent` and `staff` are present at runtime
+ * (`bunking/satisfaction/api_shape.py:CamperSatisfaction`).
  */
-export type CamperSatisfaction = Omit<CamperSatisfactionGen, 'counted_totals'> & {
-  counted_totals: { material_parent: BucketCount; staff: BucketCount }
+export interface CountedTotals {
+  material_parent: BucketCount
+  staff: BucketCount
 }
 
-export type SatisfactionResponse = Omit<SatisfactionResponseGen, 'campers'> & {
+/**
+ * Codegen lowers Python's `dict[RequestBucket, BucketCount]` to an open index
+ * signature, which makes every key access `T | undefined`. Narrow
+ * `counted_totals` here so consumers don't have to defend against the loose
+ * codegen shape on every access.
+ */
+export interface CamperSatisfaction extends Omit<CamperSatisfactionGen, 'counted_totals'> {
+  counted_totals: CountedTotals
+}
+
+export interface SatisfactionResponse extends Omit<SatisfactionResponseGen, 'campers'> {
   campers: Record<string, CamperSatisfaction>
 }
 

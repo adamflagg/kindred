@@ -14,14 +14,14 @@ import type {
 /**
  * Input node data from API.
  * Type alias for the generated `ApiSocialGraphNode` — eliminates hand-mirroring.
- * Generated from `api/schemas/social_graph.py:SocialGraphNode` via openapi-typescript.
+ * Generated from `api/schemas/social_graph.py:SocialGraphNode` via @hey-api/openapi-ts.
  */
 export type GraphNodeData = ApiSocialGraphNode
 
 /**
  * Input edge data from API.
  * Type alias for the generated `ApiSocialGraphEdge` — eliminates hand-mirroring.
- * Generated from `api/schemas/social_graph.py:SocialGraphEdge` via openapi-typescript.
+ * Generated from `api/schemas/social_graph.py:SocialGraphEdge` via @hey-api/openapi-ts.
  */
 export type GraphEdgeData = ApiSocialGraphEdge
 
@@ -321,7 +321,7 @@ export interface EdgeElement {
  * Returned as a distinct list by the API so we can ghost them visually
  * without polluting the layout's edge weight.
  * Type alias for the generated `ApiCrossScopeEdge` — eliminates hand-mirroring.
- * Generated from `bunking/graph/scope_filter.py:CrossScopeEdge` via openapi-typescript.
+ * Generated from `bunking/graph/scope_filter.py:CrossScopeEdge` via @hey-api/openapi-ts.
  */
 export type CrossScopeEdgeData = ApiCrossScopeEdge
 

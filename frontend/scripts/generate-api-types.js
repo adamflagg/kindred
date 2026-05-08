@@ -72,13 +72,19 @@ if (!existsSync(SCHEMA_PATH)) {
 }
 
 // ── Step 2: Run @hey-api/openapi-ts ───────────────────────────────────────────
-// Plugin set lives in frontend/openapi-ts.config.ts (types-only).
+// Plugin set lives in frontend/openapi-ts.config.ts (types-only). We pass
+// `-f` (the config-file flag) explicitly so the config is found regardless
+// of how this script is invoked — without it, hey-api auto-discovers from
+// cwd, and a future caller that forgets to set cwd=frontend would silently
+// get empty output (no plugins). NB: openapi-ts uses `-c`/`--client` for the
+// HTTP-client name, NOT the config path; the config path is `-f`/`--file`.
 // We override input/output via flags so the lefthook freshness check can
 // target a temp directory.
 console.log('Generating TypeScript types from OpenAPI schema...')
+const HEYAPI_CONFIG = join(FRONTEND_DIR, 'openapi-ts.config.ts')
 const genResult = spawnSync(
   'npx',
-  ['openapi-ts', '--input', SCHEMA_PATH, '--output', OUTPUT_DIR],
+  ['openapi-ts', '-f', HEYAPI_CONFIG, '--input', SCHEMA_PATH, '--output', OUTPUT_DIR],
   { cwd: FRONTEND_DIR, stdio: 'inherit' }
 )
 if (genResult.status !== 0) {

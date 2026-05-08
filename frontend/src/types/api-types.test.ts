@@ -1,5 +1,5 @@
 /**
- * Type-level tests verifying that the generated API types (from openapi-typescript)
+ * Type-level tests verifying that the generated API types (from @hey-api/openapi-ts)
  * match the shapes expected by consumers.
  *
  * These tests use runtime shape assertions (duck-typing) to confirm that:
