@@ -141,17 +141,12 @@ async def post_run_sweep(
     runs against identical data. Returns immediately; child runs poll
     the existing /solver/run/{run_id} endpoint.
     """
-    # Snapshot inputs for session-based sweeps. Scenario-based reuses scenario_id
-    # since the scenario itself is immutable.
+    # Resolve the target session_cm_id (and scenario metadata) before doing any
+    # heavy work or registering with the sweep registry — both the in-flight
+    # guard and snapshotting need this.
     if request.session_cm_id is not None:
         if request.year is None:
             raise HTTPException(status_code=400, detail="year is required for session-based sweeps")
-        try:
-            frozen_input: Any = await snapshot_session_input(
-                pb, session_cm_id=request.session_cm_id, year=request.year, scenario=None
-            )
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to snapshot session input: {e}") from e
         scenario_name = None
         scenario_id = None
         session_cm_id = request.session_cm_id
@@ -161,19 +156,46 @@ async def post_run_sweep(
             raise HTTPException(status_code=400, detail="scenario_id is required when session_cm_id is unset")
         try:
             scenario_record = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, request.scenario_id)
-            scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
-            session_cm_id = int(getattr(scenario_record, "session_cm_id", 0))
-            year = int(getattr(scenario_record, "year", 0))
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to load scenario: {e}") from e
+        except ClientResponseError as e:
+            raise pb_error_to_http(e) from e
+        # Other exceptions intentionally propagate to the global handler (generic 500)
+        # rather than getting downgraded to a misleading 400 with raw error text.
         scenario_id = request.scenario_id
-        # Snapshot includes scenario lock_groups for scenario sweeps
-        try:
-            frozen_input = await snapshot_session_input(
-                pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
+        scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
+        session_cm_id = int(getattr(scenario_record, "session_cm_id", 0))
+        year = int(getattr(scenario_record, "year", 0))
+
+    # Single-flight guard: reject duplicate in-progress sweeps/runs against the
+    # same session or scenario. Mirrors /solver/run and /solver/run-multi-session.
+    for run in solver_runs.values():
+        if run.get("status") not in {"pending", "running"}:
+            continue
+        if run.get("session_cm_id") == session_cm_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"Solver already running for session {session_cm_id}",
+                    "in_progress_run_id": run["id"],
+                },
             )
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to snapshot scenario input: {e}") from e
+        if scenario_id is not None and run.get("scenario") == scenario_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"Sweep already running for scenario {scenario_id}",
+                    "in_progress_run_id": run["id"],
+                },
+            )
+
+    # Snapshot the input. Scenario sweeps include scenario lock_groups; both
+    # paths use the same helper.
+    try:
+        frozen_input: Any = await snapshot_session_input(
+            pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
+        )
+    except ClientResponseError as e:
+        raise pb_error_to_http(e) from e
+    # Other exceptions propagate to the global handler.
 
     sweep_id = f"sweep_{uuid4().hex[:12]}"
     run_ids = [f"run_{uuid4().hex[:12]}" for _ in request.time_budgets]

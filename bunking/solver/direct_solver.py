@@ -755,10 +755,25 @@ class DirectBunkingSolver:
         logger.info(f"Assigned {len(assignments)} campers to {bunk.name}")
         logger.info(f"Satisfied {len(satisfied_requests)} campers' requests")
 
-        # Return output
+        # Minimal stats payload — single-bunk runs bypass CP-SAT, so most
+        # solver-internal fields are None. The keys match _build_stats_dict so
+        # the impact-analysis debug table renders these rows consistently.
+        stats: dict[str, Any] = {
+            "status": "OPTIMAL",
+            "status_code": cp_model.OPTIMAL,
+            "objective_value": None,
+            "solve_time": 0.0,
+            "total_persons": len(self.person_ids),
+            "total_bunks": len(self.bunks),
+            "total_requests": len(self.input.requests),
+            "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
+            "single_bunk_session": True,
+        }
+
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
+            stats=stats,
             analysis={
                 "single_bunk_session": True,
                 "bunk_name": bunk.name,

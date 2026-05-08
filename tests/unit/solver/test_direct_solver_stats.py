@@ -7,9 +7,12 @@ tests, not the other way around.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from ortools.sat.python import cp_model
 
-from bunking.solver.direct_solver import _compute_optimality_gap, _count_constraint_types
+from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput
+from bunking.solver.direct_solver import DirectBunkingSolver, _compute_optimality_gap, _count_constraint_types
 
 
 class TestCountConstraintTypes:
@@ -238,3 +241,63 @@ class TestBuildStatsDict:
         assert stats["best_objective_bound"] is None
         assert stats["num_integer_variables"] is None
         assert stats["optimality_gap"] is None  # bound was None
+
+
+class TestSingleBunkPathStats:
+    """Single-bunk sessions (e.g. AG) take a simplified path that bypasses CP-SAT.
+
+    The new impact-analysis flow persists `solver_runs.stats`; without a stats
+    payload single-bunk runs would appear as empty rows in the debug table.
+    A minimal stats dict with the same shape as the multi-bunk path keeps
+    them consistent — even if many CP-SAT-only fields are None.
+    """
+
+    def _make_input(self, num_persons: int = 3) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="AG-1",
+            capacity=12,
+            gender="Mixed",
+            session_cm_id=500,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M" if i % 2 == 0 else "F",
+                session_cm_id=500,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+
+    def test_single_bunk_solve_populates_stats(self) -> None:
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert isinstance(result.stats, dict)
+        assert result.stats, "single-bunk runs must populate stats so the debug UI is consistent"
+
+    def test_single_bunk_stats_includes_marker(self) -> None:
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.stats.get("single_bunk_session") is True
+
+    def test_single_bunk_stats_includes_persons_and_bunks_counts(self) -> None:
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.stats.get("total_persons") == 3
+        assert result.stats.get("total_bunks") == 1
+
+    def test_single_bunk_stats_status_is_optimal(self) -> None:
+        """Trivial: every camper assigned to the only bunk → 'OPTIMAL'."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.stats.get("status") == "OPTIMAL"

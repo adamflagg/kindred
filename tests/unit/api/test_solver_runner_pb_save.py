@@ -452,3 +452,140 @@ class TestSolverRunnerPocketBaseSave:
         pb_data = create_calls[0][0][0]
         assert pb_data["status"] == "failed"
         assert "started_at" in pb_data
+
+
+class TestFailedRunPersistsDetails:
+    """Failed runs must persist sweep grouping metadata so they appear in the
+    impact-analysis UI alongside their successful siblings — not as orphans.
+    """
+
+    @pytest.fixture
+    def mock_solver_input(self):
+        return DirectSolverInput(persons=[], requests=[], bunks=[])
+
+    def _setup_for_failure(self):
+        mock_runs: dict[str, dict[str, object]] = {}
+        patches = {
+            "fetch_session_data_v2": patch.object(sr_module, "fetch_session_data_v2", new_callable=AsyncMock),
+            "fetch_historical_bunking": patch.object(sr_module, "fetch_historical_bunking", new_callable=AsyncMock),
+            "prepare_direct_solver_input": patch.object(sr_module, "prepare_direct_solver_input"),
+            "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
+            "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
+            "DirectBunkingSolver": patch.object(sr_module, "DirectBunkingSolver"),
+            "PocketBase": patch.object(sr_module, "PocketBase"),
+            "get_settings": patch.object(sr_module, "get_settings"),
+            "solver_runs": patch.object(sr_module, "solver_runs", mock_runs),
+        }
+        return patches, mock_runs
+
+    @pytest.mark.asyncio
+    async def test_failure_path_persists_details_with_sweep_metadata(self, mock_solver_input):
+        """Failed sweep child runs must carry sweep_id + sweep_label + scenario + time_limit_seconds
+        so they group correctly in the impact-analysis sweep view."""
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_solver.solve.side_effect = ValueError("simulated solver failure")
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["sweep_child"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="sweep_child",
+                session_cm_id=222,
+                year=2026,
+                time_limit=180,
+                scenario="scen-X",
+                scenario_name="my-scenario",
+                sweep_id="sweep_abc",
+                sweep_label="post-cleanup",
+            )
+
+        create_calls = mock_pb_instance.collection.return_value.create.call_args_list
+        assert len(create_calls) == 1, "Failure path must persist a PB record"
+        pb_data = create_calls[0][0][0]
+        assert pb_data["status"] == "failed"
+        # Failure record must include details so the failed run groups correctly
+        assert "details" in pb_data, "Failed run must persist details for impact-analysis grouping"
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert details["sweep_id"] == "sweep_abc"
+        assert details["sweep_label"] == "post-cleanup"
+        assert details["scenario_id_at_run"] == "scen-X"
+        assert details["time_limit_seconds"] == 180
+
+    @pytest.mark.asyncio
+    async def test_success_fallback_uses_time_limit_seconds_key(self, mock_solver_input):
+        """When build_run_details fails on the success path, the fallback details
+        must use the canonical 'time_limit_seconds' key — not the legacy 'time_limit'."""
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+            patch.object(sr_module, "build_run_details", side_effect=RuntimeError("tagging boom")),
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_result = MagicMock()
+            mock_result.assignments = []
+            mock_result.stats = {"status": "OPTIMAL"}
+            mock_result.satisfied_requests = {}
+            mock_solver.solve.return_value = mock_result
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["t1"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="t1",
+                session_cm_id=300,
+                year=2026,
+                time_limit=45,
+            )
+
+        pb_data = mock_pb_instance.collection.return_value.create.call_args_list[0][0][0]
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert "time_limit_seconds" in details
+        assert details["time_limit_seconds"] == 45
+        # Legacy key must not coexist — there's no reason to carry both.
+        assert "time_limit" not in details, (
+            "Fallback details must use canonical time_limit_seconds, not the legacy time_limit key"
+        )

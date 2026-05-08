@@ -141,3 +141,118 @@ def test_run_ids_and_time_budgets_must_be_same_length() -> None:
 
     with pytest.raises(ValueError, match="same length"):
         asyncio.run(call())
+
+
+def test_releases_registry_entry_on_length_mismatch() -> None:
+    """Validation failure must release the registry entry — otherwise it leaks forever."""
+    import asyncio
+
+    registry = SweepRegistry()
+    registry.register("sw_leak")
+
+    async def call() -> None:
+        await run_sweep(
+            sweep_id="sw_leak",
+            run_ids=["r1", "r2"],
+            time_budgets=[30],  # mismatch
+            session_cm_id=2,
+            year=2026,
+            scenario=None,
+            scenario_name=None,
+            label=None,
+            registry=registry,
+            frozen_input=MagicMock(),
+        )
+
+    with pytest.raises(ValueError, match="same length"):
+        asyncio.run(call())
+
+    # The registry must NOT still hold the sweep_id after a validation failure.
+    assert "sw_leak" not in registry._sweeps
+
+
+@pytest.mark.asyncio
+async def test_marks_remaining_run_ids_cancelled_when_sweep_cancelled() -> None:
+    """When sweep is cancelled mid-loop, the un-launched pre-created run_ids
+    must be moved out of 'pending' so they don't show as ghosts in the debug UI."""
+    registry = SweepRegistry()
+    registry.register("sw_cancel")
+
+    # Mock solver_runs state pre-populated with all four pending entries
+    # (mirrors what /solver/run-sweep does before scheduling run_sweep).
+    fake_solver_runs: dict[str, dict[str, object]] = {
+        "r1": {"id": "r1", "status": "pending"},
+        "r2": {"id": "r2", "status": "pending"},
+        "r3": {"id": "r3", "status": "pending"},
+        "r4": {"id": "r4", "status": "pending"},
+    }
+
+    async def fake_run(run_id: str, **kwargs: object) -> None:
+        # First child cancels the sweep, marking the rest as orphaned-pending without our fix.
+        if run_id == "r1":
+            registry.cancel("sw_cancel")
+
+    with (
+        patch("api.services.sweep_runner.run_solver_task_v2", side_effect=fake_run),
+        patch("api.services.sweep_runner.solver_runs", fake_solver_runs),
+    ):
+        await run_sweep(
+            sweep_id="sw_cancel",
+            run_ids=["r1", "r2", "r3", "r4"],
+            time_budgets=[30, 60, 180, 300],
+            session_cm_id=2,
+            year=2026,
+            scenario=None,
+            scenario_name=None,
+            label=None,
+            registry=registry,
+            frozen_input=MagicMock(),
+        )
+
+    # r1 ran (its status is updated by run_solver_task_v2, which is mocked,
+    # so we don't assert on r1). r2/r3/r4 must NOT remain "pending".
+    for unstarted in ("r2", "r3", "r4"):
+        assert fake_solver_runs[unstarted]["status"] == "cancelled", (
+            f"{unstarted} should be 'cancelled', got {fake_solver_runs[unstarted]['status']!r}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_marks_remaining_run_ids_failed_when_child_raises() -> None:
+    """When a child run raises, remaining un-launched run_ids must transition
+    out of 'pending' so they don't sit forever in the debug UI."""
+    registry = SweepRegistry()
+    registry.register("sw_err")
+
+    fake_solver_runs: dict[str, dict[str, object]] = {
+        "r1": {"id": "r1", "status": "pending"},
+        "r2": {"id": "r2", "status": "pending"},
+        "r3": {"id": "r3", "status": "pending"},
+    }
+
+    async def fake_run(run_id: str, **kwargs: object) -> None:
+        if run_id == "r2":
+            raise RuntimeError("simulated child crash")
+
+    with (
+        patch("api.services.sweep_runner.run_solver_task_v2", side_effect=fake_run),
+        patch("api.services.sweep_runner.solver_runs", fake_solver_runs),
+    ):
+        with pytest.raises(RuntimeError):
+            await run_sweep(
+                sweep_id="sw_err",
+                run_ids=["r1", "r2", "r3"],
+                time_budgets=[30, 60, 180],
+                session_cm_id=2,
+                year=2026,
+                scenario=None,
+                scenario_name=None,
+                label=None,
+                registry=registry,
+                frozen_input=MagicMock(),
+            )
+
+    # r3 (un-launched) must NOT remain "pending".
+    assert fake_solver_runs["r3"]["status"] == "failed", (
+        f"r3 should be 'failed', got {fake_solver_runs['r3']['status']!r}"
+    )
