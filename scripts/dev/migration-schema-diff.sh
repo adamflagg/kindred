@@ -15,6 +15,21 @@ if [[ $# -ne 2 ]]; then
   exit 2
 fi
 
+# Normalize harness errors (missing tools, jq < 1.6, dump failures) to exit 2.
+for cmd in sqlite3 jq diff; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "error: required command not found: $cmd" >&2
+    exit 2
+  fi
+done
+
+# walk/1 was added in jq 1.6 (2019). Older jq either lacks it or silently
+# emits wrong output, so fail loudly with the documented harness exit code.
+if ! echo '{}' | jq -e 'walk(.)' >/dev/null 2>&1; then
+  echo "error: jq lacks walk/1 (need jq >= 1.6); found: $(jq --version 2>&1)" >&2
+  exit 2
+fi
+
 DB_A="$1/data.db"
 DB_B="$2/data.db"
 
@@ -51,7 +66,7 @@ ORDER BY id;
 
 DUMP_A=$(mktemp -t pb-dump-a-XXXX.json)
 DUMP_B=$(mktemp -t pb-dump-b-XXXX.json)
-trap 'rm -f "$DUMP_A" "$DUMP_B"' EXIT
+trap 'rm -f "$DUMP_A" "$DUMP_B"' EXIT INT TERM
 
 # Strip auto-generated secret fields (per-DB-random token signing keys
 # nested inside collection options like authToken.secret, fileToken.secret,
@@ -60,13 +75,28 @@ trap 'rm -f "$DUMP_A" "$DUMP_B"' EXIT
 # source between independently-applied scratch DBs.
 SCRUB_FILTER='walk(if type == "object" and has("secret") then .secret = "<scrubbed>" else . end)'
 
-sqlite3 "$DB_A" "$DUMP_SQL" | jq -S "$SCRUB_FILTER" > "$DUMP_A"
-sqlite3 "$DB_B" "$DUMP_SQL" | jq -S "$SCRUB_FILTER" > "$DUMP_B"
+# PIPESTATUS captures the per-stage exit code for each pipeline. Any non-zero
+# stage (sqlite3 dump failure, jq filter error) is a harness error → exit 2.
+dump() {
+  local label="$1" db="$2" out="$3"
+  sqlite3 "$db" "$DUMP_SQL" | jq -S "$SCRUB_FILTER" > "$out"
+  local pipe=("${PIPESTATUS[@]}")
+  if [[ "${pipe[0]}" -ne 0 || "${pipe[1]}" -ne 0 ]]; then
+    echo "error: failed to dump/normalize schema for $label (sqlite3=${pipe[0]} jq=${pipe[1]})" >&2
+    return 2
+  fi
+}
+dump A "$DB_A" "$DUMP_A" || exit 2
+dump B "$DB_B" "$DUMP_B" || exit 2
 
-if diff -u "$DUMP_A" "$DUMP_B"; then
-  echo "schemas match"
-  exit 0
-else
-  echo "schemas differ (above is unified diff: < a / > b)"
-  exit 1
-fi
+# diff exits 0 (match), 1 (differ), or >=2 (trouble — e.g. unreadable file).
+# Map only 0/1 to the documented contract; anything else → 2.
+set +e
+diff -u "$DUMP_A" "$DUMP_B"
+diff_rc=$?
+set -e
+case "$diff_rc" in
+  0) echo "schemas match"; exit 0 ;;
+  1) echo "schemas differ (above is unified diff: < a / > b)"; exit 1 ;;
+  *) echo "error: diff exited $diff_rc" >&2; exit 2 ;;
+esac

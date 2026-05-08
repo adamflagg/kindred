@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Test for migration-schema-diff.sh
-# Verifies: identical schemas → exit 0; differing schemas → exit 1;
-# created/updated drift does NOT cause a false positive.
+# Verifies the documented exit contract:
+#   0 — schemas match
+#   1 — schemas differ
+#   2 — harness error (missing tool, missing input, etc.)
+# Plus: created/updated/secret drift do NOT cause false positives.
 
 set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -13,7 +16,7 @@ if [[ ! -x "$DIFF_SCRIPT" ]]; then
 fi
 
 SCRATCH=$(mktemp -d -t pb-diff-test-XXXX)
-trap 'rm -rf "$SCRATCH"' EXIT
+trap 'rm -rf "$SCRATCH"' EXIT INT TERM
 
 mkdir -p "$SCRATCH/db_a" "$SCRATCH/db_b"
 sqlite3 "$SCRATCH/db_a/data.db" <<'SQL'
@@ -49,11 +52,15 @@ fi
 echo
 echo "=== TEST 2: differing DBs should exit 1 ==="
 sqlite3 "$SCRATCH/db_b/data.db" "UPDATE _collections SET fields = '[{\"name\":\"x\",\"type\":\"number\"}]' WHERE name = 'foo';"
-if "$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b"; then
-  echo "FAIL: differing DBs returned 0"
-  exit 1
+set +e
+"$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -eq 1 ]]; then
+  echo "PASS: differing DBs returned 1"
 else
-  echo "PASS: differing DBs returned non-zero"
+  echo "FAIL: differing DBs expected exit 1, got $rc"
+  exit 1
 fi
 
 echo
@@ -85,11 +92,50 @@ echo "=== TEST 5: real options drift (e.g. duration change) SHOULD cause failure
 cp "$SCRATCH/db_a/data.db" "$SCRATCH/db_b/data.db"
 sqlite3 "$SCRATCH/db_a/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":86400,\"secret\":\"X\"}}' WHERE name = 'foo';"
 sqlite3 "$SCRATCH/db_b/data.db" "UPDATE _collections SET options = '{\"authToken\":{\"duration\":99999,\"secret\":\"X\"}}' WHERE name = 'foo';"
-if "$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b"; then
-  echo "FAIL: real options drift NOT detected"
-  exit 1
+set +e
+"$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -eq 1 ]]; then
+  echo "PASS: real options drift detected even with secret-stripping (exit 1)"
 else
-  echo "PASS: real options drift detected even with secret-stripping"
+  echo "FAIL: real options drift expected exit 1, got $rc"
+  exit 1
+fi
+
+echo
+echo "=== TEST 6: missing input file should exit 2 (harness error) ==="
+set +e
+"$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/nonexistent_dir" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -eq 2 ]]; then
+  echo "PASS: missing input → exit 2"
+else
+  echo "FAIL: missing input expected exit 2, got $rc"
+  exit 1
+fi
+
+echo
+echo "=== TEST 7: missing required dep (sqlite3) should exit 2 (harness error) ==="
+# Sandbox PATH with bash + jq + diff but NOT sqlite3, then invoke the script.
+# This proves the upfront command -v checks normalize tool absence to rc=2
+# instead of leaking 127 from set -e or exit 1 from the caller's diff branch.
+SANDBOX_BIN=$(mktemp -d -t pb-diff-sandbox-XXXX)
+trap 'rm -rf "$SCRATCH" "$SANDBOX_BIN"' EXIT INT TERM
+for tool in bash jq diff mktemp rm cat env mkdir grep sed awk dirname basename type command; do
+  src="$(command -v "$tool" 2>/dev/null || true)"
+  [[ -n "$src" ]] && ln -sf "$src" "$SANDBOX_BIN/$tool"
+done
+set +e
+PATH="$SANDBOX_BIN" "$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b" >/dev/null 2>&1
+rc=$?
+set -e
+if [[ $rc -eq 2 ]]; then
+  echo "PASS: missing sqlite3 → exit 2"
+else
+  echo "FAIL: missing sqlite3 expected exit 2, got $rc"
+  exit 1
 fi
 
 echo
