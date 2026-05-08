@@ -437,6 +437,27 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
     expect(screen.queryByText('P')).toBeNull()
   })
 
+  it('Stage 4 (#1142): renders S badge from source_field alone, no source key', () => {
+    // After dropping the bunk_requests.source column, fixtures must derive
+    // staff/family from source_field via safeSourceFromField — no fallback to
+    // a `source` key that no longer exists on the row.
+    const ageReq = makeRequest({
+      id: 'stage4-staff',
+      request_type: 'age_preference',
+      source_field: 'bunking_notes',
+      // intentionally NO `source` key — column is dropped
+      age_preference_target: 'younger',
+    })
+    renderPanelWith({
+      allBunkRequests: [],
+      agePreferenceRequests: [ageReq],
+      satisfactionData: {},
+      camperSatisfaction: emptyCamperSatisfaction(12345),
+    })
+    expect(screen.getByText('S')).toBeInTheDocument()
+    expect(screen.queryByText('P')).toBeNull()
+  })
+
   it('centralized bucket still wins when present (regression guard for #1159)', () => {
     // When per_request entry exists, it must override the source_field fallback.
     // This is the inverse of the fallback — pin that the bucket path remains
