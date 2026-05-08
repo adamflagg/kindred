@@ -105,13 +105,8 @@ migrate((app) => {
       display_order: 2,
       expanded_by_default: false
     },
-    {
-      section_key: "cabin-capacity",
-      title: "Cabin Capacity Rules",
-      description: "Configure cabin size limits and overflow handling",
-      display_order: 3,
-      expanded_by_default: false
-    },
+    // section_key: "cabin-capacity" removed in Phase 2 cleanup (constants in
+    // bunking/solver/constants.py instead).
     {
       section_key: "age-grade",
       title: "Age & Grade Policies",

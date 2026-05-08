@@ -172,11 +172,8 @@ migrate((app) => {
     'constraint.must_satisfy_one.ignore_impossible_requests': 'Ignore Out-of-Session Requests',
     'constraint.must_satisfy_one.penalty': 'Request Satisfaction Penalty',
 
-    // Constraint Settings - Cabin Capacity
-    'constraint.cabin_capacity.mode': 'Cabin Capacity Mode',
-    'constraint.cabin_capacity.max': 'Maximum Cabin Size',
-    'constraint.cabin_capacity.standard': 'Standard Cabin Size',
-    'constraint.cabin_capacity.penalty': 'Over-Capacity Penalty',
+    // Constraint Settings - Cabin Capacity removed in Phase 2 cleanup
+    // (collapsed to bunking/solver/constants.py).
 
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Max Grade Spread',
@@ -246,11 +243,7 @@ migrate((app) => {
     'constraint.must_satisfy_one.ignore_impossible_requests': 'Ignore requests for campers not attending the same session',
     'constraint.must_satisfy_one.penalty': 'How heavily the optimizer penalizes leaving a camper without any requests fulfilled. Higher = tries harder to satisfy everyone.',
 
-    // Constraint Settings - Cabin Capacity
-    'constraint.cabin_capacity.mode': 'Hard constraint prevents exceeding, soft adds penalty',
-    'constraint.cabin_capacity.max': 'Maximum allowed campers per cabin (with override)',
-    'constraint.cabin_capacity.standard': 'Standard cabin size for planning',
-    'constraint.cabin_capacity.penalty': 'Penalty weight for exceeding capacity (soft mode only)',
+    // Constraint Settings - Cabin Capacity removed in Phase 2 cleanup.
 
     // Constraint Settings - Age & Grade (unified spread limits)
     'spread.max_grade': 'Maximum grade difference allowed in bunks and bunk requests (e.g., 2 means 6th and 7th grade only)',
@@ -321,11 +314,8 @@ migrate((app) => {
     'constraint.must_satisfy_one.ignore_impossible_requests': 'core-constraints',
     'constraint.must_satisfy_one.penalty': 'core-constraints',
 
-    // Cabin Capacity
-    'constraint.cabin_capacity.mode': 'cabin-capacity',
-    'constraint.cabin_capacity.max': 'cabin-capacity',
-    'constraint.cabin_capacity.standard': 'cabin-capacity',
-    'constraint.cabin_capacity.penalty': 'cabin-capacity',
+    // Cabin Capacity section removed in Phase 2 cleanup (constants in
+    // bunking/solver/constants.py instead).
 
     // Age & Grade (unified spread limits)
     'spread.max_grade': 'age-grade',
@@ -789,18 +779,6 @@ migrate((app) => {
       min: 0,
       max: 10000
     },
-    "constraint.cabin_capacity.max": {
-      value: 14,
-      description: "Maximum cabin capacity (with override)",
-      min: 8,
-      max: 16
-    },
-    "constraint.cabin_capacity.standard": {
-      value: 12,
-      description: "Standard cabin capacity",
-      min: 8,
-      max: 16
-    },
     "constraint.age_grade_flow.weight": {
       value: 300,
       description: "Weight for age-grade flow constraint",
@@ -812,16 +790,6 @@ migrate((app) => {
       description: "Weight for grade cohesion in cabins",
       min: 0,
       max: 100
-    },
-    "constraint.cabin_capacity.mode": {
-      value: "hard",
-      description: "Cabin capacity constraint mode (hard/soft)"
-    },
-    "constraint.cabin_capacity.penalty": {
-      value: 50000,
-      description: "Penalty for cabin capacity violations",
-      min: 0,
-      max: 100000
     },
     "constraint.grade_spread.mode": {
       value: "soft",

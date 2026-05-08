@@ -24,7 +24,7 @@ import type {
   CampSessionsResponse,
   BunksResponse,
 } from '../types/pocketbase-types'
-import { CampSessionsSessionTypeOptions } from '../types/pocketbase-types'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 export interface BunkStaffInfo {
   name: string
@@ -110,7 +110,7 @@ export function useBunkStaff(year: number) {
 
         // Normalize AG session names to parent session names
         // so map keys match retention data (which merges AG into parent)
-        if (session?.session_type === CampSessionsSessionTypeOptions.ag && session.parent_id) {
+        if (session && isAgSession(session) && session.parent_id) {
           const parentName = sessionNameByCmId.get(session.parent_id)
           if (parentName) {
             sessionName = parentName

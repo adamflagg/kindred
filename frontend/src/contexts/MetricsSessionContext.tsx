@@ -32,6 +32,7 @@ import {
   type DurationCategory,
   DURATION_CATEGORIES,
 } from '../utils/sessionUtils'
+import { isQuestSession } from '../utils/sessionTypePredicates'
 
 const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'
@@ -120,11 +121,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
 
   // Split sessions into camp and quest groups
   const campSessions = useMemo(() => {
-    return sortSessionsByDate(sessions.filter((s) => s.session_type !== 'quest'))
+    return sortSessionsByDate(sessions.filter((s) => !isQuestSession(s)))
   }, [sessions])
 
   const questSessions = useMemo(() => {
-    return sortSessionsByDate(sessions.filter((s) => s.session_type === 'quest'))
+    return sortSessionsByDate(sessions.filter(isQuestSession))
   }, [sessions])
 
   // Group camp sessions by duration for dropdown

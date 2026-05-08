@@ -3,6 +3,7 @@
  */
 
 import type { Session } from '../types/app-types'
+import { isMainOrEmbedded, isQuestSession } from './sessionTypePredicates'
 
 // Map session names to friendly URL segments
 const SESSION_NAME_TO_URL: Record<string, string> = {
@@ -120,7 +121,7 @@ export function sortSessionsByDate<T extends { name: string; start_date: string 
 export function filterSelectableSessions<T extends { session_type?: string | null }>(
   sessions: T[]
 ): T[] {
-  return sessions.filter((s) => s.session_type === 'main' || s.session_type === 'embedded')
+  return sessions.filter(isMainOrEmbedded)
 }
 
 /**
@@ -241,8 +242,8 @@ export function buildSessionTypeLookup(
 export function sortSessionsCampThenQuest<
   T extends { name: string; session_type: string; start_date: string },
 >(sessions: T[]): T[] {
-  const camp = sessions.filter((s) => s.session_type !== 'quest')
-  const quest = sessions.filter((s) => s.session_type === 'quest')
+  const camp = sessions.filter((s) => !isQuestSession(s))
+  const quest = sessions.filter(isQuestSession)
 
   const sortedCamp = sortSessionsByDate(camp)
   const sortedQuest = sortSessionsByDate(quest)
@@ -338,7 +339,7 @@ export function groupSessionsByDuration<T extends SessionWithDates>(
   const groups = new Map<DurationCategory, T[]>()
 
   // Filter to camp sessions only (exclude quest)
-  const campSessions = sessions.filter((s) => s.session_type !== 'quest')
+  const campSessions = sessions.filter((s) => !isQuestSession(s))
 
   for (const session of campSessions) {
     const category = getSessionLengthCategory(session.start_date, session.end_date)

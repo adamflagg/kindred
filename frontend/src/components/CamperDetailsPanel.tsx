@@ -29,6 +29,7 @@ import {
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
 import { buildSummerSessionTypeFilter } from '../constants/sessionTypes'
+import { isAtCampSession } from '../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -387,12 +388,11 @@ export default function CamperDetailsPanel({
         sort: '-year',
       })
 
-      const allowedTypes = ['main', 'ag', 'embedded', 'taste']
       return assignments
         .filter((record) => {
           const expanded = record.expand as ExpandedAssignment | undefined
-          const sessionType = expanded?.session?.session_type
-          return sessionType && allowedTypes.includes(sessionType)
+          const session = expanded?.session
+          return session ? isAtCampSession(session) : false
         })
         .map((record) => {
           const expanded = record.expand as ExpandedAssignment | undefined

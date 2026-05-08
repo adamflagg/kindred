@@ -26,9 +26,11 @@ const LockGroupsHub = lazy(() => import('./LockGroupsHub'))
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import { DEFAULT_BUNK_CAPACITY, MAX_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -53,7 +55,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     selectedArea,
     onCamperMove,
     isProductionMode = false,
-    defaultCapacity = 12,
+    defaultCapacity = DEFAULT_BUNK_CAPACITY,
   } = props
   // props.sessionId and props.onAreaChange are available if needed later
   const [, setActiveId] = useState<string | null>(null)
@@ -228,12 +230,12 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       // and the AG campers are included from AG sessions
       if (selectedArea === 'all-gender') {
         // Only show campers from AG sessions (any gender allowed in AG)
-        return camper.expand?.session?.session_type === 'ag'
+        return camper.expand?.session ? isAgSession(camper.expand.session) : false
       }
 
       // For boys/girls areas in main or embedded sessions
       // AG session campers should NOT appear in boys/girls areas
-      const isFromAGSession = camper.expand?.session?.session_type === 'ag'
+      const isFromAGSession = camper.expand?.session ? isAgSession(camper.expand.session) : false
 
       if (isFromAGSession) {
         // AG campers should only appear in AG area, not in boys/girls areas
@@ -381,7 +383,9 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
 
       if (targetBunk && sourceCamper) {
         const bunkGender = targetBunk.gender.toLowerCase()
-        const isFromAGSession = sourceCamper.expand?.session?.session_type === 'ag'
+        const isFromAGSession = sourceCamper.expand?.session
+          ? isAgSession(sourceCamper.expand.session)
+          : false
 
         let isValidGender = true
 
@@ -406,25 +410,30 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       }
     }
 
-    // Check capacity (allow up to 14, but warn at 12)
+    // Check capacity: solver hard-caps at DEFAULT_BUNK_CAPACITY; staff manual
+    // drag is allowed up to MAX_BUNK_CAPACITY by judgment call (warn at the
+    // standard, block at the max).
     if (targetBunkId) {
       const targetBunk = displayedBunks.find((b) => b.id === targetBunkId)
-      if (targetBunk && targetBunk.occupancy >= 14) {
+      if (targetBunk && targetBunk.occupancy >= MAX_BUNK_CAPACITY) {
         const sourceCamper = campers.find((c) => c.id === camperId)
         if (sourceCamper?.assigned_bunk !== targetBunkId) {
-          toast.error('Target bunk has reached maximum capacity (14 campers)')
+          toast.error(`Target bunk has reached maximum capacity (${MAX_BUNK_CAPACITY} campers)`)
           return
         }
       } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity ?? defaultCapacity)) {
         // Still allow move but show warning
         const sourceCamper = campers.find((c) => c.id === camperId)
         if (sourceCamper?.assigned_bunk !== targetBunkId) {
-          toast('⚠️ Warning: Bunk will exceed standard capacity (12 campers)', {
-            style: {
-              background: '#FEF3C7',
-              color: '#92400E',
-            },
-          })
+          toast(
+            `⚠️ Warning: Bunk will exceed standard capacity (${DEFAULT_BUNK_CAPACITY} campers)`,
+            {
+              style: {
+                background: '#FEF3C7',
+                color: '#92400E',
+              },
+            }
+          )
         }
       }
     }

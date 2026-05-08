@@ -8,6 +8,7 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { useAdminSessions } from '../../hooks/useAdminSessions'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
+import { isQuestSession, isAgSession } from '../../utils/sessionTypePredicates'
 
 interface GradeConfig {
   min_grade: number | null
@@ -287,9 +288,9 @@ export function SessionConfigTable() {
     )
   }
 
-  const mainRows = rows.filter((r) => r.session_type !== 'quest' && r.session_type !== 'ag')
-  const questRows = rows.filter((r) => r.session_type === 'quest')
-  const agRows = rows.filter((r) => r.session_type === 'ag')
+  const mainRows = rows.filter((r) => !isQuestSession(r) && !isAgSession(r))
+  const questRows = rows.filter(isQuestSession)
+  const agRows = rows.filter(isAgSession)
 
   const renderRow = (row: SessionRow) => (
     <tr key={row.cm_id} className="border-border border-b">
