@@ -53,6 +53,10 @@ describe('SectionCard object-value guard', () => {
     // Should NOT render the raw object toString representation
     expect(screen.queryByText(/\[object Object\]/i)).toBeNull()
 
+    // The entire row should be omitted — return null short-circuits the row description too
+    // (section.title appears in the header, so use item.description which is row-specific)
+    expect(screen.queryByText('A test config')).toBeNull()
+
     // Should have warned with the config key (and only the key — no value, to avoid leaking)
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('budget.2026.session_1344559'))
 
@@ -76,6 +80,9 @@ describe('SectionCard object-value guard', () => {
 
     // No warning for valid primitive values
     expect(consoleSpy).not.toHaveBeenCalled()
+
+    // Positive assertion: the row description is visible to users (row-specific text)
+    expect(screen.getByText('A test config')).toBeVisible()
     consoleSpy.mockRestore()
   })
 })
