@@ -420,7 +420,6 @@ class OpenAIProvider(AIProvider):
                 target_name=ai_req.target_name,
                 age_preference=None,
                 source_field=raw_field,
-                source=self._map_source_type(ai_req.source_type),
                 confidence=self._calculate_confidence(ai_req),
                 csv_position=ai_req.list_position + 1,  # Convert 0-based to 1-based
                 metadata=request_metadata,

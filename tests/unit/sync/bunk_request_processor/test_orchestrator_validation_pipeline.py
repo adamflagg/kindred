@@ -16,7 +16,6 @@ import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -45,7 +44,6 @@ def _create_bunk_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
-    source: RequestSource = RequestSource.FAMILY,
     priority: int = 3,
     source_field: str = "bunk_with",
 ) -> BunkRequest:
@@ -57,7 +55,6 @@ def _create_bunk_request(
         session_cm_id=session_cm_id,
         priority=priority,
         confidence_score=confidence,
-        source=source,
         source_field=source_field,
         csv_position=1,
         year=2025,
@@ -168,19 +165,16 @@ class TestOrchestratorDeduplication:
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=200,
-                source=RequestSource.FAMILY,
                 confidence=0.90,
             ),
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=200,
-                source=RequestSource.FAMILY,  # Same source - will dedupe
                 confidence=0.80,
             ),
             _create_bunk_request(
                 requester_cm_id=300,
                 requested_cm_id=400,
-                source=RequestSource.FAMILY,
                 confidence=0.95,
             ),
         ]
@@ -209,9 +203,9 @@ class TestOrchestratorDeduplication:
 
         # Create 3 same-source duplicates of the same request
         requests = [
-            _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.FAMILY),
-            _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.FAMILY),
-            _create_bunk_request(requester_cm_id=100, requested_cm_id=200, source=RequestSource.FAMILY),
+            _create_bunk_request(requester_cm_id=100, requested_cm_id=200),
+            _create_bunk_request(requester_cm_id=100, requested_cm_id=200),
+            _create_bunk_request(requester_cm_id=100, requested_cm_id=200),
         ]
 
         orchestrator._apply_validation_pipeline(requests)  # returns (list, set) tuple
@@ -283,13 +277,11 @@ class TestOrchestratorValidationPipelineOrder:
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=100,  # Self-ref!
-                source=RequestSource.FAMILY,
                 confidence=1.0,
             ),
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=200,  # Valid
-                source=RequestSource.STAFF,
                 confidence=0.70,
             ),
         ]
@@ -333,8 +325,8 @@ class TestOrchestratorValidationPipelineIntegration:
             # Self-ref (should be marked for review, not filtered)
             _create_bunk_request(requester_cm_id=100, requested_cm_id=100),
             # Duplicate pair (should keep one)
-            _create_bunk_request(requester_cm_id=200, requested_cm_id=300, source=RequestSource.FAMILY),
-            _create_bunk_request(requester_cm_id=200, requested_cm_id=300, source=RequestSource.STAFF),
+            _create_bunk_request(requester_cm_id=200, requested_cm_id=300),
+            _create_bunk_request(requester_cm_id=200, requested_cm_id=300),
             # Reciprocal pair (kept but NOT marked here — reciprocal detection
             # now happens in batch_signals stage before request building)
             _create_bunk_request(requester_cm_id=400, requested_cm_id=500),
@@ -394,7 +386,6 @@ class TestDedupTraceKeyCollision:
         req_a = _create_bunk_request(
             requester_cm_id=100,
             requested_cm_id=200,
-            source=RequestSource.FAMILY,
             confidence=0.95,
         )
         req_a.requested_name = "Emma Johnson"
@@ -402,7 +393,6 @@ class TestDedupTraceKeyCollision:
         req_b = _create_bunk_request(
             requester_cm_id=100,
             requested_cm_id=201,
-            source=RequestSource.FAMILY,
             confidence=0.90,
         )
         req_b.requested_name = "Emma Johnson"
@@ -441,7 +431,6 @@ class TestDedupTraceKeyCollision:
         dup_1 = _create_bunk_request(
             requester_cm_id=100,
             requested_cm_id=200,
-            source=RequestSource.FAMILY,
             confidence=0.95,
         )
         dup_1.requested_name = "Emma Johnson"
@@ -449,7 +438,6 @@ class TestDedupTraceKeyCollision:
         dup_2 = _create_bunk_request(
             requester_cm_id=100,
             requested_cm_id=200,
-            source=RequestSource.FAMILY,
             confidence=0.80,
         )
         dup_2.requested_name = "Emma Johnson"
@@ -458,7 +446,6 @@ class TestDedupTraceKeyCollision:
         distinct = _create_bunk_request(
             requester_cm_id=100,
             requested_cm_id=201,
-            source=RequestSource.FAMILY,
             confidence=0.90,
         )
         distinct.requested_name = "Emma Johnson"

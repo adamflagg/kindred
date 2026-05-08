@@ -143,7 +143,6 @@ class RequestBuilder:
             session_cm_id=resolution_info.get("session_cm_id", 0),
             priority=priority,
             confidence_score=resolution_info.get("confidence", parsed_req.confidence),
-            source=parsed_req.source,
             source_field=parsed_req.source_field,
             csv_position=parsed_req.csv_position,
             year=self.year,

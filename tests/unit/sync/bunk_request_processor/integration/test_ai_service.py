@@ -16,7 +16,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.integration.ai_service import (
@@ -76,7 +75,6 @@ class TestAIService:
                     target_name="Mike Johnson",
                     age_preference=None,
                     source_field="parent",
-                    source=RequestSource.FAMILY,
                     confidence=0.95,
                     csv_position=0,
                     metadata={},
@@ -127,7 +125,6 @@ class TestAIService:
                     target_name="Friend",
                     age_preference=None,
                     source_field="parent",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={},
@@ -167,7 +164,6 @@ class TestAIService:
                         target_name="Mike Johnson",
                         age_preference=None,
                         source_field="parent",
-                        source=RequestSource.FAMILY,
                         confidence=0.95,
                         csv_position=0,
                         metadata={},
@@ -183,7 +179,6 @@ class TestAIService:
                         target_name="Tom Smith",
                         age_preference=None,
                         source_field="parent",
-                        source=RequestSource.FAMILY,
                         confidence=0.90,
                         csv_position=0,
                         metadata={},
@@ -199,7 +194,6 @@ class TestAIService:
                         target_name="Sarah Wilson",
                         age_preference=None,
                         source_field="parent",
-                        source=RequestSource.FAMILY,
                         confidence=0.85,
                         csv_position=0,
                         metadata={},
@@ -210,7 +204,6 @@ class TestAIService:
                         target_name="Emma Davis",
                         age_preference=None,
                         source_field="parent",
-                        source=RequestSource.FAMILY,
                         confidence=0.85,
                         csv_position=1,
                         metadata={},

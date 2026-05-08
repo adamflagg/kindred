@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -28,7 +27,6 @@ def _make_request() -> BunkRequest:
         session_cm_id=2025001,
         priority=4,
         confidence_score=0.9,
-        source=RequestSource.FAMILY,  # still required pre-Stage-5; dropped in Task 6
         source_field="bunk_with",
         csv_position=0,
         year=2026,

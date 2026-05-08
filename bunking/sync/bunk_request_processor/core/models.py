@@ -283,7 +283,6 @@ class ParsedRequest:
     target_name: str | None  # For bunk_with/not_bunk_with
     age_preference: AgePreference | None  # For age_preference type
     source_field: str  # Which CSV field it came from
-    source: RequestSource
     confidence: float
     csv_position: int  # Position in the CSV field (0-based)
     metadata: dict[str, Any]
@@ -324,7 +323,6 @@ class BunkRequest:
     session_cm_id: int  # EXACT session (not family)
     priority: int  # 1-4 scale
     confidence_score: float
-    source: RequestSource
     source_field: str  # Which CSV field it came from
     csv_position: int  # Position in the field
     year: int

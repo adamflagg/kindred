@@ -211,7 +211,12 @@ class TestParsedRequest:
 
     def test_parsed_request_bunk_with(self):
         """Test creating a bunk_with parsed request"""
-        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.core.models import (
+            ParsedRequest,
+            RequestSource,
+            RequestType,
+            source_from_field,
+        )
 
         request = ParsedRequest(
             raw_text="Johnny Smith",
@@ -219,7 +224,6 @@ class TestParsedRequest:
             target_name="Johnny Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.95,
             csv_position=0,
             metadata={"ai_model": "gpt-4"},
@@ -229,7 +233,7 @@ class TestParsedRequest:
         assert request.request_type == RequestType.BUNK_WITH
         assert request.target_name == "Johnny Smith"
         assert request.age_preference is None
-        assert request.source == RequestSource.FAMILY
+        assert source_from_field(request.source_field) == RequestSource.FAMILY
         assert request.csv_position == 0
 
     def test_parsed_request_age_preference(self):
@@ -237,7 +241,6 @@ class TestParsedRequest:
         from bunking.sync.bunk_request_processor.core.models import (
             AgePreference,
             ParsedRequest,
-            RequestSource,
             RequestType,
         )
 
@@ -247,7 +250,6 @@ class TestParsedRequest:
             target_name=None,
             age_preference=AgePreference.OLDER,
             source_field="ret_parent_socialize_with_best",
-            source=RequestSource.FAMILY,
             confidence=1.0,
             csv_position=0,
             metadata={},
@@ -266,7 +268,6 @@ class TestBunkRequest:
         """Test creating a complete BunkRequest"""
         from bunking.sync.bunk_request_processor.core.models import (
             BunkRequest,
-            RequestSource,
             RequestStatus,
             RequestType,
         )
@@ -278,7 +279,6 @@ class TestBunkRequest:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -298,7 +298,6 @@ class TestBunkRequest:
         """Test creating an age preference request (no requested_cm_id)"""
         from bunking.sync.bunk_request_processor.core.models import (
             BunkRequest,
-            RequestSource,
             RequestStatus,
             RequestType,
         )
@@ -310,7 +309,6 @@ class TestBunkRequest:
             session_cm_id=1000002,
             priority=1,
             confidence_score=1.0,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -326,7 +324,6 @@ class TestBunkRequest:
         """Test creating a LAST_YEAR_BUNKMATES placeholder"""
         from bunking.sync.bunk_request_processor.core.models import (
             BunkRequest,
-            RequestSource,
             RequestStatus,
             RequestType,
         )
@@ -338,7 +335,6 @@ class TestBunkRequest:
             session_cm_id=1000002,
             priority=4,
             confidence_score=1.0,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,

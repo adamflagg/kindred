@@ -23,7 +23,6 @@ from bunking.sync.bunk_request_processor.core.models import (
     ParseRequest,
     ParseResult,
     Person,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -85,7 +84,6 @@ def _create_parsed_request(
         target_name=target_name,
         age_preference=age_preference,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence=confidence,
         csv_position=0,
         metadata={},
@@ -924,7 +922,6 @@ class TestAICandidateScoringMonolithParity:
             target_name=target_name,
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.8,
             csv_position=0,
             metadata={"target_person_ids": candidate_ids or []},
@@ -1781,7 +1778,6 @@ class TestAICandidateScoringFactors:
             target_name=target_name,
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.8,
             csv_position=0,
             metadata={"target_person_ids": candidate_ids},

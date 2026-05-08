@@ -9,7 +9,6 @@ from __future__ import annotations
 from bunking.sync.bunk_request_processor.core.models import (
     AgePreference,
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
@@ -26,7 +25,6 @@ def _make_age_pref_request(
         target_name="",
         age_preference=age_preference,
         source_field="socialize_with",
-        source=RequestSource.FAMILY,
         confidence=0.5,
         csv_position=0,
         metadata={"parse_notes": parse_notes, "ai_reasoning": ai_reasoning},
@@ -86,7 +84,6 @@ class TestAgePreferenceDirectionMapping:
             target_name="Emma Johnson",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={"parse_notes": "older"},

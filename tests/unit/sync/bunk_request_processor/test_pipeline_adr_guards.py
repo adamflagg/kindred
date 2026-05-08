@@ -15,7 +15,6 @@ from unittest.mock import Mock
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseResult,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -41,7 +40,6 @@ def _make_parsed_request(
         target_name=target_name,
         age_preference=None,
         source_field=source_field,
-        source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=csv_position,
         metadata={},

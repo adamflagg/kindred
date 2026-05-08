@@ -342,7 +342,7 @@ class TestReasoningEffort:
     @pytest.mark.asyncio
     async def test_disambiguate_passes_medium_reasoning(self, mock_openai_client):
         """Phase 3 disambiguate passes reasoning={'effort': 'medium'} to responses.parse."""
-        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestType
         from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
 
         mock_openai_client.responses.parse.return_value = self._mock_response(
@@ -363,7 +363,6 @@ class TestReasoningEffort:
                 target_name="Emma",
                 age_preference=None,
                 source_field="bunk_with",
-                source=RequestSource.FAMILY,
                 confidence=0.5,
                 csv_position=1,
                 metadata={},
@@ -509,7 +508,7 @@ class TestReasoningOutputParsing:
     @pytest.mark.asyncio
     async def test_disambiguate_with_reasoning_output_items(self, mock_openai_client):
         """Disambiguation also works when reasoning items precede the message."""
-        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestType
         from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
 
         reasoning_item = MagicMock(spec=[])
@@ -540,7 +539,6 @@ class TestReasoningOutputParsing:
                 target_name="Emma",
                 age_preference=None,
                 source_field="bunk_with",
-                source=RequestSource.FAMILY,
                 confidence=0.5,
                 csv_position=1,
                 metadata={},
@@ -632,7 +630,7 @@ class TestReasoningOutputParsing:
     @pytest.mark.asyncio
     async def test_reasoning_summary_captured_in_disambiguate_metadata(self, mock_openai_client):
         """Disambiguation also captures structured reasoning summaries."""
-        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestType
         from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
 
         reasoning_item = MagicMock(spec=[])
@@ -667,7 +665,6 @@ class TestReasoningOutputParsing:
                 target_name="Emma",
                 age_preference=None,
                 source_field="bunk_with",
-                source=RequestSource.FAMILY,
                 confidence=0.5,
                 csv_position=1,
                 metadata={},
@@ -823,7 +820,7 @@ class TestOpenAIProviderDisambiguateMetadata:
 
     def _make_provider_and_request(self, mock_openai_client):
         """Set up provider and a bare ParsedRequest for disambiguation."""
-        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+        from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestType
         from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
 
         with patch("openai.AsyncOpenAI", return_value=mock_openai_client):
@@ -836,7 +833,6 @@ class TestOpenAIProviderDisambiguateMetadata:
             target_name="Liam",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.5,
             csv_position=1,
             metadata={},

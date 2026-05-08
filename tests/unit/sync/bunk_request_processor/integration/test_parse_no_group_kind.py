@@ -116,7 +116,6 @@ class TestParsedRequestHasNoGroupKind:
     def test_parsed_request_no_group_kind_field(self) -> None:
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
-            RequestSource,
             RequestType,
         )
 
@@ -126,7 +125,6 @@ class TestParsedRequestHasNoGroupKind:
             target_name="Emma Johnson",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.95,
             csv_position=0,
             metadata={},

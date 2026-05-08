@@ -262,7 +262,6 @@ class PhaseRunner:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
 
@@ -282,7 +281,6 @@ class PhaseRunner:
                 request_type=request_type,
                 age_preference=None,
                 source_field=trace_data.pre_phase1.field_path or "bunk_with",
-                source=RequestSource.FAMILY,
                 confidence=intent.get("confidence", 0.0),
                 csv_position=intent.get("csv_position", 0),
                 metadata=intent,

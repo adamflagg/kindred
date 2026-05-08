@@ -19,7 +19,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -45,7 +44,6 @@ class TestPartialInvalidationSingleSource:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field=source_field,
             csv_position=0,
             year=2025,

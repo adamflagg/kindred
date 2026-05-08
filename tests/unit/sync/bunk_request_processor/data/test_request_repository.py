@@ -20,7 +20,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -92,7 +91,6 @@ class TestRequestRepository:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field=SourceField.BUNK_WITH,
             csv_position=0,
             year=2025,
@@ -119,7 +117,7 @@ class TestRequestRepository:
         assert create_args["session_id"] == 1000002
         assert create_args["priority"] == 4
         assert create_args["confidence_score"] == 0.95
-        assert create_args["source"] == "family"
+        assert "source" not in create_args  # #1142 stage 4: column dropped
         assert create_args["source_field"] == SourceField.BUNK_WITH
         assert create_args["csv_position"] == 0
         assert create_args["year"] == 2025
@@ -138,7 +136,6 @@ class TestRequestRepository:
             session_cm_id=1000002,
             priority=1,
             confidence_score=1.0,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -238,7 +235,6 @@ class TestRequestRepository:
             session_cm_id=1000002,
             priority=3,  # Changed from 4
             confidence_score=0.85,  # Changed from 0.95
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -285,7 +281,6 @@ class TestRequestRepository:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -696,7 +691,6 @@ class TestMapToDbDispositionFields:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -773,7 +767,6 @@ class TestMapToDbSourceFragment:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
