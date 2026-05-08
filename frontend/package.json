@@ -48,6 +48,7 @@
     "cytoscape-bubblesets": "^4.0.0",
     "cytoscape-cola": "^2.5.1",
     "cytoscape-fcose": "^2.2.0",
+    "cytoscape-layers": "^3.1.0",
     "cytoscape-popper": "^4.0.1",
     "cytoscape-svg": "^0.4.0",
     "date-fns": "^4.1.0",
