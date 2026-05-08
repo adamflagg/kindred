@@ -94,6 +94,7 @@
     "pocketbase-typegen": "^1.5.0",
     "prettier": "^3.5.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "react-is": "^19.2.6",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.57.0",
     "vite": "^8.0.7",
