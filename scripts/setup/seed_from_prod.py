@@ -12,7 +12,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +36,34 @@ def _get_data_tables(conn: sqlite3.Connection) -> set[str]:
             continue
         tables.add(name)
     return tables
+
+
+def _ensure_owned_by_current_user(db_path: str) -> None:
+    """Chown the db (and -wal/-shm siblings) to the current user via sudo if needed.
+
+    Prod copies pulled from the VPS are owned by the container's non-root uid
+    (e.g. 65532), which leaves the file readable but not writable. The WAL
+    checkpoint below needs write access, so reset ownership up front.
+    """
+    db = Path(db_path)
+    targets = [db]
+    for suffix in ("-wal", "-shm"):
+        sibling = db.with_name(db.name + suffix)
+        if sibling.exists():
+            targets.append(sibling)
+
+    uid = os.geteuid()
+    gid = os.getegid()
+    needs_chown = [str(t) for t in targets if t.stat().st_uid != uid or t.stat().st_gid != gid]
+    if not needs_chown:
+        return
+
+    if not shutil.which("sudo"):
+        print(f"ERROR: {db_path} is not owned by current user and 'sudo' is unavailable")
+        sys.exit(1)
+
+    print(f"Chowning {len(needs_chown)} prod db file(s) to {uid}:{gid} (sudo)")
+    subprocess.run(["sudo", "chown", f"{uid}:{gid}", *needs_chown], check=True)
 
 
 def _checkpoint_and_cleanup_wal(db_path: str) -> None:
@@ -79,7 +110,9 @@ def seed_from_prod(
         print(f"ERROR: Prod database not found: {prod_db}")
         sys.exit(1)
 
-    # WAL checkpoint on prod DB
+    # Reset ownership on prod copy (VPS dumps land owned by the container uid),
+    # then WAL-checkpoint the prod DB.
+    _ensure_owned_by_current_user(prod_db)
     _checkpoint_and_cleanup_wal(prod_db)
 
     # Discover data tables in both databases
