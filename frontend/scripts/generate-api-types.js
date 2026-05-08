@@ -5,18 +5,20 @@
  * Workflow:
  *   1. Spawn `uv run python scripts/dump-openapi.py` (repo root) to write
  *      the OpenAPI JSON schema to a temp file.
- *   2. Run `openapi-typescript` against that JSON file.
- *   3. Run `prettier --write` on the output so future tool-version
+ *   2. Run `@hey-api/openapi-ts` against that JSON file.
+ *   3. Run `prettier --write` on the output directory so future tool-version
  *      formatting drift doesn't churn the freshness check.
- *   4. Emit `src/types/api-generated.ts` (or the path passed via --output).
+ *   4. Emit files under `src/types/api-generated/` (or the path passed via --output).
  *
  * Run via:
- *   npm run generate:api-types                    (from frontend/)
+ *   npm run generate:api-types                 (from frontend/)
  *   node scripts/generate-api-types.js
- *   node scripts/generate-api-types.js --output /tmp/foo.ts
+ *   node scripts/generate-api-types.js --output /tmp/api-generated
  *
  * The schema dump file (src/types/.openapi-schema.json) is gitignored.
- * The generated output (src/types/api-generated.ts) is committed.
+ * The generated output directory (src/types/api-generated/) is committed.
+ *
+ * Plugin set / output shape: see frontend/openapi-ts.config.ts.
  */
 
 import { spawnSync } from 'child_process'
@@ -29,14 +31,14 @@ const FRONTEND_DIR = join(__dirname, '..')
 const REPO_ROOT = join(FRONTEND_DIR, '..')
 
 const SCHEMA_PATH = join(FRONTEND_DIR, 'src', 'types', '.openapi-schema.json')
-const DEFAULT_OUTPUT_PATH = join(FRONTEND_DIR, 'src', 'types', 'api-generated.ts')
+const DEFAULT_OUTPUT_DIR = join(FRONTEND_DIR, 'src', 'types', 'api-generated')
 
 // ── Parse --output <path> ─────────────────────────────────────────────────────
-// Used by the lefthook freshness check to regen to a temp file without
+// Used by the lefthook freshness check to regen to a temp directory without
 // mutating the committed copy (avoids a race with parallel `tsc`).
 function parseOutputArg(argv) {
   const i = argv.indexOf('--output')
-  if (i === -1) return DEFAULT_OUTPUT_PATH
+  if (i === -1) return DEFAULT_OUTPUT_DIR
   const v = argv[i + 1]
   if (!v) {
     console.error('❌ --output requires a path argument')
@@ -45,7 +47,7 @@ function parseOutputArg(argv) {
   return isAbsolute(v) ? v : resolve(process.cwd(), v)
 }
 
-const OUTPUT_PATH = parseOutputArg(process.argv.slice(2))
+const OUTPUT_DIR = parseOutputArg(process.argv.slice(2))
 
 // ── Step 1: Dump the OpenAPI schema from FastAPI ──────────────────────────────
 // spawnSync with arg array bypasses the shell entirely — paths with `$`,
@@ -69,32 +71,42 @@ if (!existsSync(SCHEMA_PATH)) {
   process.exit(1)
 }
 
-// ── Step 2: Run openapi-typescript ────────────────────────────────────────────
+// ── Step 2: Run @hey-api/openapi-ts ───────────────────────────────────────────
+// Plugin set lives in frontend/openapi-ts.config.ts (types-only). We pass
+// `-f` (the config-file flag) explicitly so the config is found regardless
+// of how this script is invoked — without it, hey-api auto-discovers from
+// cwd, and a future caller that forgets to set cwd=frontend would silently
+// get empty output (no plugins). NB: openapi-ts uses `-c`/`--client` for the
+// HTTP-client name, NOT the config path; the config path is `-f`/`--file`.
+// We override input/output via flags so the lefthook freshness check can
+// target a temp directory.
 console.log('Generating TypeScript types from OpenAPI schema...')
+const HEYAPI_CONFIG = join(FRONTEND_DIR, 'openapi-ts.config.ts')
 const genResult = spawnSync(
   'npx',
-  ['openapi-typescript', SCHEMA_PATH, '-o', OUTPUT_PATH],
+  ['openapi-ts', '-f', HEYAPI_CONFIG, '--input', SCHEMA_PATH, '--output', OUTPUT_DIR],
   { cwd: FRONTEND_DIR, stdio: 'inherit' }
 )
 if (genResult.status !== 0) {
-  console.error('❌ openapi-typescript failed')
+  console.error('❌ openapi-ts failed')
   process.exit(genResult.status ?? 1)
 }
 
 // ── Step 3: Normalize formatting ──────────────────────────────────────────────
-// Run prettier so that `openapi-typescript` version bumps that change default
-// formatting don't produce noisy diffs in the lefthook freshness check.
-// Pass --config explicitly so the freshness check (which writes to a temp path
-// outside the project tree) gets the same formatting as the default in-tree run.
+// Run prettier on the output directory so codegen version bumps that change
+// default formatting don't produce noisy diffs in the lefthook freshness
+// check. Pass --config explicitly so the freshness check (which writes to a
+// temp path outside the project tree) gets the same formatting as the default
+// in-tree run.
 const PRETTIER_CONFIG = join(FRONTEND_DIR, '.prettierrc.json')
 console.log('Formatting generated types with prettier...')
 const fmtResult = spawnSync(
   'npx',
-  ['prettier', '--config', PRETTIER_CONFIG, '--write', OUTPUT_PATH],
+  ['prettier', '--config', PRETTIER_CONFIG, '--write', OUTPUT_DIR],
   { cwd: FRONTEND_DIR, stdio: 'inherit' }
 )
 if (fmtResult.status !== 0) {
   console.error('⚠️  prettier failed — output left unformatted (non-fatal)')
 }
 
-console.log(`✅ API types generated: ${OUTPUT_PATH}`)
+console.log(`✅ API types generated: ${OUTPUT_DIR}`)

@@ -14,14 +14,14 @@ import type {
 /**
  * Input node data from API.
  * Type alias for the generated `ApiSocialGraphNode` — eliminates hand-mirroring.
- * Generated from `api/schemas/social_graph.py:SocialGraphNode` via openapi-typescript.
+ * Generated from `api/schemas/social_graph.py:SocialGraphNode` via @hey-api/openapi-ts.
  */
 export type GraphNodeData = ApiSocialGraphNode
 
 /**
  * Input edge data from API.
  * Type alias for the generated `ApiSocialGraphEdge` — eliminates hand-mirroring.
- * Generated from `api/schemas/social_graph.py:SocialGraphEdge` via openapi-typescript.
+ * Generated from `api/schemas/social_graph.py:SocialGraphEdge` via @hey-api/openapi-ts.
  */
 export type GraphEdgeData = ApiSocialGraphEdge
 
@@ -321,7 +321,7 @@ export interface EdgeElement {
  * Returned as a distinct list by the API so we can ghost them visually
  * without polluting the layout's edge weight.
  * Type alias for the generated `ApiCrossScopeEdge` — eliminates hand-mirroring.
- * Generated from `bunking/graph/scope_filter.py:CrossScopeEdge` via openapi-typescript.
+ * Generated from `bunking/graph/scope_filter.py:CrossScopeEdge` via @hey-api/openapi-ts.
  */
 export type CrossScopeEdgeData = ApiCrossScopeEdge
 
@@ -411,8 +411,12 @@ export function createGraphElements(
       label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
       name: node.name,
       grade: node.grade,
-      centrality: node.centrality,
-      clustering: node.clustering,
+      // centrality/clustering are computed graph metrics — the Pydantic model
+      // declares defaults (0.0) so they're not in OpenAPI's required[] list,
+      // and codegen emits them as optional. The server always populates them,
+      // so 0 is a safe fallback that matches the schema default.
+      centrality: node.centrality ?? 0,
+      clustering: node.clustering ?? 0,
       satisfaction_status: node.satisfaction_status,
       parent_satisfaction_status: node.parent_satisfaction_status,
       staff_satisfaction_status: node.staff_satisfaction_status,
@@ -514,7 +518,7 @@ export function createGraphElements(
     // multi flag so the stylesheet curves them (true conflicts).
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
-      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal, multi: isMulti }))
+      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal ?? false, multi: isMulti }))
     })
   })
 

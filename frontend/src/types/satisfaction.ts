@@ -2,7 +2,7 @@
  * Satisfaction response types — re-exported from codegen.
  *
  * Source of truth: `bunking/satisfaction/api_shape.py` (Pydantic models)
- * → `frontend/src/types/api-generated.ts` (openapi-typescript output)
+ * → `frontend/src/types/api-generated/types.gen.ts` (@hey-api/openapi-ts output)
  * → this file (semantic aliases for ergonomic imports).
  *
  * Drift between Python and TS is now caught at codegen time, not at runtime.
@@ -11,31 +11,41 @@
  * that don't exist in the API shape — they live here because consumer code
  * expects them at this import path.
  */
-import type { components } from './api-generated'
+import type {
+  BucketCount as BucketCountGen,
+  CamperSatisfaction as CamperSatisfactionGen,
+  PerRequestStatus as PerRequestStatusGen,
+  RequestBucket as RequestBucketGen,
+  SatisfactionFlags as SatisfactionFlagsGen,
+  SatisfactionResponse as SatisfactionResponseGen,
+} from './api-generated'
 
-export type RequestBucket = components['schemas']['RequestBucket']
-export type PerRequestStatus = components['schemas']['PerRequestStatus']
-export type BucketCount = components['schemas']['BucketCount']
-export type SatisfactionFlags = components['schemas']['SatisfactionFlags']
+export type RequestBucket = RequestBucketGen
+export type PerRequestStatus = PerRequestStatusGen
+export type BucketCount = BucketCountGen
+export type SatisfactionFlags = SatisfactionFlagsGen
+
 /**
- * Codegen lowers Python's `dict[RequestBucket, BucketCount]` to an open index
- * signature, which makes every key access `T | undefined`. The Pydantic model
- * enforces that exactly `COUNTED_BUCKETS` (`material_parent`, `staff`) are
- * present at runtime — see `bunking/satisfaction/api_shape.py:CamperSatisfaction`.
- * Narrow `counted_totals` here so consumers don't have to defend against the
- * loose codegen shape on every access.
+ * Counted-bucket totals — the Pydantic model enforces that exactly
+ * `material_parent` and `staff` are present at runtime
+ * (`bunking/satisfaction/api_shape.py:CamperSatisfaction`).
  */
-export type CamperSatisfaction = Omit<
-  components['schemas']['CamperSatisfaction'],
-  'counted_totals'
-> & {
-  counted_totals: { material_parent: BucketCount; staff: BucketCount }
+export interface CountedTotals {
+  material_parent: BucketCount
+  staff: BucketCount
 }
 
-export type SatisfactionResponse = Omit<
-  components['schemas']['SatisfactionResponse'],
-  'campers'
-> & {
+/**
+ * Codegen lowers Python's `dict[RequestBucket, BucketCount]` to an open index
+ * signature, which makes every key access `T | undefined`. Narrow
+ * `counted_totals` here so consumers don't have to defend against the loose
+ * codegen shape on every access.
+ */
+export interface CamperSatisfaction extends Omit<CamperSatisfactionGen, 'counted_totals'> {
+  counted_totals: CountedTotals
+}
+
+export interface SatisfactionResponse extends Omit<SatisfactionResponseGen, 'campers'> {
   campers: Record<string, CamperSatisfaction>
 }
 

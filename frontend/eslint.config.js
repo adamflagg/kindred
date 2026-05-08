@@ -18,7 +18,14 @@ export default tseslint.config(
 
   // Ignore patterns
   {
-    ignores: ['dist/**', 'node_modules/**', '*.cjs', 'src/types/pocketbase-types.ts', 'vite.config.local.ts'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '*.cjs',
+      'src/types/pocketbase-types.ts',
+      'src/types/api-generated/**',
+      'vite.config.local.ts',
+    ],
   },
 
   // Configuration for JS files
