@@ -1,5 +1,6 @@
 import type { Session } from '../types/app-types'
 import type { SessionDateLookup } from './sessionUtils'
+import { isAgSession, isQuestSession, isQuestSessionType } from './sessionTypePredicates'
 
 /**
  * Canonical short display name for a session — used by the camper page (full +
@@ -27,11 +28,11 @@ export function getSessionShortName(
 ): string | null {
   if (!session) return null
 
-  if (session.session_type === 'ag') {
+  if (isAgSession(session)) {
     return session.name ? shortenSessionName(session.name) : 'AG'
   }
 
-  if (session.session_type === 'quest') return session.name ?? 'Quest'
+  if (isQuestSession(session)) return session.name ?? 'Quest'
 
   return session.name ?? null
 }
@@ -73,7 +74,7 @@ export function getFormattedSessionName(
   if (!session || !session.name) return 'Unknown Session'
 
   // For AG sessions, look up the parent session and use its name
-  if (session.session_type === 'ag' && session.parent_id && allSessions) {
+  if (isAgSession(session) && session.parent_id && allSessions) {
     const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
     if (parentSession && parentSession.name) {
       return parentSession.name
@@ -97,7 +98,7 @@ export function getSessionDisplayName(
   if (!session) return 'Unknown Session'
 
   // For AG sessions, look up the parent session and use its display name
-  if (session.session_type === 'ag' && session.parent_id && allSessions) {
+  if (isAgSession(session) && session.parent_id && allSessions) {
     const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
     if (parentSession) {
       // Recursively get the display name of the parent (which will format it properly)
@@ -106,7 +107,7 @@ export function getSessionDisplayName(
   }
 
   // For quest sessions, return the name as-is (they don't follow "Session N" pattern)
-  if (session.session_type === 'quest') {
+  if (isQuestSession(session)) {
     return session.name || 'Quest'
   }
 
@@ -123,7 +124,7 @@ export function getSessionDisplayName(
  */
 export function getParentSessionId(session: Session, allSessions: Session[]): string | number {
   // AG sessions map to their parent main session via parent_id
-  if (session.session_type === 'ag' && session.parent_id) {
+  if (isAgSession(session) && session.parent_id) {
     const parentSession = allSessions.find((s) => s.cm_id === session.parent_id)
     if (parentSession) return parentSession.cm_id
   }
@@ -184,7 +185,7 @@ export function getSessionChartLabel(
   const gradeRange = gradeMatch ? ` (${gradeMatch[1]}-${gradeMatch[2]})` : ''
 
   // Handle Quest sessions - return session name as-is (e.g., "Teen Adventure Quests")
-  if (sessionType === 'quest' || sessionName.toLowerCase().includes('quest')) {
+  if (isQuestSessionType(sessionType) || sessionName.toLowerCase().includes('quest')) {
     if (sessionName.length > 25) {
       return sessionName.slice(0, 22) + '...'
     }
@@ -250,7 +251,7 @@ export function getSessionShorthand(sessionName: string, sessionType?: string): 
   if (!sessionName) return ''
 
   // Handle Quest sessions
-  if (sessionType === 'quest' || sessionName.toLowerCase().includes('quest')) {
+  if (isQuestSessionType(sessionType) || sessionName.toLowerCase().includes('quest')) {
     return 'Quest'
   }
 

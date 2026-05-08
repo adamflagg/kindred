@@ -7,6 +7,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { getSessionDisplayNameFromString } from '../utils/sessionDisplay'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { isAtCampSession } from '../utils/sessionTypePredicates'
 import type { Camper } from '../types/app-types'
 import type { BunkRequestsResponse } from '../types/pocketbase-types'
 import { queryKeys } from '../utils/queryKeys'
@@ -67,9 +68,6 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
           sort: '-year',
         })
 
-        // Filter to only include standard camp session types
-        const allowedTypes = ['main', 'ag', 'embedded', 'taste']
-
         // Type for expanded assignment records
         interface ExpandedAssignment {
           session?: {
@@ -81,11 +79,12 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
           bunk?: { name?: string }
         }
 
+        // Filter to only include at-camp session types (main, embedded, ag)
         const allHistory = assignments
           .filter((record) => {
             const expanded = record.expand as ExpandedAssignment | undefined
-            const sessionType = expanded?.session?.session_type
-            return sessionType && allowedTypes.includes(sessionType)
+            const session = expanded?.session
+            return session ? isAtCampSession(session) : false
           })
           .map((record) => {
             const expanded = record.expand as ExpandedAssignment | undefined

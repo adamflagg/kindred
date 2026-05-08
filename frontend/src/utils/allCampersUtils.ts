@@ -8,18 +8,19 @@
 import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types'
 import type { Session } from '../types/app-types'
 import { sortSessionsByDate } from './sessionUtils'
+import {
+  isSummerCampSession,
+  isInDropdown,
+  isMainOrEmbedded,
+  isQuestSession,
+  isAgSession,
+  isMainSession,
+  isEmbeddedSession,
+  isAtCampSession,
+} from './sessionTypePredicates'
 
 // Export type alias for sessions with type information
 export type SessionWithType = Session
-
-// Session types that are valid for summer camp views
-const SUMMER_CAMP_SESSION_TYPES = ['main', 'ag', 'embedded', 'quest'] as const
-
-// Session types that should appear in the /campers picker dropdown.
-// AG is excluded because it's grouped with parent main session.
-// tli and teen are excluded because teen programs (TLI / SCIT) are not
-// relevant to the cabin-assignment workflow on the /campers page.
-const DROPDOWN_SESSION_TYPES = ['main', 'embedded', 'quest'] as const
 
 /**
  * Filter bunks to only include those linked to summer camp sessions (main, ag, embedded)
@@ -31,15 +32,7 @@ export function filterSummerCampBunks(
   sessions: Session[]
 ): BunksResponse[] {
   // Create a set of session IDs that are summer camp sessions
-  const summerCampSessionIds = new Set(
-    sessions
-      .filter((s) =>
-        SUMMER_CAMP_SESSION_TYPES.includes(
-          s.session_type as (typeof SUMMER_CAMP_SESSION_TYPES)[number]
-        )
-      )
-      .map((s) => s.id)
-  )
+  const summerCampSessionIds = new Set(sessions.filter(isSummerCampSession).map((s) => s.id))
 
   // Create a set of bunk IDs that are linked to summer camp sessions
   const summerCampBunkIds = new Set(
@@ -61,9 +54,7 @@ export function filterSummerCampBunks(
  */
 export function getDropdownSessions(sessions: Session[]): Session[] {
   // Filter to only dropdown-eligible session types
-  const filteredSessions = sessions.filter((s) =>
-    DROPDOWN_SESSION_TYPES.includes(s.session_type as (typeof DROPDOWN_SESSION_TYPES)[number])
-  )
+  const filteredSessions = sessions.filter(isInDropdown)
 
   // Sort using shared utility (date primary, then session number+suffix)
   return sortSessionsByDate(filteredSessions)
@@ -90,7 +81,7 @@ export function getSessionRelationshipsForCamperView(
 
   // Process each session
   sessions.forEach((session) => {
-    if (session.session_type === 'ag') {
+    if (isAgSession(session)) {
       // AG sessions don't get their own entry - they're grouped with parent
       // But we need to add them to their parent's list
       if (session.parent_id) {
@@ -103,16 +94,16 @@ export function getSessionRelationshipsForCamperView(
           relationships.set(parentSession.id, existing)
         }
       }
-    } else if (session.session_type === 'main') {
+    } else if (isMainSession(session)) {
       // Main sessions include only themselves initially
       // AG children will be added above
       if (!relationships.has(session.id)) {
         relationships.set(session.id, [session.id])
       }
-    } else if (session.session_type === 'embedded') {
+    } else if (isEmbeddedSession(session)) {
       // Embedded sessions are independent - only include themselves
       relationships.set(session.id, [session.id])
-    } else if (session.session_type === 'quest') {
+    } else if (isQuestSession(session)) {
       // Quest sessions are independent - only include themselves
       relationships.set(session.id, [session.id])
     }
@@ -149,10 +140,8 @@ export function splitDropdownSessionsByType(sessions: Session[]): {
   campSessions: Session[]
   questSessions: Session[]
 } {
-  const campSessions = sortSessionsByDate(
-    sessions.filter((s) => s.session_type === 'main' || s.session_type === 'embedded')
-  )
-  const questSessions = sortSessionsByDate(sessions.filter((s) => s.session_type === 'quest'))
+  const campSessions = sortSessionsByDate(sessions.filter(isMainOrEmbedded))
+  const questSessions = sortSessionsByDate(sessions.filter(isQuestSession))
   return { campSessions, questSessions }
 }
 
@@ -169,12 +158,10 @@ export function resolveScopedSessions(filterValue: string, dropdownSessions: Ses
     return dropdownSessions
   }
   if (filterValue === FILTER_AT_CAMP) {
-    return dropdownSessions.filter(
-      (s) => s.session_type === 'main' || s.session_type === 'embedded'
-    )
+    return dropdownSessions.filter(isMainOrEmbedded)
   }
   if (filterValue === FILTER_QUESTS) {
-    return dropdownSessions.filter((s) => s.session_type === 'quest')
+    return dropdownSessions.filter(isQuestSession)
   }
   // Specific session ID
   const match = dropdownSessions.find((s) => s.id === filterValue)
@@ -197,10 +184,8 @@ export function resolveScopedSessions(filterValue: string, dropdownSessions: Ses
 export function getCampersHeadlineNoun(sessions: Session[], count: number): string {
   const plural = count !== 1
 
-  const hasAtCamp = sessions.some(
-    (s) => s.session_type === 'main' || s.session_type === 'embedded' || s.session_type === 'ag'
-  )
-  const hasQuest = sessions.some((s) => s.session_type === 'quest')
+  const hasAtCamp = sessions.some(isAtCampSession)
+  const hasQuest = sessions.some(isQuestSession)
 
   if (hasAtCamp && hasQuest) {
     return plural ? 'campers and questers' : 'camper and quester'

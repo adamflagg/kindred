@@ -30,6 +30,7 @@ import { DEFAULT_BUNK_CAPACITY, MAX_BUNK_CAPACITY } from '../utils/capacityConst
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -229,12 +230,12 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       // and the AG campers are included from AG sessions
       if (selectedArea === 'all-gender') {
         // Only show campers from AG sessions (any gender allowed in AG)
-        return camper.expand?.session?.session_type === 'ag'
+        return camper.expand?.session ? isAgSession(camper.expand.session) : false
       }
 
       // For boys/girls areas in main or embedded sessions
       // AG session campers should NOT appear in boys/girls areas
-      const isFromAGSession = camper.expand?.session?.session_type === 'ag'
+      const isFromAGSession = camper.expand?.session ? isAgSession(camper.expand.session) : false
 
       if (isFromAGSession) {
         // AG campers should only appear in AG area, not in boys/girls areas
@@ -382,7 +383,9 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
 
       if (targetBunk && sourceCamper) {
         const bunkGender = targetBunk.gender.toLowerCase()
-        const isFromAGSession = sourceCamper.expand?.session?.session_type === 'ag'
+        const isFromAGSession = sourceCamper.expand?.session
+          ? isAgSession(sourceCamper.expand.session)
+          : false
 
         let isValidGender = true
 

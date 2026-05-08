@@ -21,6 +21,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 export interface CohortMatchedAttendee {
   attendeeId: string
@@ -108,8 +109,9 @@ export function useCamperCohorts(
       const selfPerson = selfAttendee?.expand?.person
       if (!selfPerson) return null
 
-      const sessionType = selfAttendee?.expand?.session?.session_type ?? 'main'
-      const isAG = sessionType === 'ag'
+      const selfSession = selfAttendee?.expand?.session
+      const sessionType = selfSession?.session_type ?? 'main'
+      const isAG = selfSession ? isAgSession(selfSession) : false
       const selfGender = selfPerson.gender ?? null
       // When self has no gender on file we cannot judge bunkability — fall back
       // to AG behavior (no gender filter) rather than silently matching only

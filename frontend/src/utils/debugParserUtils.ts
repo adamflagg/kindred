@@ -4,9 +4,7 @@
  * - Building CM-ID mapping for AG sessions
  */
 
-// Session types that should appear in the dropdown for debug parser
-// (AG is excluded because it's grouped with parent main session)
-const DEBUG_DROPDOWN_SESSION_TYPES = ['main', 'embedded'] as const
+import { isMainOrEmbedded, isAgSession } from './sessionTypePredicates'
 
 /**
  * Session with type information for debug parser
@@ -25,13 +23,7 @@ export interface DebugSession {
  * - Excludes: AG (grouped with parent)
  */
 export function getDebugDropdownSessions(sessions: DebugSession[]): DebugSession[] {
-  return sessions.filter(
-    (s) =>
-      s.session_type &&
-      DEBUG_DROPDOWN_SESSION_TYPES.includes(
-        s.session_type as (typeof DEBUG_DROPDOWN_SESSION_TYPES)[number]
-      )
-  )
+  return sessions.filter(isMainOrEmbedded)
 }
 
 /**
@@ -46,7 +38,7 @@ export function buildAgSessionCmIdMap(sessions: DebugSession[]): Map<number, num
   const map = new Map<number, number[]>()
 
   sessions.forEach((session) => {
-    if (session.session_type === 'ag' && session.parent_id) {
+    if (isAgSession(session) && session.parent_id) {
       const existing = map.get(session.parent_id) ?? []
       existing.push(session.cm_id)
       map.set(session.parent_id, existing)

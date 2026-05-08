@@ -7,6 +7,7 @@ import type {
   AttendeesResponse,
 } from '../types/pocketbase-types'
 import type { Camper } from '../types/app-types'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 // Type for members with expanded attendee (matching LockGroupContext)
 type ExpandedMember = LockedGroupMembersResponse & {
@@ -38,7 +39,7 @@ interface LockGroupsHubProps {
 function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   if (area === 'all') return true
 
-  const isFromAGSession = camper.expand?.session?.session_type === 'ag'
+  const isFromAGSession = camper.expand?.session ? isAgSession(camper.expand.session) : false
 
   if (area === 'all-gender') {
     // AG area: only campers from AG sessions
