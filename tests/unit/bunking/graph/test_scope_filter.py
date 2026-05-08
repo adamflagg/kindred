@@ -102,7 +102,7 @@ class TestApplyScope:
     def test_cross_scope_node_ids_dedupe_when_same_endpoint_used_twice(self) -> None:
         g = _make_graph()
         # Add a second cross-edge into node 3 from node 1 so endpoint 3 fires twice.
-        g.add_edge(1, 3, weight=1.0, edge_type="sibling")
+        g.add_edge(1, 3, weight=1.0, edge_type="request")
         _, _, oos = apply_scope(g, in_scope_bunk_cm_ids={100}, include_cross_scope=True)
         assert 3 in oos
         # Set semantics: 3 appears once even though two edges leave to it.
@@ -338,10 +338,30 @@ class TestCrossScopeEdgeModel:
             CrossScopeEdge(source=1, target=2)  # type: ignore[call-arg]
 
     def test_optional_fields_default_to_none(self) -> None:
-        edge = CrossScopeEdge(source=1, target=2, edge_type="historical")
+        edge = CrossScopeEdge(source=1, target=2, edge_type="request")
         assert edge.request_type is None
         assert edge.priority is None
         assert edge.confidence is None
+
+    def test_deprecated_historical_edge_type_rejected(self) -> None:
+        """edge_type='historical' was removed in #1162; schema must reject it."""
+        with pytest.raises(ValidationError):
+            CrossScopeEdge(source=1, target=2, edge_type="historical")
+
+    def test_deprecated_sibling_edge_type_rejected(self) -> None:
+        """edge_type='sibling' was removed in #1162; schema must reject it."""
+        with pytest.raises(ValidationError):
+            CrossScopeEdge(source=1, target=2, edge_type="sibling")
+
+    def test_deprecated_classmate_city_edge_type_rejected(self) -> None:
+        """edge_type='classmate_city' was removed in #1162; schema must reject it."""
+        with pytest.raises(ValidationError):
+            CrossScopeEdge(source=1, target=2, edge_type="classmate_city")
+
+    def test_deprecated_classmate_state_edge_type_rejected(self) -> None:
+        """edge_type='classmate_state' was removed in #1162; schema must reject it."""
+        with pytest.raises(ValidationError):
+            CrossScopeEdge(source=1, target=2, edge_type="classmate_state")
 
     def test_serialises_to_dict_with_cross_scope_true(self) -> None:
         edge = CrossScopeEdge(source=1, target=2, edge_type="request")
@@ -359,7 +379,7 @@ class TestSocialGraphResponseCrossScopeEdgesTyped:
         """list[CrossScopeEdge] — model instances accepted."""
         edges = [
             CrossScopeEdge(source=1, target=3, edge_type="request"),
-            CrossScopeEdge(source=2, target=4, edge_type="sibling", reciprocal=True),
+            CrossScopeEdge(source=2, target=4, edge_type="request", reciprocal=True),
         ]
         resp = SocialGraphResponse(
             nodes=[],

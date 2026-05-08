@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react'
+import { Fragment, useState, useMemo } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, AlertTriangle, Heart } from 'lucide-react'
 import clsx from 'clsx'
 import { pb, getCurrentUserEmail } from '../lib/pocketbase'
 import type { Camper } from '../types/app-types'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
+import { useGroupConflictConfirm } from '../hooks/useGroupConflictConfirm'
+import { GroupConflictDialog } from './GroupConflictDialog'
 
 interface LockGroupActionBarProps {
   pendingCampers: Camper[]
@@ -138,6 +140,10 @@ function LockGroupActionBar({
   const queryClient = useQueryClient()
   const { groups } = useLockGroupContext()
 
+  // Conflict-confirm hook — warns when a pending camper is already in another group
+  const conflictConfirm = useGroupConflictConfirm()
+  const [conflictCamperName, setConflictCamperName] = useState('')
+
   // Auto-select next color based on existing groups count
   const nextColorIndex = groups.length % GROUP_COLORS.length
   const [selectedColor, setSelectedColor] = useState(
@@ -157,6 +163,27 @@ function LockGroupActionBar({
       // Use custom name if provided, otherwise auto-generate from last names
       const trimmedName = groupName.trim()
       const finalName = trimmedName || generateDefaultGroupName(pendingCampers)
+
+      // --- Conflict pre-check ---
+      // Before creating anything, warn if any pending camper is already in a
+      // different group in the same scenario.  We check sequentially so staff
+      // can confirm (or cancel) one camper at a time if needed.
+      for (const camper of pendingCampers) {
+        if (!camper.attendee_id) continue
+        setConflictCamperName(camper.name ?? camper.first_name ?? 'Camper')
+        const outcome = await conflictConfirm.checkConflict({
+          attendeePbId: camper.attendee_id,
+          // Use '__new__' as the sentinel target ID — no existing membership
+          // will have this ID, so any match is a conflict with a different group.
+          targetGroupId: '__new__',
+          targetGroupName: finalName || 'new group',
+          scenarioId,
+        })
+        if (outcome === 'cancelled') {
+          // Throw so the mutation is treated as cancelled (no group created)
+          throw new Error('User cancelled')
+        }
+      }
 
       const groupData: Record<string, unknown> = {
         color: selectedColor,
@@ -206,6 +233,12 @@ function LockGroupActionBar({
       setSelectedColor(GROUP_COLORS[newNextIndex] ?? GROUP_COLORS[0])
       setGroupName('')
     },
+    onError: (error: unknown) => {
+      // 'User cancelled' is thrown when staff dismiss the conflict dialog —
+      // it is not an error, so we suppress the toast.
+      if (error instanceof Error && error.message === 'User cancelled') return
+      console.error('Failed to create group:', error)
+    },
   })
 
   const handleCreateGroup = () => {
@@ -230,78 +263,90 @@ function LockGroupActionBar({
     !createGroupMutation.isPending
 
   return (
-    <div className="bg-background shadow-lodge-lg fixed right-0 bottom-0 left-0 z-40 border-t">
-      <div className="container mx-auto px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Selection info */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Users className="text-primary h-5 w-5" />
-              <span className="font-medium">
-                {pendingCampers.length} camper
-                {pendingCampers.length !== 1 ? 's' : ''} selected
-              </span>
-            </div>
-            {pendingCampers.length < 2 && (
-              <span className="text-muted-foreground text-sm">(select at least 2)</span>
-            )}
-            {isOverLimit && <span className="text-destructive text-sm">(max {maxGroupSize})</span>}
-            {hasValidationErrors && (
-              <div className="text-destructive flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                <span>{validation.errors[0]}</span>
+    <Fragment>
+      <div className="bg-background shadow-lodge-lg fixed right-0 bottom-0 left-0 z-40 border-t">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Selection info */}
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Users className="text-primary h-5 w-5" />
+                <span className="font-medium">
+                  {pendingCampers.length} camper
+                  {pendingCampers.length !== 1 ? 's' : ''} selected
+                </span>
               </div>
-            )}
-          </div>
-
-          {/* Right: Name input, color picker and actions */}
-          <div className="flex items-center gap-3">
-            {/* Optional group name input - shows auto-generated name as placeholder */}
-            <input
-              type="text"
-              value={groupName}
-              onChange={(e) => setGroupName(e.target.value)}
-              placeholder={defaultName || 'Group name'}
-              className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
-            />
-
-            <div className="bg-border h-6 w-px" />
-
-            {/* Inline color picker */}
-            <div className="flex items-center gap-1.5">
-              {GROUP_COLORS.map((color) => (
-                <button
-                  key={color}
-                  onClick={() => setSelectedColor(color)}
-                  className={clsx(
-                    'h-6 w-6 rounded-full transition-all',
-                    selectedColor === color && 'ring-foreground scale-110 ring-2 ring-offset-2'
-                  )}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
+              {pendingCampers.length < 2 && (
+                <span className="text-muted-foreground text-sm">(select at least 2)</span>
+              )}
+              {isOverLimit && (
+                <span className="text-destructive text-sm">(max {maxGroupSize})</span>
+              )}
+              {hasValidationErrors && (
+                <div className="text-destructive flex items-center gap-2 text-sm">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>{validation.errors[0]}</span>
+                </div>
+              )}
             </div>
 
-            <div className="bg-border h-6 w-px" />
+            {/* Right: Name input, color picker and actions */}
+            <div className="flex items-center gap-3">
+              {/* Optional group name input - shows auto-generated name as placeholder */}
+              <input
+                type="text"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                placeholder={defaultName || 'Group name'}
+                className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
+              />
 
-            <button
-              onClick={onClearPending}
-              className="hover:bg-muted rounded-lg border px-3 py-1.5 text-sm transition-colors"
-            >
-              Clear
-            </button>
-            <button
-              onClick={handleCreateGroup}
-              disabled={!canCreate}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Heart className="h-4 w-4" />
-              {createGroupMutation.isPending ? 'Creating...' : 'Create Group'}
-            </button>
+              <div className="bg-border h-6 w-px" />
+
+              {/* Inline color picker */}
+              <div className="flex items-center gap-1.5">
+                {GROUP_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => setSelectedColor(color)}
+                    className={clsx(
+                      'h-6 w-6 rounded-full transition-all',
+                      selectedColor === color && 'ring-foreground scale-110 ring-2 ring-offset-2'
+                    )}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+
+              <div className="bg-border h-6 w-px" />
+
+              <button
+                onClick={onClearPending}
+                className="hover:bg-muted rounded-lg border px-3 py-1.5 text-sm transition-colors"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleCreateGroup}
+                disabled={!canCreate}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Heart className="h-4 w-4" />
+                {createGroupMutation.isPending ? 'Creating...' : 'Create Group'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      <GroupConflictDialog
+        isOpen={conflictConfirm.dialogState.isOpen}
+        camperName={conflictCamperName}
+        existingGroupName={conflictConfirm.dialogState.existingGroupName}
+        targetGroupName={conflictConfirm.dialogState.targetGroupName}
+        onConfirm={conflictConfirm.dialogState.onConfirm}
+        onCancel={conflictConfirm.dialogState.onCancel}
+      />
+    </Fragment>
   )
 }
 

@@ -34,7 +34,7 @@ class CrossScopeEdge(BaseModel):
 
     source: int
     target: int
-    edge_type: str
+    edge_type: Literal["request"]
     weight: float = 1.0
     request_type: str | None = None
     priority: int | None = None

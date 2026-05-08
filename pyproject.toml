@@ -40,7 +40,6 @@ dependencies = [
     "tzdata>=2026.1",
     "numpy>=1.26.0",
     "networkx>=3.0",
-    "python-louvain>=0.16",
     # Configuration & validation
     "pydantic>=2.7.0",
     "pydantic-settings>=2.14.0",
@@ -186,7 +185,6 @@ module = [
     "jellyfish.*",
     "fuzzywuzzy.*",
     "Levenshtein.*",
-    "community.*",
 ]
 ignore_missing_imports = true
 
