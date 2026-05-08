@@ -195,9 +195,11 @@ class TestSoftGradeSpreadConstraint:
             objective_terms: list[cp_model.LinearExprT] = []
             add_grade_spread_soft_constraint(ctx, objective_terms)
 
+            # Verify the soft constraint produced penalty terms before solving
+            assert objective_terms, "add_grade_spread_soft_constraint should produce objective terms"
+
             # Add objective (the penalty terms)
-            if objective_terms:
-                ctx.model.Maximize(sum(objective_terms))
+            ctx.model.Maximize(sum(objective_terms))
 
             solver = cp_model.CpSolver()
             status = solver.Solve(ctx.model)
@@ -234,8 +236,10 @@ class TestSoftGradeSpreadConstraint:
             objective_terms: list[cp_model.LinearExprT] = []
             add_grade_spread_soft_constraint(ctx, objective_terms)
 
-            if objective_terms:
-                ctx.model.Maximize(sum(objective_terms))
+            # Verify the soft constraint produced penalty terms before solving
+            assert objective_terms, "add_grade_spread_soft_constraint should produce objective terms"
+
+            ctx.model.Maximize(sum(objective_terms))
 
             solver = cp_model.CpSolver()
             status = solver.Solve(ctx.model)
