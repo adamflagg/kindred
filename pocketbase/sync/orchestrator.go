@@ -92,6 +92,7 @@ var syncJobMeta = []JobMeta{
 	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
 
 	// Process phase - CSV + AI
+	{"reconcile_request_lifecycle", PhaseProcess, "Mark moved-requester OBRs for reprocessing"},
 	{"bunk_requests", PhaseProcess, "Import bunk request CSV"},
 	{"process_requests", PhaseProcess, "AI processing of bunk requests"},
 
@@ -725,7 +726,8 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		"staff_vehicle_info",
 		"normalize_geographic",
 		"enrollment_snapshots",
-		"bunk_requests", // CSV import, depends on persons
+		"reconcile_request_lifecycle", // Detect session moves; marks OBRs for reprocessing
+		"bunk_requests",               // CSV import, depends on persons
 	}
 
 	// Only include process_requests in production (Docker) mode
@@ -1116,7 +1118,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		// and there's no need to re-process them for historical years
 		// opts.Year > 0 means this is a historical sync with a specific year
 		if opts.Year == 0 {
-			servicesToRun = append(servicesToRun, "bunk_requests")
+			servicesToRun = append(servicesToRun, "reconcile_request_lifecycle", "bunk_requests")
 			// Only include process_requests in production (Docker) mode
 			// In development, skip AI processing to avoid unnecessary API costs
 			if os.Getenv("IS_DOCKER") == boolTrueStr {
@@ -1191,6 +1193,9 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunks", NewBunksSync(o.app, yearClient))
 		o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, yearClient))
 		o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, yearClient))
+		yearReconcileSync := NewReconcileLifecycleSync(o.app)
+		yearReconcileSync.Year = opts.Year
+		o.RegisterService("reconcile_request_lifecycle", yearReconcileSync)
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
 		yearProcessor := NewRequestProcessor(o.app)
 		yearProcessor.CollectTraces = true // Always collect traces for scheduled/automated runs
@@ -1732,6 +1737,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunks", NewBunksSync(o.app, client))
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
+	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(o.app))
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	processor := NewRequestProcessor(o.app)
