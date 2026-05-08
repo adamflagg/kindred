@@ -19,6 +19,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
+from bunking.satisfaction.bucket import RequestBucket, classify_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -44,6 +45,29 @@ from .logging import ConstraintLogger
 from .solution import analyze_solution, calculate_satisfied_requests
 
 logger = get_logger(__name__)
+
+
+def _is_material_parent(request: DirectBunkRequest) -> bool:
+    """True iff a request's source_field classifies as MATERIAL_PARENT.
+
+    Defensive: missing or unknown source_field returns False. Used by the
+    post-solve diagnostic to bucket unsatisfied campers — surfacing as a
+    diagnostic miscount is preferable to crashing the solver run on a
+    data-hygiene edge case. Unknown values are logged so a new source_field
+    added to the schema before the bucket map is updated leaves a trace.
+    """
+    sf = request.source_field
+    if not sf:
+        return False
+    try:
+        return classify_request(sf) == RequestBucket.MATERIAL_PARENT
+    except ValueError:
+        logger.debug(
+            "_is_material_parent: unknown source_field %r on request %s — treating as non-material",
+            sf,
+            request.id,
+        )
+        return False
 
 
 class DirectBunkingSolver:
@@ -931,31 +955,129 @@ class DirectBunkingSolver:
         else:
             logger.info("✓ No soft constraint violations")
 
-        # 4. Check must-satisfy-one violations
-        unsatisfied_campers = []
+        # 4. Check must-satisfy-one violations (split by population — see helper).
+        self._check_must_satisfy_one_violations(assignments)
+
+        logger.info("=== End Constraint Violation Check ===")
+
+    def _check_must_satisfy_one_violations(self, assignments: list[DirectBunkAssignment]) -> None:
+        """Post-solve diagnostic: split unsatisfied campers into actionable buckets.
+
+        Mirrors the solver's resolved-only scope (``data_fetcher.py:140``
+        filters bunk_requests to ``status="resolved"`` before they reach the
+        solver). Pending and declined requests are not the solver's concern,
+        so the diagnostic ignores them entirely. This also collapses the
+        cross-session "no possible" case in practice — those are auto-DECLINED
+        by the bunk_request_processor at sync time and never reach this loop
+        as resolved.
+
+        Three populations were previously emitted under one ``must_satisfy_one``
+        warning, which conflated solver-actionable failures with parent-input
+        issues. This split surfaces:
+
+        - ``must_satisfy_one_no_possible`` (info): the camper's resolved
+          requests are all structurally impossible from the solver's
+          perspective. With upstream resolution working correctly this
+          should be near-empty in production — non-empty values indicate a
+          data-hygiene regression where a request marked ``resolved`` is in
+          fact unsatisfiable.
+        - ``must_satisfy_one_material_parent_unmet`` (warning): camper has
+          ≥1 resolved possible MATERIAL_PARENT request (``bunk_with``) and
+          the solver satisfied none. Headline staff failure mode per the
+          parent-paramount design.
+        - ``must_satisfy_one_other_unmet`` (info): camper has only resolved
+          non-material possible requests (STAFF or IMMATERIAL_PARENT) and
+          the solver satisfied none. Lower-priority signal.
+
+        Counts are also surfaced in ``request_validation_summary`` so the
+        structured solver-log JSON carries the breakdown.
+        """
+        person_to_bunk = {a.person_cm_id: a.bunk_cm_id for a in assignments}
         all_satisfied = calculate_satisfied_requests(
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
+
+        no_possible: list[int] = []
+        material_parent_unmet: list[int] = []
+        other_unmet: list[int] = []
+        # Per-camper resolved-possible count, used for the violation message text.
+        # The unfiltered self.possible_requests dict can include pending/declined
+        # entries (validation doesn't filter by status), so reading its length
+        # directly would overstate the number shown in the diagnostic.
+        resolved_possible_count: dict[int, int] = {}
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
+            # Restrict to resolved requests — pending/declined aren't part of the solver's scope.
+            resolved_requests = [r for r in requests if r.status == "resolved"]
+            if not resolved_requests:
+                continue
 
-            # Check if any request is satisfied
-            satisfied_count = len(all_satisfied.get(person_cm_id, []))
+            resolved_ids = {r.id for r in resolved_requests}
+            if any(rid in resolved_ids for rid in all_satisfied.get(person_cm_id, [])):
+                continue
 
-            if satisfied_count == 0 and len(requests) > 0:
-                unsatisfied_campers.append(person_cm_id)
+            resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
+            if not resolved_possible:
+                no_possible.append(person_cm_id)
+                continue
 
-        if unsatisfied_campers:
-            logger.info(f"{len(unsatisfied_campers)} campers with NO satisfied requests:")
-            for person_cm_id in unsatisfied_campers[:10]:  # Show first 10
+            resolved_possible_count[person_cm_id] = len(resolved_possible)
+            if any(_is_material_parent(r) for r in resolved_possible):
+                material_parent_unmet.append(person_cm_id)
+            else:
+                other_unmet.append(person_cm_id)
+
+        # Persist the breakdown alongside the existing pre-solve totals so the
+        # structured JSON solver log carries it without scraping violation names.
+        self.request_validation_summary["unsatisfied_no_possible"] = len(no_possible)
+        self.request_validation_summary["unsatisfied_material_parent_unmet"] = len(material_parent_unmet)
+        self.request_validation_summary["unsatisfied_other_unmet"] = len(other_unmet)
+
+        if no_possible:
+            logger.info(
+                f"{len(no_possible)} campers had only structurally-impossible requests "
+                f"(parent input issue: requestee in another session or absent from solver)"
+            )
+            for person_cm_id in no_possible[:10]:
                 person = self.input.person_by_cm_id[person_cm_id]
                 self.constraint_logger.log_violation(
-                    "must_satisfy_one",
-                    f"{person.name} (ID: {person_cm_id}) has no satisfied requests",
+                    "must_satisfy_one_no_possible",
+                    f"{person.name} (ID: {person_cm_id}): all requests impossible — fix parent input",
+                    severity="info",
+                )
+            if len(no_possible) > 10:
+                logger.info(f"... and {len(no_possible) - 10} more")
+
+        if material_parent_unmet:
+            logger.info(
+                f"{len(material_parent_unmet)} campers with possible MATERIAL_PARENT requests "
+                f"left unsatisfied by the solver"
+            )
+            for person_cm_id in material_parent_unmet[:10]:
+                person = self.input.person_by_cm_id[person_cm_id]
+                possible_count = resolved_possible_count[person_cm_id]
+                self.constraint_logger.log_violation(
+                    "must_satisfy_one_material_parent_unmet",
+                    f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
                     severity="warning",
                 )
-            if len(unsatisfied_campers) > 10:
-                logger.info(f"... and {len(unsatisfied_campers) - 10} more")
+            if len(material_parent_unmet) > 10:
+                logger.info(f"... and {len(material_parent_unmet) - 10} more")
 
-        logger.info("=== End Constraint Violation Check ===")
+        if other_unmet:
+            logger.info(
+                f"{len(other_unmet)} campers with only non-material (staff/immaterial) possible requests "
+                f"left unsatisfied"
+            )
+            for person_cm_id in other_unmet[:10]:
+                person = self.input.person_by_cm_id[person_cm_id]
+                possible_count = resolved_possible_count[person_cm_id]
+                self.constraint_logger.log_violation(
+                    "must_satisfy_one_other_unmet",
+                    f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
+                    severity="info",
+                )
+            if len(other_unmet) > 10:
+                logger.info(f"... and {len(other_unmet) - 10} more")
