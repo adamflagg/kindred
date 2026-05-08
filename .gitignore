@@ -92,6 +92,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/go.mod
 !pocketbase/go.sum
 !pocketbase/main.go
+!pocketbase/main_*_test.go
 !pocketbase/sync/
 !pocketbase/logging/
 !pocketbase/campminder/
