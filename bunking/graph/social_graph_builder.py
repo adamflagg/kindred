@@ -24,10 +24,24 @@ from bunking.graph._types import cast_person
 from bunking.logging_config import get_logger
 from bunking.satisfaction import BucketCount, RequestBucket, camper_satisfaction
 from bunking.satisfaction.aggregate import bucket_status
-from bunking.sync.bunk_request_processor.core.models import RequestType
+from bunking.sync.bunk_request_processor.core.models import RequestType, source_from_field
 from pocketbase import PocketBase
 
 logger = get_logger(__name__)
+
+
+def _derive_source(request: Any) -> str:
+    """Derive the family/staff source string from a request's source_field.
+
+    Defaults to "family" for unknown/missing source_field — matches the
+    historical default at request_repository.py from the era when `source`
+    was a stored column (#1142 stage 4).
+    """
+    source_field = getattr(request, "source_field", "") or ""
+    try:
+        return source_from_field(source_field).value
+    except ValueError:
+        return "family"
 
 
 @dataclass
@@ -394,7 +408,7 @@ class SocialGraphBuilder:
                             edge_data["has_request"] = True
                             edge_data["request_priority"] = priority
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
-                            edge_data["source"] = getattr(request, "source", None)
+                            edge_data["source"] = _derive_source(request)
                             edge_data["weight"] = max(edge_data["weight"], weight)
                             edge_data["reciprocal_rows"] = reciprocal_rows
                             logger.info(
@@ -434,7 +448,7 @@ class SocialGraphBuilder:
                                 edge_data["has_request"] = True
                                 edge_data["request_priority"] = req_priority
                                 edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
-                                edge_data["source"] = getattr(request, "source", None)
+                                edge_data["source"] = _derive_source(request)
                                 edge_data["weight"] = max(edge_data["weight"], weight)
                                 logger.info(
                                     f"Added request as secondary type to sibling edge: {requester} -> {requestee}"
