@@ -31,7 +31,11 @@ export function SectionCard({
   const renderConfigRow = (item: ConfigWithMetadata) => {
     const fullKey = [item.category, item.subcategory, item.config_key].filter(Boolean).join('.')
     const editedValue = editedValues[fullKey]
-    const currentValue = editedValue ?? String(item.value)
+    if (item.value !== null && typeof item.value === 'object') {
+      console.warn(`Config row ${fullKey} has object-typed value; not rendering`)
+      return null
+    }
+    const currentValue = editedValue ?? String(item.value ?? '')
     const hasChange = editedValue !== undefined && editedValue !== String(item.value)
     const numericValue = parseFloat(currentValue)
 
@@ -131,7 +135,12 @@ export function SectionCard({
     )
   }
 
-  if (section.configs.length === 0) {
+  // Filter out object-typed configs so the count badge and empty-section guard are accurate.
+  const displayedConfigs = section.configs.filter(
+    (c) => c.value === null || typeof c.value !== 'object'
+  )
+
+  if (displayedConfigs.length === 0) {
     return null
   }
 
@@ -150,7 +159,7 @@ export function SectionCard({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-muted-foreground text-sm font-medium">
-            {section.configs.length}
+            {displayedConfigs.length}
           </span>
           {isExpanded ? (
             <ChevronDown className="text-muted-foreground h-5 w-5" />
