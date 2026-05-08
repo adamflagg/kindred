@@ -19,6 +19,7 @@ import { sessionNameToUrl } from '../utils/sessionUtils'
 import { useYear } from '../hooks/useCurrentYear'
 import { getFormattedSessionName } from '../utils/sessionDisplay'
 import { getCampNameShort } from '../config/branding'
+import { isMainSession, isEmbeddedSession } from '../utils/sessionTypePredicates'
 import type {
   AttendeesResponse,
   PersonsResponse,
@@ -116,8 +117,8 @@ function groupSessionsByStatus(sessions: SessionWithStats[]): {
   inProgress: SessionGroup[]
   completed: SessionGroup[]
 } {
-  const mainSessions = sessions.filter((s) => s.session_type === 'main')
-  const embeddedSessions = sessions.filter((s) => s.session_type === 'embedded')
+  const mainSessions = sessions.filter(isMainSession)
+  const embeddedSessions = sessions.filter(isEmbeddedSession)
 
   const createGroups = (mains: SessionWithStats[], status: SessionStatus): SessionGroup[] => {
     const assignedEmbedded = new Set<string>()
@@ -465,10 +466,10 @@ export default function SessionList() {
     queries: sessions.map((session) => ({
       queryKey: ['sessionStatistics', session.id, session.session_type],
       queryFn: async () => {
-        const isMainSession = session.session_type === 'main'
+        const isMain = isMainSession(session)
 
         let agSessions: CampSessionsResponse[] = []
-        if (isMainSession) {
+        if (isMain) {
           const childSessions = await pb
             .collection('camp_sessions')
             .getFullList<CampSessionsResponse>({

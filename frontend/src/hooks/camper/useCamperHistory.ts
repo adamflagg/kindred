@@ -5,7 +5,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { isValidSummerSession } from '../../constants/sessionTypes'
+import { isSummerCampSessionType, isMainSession } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
 import type { Camper } from '../../types/app-types'
 import type {
@@ -103,7 +103,7 @@ export function useCamperHistory(
           const session = assignment.expand.session
           const bunk = assignment.expand.bunk
 
-          if (session && isValidSummerSession(session.session_type)) {
+          if (session && isSummerCampSessionType(session.session_type)) {
             const year = assignment.year
 
             // Format session name based on type
@@ -111,7 +111,7 @@ export function useCamperHistory(
 
             // If we haven't seen this year yet, or if this is a main session (preferred), add it
             const existing = yearMap.get(year)
-            if (!existing || session.session_type === 'main') {
+            if (!existing || isMainSession(session)) {
               yearMap.set(year, {
                 year,
                 sessionName,

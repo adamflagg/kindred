@@ -4,6 +4,7 @@ import { Users, AlertTriangle, Heart } from 'lucide-react'
 import clsx from 'clsx'
 import { pb, getCurrentUserEmail } from '../lib/pocketbase'
 import type { Camper } from '../types/app-types'
+import { isAgSession } from '../utils/sessionTypePredicates'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { useGroupConflictConfirm } from '../hooks/useGroupConflictConfirm'
 import { GroupConflictDialog } from './GroupConflictDialog'
@@ -84,7 +85,7 @@ function validateFriendGroup(campers: Camper[]): ValidationResult {
     const sessionType = camper.expand?.session?.session_type ?? 'main'
     const sessionName = camper.expand?.session?.name ?? `Session ${sessionCmId}`
 
-    if (sessionType === 'ag') {
+    if (camper.expand?.session && isAgSession(camper.expand.session)) {
       hasAGSession = true
     }
 

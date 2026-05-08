@@ -16,6 +16,7 @@ import {
 } from '../../utils/sessionUtils'
 import type { Session } from '../../types/app-types'
 import type { SessionHierarchy } from './types'
+import { isEmbeddedSession, isAgSession, isMainSession } from '../../utils/sessionTypePredicates'
 
 /**
  * Get embedded sub-sessions for a parent session
@@ -31,7 +32,7 @@ export function getSubSessions(
 
   // Try parent_id + session_type first (preferred)
   let embedded = allSessions.filter(
-    (s) => s.parent_id === parentSession.cm_id && s.session_type === 'embedded'
+    (s) => s.parent_id === parentSession.cm_id && isEmbeddedSession(s)
   )
 
   // Fallback to name matching if parent_id not set
@@ -69,7 +70,7 @@ export function getAgSessions(
   if (!parentSession) return []
 
   // Try parent_id + session_type first (preferred)
-  let ag = allSessions.filter((s) => s.parent_id === parentSession.cm_id && s.session_type === 'ag')
+  let ag = allSessions.filter((s) => s.parent_id === parentSession.cm_id && isAgSession(s))
 
   // Fallback to name matching if parent_id not set
   if (ag.length === 0) {
@@ -236,7 +237,7 @@ export function useSessionHierarchy(
     sessionBunkPlanCounts,
     bunkPlanCountsLoaded
   )
-  const isViewingMainSession = session?.session_type === 'main'
+  const isViewingMainSession = session != null && isMainSession(session)
   const showAgArea = shouldShowAgArea(agSessions, isViewingMainSession)
 
   // Set default selected session when resolvedSession changes (render-time check)

@@ -13,6 +13,7 @@ import type {
 } from '../types/pocketbase-types'
 
 import type { Camper } from '../types/app-types'
+import { isAgSession } from '../utils/sessionTypePredicates'
 
 type BunkArea = 'all' | 'boys' | 'girls' | 'all-gender'
 
@@ -68,7 +69,7 @@ const GROUP_COLORS = [
 function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   if (area === 'all') return true
 
-  const isFromAGSession = camper.expand?.session?.session_type === 'ag'
+  const isFromAGSession = camper.expand?.session ? isAgSession(camper.expand.session) : false
 
   if (area === 'all-gender') {
     return isFromAGSession

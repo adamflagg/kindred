@@ -38,6 +38,7 @@ import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
 import type { Camper, Session } from '../types/app-types'
 import type { BunksResponse } from '../types/pocketbase-types'
+import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
 import { buildCsvContent, downloadCsv, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 
@@ -141,13 +142,7 @@ export default function AllCampersView() {
   const { data: allSessions = [] } = useQuery({
     queryKey: ['all-sessions', currentYear],
     queryFn: async () => {
-      const sessionTypeFilter = createInclusionFilter('session_type', [
-        'main',
-        'embedded',
-        'ag',
-        'taste',
-        'quest',
-      ])
+      const sessionTypeFilter = createInclusionFilter('session_type', [...SUMMER_CAMP_TYPES])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
 
@@ -162,13 +157,7 @@ export default function AllCampersView() {
   const { data: allCampers = [], isLoading } = useQuery({
     queryKey: ['all-campers', currentYear],
     queryFn: async () => {
-      const sessionTypeFilter = createInclusionFilter('session_type', [
-        'main',
-        'embedded',
-        'ag',
-        'taste',
-        'quest',
-      ])
+      const sessionTypeFilter = createInclusionFilter('session_type', [...SUMMER_CAMP_TYPES])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
 
