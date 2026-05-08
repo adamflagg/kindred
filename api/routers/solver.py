@@ -60,6 +60,11 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["solver"])
 
+# Strong references to in-flight sweep orchestration tasks. asyncio.create_task
+# returns a weakly-held task which can be GC'd mid-flight if the handler
+# function returns; storing here keeps the orchestration alive until done.
+_sweep_tasks: set[asyncio.Task[None]] = set()
+
 
 def _resolve_time_limit(value: int | None, default: int = 60) -> int:
     """Return the solver time limit in seconds.
@@ -139,8 +144,9 @@ async def post_run_sweep(
     # Snapshot inputs for session-based sweeps. Scenario-based reuses scenario_id
     # since the scenario itself is immutable.
     if request.session_cm_id is not None:
+        if request.year is None:
+            raise HTTPException(status_code=400, detail="year is required for session-based sweeps")
         try:
-            assert request.year is not None  # validator guarantees
             frozen_input: Any = await snapshot_session_input(
                 pb, session_cm_id=request.session_cm_id, year=request.year, scenario=None
             )
@@ -151,8 +157,8 @@ async def post_run_sweep(
         session_cm_id = request.session_cm_id
         year = request.year
     else:
-        # Scenario-based: resolve scenario name and the session+year it belongs to
-        assert request.scenario_id is not None  # validator guarantees
+        if request.scenario_id is None:
+            raise HTTPException(status_code=400, detail="scenario_id is required when session_cm_id is unset")
         try:
             scenario_record = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, request.scenario_id)
             scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
@@ -175,7 +181,7 @@ async def post_run_sweep(
 
     # Pre-create pending solver_runs entries so the UI sees them immediately.
     now = datetime.now(UTC)
-    for run_id, budget in zip(run_ids, request.time_budgets):
+    for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
         solver_runs[run_id] = {
             "id": run_id,
             "session_cm_id": session_cm_id,
@@ -189,7 +195,8 @@ async def post_run_sweep(
         }
 
     # Fire-and-forget orchestration. Background task survives this handler's return.
-    asyncio.create_task(
+    # Hold a reference to prevent the task from being garbage-collected mid-flight (RUF006).
+    task = asyncio.create_task(
         run_sweep(
             sweep_id=sweep_id,
             run_ids=run_ids,
@@ -203,6 +210,8 @@ async def post_run_sweep(
             frozen_input=frozen_input,
         )
     )
+    _sweep_tasks.add(task)
+    task.add_done_callback(_sweep_tasks.discard)
 
     return SweepResponse(sweep_id=sweep_id, run_ids=run_ids)
 

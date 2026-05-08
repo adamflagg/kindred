@@ -66,7 +66,7 @@ class SweepRequest(BaseModel):
     label: str | None = Field(default=None, max_length=120)
 
     @model_validator(mode="after")
-    def _exactly_one_source(self) -> "SweepRequest":
+    def _exactly_one_source(self) -> SweepRequest:
         has_session = self.session_cm_id is not None
         has_scenario = self.scenario_id is not None
         if has_session == has_scenario:

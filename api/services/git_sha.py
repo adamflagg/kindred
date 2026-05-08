@@ -21,7 +21,10 @@ def _read_git_sha() -> str:
     if env:
         return env.strip()
     try:
-        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],  # noqa: S607 — git is intentionally PATH-resolved for local-dev fallback
+            stderr=subprocess.DEVNULL,
+        )
         return out.decode().strip()
     except subprocess.CalledProcessError, FileNotFoundError:
         return "unknown"

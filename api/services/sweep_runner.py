@@ -41,7 +41,7 @@ async def run_sweep(
         raise ValueError("run_ids and time_budgets must be same length")
 
     try:
-        for run_id, budget in zip(run_ids, time_budgets):
+        for run_id, budget in zip(run_ids, time_budgets, strict=True):
             if registry.is_cancelled(sweep_id):
                 logger.info("Sweep %s cancelled; aborting remaining runs", sweep_id)
                 break
