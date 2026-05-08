@@ -169,8 +169,12 @@ cd "$PROJECT_ROOT/frontend"
 if npm run generate:api-types; then
     echo -e "${GREEN}API types generated${NC}"
 else
-    echo -e "${YELLOW}Warning: API type generation failed — using previously generated types${NC}"
-    echo -e "${YELLOW}Run 'npm run generate:api-types' from frontend/ to retry${NC}"
+    echo -e "${RED}╔══════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${RED}║  WARNING: API type generation FAILED                             ║${NC}"
+    echo -e "${RED}║  Frontend will run with STALE TypeScript types from disk.        ║${NC}"
+    echo -e "${RED}║  Drift between Python schemas and frontend types is undetected   ║${NC}"
+    echo -e "${RED}║  until CI. Fix and re-run 'npm run generate:api-types' ASAP.     ║${NC}"
+    echo -e "${RED}╚══════════════════════════════════════════════════════════════════╝${NC}"
 fi
 
 # Build frontend for nginx (development mode)

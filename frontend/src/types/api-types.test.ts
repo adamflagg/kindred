@@ -13,6 +13,67 @@
 import { describe, it, expect } from 'vitest'
 import type { ApiSocialGraphNode, ApiSocialGraphEdge, ApiCrossScopeEdge } from './api-types'
 
+// ── Exhaustiveness assertions (compile-time) ─────────────────────────────────
+// These `Required<T>` literals enumerate every field of the generated type.
+// They guard against silent drift in BOTH directions:
+//   - If the Python schema ADDS a required field, this literal becomes
+//     "missing property" — compile error.
+//   - If the Python schema REMOVES a field, this literal has an excess
+//     property — compile error.
+// Positive `it()` assertions below only verify presence; they cannot catch
+// removals. The lefthook `api-types-freshness` hook is the runtime gate;
+// these literals are the type-level gate.
+//
+// Nullable fields (`T | null`) remain required keys after `Required<>`, so
+// they must be listed (use `null` as the value).
+
+const _exhaustiveSocialGraphNode: Required<ApiSocialGraphNode> = {
+  id: 1001,
+  name: 'Emma Johnson',
+  grade: 7,
+  bunk_cm_id: 2001,
+  centrality: 0.5,
+  clustering: 0.3,
+  community: 1,
+  satisfaction_status: 'satisfied',
+  parent_satisfaction_status: 'satisfied',
+  staff_satisfaction_status: null,
+  first_year: false,
+  last_year_session: null,
+  last_year_bunk: null,
+}
+
+const _exhaustiveSocialGraphEdge: Required<ApiSocialGraphEdge> = {
+  source: 1001,
+  target: 1002,
+  weight: 1.0,
+  edge_type: 'request',
+  reciprocal: true,
+  confidence: 0.9,
+  priority: 1,
+  request_type: 'bunk_with',
+  metadata: {},
+  cross_scope: false,
+}
+
+const _exhaustiveCrossScopeEdge: Required<ApiCrossScopeEdge> = {
+  source: 1001,
+  target: 1003,
+  edge_type: 'request',
+  weight: 1.0,
+  request_type: 'bunk_with',
+  priority: 1,
+  confidence: 0.85,
+  reciprocal: false,
+  cross_scope: true,
+}
+
+// Reference the unused locals so the linter doesn't complain. The compile-time
+// check above is the actual assertion; runtime use is incidental.
+void _exhaustiveSocialGraphNode
+void _exhaustiveSocialGraphEdge
+void _exhaustiveCrossScopeEdge
+
 // ── Type-level assertions (compile-time) ─────────────────────────────────────
 // If any of these assignments fail to compile, the generated types are broken.
 
