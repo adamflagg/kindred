@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useYear } from '../hooks/useCurrentYear'
 import type { CamperHistory } from '../contexts/CamperHistoryContext'
 import { CamperHistoryContext } from '../contexts/CamperHistoryContext'
+import { isAtCampSession } from '../utils/sessionTypePredicates'
 
 interface CamperHistoryProviderProps {
   sessionCmId: number
@@ -64,9 +65,6 @@ export function CamperHistoryProvider({
           chunks.push(camperPersonIds.slice(i, i + chunkSize))
         }
 
-        // Standard camp session types to include
-        const allowedTypes = ['main', 'ag', 'embedded', 'taste']
-
         // Process chunks in parallel
         const chunkPromises = chunks.map(async (chunk) => {
           // Build OR filter for this chunk of person cm_ids
@@ -91,9 +89,10 @@ export function CamperHistoryProvider({
 
         for (const assignment of allAssignments) {
           const personCmId = assignment.expand?.person?.cm_id
-          const sessionType = assignment.expand?.session?.session_type
+          const session = assignment.expand?.session
 
-          if (!personCmId || !sessionType || !allowedTypes.includes(sessionType)) {
+          // Only include at-camp session types (main, embedded, ag)
+          if (!personCmId || !session || !isAtCampSession(session)) {
             continue
           }
 

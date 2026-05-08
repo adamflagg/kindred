@@ -17,8 +17,10 @@ import { pb } from '../lib/pocketbase'
 import { useAuth } from '../contexts/AuthContext'
 import { sessionNameToUrl } from '../utils/sessionUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { getFormattedSessionName } from '../utils/sessionDisplay'
 import { getCampNameShort } from '../config/branding'
+import { isMainSession, isEmbeddedSession } from '../utils/sessionTypePredicates'
 import type {
   AttendeesResponse,
   PersonsResponse,
@@ -116,8 +118,8 @@ function groupSessionsByStatus(sessions: SessionWithStats[]): {
   inProgress: SessionGroup[]
   completed: SessionGroup[]
 } {
-  const mainSessions = sessions.filter((s) => s.session_type === 'main')
-  const embeddedSessions = sessions.filter((s) => s.session_type === 'embedded')
+  const mainSessions = sessions.filter(isMainSession)
+  const embeddedSessions = sessions.filter(isEmbeddedSession)
 
   const createGroups = (mains: SessionWithStats[], status: SessionStatus): SessionGroup[] => {
     const assignedEmbedded = new Set<string>()
@@ -465,10 +467,10 @@ export default function SessionList() {
     queries: sessions.map((session) => ({
       queryKey: ['sessionStatistics', session.id, session.session_type],
       queryFn: async () => {
-        const isMainSession = session.session_type === 'main'
+        const isMain = isMainSession(session)
 
         let agSessions: CampSessionsResponse[] = []
-        if (isMainSession) {
+        if (isMain) {
           const childSessions = await pb
             .collection('camp_sessions')
             .getFullList<CampSessionsResponse>({
@@ -500,20 +502,19 @@ export default function SessionList() {
             filter: `(${sessionFilter}) && year = ${currentYear}`,
           })
 
-        const capacityConfig = await pb
-          .collection('config')
-          .getFirstListItem(
-            `category = "constraint" && subcategory = "cabin_capacity" && config_key = "default"`
-          )
-          .catch(() => null)
-        const bunkCapacity = capacityConfig?.value ? Number(capacityConfig.value) : 12
+        // Phase 2 cabin-capacity cleanup: previously queried
+        // `category="constraint" && subcategory="cabin_capacity" && config_key="default"`
+        // which never existed in the config table (the seeded row used
+        // `config_key="standard"`), so this always silently fell back to 12.
+        // Now uses the constant directly.
+        const bunkCapacity = DEFAULT_BUNK_CAPACITY
 
         const totalCampers = attendees.length
         const assignedCampers = assignments.length
         const unassignedCampers = totalCampers - assignedCampers
 
         const filteredBunkPlans = bunkPlans.filter((bp) => {
-          if (!isMainSession) return true
+          if (!isMain) return true
           const bunkGender = bp.expand.bunk?.gender.toLowerCase() ?? ''
           const isAgBunk = ['ag', 'mixed', 'all-gender', 'nb'].includes(bunkGender)
           if (bp.session === session.id) return !isAgBunk

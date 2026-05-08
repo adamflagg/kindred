@@ -25,7 +25,6 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
 from bunking.solver.penalties import (
-    cabin_capacity_penalty,
     grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,
@@ -391,12 +390,10 @@ class ObjectiveEvaluator:
             if penalty > 0:
                 penalties["grade_spread"] = penalty
 
-        # Capacity penalty (if soft mode)
-        capacity_mode = self.config.get_str("constraint.cabin_capacity.mode", default="hard")
-        if capacity_mode == "soft":
-            penalty = self._calculate_capacity_penalty(bunk_to_persons, bunk_by_cm_id)
-            if penalty > 0:
-                penalties["over_capacity"] = penalty
+        # NOTE: cabin_capacity soft penalty removed in Phase 2. Solver enforces
+        # capacity as a hard constraint, so over-capacity assignments cannot
+        # occur in solved scenarios. The post-solve evaluator no longer reports
+        # an "over_capacity" penalty term.
 
         # Minimum occupancy penalty (always active)
         penalty = self._calculate_occupancy_penalty(bunk_to_persons, bunk_by_cm_id)
@@ -437,32 +434,6 @@ class ObjectiveEvaluator:
             }
             excess = max(0, len(unique_grades) - max_unique_grades)
             total_penalty += excess * penalty_per_grade
-
-        return total_penalty
-
-    def _calculate_capacity_penalty(
-        self,
-        bunk_to_persons: dict[int, list[int]],
-        bunk_by_cm_id: dict[int, dict[str, Any]],
-    ) -> int:
-        """Calculate over-capacity soft constraint penalty.
-
-        Reads via the centralized ``cabin_capacity_penalty()`` accessor so this
-        replicates the OR-Tools cost contribution exactly (B1/B2 fix).
-        """
-        penalty_per_person = cabin_capacity_penalty()
-        default_capacity = self.config.get_int("constraint.cabin_capacity.standard", default=12)
-
-        total_penalty = 0
-
-        for bunk_cm_id, person_ids in bunk_to_persons.items():
-            bunk = bunk_by_cm_id.get(bunk_cm_id, {})
-            max_capacity = bunk.get("capacity") or bunk.get("max_size") or default_capacity
-            occupancy = len(person_ids)
-
-            if occupancy > max_capacity:
-                excess = occupancy - max_capacity
-                total_penalty += excess * penalty_per_person
 
         return total_penalty
 

@@ -12,6 +12,7 @@ import { BunkRequestRow } from '../BunkRequestRow'
 import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
+import { isAgSession } from '../../utils/sessionTypePredicates'
 import type {
   BucketCount,
   CamperSatisfaction,
@@ -219,7 +220,7 @@ export function BunkingStatusPanel({
                   ? `S${sessMatch[1]}`
                   : sess?.name.toLowerCase().includes('taste')
                     ? 'ToC'
-                    : sess?.session_type === 'ag'
+                    : sess && isAgSession(sess)
                       ? 'AG'
                       : (sess?.name ?? '?')
                 return bunk ? (

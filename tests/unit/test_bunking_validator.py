@@ -186,22 +186,24 @@ class TestBunkingValidator:
         assert unassigned_issue is not None
         assert unassigned_issue.severity == ValidationSeverity.ERROR
 
-    def test_validate_bunk_over_capacity(self, validator, basic_session, basic_persons):
-        """Test that over-capacity bunks are detected."""
-        small_bunk = MockBunk(campminder_id="30001", name="Small-1", max_size=2)
+    def test_validate_bunk_over_capacity(self, validator, basic_session):
+        """Test that over-capacity bunks are detected.
 
-        # Assign 3 people to a bunk with max 2
-        assignments = [
-            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="30001"),
-            MockBunkAssignment(person_cm_id="10002", bunk_cm_id="30001"),
-            MockBunkAssignment(person_cm_id="10003", bunk_cm_id="30001"),
-        ]
+        Phase 2 cabin-capacity cleanup: ``bunk.max_size`` is no longer per-bunk
+        (the field was a Pydantic-only fiction never backed by a PB column).
+        Validation uses the global ``DEFAULT_BUNK_CAPACITY=12`` constant. So
+        "over capacity" means ≥13 campers in a single bunk — only reachable
+        via staff manual edits, since the solver hard-caps at 12.
+        """
+        bunk = MockBunk(campminder_id="30001", name="B-1")
+        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Camper {i}", age=10, grade=5) for i in range(13)]
+        assignments = [MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="30001") for i in range(13)]
 
         result = validator.validate_bunking(
             session=basic_session,
-            bunks=[small_bunk],
+            bunks=[bunk],
             assignments=assignments,
-            persons=basic_persons,
+            persons=persons,
             requests=[],
         )
 
@@ -210,21 +212,17 @@ class TestBunkingValidator:
         assert capacity_issue is not None
         assert capacity_issue.severity == ValidationSeverity.ERROR
 
-    def test_validate_bunk_at_capacity(self, validator, basic_session, basic_persons):
-        """Test tracking of bunks at capacity."""
-        exact_bunk = MockBunk(campminder_id="30002", name="Exact-1", max_size=3)
-
-        assignments = [
-            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="30002"),
-            MockBunkAssignment(person_cm_id="10002", bunk_cm_id="30002"),
-            MockBunkAssignment(person_cm_id="10003", bunk_cm_id="30002"),
-        ]
+    def test_validate_bunk_at_capacity(self, validator, basic_session):
+        """Test tracking of bunks at capacity (= DEFAULT_BUNK_CAPACITY)."""
+        bunk = MockBunk(campminder_id="30002", name="B-2")
+        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Camper {i}", age=10, grade=5) for i in range(12)]
+        assignments = [MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="30002") for i in range(12)]
 
         result = validator.validate_bunking(
             session=basic_session,
-            bunks=[exact_bunk],
+            bunks=[bunk],
             assignments=assignments,
-            persons=basic_persons,
+            persons=persons,
             requests=[],
         )
 
@@ -487,14 +485,19 @@ class TestBunkingValidator:
         assert result.statistics.campers_with_no_requests == 1
 
     def test_validate_capacity_utilization(self, validator, basic_session):
-        """Test capacity utilization calculation."""
+        """Test capacity utilization calculation.
+
+        Phase 2 cabin-capacity cleanup: total capacity is now
+        ``len(bunks) * DEFAULT_BUNK_CAPACITY`` (= 2 * 12 = 24), not the sum of
+        per-bunk ``max_size``. Used capacity tracks assigned campers.
+        """
         bunks = [
-            MockBunk(campminder_id="20001", name="B-1", max_size=10),
-            MockBunk(campminder_id="20002", name="B-2", max_size=10),
+            MockBunk(campminder_id="20001", name="B-1"),
+            MockBunk(campminder_id="20002", name="B-2"),
         ]
-        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Person {i}") for i in range(15)]
+        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Person {i}") for i in range(18)]
         assignments = [
-            MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="20001" if i < 8 else "20002") for i in range(15)
+            MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="20001" if i < 9 else "20002") for i in range(18)
         ]
 
         result = validator.validate_bunking(
@@ -505,8 +508,8 @@ class TestBunkingValidator:
             requests=[],
         )
 
-        assert result.statistics.total_capacity == 20
-        assert result.statistics.used_capacity == 15
+        assert result.statistics.total_capacity == 24  # 2 bunks * DEFAULT_BUNK_CAPACITY (12)
+        assert result.statistics.used_capacity == 18
         assert result.statistics.capacity_utilization_rate == 0.75
 
     def test_validate_grade_adjacency_non_adjacent(self, validator, basic_session):

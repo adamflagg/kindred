@@ -8,10 +8,13 @@ displayed score showed magnitudes 30-100x lower than what the solver
 was actually optimizing).
 
 Canonical keys:
-- constraint.cabin_capacity.penalty
 - constraint.cabin_minimum_occupancy.penalty
 - constraint.cabin_minimum_occupancy.min
 - constraint.grade_spread.penalty
+
+(``constraint.cabin_capacity.penalty`` was removed in Phase 2 along with the
+soft cabin-capacity constraint path — the solver enforces capacity as a hard
+constraint, so there is no over-capacity penalty term to read.)
 
 All accessors use ``ConfigLoader.get_instance()`` so they pick up the
 active loader (real PocketBase-backed loader in production, a
@@ -21,11 +24,6 @@ active loader (real PocketBase-backed loader in production, a
 from __future__ import annotations
 
 from bunking.config import ConfigLoader
-
-
-def cabin_capacity_penalty() -> int:
-    """Penalty per camper of over-capacity overflow."""
-    return ConfigLoader.get_instance().get_int("constraint.cabin_capacity.penalty")
 
 
 def min_occupancy_penalty() -> int:

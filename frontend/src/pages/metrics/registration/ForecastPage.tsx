@@ -10,6 +10,7 @@ import {
   buildSessionTypeLookup,
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
+import { isMainOrEmbedded, isAgSession, isQuestSession } from '../../../utils/sessionTypePredicates'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
 import { buildForecastSections } from '../../../utils/forecastUtils'
 import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
@@ -191,16 +192,11 @@ export default function ForecastPage() {
 
   // Split into camp table: main/embedded first (by date), then AG at bottom (by date)
   const campSessions = useMemo(() => {
-    const mainEmbedded = allSessions.filter(
-      (s) => s.session_type === 'main' || s.session_type === 'embedded'
-    )
-    const ag = allSessions.filter((s) => s.session_type === 'ag')
+    const mainEmbedded = allSessions.filter(isMainOrEmbedded)
+    const ag = allSessions.filter(isAgSession)
     return [...mainEmbedded, ...ag]
   }, [allSessions])
-  const questSessions = useMemo(
-    () => allSessions.filter((s) => s.session_type === 'quest'),
-    [allSessions]
-  )
+  const questSessions = useMemo(() => allSessions.filter(isQuestSession), [allSessions])
 
   if (isLoading) {
     return (

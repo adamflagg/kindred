@@ -253,14 +253,22 @@ class Person(BaseModel):
 
 
 class Bunk(BaseModel):
-    """Bunk model matching PocketBase schema."""
+    """Bunk model matching PocketBase schema.
+
+    NOTE: ``max_size`` was removed in Phase 2 cabin-capacity cleanup. The
+    ``bunks`` PocketBase collection has no capacity field; the Pydantic
+    default of 12 was effectively a hardcoded constant. Consumers now use
+    ``bunking.solver.constants.DEFAULT_BUNK_CAPACITY`` directly. If per-bunk
+    variance is ever needed (e.g., a smaller specialty cabin), add a real
+    integer column on the ``bunks`` collection and re-introduce the field
+    backed by that column.
+    """
 
     id: str | None = None
     campminder_id: str
     name: str
     area: str | None = None
     division_cm_id: str | None = None
-    max_size: int = 12
     is_locked: bool = False
     gender: str | None = None
 

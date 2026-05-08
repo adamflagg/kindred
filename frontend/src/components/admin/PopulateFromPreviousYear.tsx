@@ -23,16 +23,13 @@ import {
   type PreviewRegDateItem,
   type PreviewSessionItem,
 } from './populateUtils'
-
-// ── Session type filter (same as SessionConfigTable) ─────────────
-
-const SUMMER_TYPES = ['main', 'embedded', 'ag', 'quest']
+import { SUMMER_CAMP_TYPES } from '../../utils/sessionTypePredicates'
 
 function useSummerSessions(year: number) {
   return useQuery({
     queryKey: ['populate-sessions', year],
     queryFn: async () => {
-      const typeFilter = SUMMER_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
+      const typeFilter = SUMMER_CAMP_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
       return await pb.collection('camp_sessions').getFullList({
         filter: `year = ${year} && (${typeFilter})`,
         sort: 'start_date',

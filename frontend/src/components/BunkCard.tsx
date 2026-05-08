@@ -12,6 +12,7 @@ import { useYear } from '../hooks/useCurrentYear'
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { BunkUtilizationBar } from './BunkUtilizationBar'
 import { BunkWarnings } from './BunkWarnings'
+import { isAgSession } from '../utils/sessionTypePredicates'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 
@@ -96,7 +97,9 @@ function BunkCard({
     if (!activeDragCamper) return true // No drag = valid
 
     const bunkGender = bunk.gender.toLowerCase()
-    const isFromAGSession = activeDragCamper.expand?.session?.session_type === 'ag'
+    const isFromAGSession = activeDragCamper.expand?.session
+      ? isAgSession(activeDragCamper.expand.session)
+      : false
 
     if (isFromAGSession) {
       // AG campers can only go to Mixed (AG) bunks

@@ -23,7 +23,6 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.satisfaction import is_request_satisfied
 from bunking.solver.penalties import (
-    cabin_capacity_penalty,
     grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,
@@ -75,7 +74,7 @@ def evaluate_scenario_score(
         persons: List of persons with fields:
             - cm_id, grade, gender
         bunks: List of bunks with fields:
-            - cm_id, name, gender, max_size
+            - cm_id, name, gender
 
     Returns:
         ScoreBreakdown with total score and component breakdown
@@ -269,7 +268,7 @@ def _calculate_penalties(
     max_unique_grades = config.get_int("constraint.grade_spread.max_spread", default=2)
 
     total_grade_spread_excess = 0
-    for bunk_cm_id, person_ids in bunk_to_persons.items():
+    for person_ids in bunk_to_persons.values():
         unique_grades = {
             person_by_cm_id[pid].get("grade")
             for pid in person_ids
@@ -280,19 +279,10 @@ def _calculate_penalties(
     if total_grade_spread_excess > 0:
         penalties["grade_spread"] = total_grade_spread_excess * grade_spread_penalty_weight
 
-    # Capacity penalty (B1/B2 fix — read via the centralized accessor)
-    capacity_penalty = cabin_capacity_penalty()
-    standard_capacity = config.get_int("constraint.cabin_capacity.standard", default=12)
-
-    over_capacity_count = 0
-    for bunk_cm_id, person_ids in bunk_to_persons.items():
-        bunk = bunk_by_cm_id.get(bunk_cm_id, {})
-        max_size = bunk.get("max_size") or standard_capacity
-        if len(person_ids) > max_size:
-            over_capacity_count += len(person_ids) - max_size
-
-    if over_capacity_count > 0:
-        penalties["over_capacity"] = over_capacity_count * capacity_penalty
+    # NOTE: over_capacity penalty removed in Phase 2. Solver enforces capacity
+    # as a hard constraint, so no over-capacity assignments can appear in
+    # solved scenarios. This penalty term used to back-fill the displayed
+    # score; with the soft path gone there's nothing to back-fill.
 
     # Under-occupancy penalty (B4 fix — prefer fuller bunks).
     # Read via centralized accessors so this matches the OR-Tools cost.
@@ -300,7 +290,7 @@ def _calculate_penalties(
     under_occupancy_penalty = min_occupancy_penalty()
 
     under_occupancy_count = 0
-    for bunk_cm_id, person_ids in bunk_to_persons.items():
+    for person_ids in bunk_to_persons.values():
         if len(person_ids) > 0 and len(person_ids) < min_occupancy:
             under_occupancy_count += min_occupancy - len(person_ids)
 
