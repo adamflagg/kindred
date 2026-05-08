@@ -21,14 +21,25 @@ interface Phase1DetailProps {
 }
 
 export function Phase1Detail({ data, onRerunPhase, onRunFromHere, isRunning }: Phase1DetailProps) {
-  const status = !data.ran ? 'not_run' : data.is_valid ? 'ran' : 'error'
+  let status: 'not_run' | 'ran' | 'error'
+  let statusLabel: string
+  if (!data.ran) {
+    status = 'not_run'
+    statusLabel = 'skipped'
+  } else if (data.is_valid) {
+    status = 'ran'
+    statusLabel = 'valid'
+  } else {
+    status = 'error'
+    statusLabel = 'invalid'
+  }
 
   return (
     <div className="space-y-5">
       <PhaseHeader
         phase="phase1"
         status={status}
-        statusLabel={!data.ran ? 'skipped' : data.is_valid ? 'valid' : 'invalid'}
+        statusLabel={statusLabel}
         metrics={
           data.ran ? (
             <>

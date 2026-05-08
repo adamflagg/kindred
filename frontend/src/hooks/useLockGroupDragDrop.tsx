@@ -108,8 +108,10 @@ export function useLockGroupDragDrop({
 
       // Move all group members
       const activeCamper = campers.find((c) => c.id === active.id)
-      const campersToMove =
-        draggedGroupMembers.length > 0 ? draggedGroupMembers : activeCamper ? [activeCamper] : []
+      let campersToMove: Camper[]
+      if (draggedGroupMembers.length > 0) campersToMove = draggedGroupMembers
+      else if (activeCamper) campersToMove = [activeCamper]
+      else campersToMove = []
 
       if (campersToMove.length > 1) {
         toast(`Moving ${campersToMove.length} locked campers together...`, {

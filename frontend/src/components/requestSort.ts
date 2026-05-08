@@ -52,7 +52,9 @@ export function sortRequests(
         if (aFirst !== bFirst) return aFirst < bFirst ? -1 : 1
         const aLast = (aP?.last_name ?? '').toLowerCase()
         const bLast = (bP?.last_name ?? '').toLowerCase()
-        return aLast < bLast ? -1 : aLast > bLast ? 1 : 0
+        if (aLast < bLast) return -1
+        if (aLast > bLast) return 1
+        return 0
       }
       if (aGrade === null) return 1 // a goes after b regardless of direction
       if (bGrade === null) return -1 // a goes before b regardless of direction

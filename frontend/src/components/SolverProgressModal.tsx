@@ -373,13 +373,16 @@ export default function SolverProgressModal({
                 {['loading', 'searching', 'optimizing', 'finalizing'].map((p, i) => {
                   const phases = ['loading', 'searching', 'optimizing', 'finalizing']
                   const currentIndex = phases.indexOf(phase)
-                  const isActive = i === currentIndex
-                  const isPast = i < currentIndex
+
+                  let dotClass: string
+                  if (i === currentIndex) dotClass = 'w-8 bg-amber-500'
+                  else if (i < currentIndex) dotClass = 'w-2 bg-green-500'
+                  else dotClass = 'w-2 bg-muted'
 
                   return (
                     <div
                       key={p}
-                      className={`h-2 rounded-full transition-all duration-300 ${isActive ? 'w-8 bg-amber-500' : 'w-2'} ${isPast ? 'bg-green-500' : ''} ${!isActive && !isPast ? 'bg-muted' : ''} `}
+                      className={`h-2 rounded-full transition-all duration-300 ${dotClass}`}
                     />
                   )
                 })}

@@ -1128,18 +1128,16 @@ function StatBlock({
   satisfied: number
   total: number
 }) {
+  let pctColorClass: string
+  if (pct >= 80) pctColorClass = 'text-forest-600'
+  else if (pct >= 60) pctColorClass = 'text-amber-600'
+  else pctColorClass = 'text-red-600'
+
   return (
     <div>
       <div className="text-muted-foreground text-xs tracking-wider uppercase">{label}</div>
       <div className="flex items-baseline gap-1">
-        <span
-          className={clsx(
-            'text-xl font-bold',
-            pct >= 80 ? 'text-forest-600' : pct >= 60 ? 'text-amber-600' : 'text-red-600'
-          )}
-        >
-          {pct}%
-        </span>
+        <span className={clsx('text-xl font-bold', pctColorClass)}>{pct}%</span>
         <span className="text-muted-foreground text-xs">
           ({satisfied}/{total})
         </span>

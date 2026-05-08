@@ -86,6 +86,7 @@ const warmthStyles = {
     text: 'text-blue-600 dark:text-blue-400',
     bg: 'bg-blue-50 dark:bg-blue-950/30',
     iconBg: 'bg-blue-100 dark:bg-blue-900/50',
+    dot: 'bg-blue-500',
   },
   warm: {
     glow: 'shadow-[0_0_15px_rgba(34,197,94,0.3)]',
@@ -94,6 +95,7 @@ const warmthStyles = {
     text: 'text-green-600 dark:text-green-400',
     bg: 'bg-green-50 dark:bg-green-950/30',
     iconBg: 'bg-green-100 dark:bg-green-900/50',
+    dot: 'bg-green-500',
   },
   hot: {
     glow: 'shadow-[0_0_20px_rgba(251,146,60,0.4)]',
@@ -102,6 +104,7 @@ const warmthStyles = {
     text: 'text-orange-600 dark:text-orange-400',
     bg: 'bg-orange-50 dark:bg-orange-950/30',
     iconBg: 'bg-orange-100 dark:bg-orange-900/50',
+    dot: 'animate-pulse bg-orange-500',
   },
   blazing: {
     glow: 'shadow-[0_0_25px_rgba(239,68,68,0.5)]',
@@ -110,6 +113,7 @@ const warmthStyles = {
     text: 'text-red-600 dark:text-red-400',
     bg: 'bg-red-50 dark:bg-red-950/30',
     iconBg: 'bg-red-100 dark:bg-red-900/50',
+    dot: 'animate-pulse bg-red-500',
   },
 }
 
@@ -342,7 +346,7 @@ export default function OptimizeBunksButton({
                       {/* Selection indicator */}
                       {isSelected && (
                         <div
-                          className={`h-2 w-2 flex-shrink-0 rounded-full ${level.warmth === 'cool' ? 'bg-blue-500' : ''} ${level.warmth === 'warm' ? 'bg-green-500' : ''} ${level.warmth === 'hot' ? 'animate-pulse bg-orange-500' : ''} ${level.warmth === 'blazing' ? 'animate-pulse bg-red-500' : ''} `}
+                          className={`h-2 w-2 flex-shrink-0 rounded-full ${warmthStyles[level.warmth].dot}`}
                         />
                       )}
                     </button>

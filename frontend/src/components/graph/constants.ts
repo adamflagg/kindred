@@ -62,3 +62,14 @@ export const ZOOM_SETTINGS = {
   min: 0.1,
   max: 10,
 } as const
+
+/**
+ * Density threshold for hiding labels at a given zoom level. Lower zoom →
+ * higher threshold (hide more aggressively); higher zoom → lower threshold
+ * (show more labels).
+ */
+export function labelDensityThreshold(zoom: number): number {
+  if (zoom < 0.5) return 0.8
+  if (zoom < 0.7) return 0.6
+  return 0.4
+}
