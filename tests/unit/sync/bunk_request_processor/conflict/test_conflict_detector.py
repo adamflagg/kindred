@@ -22,14 +22,23 @@ def make_parsed_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     target_name: str | None = None,
 ) -> ParsedRequest:
-    """Helper to create a ParsedRequest with required fields"""
-    source_field = "not_bunk_with" if request_type == RequestType.NOT_BUNK_WITH else "bunk_with"
+    """Helper to create a ParsedRequest with required fields.
+
+    source_field defaults to "bunk_with" (the parent-input field) regardless
+    of request_type — this models the most common production case where a
+    parent types "NOT Jake" in the bunk_with column and the AI parses it as
+    NOT_BUNK_WITH semantics. source_field and request_type are independent
+    axes (input column vs semantic meaning); pairing NOT_BUNK_WITH with
+    source_field="not_bunk_with" would only match the staff-input path, which
+    isn't what these tests exercise. Once #1142 stage 3 removes the parallel
+    `source` field entirely, this helper simplifies further.
+    """
     return ParsedRequest(
         raw_text=text,
         request_type=request_type,
         target_name=target_name or text,
         age_preference=None,
-        source_field=source_field,
+        source_field="bunk_with",
         source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,

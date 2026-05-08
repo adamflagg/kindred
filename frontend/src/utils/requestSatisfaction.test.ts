@@ -305,8 +305,9 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
   })
 
   // Regression: source_field=='' is truthy via `!= null`, so the previous
-  // implementation called sourceFromField('') which throws, crashing the panel.
-  // Fall back to req.source instead of throwing.
+  // implementation crashed the panel by calling the (since-removed) throwing
+  // variant on empty input. safeSourceFromField returns null and we fall back
+  // to req.source.
   it('undefined bucket + empty source_field + source=staff → falls back to source', () => {
     const result = resolveBadgeBucket(undefined, { source_field: '', source: 'staff' })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
