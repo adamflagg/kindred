@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
+from bunking.solver.penalties import cabin_capacity_penalty
 
 from .base import SolverContext
 from .helpers import is_ag_session_bunk
@@ -59,8 +60,10 @@ def add_cabin_capacity_soft_constraint(ctx: SolverContext, objective_terms: list
         ctx: Solver context with model, assignments, and mappings
         objective_terms: List to append penalty terms to (negative values)
     """
-    # Get penalty weight for violations - default raised to ensure capacity > flow incentives
-    penalty_weight = ctx.config.get_int("constraint.cabin_capacity.penalty", default=50000)
+    # Penalty for over-capacity overflow. Read via the centralized accessor so
+    # this OR-Tools cost contribution stays in lockstep with the post-solve
+    # evaluators that replicate the score (see bunking/solver/penalties.py).
+    penalty_weight = cabin_capacity_penalty()
     max_capacity = ctx.config.get_int("constraint.cabin_capacity.max", default=14)
     standard_capacity_config = ctx.config.get_int("constraint.cabin_capacity.standard", default=12)
 
