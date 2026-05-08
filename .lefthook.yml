@@ -123,8 +123,8 @@ pre-push:
       run: npm run lint
 
     # Verify generated API types match the current Python schema.
-    # Regenerates to a temp file (no on-disk mutation) so this can run safely
-    # alongside `type-check` in the parallel group.
+    # Regenerates to a temp directory (no on-disk mutation) so this can run
+    # safely alongside `type-check` in the parallel group.
     # Regen failure → hard block; drift → hard block with regen instructions.
     api-types-freshness:
       glob:
@@ -133,7 +133,7 @@ pre-push:
       run: |
         REGEN_LOG=$(mktemp)
         REGEN_DIR=$(mktemp -d)
-        REGEN_OUT="$REGEN_DIR/api-generated.ts"
+        REGEN_OUT="$REGEN_DIR/api-generated"
         trap 'rm -rf "$REGEN_LOG" "$REGEN_DIR"' EXIT
         if ! node frontend/scripts/generate-api-types.js --output "$REGEN_OUT" > "$REGEN_LOG" 2>&1; then
           echo ""
@@ -142,11 +142,11 @@ pre-push:
           echo ""
           exit 1
         fi
-        if ! diff -q "$REGEN_OUT" frontend/src/types/api-generated.ts >/dev/null 2>&1; then
+        if ! diff -rq "$REGEN_OUT" frontend/src/types/api-generated >/dev/null 2>&1; then
           echo ""
           echo "❌  API types are stale — generated types don't match current Python schemas."
           echo "   Run: cd frontend && npm run generate:api-types"
-          echo "   Then commit the updated src/types/api-generated.ts and re-push."
+          echo "   Then commit the updated src/types/api-generated/ and re-push."
           echo ""
           exit 1
         fi

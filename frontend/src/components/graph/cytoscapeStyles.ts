@@ -411,8 +411,12 @@ export function createGraphElements(
       label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
       name: node.name,
       grade: node.grade,
-      centrality: node.centrality,
-      clustering: node.clustering,
+      // centrality/clustering are computed graph metrics — the Pydantic model
+      // declares defaults (0.0) so they're not in OpenAPI's required[] list,
+      // and codegen emits them as optional. The server always populates them,
+      // so 0 is a safe fallback that matches the schema default.
+      centrality: node.centrality ?? 0,
+      clustering: node.clustering ?? 0,
       satisfaction_status: node.satisfaction_status,
       parent_satisfaction_status: node.parent_satisfaction_status,
       staff_satisfaction_status: node.staff_satisfaction_status,
@@ -514,7 +518,7 @@ export function createGraphElements(
     // multi flag so the stylesheet curves them (true conflicts).
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
-      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal, multi: isMulti }))
+      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal ?? false, multi: isMulti }))
     })
   })
 

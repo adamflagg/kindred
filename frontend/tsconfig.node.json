@@ -9,5 +9,5 @@
     "strict": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["vite.config.ts", "vite.config.local.example.ts", "vitest.config.ts"]
+  "include": ["vite.config.ts", "vite.config.local.example.ts", "vitest.config.ts", "openapi-ts.config.ts"]
 }
