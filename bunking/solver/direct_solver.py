@@ -103,6 +103,63 @@ def _compute_optimality_gap(objective: float | None, best_bound: float | None) -
     return abs(objective - best_bound) / max(abs(objective), 1.0)
 
 
+def _build_stats_dict(
+    solver: Any,
+    status: int,
+    model_proto: Any,
+    time_limit_seconds: int,
+    num_workers: int,
+    num_persons: int,
+    num_bunks: int,
+    num_requests: int,
+    satisfied_count: int,
+) -> dict[str, Any]:
+    """Build the full stats dict captured per solver run.
+
+    Wrapped in ``getattr`` guards for OR-Tools forward/back compat — a missing
+    method returns ``None`` instead of crashing the solver path. The dict
+    round-trips through ``solver_runs.stats`` and is rendered by the solver
+    debug tab.
+    """
+    response_proto = solver.ResponseProto()
+    objective = solver.ObjectiveValue()
+    best_bound = getattr(solver, "BestObjectiveBound", lambda: None)()
+    solution_info = getattr(response_proto, "solution_info", None) or None
+
+    return {
+        # Existing back-compat fields
+        "status": solver.StatusName(status),
+        "status_code": status,
+        "objective_value": objective,
+        "solve_time": solver.WallTime(),
+        "total_persons": num_persons,
+        "total_bunks": num_bunks,
+        "total_requests": num_requests,
+        "satisfied_request_count": satisfied_count,
+        # Timing
+        "walltime_seconds": solver.WallTime(),
+        "user_time_seconds": getattr(solver, "UserTime", lambda: None)(),
+        "deterministic_time": getattr(solver, "DeterministicTime", lambda: None)(),
+        "time_budget_seconds": time_limit_seconds,
+        "num_workers": num_workers,
+        # Quality
+        "best_objective_bound": best_bound,
+        "optimality_gap": _compute_optimality_gap(objective, best_bound),
+        "gap_integral": getattr(response_proto, "gap_integral", None),
+        "num_solutions_found": getattr(response_proto, "num_solutions", None),
+        "solution_info": solution_info,
+        # Search
+        "num_branches": solver.NumBranches(),
+        "num_conflicts": solver.NumConflicts(),
+        "num_booleans": solver.NumBooleans(),
+        "num_integer_variables": getattr(solver, "NumIntegers", lambda: None)(),
+        # Model
+        "model_num_variables": len(model_proto.variables),
+        "model_num_constraints": len(model_proto.constraints),
+        "constraint_type_breakdown": _count_constraint_types(model_proto),
+    }
+
+
 def _is_material_parent(request: DirectBunkRequest) -> bool:
     """True iff a request's source_field classifies as MATERIAL_PARENT.
 
@@ -873,19 +930,22 @@ class DirectBunkingSolver:
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
         # Create output
+        stats = _build_stats_dict(
+            solver=solver,
+            status=status,
+            model_proto=self.model.Proto(),
+            time_limit_seconds=time_limit_seconds,
+            num_workers=num_workers,
+            num_persons=len(self.person_ids),
+            num_bunks=len(self.bunks),
+            num_requests=len(self.input.requests),
+            satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
+        )
+        stats["request_validation"] = self.request_validation_summary
+
         return DirectSolverOutput(
             assignments=assignments,
-            stats={
-                "status": solver.StatusName(status),
-                "objective_value": solver.ObjectiveValue(),
-                "solve_time": solver.WallTime(),
-                "total_persons": len(self.person_ids),
-                "total_bunks": len(self.bunks),
-                "total_requests": len(self.input.requests),
-                "satisfied_request_count": sum(len(reqs) for reqs in satisfied_requests.values()),
-                # Request validation statistics
-                "request_validation": self.request_validation_summary,
-            },
+            stats=stats,
             satisfied_requests=satisfied_requests,
             analysis=analysis,
             log_file_path=log_file_path,
