@@ -183,3 +183,16 @@ Before committing any migration:
 **Enum update workaround**: If migration applies but enum values unchanged, use `scripts/fix_request_type_enum.py` to update schema JSON directly.
 
 **Schema iteration**: Use index-based `for` loops, NOT `for...of` (causes "object is not iterable").
+
+## Migration Consolidation
+
+When `pb_migrations/` accumulates many modify-migrations for the same table, run the `consolidate-migrations` skill (machine-local at `~/.claude/skills/consolidate-migrations/`) to fold them into the table's original CREATE migration. Each round is empirically verified by spinning up two scratch DBs (one with the proposed merged set, one with the current set) and diffing their `_collections` schemas — the merge is rejected if it would change the table's shape.
+
+Skill artifacts:
+- Tracking doc (gitignored): `docs/plans/migration-consolidation.md` — backlog, per-round history, multi-table cross-cutting findings
+- Verification harness: `scripts/dev/verify-consolidation.sh` (orchestrator), `scripts/dev/migration-schema-diff.sh` (canonical schema dump + diff)
+- Spec: `docs/superpowers/specs/2026-05-08-migration-consolidation-design.md`
+
+Cleanup mechanism: PB v0.23 has a built-in `migrate history-sync` subcommand (`RemoveMissingAppliedMigrations` in `core/migrations_runner.go`) that DELETEs every `_migrations` row whose file is no longer on disk. `pocketbase/main.go` registers an `OnServe` hook that calls this on every server boot, so prod's `_migrations` self-heals after each consolidation merge. Idempotent — no-op on clean DBs.
+
+Numbering: gaps may appear in `pb_migrations/` numbering after consolidation. Per CLAUDE.md "PocketBase Migration Numbering Rule", new migrations must use a number greater than the highest existing filename on `origin/main` — never fill consolidation gaps.
