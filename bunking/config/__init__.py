@@ -14,8 +14,8 @@ Usage:
     config = ConfigLoader.get_instance()
 
     # Typed accessors
-    timeout = config.get_int("solver.time_limit.seconds")
-    enabled = config.get_bool("smart_local_resolution.enabled")
+    enabled = config.get_int("smart_local_resolution.enabled")
+    weight = config.get_float("smart_local_resolution.connection_score_weight")
 """
 
 from __future__ import annotations

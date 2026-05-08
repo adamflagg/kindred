@@ -189,7 +189,6 @@ TEST_CONFIG = {
     # Solver settings
     "solver.auto_apply_enabled": 1,
     "solver.auto_apply_timeout": 0,
-    "solver.time_limit.seconds": 30,
     # Smart local resolution
     "smart_local_resolution.enabled": 1,
     "smart_local_resolution.significant_connection_threshold": 5,
@@ -241,9 +240,6 @@ class MockConfigLoader:
     def get_constraint(self, constraint_type: str, param: str) -> int:
         return self.get_int(f"constraint.{constraint_type}.{param}", default=10)
 
-    def get_solver_param(self, param_type: str, subtype: str) -> int:
-        return self.get_int(f"solver.{param_type}.{subtype}", default=30)
-
     def get_soft_constraint_weight(self, constraint_name: str, default: int = 100) -> int:
         weight_mappings = {
             # level_progression removed - uses no_regression_penalty, not progression_weight
@@ -282,7 +278,7 @@ def mock_config():
             # mock_config is already active via context manager
             from bunking.config import ConfigLoader
             config = ConfigLoader.get_instance()
-            assert config.get_int("solver.time_limit.seconds") == 30
+            assert config.get_int("smart_local_resolution.enabled") == 1
     """
     from bunking.config import ConfigLoader
 

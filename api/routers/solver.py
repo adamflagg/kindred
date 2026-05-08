@@ -57,6 +57,15 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api", tags=["solver"])
 
 
+def _resolve_time_limit(value: int | None, default: int = 60) -> int:
+    """Return the solver time limit in seconds.
+
+    Uses the value if provided; falls back to *default* (60 s).
+    No config DB lookup — the request body is the canonical source.
+    """
+    return value if value is not None else default
+
+
 # ========================================
 # Solver Run Endpoints
 # ========================================
@@ -84,12 +93,7 @@ async def run_solver(
 
     run_id = str(uuid4())
 
-    # Get time limit from config if not specified in request
-    time_limit = request.time_limit
-    if time_limit is None:
-        config = ConfigLoader()
-        time_limit = config.get_int("solver.time_limit_seconds", default=60)
-        logger.info(f"Using config solver time limit: {time_limit}s")
+    time_limit = _resolve_time_limit(request.time_limit)
 
     # Initialize run record
     solver_runs[run_id] = {
@@ -697,12 +701,7 @@ async def run_multi_session_solver(
     user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
 ) -> dict[str, Any]:
     """Run the bunking solver for multiple child sessions of a parent session."""
-    # Get time limit from config if not specified in request
-    time_limit = request.time_limit_per_session
-    if time_limit is None:
-        config = ConfigLoader()
-        time_limit = config.get_int("solver.time_limit_seconds", default=60)
-        logger.info(f"Using config solver time limit: {time_limit}s")
+    time_limit = _resolve_time_limit(request.time_limit_per_session)
 
     try:
         child_sessions = await asyncio.to_thread(
