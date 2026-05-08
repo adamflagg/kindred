@@ -83,6 +83,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+      args:
+        GIT_SHA: ${GIT_SHA:-unknown}
     image: kindred-api:local
     container_name: kindred-api
     restart: unless-stopped

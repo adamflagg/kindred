@@ -434,6 +434,7 @@ jobs:
             -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
             --build-arg VERSION="$BUILD_VERSION" \
             --build-arg BUILD_DATE="$BUILD_DATE" \
+            --build-arg GIT_SHA="${GITHUB_SHA}" \
             $CACHE_FROM \
             $CACHE_TO \
             $NO_CACHE_FLAG \
