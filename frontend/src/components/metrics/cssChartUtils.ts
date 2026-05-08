@@ -183,7 +183,7 @@ export interface VerticalChartLayout {
 export function calculateVerticalLayout(
   height: number,
   options?: {
-    /** Height for x-axis labels: 34 for straight labels, 60 for rotated. */
+    /** Height for x-axis labels: 34 for straight labels, 72 for rotated (X_AXIS_HEIGHT_ROTATED). */
     xAxisHeight?: number
     /** Space above bars for value labels. */
     topPadding?: number
