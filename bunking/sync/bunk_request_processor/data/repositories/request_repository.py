@@ -266,7 +266,6 @@ class RequestRepository:
             "session_id": request.session_cm_id,
             "priority": request.priority,
             "confidence_score": request.confidence_score,
-            "source": request.source.value,
             "source_field": request.source_field,
             "csv_position": request.csv_position,
             "year": request.year,
