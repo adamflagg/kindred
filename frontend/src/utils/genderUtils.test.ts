@@ -230,6 +230,12 @@ describe('formatGenderFull', () => {
     expect(formatGenderFull(null)).toBe('Non-Binary')
     expect(formatGenderFull('')).toBe('Non-Binary')
   })
+
+  it('ignores prototype keys (no inherited-property leakage)', () => {
+    expect(formatGenderFull('toString')).toBe('Non-Binary')
+    expect(formatGenderFull('hasOwnProperty')).toBe('Non-Binary')
+    expect(formatGenderFull('__proto__')).toBe('Non-Binary')
+  })
 })
 
 describe('formatGenderShort', () => {

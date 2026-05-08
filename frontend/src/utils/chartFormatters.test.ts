@@ -8,8 +8,8 @@ import {
 
 describe('formatLabelListValue', () => {
   it('formats numbers with locale separators', () => {
-    expect(formatLabelListValue(1234)).toBe('1,234')
-    expect(formatLabelListValue(0)).toBe('0')
+    expect(formatLabelListValue(1234)).toBe((1234).toLocaleString())
+    expect(formatLabelListValue(0)).toBe((0).toLocaleString())
   })
 
   it('coerces non-numbers to string', () => {

@@ -9,19 +9,21 @@ export function normalizeGender(gender: string): 'M' | 'F' | 'NB' {
   return gender === 'M' || gender === 'F' || gender === 'NB' ? gender : 'NB'
 }
 
-const GENDER_FULL_LABELS: Record<string, string> = { M: 'Male', F: 'Female' }
-const GENDER_SHORT_LABELS: Record<string, string> = { M: 'M', F: 'F' }
+const GENDER_FULL_LABELS: Record<'M' | 'F' | 'NB', string> = {
+  M: 'Male',
+  F: 'Female',
+  NB: 'Non-Binary',
+}
+const GENDER_SHORT_LABELS: Record<'M' | 'F' | 'NB', string> = { M: 'M', F: 'F', NB: 'NB' }
 
 /** Map a sex code to a long display label, defaulting to 'Non-Binary'. */
 export function formatGenderFull(gender: string | null | undefined): string {
-  if (gender && GENDER_FULL_LABELS[gender]) return GENDER_FULL_LABELS[gender]
-  return 'Non-Binary'
+  return GENDER_FULL_LABELS[normalizeGender(gender ?? '')]
 }
 
 /** Map a sex code to a short display label (M / F / NB). */
 export function formatGenderShort(gender: string | null | undefined): string {
-  if (gender && GENDER_SHORT_LABELS[gender]) return GENDER_SHORT_LABELS[gender]
-  return 'NB'
+  return GENDER_SHORT_LABELS[normalizeGender(gender ?? '')]
 }
 
 /**
