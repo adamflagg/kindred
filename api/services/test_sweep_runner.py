@@ -16,7 +16,7 @@ async def test_runs_each_budget_sequentially_with_sweep_id() -> None:
     registry.register("sw_1")
     invoked: list[tuple[str, int]] = []
 
-    async def fake_run(run_id, session_cm_id, year, time_limit, **kwargs):
+    async def fake_run(run_id: str, session_cm_id: int, year: int, time_limit: int, **kwargs: object) -> None:
         invoked.append((run_id, time_limit))
 
     with patch("api.services.sweep_runner.run_solver_task_v2", side_effect=fake_run):
@@ -42,7 +42,7 @@ async def test_aborts_remaining_runs_when_cancelled_between() -> None:
     registry.register("sw_1")
     invoked: list[str] = []
 
-    async def fake_run(run_id, **kwargs):
+    async def fake_run(run_id: str, **kwargs: object) -> None:
         invoked.append(run_id)
         if run_id == "r1":
             registry.cancel("sw_1")
@@ -69,8 +69,8 @@ async def test_releases_registry_entry_when_done() -> None:
     registry = SweepRegistry()
     registry.register("sw_1")
 
-    async def fake_run(*args, **kwargs):
-        pass
+    async def fake_run(*args: object, **kwargs: object) -> None:
+        return None
 
     with patch("api.services.sweep_runner.run_solver_task_v2", side_effect=fake_run):
         await run_sweep(
@@ -97,7 +97,7 @@ async def test_releases_registry_entry_even_on_exception() -> None:
     registry = SweepRegistry()
     registry.register("sw_1")
 
-    async def fake_run(*args, **kwargs):
+    async def fake_run(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated child failure")
 
     with patch("api.services.sweep_runner.run_solver_task_v2", side_effect=fake_run):
