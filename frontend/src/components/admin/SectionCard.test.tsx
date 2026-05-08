@@ -41,7 +41,7 @@ describe('SectionCard object-value guard', () => {
     })
     const section = makeSection([objectItem])
 
-    render(
+    const { container } = render(
       <SectionCard
         section={section}
         editedValues={{}}
@@ -53,12 +53,41 @@ describe('SectionCard object-value guard', () => {
     // Should NOT render the raw object toString representation
     expect(screen.queryByText(/\[object Object\]/i)).toBeNull()
 
-    // The entire row should be omitted — return null short-circuits the row description too
-    // (section.title appears in the header, so use item.description which is row-specific)
-    expect(screen.queryByText('A test config')).toBeNull()
+    // All-object section returns null before any row renders — nothing in the DOM
+    expect(container.firstChild).toBeNull()
 
-    // Should have warned with the config key (and only the key — no value, to avoid leaking)
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('budget.2026.session_1344559'))
+    consoleSpy.mockRestore()
+  })
+
+  it('returns null when every config in the section has an object-typed value', () => {
+    // Finding #2: all-objects section must not render a ghost card
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const obj1 = makeItem({
+      id: 'rec1',
+      config_key: 'a',
+      description: 'row a',
+      value: { x: 1 } as unknown as number,
+    })
+    const obj2 = makeItem({
+      id: 'rec2',
+      config_key: 'b',
+      description: 'row b',
+      value: { y: 2 } as unknown as number,
+    })
+    const section = makeSection([obj1, obj2])
+
+    const { container } = render(
+      <SectionCard
+        section={section}
+        editedValues={{}}
+        onValueChange={() => {}}
+        defaultExpanded={true}
+      />
+    )
+
+    // Component should return null — nothing rendered
+    expect(container.firstChild).toBeNull()
 
     consoleSpy.mockRestore()
   })
@@ -84,5 +113,58 @@ describe('SectionCard object-value guard', () => {
     // Positive assertion: the row description is visible to users (row-specific text)
     expect(screen.getByText('A test config')).toBeVisible()
     consoleSpy.mockRestore()
+  })
+
+  it('count badge reflects only displayable (non-object) configs', () => {
+    // Finding #1: badge must not overcount when object-typed configs are filtered
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const numericItem = makeItem({ id: 'rec-n', config_key: 'penalty.soft', value: 10 })
+    const objectItem = makeItem({
+      id: 'rec-o',
+      config_key: 'budget.obj',
+      value: { x: 1 } as unknown as number,
+    })
+    // section has 2 configs, but only 1 is displayable
+    const section = makeSection([numericItem, objectItem])
+
+    render(
+      <SectionCard
+        section={section}
+        editedValues={{}}
+        onValueChange={() => {}}
+        defaultExpanded={true}
+      />
+    )
+
+    // The badge should show "1", not "2"
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.queryByText('2')).toBeNull()
+
+    // renderConfigRow is still called for the object item and should warn
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('budget.2026.budget.obj'))
+
+    consoleSpy.mockRestore()
+  })
+
+  it('renders null value as empty string, not the literal text "null"', () => {
+    // Finding #4: String(null) === "null"; must coalesce to empty string
+    const nullItem = makeItem({
+      config_key: 'optional.field',
+      value: null as unknown as number,
+    })
+    const section = makeSection([nullItem])
+
+    render(
+      <SectionCard
+        section={section}
+        editedValues={{}}
+        onValueChange={() => {}}
+        defaultExpanded={true}
+      />
+    )
+
+    // The literal text "null" must not appear in any input
+    expect(screen.queryByDisplayValue('null')).toBeNull()
   })
 })
