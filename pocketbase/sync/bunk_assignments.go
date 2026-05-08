@@ -465,21 +465,13 @@ func (s *BunkAssignmentsSync) processAssignment(
 		assignmentCMID = int(id)
 	}
 
-	// Extract IsDeleted (defaults to false if not present)
-	isDeleted := false
-	if val, ok := assignmentData["IsDeleted"].(bool); ok {
-		isDeleted = val
-	}
-
 	// Check if assignment already exists using composite key
 	year := s.Client.GetSeasonID()
 	key := fmt.Sprintf("%d:%d:%d", personCMID, sessionCMID, year)
 
-	// Prepare record data with CM ID and is_deleted
 	recordData := map[string]any{
-		"year":       year,
-		"cm_id":      assignmentCMID, // The assignment's own CampMinder ID
-		"is_deleted": isDeleted,
+		"year":  year,
+		"cm_id": assignmentCMID, // The assignment's own CampMinder ID
 	}
 
 	// Populate all relations - person, session, and bunk are all required

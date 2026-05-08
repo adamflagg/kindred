@@ -91,7 +91,6 @@ function makeAssignment(opts: {
     person: fakePerson.id,
     session: opts.sessionPbId,
     bunk: opts.bunkPbId,
-    is_deleted: false,
     expand: {
       person: fakePerson,
       session: {
