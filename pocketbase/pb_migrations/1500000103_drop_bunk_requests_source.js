@@ -12,16 +12,25 @@
 migrate(
   (app) => {
     const collection = app.findCollectionByNameOrId("bunk_requests");
+
+    // Drop the standalone idx_bunk_requests_source index that referenced the column.
+    // The composite idx_bunk_requests_unique_with_source uses source_field, not source,
+    // so it stays untouched.
+    collection.indexes = collection.indexes.filter(
+      (idx) => !/idx_bunk_requests_source\b/.test(idx)
+    );
+
     if (collection.fields.getByName("source")) {
       collection.fields.removeByName("source");
       app.save(collection);
-      console.log("[migration #1142 stage 4] dropped bunk_requests.source field");
+      console.log("[migration #1142 stage 4] dropped bunk_requests.source field and idx_bunk_requests_source index");
     } else {
-      console.log("[migration #1142 stage 4] bunk_requests.source field already absent (no-op)");
+      app.save(collection);
+      console.log("[migration #1142 stage 4] bunk_requests.source field already absent (index drop only)");
     }
   },
   (app) => {
-    // Rollback: re-add the source field as a 2-value select, backfill from source_field.
+    // Rollback: re-add the source field as a 2-value select, restore the index, backfill.
     const collection = app.findCollectionByNameOrId("bunk_requests");
     if (collection.fields.getByName("source")) {
       console.log("[migration #1142 stage 4 rollback] source field already present (no-op)");
@@ -36,6 +45,11 @@ migrate(
       maxSelect: 1,
       values: ["family", "staff"]
     }));
+
+    if (!collection.indexes.some((idx) => /idx_bunk_requests_source\b/.test(idx))) {
+      collection.indexes.push("CREATE INDEX idx_bunk_requests_source ON bunk_requests (source)");
+    }
+
     app.save(collection);
 
     const db = app.db();
@@ -48,6 +62,6 @@ migrate(
       END
     `).execute();
 
-    console.log("[migration #1142 stage 4 rollback] re-added source field and backfilled from source_field");
+    console.log("[migration #1142 stage 4 rollback] re-added source field, restored index, and backfilled from source_field");
   }
 );

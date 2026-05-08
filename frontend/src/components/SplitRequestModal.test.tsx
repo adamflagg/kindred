@@ -55,7 +55,6 @@ function createMergedMockRequest(
     session_id: 1000001,
     priority: 3,
     confidence_score: 0.95,
-    source: 'family',
     source_field: 'share_bunk_with',
     source_fields: ['share_bunk_with', 'bunking_notes'], // Multiple sources
     status: 'pending',
