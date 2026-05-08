@@ -308,3 +308,4 @@ scripts/vault.config
 frontend/vite.config.local.ts
 docs/camp
 docs/plans
+docs/reference/issue-triage.md
