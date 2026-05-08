@@ -1,0 +1,232 @@
+import { Zap } from 'lucide-react'
+
+import { formatMetric } from './metricRegistry'
+
+import type { SolverRun } from '../../../hooks/useSolverRuns'
+
+const REPO_URL = 'https://github.com/adamflagg/kindred'
+
+interface SolverRunsTableProps {
+  runs: SolverRun[]
+  visibleColumns: string[]
+  pinnedRunIds: string[] // index 0 = slot A, index 1 = slot B
+  onTogglePin: (runId: string) => void
+  onRowClick: (run: SolverRun) => void
+}
+
+function statusChipClass(status?: string): string {
+  switch (status) {
+    case 'OPTIMAL':
+      return 'bg-green-100 text-green-800'
+    case 'FEASIBLE':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'INFEASIBLE':
+    case 'MODEL_INVALID':
+      return 'bg-red-100 text-red-800'
+    default:
+      return 'bg-gray-100 text-gray-700'
+  }
+}
+
+export function SolverRunsTable({
+  runs,
+  visibleColumns,
+  pinnedRunIds,
+  onTogglePin,
+  onRowClick,
+}: SolverRunsTableProps) {
+  const pinSlot = (id: string): 'A' | 'B' | null => {
+    const idx = pinnedRunIds.indexOf(id)
+    return idx === 0 ? 'A' : idx === 1 ? 'B' : null
+  }
+
+  const showCol = (k: string) => visibleColumns.includes(k)
+
+  return (
+    <div className="shadow-lodge overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <thead className="border-b border-gray-200 bg-gray-50 text-xs tracking-wide text-gray-500 uppercase">
+          <tr>
+            <th className="w-8 px-3 py-2.5 text-center">📌</th>
+            <th className="px-3 py-2.5 text-left font-medium">Time</th>
+            {showCol('source') && <th className="px-3 py-2.5 text-left font-medium">Source</th>}
+            {showCol('budget') && <th className="px-3 py-2.5 text-left font-medium">Budget</th>}
+            {showCol('status') && <th className="px-3 py-2.5 text-left font-medium">Status</th>}
+            {showCol('walltime_seconds') && (
+              <th className="px-3 py-2.5 text-right font-medium">Wall</th>
+            )}
+            {showCol('deterministic_time') && (
+              <th className="px-3 py-2.5 text-right font-medium">Det.work</th>
+            )}
+            {showCol('user_time_seconds') && (
+              <th className="px-3 py-2.5 text-right font-medium">User</th>
+            )}
+            {showCol('optimality_gap') && (
+              <th className="px-3 py-2.5 text-right font-medium">Gap</th>
+            )}
+            {showCol('gap_integral') && (
+              <th className="px-3 py-2.5 text-right font-medium">∫gap</th>
+            )}
+            {showCol('num_solutions_found') && (
+              <th className="px-3 py-2.5 text-right font-medium">Sol.</th>
+            )}
+            {showCol('num_branches') && (
+              <th className="px-3 py-2.5 text-right font-medium">Branches</th>
+            )}
+            {showCol('num_conflicts') && (
+              <th className="px-3 py-2.5 text-right font-medium">Confl.</th>
+            )}
+            {showCol('model_num_variables_constraints') && (
+              <th className="px-3 py-2.5 text-right font-medium">Vars / Cons</th>
+            )}
+            {showCol('num_booleans') && (
+              <th className="px-3 py-2.5 text-right font-medium">Booleans</th>
+            )}
+            {showCol('num_integer_variables') && (
+              <th className="px-3 py-2.5 text-right font-medium">Integers</th>
+            )}
+            {showCol('sha') && <th className="px-3 py-2.5 text-left font-medium">SHA</th>}
+            {showCol('sweep') && <th className="px-3 py-2.5 text-left font-medium">Sweep</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {runs.map((run) => {
+            const slot = pinSlot(run.id)
+            const sha = run.details?.git_sha
+            return (
+              <tr
+                key={run.id}
+                className={`hover:bg-forest-50/30 cursor-pointer ${
+                  slot === 'A' ? 'bg-blue-50/40' : slot === 'B' ? 'bg-orange-50/40' : ''
+                }`}
+                onClick={() => onRowClick(run)}
+              >
+                <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    aria-label={slot ? `Pin slot ${slot}` : `Pin run ${run.run_id}`}
+                    onClick={() => onTogglePin(run.id)}
+                    className="text-xs"
+                  >
+                    {slot === 'A' ? (
+                      <span className="inline-block h-2 w-2 rounded-full bg-blue-600" />
+                    ) : slot === 'B' ? (
+                      <span className="inline-block h-2 w-2 rounded-full bg-orange-700" />
+                    ) : (
+                      <span className="text-gray-300">○</span>
+                    )}
+                  </button>
+                </td>
+                <td className="px-3 py-2 text-gray-700">
+                  {run.created.slice(5, 16).replace('T', ' ')}
+                </td>
+                {showCol('source') && (
+                  <td className="px-3 py-2 text-gray-700">{run.details?.source_label ?? '—'}</td>
+                )}
+                {showCol('budget') && (
+                  <td className="px-3 py-2 text-gray-600">
+                    {run.stats?.time_budget_seconds ?? '—'}s
+                  </td>
+                )}
+                {showCol('status') && (
+                  <td className="px-3 py-2">
+                    <span
+                      className={`rounded px-2 py-0.5 text-[11px] font-semibold ${statusChipClass(
+                        run.stats?.status
+                      )}`}
+                    >
+                      {run.stats?.status ?? 'did not run'}
+                    </span>
+                  </td>
+                )}
+                {showCol('walltime_seconds') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('walltime_seconds', run.stats?.walltime_seconds)}
+                  </td>
+                )}
+                {showCol('deterministic_time') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('deterministic_time', run.stats?.deterministic_time)}
+                  </td>
+                )}
+                {showCol('user_time_seconds') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('user_time_seconds', run.stats?.user_time_seconds)}
+                  </td>
+                )}
+                {showCol('optimality_gap') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('optimality_gap', run.stats?.optimality_gap)}
+                  </td>
+                )}
+                {showCol('gap_integral') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('gap_integral', run.stats?.gap_integral)}
+                  </td>
+                )}
+                {showCol('num_solutions_found') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('num_solutions_found', run.stats?.num_solutions_found)}
+                  </td>
+                )}
+                {showCol('num_branches') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('num_branches', run.stats?.num_branches)}
+                  </td>
+                )}
+                {showCol('num_conflicts') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('num_conflicts', run.stats?.num_conflicts)}
+                  </td>
+                )}
+                {showCol('model_num_variables_constraints') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('model_num_variables', run.stats?.model_num_variables)} /{' '}
+                    {formatMetric('model_num_constraints', run.stats?.model_num_constraints)}
+                  </td>
+                )}
+                {showCol('num_booleans') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('num_booleans', run.stats?.num_booleans)}
+                  </td>
+                )}
+                {showCol('num_integer_variables') && (
+                  <td className="px-3 py-2 text-right text-gray-700">
+                    {formatMetric('num_integer_variables', run.stats?.num_integer_variables)}
+                  </td>
+                )}
+                {showCol('sha') && (
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    {sha ? (
+                      <a
+                        className="text-xs text-blue-600 hover:underline"
+                        href={`${REPO_URL}/commit/${sha}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {sha.slice(0, 7)} ↗
+                      </a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                )}
+                {showCol('sweep') && (
+                  <td className="px-3 py-2">
+                    {run.details?.sweep_id ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-100 px-2 py-0.5 text-[10px] text-purple-800">
+                        <Zap className="h-3 w-3" />{' '}
+                        {run.details.sweep_label ?? run.details.sweep_id.slice(0, 8)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">— manual</span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
