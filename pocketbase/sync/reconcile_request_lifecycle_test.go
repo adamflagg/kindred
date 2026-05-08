@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -289,7 +290,7 @@ func TestReconcileRequestLifecycle_MarksMovedRequestersOBRsUnprocessed(t *testin
 	emmaOBR := saveOBR(t, app, emma, year, "bunk_with", fixtureProcessed2025)
 	saveBR(t, app, 1002, 1003, 100, year, "resolved")
 
-	if reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
+	if _, reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
 		t.Fatalf("reconcile: %v", reconcileErr)
 	}
 
@@ -335,7 +336,7 @@ func TestReconcileRequestLifecycle_IgnoresInactiveRequesters(t *testing.T) {
 	oliviaOBR := saveOBR(t, app, olivia, year, "bunk_with", fixtureProcessed2025)
 	saveBR(t, app, 1003, 1004, 999, year, "resolved")
 
-	if reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
+	if _, reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
 		t.Fatalf("reconcile: %v", reconcileErr)
 	}
 
@@ -368,7 +369,7 @@ func TestReconcileRequestLifecycle_NoOpWhenNoStaleRows(t *testing.T) {
 	noahOBR := saveOBR(t, app, noah, year, "bunk_with", fixtureProcessed2025)
 	saveBR(t, app, 1005, 1006, 100, year, "resolved")
 
-	if reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
+	if _, reconcileErr := reconcileRequestLifecycle(app, year); reconcileErr != nil {
 		t.Fatalf("reconcile: %v", reconcileErr)
 	}
 
@@ -404,7 +405,7 @@ func TestReconcileRequestLifecycle_YearScoped(t *testing.T) {
 	saveBR(t, app, 1007, 1008, 100, 2024, "resolved") // 2024: session matches
 	saveBR(t, app, 1007, 1008, 100, 2025, "resolved") // 2025: session mismatch (Riley in 200 now)
 
-	if reconcileErr := reconcileRequestLifecycle(app, 2025); reconcileErr != nil {
+	if _, reconcileErr := reconcileRequestLifecycle(app, 2025); reconcileErr != nil {
 		t.Fatalf("reconcile: %v", reconcileErr)
 	}
 
@@ -424,5 +425,79 @@ func TestReconcileRequestLifecycle_YearScoped(t *testing.T) {
 	}
 	if got := r2024.GetString("processed"); got != fixtureProcessed2024 {
 		t.Errorf("2024 (other year) OBR processed = %q, want preserved", got)
+	}
+}
+
+// TestReconcileLifecycleSync_FallsBackToSeasonEnv verifies that the daily-sync
+// path (where InitializeSyncServices registers the service with Year==0) does
+// not error out — it must read CAMPMINDER_SEASON_ID like every other yearless
+// service in this package.
+func TestReconcileLifecycleSync_FallsBackToSeasonEnv(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	setupReconcileCollections(t, app)
+	t.Setenv("CAMPMINDER_SEASON_ID", "2025")
+
+	s := NewReconcileLifecycleSync(app) // Year remains 0
+	if err := s.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync with Year=0 should fall back to env, got error: %v", err)
+	}
+	if s.Stats.Errors != 0 {
+		t.Errorf("Stats.Errors = %d, want 0", s.Stats.Errors)
+	}
+}
+
+// TestReconcileLifecycleSync_RejectsMissingYearEnv verifies that when neither
+// Year is set NOR CAMPMINDER_SEASON_ID is in the env, Sync returns a clear
+// error rather than silently using a bogus year.
+func TestReconcileLifecycleSync_RejectsMissingYearEnv(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	setupReconcileCollections(t, app)
+	t.Setenv("CAMPMINDER_SEASON_ID", "")
+
+	s := NewReconcileLifecycleSync(app) // Year remains 0
+	if err := s.Sync(context.Background()); err == nil {
+		t.Fatal("Sync with Year=0 and no env should error, got nil")
+	}
+}
+
+// TestReconcileRequestLifecycle_SuccessPathReturnsZeroMarkErrors verifies the
+// new (markErrors, err) signature: when every per-cm save succeeds, the count
+// is zero. The increment branch is covered by the inability path: if Save
+// fails, markErrors gets incremented (covered by code-path correctness; the
+// PB test harness does not have a clean way to force a per-record save error).
+func TestReconcileRequestLifecycle_SuccessPathReturnsZeroMarkErrors(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+
+	setupReconcileCollections(t, app)
+
+	const year = 2025
+	_ = saveSession(t, app, 100)
+	session2 := saveSession(t, app, 200)
+
+	liam := savePerson(t, app, 1001)
+	saveAttendee(t, app, 1001, 2, year, session2)
+	_ = saveOBR(t, app, liam, year, "bunk_with", fixtureProcessed2025)
+	saveBR(t, app, 1001, 1002, 100, year, "resolved")
+
+	markErrors, err := reconcileRequestLifecycle(app, year)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if markErrors != 0 {
+		t.Errorf("markErrors = %d, want 0", markErrors)
 	}
 }

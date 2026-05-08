@@ -2,9 +2,15 @@
 
 After the OBR-driven pipeline completes, sweep `bunk_requests` for any
 non-declined rows whose `requestee_id` refers to a person who is no longer
-attending (status_id != 2) or now sits in a different session for the year,
-and decline them in place using the canonical disposition_reason vocabulary
+actively enrolled in the BR's session for the year, and decline them in
+place using the canonical disposition_reason vocabulary
 (`target_not_attending`, `session_mismatch`).
+
+Active enrollment is keyed per-session: a person can be enrolled in
+multiple sessions in the same year, and a separate cancelled/withdrawn row
+on another session does not invalidate their active enrollments. Phase C
+treats only `status_id == 2` rows as authoritative for "where this person
+currently is".
 
 This is the requestee-side complement to:
   - the orphan purge in the Go bunk_requests CSV sync (deletes BRs/OBRs
@@ -36,24 +42,21 @@ class TargetDeclineAction:
 
 def compute_target_decline_actions(
     bunk_requests: list[dict[str, Any]],
-    inactive_cm_ids: set[int],
-    active_session_by_cm_id: dict[int, int],
+    active_sessions_by_cm_id: dict[int, set[int]],
 ) -> list[TargetDeclineAction]:
     """Pure-function decision: which BRs need to be declined and why.
 
     Args:
         bunk_requests: rows with at least `id`, `requestee_id`, `session_id`,
             `status` keys.
-        inactive_cm_ids: cm_ids of attendees whose status_id is not 2 in
-            this year.
-        active_session_by_cm_id: cm_id → current session_cm_id for attendees
-            with status_id == 2.
+        active_sessions_by_cm_id: cm_id → set of session_cm_ids the person is
+            actively enrolled in (status_id == 2). A person absent from this
+            map has no active enrollment and is treated as not attending.
 
     Returns:
         One `TargetDeclineAction` per BR that should flip to declined.
         Already-declined rows are skipped. Rows with no `requestee_id`
-        (placeholders, age preferences) are skipped. Inactive takes
-        precedence over session mismatch.
+        (placeholders, age preferences) are skipped.
     """
     actions: list[TargetDeclineAction] = []
     for br in bunk_requests:
@@ -62,14 +65,12 @@ def compute_target_decline_actions(
         requestee = br.get("requestee_id")
         if not requestee:
             continue
-        if requestee in inactive_cm_ids:
+        active_sessions = active_sessions_by_cm_id.get(requestee)
+        if not active_sessions:
             actions.append(TargetDeclineAction(bunk_request_id=br["id"], reason="target_not_attending"))
             continue
-        if requestee in active_session_by_cm_id:
-            current = active_session_by_cm_id[requestee]
-            stored = br.get("session_id")
-            if stored != current:
-                actions.append(TargetDeclineAction(bunk_request_id=br["id"], reason="session_mismatch"))
+        if br.get("session_id") not in active_sessions:
+            actions.append(TargetDeclineAction(bunk_request_id=br["id"], reason="session_mismatch"))
     return actions
 
 
@@ -93,19 +94,16 @@ def run_target_decline_phase(pb_client: Any, year: int) -> dict[str, int]:
         logger.warning(f"target_decline: failed to fetch attendees: {e}")
         return {"declined_count": 0, "error_count": 1}
 
-    inactive_cm_ids: set[int] = set()
-    active_session_by_cm_id: dict[int, int] = {}
+    active_sessions_by_cm_id: dict[int, set[int]] = {}
     for a in attendees:
         person_id = getattr(a, "person_id", None)
         status_id = getattr(a, "status_id", None)
-        if not person_id:
+        if not person_id or status_id != 2:
             continue
-        if status_id == 2:
-            session_cm_id = _attendee_session_cm_id(a)
-            if session_cm_id:
-                active_session_by_cm_id[int(person_id)] = int(session_cm_id)
-        else:
-            inactive_cm_ids.add(int(person_id))
+        session_cm_id = _attendee_session_cm_id(a)
+        if session_cm_id is None:
+            continue
+        active_sessions_by_cm_id.setdefault(int(person_id), set()).add(int(session_cm_id))
 
     try:
         brs = pb_client.collection("bunk_requests").get_full_list(
@@ -127,8 +125,7 @@ def run_target_decline_phase(pb_client: Any, year: int) -> dict[str, int]:
 
     actions = compute_target_decline_actions(
         bunk_requests=br_dicts,
-        inactive_cm_ids=inactive_cm_ids,
-        active_session_by_cm_id=active_session_by_cm_id,
+        active_sessions_by_cm_id=active_sessions_by_cm_id,
     )
     if not actions:
         logger.debug(f"target_decline: no actions for year={year}")
@@ -136,8 +133,7 @@ def run_target_decline_phase(pb_client: Any, year: int) -> dict[str, int]:
 
     logger.info(
         f"target_decline: declining {len(actions)} bunk_requests "
-        f"(year={year}, inactive_targets={len(inactive_cm_ids)}, "
-        f"moved_targets={len(active_session_by_cm_id)})"
+        f"(year={year}, active_targets={len(active_sessions_by_cm_id)})"
     )
     return apply_target_decline(pb_client, actions)
 
@@ -145,20 +141,21 @@ def run_target_decline_phase(pb_client: Any, year: int) -> dict[str, int]:
 def _attendee_session_cm_id(attendee: Any) -> int | None:
     """Read the session.cm_id from an attendee record returned by PocketBase.
 
-    Handles both expanded relations (`expand.session.cm_id`) and raw
-    `session_id` fallback. Returns None if neither is available.
+    Reads the expanded relation (`expand.session.cm_id`). Returns None if
+    expand isn't available or the session has no cm_id — Phase C silently
+    drops such rows rather than guessing, since attendees.session is a
+    PocketBase relation ID (string) and cannot be substituted for cm_id.
     """
     expand = getattr(attendee, "expand", None)
-    if expand is not None:
-        session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
-        if session is not None:
-            cm_id = getattr(session, "cm_id", None)
-            if cm_id:
-                return int(cm_id)
-    direct = getattr(attendee, "session_id", None)
-    if direct:
-        return int(direct)
-    return None
+    if expand is None:
+        return None
+    session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
+    if session is None:
+        return None
+    cm_id = getattr(session, "cm_id", None)
+    if cm_id is None:
+        return None
+    return int(cm_id)
 
 
 def apply_target_decline(

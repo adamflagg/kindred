@@ -56,12 +56,23 @@ func (s *ReconcileLifecycleSync) WasSuccessful() bool {
 	return s.Stats.Errors == 0
 }
 
-// Sync runs the reconciliation against the configured year.
+// Sync runs the reconciliation against the configured year. When Year is 0
+// (the daily-sync registration path in InitializeSyncServices), falls back
+// to CAMPMINDER_SEASON_ID via ParseSeasonYear, matching the convention used
+// by every other yearless service in this package.
 func (s *ReconcileLifecycleSync) Sync(_ context.Context) error {
-	if s.Year == 0 {
-		return fmt.Errorf("reconcile_request_lifecycle: Year not set")
+	year := s.Year
+	if year == 0 {
+		var err error
+		year, err = ParseSeasonYear()
+		if err != nil {
+			s.Stats.Errors++
+			return fmt.Errorf("reconcile_request_lifecycle: year resolution failed: %w", err)
+		}
 	}
-	if err := reconcileRequestLifecycle(s.App, s.Year); err != nil {
+	markErrors, err := reconcileRequestLifecycle(s.App, year)
+	s.Stats.Errors += markErrors
+	if err != nil {
 		s.Stats.Errors++
 		return err
 	}
@@ -96,32 +107,38 @@ func findMovedRequesters(currentSessions map[int]int, storedBRSessions map[int][
 //  2. Loads bunk_requests for the year and groups session_ids by requester_id.
 //  3. Calls findMovedRequesters to compute the cm_ids needing rebuild.
 //  4. For each, marks all of their OBRs in the year as processed=”.
-func reconcileRequestLifecycle(app core.App, year int) error {
+//
+// Returns (markErrors, err) where markErrors counts per-cm save failures
+// that did not fail the overall run (sidecar continues on partial failure
+// but surfaces the count to Stats so WasSuccessful() reflects reality).
+func reconcileRequestLifecycle(app core.App, year int) (int, error) {
 	currentSessions, err := loadEnrolledRequesterSessions(app, year)
 	if err != nil {
-		return fmt.Errorf("loading enrolled sessions: %w", err)
+		return 0, fmt.Errorf("loading enrolled sessions: %w", err)
 	}
 	storedSessions, err := loadStoredBRSessions(app, year)
 	if err != nil {
-		return fmt.Errorf("loading bunk_requests sessions: %w", err)
+		return 0, fmt.Errorf("loading bunk_requests sessions: %w", err)
 	}
 
 	moved := findMovedRequesters(currentSessions, storedSessions)
 	if len(moved) == 0 {
 		slog.Debug("reconcile_request_lifecycle: no moved requesters", "year", year)
-		return nil
+		return 0, nil
 	}
 
+	markErrors := 0
 	for _, cmID := range moved {
 		if err := markRequesterOBRsUnprocessed(app, cmID, year); err != nil {
+			markErrors++
 			slog.Error("reconcile_request_lifecycle: mark OBRs unprocessed",
 				"cm_id", cmID, "year", year, "error", err)
 		}
 	}
 
 	slog.Info("reconcile_request_lifecycle complete",
-		"year", year, "moved_requesters", len(moved))
-	return nil
+		"year", year, "moved_requesters", len(moved), "mark_errors", markErrors)
+	return markErrors, nil
 }
 
 // loadEnrolledRequesterSessions returns a map of person cm_id -> session cm_id
@@ -229,6 +246,11 @@ func markRequesterOBRsUnprocessed(app core.App, requesterCMID, year int) error {
 		obr.Set("processed", "")
 		if err := app.Save(obr); err != nil {
 			return fmt.Errorf("save OBR %s: %w", obr.Id, err)
+		}
+	}
+	if len(obrs) > 0 {
+		if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(FULL)").Execute(); err != nil {
+			slog.Warn("reconcile_request_lifecycle: WAL checkpoint failed", "error", err)
 		}
 	}
 	return nil

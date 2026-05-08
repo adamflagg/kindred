@@ -1,9 +1,9 @@
 """Tests for Phase C target-decline sidecar.
 
 Phase C runs after the main OBR pipeline. It sweeps existing bunk_requests
-rows whose requestee is no longer attending (status_id != 2) or now sits
-in a different session for the year, and declines them in place with the
-canonical disposition_reason vocabulary used by the conflict detector
+rows whose requestee is no longer attending or now sits in a different
+session for the year, and declines them in place with the canonical
+disposition_reason vocabulary used by the conflict detector
 (`target_not_attending`, `session_mismatch`).
 
 This is the requestee-side complement to:
@@ -22,6 +22,7 @@ from bunking.sync.bunk_request_processor.orchestrator.target_decline import (
     TargetDeclineAction,
     apply_target_decline,
     compute_target_decline_actions,
+    run_target_decline_phase,
 )
 
 
@@ -33,28 +34,25 @@ class TestComputeTargetDeclineActions:
             {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
             {"id": "br2", "requestee_id": 1002, "session_id": 100, "status": "pending"},
         ]
-        active_session_by_cm_id = {1001: 100, 1002: 100}
-        inactive_cm_ids: set[int] = set()
+        active_sessions_by_cm_id: dict[int, set[int]] = {1001: {100}, 1002: {100}}
 
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids=inactive_cm_ids,
-            active_session_by_cm_id=active_session_by_cm_id,
+            active_sessions_by_cm_id=active_sessions_by_cm_id,
         )
 
         assert actions == []
 
-    def test_declines_when_requestee_inactive(self) -> None:
+    def test_declines_when_requestee_not_in_active_map(self) -> None:
+        """A requestee with no active enrollment (cancelled/withdrawn/never-enrolled)
+        is absent from active_sessions_by_cm_id → target_not_attending."""
         bunk_requests = [
             {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
         ]
-        active_session_by_cm_id: dict[int, int] = {}
-        inactive_cm_ids = {1001}
 
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids=inactive_cm_ids,
-            active_session_by_cm_id=active_session_by_cm_id,
+            active_sessions_by_cm_id={},
         )
 
         assert actions == [TargetDeclineAction(bunk_request_id="br1", reason="target_not_attending")]
@@ -64,13 +62,10 @@ class TestComputeTargetDeclineActions:
             # BR1 says session 100, but Liam Garcia (1001) is in session 200 now
             {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
         ]
-        active_session_by_cm_id = {1001: 200}
-        inactive_cm_ids: set[int] = set()
 
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids=inactive_cm_ids,
-            active_session_by_cm_id=active_session_by_cm_id,
+            active_sessions_by_cm_id={1001: {200}},
         )
 
         assert actions == [TargetDeclineAction(bunk_request_id="br1", reason="session_mismatch")]
@@ -81,8 +76,7 @@ class TestComputeTargetDeclineActions:
         ]
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids={1001},
-            active_session_by_cm_id={},
+            active_sessions_by_cm_id={},
         )
         assert actions == []
 
@@ -94,38 +88,59 @@ class TestComputeTargetDeclineActions:
         ]
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids=set(),
-            active_session_by_cm_id={},
+            active_sessions_by_cm_id={},
         )
         assert actions == []
 
-    def test_inactive_takes_precedence_over_session_mismatch(self) -> None:
-        """If requestee is both inactive AND in a different session, prefer the
-        not-attending reason (the more fundamental fact about their state)."""
+    def test_multi_session_enrolled_keeps_brs_in_any_active_session(self) -> None:
+        """Requestee Olivia Chen (1001) is enrolled in BOTH session 100 and 200
+        (e.g. signed up for two different camp sessions in the same year).
+        BRs targeting her in either session must be kept."""
         bunk_requests = [
             {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
+            {"id": "br2", "requestee_id": 1001, "session_id": 200, "status": "resolved"},
         ]
+
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids={1001},
-            active_session_by_cm_id={1001: 200},  # would also session-mismatch
+            active_sessions_by_cm_id={1001: {100, 200}},
         )
-        assert actions == [TargetDeclineAction(bunk_request_id="br1", reason="target_not_attending")]
 
-    def test_handles_unknown_requestee(self) -> None:
-        """A requestee_id that's neither in inactive nor active sets is left alone.
-
-        This can happen if the requestee is a placeholder (negative cm_id) or
-        otherwise outside the year's attendees query."""
-        bunk_requests = [
-            {"id": "br1", "requestee_id": 9999, "session_id": 100, "status": "resolved"},
-        ]
-        actions = compute_target_decline_actions(
-            bunk_requests=bunk_requests,
-            inactive_cm_ids={1001},
-            active_session_by_cm_id={1002: 100},
-        )
         assert actions == []
+
+    def test_multi_session_enrolled_flags_only_non_matching_session(self) -> None:
+        """Requestee enrolled in 100 and 200 — a BR for session 300 is mismatched."""
+        bunk_requests = [
+            {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
+            {"id": "br2", "requestee_id": 1001, "session_id": 300, "status": "resolved"},
+        ]
+
+        actions = compute_target_decline_actions(
+            bunk_requests=bunk_requests,
+            active_sessions_by_cm_id={1001: {100, 200}},
+        )
+
+        assert actions == [TargetDeclineAction(bunk_request_id="br2", reason="session_mismatch")]
+
+    def test_mixed_enrolled_and_cancelled_rows_keeps_active_only(self) -> None:
+        """Requestee has 4× enrolled rows (sessions 100, 200, 300, 400) plus
+        a cancelled row (session 500). The cancelled row must NOT cause her
+        BRs to be declined as target_not_attending. This was the bug in the
+        original implementation (person 8774023 in production data)."""
+        bunk_requests = [
+            {"id": "br1", "requestee_id": 1001, "session_id": 100, "status": "resolved"},
+            {"id": "br2", "requestee_id": 1001, "session_id": 500, "status": "resolved"},
+        ]
+
+        # active_sessions_by_cm_id only contains the enrolled sessions; the
+        # cancelled row is silently dropped at classification time.
+        actions = compute_target_decline_actions(
+            bunk_requests=bunk_requests,
+            active_sessions_by_cm_id={1001: {100, 200, 300, 400}},
+        )
+
+        # br1 → kept (in active set), br2 → session_mismatch (500 not in set)
+        assert actions == [TargetDeclineAction(bunk_request_id="br2", reason="session_mismatch")]
 
     def test_realistic_mixed_input(self) -> None:
         """Multiple BRs with mixed dispositions — emits one action per stale row."""
@@ -141,8 +156,7 @@ class TestComputeTargetDeclineActions:
         ]
         actions = compute_target_decline_actions(
             bunk_requests=bunk_requests,
-            inactive_cm_ids={1001},
-            active_session_by_cm_id={1002: 200, 1003: 100},
+            active_sessions_by_cm_id={1002: {200}, 1003: {100}},
         )
 
         assert sorted((a.bunk_request_id, a.reason) for a in actions) == [
@@ -193,7 +207,6 @@ class TestApplyTargetDecline:
         ]
         pb_client = MagicMock()
 
-        # Make the second update raise
         def update_side_effect(rec_id: str, _data: dict[str, Any]) -> None:
             if rec_id == "br2":
                 raise RuntimeError("simulated PB error")
@@ -205,6 +218,103 @@ class TestApplyTargetDecline:
         assert result["declined_count"] == 2
         assert result["error_count"] == 1
         assert pb_client.collection.return_value.update.call_count == 3
+
+
+def _make_attendee(person_id: int, status_id: int, session_cm_id: int) -> MagicMock:
+    """Build a MagicMock attendee record whose .expand.session.cm_id resolves."""
+    a = MagicMock()
+    a.person_id = person_id
+    a.status_id = status_id
+    session = MagicMock()
+    session.cm_id = session_cm_id
+    a.expand = {"session": session}
+    return a
+
+
+def _make_br(br_id: str, requestee_id: int | None, session_id: int, status: str = "resolved") -> MagicMock:
+    """Build a MagicMock bunk_requests record."""
+    br = MagicMock()
+    br.id = br_id
+    br.requestee_id = requestee_id
+    br.session_id = session_id
+    br.status = status
+    return br
+
+
+class TestRunTargetDeclinePhase:
+    """Integration: full classification + decision + application path.
+
+    This catches multi-attendee-per-person scenarios that the pure-function
+    tests don't reach (because they pre-construct the active_sessions map).
+    """
+
+    def test_multi_session_enrolled_person_with_one_cancelled_row_is_not_declined(self) -> None:
+        """Production scenario from person 8774023: 4× enrolled + 1× cancelled.
+        Phase C must NOT decline incoming BRs for them."""
+        attendees = [
+            _make_attendee(1001, status_id=2, session_cm_id=100),
+            _make_attendee(1001, status_id=2, session_cm_id=200),
+            _make_attendee(1001, status_id=2, session_cm_id=300),
+            _make_attendee(1001, status_id=2, session_cm_id=400),
+            _make_attendee(1001, status_id=32, session_cm_id=500),  # cancelled
+        ]
+        brs = [
+            _make_br("br1", requestee_id=1001, session_id=100),
+            _make_br("br2", requestee_id=1001, session_id=300),
+        ]
+
+        pb_client = MagicMock()
+        pb_client.collection.return_value.get_full_list.side_effect = [attendees, brs]
+
+        result = run_target_decline_phase(pb_client, year=2025)
+
+        assert result == {"declined_count": 0, "error_count": 0}
+        pb_client.collection.return_value.update.assert_not_called()
+
+    def test_session_mismatch_for_session_person_is_not_in(self) -> None:
+        """Person enrolled in {100, 200}; BR for session 300 → session_mismatch."""
+        attendees = [
+            _make_attendee(1001, status_id=2, session_cm_id=100),
+            _make_attendee(1001, status_id=2, session_cm_id=200),
+        ]
+        brs = [_make_br("br1", requestee_id=1001, session_id=300)]
+
+        pb_client = MagicMock()
+        pb_client.collection.return_value.get_full_list.side_effect = [attendees, brs]
+
+        result = run_target_decline_phase(pb_client, year=2025)
+
+        assert result == {"declined_count": 1, "error_count": 0}
+        pb_client.collection.return_value.update.assert_called_once_with(
+            "br1", {"status": "declined", "disposition_reason": "session_mismatch"}
+        )
+
+    def test_fully_cancelled_person_gets_target_not_attending(self) -> None:
+        """All status_id != 2 rows → person never enters active_sessions_by_cm_id."""
+        attendees = [
+            _make_attendee(1001, status_id=32, session_cm_id=100),  # cancelled
+            _make_attendee(1001, status_id=32, session_cm_id=200),  # cancelled
+        ]
+        brs = [_make_br("br1", requestee_id=1001, session_id=100)]
+
+        pb_client = MagicMock()
+        pb_client.collection.return_value.get_full_list.side_effect = [attendees, brs]
+
+        result = run_target_decline_phase(pb_client, year=2025)
+
+        assert result == {"declined_count": 1, "error_count": 0}
+        pb_client.collection.return_value.update.assert_called_once_with(
+            "br1", {"status": "declined", "disposition_reason": "target_not_attending"}
+        )
+
+    def test_attendees_fetch_failure_returns_error_without_writing(self) -> None:
+        pb_client = MagicMock()
+        pb_client.collection.return_value.get_full_list.side_effect = RuntimeError("PB down")
+
+        result = run_target_decline_phase(pb_client, year=2025)
+
+        assert result == {"declined_count": 0, "error_count": 1}
+        pb_client.collection.return_value.update.assert_not_called()
 
 
 if __name__ == "__main__":
