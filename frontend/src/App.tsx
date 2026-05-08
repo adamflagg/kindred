@@ -60,6 +60,7 @@ const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
 const ParseAnalysisPage = lazy(() => import('./pages/summer/ParseAnalysisPage'))
 const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
+const SolverDebugPage = lazy(() => import('./pages/summer/SolverDebugPage'))
 // Camp Analytics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
@@ -395,6 +396,18 @@ function App() {
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <PromptEditorPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="solver"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <SolverDebugPage />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </AdminRoute>
