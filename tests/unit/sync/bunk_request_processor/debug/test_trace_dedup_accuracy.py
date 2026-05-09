@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -35,7 +34,6 @@ class TestDedupTraceAccuracy:
             requester_cm_id=100,
             requested_cm_id=200,
             request_type=RequestType.BUNK_WITH,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             confidence_score=0.95,
             year=2025,
@@ -51,7 +49,6 @@ class TestDedupTraceAccuracy:
             requester_cm_id=100,
             requested_cm_id=200,
             request_type=RequestType.BUNK_WITH,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             confidence_score=0.90,
             year=2025,

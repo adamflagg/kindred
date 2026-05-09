@@ -12,7 +12,6 @@ from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
 )
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -32,7 +31,6 @@ class TestNativeV2Modules:
             request_type=RequestType.BUNK_WITH,
             target_name="John Doe",
             age_preference=None,
-            source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=1,
             source_field="bunk_with",

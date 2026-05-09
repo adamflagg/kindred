@@ -281,13 +281,6 @@ export const BunkRequestsStatusOptions = {
 } as const
 export type BunkRequestsStatusOptions =
   (typeof BunkRequestsStatusOptions)[keyof typeof BunkRequestsStatusOptions]
-
-export const BunkRequestsSourceOptions = {
-  family: 'family',
-  staff: 'staff',
-} as const
-export type BunkRequestsSourceOptions =
-  (typeof BunkRequestsSourceOptions)[keyof typeof BunkRequestsSourceOptions]
 export type BunkRequestsRecord<
   Tai_p1_reasoning = unknown,
   Tai_p3_reasoning = unknown,
@@ -329,7 +322,6 @@ export type BunkRequestsRecord<
   resolution_method?: string
   resolution_notes?: string
   session_id: number
-  source?: BunkRequestsSourceOptions
   source_detail?: string
   source_field: string
   source_fields?: null | Tsource_fields

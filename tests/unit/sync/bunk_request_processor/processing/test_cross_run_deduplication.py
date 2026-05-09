@@ -23,7 +23,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -52,7 +51,6 @@ class TestCrossRunDeduplication:
         request_type=RequestType.BUNK_WITH,
         session_cm_id=1000002,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence_score=0.95,
         year=2025,
     ):
@@ -64,7 +62,6 @@ class TestCrossRunDeduplication:
             session_cm_id=session_cm_id,
             priority=3,
             confidence_score=confidence_score,
-            source=source,
             source_field=source_field,
             csv_position=0,
             year=year,
@@ -91,7 +88,6 @@ class TestCrossRunDeduplication:
         # New request from Field B
         new_request = self._create_request(
             source_field="bunking_notes",
-            source=RequestSource.STAFF,
             confidence_score=0.88,
         )
 
@@ -145,7 +141,6 @@ class TestCrossRunDeduplication:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.5,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -240,7 +235,6 @@ class TestCrossRunAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -285,7 +279,6 @@ class TestCrossRunDeduplicationStatistics:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -301,7 +294,6 @@ class TestCrossRunDeduplicationStatistics:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.90,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -355,7 +347,6 @@ class TestLockedRequestHandling:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,

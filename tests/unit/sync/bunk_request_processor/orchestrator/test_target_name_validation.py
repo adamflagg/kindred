@@ -21,7 +21,6 @@ from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseRequest,
     ParseResult,
-    RequestSource,
     RequestType,
 )
 
@@ -53,7 +52,6 @@ def _make_parsed_request(
         target_name=target_name,
         age_preference=AgePreference.OLDER if request_type == RequestType.AGE_PREFERENCE else None,
         source_field=source_field,
-        source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,
         metadata={},

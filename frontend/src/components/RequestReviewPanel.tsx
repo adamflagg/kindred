@@ -1356,7 +1356,7 @@ export default function RequestReviewPanel({
                               <div>
                                 <span className="font-medium">Source:</span>{' '}
                                 <span className="text-muted-foreground">
-                                  {safeSourceFromField(request.source_field) ?? request.source}
+                                  {safeSourceFromField(request.source_field) ?? 'unknown'}
                                 </span>
                               </div>
                               {request.original_text && (
@@ -1743,8 +1743,7 @@ export default function RequestReviewPanel({
                                 {/* Metadata */}
                                 <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
                                   <span>
-                                    Source:{' '}
-                                    {safeSourceFromField(request.source_field) ?? request.source}
+                                    Source: {safeSourceFromField(request.source_field) ?? 'unknown'}
                                   </span>
                                   {request.resolution_method && (
                                     <span>

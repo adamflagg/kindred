@@ -1,7 +1,7 @@
 /**
  * Tests for safeSourceFromField helper — Stage 1 of issue #1142.
  *
- * Pins the 5→2 deterministic mapping from source_field values to RequestSource.
+ * Pins the 6→2 deterministic mapping from source_field values to RequestSource.
  * Every classification is locked here so any future drift is caught immediately.
  */
 
@@ -31,15 +31,20 @@ describe('safeSourceFromField', () => {
     it('maps internal_notes to staff', () => {
       expect(safeSourceFromField('internal_notes')).toBe('staff')
     })
+
+    it('maps manual to staff', () => {
+      expect(safeSourceFromField('manual')).toBe('staff')
+    })
   })
 
-  describe('all 5 values pinned (parametric)', () => {
+  describe('all 6 values pinned (parametric)', () => {
     const CASES: Array<[string, 'family' | 'staff']> = [
       ['bunk_with', 'family'],
       ['socialize_with', 'family'],
       ['not_bunk_with', 'staff'],
       ['bunking_notes', 'staff'],
       ['internal_notes', 'staff'],
+      ['manual', 'staff'],
     ]
 
     it.each(CASES)('safeSourceFromField(%s) === %s', (field, expected) => {

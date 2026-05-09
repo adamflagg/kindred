@@ -1,6 +1,6 @@
 """Tests for source_from_field helper — Stage 1 of issue #1142.
 
-Pins the 5→2 deterministic mapping from source_field values to RequestSource.
+Pins the 6→2 deterministic mapping from source_field values to RequestSource.
 Every classification is locked here so any future drift is caught immediately.
 """
 
@@ -21,6 +21,7 @@ class TestSourceFromFieldMapping:
             (SourceField.NOT_BUNK_WITH, RequestSource.STAFF),
             (SourceField.BUNKING_NOTES, RequestSource.STAFF),
             (SourceField.INTERNAL_NOTES, RequestSource.STAFF),
+            (SourceField.MANUAL, RequestSource.STAFF),
         ],
         ids=[
             "bunk_with→FAMILY",
@@ -28,6 +29,7 @@ class TestSourceFromFieldMapping:
             "not_bunk_with→STAFF",
             "bunking_notes→STAFF",
             "internal_notes→STAFF",
+            "manual→STAFF",
         ],
     )
     def test_source_from_field_classification(self, source_field_value: str, expected_source: RequestSource) -> None:
@@ -55,7 +57,8 @@ class TestSourceFromFieldMapping:
         assert source_from_field(SourceField.SOCIALIZE_WITH) == RequestSource.FAMILY
 
     def test_all_notes_fields_are_staff(self) -> None:
-        """All three staff-written fields map to STAFF."""
+        """All four staff-written channels map to STAFF."""
         assert source_from_field(SourceField.NOT_BUNK_WITH) == RequestSource.STAFF
         assert source_from_field(SourceField.BUNKING_NOTES) == RequestSource.STAFF
         assert source_from_field(SourceField.INTERNAL_NOTES) == RequestSource.STAFF
+        assert source_from_field(SourceField.MANUAL) == RequestSource.STAFF

@@ -497,29 +497,6 @@ def test_unbunked_requester_marks_unsatisfied() -> None:
     assert builder.graph.nodes[1]["staff_satisfaction_status"] == "unsatisfied"
 
 
-def test_request_edges_carry_source_attribute() -> None:
-    """Each request edge should expose the source-of-record (family/staff) so
-    satisfaction can be computed per source. Required by Stage 2 to drive
-    parent_satisfaction_status vs staff_satisfaction_status."""
-    pb = MagicMock()
-    pb.collection.return_value.get_full_list.return_value = [
-        _fake_request(1, 2, source="family"),
-        _fake_request(2, 3, source="staff"),
-    ]
-    builder = SocialGraphBuilder(pb=pb)
-    builder.graph = nx.Graph()
-    builder.graph.add_node(1, bunk_cm_id=100)
-    builder.graph.add_node(2, bunk_cm_id=100)
-    builder.graph.add_node(3, bunk_cm_id=200)
-    builder._add_request_edges(year=2026, session_cm_id=999)
-    edge_1_2 = builder.graph[1].get(2) or builder.graph[2].get(1)
-    edge_2_3 = builder.graph[2].get(3) or builder.graph[3].get(2)
-    assert edge_1_2 is not None
-    assert edge_1_2.get("source") == "family"
-    assert edge_2_3 is not None
-    assert edge_2_3.get("source") == "staff"
-
-
 # ---------------------------------------------------------------------------
 # Stage 3a: "isolated" → "unsatisfied" rename
 # ---------------------------------------------------------------------------

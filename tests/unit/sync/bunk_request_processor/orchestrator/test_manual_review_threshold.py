@@ -17,7 +17,6 @@ import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -49,7 +48,6 @@ def _create_bunk_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
-    source: RequestSource = RequestSource.FAMILY,
     priority: int = 3,
     is_placeholder: bool = False,
     status: RequestStatus = RequestStatus.RESOLVED,
@@ -63,7 +61,6 @@ def _create_bunk_request(
         session_cm_id=session_cm_id,
         priority=priority,
         confidence_score=confidence,
-        source=source,
         source_field="bunk_with",
         csv_position=1,
         year=2025,

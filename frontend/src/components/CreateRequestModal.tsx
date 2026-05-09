@@ -71,7 +71,6 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         priority: priority,
         status: 'resolved' as BunkRequestsResponse['status'], // Manually created requests go directly to resolved
         confidence_score: 1.0, // Full confidence for manual entries
-        source: 'staff' as BunkRequestsResponse['source'],
         source_field: 'manual', // Required field - identifies this as a staff-created request
         original_text: `Manually created ${requestType} request`,
         parse_notes: notes || 'Created through admin interface',

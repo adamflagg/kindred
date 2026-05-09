@@ -11,7 +11,6 @@ import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.integration.ai_service import AIRequestContext
@@ -25,7 +24,6 @@ def _make_parsed_request(target_name: str = "Sarah Smith") -> ParsedRequest:
         target_name=target_name,
         age_preference=None,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,
         metadata={},

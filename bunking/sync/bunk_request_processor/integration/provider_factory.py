@@ -11,7 +11,6 @@ from bunking.logging_config import get_logger
 
 from ..core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from .ai_types import (
@@ -72,7 +71,6 @@ class MockProvider(AIProvider):
                             target_name=proper_name,
                             age_preference=None,
                             source_field="mock",
-                            source=RequestSource.FAMILY,
                             confidence=0.85,
                             csv_position=position,
                             metadata={"provider": "mock"},
@@ -102,7 +100,6 @@ class MockProvider(AIProvider):
                             target_name=proper_name,
                             age_preference=None,
                             source_field="mock",
-                            source=RequestSource.FAMILY,
                             confidence=0.85,
                             csv_position=position,
                             metadata={"provider": "mock"},

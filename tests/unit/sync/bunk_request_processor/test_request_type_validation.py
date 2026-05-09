@@ -11,7 +11,6 @@ from __future__ import annotations
 from bunking.sync.bunk_request_processor.core.models import (
     AgePreference,
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -38,7 +37,6 @@ class TestRequestTypeValidationForSourceField:
             target_name="Jake Smith",
             age_preference=None,
             source_field=SourceField.NOT_BUNK_WITH,  # This field should ONLY produce NOT_BUNK_WITH
-            source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=0,
             metadata={},
@@ -68,7 +66,6 @@ class TestRequestTypeValidationForSourceField:
             target_name="Jake Smith",
             age_preference=None,
             source_field=SourceField.NOT_BUNK_WITH,
-            source=RequestSource.FAMILY,
             confidence=0.90,
             csv_position=0,
             metadata={},
@@ -97,7 +94,6 @@ class TestRequestTypeValidationForSourceField:
             target_name=None,  # No target - invalid for not_bunk_with
             age_preference=None,
             source_field=SourceField.NOT_BUNK_WITH,
-            source=RequestSource.FAMILY,
             confidence=0.50,
             csv_position=0,
             metadata={},
@@ -124,7 +120,6 @@ class TestRequestTypeValidationForSourceField:
             target_name="Jake Smith",
             age_preference=None,
             source_field=SourceField.BUNK_WITH,  # Flexible field
-            source=RequestSource.FAMILY,
             confidence=0.85,
             csv_position=0,
             metadata={},
@@ -153,7 +148,6 @@ class TestRequestTypeValidationForSourceField:
             target_name=None,  # No target - invalid for bunk_with
             age_preference=None,
             source_field=SourceField.BUNKING_NOTES,
-            source=RequestSource.STAFF,
             confidence=0.60,
             csv_position=0,
             metadata={},
@@ -192,7 +186,6 @@ class TestSocializeWithFieldValidation:
             target_name=None,
             age_preference=AgePreference.OLDER,
             source_field=SourceField.SOCIALIZE_WITH,
-            source=RequestSource.FAMILY,
             confidence=1.0,
             csv_position=0,
             metadata={},

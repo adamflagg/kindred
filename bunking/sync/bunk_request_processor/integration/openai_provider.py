@@ -16,7 +16,6 @@ from bunking.logging_config import TRACE, get_logger
 from ..core.models import (
     AgePreference,
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from ..prompts import format_prompt
@@ -420,7 +419,6 @@ class OpenAIProvider(AIProvider):
                 target_name=ai_req.target_name,
                 age_preference=None,
                 source_field=raw_field,
-                source=self._map_source_type(ai_req.source_type),
                 confidence=self._calculate_confidence(ai_req),
                 csv_position=ai_req.list_position + 1,  # Convert 0-based to 1-based
                 metadata=request_metadata,
@@ -463,20 +461,6 @@ class OpenAIProvider(AIProvider):
             "age_preference": RequestType.AGE_PREFERENCE,
         }
         return mapping.get(ai_type, RequestType.BUNK_WITH)
-
-    def _map_source_type(self, ai_source: str) -> RequestSource:
-        """Map AI source type to internal enum.
-
-        All staff-related sources (counselor, staff, notes) map to STAFF.
-        """
-        mapping = {
-            "parent": RequestSource.FAMILY,
-            "family": RequestSource.FAMILY,
-            "counselor": RequestSource.STAFF,
-            "staff": RequestSource.STAFF,
-            "notes": RequestSource.STAFF,  # Notes are staff-written, not a separate category
-        }
-        return mapping.get(ai_source.lower(), RequestSource.FAMILY)
 
     def _calculate_confidence(self, ai_req: AIBunkRequestItem) -> float:
         """Calculate confidence score for a parsed request."""

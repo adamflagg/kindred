@@ -85,7 +85,6 @@ class TestPhase1DebugServiceParseSelectedRecords:
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
 
@@ -97,7 +96,6 @@ class TestPhase1DebugServiceParseSelectedRecords:
                     target_name="Emma",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.95,
                     csv_position=0,
                     metadata={"keywords_found": ["with"]},
@@ -421,7 +419,6 @@ class TestPhase1DebugServiceFormatResults:
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
 
@@ -433,7 +430,6 @@ class TestPhase1DebugServiceFormatResults:
                     target_name="Emma",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.95,
                     csv_position=0,
                     metadata={
@@ -449,7 +445,6 @@ class TestPhase1DebugServiceFormatResults:
                     target_name="Mia",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.90,
                     csv_position=1,
                     metadata={

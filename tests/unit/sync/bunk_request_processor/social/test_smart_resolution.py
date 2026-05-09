@@ -17,7 +17,6 @@ import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
     Person,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -555,7 +554,6 @@ class TestMutualRequestDetection:
             year=2025,
             priority=5,
             confidence_score=0.9,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             status=RequestStatus.PENDING,
@@ -570,7 +568,6 @@ class TestMutualRequestDetection:
             year=2025,
             priority=5,
             confidence_score=0.9,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             status=RequestStatus.PENDING,
@@ -601,7 +598,6 @@ class TestMutualRequestDetection:
             year=2025,
             priority=5,
             confidence_score=0.9,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             status=RequestStatus.PENDING,
@@ -630,7 +626,6 @@ class TestPhase2SmartResolutionIntegration:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -689,7 +684,6 @@ class TestPhase2SmartResolutionIntegration:
             target_name="Sarah Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},
@@ -766,7 +760,6 @@ class TestPhase2SmartResolutionIntegration:
             target_name="Sarah Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},
@@ -804,7 +797,6 @@ class TestSmartResolutionWiring:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -863,7 +855,6 @@ class TestSmartResolutionWiring:
             target_name="Sarah Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},
@@ -891,7 +882,6 @@ class TestSmartResolutionWiring:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -954,7 +944,6 @@ class TestSmartResolutionWiring:
             target_name="Sarah Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},
@@ -989,7 +978,6 @@ class TestSmartResolutionWiring:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -1050,7 +1038,6 @@ class TestSmartResolutionWiring:
             target_name="Sarah Smith",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},
@@ -1077,7 +1064,6 @@ class TestSmartResolutionWiring:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
@@ -1122,7 +1108,6 @@ class TestSmartResolutionWiring:
             target_name="Unknown Person",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=0,
             metadata={},

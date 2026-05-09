@@ -123,8 +123,7 @@ export interface BunkRequest {
   confidence_score?: number
   parse_notes?: string
   socialize_explain?: string
-  source?: 'family' | 'staff'
-  source_field?: string // CSV field this came from (bunk_with, not_bunk_with, etc.)
+  source_field?: string // CSV field this came from (bunk_with, not_bunk_with, manual, etc.)
   is_reciprocal?: boolean
   priority_locked?: boolean
   manual_notes?: string
