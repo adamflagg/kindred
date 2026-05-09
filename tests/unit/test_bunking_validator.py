@@ -103,7 +103,7 @@ class MockBunkRequest:
     status: str = "resolved"
     priority: int = 5
     source_field: str | None = None
-    source: str | None = None  # "family" or "staff" (RequestSource enum value)
+    source: str | None = None  # "family" or "staff" (legacy column, derived via source_from_field post-#1142)
     ai_p1_reasoning: dict[str, Any] | None = None
     age_preference_target: str | None = None
 
@@ -870,7 +870,7 @@ def test_validation_statistics_has_parent_staff_breakdown_fields():
     assert stats.campers_with_unsatisfied_staff_requests == 0
 
 
-# Helpers for RequestSource binning tests
+# Helpers for family/staff binning tests
 # Use numeric string IDs per existing fixture convention
 
 
@@ -899,7 +899,7 @@ def _mock_request(
     requester,
     target,
     source_field,
-    source,  # "family", "staff", or None — RequestSource enum value
+    source,  # "family", "staff", or None — legacy column, derived via source_from_field post-#1142
     request_type="bunk_with",
     status="resolved",
 ):
@@ -914,7 +914,7 @@ def _mock_request(
 
 
 def test_validator_bins_parent_requests_separately_from_staff():
-    """material_parent (bunk_with source_field) and staff (RequestSource.STAFF) requests are counted separately."""
+    """material_parent (bunk_with source_field) and staff ("staff" via source_from_field) requests are counted separately."""
     session = _mock_session(cm_id="10000001", name="Test Session")
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
@@ -1030,9 +1030,10 @@ def test_validator_skips_binning_for_requests_with_null_source_field():
 
 
 def test_validator_source_field_drives_binning_regardless_of_source_enum():
-    """source_field (not source enum) determines material vs best-effort vs staff bin.
-    A request with source_field=bunk_with and a legacy source="notes" value (not in
-    RequestSource enum) still bins as material_parent because source_field is bunk_with."""
+    """source_field (not the legacy source string) determines material vs best-effort vs staff bin.
+    A request with source_field=bunk_with and a legacy source="notes" value (no longer
+    a recognized "family"/"staff" string post-#1142) still bins as material_parent
+    because source_field is bunk_with."""
     session = _mock_session()
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]

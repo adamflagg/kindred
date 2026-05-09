@@ -18,7 +18,7 @@ from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
 from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
-from bunking.sync.bunk_request_processor.core.models import RequestSource, source_from_field
+from bunking.sync.bunk_request_processor.core.models import source_from_field
 from bunking.sync.bunk_request_processor.shared.constants import (
     SOURCE_FIELD_TO_CONFIG_KEY,
     SourceField,
@@ -136,7 +136,7 @@ class ValidationStatistics(BaseModel):
     satisfied_best_effort_parent_requests: int = 0
     best_effort_parent_request_satisfaction_rate: float = 0.0
 
-    # Staff-source request tracking, per RequestSource.STAFF. Source fields:
+    # Staff-source request tracking (source_from_field returns "staff"). Source fields:
     # SourceField.NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
     # INTERNAL_NOTES. Tracked separately because they don't satisfy the
     # "every camper gets one parent request" rule that Stage 4 will enforce.
@@ -530,7 +530,7 @@ class BunkingValidator:
                 # Staff binning derived from source_field via source_from_field helper (#1142).
                 raw_source_field = getattr(request, "source_field", None)
                 try:
-                    is_staff = source_from_field(raw_source_field) == RequestSource.STAFF if raw_source_field else False
+                    is_staff = source_from_field(raw_source_field) == "staff" if raw_source_field else False
                 except ValueError:
                     is_staff = False
 

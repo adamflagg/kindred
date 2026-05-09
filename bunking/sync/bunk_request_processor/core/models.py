@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from ..shared.constants import (
     ACTIVE_ENROLLMENT_STATUSES,
@@ -34,48 +34,28 @@ class SessionFamily(Enum):
     FAMILY = "family"
 
 
-class RequestSource(Enum):
-    """Sources of bunk requests - simplified to two categories.
-
-    Note: Values must match PocketBase schema (see migration 1754196925)
-
-    FAMILY: Parent/family-submitted fields
-      - share_bunk_with (bunk_with)
-      - ret_parent_socialize_with_best (socialize_with)
-
-    STAFF: Staff-written fields (staff validates family input)
-      - do_not_share_bunk_with (not_bunk_with)
-      - bunking_notes
-      - internal_notes
-      - manual (admin-UI / CreateRequestModal — admin entry is staff entry)
-    """
-
-    FAMILY = "family"
-    STAFF = "staff"
-
-
-_SOURCE_FIELD_MAP: dict[str, RequestSource] = {
-    SourceField.BUNK_WITH: RequestSource.FAMILY,
-    SourceField.SOCIALIZE_WITH: RequestSource.FAMILY,
-    SourceField.NOT_BUNK_WITH: RequestSource.STAFF,
-    SourceField.BUNKING_NOTES: RequestSource.STAFF,
-    SourceField.INTERNAL_NOTES: RequestSource.STAFF,
-    SourceField.MANUAL: RequestSource.STAFF,
+_SOURCE_FIELD_MAP: dict[str, Literal["family", "staff"]] = {
+    SourceField.BUNK_WITH: "family",
+    SourceField.SOCIALIZE_WITH: "family",
+    SourceField.NOT_BUNK_WITH: "staff",
+    SourceField.BUNKING_NOTES: "staff",
+    SourceField.INTERNAL_NOTES: "staff",
+    SourceField.MANUAL: "staff",
 }
 
 
-def source_from_field(source_field: str) -> RequestSource:
-    """Derive RequestSource from a source_field value.
+def source_from_field(source_field: str) -> Literal["family", "staff"]:
+    """Derive the source classification ("family" or "staff") from a source_field value.
 
-    This is the authoritative 6→2 mapping that makes RequestSource a
-    deterministic projection of source_field rather than an independent axis.
+    This is the authoritative 6→2 mapping. After #1142 stage 5, "family" / "staff"
+    are plain strings — the former RequestSource enum is gone.
 
     Args:
         source_field: One of the 6 canonical SourceField values.
 
     Returns:
-        RequestSource.FAMILY for parent-visible fields (bunk_with, socialize_with).
-        RequestSource.STAFF for staff-entered channels (not_bunk_with, bunking_notes,
+        "family" for parent-visible fields (bunk_with, socialize_with).
+        "staff" for staff-entered channels (not_bunk_with, bunking_notes,
         internal_notes, manual). 'manual' is the admin-UI input channel for
         CreateRequestModal — admin entry is staff entry by definition.
 
