@@ -39,7 +39,7 @@ def _resolve_source(req: BunkRequest) -> str:
     fallback in the codebase.
     """
     try:
-        return source_from_field(req.source_field).value
+        return source_from_field(req.source_field)
     except ValueError:
         logger.debug(
             "deduplicator: unknown source_field %r, defaulting to 'family'",
