@@ -2,7 +2,7 @@ import type { TourDefinition } from '../types'
 
 const debugTour: TourDefinition = {
   id: 'debug',
-  version: 2,
+  version: 3,
   layers: [],
   steps: [
     {
@@ -10,7 +10,7 @@ const debugTour: TourDefinition = {
       popover: {
         title: 'Debug Tools',
         description:
-          'This page lets you analyze and iterate on the AI intent parsing that powers bunk request processing. Use it to inspect how camper requests are interpreted.',
+          'This area lets you analyze and iterate on the AI intent parsing that powers bunk request processing, plus inspect solver runs and the full request pipeline.',
         side: 'bottom',
         align: 'start',
       },
@@ -18,20 +18,10 @@ const debugTour: TourDefinition = {
     {
       element: '[data-tour="debug-tabs"]',
       popover: {
-        title: 'Tool Tabs',
+        title: 'Debug Sections',
         description:
-          'Switch between Parse Analysis (inspect how AI parsed each request) and Prompt Editor (tweak the AI prompt and test changes in real time).',
+          'Switch between Parse Analysis (inspect how AI parsed each request), Prompt Editor (tweak the AI prompt), Pipeline (full processing trace), and Solver Stats (OR-Tools internals).',
         side: 'bottom',
-        align: 'start',
-      },
-    },
-    {
-      element: '[data-tour="debug-content"]',
-      popover: {
-        title: 'Analysis Area',
-        description:
-          'Results appear here. In Parse Analysis, you can filter by session, search by camper name, and drill into individual parse results to see confidence scores.',
-        side: 'top',
         align: 'start',
       },
     },

@@ -15,7 +15,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
     source_from_field,
@@ -509,7 +508,7 @@ class TestDeduplicator:
         # Should deduplicate - only ONE kept (source priority first, then max confidence)
         assert len(result.kept_requests) == 1
         # FAMILY source wins over STAFF (#1088 parent-paramount flip), keeps max confidence from both
-        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.FAMILY
+        assert source_from_field(result.kept_requests[0].source_field) == "family"
         assert result.kept_requests[0].confidence_score == 0.95  # Max confidence from both
         assert result.kept_requests[0].metadata["origin"] == "form"
         assert result.statistics["duplicates_removed"] == 1
@@ -611,7 +610,7 @@ class TestSimplifiedSourcePriority:
 
         # Family wins even with staff having a different source_field (source > confidence)
         assert len(result.kept_requests) == 1
-        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.FAMILY
+        assert source_from_field(result.kept_requests[0].source_field) == "family"
         assert result.kept_requests[0].source_field == "bunk_with"
         assert result.statistics["duplicates_removed"] == 1
 
@@ -683,15 +682,6 @@ class TestSimplifiedSourcePriority:
         assert SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] == SOURCE_FIELD_PRIORITY[SourceField.INTERNAL_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] > SOURCE_FIELD_PRIORITY[SourceField.SOCIALIZE_WITH]
-
-    def test_notes_enum_removed(self):
-        """Test that RequestSource.NOTES no longer exists.
-
-        All staff-written fields (bunking_notes, internal_notes, do_not_share_with)
-        should use RequestSource.STAFF.
-        """
-        # NOTES should not be a valid enum value
-        assert not hasattr(RequestSource, "NOTES")
 
     def test_not_bunk_with_beats_socialize_with_in_dedup(self):
         """Stage 3 ordering: not_bunk_with (STAFF exclusion, rank 3) outranks
@@ -941,7 +931,7 @@ class TestAgePreferenceDeduplication:
 
         # bunking_notes (rank 2) outranks socialize_with (rank 1) under #1142 Stage 3
         kept = result.kept_requests[0]
-        assert source_from_field(kept.source_field) == RequestSource.STAFF
+        assert source_from_field(kept.source_field) == "staff"
         assert kept.source_field == SourceField.BUNKING_NOTES
 
         # Confidence is boosted to max from all sources via merge_metadata
@@ -1000,7 +990,7 @@ class TestAgePreferenceDeduplication:
         # Deduplicated — bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
         assert len(result.kept_requests) == 1
         kept = result.kept_requests[0]
-        assert source_from_field(kept.source_field) == RequestSource.STAFF
+        assert source_from_field(kept.source_field) == "staff"
         assert kept.source_field == SourceField.BUNKING_NOTES
         assert kept.metadata["age_preference"] == "older"
         # Confidence boosted to max from all sources via merge_metadata
@@ -1211,7 +1201,7 @@ class TestAgePreferenceDeduplication:
         )
         assert result.statistics["duplicates_removed"] == 1
         # bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
-        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.STAFF
+        assert source_from_field(result.kept_requests[0].source_field) == "staff"
         assert result.kept_requests[0].source_field == SourceField.BUNKING_NOTES
 
 
@@ -1219,7 +1209,7 @@ class TestParentAgePreferenceDeduplication:
     """Test Stage 1 parent-paramount fix: bunk_with source wins parent-vs-parent age_pref dedupe.
 
     When a parent submits an age preference both via bunk_with prose AND the
-    socialize_with checkbox, both become RequestSource.FAMILY with the same dedupe key.
+    socialize_with checkbox, both become "family" with the same dedupe key.
     The old sort was (SOURCE_PRIORITY, confidence_score) — the socialize_with dropdown
     gets a deterministic confidence=1.0 which beat the AI-parsed bunk_with at 0.85-0.95,
     so the wrong request was kept as primary.
@@ -1537,7 +1527,7 @@ class TestFamilyParamountTiebreak:
         survivor = result.kept_requests[0]
 
         # FAMILY is primary — origin of intent is authoritative
-        assert source_from_field(survivor.source_field) == RequestSource.FAMILY, (
+        assert source_from_field(survivor.source_field) == "family", (
             f"Expected FAMILY to be primary (parent-paramount); got {source_from_field(survivor.source_field)}"
         )
         assert survivor.source_field == SourceField.BUNK_WITH, (
@@ -1546,10 +1536,10 @@ class TestFamilyParamountTiebreak:
 
         # Staff row is the dropped duplicate
         assert len(result.duplicate_groups) == 1
-        assert source_from_field(result.duplicate_groups[0].primary.source_field) == RequestSource.FAMILY
+        assert source_from_field(result.duplicate_groups[0].primary.source_field) == "family"
         dropped = result.duplicate_groups[0].duplicates
         assert len(dropped) == 1
-        assert source_from_field(dropped[0].source_field) == RequestSource.STAFF
+        assert source_from_field(dropped[0].source_field) == "staff"
 
         # _merge_metadata must have folded the staff row's metadata into the survivor
         assert survivor.metadata.get("is_merged_duplicate") is True
@@ -1615,7 +1605,7 @@ class TestFamilyParamountTiebreak:
         survivor = result.kept_requests[0]
 
         # FAMILY wins as primary — parent-paramount
-        assert source_from_field(survivor.source_field) == RequestSource.FAMILY, (
+        assert source_from_field(survivor.source_field) == "family", (
             f"Expected FAMILY to win age_preference tiebreak (parent-paramount); got {source_from_field(survivor.source_field)}"
         )
 
@@ -1623,7 +1613,7 @@ class TestFamilyParamountTiebreak:
         assert len(result.duplicate_groups) == 1
         dropped = result.duplicate_groups[0].duplicates
         assert len(dropped) == 1
-        assert source_from_field(dropped[0].source_field) == RequestSource.STAFF
+        assert source_from_field(dropped[0].source_field) == "staff"
 
 
 if __name__ == "__main__":

@@ -44,6 +44,55 @@ class TestCountConstraintTypes:
         assert result["linear"] == 1
 
 
+class TestStatsDictIsJsonSerializable:
+    """The stats dict round-trips through `solver_runs.stats` (a JSON column).
+
+    Real OR-Tools returns a `CpSolverStatus` enum from `solver.Solve(...)` —
+    json.dumps cannot encode that natively, so storing it raw breaks the
+    PocketBase save with `Object of type CpSolverStatus is not JSON
+    serializable`. The fix is to store the int value, not the enum.
+    """
+
+    def test_stats_dict_is_json_serializable_when_status_is_an_enum(self) -> None:
+        import json
+        from unittest.mock import MagicMock
+
+        from bunking.solver.direct_solver import _build_stats_dict
+
+        solver = MagicMock()
+        solver.StatusName.return_value = "OPTIMAL"
+        solver.ObjectiveValue.return_value = 100.0
+        solver.WallTime.return_value = 1.0
+        solver.UserTime.return_value = 1.0
+        solver.DeterministicTime.return_value = 1.0
+        solver.BestObjectiveBound.return_value = 100.0
+        solver.NumBranches.return_value = 0
+        solver.NumConflicts.return_value = 0
+        solver.NumBooleans.return_value = 0
+        solver.NumIntegers.return_value = 0
+        response = MagicMock(gap_integral=0.0, num_solutions=1, solution_info="")
+        solver.ResponseProto.return_value = response
+        proto = MagicMock()
+        proto.variables = []
+        proto.constraints = []
+
+        stats = _build_stats_dict(
+            solver=solver,
+            status=cp_model.OPTIMAL,
+            model_proto=proto,
+            time_limit_seconds=60,
+            num_workers=8,
+            num_persons=1,
+            num_bunks=1,
+            num_requests=0,
+            satisfied_count=0,
+        )
+
+        # Must round-trip through json — this is the bug that was blocking
+        # solver_runs persistence on every successful run.
+        json.dumps(stats)
+
+
 class TestComputeOptimalityGap:
     def test_returns_zero_when_objective_equals_bound(self) -> None:
         assert _compute_optimality_gap(100.0, 100.0) == 0.0

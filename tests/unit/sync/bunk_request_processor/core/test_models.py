@@ -213,7 +213,6 @@ class TestParsedRequest:
         """Test creating a bunk_with parsed request"""
         from bunking.sync.bunk_request_processor.core.models import (
             ParsedRequest,
-            RequestSource,
             RequestType,
             source_from_field,
         )
@@ -233,7 +232,7 @@ class TestParsedRequest:
         assert request.request_type == RequestType.BUNK_WITH
         assert request.target_name == "Johnny Smith"
         assert request.age_preference is None
-        assert source_from_field(request.source_field) == RequestSource.FAMILY
+        assert source_from_field(request.source_field) == "family"
         assert request.csv_position == 0
 
     def test_parsed_request_age_preference(self):
@@ -394,35 +393,26 @@ class TestResolvedName:
 
 
 class TestSourceFromField:
-    """Pin the canonical source_field → RequestSource projection (6→2 after #1142)."""
+    """Pin the canonical source_field → "family"/"staff" projection (6→2 after #1142)."""
 
     def test_manual_returns_staff(self):
         """'manual' is the admin-UI input channel — admin entry is always staff entry."""
-        from bunking.sync.bunk_request_processor.core.models import (
-            RequestSource,
-            source_from_field,
-        )
+        from bunking.sync.bunk_request_processor.core.models import source_from_field
 
-        assert source_from_field("manual") == RequestSource.STAFF
+        assert source_from_field("manual") == "staff"
 
     def test_canonical_family_fields_return_family(self):
-        from bunking.sync.bunk_request_processor.core.models import (
-            RequestSource,
-            source_from_field,
-        )
+        from bunking.sync.bunk_request_processor.core.models import source_from_field
 
-        assert source_from_field("bunk_with") == RequestSource.FAMILY
-        assert source_from_field("socialize_with") == RequestSource.FAMILY
+        assert source_from_field("bunk_with") == "family"
+        assert source_from_field("socialize_with") == "family"
 
     def test_canonical_staff_fields_return_staff(self):
-        from bunking.sync.bunk_request_processor.core.models import (
-            RequestSource,
-            source_from_field,
-        )
+        from bunking.sync.bunk_request_processor.core.models import source_from_field
 
-        assert source_from_field("not_bunk_with") == RequestSource.STAFF
-        assert source_from_field("bunking_notes") == RequestSource.STAFF
-        assert source_from_field("internal_notes") == RequestSource.STAFF
+        assert source_from_field("not_bunk_with") == "staff"
+        assert source_from_field("bunking_notes") == "staff"
+        assert source_from_field("internal_notes") == "staff"
 
     def test_unknown_source_field_raises_value_error(self):
         """Unknown input must raise ValueError — `_resolve_source` and

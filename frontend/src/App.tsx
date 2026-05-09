@@ -58,7 +58,9 @@ const ManageRegistrationPage = lazy(() =>
 const WeekendHousingDashboard = lazy(() => import('./pages/WeekendHousingDashboard'))
 const ScenarioComparisonPage = lazy(() => import('./pages/ScenarioComparisonPage'))
 const PipelineDebugPage = lazy(() => import('./pages/summer/PipelineDebugPage'))
+const ParseAnalysisPage = lazy(() => import('./pages/summer/ParseAnalysisPage'))
 const PromptEditorPage = lazy(() => import('./pages/summer/PromptEditorPage'))
+const SolverDebugPage = lazy(() => import('./pages/summer/SolverDebugPage'))
 // Camp Analytics module - hierarchical navigation
 const MetricsLayout = lazy(() => import('./pages/metrics/MetricsLayout'))
 const RegistrationOverview = lazy(() => import('./pages/metrics/registration/RegistrationOverview'))
@@ -371,11 +373,39 @@ function App() {
                               />
                               <Route
                                 path="prompts"
+                                element={<Navigate to="/summer/debug/parse-analysis" replace />}
+                              />
+                              <Route
+                                path="parse-analysis"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <ParseAnalysisPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="prompt-editor"
                                 element={
                                   <AdminRoute>
                                     <ErrorBoundary>
                                       <Suspense fallback={<PageSkeleton />}>
                                         <PromptEditorPage />
+                                      </Suspense>
+                                    </ErrorBoundary>
+                                  </AdminRoute>
+                                }
+                              />
+                              <Route
+                                path="solver"
+                                element={
+                                  <AdminRoute>
+                                    <ErrorBoundary>
+                                      <Suspense fallback={<PageSkeleton />}>
+                                        <SolverDebugPage />
                                       </Suspense>
                                     </ErrorBoundary>
                                   </AdminRoute>

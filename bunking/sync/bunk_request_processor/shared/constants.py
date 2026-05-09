@@ -70,7 +70,8 @@ class SourceField:
 
     Five values describe CSV/form input channels (parent or staff). MANUAL is the
     sixth canonical value: the admin-UI input channel for staff-created requests
-    via CreateRequestModal. All non-parent channels project to RequestSource.STAFF.
+    via CreateRequestModal. All non-parent channels project to "staff" via
+    source_from_field().
     """
 
     BUNK_WITH = "bunk_with"

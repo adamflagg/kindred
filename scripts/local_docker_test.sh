@@ -48,8 +48,14 @@ echo ""
 # Track failures
 FAILED=0
 
+# Stamp solver_runs rows with the actual local commit SHA. Without this the
+# image bakes in `unknown` because docker-compose.local.yml's GIT_SHA
+# build-arg defaults to `unknown` when the var isn't exported.
+GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)"
+export GIT_SHA
+
 # Step 1: Build
-echo -e "${BLUE}Step 1: Building Docker image...${NC}"
+echo -e "${BLUE}Step 1: Building Docker image (GIT_SHA=$GIT_SHA)...${NC}"
 echo "-----------------------------------"
 if docker compose -f docker-compose.local.yml build; then
     echo -e "${GREEN}✓ Build successful${NC}"
