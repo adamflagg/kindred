@@ -5,8 +5,6 @@
  *
  * Stores person records from CampMinder with demographic info, contact details,
  * household relationships, and tag associations. Year-scoped for data isolation.
- *
- * CONSOLIDATED: Includes changes from migrations 38, 41 (drop cm_fields, age decimal)
  */
 
 const COLLECTION_ID_PERSONS = "col_persons";
@@ -22,9 +20,9 @@ migrate((app) => {
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         name: "cm_id",
@@ -77,7 +75,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 0,  // 0 = unlimited (matches current running state)
+        max: 0,
         pattern: ""
       },
       {
@@ -125,7 +123,6 @@ migrate((app) => {
         max: null,
         onlyInt: true
       },
-      // NOTE: cm_years_at_camp and cm_last_year_attended removed (redundant with above fields)
       {
         name: "cm_lead_date",
         type: "text",
@@ -188,27 +185,6 @@ migrate((app) => {
         min: 0,
         max: 0,
         pattern: ""
-      },
-      {
-        name: "phone_numbers",
-        type: "json",
-        required: false,
-        presentable: false,
-        maxSize: 0  // 0 = unlimited (matches current running state)
-      },
-      {
-        name: "email_addresses",
-        type: "json",
-        required: false,
-        presentable: false,
-        maxSize: 0  // 0 = unlimited (matches current running state)
-      },
-      {
-        name: "address",
-        type: "json",
-        required: false,
-        presentable: false,
-        maxSize: 0  // 0 = unlimited (matches current running state)
       },
       {
         type: "relation",
@@ -283,7 +259,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 0,  // 0 = unlimited (matches current running state)
+        max: 0,
         pattern: ""
       },
       {
@@ -307,14 +283,14 @@ migrate((app) => {
         type: "json",
         required: false,
         presentable: false,
-        maxSize: 0  // 0 = unlimited (matches current running state)
+        maxSize: 0
       },
       {
         name: "parent_names",
         type: "json",
         required: false,
         presentable: false,
-        maxSize: 0  // 0 = unlimited (matches current running state)
+        maxSize: 0
       },
       {
         name: "year",
@@ -340,6 +316,67 @@ migrate((app) => {
         presentable: false,
         onCreate: true,
         onUpdate: true
+      },
+      {
+        type: "text",
+        name: "address_city",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 200,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "address_state",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 50,
+        pattern: ""
+      },
+      {
+        type: "email",
+        name: "primary_email",
+        required: false,
+        presentable: false,
+        exceptDomains: [],
+        onlyDomains: []
+      },
+      {
+        type: "email",
+        name: "secondary_email",
+        required: false,
+        presentable: false,
+        exceptDomains: [],
+        onlyDomains: []
+      },
+      {
+        type: "text",
+        name: "normalized_school",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 500,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "normalized_city",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 500,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "normalized_congregation",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 500,
+        pattern: ""
       }
     ],
     indexes: [
