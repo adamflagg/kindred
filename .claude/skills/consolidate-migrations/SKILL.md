@@ -228,6 +228,16 @@ Take the original CREATE file as base. Apply mutations in order. Collapse:
 Preserve the original collection ID verbatim (e.g., `id: "col_bunk_requests"`).
 Subsequent migrations may reference it.
 
+**Filename invariant (load-bearing for prod boot).** The merged CREATE MUST
+keep the *exact* basename of the original CREATE migration — same timestamp,
+same name, same extension. Prod's `_migrations` table keys on filename: the
+original CREATE's row is what makes PB skip the merged file on boot. A
+renamed merged CREATE is seen as a never-applied migration, PB tries to
+re-create the existing collection, and boot crashes with a unique-constraint
+error. The OnServe history-sync hook only *removes* orphan rows for deleted
+files; it does not suppress new files. Never bump the timestamp, never
+rename for cosmetics, never split into a new file.
+
 ## Step 7: Empirical schema-diff verification
 
 ```bash
@@ -261,7 +271,13 @@ section and proceed despite the diff. Never silent-override.
 Once verification passes, mirror the same operations to the real
 `pb_migrations/` dir (not the scratch dir):
 
-1. Replace the base CREATE migration with the merged version
+1. Replace the base CREATE migration with the merged version — **same
+   filename as origin/main** (see "Filename invariant" in Step 6). Verify:
+   ```bash
+   git -C "$WORKTREE_DIR" ls-tree origin/main pocketbase/pb_migrations/ \
+     | grep -q " $(basename "$BASE_CREATE")$" \
+     || { echo "merged CREATE filename drifted from origin/main — abort"; exit 1; }
+   ```
 2. Delete fully-absorbed migration files (`rm` them — no helper migration
    needed; the OnServe history-sync hook in `pocketbase/main.go` cleans
    the orphan `_migrations` rows automatically on next prod boot)
