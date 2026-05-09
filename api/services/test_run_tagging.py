@@ -5,15 +5,29 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pocketbase.models.record import Record
 
 from api.services.run_tagging import build_run_details
+
+
+def _config_row(category: str, subcategory: str | None, config_key: str, value: object) -> Record:
+    """Real `pocketbase.Record` shaped per migration 1500000011_config.js."""
+    return Record(
+        {
+            "id": f"cfg_{category}_{config_key}",
+            "category": category,
+            "subcategory": subcategory,
+            "config_key": config_key,
+            "value": value,
+        }
+    )
 
 
 @pytest.mark.asyncio
 async def test_production_run_with_no_sweep() -> None:
     pb = MagicMock()
     pb.collection.return_value.get_full_list = MagicMock(
-        return_value=[MagicMock(config_key="constraint.grade_spread.max", config_value="2")]
+        return_value=[_config_row("constraint", "grade_spread", "max", 2)]
     )
 
     with patch("api.services.run_tagging.get_git_sha", return_value="abc1234"):

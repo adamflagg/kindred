@@ -57,11 +57,13 @@ def _sweep_client(
     if scenario_get_one_side_effect is not None:
         mock_pb.collection.return_value.get_one.side_effect = scenario_get_one_side_effect
     else:
-        scenario_record = MagicMock()
-        scenario_record.session_cm_id = 1000001
-        scenario_record.year = 2026
-        scenario_record.name = "test-scenario"
-        mock_pb.collection.return_value.get_one.return_value = scenario_record
+        # Use a real-shape mock: PB saved_scenarios records have a `session`
+        # FK string and `expand['session'].cm_id` — they have NO top-level
+        # `session_cm_id` attribute. Tests that pre-stamp session_cm_id on
+        # the record mask the production bug fixed in solver.py.
+        mock_pb.collection.return_value.get_one.side_effect = _scenario_get_one_with_expand_gating(
+            cm_id=1000001, year=2026
+        )
 
     snapshot_mock = AsyncMock()
     if snapshot_side_effect is not None:
@@ -359,18 +361,49 @@ def _sweep_client_with_scenario(scenario_record: Any) -> Iterator[TestClient]:
             yield client
 
 
+def _scenario_record(
+    *,
+    cm_id: int | None = 1000001,
+    year: int = 2026,
+    include_expand: bool = True,
+) -> Any:
+    """Construct a real `pocketbase.models.record.Record` shaped like a
+    saved_scenarios row returned with `{"expand": "session"}`. Tests can
+    set `cm_id=None` to omit the expanded session relation entirely
+    (simulates a record fetched without expand or with a broken FK)."""
+    from pocketbase.models.record import Record
+
+    data: dict[str, Any] = {
+        "id": "scen-test",
+        "name": "scenario-test",
+        "description": "",
+        "session": "session_pb_id_xyz",
+        "is_active": True,
+        "year": year,
+        "metadata": {},
+    }
+    if include_expand and cm_id is not None:
+        data["expand"] = {
+            "session": {
+                "id": "session_pb_id_xyz",
+                "cm_id": cm_id,
+                "name": "Session 1",
+                "year": year,
+            },
+        }
+    return Record(data)
+
+
 class TestSweepMalformedScenarioRecord:
-    """A saved_scenarios row that's missing session_cm_id or year would otherwise
-    pass through `getattr(..., 0)` and produce a sweep with session_cm_id=0,
-    which never matches a real run in the in-flight guard. The handler must
-    reject this with 422 immediately rather than launching a doomed sweep."""
+    """A saved_scenarios row missing the expanded session relation or with a
+    zero year would otherwise produce session_cm_id=0/year=0 — which the
+    in-flight guard can never match against a real run. The handler must
+    reject these up-front with 422."""
 
-    def test_422_when_scenario_record_missing_session_cm_id(self) -> None:
-        # `spec=[]` ensures session_cm_id, year, name are absent → getattr fallback fires
-        scenario = MagicMock(spec=[])
-        scenario.year = 2026
-        scenario.name = "broken"
-        # session_cm_id deliberately not set → getattr returns 0
+    def test_422_when_scenario_record_missing_session_expand(self) -> None:
+        """Record fetched without expand (or with a broken session FK) has
+        no expand['session'].cm_id → session_cm_id resolves to 0 → 422."""
+        scenario = _scenario_record(cm_id=None, year=2026, include_expand=False)
 
         with _sweep_client_with_scenario(scenario) as client:
             resp = client.post(
@@ -380,11 +413,8 @@ class TestSweepMalformedScenarioRecord:
 
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
 
-    def test_422_when_scenario_record_missing_year(self) -> None:
-        scenario = MagicMock(spec=[])
-        scenario.session_cm_id = 1000001
-        scenario.name = "broken"
-        # year deliberately not set → getattr returns 0
+    def test_422_when_scenario_record_year_is_zero(self) -> None:
+        scenario = _scenario_record(cm_id=1000001, year=0)
 
         with _sweep_client_with_scenario(scenario) as client:
             resp = client.post(
@@ -394,13 +424,9 @@ class TestSweepMalformedScenarioRecord:
 
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
 
-    def test_422_when_scenario_record_session_cm_id_is_zero(self) -> None:
-        """Explicit zero (rather than missing) must also be rejected — the
-        handler can't distinguish them via getattr."""
-        scenario = MagicMock()
-        scenario.session_cm_id = 0
-        scenario.year = 2026
-        scenario.name = "explicit-zero"
+    def test_422_when_expanded_session_cm_id_is_zero(self) -> None:
+        """Explicit zero on the expanded relation must also be rejected."""
+        scenario = _scenario_record(cm_id=0, year=2026)
 
         with _sweep_client_with_scenario(scenario) as client:
             resp = client.post(
@@ -409,3 +435,142 @@ class TestSweepMalformedScenarioRecord:
             )
 
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+
+
+# ---------------------------------------------------------------------------
+# Real-shape regression: PocketBase Record exposes `session` as the relation
+# FK string, NOT as `session_cm_id`. The cm_id only lives under
+# `expand['session'].cm_id` and is only present when get_one is called with
+# {"expand": "session"}. Without that, every scenario sweep returns 422 in
+# production despite passing MagicMock-based tests that pre-stamp
+# `record.session_cm_id` directly.
+# ---------------------------------------------------------------------------
+
+
+def _scenario_get_one_with_expand_gating(
+    *,
+    cm_id: int,
+    year: int,
+    scenario_id: str = "scen-real",
+) -> Any:
+    """get_one side_effect that mimics real PocketBase behavior: the expanded
+    session record (with `cm_id`) only appears when the caller passes
+    {"expand": "session"} as the second arg to get_one. Without expand, the
+    record exposes only `session` (FK string) — the same shape the real PB
+    Python client produces.
+    """
+    from pocketbase.models.record import Record
+
+    def side_effect(*args: Any, **kwargs: Any) -> Record:
+        params = args[1] if len(args) >= 2 else kwargs.get("query_params", {})
+        data: dict[str, Any] = {
+            "id": scenario_id,
+            "name": "scenario-real-shape",
+            "description": "",
+            "session": "session_pb_id_xyz",
+            "is_active": True,
+            "year": year,
+            "metadata": {},
+        }
+        if isinstance(params, dict) and params.get("expand") == "session":
+            data["expand"] = {
+                "session": {
+                    "id": "session_pb_id_xyz",
+                    "cm_id": cm_id,
+                    "name": "Session 1",
+                    "year": year,
+                },
+            }
+        return Record(data)
+
+    return side_effect
+
+
+@contextmanager
+def _sweep_client_with_real_scenario_pb(
+    *,
+    cm_id: int,
+    year: int,
+    solver_runs_state: dict[str, Any] | None = None,
+) -> Iterator[tuple[TestClient, AsyncMock]]:
+    """Variant of _sweep_client where pb.collection('saved_scenarios').get_one
+    is wired to the expand-gating side_effect. Yields (client, snapshot_mock)
+    so tests can assert what session_cm_id was actually resolved and passed
+    to snapshot_session_input."""
+    from api.routers.solver import router
+
+    if solver_runs_state is None:
+        solver_runs_state = {}
+
+    mock_pb = MagicMock()
+    mock_pb.collection.return_value.get_one.side_effect = _scenario_get_one_with_expand_gating(cm_id=cm_id, year=year)
+
+    snapshot_mock = AsyncMock()
+    snapshot_mock.return_value = MagicMock()
+
+    app = FastAPI()
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
+    with (
+        patch("api.routers.solver.solver_runs", solver_runs_state),
+        patch("api.routers.solver.pb", mock_pb),
+        patch("api.routers.solver.snapshot_session_input", snapshot_mock),
+        patch("api.routers.solver.run_sweep", AsyncMock()),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield client, snapshot_mock
+
+
+class TestSweepScenarioRecordRealShape:
+    """Regression guard: scenario sweeps must read session_cm_id via
+    expand['session'].cm_id, not via getattr(record, 'session_cm_id', 0).
+
+    Real PB saved_scenarios records have a `session` relation FK and no
+    `session_cm_id` field (per migration 1500000021). Without {"expand":
+    "session"} on get_one, getattr returns 0 and the round-3 422 guard
+    fires unconditionally on every scenario sweep in production.
+    """
+
+    def test_scenario_sweep_succeeds_with_real_shaped_record(self) -> None:
+        with _sweep_client_with_real_scenario_pb(cm_id=1000001, year=2026) as (client, snapshot_mock):
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-real"},
+            )
+
+        assert resp.status_code == 202, (
+            f"scenario sweep must succeed against a real-shaped PB record; got {resp.status_code}: {resp.text}"
+        )
+        # Resolved cm_id must come from expand['session'].cm_id, not from
+        # the missing top-level session_cm_id attribute.
+        assert snapshot_mock.await_count == 1
+        await_args = snapshot_mock.await_args
+        assert await_args is not None
+        assert await_args.kwargs["session_cm_id"] == 1000001
+        assert await_args.kwargs["year"] == 2026
+
+    def test_scenario_sweep_persists_resolved_cm_id_on_pre_created_runs(self) -> None:
+        """Pre-created solver_runs entries must carry the resolved cm_id, not 0."""
+        solver_runs_state: dict[str, Any] = {}
+        with _sweep_client_with_real_scenario_pb(cm_id=1000002, year=2026, solver_runs_state=solver_runs_state) as (
+            client,
+            _,
+        ):
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-real"},
+            )
+            assert resp.status_code == 202, resp.text
+
+        sweep_entries = [r for r in solver_runs_state.values() if r.get("config", {}).get("sweep_id")]
+        assert sweep_entries, "expected pre-created sweep entries"
+        for entry in sweep_entries:
+            assert entry["session_cm_id"] == 1000002, (
+                f"pre-created entry must carry resolved cm_id from expand, got {entry}"
+            )

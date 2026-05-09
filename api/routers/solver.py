@@ -155,19 +155,30 @@ async def post_run_sweep(
         if request.scenario_id is None:
             raise HTTPException(status_code=400, detail="scenario_id is required when session_cm_id is unset")
         try:
-            scenario_record = await asyncio.to_thread(pb.collection("saved_scenarios").get_one, request.scenario_id)
+            # `expand=session` is required: saved_scenarios stores `session`
+            # as a relation FK string, not as `session_cm_id`. The cm_id only
+            # comes through via `expand['session'].cm_id` — mirrors the
+            # frontend's `scenarioTransform.ts` and the existing /scenarios
+            # routes (api/routers/scenarios.py) that pass the same expand.
+            scenario_record = await asyncio.to_thread(
+                pb.collection("saved_scenarios").get_one,
+                request.scenario_id,
+                {"expand": "session"},
+            )
         except ClientResponseError as e:
             raise pb_error_to_http(e) from e
         # Other exceptions intentionally propagate to the global handler (generic 500)
         # rather than getting downgraded to a misleading 400 with raw error text.
         scenario_id = request.scenario_id
         scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
-        session_cm_id = int(getattr(scenario_record, "session_cm_id", 0))
+        expanded = getattr(scenario_record, "expand", None) or {}
+        expanded_session = expanded.get("session") if isinstance(expanded, dict) else None
+        session_cm_id = int(getattr(expanded_session, "cm_id", 0)) if expanded_session is not None else 0
         year = int(getattr(scenario_record, "year", 0))
-        # A malformed saved_scenarios record (missing or zero fields) would
-        # otherwise produce session_cm_id=0/year=0 — which the in-flight
-        # guard below can never match against a real run, slipping past
-        # into a doomed sweep that fails later in fetch_session_data_v2.
+        # A malformed saved_scenarios record (missing session expand or zero
+        # year) would otherwise produce session_cm_id=0/year=0 — which the
+        # in-flight guard below can never match against a real run, slipping
+        # past into a doomed sweep that fails later in fetch_session_data_v2.
         # Reject up front with 422.
         if session_cm_id == 0 or year == 0:
             raise HTTPException(
