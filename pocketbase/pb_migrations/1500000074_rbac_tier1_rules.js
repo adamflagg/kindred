@@ -25,7 +25,8 @@ migrate((app) => {
   }
 
   // Read-only: any role (shared reference data written by sync)
-  // Note: "persons" trimmed — admin-only rules baked into merged CREATE.
+  // Note: "persons" trimmed — final rules are baked into merged CREATE
+  // (list/view: authed; create/update/delete: admin only).
   const anyRoleReadOnly = ["attendees", "attendee_status_history", "camp_sessions", "divisions", "config"]
   for (const name of anyRoleReadOnly) {
     setRules(name, anyRole, anyRole, adminOnly, adminOnly, adminOnly)
