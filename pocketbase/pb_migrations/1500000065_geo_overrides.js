@@ -3,24 +3,28 @@
  * Migration: Create geo_overrides collection
  *
  * Stores user-defined overrides for geographic data normalization.
- * Three override types:
+ * Override types:
  *   - alias:     Maps a raw_value to a canonical_name (e.g. typo → correct)
  *   - canonical: Defines/updates the canonical entry with coordinates
  *   - merge:     Redirects one canonical_name into another via merged_into
+ *   - rejected:  Blocklist entries
  *
  * Used by the geo normalization pipeline to apply human corrections
- * before or after automated normalization.
+ * before or after automated normalization. Access is restricted to the
+ * metrics.geo permission (admins or users with that cached permission).
  */
 
 migrate((app) => {
+  const metricsGeo = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "metrics.geo"'
+
   const collection = new Collection({
     type: "base",
     name: "geo_overrides",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: metricsGeo,
+    viewRule: metricsGeo,
+    createRule: metricsGeo,
+    updateRule: metricsGeo,
+    deleteRule: metricsGeo,
     fields: [
       // Category: city, school, or congregation
       {
@@ -31,13 +35,13 @@ migrate((app) => {
         values: ["city", "school", "congregation"],
         maxSelect: 1
       },
-      // Override type: alias, canonical, or merge
+      // Override type: alias, canonical, merge, or rejected
       {
         type: "select",
         name: "override_type",
         required: true,
         presentable: true,
-        values: ["alias", "canonical", "merge"],
+        values: ["alias", "canonical", "merge", "rejected"],
         maxSelect: 1
       },
       // The raw/original value (for alias type)
@@ -146,6 +150,23 @@ migrate((app) => {
         presentable: false,
         onCreate: true,
         onUpdate: true
+      },
+      // Result of automated nominatim lookup for this override
+      {
+        type: "select",
+        name: "nominatim_status",
+        required: false,
+        values: ["resolved", "no_result", "ambiguous"],
+        maxSelect: 1
+      },
+      // Country (for location context)
+      {
+        type: "text",
+        name: "address_country",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 100
       }
     ],
     indexes: [
