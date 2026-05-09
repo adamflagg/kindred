@@ -4,7 +4,7 @@
  * Dependencies: None
  *
  * Stores household data extracted from CampMinder persons response.
- * Households contain mailing titles, phone, and billing address.
+ * Households contain mailing titles, phone, and discrete billing address columns.
  */
 
 const COLLECTION_ID_HOUSEHOLDS = "col_households";
@@ -14,11 +14,11 @@ migrate((app) => {
     id: COLLECTION_ID_HOUSEHOLDS,
     type: "base",
     name: "households",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: '@request.auth.is_admin = true',
+    viewRule: '@request.auth.is_admin = true',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         type: "number",
@@ -34,64 +34,45 @@ migrate((app) => {
         name: "greeting",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "text",
         name: "mailing_title",
         required: false,
         presentable: true,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "text",
         name: "alternate_mailing_title",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "text",
         name: "billing_mailing_title",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "text",
         name: "household_phone",
         required: false,
         presentable: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
-      },
-      {
-        type: "json",
-        name: "billing_address",
-        required: false,
-        presentable: false,
-        options: {
-          maxSize: 10000
-        }
+        min: 0,
+        max: 0,
+        pattern: ""
       },
       {
         type: "number",
@@ -117,6 +98,60 @@ migrate((app) => {
         presentable: false,
         onCreate: true,
         onUpdate: true
+      },
+      {
+        type: "text",
+        name: "billing_address1",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 500,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "billing_address2",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 500,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "billing_city",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 200,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "billing_state",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 50,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "billing_postal_code",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 20,
+        pattern: ""
+      },
+      {
+        type: "text",
+        name: "billing_country",
+        required: false,
+        presentable: false,
+        min: 0,
+        max: 10,
+        pattern: ""
       }
     ],
     indexes: [
