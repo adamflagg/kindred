@@ -256,4 +256,66 @@ def _stub_sweep_registry() -> Iterator[None]:
     with patch("api.routers.solver.sweep_registry") as reg:
         reg.register = MagicMock()
         reg.cancel = MagicMock()
+        reg.release = MagicMock()
         yield
+
+
+# ---------------------------------------------------------------------------
+# Pre-creation lock + cleanup on snapshot failure
+# ---------------------------------------------------------------------------
+
+
+class TestSweepPreCreationLock:
+    """Closes the TOCTOU race between guard check and registration.
+
+    Pre-creating solver_runs entries (and registering with sweep_registry)
+    before the snapshot await ensures a second concurrent request hits the
+    in-flight guard. On snapshot failure, the pre-created entries and
+    registry entry must be cleaned up so the slot isn't permanently locked.
+    """
+
+    def test_pre_created_entries_include_scenario_field(self) -> None:
+        """Pre-created sweep children must carry `scenario` so the scenario
+        guard fires while children are still pending (before run_solver_task_v2
+        sets it post-completion)."""
+        solver_runs_state: dict[str, Any] = {}
+
+        with _sweep_client(solver_runs_state) as client:
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-target"},
+            )
+
+        assert resp.status_code == 202, resp.text
+        # Every pre-created entry tied to the new sweep must carry the scenario_id.
+        sweep_entries = [r for r in solver_runs_state.values() if r.get("config", {}).get("sweep_id")]
+        assert sweep_entries, "expected pre-created sweep child entries"
+        for entry in sweep_entries:
+            assert entry.get("scenario") == "scen-target", (
+                f"pre-created sweep child must include scenario_id; got {entry}"
+            )
+
+    def test_snapshot_failure_releases_registry_and_clears_entries(self) -> None:
+        """If snapshot raises after pre-creation, both the registry slot and the
+        pre-created solver_runs entries must be cleaned up — otherwise the
+        target session/scenario is permanently locked."""
+        solver_runs_state: dict[str, Any] = {}
+        upstream_error = ClientResponseError(url="...", status=503, data={})
+
+        with patch("api.routers.solver.sweep_registry") as reg:
+            reg.register = MagicMock()
+            reg.release = MagicMock()
+            reg.cancel = MagicMock()
+            with _sweep_client(solver_runs_state, snapshot_side_effect=upstream_error) as client:
+                resp = client.post(
+                    "/api/solver/run-sweep",
+                    json={"session_cm_id": 7007, "year": 2026},
+                )
+
+            assert resp.status_code == 502, resp.text
+            # Registry must have been registered (pre-snapshot lock) and then released.
+            assert reg.register.called, "expected sweep_registry.register before snapshot"
+            assert reg.release.called, "expected sweep_registry.release on snapshot failure"
+            # No orphan solver_runs entries remain.
+            sweep_entries = [r for r in solver_runs_state.values() if r.get("config", {}).get("sweep_id")]
+            assert sweep_entries == [], f"expected pre-created entries cleaned up on failure; got {sweep_entries}"

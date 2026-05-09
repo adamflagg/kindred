@@ -187,24 +187,22 @@ async def post_run_sweep(
                 },
             )
 
-    # Snapshot the input. Scenario sweeps include scenario lock_groups; both
-    # paths use the same helper.
-    try:
-        frozen_input: Any = await snapshot_session_input(
-            pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
-        )
-    except ClientResponseError as e:
-        raise pb_error_to_http(e) from e
-    # Other exceptions propagate to the global handler.
-
+    # Pre-create the registry entry and pending solver_runs entries BEFORE the
+    # snapshot await. The await yields the event loop, which leaves a TOCTOU
+    # window where a second concurrent POST passes the in-flight guard and
+    # launches a duplicate sweep. Pre-creating closes that window — any later
+    # request now sees the pending entries and gets 409.
+    #
+    # `scenario` is set on each pre-created entry so the scenario guard above
+    # fires for pending sweep children too (run_solver_task_v2 only stamps it
+    # post-completion, which would leave a multi-minute hole otherwise).
     sweep_id = f"sweep_{uuid4().hex[:12]}"
     run_ids = [f"run_{uuid4().hex[:12]}" for _ in request.time_budgets]
     sweep_registry.register(sweep_id)
 
-    # Pre-create pending solver_runs entries so the UI sees them immediately.
     now = datetime.now(UTC)
     for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
-        solver_runs[run_id] = {
+        entry: dict[str, Any] = {
             "id": run_id,
             "session_cm_id": session_cm_id,
             "status": "pending",
@@ -215,6 +213,24 @@ async def post_run_sweep(
                 "sweep_label": request.label,
             },
         }
+        if scenario_id is not None:
+            entry["scenario"] = scenario_id
+        solver_runs[run_id] = entry
+
+    # Snapshot the input. Scenario sweeps include scenario lock_groups; both
+    # paths use the same helper. On failure, undo the pre-creation so the
+    # session/scenario isn't permanently locked by the in-flight guard.
+    try:
+        frozen_input: Any = await snapshot_session_input(
+            pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
+        )
+    except Exception as e:
+        for run_id in run_ids:
+            solver_runs.pop(run_id, None)
+        sweep_registry.release(sweep_id)
+        if isinstance(e, ClientResponseError):
+            raise pb_error_to_http(e) from e
+        raise  # unexpected — let the global handler turn it into a generic 500
 
     # Fire-and-forget orchestration. Background task survives this handler's return.
     # Hold a reference to prevent the task from being garbage-collected mid-flight (RUF006).

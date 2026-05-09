@@ -713,12 +713,13 @@ class DirectBunkingSolver:
         """
         bunk = self.bunks[0]
         bunk_cm_id = bunk.campminder_id
+        over_capacity = len(self.person_ids) > bunk.capacity
 
         logger.info(f"Single-bunk session: {bunk.name} (capacity: {bunk.capacity})")
         logger.info(f"Campers to assign: {len(self.person_ids)}")
 
         # Check if we have too many campers for the bunk
-        if len(self.person_ids) > bunk.capacity:
+        if over_capacity:
             logger.warning(f"WARNING: {len(self.person_ids)} campers but only {bunk.capacity} spots!")
             logger.warning("This will be infeasible, but continuing anyway...")
 
@@ -758,9 +759,11 @@ class DirectBunkingSolver:
         # Minimal stats payload — single-bunk runs bypass CP-SAT, so most
         # solver-internal fields are None. The keys match _build_stats_dict so
         # the impact-analysis debug table renders these rows consistently.
+        # Status reflects actual outcome: over-capacity assignments are
+        # physically infeasible even though we still emit them.
         stats: dict[str, Any] = {
-            "status": "OPTIMAL",
-            "status_code": cp_model.OPTIMAL,
+            "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
+            "status_code": cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL,
             "objective_value": None,
             "solve_time": 0.0,
             "total_persons": len(self.person_ids),

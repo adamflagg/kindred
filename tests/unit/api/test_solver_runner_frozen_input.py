@@ -25,8 +25,8 @@ def _frozen_with_state() -> DirectSolverInput:
         requests=[],
         bunks=[],
         existing_assignments=[
-            DirectBunkAssignment(person_cm_id=1, session_cm_id=100, bunk_cm_id=900, year=2026),
-            DirectBunkAssignment(person_cm_id=2, session_cm_id=100, bunk_cm_id=900, year=2026),
+            DirectBunkAssignment(person_cm_id=1, session_cm_id=1000001, bunk_cm_id=900, year=2026),
+            DirectBunkAssignment(person_cm_id=2, session_cm_id=1000001, bunk_cm_id=900, year=2026),
         ],
         lock_groups_data={"g1": [1, 2, 3]},
     )
@@ -87,7 +87,7 @@ async def test_frozen_input_not_mutated_when_respect_locks_false() -> None:
 
         await sr_module.run_solver_task_v2(
             run_id="t1",
-            session_cm_id=100,
+            session_cm_id=1000001,
             year=2026,
             time_limit=30,
             respect_locks=False,

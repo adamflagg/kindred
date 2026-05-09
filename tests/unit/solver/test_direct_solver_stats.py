@@ -252,12 +252,12 @@ class TestSingleBunkPathStats:
     them consistent — even if many CP-SAT-only fields are None.
     """
 
-    def _make_input(self, num_persons: int = 3) -> DirectSolverInput:
+    def _make_input(self, num_persons: int = 3, capacity: int = 12) -> DirectSolverInput:
         bunk = DirectBunk(
             id="bunk-1",
             campminder_id=9001,
             name="AG-1",
-            capacity=12,
+            capacity=capacity,
             gender="Mixed",
             session_cm_id=500,
         )
@@ -301,3 +301,18 @@ class TestSingleBunkPathStats:
         result = solver.solve(time_limit_seconds=10)
         assert result is not None
         assert result.stats.get("status") == "OPTIMAL"
+
+    def test_single_bunk_over_capacity_is_infeasible(self) -> None:
+        """Over-capacity single-bunk run must report INFEASIBLE, not a hardcoded OPTIMAL.
+
+        Impact-analysis aggregates `solver_runs.stats.status_code`; a hardcoded
+        OPTIMAL would silently skew comparisons for AG sessions that don't fit.
+        """
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(num_persons=5, capacity=2),
+            config_service=MagicMock(),
+        )
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.stats.get("status") == "INFEASIBLE"
+        assert result.stats.get("status_code") == cp_model.INFEASIBLE

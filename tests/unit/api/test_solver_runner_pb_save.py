@@ -512,7 +512,7 @@ class TestFailedRunPersistsDetails:
 
             await sr_module.run_solver_task_v2(
                 run_id="sweep_child",
-                session_cm_id=222,
+                session_cm_id=1000001,
                 year=2026,
                 time_limit=180,
                 scenario="scen-X",
@@ -574,7 +574,7 @@ class TestFailedRunPersistsDetails:
 
             await sr_module.run_solver_task_v2(
                 run_id="t1",
-                session_cm_id=300,
+                session_cm_id=1000002,
                 year=2026,
                 time_limit=45,
             )
