@@ -82,20 +82,48 @@ and cross-cutting findings.
 ```bash
 cd "$MAIN_REPO/pocketbase/pb_migrations"
 for f in *.js; do
-  matches=$(grep -oE 'findCollectionByNameOrId\("[^"]+"|new Collection\(\{[^}]*name: "[^"]+"' "$f" | grep -oE '"[a-z_]+"' | sort -u)
-  for tbl in $matches; do echo "$tbl|$f"; done
-done | awk -F'|' '{count[$1]++} END {for (t in count) if (count[t] > 1) print count[t], t}' | sort -rn | head -10
+  # Catch BOTH literal lookups (findCollectionByNameOrId("foo")) AND
+  # indirect lookups where the table name lives in an array iterated by
+  # a loop variable (`const tables = ["foo", "bar"]; ... for (const name of tables) findCollectionByNameOrId(name)`).
+  # The seed-time grep used to look only inside `findCollectionByNameOrId("...")`
+  # and missed indirect-lookup files like 1500000074_rbac_tier1_rules.js
+  # — that bug is what required adding the array-name fallback below.
+  # Emit every quoted snake_case-ish token. Intentionally no filtering —
+  # rule predicates and other non-tables get mixed in, and the user
+  # eyeballs the ranked output below to ignore obvious non-tables. The
+  # original narrower grep (only `findCollectionByNameOrId("...")` /
+  # `name: "..."`) missed an indirect-lookup file (1500000074) where the
+  # table name lives in an array iterated by a `setRules()` helper, so
+  # we widened it to catch any quoted occurrence.
+  matches=$(grep -oE '"[a-z][a-z0-9_]+"' "$f" | sort -u | tr -d '"')
+  for tbl in $matches; do
+    echo "$tbl|$f"
+  done
+done | awk -F'|' '{count[$1]++} END {for (t in count) if (count[t] > 1) print count[t], t}' | sort -rn | head -30
 ```
 
-Cross-reference against the tracking doc's backlog. Filter out tables in
-`[x] DONE` status. The user picks one, or you suggest the highest-count
-candidate not yet started.
+The grep above is intentionally noisy (catches every quoted snake_case-ish
+token). Eyeball the top of the list, ignore obvious non-tables (`bunk_with`,
+`not_bunk_with`, rule strings, etc.), and cross-reference against the
+tracking doc's backlog. Filter out tables in `[x] DONE` status.
 
-**Important:** The raw count above includes migrations that merely
-*reference* the table via a relation field. Before locking in a candidate,
-re-tally by inspecting each file: count only files whose mutations
-actually target this table (`fields.add`, `fields.removeByName`,
-`<rule> =`, index changes, data backfills against this table).
+The user picks one, or you suggest the highest-count candidate not yet
+started.
+
+**Important — re-tally before locking in a candidate.** The raw count
+above includes:
+- files that merely *reference* the table via a relation field
+  (`collectionId: someTableCol.id`)
+- files where the table name appears as a string but isn't actually
+  mutated (e.g., a comment, a log message, a select-value enum that
+  happens to share a name)
+
+Before committing to a round, re-classify each candidate file by hand:
+count only files whose mutations actually target this table (`fields.add`,
+`fields.removeByName`, `<rule> =`, index changes, data backfills, or a
+loop body that calls `findCollectionByNameOrId(name)` where `name` was
+sourced from an array containing this table). See Step 5 for the full
+classification table.
 
 ## Step 3: Surface auto-generated PB UI migrations
 
@@ -116,8 +144,19 @@ Record the disposition in the tracking doc.
 by existing repo convention (per `.gitignore`). They're per-deployment
 local state from PB's admin UI, not migration code we own. The skill
 should NOT fold them into merged CREATEs and should NOT delete them.
-Each deployment maintains its own. Disposition defaults to "leave alone"
-unless the user overrides explicitly.
+Each deployment maintains its own copy. Disposition defaults to "leave alone"
+unless the user overrides explicitly. **The narrow gitignore (users-only)
+is intentional.** Do not propose extending it to other tables.
+
+**Default disposition for `*_updated_<other-table>.js`:** these are
+**not** gitignored — they're tracked, committed, shipped autogen
+migrations from intentional admin-UI edits (column reorder, field
+add/edit, rule change, etc.). Default is **"fold into merged CREATE"**
+during the next consolidation round for that table. The user wants
+admin-UI edits compressed into the table's merged CREATE alongside the
+rest of the chain — same treatment as any hand-written modify migration.
+The reorder/edit ends up reflected in the final-state field order or
+field properties of the merged CREATE; the autogen file is deleted.
 
 ## Step 4: User picks the table
 
@@ -155,10 +194,24 @@ classify:
 | Index change | `collection.indexes = [...]`, `addIndex`, `removeIndex` |
 | Data backfill | `app.db().newQuery("UPDATE T ...")` or `INSERT INTO T` |
 | Seed insert | `app.save(record)` against T (typically config-style tables) |
+| **Indirect mutation via array** | File defines an array containing `"T"` and iterates it through a helper that runs schema/rule changes, e.g. `for (const name of tables) { setRules(name, ...) }`. **These are easy to miss with literal-string greps** — always also `grep -l '"T"'` (any quoted occurrence) and inspect the surrounding control flow. The bug that surfaced this rule was 1500000074_rbac_tier1_rules.js, which iterated 18 collections through a `setRules()` helper and was missed at seed time. |
 
 Build an in-memory ordered mutation log. Note any files that touch
 *other* tables too — those are multi-table and will be **trimmed**, not
 deleted.
+
+**Robust enumeration command** (assumes `$WORKTREE_DIR` was set in Step 4a):
+
+```bash
+# All files that mention T as a quoted string (catches indirect lookups
+# through arrays that the literal `findCollectionByNameOrId("T")` grep
+# would miss).
+grep -lE '"T"' "$WORKTREE_DIR/pocketbase/pb_migrations"/*.js
+```
+
+Then for each file printed, eyeball the context to decide whether T is
+actually mutated, merely referenced (relation `collectionId`), or just
+mentioned in a comment / log / unrelated string.
 
 ## Step 6: Build the merged CREATE in memory
 
@@ -174,6 +227,16 @@ Take the original CREATE file as base. Apply mutations in order. Collapse:
 
 Preserve the original collection ID verbatim (e.g., `id: "col_bunk_requests"`).
 Subsequent migrations may reference it.
+
+**Filename invariant (load-bearing for prod boot).** The merged CREATE MUST
+keep the *exact* basename of the original CREATE migration — same timestamp,
+same name, same extension. Prod's `_migrations` table keys on filename: the
+original CREATE's row is what makes PB skip the merged file on boot. A
+renamed merged CREATE is seen as a never-applied migration, PB tries to
+re-create the existing collection, and boot crashes with a unique-constraint
+error. The OnServe history-sync hook only *removes* orphan rows for deleted
+files; it does not suppress new files. Never bump the timestamp, never
+rename for cosmetics, never split into a new file.
 
 ## Step 7: Empirical schema-diff verification
 
@@ -208,7 +271,13 @@ section and proceed despite the diff. Never silent-override.
 Once verification passes, mirror the same operations to the real
 `pb_migrations/` dir (not the scratch dir):
 
-1. Replace the base CREATE migration with the merged version
+1. Replace the base CREATE migration with the merged version — **same
+   filename as origin/main** (see "Filename invariant" in Step 6). Verify:
+   ```bash
+   git -C "$WORKTREE_DIR" ls-tree origin/main pocketbase/pb_migrations/ \
+     | grep -q " $(basename "$BASE_CREATE")$" \
+     || { echo "merged CREATE filename drifted from origin/main — abort"; exit 1; }
+   ```
 2. Delete fully-absorbed migration files (`rm` them — no helper migration
    needed; the OnServe history-sync hook in `pocketbase/main.go` cleans
    the orphan `_migrations` rows automatically on next prod boot)
@@ -274,27 +343,125 @@ See spec §"Edge cases" for full detail. Quick reference:
 9. **Collapse `app.save()` calls — only when truly redundant**
 
    When the original CREATE used multiple `app.save()` calls, evaluate
-   whether the consolidated form still needs them. Three patterns to
+   whether the consolidated form still needs them. Four patterns to
    recognize:
 
-   a. **Self-referencing relation (collapsible)** — original does
-      `app.save(collection)` then `collection.fields.add(new Field({...,
-      collectionId: SELF_ID}))` then `app.save(collection)`. With a
-      hardcoded collection-ID constant defined before the constructor,
-      the self-relation can move into the initial `fields:` array.
-      **Collapse to one save.**
+   a. **Self-referencing relation (NOT collapsible on PB v0.23)** —
+      original does `app.save(collection)` then `collection.fields.add(new
+      Field({..., collectionId: SELF_ID}))` then `app.save(collection)`.
+      It LOOKS collapsible because `SELF_ID` is a hardcoded constant, but
+      PB v0.23's `app.save()` validates `relation.collectionId` against
+      existing rows in `_collections` at save time. The self-collection
+      doesn't exist yet during the first save, so a self-relation in the
+      initial `fields:` array fails with `"The relation collection
+      doesn't exist"`. **Keep the two-save pattern.** This was empirically
+      confirmed during the bunk_requests round 1 attempt (PR #1243 + the
+      bunk_requests consolidation): the harness rejected the collapsed
+      form with the exact error above.
 
-   b. **Seed-data inserts (NOT collapsible)** — original does
+   b. **Cross-collection refs with hardcoded ID (collapsible)** — when
+      collection A's relation field references collection B's hardcoded
+      ID, AND B is created in an earlier migration, the relation can sit
+      in A's initial `fields:` array. The validation passes because B
+      already exists in `_collections`. This is the only "hardcoded ID
+      collapse" pattern that actually works on PB v0.23.
+
+   c. **Seed-data inserts (NOT collapsible)** — original does
       `app.save(collection)` then `new Record(collection)` followed by
       `app.save(record)` for each seed row. The Record constructor needs
       a saved collection (it copies the schema by reference). **Keep
       multi-save.** Pattern is common for `config`, `roles`, and other
       lookup-style tables.
 
-   c. **Cross-collection circular refs (NOT collapsible)** — rare; two
+   d. **Cross-collection circular refs (NOT collapsible)** — rare; two
       collections reference each other via relation fields and neither
       can be created with both fields populated. Keep both saves; document
       in the commit message.
 
    The verification harness must still pass after any collapse — if a
-   collapse breaks the diff, restore the original multi-save structure.
+   collapse breaks the diff (or PB rejects the save with a validation
+   error), restore the original multi-save structure.
+
+10. **Field order matters — match the final-state order, however it was reached**
+
+    The harness compares JSON dumps of `_collections`, and PB serializes
+    fields in the order they were added (or rearranged) across all
+    `fields.add()` / `collection.fields = [...]` / initial-fields-array
+    operations. The diff is **order-sensitive**: a correctly merged
+    CREATE that ends up with the same set of fields but a different
+    array order fails verification with a noise diff even though the
+    SQL schema is functionally identical.
+
+    **Underlying invariant:** the merged CREATE must produce the same
+    final field order as the natural-build chain. That's all that
+    matters. The harness verifies it.
+
+    **Default heuristic — preserve historical add sequence.** When no
+    reorder migration exists in the chain (the common case), the final
+    order is just the chronological add order. Concretely, if the chain
+    was:
+    - #018 CREATE: fields A, B, C, ..., created, updated (initial array)
+    - #018 second save: add `merged_into` (self-relation)
+    - #092: add `disposition_reason`, `resolution_method`
+    - #095: add `source_fragment`
+
+    Then the merged CREATE produces final order: `A, B, C, ..., created,
+    updated, merged_into, disposition_reason, resolution_method,
+    source_fragment` — matching the historical sequence. In practice:
+    original initial-array fields stay in the initial array; fields
+    added by later migrations are added via `fields.add()` calls in
+    the second save (or a later save), in the order their original
+    migrations ran. Don't shove everything into the initial fields
+    array even if it would technically work — the resulting field order
+    drifts from the comparison DB and the harness flags it.
+
+    **When the chain contains a manual reorder (PB admin UI auto-gen).**
+    Reordering columns in PB's admin UI generates a
+    `<timestamp>_updated_<table>.js` migration that rewrites
+    `collection.fields` to a new order. With one of these in the chain,
+    "historical add sequence" is **not** the right answer — the
+    *post-reorder* order is. The default disposition for these files is
+    **fold into the merged CREATE** (see Step 3): the user's manual
+    edits get compressed alongside hand-written modify migrations.
+
+    To fold a reorder cleanly, arrange fields in the merged CREATE's
+    initial-fields-array (and any subsequent `fields.add()` calls) so
+    the resulting JSON dump matches the reordered final state. PB's
+    `fields.add()` always appends to the end, so a self-relation added
+    in a second save (per rule 9a) lands AFTER any fields you put in
+    the initial array. If the user's reorder placed the self-relation
+    in the middle of the field list, you cannot reproduce that order
+    with two saves alone — the merged CREATE will need a third save
+    that explicitly rearranges via `collection.fields = [...]`. The
+    harness will tell you exactly which fields drifted; iterate until
+    it passes.
+
+    Fallback: if folding the reorder gets too gnarly for a particular
+    round (e.g., self-relation positioned mid-array, or multiple
+    interleaved reorders), set disposition to "leave alone" for that
+    file and pick it up in a subsequent round. Record the deferral in
+    the tracking doc's auto-gen disposition table with a brief reason.
+
+    **Field removal preserves relative order.** PB's `removeByName()`
+    deletes the field from the array entirely; remaining fields keep
+    their relative order. So a field dropped by a later migration (e.g.,
+    `source` dropped by #103) just disappears from the merged CREATE's
+    initial fields array without renumbering anything else.
+
+    **Verification always wins.** Whatever heuristic you apply, the
+    harness compares JSON dumps. If you miss the order, `schemas differ`
+    fires and the diff tells you exactly which fields are misplaced.
+    Never silent.
+
+    Discovered during the bunk_requests round 1 (2026-05-08) — the first
+    merged CREATE put the three new text fields in the initial fields
+    array, which produced the right SET of fields but the wrong ORDER,
+    and the harness reported `schemas differ` on a pure-ordering diff.
+
+    **Gitignore for auto-gen migrations is narrow — and intentionally so.**
+    Only `*_updated_users.js` is excluded; users-collection edits are
+    per-deployment local state. Every other `*_updated_<table>.js` IS
+    tracked, committed, and shipped — those are intentional admin-UI
+    edits the user wants applied everywhere. Default disposition for
+    those is **fold into merged CREATE** (see Step 3). Do not propose
+    broadening the gitignore.

@@ -18,9 +18,9 @@ migrate((app) => {
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"',
+    updateRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"',
+    deleteRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"',
     fields: [
       // Primary requester - always required
       {
@@ -190,19 +190,6 @@ migrate((app) => {
         type: "bool",
         required: false,
         unique: false
-      },
-      // Source of the request
-      {
-        name: "source",
-        type: "select",
-        required: false,
-        unique: false,
-        values: [
-          "family",
-          "staff",
-          "notes"
-        ],
-        maxSelect: 1
       },
       // Keywords found by AI
       {
@@ -404,7 +391,6 @@ migrate((app) => {
       "CREATE INDEX idx_bunk_requests_session ON bunk_requests (session_id)",
       "CREATE INDEX idx_bunk_requests_status ON bunk_requests (status)",
       "CREATE INDEX idx_bunk_requests_type ON bunk_requests (request_type)",
-      "CREATE INDEX idx_bunk_requests_source ON bunk_requests (source)",
       "CREATE INDEX idx_bunk_requests_priority ON bunk_requests (priority)",
       "CREATE INDEX idx_bunk_requests_year_session ON bunk_requests (year, session_id)",
       "CREATE INDEX `idx_bunk_requests_requester_year` ON `bunk_requests` (`requester_id`, `year`)",
@@ -412,10 +398,14 @@ migrate((app) => {
     ]
   });
 
-  // First save: create collection without self-reference
+  // First save: create collection without the self-referencing relation.
   app.save(collection);
 
-  // Second save: add self-referencing relation after collection exists
+  // Second save: add merged_into self-relation plus the three later-added
+  // fields (disposition_reason, resolution_method, source_fragment) in their
+  // historical order. PB v0.23 validates relation.collectionId against
+  // existing collections at save time, so a self-reference cannot be
+  // declared in the initial fields array.
   collection.fields.add(new Field({
     type: "relation",
     name: "merged_into",
@@ -424,6 +414,30 @@ migrate((app) => {
     cascadeDelete: false,
     minSelect: null,
     maxSelect: 1
+  }));
+  collection.fields.add(new Field({
+    type: "text",
+    name: "disposition_reason",
+    required: false,
+    min: 0,
+    max: 100,
+    pattern: ""
+  }));
+  collection.fields.add(new Field({
+    type: "text",
+    name: "resolution_method",
+    required: false,
+    min: 0,
+    max: 100,
+    pattern: ""
+  }));
+  collection.fields.add(new Field({
+    type: "text",
+    name: "source_fragment",
+    required: false,
+    min: 0,
+    max: 2000,
+    pattern: ""
   }));
   collection.indexes.push("CREATE INDEX idx_bunk_requests_merged_into ON bunk_requests (merged_into)");
   app.save(collection);
