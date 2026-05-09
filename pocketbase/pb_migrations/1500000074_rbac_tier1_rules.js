@@ -12,7 +12,6 @@ migrate((app) => {
   const anyRole = '@request.auth.is_admin = true || (@request.auth.cached_permissions != null && @request.auth.cached_permissions != "[]")'
   const bunkingView = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.view"'
   const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
-  const metricsGeo = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "metrics.geo"'
 
   // Helper to update a collection's rules
   function setRules(name, list, view, create, update, del_) {
@@ -49,9 +48,6 @@ migrate((app) => {
     setRules(name, bunkingManage, bunkingManage, bunkingManage, bunkingManage, bunkingManage)
   }
 
-  // Read-only: metrics.geo (geo mapping data)
-  setRules("normalized_mappings", metricsGeo, metricsGeo, adminOnly, adminOnly, adminOnly)
-
   // Users: any role can list/view (for admin panel display)
   const usersCol = app.findCollectionByNameOrId("_pb_users_auth_")
   usersCol.listRule = anyRole
@@ -77,8 +73,7 @@ migrate((app) => {
     "persons", "attendees", "attendee_status_history", "camp_sessions", "divisions",
     "config", "bunk_assignments", "bunk_plans", "bunks",
     "bunk_request_sources", "original_bunk_requests", "bunk_assignments_draft",
-    "locked_groups", "locked_group_members", "saved_scenarios",
-    "normalized_mappings"
+    "locked_groups", "locked_group_members", "saved_scenarios"
   ]
   for (const name of collections) {
     revertRules(name)
