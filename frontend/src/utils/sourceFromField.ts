@@ -26,7 +26,7 @@ const SOURCE_FIELD_MAP: Readonly<Record<string, RequestSource>> = {
  *
  * Returns null when the input is empty, null, undefined, or unknown so a
  * single bad row can't crash the surrounding render — callers fall back to
- * `request.source` or another safe default.
+ * a safe default.
  *
  * The Python counterpart `source_from_field` raises on unknown input because
  * it has writer/validator callers that want strict failure. TS only has

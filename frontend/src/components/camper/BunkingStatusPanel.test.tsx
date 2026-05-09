@@ -183,13 +183,11 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
       }),
       makeRequest({
         id: 's1',
         request_type: 'not_bunk_with',
         source_field: 'not_bunk_with',
-        source: 'staff',
       }),
     ]
     const satisfactionData = {
@@ -213,7 +211,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
       }),
     ]
     const satisfactionData = { p1: { satisfied: true, detail: null } }
@@ -234,7 +231,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         id: 's1',
         request_type: 'not_bunk_with',
         source_field: 'not_bunk_with',
-        source: 'staff',
       }),
     ]
     const satisfactionData = { s1: { satisfied: true, detail: null } }
@@ -254,7 +250,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       id: 'b1',
       request_type: 'age_preference',
       source_field: 'socialize_with',
-      source: 'family',
       age_preference_target: 'older',
     })
     const satisfactionData = { b1: { satisfied: true, detail: null } }
@@ -272,7 +267,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       id: 'a1',
       request_type: 'age_preference',
       source_field: 'bunk_with',
-      source: 'family',
       age_preference_target: 'older',
     })
     const satisfactionData = { a1: { satisfied: true, detail: null } }
@@ -289,7 +283,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
       id: 'a2',
       request_type: 'age_preference',
       source_field: 'bunking_notes',
-      source: 'staff',
       age_preference_target: 'younger',
     })
     const satisfactionData = { a2: { satisfied: true, detail: null } }
@@ -314,7 +307,6 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
       }),
     ]
     const satisfactionData = { p1: { satisfied: true, detail: null } }
@@ -345,7 +337,6 @@ describe('BunkingStatusPanel — #1159 reads counted_totals from CamperSatisfact
       id: 'p1',
       request_type: 'bunk_with',
       source_field: 'bunk_with',
-      source: 'family',
     })
     const camperSatisfaction: CamperSatisfaction = {
       ...emptyCamperSatisfaction(12345),
@@ -406,7 +397,6 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
       id: 'no-bucket',
       request_type: 'age_preference',
       source_field: 'bunk_with',
-      source: 'family',
       age_preference_target: 'older',
     })
     renderPanelWith({
@@ -424,7 +414,6 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
       id: 'no-bucket-staff',
       request_type: 'age_preference',
       source_field: 'bunking_notes',
-      source: 'staff',
       age_preference_target: 'younger',
     })
     renderPanelWith({
@@ -467,7 +456,6 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
       id: 'present',
       request_type: 'age_preference',
       source_field: 'bunk_with', // would set P under fallback
-      source: 'family',
       age_preference_target: 'older',
     })
     const camperSatisfaction: CamperSatisfaction = {
@@ -495,14 +483,12 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
       id: 'staff-1',
       request_type: 'age_preference',
       source_field: 'bunking_notes',
-      source: 'staff',
       age_preference_target: 'younger',
     })
     const stalePartial = makeRequest({
       id: 'stale-bunk_with',
       request_type: 'bunk_with',
       source_field: 'bunk_with',
-      source: 'family',
       requestee_id: 99999,
       requestedPersonName: 'Olivia Chen',
     })
@@ -537,14 +523,12 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         requestedPersonName: 'Liam Garcia',
       }),
       makeRequest({
         id: 'p2',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         requestedPersonName: 'Olivia Chen',
       }),
     ]
@@ -567,7 +551,6 @@ describe('BunkingStatusPanel — #1159 age-pref badges read per_request.bucket',
       id: 'mismatched',
       request_type: 'age_preference',
       source_field: 'bunk_with',
-      source: 'family',
       age_preference_target: 'older',
     })
     const camperSatisfaction: CamperSatisfaction = {
@@ -591,7 +574,6 @@ describe('BunkingStatusPanel — #1159 age-pref badges read per_request.bucket',
       id: 'mismatched-2',
       request_type: 'age_preference',
       source_field: 'bunking_notes',
-      source: 'staff',
       age_preference_target: 'younger',
     })
     const camperSatisfaction: CamperSatisfaction = {
@@ -616,7 +598,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         ...({
           targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 100 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -625,7 +606,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 's1',
         request_type: 'not_bunk_with',
         source_field: 'not_bunk_with',
-        source: 'staff',
         ...({
           targetPerson: { first_name: 'Riley', last_name: 'Sam', cm_id: 200 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -684,7 +664,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 'p1',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         ...({
           targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 100 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -704,7 +683,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 'p-olivia',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         ...({
           targetPerson: { first_name: 'Olivia', last_name: 'Chen', cm_id: 100 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -713,7 +691,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 'p-emma',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         ...({
           targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 101 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -722,7 +699,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
         id: 'p-liam',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         ...({
           targetPerson: { first_name: 'Liam', last_name: 'Garcia', cm_id: 102 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -742,7 +718,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       id: 'a1',
       request_type: 'age_preference',
       source_field: 'bunk_with',
-      source: 'family',
       age_preference_target: 'older',
     })
     const allBunkRequests = [ageReq]
@@ -762,7 +737,6 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       id: 'a1',
       request_type: 'age_preference',
       source_field: 'bunking_notes',
-      source: 'staff',
       age_preference_target: 'younger',
     })
     const allBunkRequests = [ageReq]
@@ -828,7 +802,6 @@ describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
         status: 'resolved',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         requestee_id: 67890,
       }),
       makeRequest({
@@ -836,7 +809,6 @@ describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
         status: 'resolved',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         requestee_id: 67891,
         requestedPersonName: 'Olivia Chen',
       }),
@@ -859,7 +831,6 @@ describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
         status: 'resolved',
         request_type: 'bunk_with',
         source_field: 'bunk_with',
-        source: 'family',
         requestee_id: 67890,
       }),
     ]
@@ -876,7 +847,6 @@ describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
       request_type: 'age_preference',
       age_preference_target: 'older',
       source_field: 'socialize_with',
-      source: 'family',
     })
     renderPanelWith({
       allBunkRequests: [],

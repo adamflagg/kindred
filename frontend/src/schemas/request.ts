@@ -19,9 +19,6 @@ export const BunkRequestsRequestTypeSchema = z.enum([
 // Bunk request status enum
 export const BunkRequestsStatusSchema = z.enum(['resolved', 'pending', 'declined'])
 
-// Bunk request source enum
-export const BunkRequestsSourceSchema = z.enum(['family', 'staff'])
-
 // Bunk requests record schema
 export const BunkRequestsRecordSchema = z.object({
   age_preference_target: z.string().optional(),
@@ -52,7 +49,6 @@ export const BunkRequestsRecordSchema = z.object({
   requires_manual_review: z.boolean().optional(),
   resolution_notes: z.string().optional(),
   session_id: z.number(),
-  source: BunkRequestsSourceSchema.optional(),
   source_detail: z.string().optional(),
   source_field: z.string().optional(),
   source_fragment: z.string().optional(),
@@ -89,7 +85,6 @@ export const OriginalBunkRequestsResponseSchema =
 // Export types
 export type BunkRequestsRequestType = z.infer<typeof BunkRequestsRequestTypeSchema>
 export type BunkRequestsStatus = z.infer<typeof BunkRequestsStatusSchema>
-export type BunkRequestsSource = z.infer<typeof BunkRequestsSourceSchema>
 export type BunkRequestsRecord = z.infer<typeof BunkRequestsRecordSchema>
 export type BunkRequestsResponse = z.infer<typeof BunkRequestsResponseSchema>
 export type OriginalBunkRequestsField = z.infer<typeof OriginalBunkRequestsFieldSchema>
