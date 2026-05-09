@@ -52,10 +52,26 @@ This skill assumes the bootstrap PR has shipped:
 
 If any are missing, stop and tell the user.
 
-## Step 0: Compress prior-round detail blocks
+## Step 0: Reconcile pending PRs, then compress prior-round detail blocks
 
-Before starting a new round, scan per-table sections in the tracking doc.
-For any "[x] DONE" round whose absorbed-file deletions are present in
+### 0a. Reconcile `[⏳]` IN PROGRESS entries against actual PR state
+
+Before anything else, scan per-table sections for `[⏳] IN PROGRESS`
+entries. Each one cites a PR number (e.g. `(PR #1263 awaiting merge)`).
+Resolve each via `gh pr view <PR#> --json state,mergeCommit`:
+
+| PR state | Action |
+|----------|--------|
+| `MERGED` | Flip backlog row and per-table header to `[x] DONE <merge-date>`. The detail block stays full for now (Step 0b will compress on the next invocation once `origin/main` propagates). Update header to `(PR #<N> merged)`. |
+| `OPEN` | Leave unchanged. The round is still pending review or merge. |
+| `CLOSED` (without merge) | Revert backlog row to `[ ]` not started. Delete the per-table detail block (the local work is gone). Append a one-line entry under "Cross-cutting findings" recording the abandoned attempt with date and PR link, so the next round on that table knows there was a prior attempt. |
+
+If an `[⏳]` entry has no PR number recorded (e.g. the round was
+interrupted before Step 11), prompt the user: keep, finish, or discard.
+
+### 0b. Compress completed rounds whose deletions landed on `origin/main`
+
+For any `[x] DONE` round whose absorbed-file deletions are present in
 `origin/main` (verified via `git log origin/main -- pocketbase/pb_migrations/<filename>` returning a delete commit), compress that round's full
 detail block into a single line under the table's "Rounds (compressed
 history)" log:
@@ -105,7 +121,9 @@ done | awk -F'|' '{count[$1]++} END {for (t in count) if (count[t] > 1) print co
 The grep above is intentionally noisy (catches every quoted snake_case-ish
 token). Eyeball the top of the list, ignore obvious non-tables (`bunk_with`,
 `not_bunk_with`, rule strings, etc.), and cross-reference against the
-tracking doc's backlog. Filter out tables in `[x] DONE` status.
+tracking doc's backlog. Filter out tables in `[x] DONE` or `[⏳] IN PROGRESS`
+status — the latter still has work locked behind an open PR and isn't a
+candidate for a parallel round (see Step 0a for reconciliation rules).
 
 The user picks one, or you suggest the highest-count candidate not yet
 started.
@@ -283,20 +301,38 @@ Once verification passes, mirror the same operations to the real
    the orphan `_migrations` rows automatically on next prod boot)
 3. Trim multi-table migration files (write trimmed versions in-place)
 
-## Step 9: Update the tracking doc
+## Step 9: Update the tracking doc — mark IN PROGRESS
 
-Append (or update) the per-table section:
+The local consolidation is done but the PR doesn't exist yet (Step 11
+opens it). Mark the table as `[⏳] IN PROGRESS` so future invocations
+know the work is locked behind an open PR. Step 11 will edit this entry
+once the PR number exists; Step 0a of a future invocation flips
+`[⏳]` → `[x] DONE` once `gh pr view` confirms the merge.
+
+1. In the backlog table, change the status cell from `[ ]` to `[⏳]`.
+2. Append (or update) the per-table section. Use IN PROGRESS, not DONE,
+   and leave a `(PR pending — set in Step 11)` placeholder:
 
 ```markdown
-### <table> — [x] DONE <date>
+### <table> — [⏳] IN PROGRESS <date> (PR pending — set in Step 11)
 
 **Rounds (compressed history):**
-- <date> — round N — absorbed M files (#X, #Y, ...) into base #BBB — verified ✅
+- <date> — round N — absorbed M files (#X, #Y, ...) into base #BBB — verified ✅ locally; pending PR merge
+
+**Round N detail (kept for reference until next round compresses):**
+
+<full detail block: absorbed migrations, trimmed multi-table files,
+ final schema, surprises / cross-cutting findings>
 ```
 
 Add cross-cutting findings if anything novel surfaced (e.g., a
 multi-table migration was trimmed and the remainder is queued for another
 table's future round).
+
+**Why `[⏳]` not `[x]`:** the table can't be picked up by a parallel
+session while the PR is open, but if the PR gets closed-without-merge,
+Step 0a reverts the row to `[ ]` and the table goes back into the
+backlog. Premature `[x] DONE` would silently strand the table.
 
 ## Step 10: Print summary
 
@@ -364,7 +400,20 @@ EOF
 )"
 ```
 
-Capture the PR number from `gh pr create` output for Step 12.
+Capture the PR number from `gh pr create` output for Step 12 AND for
+the tracking doc update below.
+
+```bash
+PR_URL=$(gh pr create --title "..." --body "...")
+PR_NUM=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+```
+
+**Update the tracking doc with the actual PR number.** Replace the
+`(PR pending — set in Step 11)` placeholder from Step 9 with
+`(PR #$PR_NUM awaiting merge)` in both the backlog row's Notes column
+(if any) and the per-table section header. This record is what Step 0a
+of future invocations uses to reconcile the entry's state via
+`gh pr view <PR#> --json state`.
 
 If pre-push hooks fail, fix the underlying issue and retry — never use
 `--no-verify`. If the commit hits a commitlint warning about footer
