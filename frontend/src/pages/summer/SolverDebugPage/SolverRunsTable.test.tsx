@@ -106,6 +106,29 @@ describe('SolverRunsTable', () => {
     expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'))
   })
 
+  it('renders an em-dash (not "did not run") for legacy rows missing stats', () => {
+    // solver_runs rows that predate the stats-tagging code have no stats.status
+    // — the run did happen, the snapshot just isn't there. "did not run" is
+    // misleading; render a plain em-dash like every other missing-value cell.
+    const legacy: SolverRun = {
+      id: 'legacy',
+      run_id: 'run_legacy',
+      status: 'success',
+      created: '2026-04-01T00:00:00Z',
+    }
+    render(
+      <SolverRunsTable
+        runs={[legacy]}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/did not run/i)).not.toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
   it('renders em-dash without "s" suffix when budget is missing', () => {
     const { time_budget_seconds: _omit, ...statsWithoutBudget } = r1.stats ?? {}
     void _omit

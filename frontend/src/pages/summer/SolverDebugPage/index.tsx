@@ -7,6 +7,7 @@ import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
 import { useScenarioList } from '../../../hooks/useScenarioList'
 import { useSessionList } from '../../../hooks/useSessionList'
 import { useSolverRuns } from '../../../hooks/useSolverRuns'
+import { downloadJson } from '../../../utils/jsonExport'
 import type { SolverRunsFilters } from '../../../utils/queryKeys'
 
 import { DrillDownDrawer } from './DrillDownDrawer'
@@ -36,7 +37,16 @@ export default function SolverDebugPage() {
 
   const sessions = useSessionList()
   const scenarios = useScenarioList()
-  const runs = useSolverRuns(filters, {
+  // Year scoping: solver_runs has no `year` column, so we exclude runs whose
+  // session_id isn't in the current-year session list. Empty array (sessions
+  // loaded, none for year) → no rows. undefined while sessions are still
+  // loading → keep prior behavior, then re-query when sessions resolve.
+  const validSessionIds = sessions.data ? sessions.data.map((s) => s.cm_id) : undefined
+  const scopedFilters = useMemo(
+    () => (validSessionIds !== undefined ? { ...filters, validSessionIds } : filters),
+    [filters, validSessionIds]
+  )
+  const runs = useSolverRuns(scopedFilters, {
     pollMs: activeSweepId ? 5_000 : false,
   })
   const runSweep = useRunSweep()
@@ -100,6 +110,11 @@ export default function SolverDebugPage() {
       setActiveSweepId(null)
     }
   }, [activeSweepId, items])
+
+  const handleExport = () => {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    downloadJson(items, `solver-runs-${stamp}.json`)
+  }
 
   const handleRunSweep = async (req: SweepPanelPayload) => {
     // Translate component-level payload (session_id) into backend SweepRequest
@@ -169,6 +184,7 @@ export default function SolverDebugPage() {
         visibleColumns={visibleColumns}
         onColumnsChange={handleColumnsChange}
         sessions={sessions.data ?? []}
+        onExport={handleExport}
       />
 
       {pinnedRuns[0] && pinnedRuns[1] ? (

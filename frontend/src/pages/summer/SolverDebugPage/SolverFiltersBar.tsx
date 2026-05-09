@@ -11,7 +11,7 @@ import {
 
 export interface SolverFiltersBarSession {
   cm_id: number
-  session_name: string
+  name: string
   year?: number
 }
 
@@ -25,6 +25,7 @@ interface SolverFiltersBarProps {
    * the filter dropdown can't resolve to actual run rows.
    */
   sessions: SolverFiltersBarSession[]
+  onExport: () => void
 }
 
 export function SolverFiltersBar({
@@ -33,6 +34,7 @@ export function SolverFiltersBar({
   visibleColumns,
   onColumnsChange,
   sessions,
+  onExport,
 }: SolverFiltersBarProps) {
   const [showPicker, setShowPicker] = useState(false)
   const pickerWrapperRef = useRef<HTMLDivElement | null>(null)
@@ -83,7 +85,7 @@ export function SolverFiltersBar({
         <option value="">All sessions</option>
         {sessions.map((s) => (
           <option key={s.cm_id} value={s.cm_id}>
-            {s.session_name}
+            {s.name}
             {s.year ? ` — ${s.year}` : ''}
           </option>
         ))}
@@ -102,6 +104,13 @@ export function SolverFiltersBar({
           className="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900"
         >
           ⚙ Columns ({visibleColumns.length}/{ALL_COLUMNS.length})
+        </button>
+        <button
+          type="button"
+          onClick={onExport}
+          className="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900"
+        >
+          ⤓ Export JSON
         </button>
         {showPicker ? (
           <div className="absolute top-[calc(100%+6px)] right-0 z-20 w-80 rounded-xl border border-gray-200 bg-white p-3 shadow-xl">

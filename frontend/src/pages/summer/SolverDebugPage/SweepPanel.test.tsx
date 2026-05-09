@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SweepPanel } from './SweepPanel'
 
 const fakeSessions = [
-  { id: '1', cm_id: 1, session_name: 'Session 1', year: 2026, attendee_count: 104 },
-  { id: '2', cm_id: 2, session_name: 'Session 2', year: 2026, attendee_count: 98 },
+  { id: '1', cm_id: 1, name: 'Session 1', year: 2026 },
+  { id: '2', cm_id: 2, name: 'Session 2', year: 2026 },
 ]
 const fakeScenarios = [
   { id: 's1', name: 'what-if-strict-grades', session_id: 2 },

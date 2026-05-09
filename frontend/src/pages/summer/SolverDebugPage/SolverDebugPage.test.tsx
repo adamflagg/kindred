@@ -17,9 +17,8 @@ let mockRuns: SolverRun[] = []
 let mockSessions: Array<{
   id: string
   cm_id: number
-  session_name: string
+  name: string
   year: number
-  attendee_count: number
 }> = []
 let mockSessionsError = false
 let mockScenariosError = false
@@ -151,9 +150,8 @@ describe('SolverDebugPage', () => {
       {
         id: 'pb_s1',
         cm_id: 1000002,
-        session_name: 'Session 2',
+        name: 'Session 2',
         year: 2026,
-        attendee_count: 120,
       },
     ]
     mockMutateAsync = vi.fn().mockRejectedValueOnce(new Error('network fail'))

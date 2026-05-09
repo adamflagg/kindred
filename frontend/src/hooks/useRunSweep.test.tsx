@@ -3,7 +3,9 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { AuthContext } from '../contexts/AuthContext'
 import { postRunSweep } from '../services/solver'
+import { createMockAuthContext, createMockUser } from '../test/test-helpers'
 import { useRunSweep } from './useRunSweep'
 
 vi.mock('../services/solver', () => ({
@@ -13,7 +15,12 @@ vi.mock('../services/solver', () => ({
 
 const wrapper = ({ children }: { children: ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  const authCtx = createMockAuthContext({ user: createMockUser() })
+  return (
+    <AuthContext.Provider value={authCtx}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </AuthContext.Provider>
+  )
 }
 
 const mockPostRunSweep = vi.mocked(postRunSweep)

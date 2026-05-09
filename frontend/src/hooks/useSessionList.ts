@@ -2,41 +2,40 @@ import { useQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
-import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
 import { useYear } from './useCurrentYear'
 
 interface RawSession {
   id: string
   cm_id: number
-  session_name: string
+  name: string
   year: number
-  attendee_count?: number
 }
 
 export interface SessionListItem {
   id: string
   cm_id: number
-  session_name: string
+  name: string
   year: number
-  attendee_count: number
 }
 
+// The solver session list mirrors the bunking board's SessionList — only main +
+// embedded sessions, sorted by start_date then cm_id. AG sessions roll up into
+// their parent main session at solve time (the solver fetches the parent and
+// pulls its AG children via parent_id), so AG entries don't need their own row.
 export function useSessionList() {
   const year = useYear()
   return useQuery<SessionListItem[]>({
     queryKey: queryKeys.allSessionsList(year),
     queryFn: async () => {
-      const typeFilter = SUMMER_CAMP_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
       const result = await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (${typeFilter})`,
-        sort: 'cm_id',
+        filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
+        sort: 'start_date,cm_id',
       })
       return (result as unknown as RawSession[]).map((r) => ({
         id: r.id,
         cm_id: r.cm_id,
-        session_name: r.session_name,
+        name: r.name,
         year: r.year,
-        attendee_count: r.attendee_count ?? 0,
       }))
     },
   })

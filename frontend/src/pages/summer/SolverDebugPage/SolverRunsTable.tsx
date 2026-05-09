@@ -131,13 +131,17 @@ export function SolverRunsTable({
                 )}
                 {showCol('status') && (
                   <td className="px-3 py-2">
-                    <span
-                      className={`rounded px-2 py-0.5 text-[11px] font-semibold ${statusChipClass(
-                        run.stats?.status
-                      )}`}
-                    >
-                      {run.stats?.status ?? 'did not run'}
-                    </span>
+                    {run.stats?.status ? (
+                      <span
+                        className={`rounded px-2 py-0.5 text-[11px] font-semibold ${statusChipClass(
+                          run.stats.status
+                        )}`}
+                      >
+                        {run.stats.status}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
                 )}
                 {showCol('walltime_seconds') && (

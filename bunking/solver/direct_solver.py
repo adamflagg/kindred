@@ -112,7 +112,7 @@ def _compute_optimality_gap(objective: float | None, best_bound: float | None) -
 
 def _build_stats_dict(
     solver: Any,
-    status: int,
+    status: Any,  # `cp_model.CpSolverStatus` enum at runtime; cast to int for JSON
     model_proto: Any,
     time_limit_seconds: int,
     num_workers: int,
@@ -136,7 +136,10 @@ def _build_stats_dict(
     return {
         # Existing back-compat fields
         "status": solver.StatusName(status),
-        "status_code": status,
+        # int() cast: real OR-Tools returns a `CpSolverStatus` enum from
+        # `solver.Solve(...)`, which json.dumps cannot encode — the row save
+        # to solver_runs.stats fails on every successful run otherwise.
+        "status_code": int(status),
         "objective_value": objective,
         "solve_time": solver.WallTime(),
         "total_persons": num_persons,
@@ -762,7 +765,9 @@ class DirectBunkingSolver:
         # so column rendering is identical across session types.
         stats: dict[str, Any] = {
             "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
-            "status_code": cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL,
+            # int() cast — same reason as _build_stats_dict above: cp_model
+            # status constants are an enum in current OR-Tools, not raw ints.
+            "status_code": int(cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL),
             "objective_value": None,
             "solve_time": 0.0,
             "total_persons": len(self.person_ids),

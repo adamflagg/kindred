@@ -100,11 +100,23 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
   return useQuery({
     queryKey: queryKeys.solverRuns(filters),
     queryFn: async () => {
+      // Empty validSessionIds means "year scope is active but no sessions
+      // in this year" — short-circuit before hitting PB so we never return
+      // cross-year rows. (undefined means "no year filter at all".)
+      if (filters.validSessionIds && filters.validSessionIds.length === 0) {
+        return { items: [], totalItems: 0 }
+      }
+
       const filterParts: string[] = []
       const filterParams: Record<string, unknown> = {}
       if (filters.sessionId !== undefined) {
         filterParts.push('session_id = {:sessionId}')
         filterParams['sessionId'] = filters.sessionId
+      } else if (filters.validSessionIds && filters.validSessionIds.length > 0) {
+        // Year scoping: solver_runs has no `year` column, so we OR-match
+        // session_id against the cm_ids from the year-scoped session list.
+        const orParts = filters.validSessionIds.map((id) => `session_id = ${id}`)
+        filterParts.push(`(${orParts.join(' || ')})`)
       }
       if (filters.hideFailed) {
         filterParts.push('status != "failed" && status != "error"')

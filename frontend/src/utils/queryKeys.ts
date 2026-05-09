@@ -12,6 +12,14 @@ export interface SolverRunsFilters {
   sweepId?: string
   hideFailed?: boolean
   since?: string
+  /**
+   * Session cm_ids that belong to the currently-selected year. The
+   * `solver_runs` table has no `year` column, so year scoping is enforced
+   * via this set: rows whose `session_id` isn't in here are excluded.
+   * Pass an empty array to hide everything (e.g. while sessions load).
+   * Omit for legacy unscoped queries.
+   */
+  validSessionIds?: number[]
 }
 
 export const queryKeys = {

@@ -4,9 +4,8 @@ import { useId, useState } from 'react'
 export interface SweepPanelSession {
   id: string
   cm_id: number
-  session_name: string
+  name: string
   year: number
-  attendee_count: number
 }
 
 export interface SweepPanelScenario {
@@ -121,7 +120,7 @@ export function SweepPanel({
           >
             {sessions.map((s) => (
               <option key={s.id} value={s.cm_id}>
-                {s.session_name} — {s.year} ({s.attendee_count})
+                {s.name} — {s.year}
               </option>
             ))}
           </select>
@@ -139,14 +138,14 @@ export function SweepPanel({
             value={sourceValue}
             onChange={(e) => setPickedSourceValue(e.target.value)}
           >
-            <optgroup label="Live data">
+            <optgroup label="CampMinder">
               <option value="production">Production</option>
             </optgroup>
             {sessionScenarios.length > 0 ? (
-              <optgroup label="Saved scenarios for the selected session">
+              <optgroup label="Scenarios">
                 {sessionScenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    scenario "{s.name}"
+                    {s.name}
                   </option>
                 ))}
               </optgroup>
