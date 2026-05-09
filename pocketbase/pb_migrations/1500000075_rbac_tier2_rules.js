@@ -28,7 +28,7 @@ migrate((app) => {
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "enrollment_snapshots", "family_camp_adults", "family_camp_medical",
+    "family_camp_adults", "family_camp_medical",
     "family_camp_registrations", "quest_registrations", "session_groups",
     "config_sections", "sheets_workbooks"
   ]
@@ -65,7 +65,7 @@ migrate((app) => {
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "enrollment_snapshots", "family_camp_adults", "family_camp_medical",
+    "family_camp_adults", "family_camp_medical",
     "family_camp_registrations", "quest_registrations", "session_groups",
     "config_sections", "sheets_workbooks",
     "debug_parse_results", "solver_runs"

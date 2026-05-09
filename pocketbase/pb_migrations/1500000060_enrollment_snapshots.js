@@ -1,21 +1,37 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+/**
+ * Migration: Create enrollment_snapshots collection
+ *
+ * Stores per-session enrollment snapshots (active, waitlisted, cancelled
+ * counts plus per-gender breakdowns) keyed by (snapshot_datetime,
+ * session_cm_id, year). Used by the velocity/metrics pipeline to track
+ * enrollment trends without recomputing from attendees on every read.
+ *
+ * snapshot_datetime stores actual UTC timestamps so multiple snapshots
+ * per day are allowed (manual runs add rows instead of overwriting).
+ *
+ * Access is admin-only — sensitive aggregate data not exposed to the
+ * frontend; FastAPI metrics endpoints read via admin auth.
+ */
 migrate((app) => {
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
+
+  const adminOnly = '@request.auth.is_admin = true'
 
   const collection = new Collection({
     name: "enrollment_snapshots",
     type: "base",
     system: false,
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: null,
-    updateRule: null,
-    deleteRule: null,
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         type: "date",
-        name: "snapshot_date",
+        name: "snapshot_datetime",
         required: true,
         min: "",
         max: "",
@@ -32,8 +48,9 @@ migrate((app) => {
         type: "number",
         name: "session_cm_id",
         required: true,
-        min: 0,
-        max: 0,
+        presentable: false,
+        min: 1,
+        max: null,
         onlyInt: true,
       },
       {
@@ -48,30 +65,87 @@ migrate((app) => {
       {
         type: "number",
         name: "enrolled_count",
-        required: true,
-        min: 0,
-        max: 0,
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
         onlyInt: true,
       },
       {
         type: "number",
         name: "waitlisted_count",
-        required: true,
-        min: 0,
-        max: 0,
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
         onlyInt: true,
       },
       {
         type: "number",
         name: "cancelled_count",
-        required: true,
-        min: 0,
-        max: 0,
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "enrolled_male_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "enrolled_female_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "waitlisted_male_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "waitlisted_female_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "cancelled_male_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
+        onlyInt: true,
+      },
+      {
+        type: "number",
+        name: "cancelled_female_count",
+        required: false,
+        presentable: false,
+        min: null,
+        max: null,
         onlyInt: true,
       },
     ],
     indexes: [
-      "CREATE UNIQUE INDEX idx_enrollment_snapshots_unique ON enrollment_snapshots(snapshot_date, session_cm_id, year)",
+      "CREATE UNIQUE INDEX idx_enrollment_snapshots_unique ON enrollment_snapshots(snapshot_datetime, session_cm_id, year)",
       "CREATE INDEX idx_enrollment_snapshots_year_session ON enrollment_snapshots(year, session_cm_id)",
     ],
   })
