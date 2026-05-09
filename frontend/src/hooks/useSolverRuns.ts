@@ -51,6 +51,8 @@ export interface SolverRun {
   error?: { message?: string } | null
 }
 
+// PocketBase JS SDK returns JSON-typed fields as already-parsed values, not
+// strings — see frontend/src/hooks/useSyncStatus.ts for the same pattern.
 interface RawSolverRunRecord {
   id: string
   run_id: string
@@ -59,18 +61,13 @@ interface RawSolverRunRecord {
   session_id?: number | null
   started_at?: string | null
   completed_at?: string | null
-  stats?: string | null
-  details?: string | null
-  error?: string | null
+  stats?: SolverRunStats | null
+  details?: SolverRunDetails | null
+  error?: { message?: string } | null
 }
 
-function safeJson<T>(value: string | null | undefined): T | undefined {
-  if (!value) return undefined
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return undefined
-  }
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
 function parseRecord(rec: RawSolverRunRecord): SolverRun {
@@ -79,15 +76,13 @@ function parseRecord(rec: RawSolverRunRecord): SolverRun {
     run_id: rec.run_id,
     status: rec.status,
     created: rec.created,
-    error: safeJson<{ message?: string }>(rec.error) ?? null,
+    error: isObject(rec.error) ? (rec.error as { message?: string }) : null,
   }
   if (typeof rec.session_id === 'number') out.session_id = rec.session_id
   if (typeof rec.started_at === 'string') out.started_at = rec.started_at
   if (typeof rec.completed_at === 'string') out.completed_at = rec.completed_at
-  const stats = safeJson<SolverRunStats>(rec.stats)
-  if (stats) out.stats = stats
-  const details = safeJson<SolverRunDetails>(rec.details)
-  if (details) out.details = details
+  if (isObject(rec.stats)) out.stats = rec.stats as SolverRunStats
+  if (isObject(rec.details)) out.details = rec.details as SolverRunDetails
   return out
 }
 
