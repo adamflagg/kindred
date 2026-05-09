@@ -88,11 +88,15 @@ for f in *.js; do
   # The seed-time grep used to look only inside `findCollectionByNameOrId("...")`
   # and missed indirect-lookup files like 1500000074_rbac_tier1_rules.js
   # — that bug is what required adding the array-name fallback below.
+  # Emit every quoted snake_case-ish token. Intentionally no filtering —
+  # rule predicates and other non-tables get mixed in, and the user
+  # eyeballs the ranked output below to ignore obvious non-tables. The
+  # original narrower grep (only `findCollectionByNameOrId("...")` /
+  # `name: "..."`) missed an indirect-lookup file (1500000074) where the
+  # table name lives in an array iterated by a `setRules()` helper, so
+  # we widened it to catch any quoted occurrence.
   matches=$(grep -oE '"[a-z][a-z0-9_]+"' "$f" | sort -u | tr -d '"')
   for tbl in $matches; do
-    # Filter out obvious non-table strings (rule predicates, etc.) by
-    # requiring the name to look like a snake_case identifier with at
-    # least one underscore OR appearing in a `name:` / lookup context.
     echo "$tbl|$f"
   done
 done | awk -F'|' '{count[$1]++} END {for (t in count) if (count[t] > 1) print count[t], t}' | sort -rn | head -30
@@ -202,7 +206,7 @@ deleted.
 # All files that mention T as a quoted string (catches indirect lookups
 # through arrays that the literal `findCollectionByNameOrId("T")` grep
 # would miss).
-grep -lE '"T"' pb_migrations/*.js
+grep -lE '"T"' "$WORKTREE_DIR/pocketbase/pb_migrations"/*.js
 ```
 
 Then for each file printed, eyeball the context to decide whether T is
