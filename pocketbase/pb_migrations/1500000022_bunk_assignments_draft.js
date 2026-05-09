@@ -7,35 +7,37 @@
  * Stores draft cabin assignments for scenario planning. Each assignment links
  * a person to a bunk within a scenario, allowing what-if planning before
  * committing assignments to production.
- *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
  */
 
 migrate((app) => {
-  // Dynamic lookups - these collections were created in earlier migrations
   const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
   const personsCol = app.findCollectionByNameOrId("persons")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const bunkPlansCol = app.findCollectionByNameOrId("bunk_plans")
 
+  const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
+
   const collection = new Collection({
     id: "col_bunk_drafts",
     type: "base",
     name: "bunk_assignments_draft",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: bunkingManage,
+    viewRule: bunkingManage,
+    createRule: bunkingManage,
+    updateRule: bunkingManage,
+    deleteRule: bunkingManage,
     fields: [
       {
+        // cascadeDelete=true: deleting a saved scenario should sweep its draft
+        // assignments server-side. Was false originally; flipping it removed an
+        // N+1 client-side pre-delete loop in useDeleteScenario.
         type: "relation",
         name: "scenario",
         required: false,
         presentable: false,
         collectionId: scenariosCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
