@@ -125,6 +125,19 @@ func main() {
 		Dir:          migrationsDir,
 	})
 
+	// History-sync hook: keep prod's _migrations table in sync with the
+	// on-disk migration file list on every server boot. PB's built-in
+	// `migrate history-sync` (RemoveMissingAppliedMigrations) deletes rows
+	// for files no longer present. Idempotent — no-op on clean DBs. Used by
+	// the consolidate-migrations skill to self-heal prod's migration history
+	// after consolidation merges drop intermediate migration files.
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		if err := runHistorySync(e.App); err != nil {
+			slog.Warn("history-sync hook failed", "err", err)
+		}
+		return e.Next()
+	})
+
 	// Config initialization now handled by migrations
 
 	// ---------------------------------------------------------------
@@ -188,6 +201,26 @@ func main() {
 		slog.Error("Failed to start application", "error", err)
 		os.Exit(1)
 	}
+}
+
+// runHistorySync removes _migrations rows whose files no longer exist on disk
+// (registered in core.SystemMigrations or core.AppMigrations). Mirrors PB's
+// own BaseApp.RunAllMigrations list construction so we don't accidentally
+// delete rows for PB's built-in system migrations (e.g. 1640988000_init.go),
+// which would cause the next boot to re-apply them and fail with
+// "_params exec error: table _params already exists". After a successful
+// sync, flushes the WAL so the change persists across docker stop/start.
+func runHistorySync(app core.App) error {
+	list := core.MigrationsList{}
+	list.Copy(core.SystemMigrations)
+	list.Copy(core.AppMigrations)
+	if err := core.NewMigrationsRunner(app, list).Run("history-sync"); err != nil {
+		return fmt.Errorf("history-sync: %w", err)
+	}
+	if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute(); err != nil {
+		return fmt.Errorf("history-sync WAL checkpoint failed: %w", err)
+	}
+	return nil
 }
 
 // the default pb_public dir location is relative to the executable
