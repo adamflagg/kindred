@@ -132,9 +132,16 @@ export const COMPARABLE_METRICS: readonly string[] = [
 ] as const
 
 export function getMetric(key: string): MetricMeta {
-  const meta = METRIC_REGISTRY[key]
-  if (!meta) throw new Error(`Unknown metric: ${key}`)
-  return meta
+  return (
+    METRIC_REGISTRY[key] ?? {
+      key,
+      label: key,
+      description: '',
+      format: 'integer',
+      interpretation: 'context',
+      group: 'context',
+    }
+  )
 }
 
 export function formatMetric(key: string, value: number | null | undefined): string {

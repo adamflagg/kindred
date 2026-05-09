@@ -45,6 +45,13 @@ describe('getMetric', () => {
   it('returns the entry for a known key', () => {
     expect(getMetric('walltime_seconds').label).toBe('Wall time')
   })
+
+  it('returns a generic fallback for unknown keys instead of throwing', () => {
+    expect(() => getMetric('not_a_real_metric')).not.toThrow()
+    const fallback = getMetric('not_a_real_metric')
+    expect(fallback.label).toBe('not_a_real_metric')
+    expect(fallback.format).toBe('integer')
+  })
 })
 
 describe('formatMetric', () => {

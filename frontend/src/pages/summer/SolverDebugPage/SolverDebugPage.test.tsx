@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import toast from 'react-hot-toast'
 
 import SolverDebugPage from '.'
 import type { SolverRun } from '../../../hooks/useSolverRuns'
@@ -11,6 +14,20 @@ type Mode = 'loading' | 'error' | 'empty' | 'success'
 
 let mode: Mode = 'empty'
 let mockRuns: SolverRun[] = []
+let mockSessions: Array<{
+  id: string
+  cm_id: number
+  session_name: string
+  year: number
+  attendee_count: number
+}> = []
+let mockSessionsError = false
+let mockScenariosError = false
+let mockMutateAsync = vi.fn()
+
+vi.mock('react-hot-toast', () => ({
+  default: { error: vi.fn(), success: vi.fn() },
+}))
 
 vi.mock('../../../hooks/useSolverRuns', () => ({
   useSolverRuns: () => {
@@ -43,10 +60,22 @@ vi.mock('../../../hooks/useSolverRuns', () => ({
 }))
 
 vi.mock('../../../hooks/useSessionList', () => ({
-  useSessionList: () => ({ data: [], isLoading: false, isError: false }),
+  useSessionList: () => ({
+    data: mockSessions,
+    isLoading: false,
+    isError: mockSessionsError,
+  }),
 }))
 vi.mock('../../../hooks/useScenarioList', () => ({
-  useScenarioList: () => ({ data: [], isLoading: false, isError: false }),
+  useScenarioList: () => ({
+    data: [],
+    isLoading: false,
+    isError: mockScenariosError,
+  }),
+}))
+vi.mock('../../../hooks/useRunSweep', () => ({
+  useRunSweep: () => ({ mutateAsync: mockMutateAsync }),
+  useCancelSweep: () => ({ mutate: vi.fn() }),
 }))
 
 const wrapper = ({ children }: { children: ReactNode }) => {
@@ -61,6 +90,11 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 afterEach(() => {
   mode = 'empty'
   mockRuns = []
+  mockSessions = []
+  mockSessionsError = false
+  mockScenariosError = false
+  mockMutateAsync = vi.fn()
+  vi.mocked(toast.error).mockClear()
 })
 
 describe('SolverDebugPage', () => {
@@ -102,5 +136,37 @@ describe('SolverDebugPage', () => {
     render(<SolverDebugPage />, { wrapper })
     expect(screen.queryByText(/no solver runs yet/i)).not.toBeInTheDocument()
     expect(screen.getByText(/OPTIMAL/i)).toBeInTheDocument()
+  })
+
+  it('renders an alert when sessions or scenarios fail to load', () => {
+    mode = 'empty'
+    mockSessionsError = true
+    render(<SolverDebugPage />, { wrapper })
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not load sweep options/i)
+  })
+
+  it('shows a toast when the sweep mutation fails (handleRunSweep error path)', async () => {
+    mode = 'empty'
+    mockSessions = [
+      {
+        id: 'pb_s1',
+        cm_id: 1000002,
+        session_name: 'Session 2',
+        year: 2026,
+        attendee_count: 120,
+      },
+    ]
+    mockMutateAsync = vi.fn().mockRejectedValueOnce(new Error('network fail'))
+
+    render(<SolverDebugPage />, { wrapper })
+
+    const user = userEvent.setup()
+    await act(async () => {
+      await user.click(screen.getByRole('button', { name: /run sweep/i }))
+    })
+
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toMatch(/sweep failed/i)
   })
 })

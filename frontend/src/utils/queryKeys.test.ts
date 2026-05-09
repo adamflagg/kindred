@@ -68,3 +68,42 @@ describe('queryKeys.camperSiblingsPanel', () => {
     expect(() => queryKeys.camperSiblingsPanel(undefined, 'p-1', 2025)).not.toThrow()
   })
 })
+
+describe('queryKeys.solverRuns / solverRunsPrefix', () => {
+  it('exposes both factories on the queryKeys object (centralization rule)', () => {
+    expect(typeof queryKeys.solverRunsPrefix).toBe('function')
+    expect(typeof queryKeys.solverRuns).toBe('function')
+  })
+
+  it('solverRuns key starts with the same prefix as solverRunsPrefix', () => {
+    const prefix = queryKeys.solverRunsPrefix()
+    const key = queryKeys.solverRuns({ hideFailed: true })
+    expect(key.slice(0, prefix.length)).toEqual(prefix)
+  })
+
+  it('different filters produce different keys', () => {
+    const a = queryKeys.solverRuns({ hideFailed: true })
+    const b = queryKeys.solverRuns({ hideFailed: false })
+    expect(a).not.toEqual(b)
+  })
+})
+
+describe('queryKeys.scenariosList', () => {
+  it('exposes the factory on the queryKeys object', () => {
+    expect(typeof queryKeys.scenariosList).toBe('function')
+  })
+
+  it('includes year so year switches do not collide', () => {
+    const a = queryKeys.scenariosList(2025)
+    const b = queryKeys.scenariosList(2026)
+    expect(a).not.toEqual(b)
+  })
+})
+
+describe('queryKeys.allSessionsList', () => {
+  it('includes year so year switches do not collide', () => {
+    const a = queryKeys.allSessionsList(2025)
+    const b = queryKeys.allSessionsList(2026)
+    expect(a).not.toEqual(b)
+  })
+})

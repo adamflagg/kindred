@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
+import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
+import { useYear } from './useCurrentYear'
 
 interface RawSession {
   id: string
@@ -20,10 +22,15 @@ export interface SessionListItem {
 }
 
 export function useSessionList() {
+  const year = useYear()
   return useQuery<SessionListItem[]>({
-    queryKey: queryKeys.allSessionsList(),
+    queryKey: queryKeys.allSessionsList(year),
     queryFn: async () => {
-      const result = await pb.collection('sessions').getFullList({ sort: 'cm_id' })
+      const typeFilter = SUMMER_CAMP_TYPES.map((t) => `session_type = "${t}"`).join(' || ')
+      const result = await pb.collection('camp_sessions').getFullList({
+        filter: `year = ${year} && (${typeFilter})`,
+        sort: 'cm_id',
+      })
       return (result as unknown as RawSession[]).map((r) => ({
         id: r.id,
         cm_id: r.cm_id,

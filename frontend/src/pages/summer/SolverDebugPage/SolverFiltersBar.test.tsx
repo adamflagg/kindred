@@ -87,4 +87,39 @@ describe('SolverFiltersBar', () => {
     fireEvent.click(screen.getByLabelText(/user time/i))
     expect(onColumnsChange).toHaveBeenCalled()
   })
+
+  it('closes the column picker when Escape is pressed', () => {
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /columns/i }))
+    expect(screen.getByLabelText(/user time/i)).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByLabelText(/user time/i)).not.toBeInTheDocument()
+  })
+
+  it('closes the column picker when clicking outside it', () => {
+    render(
+      <div>
+        <SolverFiltersBar
+          filters={{}}
+          onFiltersChange={vi.fn()}
+          visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+          onColumnsChange={vi.fn()}
+          sessions={fakeSessions}
+        />
+        <div data-testid="outside">click me</div>
+      </div>
+    )
+    fireEvent.click(screen.getByRole('button', { name: /columns/i }))
+    expect(screen.getByLabelText(/user time/i)).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByTestId('outside'))
+    expect(screen.queryByLabelText(/user time/i)).not.toBeInTheDocument()
+  })
 })

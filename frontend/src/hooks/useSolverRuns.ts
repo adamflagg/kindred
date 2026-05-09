@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
-import { solverRunsKey, type SolverRunsFilters } from '../utils/queryKeys'
+import { queryKeys, type SolverRunsFilters } from '../utils/queryKeys'
 
 export interface SolverRunStats {
   status?: string
@@ -103,7 +103,7 @@ export interface UseSolverRunsOptions {
 export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRunsOptions) {
   const pollMs = options?.pollMs ?? false
   return useQuery({
-    queryKey: solverRunsKey(filters),
+    queryKey: queryKeys.solverRuns(filters),
     queryFn: async () => {
       const filterParts: string[] = []
       const filterParams: Record<string, unknown> = {}

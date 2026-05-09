@@ -1,10 +1,10 @@
 import { Zap } from 'lucide-react'
 
+import { REPO_URL } from '../../../constants/repo'
+
 import { formatMetric } from './metricRegistry'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
-
-const REPO_URL = 'https://github.com/adamflagg/kindred'
 
 interface SolverRunsTableProps {
   runs: SolverRun[]

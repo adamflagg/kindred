@@ -25,7 +25,7 @@ export interface SweepPanelPayload {
 export interface SweepPanelProps {
   sessions: SweepPanelSession[]
   scenarios: SweepPanelScenario[]
-  onRunSweep: (req: SweepPanelPayload) => void
+  onRunSweep: (req: SweepPanelPayload) => void | Promise<void>
   onCancelSweep: (sweepId: string) => void
   inFlightSweep: { sweep_id: string; completed: number; total: number } | null
 }
@@ -75,7 +75,7 @@ export function SweepPanel({
     } else {
       payload.scenario_id = sourceValue
     }
-    onRunSweep(payload)
+    void onRunSweep(payload)
   }
 
   const removeBudget = (b: number) =>

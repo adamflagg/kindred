@@ -1,11 +1,11 @@
 import { X } from 'lucide-react'
 import { useEffect, useId, useRef } from 'react'
 
+import { REPO_URL } from '../../../constants/repo'
+
 import { formatMetric } from './metricRegistry'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
-
-const REPO_URL = 'https://github.com/adamflagg/kindred'
 
 interface Props {
   run: SolverRun | null

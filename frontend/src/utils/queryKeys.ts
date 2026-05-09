@@ -6,11 +6,19 @@
  * 2. Consistent key structure across components
  * 3. Proper cache sharing between related queries
  */
+export interface SolverRunsFilters {
+  sessionId?: number
+  sourceKind?: 'production' | 'scenario' | 'all'
+  sweepId?: string
+  hideFailed?: boolean
+  since?: string
+}
+
 export const queryKeys = {
   // Sessions (Tier 1 - sync data)
   sessions: (year: number) => ['sessions', year] as const,
   allSessions: (year: number) => ['all-sessions', year] as const,
-  allSessionsList: () => ['sessions', 'list'] as const,
+  allSessionsList: (year: number) => ['sessions', 'list', year] as const,
   session: (id: string) => ['session', id] as const,
   sessionGroups: (year: number) => ['session-groups', year] as const,
   sessionPrograms: (year: number) => ['session-programs', year] as const,
@@ -413,6 +421,13 @@ export const queryKeys = {
   // source linkages. Pass `includeSourceLinks: true` to invalidate these.
   sourceLinksPrefix: () => ['source-links'] as const,
   expandedSourceLinksPrefix: () => ['expanded-source-links'] as const,
+
+  // Solver runs (debug view) — see frontend/src/hooks/useSolverRuns.ts
+  solverRunsPrefix: () => ['solver-runs'] as const,
+  solverRuns: (filters?: SolverRunsFilters) => ['solver-runs', filters ?? {}] as const,
+
+  // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
+  scenariosList: (year: number) => ['scenarios', 'list', year] as const,
 }
 
 /**
@@ -496,19 +511,3 @@ export const userDataOptions = {
 // Legacy aliases for backward compatibility
 export const heavyQueryOptions = syncDataOptions
 export const realtimeQueryOptions = userDataOptions
-
-// ---------------------------------------------------------------------------
-// Solver runs (debug view) — see frontend/src/hooks/useSolverRuns.ts
-// ---------------------------------------------------------------------------
-
-export interface SolverRunsFilters {
-  sessionId?: number
-  sourceKind?: 'production' | 'scenario' | 'all'
-  sweepId?: string
-  hideFailed?: boolean
-  since?: string
-}
-
-export const solverRunsPrefix = () => ['solver-runs'] as const
-export const solverRunsKey = (filters?: SolverRunsFilters) =>
-  ['solver-runs', filters ?? {}] as const

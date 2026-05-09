@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { SolverRunsFilters } from '../../../utils/queryKeys'
 
@@ -35,7 +35,27 @@ export function SolverFiltersBar({
   sessions,
 }: SolverFiltersBarProps) {
   const [showPicker, setShowPicker] = useState(false)
+  const pickerWrapperRef = useRef<HTMLDivElement | null>(null)
   const groups = Array.from(new Set(ALL_COLUMNS.map((c) => c.group)))
+
+  useEffect(() => {
+    if (!showPicker) return
+    const handleMouseDown = (e: MouseEvent) => {
+      const wrapper = pickerWrapperRef.current
+      if (wrapper && e.target instanceof Node && !wrapper.contains(e.target)) {
+        setShowPicker(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowPicker(false)
+    }
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [showPicker])
 
   const toggleColumn = (key: string) =>
     onColumnsChange(
@@ -76,7 +96,7 @@ export function SolverFiltersBar({
         />
         Hide failed
       </label>
-      <div className="relative ml-auto flex items-center gap-2">
+      <div ref={pickerWrapperRef} className="relative ml-auto flex items-center gap-2">
         <button
           onClick={() => setShowPicker((v) => !v)}
           className="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900"

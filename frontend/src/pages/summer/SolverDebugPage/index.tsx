@@ -1,5 +1,6 @@
 import { AlertCircle, Bug, Loader2, Trees } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
 
 import { DebugTabs } from '../../../components/debug/DebugTabs'
 import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
@@ -107,14 +108,19 @@ export default function SolverDebugPage() {
       ? sessions.data?.find((s) => s.cm_id === req.session_id)
       : undefined
 
-    const result = await runSweep.mutateAsync({
-      session_cm_id: req.session_id ?? null,
-      year: sessionMatch?.year ?? null,
-      scenario_id: req.scenario_id ?? null,
-      time_budgets: req.time_budgets,
-      label: req.label ?? null,
-    })
-    setActiveSweepId(result.sweep_id)
+    try {
+      const result = await runSweep.mutateAsync({
+        session_cm_id: req.session_id ?? null,
+        year: sessionMatch?.year ?? null,
+        scenario_id: req.scenario_id ?? null,
+        time_budgets: req.time_budgets,
+        label: req.label ?? null,
+      })
+      setActiveSweepId(result.sweep_id)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown error'
+      toast.error(`Sweep failed: ${detail}`)
+    }
   }
 
   const hasNoRuns = runs.isSuccess && runs.data.totalItems === 0
@@ -138,6 +144,16 @@ export default function SolverDebugPage() {
       </div>
 
       <DebugTabs />
+
+      {sessions.isError || scenarios.isError ? (
+        <div
+          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          role="alert"
+        >
+          <AlertCircle className="h-4 w-4" />
+          Could not load sweep options. Refresh the page to retry.
+        </div>
+      ) : null}
 
       <SweepPanel
         sessions={sessions.data ?? []}
