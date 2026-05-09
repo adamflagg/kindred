@@ -43,20 +43,27 @@ fi
 echo
 echo "=== TEST 2: drift in a real migration should exit 1 ==="
 mkdir -p "$SCRATCH/modified"
-cp "$MIGRATIONS_DIR"/*.js "$SCRATCH/modified/"
+# Enumerate via nullglob so an empty $MIGRATIONS_DIR fails with a clear
+# "no .js files" message instead of `cp` exiting under set -e on an
+# unexpanded literal `*.js`.
+shopt -s nullglob
+migrations=("$MIGRATIONS_DIR"/*.js)
+shopt -u nullglob
+if [[ ${#migrations[@]} -eq 0 ]]; then
+  echo "FAIL: no .js files in $MIGRATIONS_DIR" >&2
+  exit 1
+fi
+cp "${migrations[@]}" "$SCRATCH/modified/"
 # Produce reliable structural drift by omitting the LAST migration
-# (lexicographically highest .js file). Picked dynamically so this test
-# survives consolidation rounds that absorb the previous tail file.
+# (lexicographically highest .js file). Bash globs sort alphabetically,
+# so the array's last element is the tail file. Picked dynamically so
+# this test survives consolidation rounds that absorb the previous tail.
 # Caveat: this assumes the tail migration produces some structural diff
 # when removed. If a future tail migration is purely a no-op-on-fresh-DB
 # (e.g. fully overwritten by a later mutation), this test could go green
 # spuriously — the harness's smoke check still guarantees something was
 # applied, but the drift signal would be weak.
-LAST_MIGRATION=$(find "$SCRATCH/modified" -maxdepth 1 -name '*.js' -printf '%f\n' | sort | tail -1)
-if [[ -z "$LAST_MIGRATION" ]]; then
-  echo "FAIL: no .js files in $SCRATCH/modified after copy from $MIGRATIONS_DIR" >&2
-  exit 1
-fi
+LAST_MIGRATION=$(basename "${migrations[-1]}")
 rm "$SCRATCH/modified/$LAST_MIGRATION"
 set +e
 "$VERIFY_SCRIPT" "$SCRATCH/modified" "$MIGRATIONS_DIR" >/dev/null 2>"$SCRATCH/t2.err"
