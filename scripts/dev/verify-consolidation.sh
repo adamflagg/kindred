@@ -66,10 +66,15 @@ trap 'rm -rf "$SCRATCH"' EXIT INT TERM
 pb_apply() {
   local db_dir="$1" mig_dir="$2" log="$3"
   local hooks_dir
-  hooks_dir=$(mktemp -d -t pb-empty-hooks-XXXX)
+  # Place hooks_dir under $SCRATCH so the outer EXIT trap reclaims it on every
+  # exit path, including the `exit 2` harness-error branches below.
+  hooks_dir=$(mktemp -d "$SCRATCH/pb-empty-hooks-XXXX")
 
   # Symlink pb_migrations next to db_dir so jsvm's default path resolution
   # finds $mig_dir when it computes filepath.Join(app.DataDir(), "../pb_migrations").
+  # Caller is responsible for placing $db_dir under its own parent directory
+  # (not a shared $SCRATCH) so the symlink target doesn't collide between
+  # successive pb_apply() invocations.
   local parent_dir
   parent_dir=$(dirname "$db_dir")
   ln -sfn "$mig_dir" "$parent_dir/pb_migrations"
@@ -96,7 +101,6 @@ pb_apply() {
 
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-  rm -rf "$hooks_dir"
 
   if [[ "$ok" -ne 1 ]]; then
     echo "error: pocketbase serve never came up against $mig_dir; log:" >&2
@@ -121,13 +125,19 @@ echo ">> building pocketbase binary..."
 ( cd "$REPO_ROOT/pocketbase" && go build -o "$SCRATCH/pocketbase" . ) > "$SCRATCH/build.log" 2>&1 \
   || { echo "pocketbase build failed; log:"; cat "$SCRATCH/build.log"; exit 2; }
 
-mkdir -p "$SCRATCH/db_a" "$SCRATCH/db_b"
+# Each DB lives under its own slot directory so pb_apply's symlink target
+# ($parent_dir/pb_migrations) is unique per call. Without this, both calls
+# would target $SCRATCH/pb_migrations and the second invocation would clobber
+# the first's symlink. Sequential execution masks the bug today, but the
+# isolation costs nothing and makes the harness robust to future parallelism
+# or PB internals changes.
+mkdir -p "$SCRATCH/slot_a/db_a" "$SCRATCH/slot_b/db_b"
 
 echo ">> applying PROPOSED migrations to DB-A..."
-pb_apply "$SCRATCH/db_a" "$PROPOSED_DIR" "$SCRATCH/db_a.log"
+pb_apply "$SCRATCH/slot_a/db_a" "$PROPOSED_DIR" "$SCRATCH/db_a.log"
 
 echo ">> applying CURRENT migrations to DB-B..."
-pb_apply "$SCRATCH/db_b" "$CURRENT_DIR" "$SCRATCH/db_b.log"
+pb_apply "$SCRATCH/slot_b/db_b" "$CURRENT_DIR" "$SCRATCH/db_b.log"
 
 echo ">> diffing schemas..."
-"$DIFF_SCRIPT" "$SCRATCH/db_a" "$SCRATCH/db_b"
+"$DIFF_SCRIPT" "$SCRATCH/slot_a/db_a" "$SCRATCH/slot_b/db_b"

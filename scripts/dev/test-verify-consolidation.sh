@@ -45,13 +45,16 @@ echo "=== TEST 2: drift in a real migration should exit 1 ==="
 mkdir -p "$SCRATCH/modified"
 cp "$MIGRATIONS_DIR"/*.js "$SCRATCH/modified/"
 # Produce reliable structural drift by omitting the LAST migration
-# (1500000102_drop_bunk_assignments_is_deleted.js). Without it, the proposed
-# DB retains the is_deleted field on bunk_assignments; the current DB drops it.
-# This avoids the fragile listRule approach where a later migration can
-# silently overwrite the mutation, causing a false "schemas match" result.
-LAST_MIGRATION="1500000102_drop_bunk_assignments_is_deleted.js"
-if [[ ! -f "$SCRATCH/modified/$LAST_MIGRATION" ]]; then
-  echo "FAIL: expected $LAST_MIGRATION in migration set (file renamed/removed?)" >&2
+# (lexicographically highest .js file). Picked dynamically so this test
+# survives consolidation rounds that absorb the previous tail file.
+# Caveat: this assumes the tail migration produces some structural diff
+# when removed. If a future tail migration is purely a no-op-on-fresh-DB
+# (e.g. fully overwritten by a later mutation), this test could go green
+# spuriously — the harness's smoke check still guarantees something was
+# applied, but the drift signal would be weak.
+LAST_MIGRATION=$(find "$SCRATCH/modified" -maxdepth 1 -name '*.js' -printf '%f\n' | sort | tail -1)
+if [[ -z "$LAST_MIGRATION" ]]; then
+  echo "FAIL: no .js files in $SCRATCH/modified after copy from $MIGRATIONS_DIR" >&2
   exit 1
 fi
 rm "$SCRATCH/modified/$LAST_MIGRATION"
@@ -100,8 +103,10 @@ echo
 echo "=== TEST 5: relative-path invocation should still work (regression for canonicalization fix) ==="
 # This catches the symlink-with-relative-path footgun. Before canonicalization,
 # the harness silently failed when called with relative paths from any cwd.
+set +e
 ( cd "$REPO_ROOT" && "$VERIFY_SCRIPT" pocketbase/pb_migrations pocketbase/pb_migrations >/dev/null 2>"$SCRATCH/t5.err" )
 rc=$?
+set -e
 if [[ $rc -eq 0 ]]; then
   echo "PASS: relative paths handled correctly"
 else
