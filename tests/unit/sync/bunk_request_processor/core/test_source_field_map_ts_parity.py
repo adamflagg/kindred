@@ -1,4 +1,4 @@
-"""Cross-language drift guard for the source_field → RequestSource mapping.
+"""Cross-language drift guard for the source_field → "family"/"staff" mapping.
 
 Issue #1217. The same 5→2 mapping lives in two places:
 
@@ -50,7 +50,7 @@ def test_python_and_ts_source_field_maps_agree() -> None:
     assert _TS_FILE.exists(), f"missing TS source: {_TS_FILE}"
     ts_map = _parse_ts_source_field_map(_TS_FILE.read_text())
 
-    python_map = {key: source.value for key, source in _SOURCE_FIELD_MAP.items()}
+    python_map = dict(_SOURCE_FIELD_MAP)
 
     assert ts_map == python_map, (
         "source_field map drift between Python and TypeScript.\n"

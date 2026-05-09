@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.integration.ai_schemas import (
@@ -735,14 +734,6 @@ class TestSDKProviderRequestTypeMapping:
 
         for ai_type, expected_enum in mapping.items():
             assert expected_enum.value == ai_type or expected_enum.name.lower() == ai_type.replace("_", "_")
-
-    def test_source_type_mapping(self):
-        """AI source_type strings map to RequestSource enum."""
-
-        # Verify the enum values match what AI can output
-        # Note: NOTES was removed - AI "notes" output now maps to STAFF
-        assert RequestSource.FAMILY.value in ["family", "FAMILY"]
-        assert RequestSource.STAFF.value in ["staff", "STAFF"]
 
 
 class TestAIDisambiguationRankedSchema:
