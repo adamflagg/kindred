@@ -144,7 +144,7 @@ Record the disposition in the tracking doc.
 by existing repo convention (per `.gitignore`). They're per-deployment
 local state from PB's admin UI, not migration code we own. The skill
 should NOT fold them into merged CREATEs and should NOT delete them.
-Each deployment maintains its own. Disposition defaults to "leave alone"
+Each deployment maintains its own copy. Disposition defaults to "leave alone"
 unless the user overrides explicitly. **The narrow gitignore (users-only)
 is intentional.** Do not propose extending it to other tables.
 
@@ -200,7 +200,7 @@ Build an in-memory ordered mutation log. Note any files that touch
 *other* tables too — those are multi-table and will be **trimmed**, not
 deleted.
 
-**Robust enumeration command:**
+**Robust enumeration command** (assumes `$WORKTREE_DIR` was set in Step 4a):
 
 ```bash
 # All files that mention T as a quoted string (catches indirect lookups
