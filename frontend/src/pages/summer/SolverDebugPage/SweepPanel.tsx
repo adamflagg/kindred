@@ -1,5 +1,5 @@
 import { Zap } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 export interface SweepPanelSession {
   id: string
@@ -39,15 +39,33 @@ export function SweepPanel({
   onCancelSweep,
   inFlightSweep,
 }: SweepPanelProps) {
-  // Default to the last session in the list (typically most recent / highest cm_id)
-  const [sessionCmId, setSessionCmId] = useState<number>(sessions[sessions.length - 1]?.cm_id ?? 0)
-  const [sourceValue, setSourceValue] = useState<string>('production')
+  // The user's explicit session pick (null = follow default — the last session in
+  // the list, which is typically the most recent / highest cm_id). Tracked
+  // separately from the resolved value so we don't need an effect to backfill
+  // when sessions data arrives after the first render.
+  const [pickedSessionCmId, setPickedSessionCmId] = useState<number | null>(null)
+  const [pickedSourceValue, setPickedSourceValue] = useState<string>('production')
   const [budgets, setBudgets] = useState<number[]>(DEFAULT_BUDGETS)
   const [label, setLabel] = useState<string>('')
 
+  const sessionCmId = pickedSessionCmId ?? sessions[sessions.length - 1]?.cm_id ?? 0
   const sessionScenarios = scenarios.filter((s) => s.session_id === sessionCmId)
+  // Drop the picked source if it no longer belongs to the selected session,
+  // otherwise we'd submit a scenario_id from a different session. Computed each
+  // render so changing the session immediately clears a stale scenario.
+  const sourceValue =
+    pickedSourceValue === 'production' || sessionScenarios.some((s) => s.id === pickedSourceValue)
+      ? pickedSourceValue
+      : 'production'
+
+  const sessionId = useId()
+  const sourceId = useId()
+  const labelId = useId()
+
+  const isSubmittable = sessionCmId > 0 && budgets.length > 0 && !inFlightSweep
 
   const handleRun = () => {
+    if (!isSubmittable) return
     const payload: SweepPanelPayload = {
       time_budgets: budgets,
     }
@@ -60,11 +78,18 @@ export function SweepPanel({
     onRunSweep(payload)
   }
 
-  const removeBudget = (b: number) => setBudgets(budgets.filter((x) => x !== b))
+  const removeBudget = (b: number) =>
+    setBudgets((prev) => {
+      const idx = prev.indexOf(b)
+      if (idx === -1) return prev
+      return [...prev.slice(0, idx), ...prev.slice(idx + 1)]
+    })
+
   const addBudget = () => {
     const next = window.prompt('Add budget in seconds (e.g., 90):')
     const n = next ? parseInt(next, 10) : NaN
-    if (Number.isFinite(n) && n > 0) setBudgets([...budgets, n].sort((a, b) => a - b))
+    if (!Number.isFinite(n) || n <= 0) return
+    setBudgets((prev) => (prev.includes(n) ? prev : [...prev, n].sort((a, b) => a - b)))
   }
 
   return (
@@ -82,13 +107,17 @@ export function SweepPanel({
 
       <div className="mb-4 grid grid-cols-12 items-end gap-4">
         <div className="col-span-3">
-          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+          <label
+            htmlFor={sessionId}
+            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+          >
             Session
           </label>
           <select
+            id={sessionId}
             className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
             value={sessionCmId}
-            onChange={(e) => setSessionCmId(Number(e.target.value))}
+            onChange={(e) => setPickedSessionCmId(Number(e.target.value))}
           >
             {sessions.map((s) => (
               <option key={s.id} value={s.cm_id}>
@@ -98,13 +127,17 @@ export function SweepPanel({
           </select>
         </div>
         <div className="col-span-4">
-          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+          <label
+            htmlFor={sourceId}
+            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+          >
             Source
           </label>
           <select
+            id={sourceId}
             className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
             value={sourceValue}
-            onChange={(e) => setSourceValue(e.target.value)}
+            onChange={(e) => setPickedSourceValue(e.target.value)}
           >
             <optgroup label="Live data">
               <option value="production">Production</option>
@@ -121,9 +154,9 @@ export function SweepPanel({
           </select>
         </div>
         <div className="col-span-3">
-          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+          <span className="text-xs font-medium tracking-wide text-gray-600 uppercase">
             Time budgets
-          </label>
+          </span>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {budgets.map((b) => (
               <button
@@ -146,16 +179,21 @@ export function SweepPanel({
         <div className="col-span-2">
           <button
             onClick={handleRun}
-            className="from-forest-500 to-forest-700 w-full rounded-lg bg-gradient-to-br px-4 py-2 text-sm font-semibold text-white shadow-md"
+            disabled={!isSubmittable}
+            className="from-forest-500 to-forest-700 w-full rounded-lg bg-gradient-to-br px-4 py-2 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
           >
             ▶ Run sweep
           </button>
         </div>
         <div className="col-span-12">
-          <label className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+          <label
+            htmlFor={labelId}
+            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+          >
             Label (optional)
           </label>
           <input
+            id={labelId}
             className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
             value={label}
             onChange={(e) => setLabel(e.target.value)}

@@ -88,7 +88,7 @@ describe('SolverRunsTable', () => {
     expect(screen.getByLabelText(/pin slot B/i)).toBeInTheDocument()
   })
 
-  it('renders SHA as a GitHub link', () => {
+  it('renders SHA as a GitHub link with rel guarding tabnabbing', () => {
     render(
       <SolverRunsTable
         runs={[r1]}
@@ -101,5 +101,31 @@ describe('SolverRunsTable', () => {
     const link = screen.getByRole('link', { name: /8c9d2e7/i })
     expect(link).toHaveAttribute('href', 'https://github.com/adamflagg/kindred/commit/8c9d2e7')
     expect(link).toHaveAttribute('target', '_blank')
+    // rel="noreferrer" implies noopener per HTML spec — both protect against
+    // window.opener reverse-tabnabbing on _blank links.
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'))
+  })
+
+  it('renders em-dash without "s" suffix when budget is missing', () => {
+    const { time_budget_seconds: _omit, ...statsWithoutBudget } = r1.stats ?? {}
+    void _omit
+    const noBudget: SolverRun = {
+      ...r1,
+      id: 'c',
+      run_id: 'run_3',
+      stats: statsWithoutBudget,
+    }
+    render(
+      <SolverRunsTable
+        runs={[noBudget]}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    // Budget cell should be exactly "—" (not "—s")
+    expect(screen.queryByText(/^—s$/)).not.toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

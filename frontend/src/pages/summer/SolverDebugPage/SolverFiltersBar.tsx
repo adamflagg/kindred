@@ -9,11 +9,22 @@ import {
   DEFAULT_VISIBLE_COLUMNS,
 } from './solverColumns'
 
+export interface SolverFiltersBarSession {
+  cm_id: number
+  session_name: string
+  year?: number
+}
+
 interface SolverFiltersBarProps {
   filters: SolverRunsFilters
   onFiltersChange: (next: SolverRunsFilters) => void
   visibleColumns: string[]
   onColumnsChange: (next: string[]) => void
+  /**
+   * Real session list — cm_ids match `solver_runs.session_id`. Without this,
+   * the filter dropdown can't resolve to actual run rows.
+   */
+  sessions: SolverFiltersBarSession[]
 }
 
 export function SolverFiltersBar({
@@ -21,6 +32,7 @@ export function SolverFiltersBar({
   onFiltersChange,
   visibleColumns,
   onColumnsChange,
+  sessions,
 }: SolverFiltersBarProps) {
   const [showPicker, setShowPicker] = useState(false)
   const groups = Array.from(new Set(ALL_COLUMNS.map((c) => c.group)))
@@ -35,7 +47,7 @@ export function SolverFiltersBar({
   return (
     <div className="relative mb-4 flex items-center gap-3 text-sm">
       <select
-        aria-label="sessions"
+        aria-label="Filter by session"
         className="rounded-lg border border-gray-200 bg-white px-3 py-1.5"
         value={filters.sessionId ?? ''}
         onChange={(e) => {
@@ -49,10 +61,12 @@ export function SolverFiltersBar({
         }}
       >
         <option value="">All sessions</option>
-        <option value="1">Session 1</option>
-        <option value="2">Session 2</option>
-        <option value="3">Session 3</option>
-        <option value="4">Session 4</option>
+        {sessions.map((s) => (
+          <option key={s.cm_id} value={s.cm_id}>
+            {s.session_name}
+            {s.year ? ` — ${s.year}` : ''}
+          </option>
+        ))}
       </select>
       <label className="flex items-center gap-1.5 text-gray-600">
         <input

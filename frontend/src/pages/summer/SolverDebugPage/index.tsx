@@ -1,11 +1,11 @@
-import { Bug, Trees } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { AlertCircle, Bug, Loader2, Trees } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { DebugTabs } from '../../../components/debug/DebugTabs'
 import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
 import { useScenarioList } from '../../../hooks/useScenarioList'
 import { useSessionList } from '../../../hooks/useSessionList'
-import { type SolverRun, useSolverRuns } from '../../../hooks/useSolverRuns'
+import { useSolverRuns } from '../../../hooks/useSolverRuns'
 import type { SolverRunsFilters } from '../../../utils/queryKeys'
 
 import { DrillDownDrawer } from './DrillDownDrawer'
@@ -28,12 +28,16 @@ export default function SolverDebugPage() {
     }
   })
   const [pinnedIds, setPinnedIds] = useState<string[]>([])
-  const [selectedRun, setSelectedRun] = useState<SolverRun | null>(null)
+  // Store the selected run by id so the drawer reflects live polling updates
+  // instead of a click-time snapshot.
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [activeSweepId, setActiveSweepId] = useState<string | null>(null)
 
   const sessions = useSessionList()
   const scenarios = useScenarioList()
-  const runs = useSolverRuns(filters)
+  const runs = useSolverRuns(filters, {
+    pollMs: activeSweepId ? 5_000 : false,
+  })
   const runSweep = useRunSweep()
   const cancelSweep = useCancelSweep()
 
@@ -49,21 +53,52 @@ export default function SolverDebugPage() {
     })
   }
 
-  const pinnedRuns: (SolverRun | null)[] = pinnedIds.map(
-    (id) => runs.data?.items.find((r) => r.id === id) ?? null
-  )
+  // Memoize the items array so downstream useMemo/useEffect deps are stable
+  // when no fetch happened — `runs.data?.items ?? []` would otherwise create a
+  // fresh array reference each render.
+  const items = useMemo(() => runs.data?.items ?? [], [runs.data])
+
+  // Restrict pinned ids to runs currently visible in the fetched window.
+  // Computed at render time — no setState-in-effect cascade — and the
+  // underlying `pinnedIds` state is preserved so a pin re-appears when the
+  // user clears the filter that hid it.
+  const visiblePinnedIds = useMemo(() => {
+    if (pinnedIds.length === 0) return pinnedIds
+    const visibleIds = new Set(items.map((r) => r.id))
+    return pinnedIds.filter((id) => visibleIds.has(id))
+  }, [pinnedIds, items])
+
+  const pinnedRuns = visiblePinnedIds.map((id) => items.find((r) => r.id === id) ?? null)
+
+  const selectedRun = selectedRunId ? (items.find((r) => r.id === selectedRunId) ?? null) : null
 
   const inFlightSweep = useMemo(() => {
     if (!activeSweepId) return null
-    const sweepChildren =
-      runs.data?.items.filter((r) => r.details?.sweep_id === activeSweepId) ?? []
+    const sweepChildren = items.filter((r) => r.details?.sweep_id === activeSweepId)
     if (sweepChildren.length === 0) return null
     const completed = sweepChildren.filter(
       (r) => r.status === 'success' || r.status === 'failed' || r.status === 'error'
     ).length
     if (completed === sweepChildren.length) return null
     return { sweep_id: activeSweepId, completed, total: sweepChildren.length }
-  }, [activeSweepId, runs.data])
+  }, [activeSweepId, items])
+
+  // Once the in-flight sweep settles (children have all landed and finished),
+  // clear the active id so polling can shut off. This must be an effect because
+  // `activeSweepId` is the source of truth for whether to poll — we can't
+  // derive it without a feedback loop.
+  useEffect(() => {
+    if (!activeSweepId) return
+    const sweepChildren = items.filter((r) => r.details?.sweep_id === activeSweepId)
+    if (sweepChildren.length === 0) return
+    const allSettled = sweepChildren.every(
+      (r) => r.status === 'success' || r.status === 'failed' || r.status === 'error'
+    )
+    if (allSettled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing local "is sweep running?" flag with external runs data; clearing this flag is precisely what stops the 5s poll.
+      setActiveSweepId(null)
+    }
+  }, [activeSweepId, items])
 
   const handleRunSweep = async (req: SweepPanelPayload) => {
     // Translate component-level payload (session_id) into backend SweepRequest
@@ -82,7 +117,7 @@ export default function SolverDebugPage() {
     setActiveSweepId(result.sweep_id)
   }
 
-  const hasNoRuns = runs.isSuccess && (runs.data?.totalItems ?? 0) === 0
+  const hasNoRuns = runs.isSuccess && runs.data.totalItems === 0
 
   return (
     <div className="relative space-y-6">
@@ -117,6 +152,7 @@ export default function SolverDebugPage() {
         onFiltersChange={setFilters}
         visibleColumns={visibleColumns}
         onColumnsChange={handleColumnsChange}
+        sessions={sessions.data ?? []}
       />
 
       {pinnedRuns[0] && pinnedRuns[1] ? (
@@ -127,22 +163,32 @@ export default function SolverDebugPage() {
         />
       ) : null}
 
-      {hasNoRuns ? (
+      {runs.isLoading ? (
+        <div className="text-muted-foreground flex items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
+          <Loader2 className="text-primary mr-2 h-6 w-6 animate-spin" />
+          Loading solver runs…
+        </div>
+      ) : runs.isError ? (
+        <div className="flex items-center justify-center rounded-xl border border-red-200 bg-red-50 py-12 text-red-700">
+          <AlertCircle className="mr-2 h-6 w-6" />
+          Failed to load solver runs: {runs.error.message}
+        </div>
+      ) : hasNoRuns ? (
         <div className="rounded-xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
           No solver runs yet — trigger one above, or any solver run from the main page will appear
           here.
         </div>
       ) : (
         <SolverRunsTable
-          runs={runs.data?.items ?? []}
+          runs={items}
           visibleColumns={visibleColumns}
-          pinnedRunIds={pinnedIds}
+          pinnedRunIds={visiblePinnedIds}
           onTogglePin={handleTogglePin}
-          onRowClick={setSelectedRun}
+          onRowClick={(run) => setSelectedRunId(run.id)}
         />
       )}
 
-      <DrillDownDrawer run={selectedRun} onClose={() => setSelectedRun(null)} />
+      <DrillDownDrawer run={selectedRun} onClose={() => setSelectedRunId(null)} />
     </div>
   )
 }

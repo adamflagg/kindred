@@ -51,4 +51,20 @@ describe('DrillDownDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('exposes drawer as an aria dialog labeled by its heading', () => {
+    render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    const labelledById = dialog.getAttribute('aria-labelledby')
+    expect(labelledById).toBeTruthy()
+    expect(document.getElementById(labelledById!)).toHaveTextContent(/run run_abc/i)
+  })
+
+  it('closes when Escape is pressed', () => {
+    const onClose = vi.fn()
+    render(<DrillDownDrawer run={run} onClose={onClose} />)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalled()
+  })
 })

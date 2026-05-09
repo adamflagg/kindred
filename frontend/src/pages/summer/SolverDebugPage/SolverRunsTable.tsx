@@ -43,7 +43,7 @@ export function SolverRunsTable({
   const showCol = (k: string) => visibleColumns.includes(k)
 
   return (
-    <div className="shadow-lodge overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <div className="shadow-lodge overflow-x-auto rounded-xl border border-gray-200 bg-white">
       <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
         <thead className="border-b border-gray-200 bg-gray-50 text-xs tracking-wide text-gray-500 uppercase">
           <tr>
@@ -124,7 +124,9 @@ export function SolverRunsTable({
                 )}
                 {showCol('budget') && (
                   <td className="px-3 py-2 text-gray-600">
-                    {run.stats?.time_budget_seconds ?? '—'}s
+                    {run.stats?.time_budget_seconds != null
+                      ? `${run.stats.time_budget_seconds}s`
+                      : '—'}
                   </td>
                 )}
                 {showCol('status') && (

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 
 interface RawSession {
   id: string
@@ -20,7 +21,7 @@ export interface SessionListItem {
 
 export function useSessionList() {
   return useQuery<SessionListItem[]>({
-    queryKey: ['sessions', 'list'],
+    queryKey: queryKeys.allSessionsList(),
     queryFn: async () => {
       const result = await pb.collection('sessions').getFullList({ sort: 'cm_id' })
       return (result as unknown as RawSession[]).map((r) => ({

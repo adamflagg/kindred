@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SweepPanel } from './SweepPanel'
 
@@ -29,6 +29,22 @@ describe('SweepPanel', () => {
     expect(screen.getByRole('option', { name: /what-if-strict-grades/i })).toBeInTheDocument()
   })
 
+  it('associates form labels with their controls', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // Each label resolves to a real form control via htmlFor/id linkage.
+    expect(screen.getByLabelText(/^Session$/i).tagName).toBe('SELECT')
+    expect(screen.getByLabelText(/^Source$/i).tagName).toBe('SELECT')
+    expect(screen.getByLabelText(/Label \(optional\)/i).tagName).toBe('INPUT')
+  })
+
   it('calls onRunSweep with correct payload for production', () => {
     const onRunSweep = vi.fn()
     render(
@@ -48,6 +64,118 @@ describe('SweepPanel', () => {
         time_budgets: [30, 60, 180, 300],
       })
     )
+  })
+
+  it('disables the run button while a sweep is in flight', () => {
+    const onRunSweep = vi.fn()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={onRunSweep}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{ sweep_id: 'sw_x', completed: 1, total: 4 }}
+      />
+    )
+    const btn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
+    expect(btn).toBeDisabled()
+    fireEvent.click(btn)
+    expect(onRunSweep).not.toHaveBeenCalled()
+  })
+
+  it('disables the run button when no session is available', () => {
+    const onRunSweep = vi.fn()
+    render(
+      <SweepPanel
+        sessions={[]}
+        scenarios={[]}
+        onRunSweep={onRunSweep}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    const btn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
+    expect(btn).toBeDisabled()
+    fireEvent.click(btn)
+    expect(onRunSweep).not.toHaveBeenCalled()
+  })
+
+  it('resets source to production when session changes away from the scenarios session', () => {
+    const onRunSweep = vi.fn()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={onRunSweep}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // Default session is Session 2 (cm_id 2). Pick scenario s1 (also session 2).
+    fireEvent.change(screen.getByLabelText(/^Source$/i), { target: { value: 's1' } })
+    expect(screen.getByLabelText<HTMLSelectElement>(/^Source$/i).value).toBe('s1')
+    // Switch to Session 1 — scenario s1 belongs to session 2, so source must reset.
+    fireEvent.change(screen.getByLabelText(/^Session$/i), { target: { value: '1' } })
+    expect(screen.getByLabelText<HTMLSelectElement>(/^Source$/i).value).toBe('production')
+
+    fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
+    expect(onRunSweep).toHaveBeenCalledWith(expect.objectContaining({ session_id: 1 }))
+    // Production payloads must NOT carry a stale scenario_id.
+    const lastCall = onRunSweep.mock.calls[onRunSweep.mock.calls.length - 1]?.[0]
+    expect(lastCall).not.toHaveProperty('scenario_id')
+  })
+
+  describe('budget editing', () => {
+    let promptSpy: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      promptSpy = vi.spyOn(window, 'prompt')
+    })
+    afterEach(() => {
+      promptSpy.mockRestore()
+    })
+
+    it('rejects duplicate budget values', () => {
+      const onRunSweep = vi.fn()
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={onRunSweep}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      promptSpy.mockReturnValueOnce('60') // 60 is already in DEFAULT_BUDGETS
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
+      expect(onRunSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ time_budgets: [30, 60, 180, 300] })
+      )
+    })
+
+    it('adds a new unique budget in sorted order', () => {
+      const onRunSweep = vi.fn()
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={onRunSweep}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      promptSpy.mockReturnValueOnce('90')
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
+      expect(onRunSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ time_budgets: [30, 60, 90, 180, 300] })
+      )
+    })
   })
 
   it('shows in-flight banner with cancel button', () => {

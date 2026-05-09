@@ -408,6 +408,10 @@ jobs:
         INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
         BUILD_VERSION: ${{ steps.version.outputs.version }}
         BUILD_DATE: ${{ steps.version.outputs.build_date }}
+        # On pull_request runs, github.sha is the merge-commit SHA (refs/pull/N/merge),
+        # not the actual source commit. Use the PR head SHA so build-arg GIT_SHA
+        # stamps the image with the exact source code being tested.
+        BUILD_GIT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       run: |
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
         DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
@@ -434,7 +438,7 @@ jobs:
             -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
             --build-arg VERSION="$BUILD_VERSION" \
             --build-arg BUILD_DATE="$BUILD_DATE" \
-            --build-arg GIT_SHA="${GITHUB_SHA}" \
+            --build-arg GIT_SHA="${BUILD_GIT_SHA}" \
             $CACHE_FROM \
             $CACHE_TO \
             $NO_CACHE_FLAG \

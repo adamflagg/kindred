@@ -91,21 +91,34 @@ function parseRecord(rec: RawSolverRunRecord): SolverRun {
   return out
 }
 
-export function useSolverRuns(filters: SolverRunsFilters) {
+export interface UseSolverRunsOptions {
+  /**
+   * Polling interval in ms. Pass `false` (default) to disable polling.
+   * Callers should opt-in only while a sweep is in flight to avoid burning
+   * resources on an idle tab.
+   */
+  pollMs?: number | false
+}
+
+export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRunsOptions) {
+  const pollMs = options?.pollMs ?? false
   return useQuery({
     queryKey: solverRunsKey(filters),
     queryFn: async () => {
       const filterParts: string[] = []
+      const filterParams: Record<string, unknown> = {}
       if (filters.sessionId !== undefined) {
-        filterParts.push(`session_id = ${filters.sessionId}`)
+        filterParts.push('session_id = {:sessionId}')
+        filterParams['sessionId'] = filters.sessionId
       }
       if (filters.hideFailed) {
-        filterParts.push(`status != "failed" && status != "error"`)
+        filterParts.push('status != "failed" && status != "error"')
       }
       if (filters.since) {
-        filterParts.push(`created >= "${filters.since}"`)
+        filterParts.push('created >= {:since}')
+        filterParams['since'] = filters.since
       }
-      const filterStr = filterParts.join(' && ')
+      const filterStr = filterParts.length ? pb.filter(filterParts.join(' && '), filterParams) : ''
 
       const result = await pb.collection('solver_runs').getList(1, 100, {
         filter: filterStr,
@@ -118,6 +131,7 @@ export function useSolverRuns(filters: SolverRunsFilters) {
       }
     },
     staleTime: 5_000,
-    refetchInterval: 5_000,
+    refetchInterval: pollMs === false ? false : pollMs,
+    refetchIntervalInBackground: false,
   })
 }

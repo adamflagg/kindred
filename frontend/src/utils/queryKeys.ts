@@ -10,6 +10,7 @@ export const queryKeys = {
   // Sessions (Tier 1 - sync data)
   sessions: (year: number) => ['sessions', year] as const,
   allSessions: (year: number) => ['all-sessions', year] as const,
+  allSessionsList: () => ['sessions', 'list'] as const,
   session: (id: string) => ['session', id] as const,
   sessionGroups: (year: number) => ['session-groups', year] as const,
   sessionPrograms: (year: number) => ['session-programs', year] as const,
@@ -508,4 +509,6 @@ export interface SolverRunsFilters {
   since?: string
 }
 
-export const solverRunsKey = (filters?: SolverRunsFilters) => ['solverRuns', filters ?? {}] as const
+export const solverRunsPrefix = () => ['solver-runs'] as const
+export const solverRunsKey = (filters?: SolverRunsFilters) =>
+  ['solver-runs', filters ?? {}] as const

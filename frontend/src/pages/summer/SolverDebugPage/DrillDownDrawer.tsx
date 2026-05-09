@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { useEffect, useId, useRef } from 'react'
 
 import { formatMetric } from './metricRegistry'
 
@@ -12,6 +13,25 @@ interface Props {
 }
 
 export function DrillDownDrawer({ run, onClose }: Props) {
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+  const titleId = useId()
+
+  useEffect(() => {
+    if (!run) return
+    // Close on Escape
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    // Capture the element that opened the drawer so we can restore focus on close.
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    closeBtnRef.current?.focus()
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      previouslyFocused?.focus()
+    }
+  }, [run, onClose])
+
   if (!run) return null
   const s = run.stats ?? {}
   const d = run.details ?? {}
@@ -19,10 +39,18 @@ export function DrillDownDrawer({ run, onClose }: Props) {
   return (
     <>
       <div onClick={onClose} className="fixed inset-0 z-30 bg-black/30" aria-hidden />
-      <aside className="fixed top-0 right-0 bottom-0 z-40 w-[600px] overflow-y-auto border-l border-gray-200 bg-white shadow-2xl">
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="fixed top-0 right-0 bottom-0 z-40 w-[600px] overflow-y-auto border-l border-gray-200 bg-white shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-gray-100 p-4">
-          <h3 className="text-forest-700 font-semibold">Run {run.run_id}</h3>
+          <h3 id={titleId} className="text-forest-700 font-semibold">
+            Run {run.run_id}
+          </h3>
           <button
+            ref={closeBtnRef}
             onClick={onClose}
             aria-label="Close"
             className="text-gray-400 hover:text-gray-600"
@@ -147,7 +175,7 @@ export function DrillDownDrawer({ run, onClose }: Props) {
   )
 }
 
-function StatCard({ title, rows }: { title: string; rows: [string, string][] }) {
+function StatCard({ title, rows }: { title: string; rows: Array<[string, string]> }) {
   return (
     <div className="rounded-lg bg-gray-50 p-4">
       <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">{title}</div>
