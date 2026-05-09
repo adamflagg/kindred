@@ -26,6 +26,7 @@ from .data_fetcher import (
     fetch_session_data_v2,
     prepare_direct_solver_input,
 )
+from .run_tagging import build_run_details, compose_minimal_run_details
 
 logger = get_logger(__name__)
 
@@ -40,8 +41,27 @@ async def run_solver_task_v2(
     debug_constraints: dict[str, Any] | None = None,
     config_overrides: dict[str, Any] | None = None,
     respect_locks: bool = True,
+    scenario_name: str | None = None,
+    sweep_id: str | None = None,
+    sweep_label: str | None = None,
+    frozen_input: Any = None,
 ) -> None:
     """Background task to run the solver with direct bunk_requests data."""
+    # Minimal details available even if the run fails before tagging. Includes
+    # git_sha + source_label + source_kind (no PocketBase needed) so failed
+    # sweep children render the same column set as their successful siblings
+    # in the impact-analysis sweep view — not blank rows alongside.
+    # session_attendee_count remains None until prepare_direct_solver_input
+    # runs; it is patched in below the moment that data lands.
+    minimal_details: dict[str, Any] = compose_minimal_run_details(
+        session_label=f"Session {session_cm_id} — {year}",
+        scenario_id=scenario,
+        scenario_name=scenario_name,
+        sweep_id=sweep_id,
+        sweep_label=sweep_label,
+        time_limit_seconds=time_limit,
+    )
+
     # Create a new PocketBase client for this background task
     task_pb = PocketBase(pb_url)
     settings = get_settings()
@@ -59,27 +79,37 @@ async def run_solver_task_v2(
         solver_runs[run_id]["started_at"] = datetime.now(UTC)
         solver_runs[run_id]["status"] = "running"
 
-        # Fetch data (from draft table if scenario provided)
-        logger.info(f"Fetching data for session CM ID {session_cm_id} year {year} scenario={scenario}")
-        attendees_data, bunks_data, requests_data, assignments_data, bunk_plans_data = await fetch_session_data_v2(
-            session_cm_id, year, task_pb, scenario=scenario
-        )
+        # If a sweep pre-resolved inputs and froze them at sweep kickoff,
+        # reuse that snapshot so each child run sees identical inputs
+        # regardless of mid-sweep PB writes (sync, etc.). Otherwise resolve
+        # PB freshly.
+        #
+        # Defensive deepcopy: this function mutates solver_input in place
+        # (existing_assignments / lock_groups_data when respect_locks=False)
+        # so without a copy, the frozen snapshot would be corrupted for
+        # subsequent sweep children. model_copy(deep=True) is microseconds
+        # for the typical session size — far cheaper than re-fetching from PB.
+        if frozen_input is not None:
+            logger.info(f"Reusing frozen solver input from sweep {sweep_id}")
+            solver_input = frozen_input.model_copy(deep=True)
+        else:
+            logger.info(f"Fetching data for session CM ID {session_cm_id} year {year} scenario={scenario}")
+            attendees_data, bunks_data, requests_data, assignments_data, bunk_plans_data = await fetch_session_data_v2(
+                session_cm_id, year, task_pb, scenario=scenario
+            )
+            historical_bunking = await fetch_historical_bunking(session_cm_id, year, task_pb)
+            solver_input = prepare_direct_solver_input(
+                attendees_data,
+                bunks_data,
+                requests_data,
+                assignments_data,
+                bunk_plans_data,
+                historical_bunking=historical_bunking,
+            )
 
-        # Fetch historical bunking data for level progression constraint
-        historical_bunking = await fetch_historical_bunking(session_cm_id, year, task_pb)
-
-        # Prepare direct solver input
-        solver_input = prepare_direct_solver_input(
-            attendees_data,
-            bunks_data,
-            requests_data,
-            assignments_data,
-            bunk_plans_data,
-            historical_bunking=historical_bunking,
-        )
-
-        # Fetch lock groups if running in scenario mode
-        if scenario:
+        # Fetch lock groups if running in scenario mode (skip if frozen_input
+        # was passed — the sweep snapshotter is responsible for including them).
+        if scenario and frozen_input is None:
             lock_groups = await fetch_lock_groups(
                 scenario=scenario,
                 session_cm_id=session_cm_id,
@@ -191,6 +221,25 @@ async def run_solver_task_v2(
         solver_runs[run_id]["results"] = results_data
         solver_runs[run_id]["scenario"] = scenario
 
+        # Compose run-tagging details (git SHA, config snapshot, source labels,
+        # scenario_id_at_run, attendee count, sweep grouping). Best-effort —
+        # if it fails, fall back to the minimal details computed at function entry
+        # so persistence still happens with consistent keys.
+        try:
+            details = await build_run_details(
+                pb=task_pb,
+                session_label=f"Session {session_cm_id} — {year}",
+                scenario_id=scenario,
+                scenario_name=scenario_name,
+                session_attendee_count=len(solver_input.persons),
+                sweep_id=sweep_id,
+                sweep_label=sweep_label,
+            )
+        except Exception as tag_error:
+            logger.warning(f"Run tagging failed: {tag_error}")
+            details = dict(minimal_details)
+        details["time_limit_seconds"] = time_limit
+
         # Record in PocketBase
         try:
             pb_data: dict[str, Any] = {
@@ -201,7 +250,8 @@ async def run_solver_task_v2(
                 "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "result": json.dumps(solver_runs[run_id]["results"]),
-                "details": json.dumps({"time_limit": time_limit}),
+                "stats": json.dumps(stats_with_changes),
+                "details": json.dumps(details),
             }
             if scenario:
                 pb_data["scenario"] = scenario
@@ -223,7 +273,10 @@ async def run_solver_task_v2(
         solver_runs[run_id]["error_message"] = str(e)
         solver_runs[run_id]["completed_at"] = datetime.now(UTC)
 
-        # Record failure in PocketBase
+        # Record failure in PocketBase. Persist `details` (with sweep_id /
+        # sweep_label / scenario_id_at_run / time_limit_seconds) so failed
+        # sweep children group correctly with their successful siblings in
+        # the impact-analysis UI rather than appearing as orphans.
         try:
             await asyncio.to_thread(
                 task_pb.collection(SOLVER_RUNS).create,
@@ -237,6 +290,7 @@ async def run_solver_task_v2(
                     .strftime("%Y-%m-%d %H:%M:%S.000Z"),
                     "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                     "error": json.dumps({"message": str(e)}),
+                    "details": json.dumps(minimal_details),
                 },
             )
         except Exception:  # noqa: S110 — intentional silent handling

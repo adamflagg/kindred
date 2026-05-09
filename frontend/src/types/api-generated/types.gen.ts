@@ -5420,6 +5420,52 @@ export type SummerYearsEnrollment = {
 }
 
 /**
+ * SweepRequest
+ *
+ * Request to run a benchmark sweep across multiple time budgets.
+ *
+ * Exactly one of session_cm_id or scenario_id must be set.
+ */
+export type SweepRequest = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number | null
+  /**
+   * Year
+   */
+  year?: number | null
+  /**
+   * Scenario Id
+   */
+  scenario_id?: string | null
+  /**
+   * Time Budgets
+   */
+  time_budgets?: Array<number>
+  /**
+   * Label
+   */
+  label?: string | null
+}
+
+/**
+ * SweepResponse
+ *
+ * Response from kicking off a benchmark sweep.
+ */
+export type SweepResponse = {
+  /**
+   * Sweep Id
+   */
+  sweep_id: string
+  /**
+   * Run Ids
+   */
+  run_ids: Array<string>
+}
+
+/**
  * SynagogueBreakdown
  *
  * Breakdown of metrics by synagogue.
@@ -6243,6 +6289,65 @@ export type RunSolverApiSolverRunPostResponses = {
 
 export type RunSolverApiSolverRunPostResponse =
   RunSolverApiSolverRunPostResponses[keyof RunSolverApiSolverRunPostResponses]
+
+export type PostRunSweepApiSolverRunSweepPostData = {
+  body: SweepRequest
+  path?: never
+  query?: never
+  url: '/api/solver/run-sweep'
+}
+
+export type PostRunSweepApiSolverRunSweepPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostRunSweepApiSolverRunSweepPostError =
+  PostRunSweepApiSolverRunSweepPostErrors[keyof PostRunSweepApiSolverRunSweepPostErrors]
+
+export type PostRunSweepApiSolverRunSweepPostResponses = {
+  /**
+   * Successful Response
+   */
+  202: SweepResponse
+}
+
+export type PostRunSweepApiSolverRunSweepPostResponse =
+  PostRunSweepApiSolverRunSweepPostResponses[keyof PostRunSweepApiSolverRunSweepPostResponses]
+
+export type PostCancelSweepApiSolverRunSweepSweepIdCancelPostData = {
+  body?: never
+  path: {
+    /**
+     * Sweep Id
+     */
+    sweep_id: string
+  }
+  query?: never
+  url: '/api/solver/run-sweep/{sweep_id}/cancel'
+}
+
+export type PostCancelSweepApiSolverRunSweepSweepIdCancelPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PostCancelSweepApiSolverRunSweepSweepIdCancelPostError =
+  PostCancelSweepApiSolverRunSweepSweepIdCancelPostErrors[keyof PostCancelSweepApiSolverRunSweepSweepIdCancelPostErrors]
+
+export type PostCancelSweepApiSolverRunSweepSweepIdCancelPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type PostCancelSweepApiSolverRunSweepSweepIdCancelPostResponse =
+  PostCancelSweepApiSolverRunSweepSweepIdCancelPostResponses[keyof PostCancelSweepApiSolverRunSweepSweepIdCancelPostResponses]
 
 export type GetSolverRunApiSolverRunRunIdGetData = {
   body?: never

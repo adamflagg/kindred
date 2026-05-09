@@ -47,6 +47,126 @@ from .solution import analyze_solution, calculate_satisfied_requests
 logger = get_logger(__name__)
 
 
+# Known CP-SAT constraint oneof variants. The pybind wrapper exposes
+# ``has_<name>()`` methods rather than the older protobuf ``WhichOneof``.
+_CONSTRAINT_TYPES = (
+    "bool_and",
+    "bool_or",
+    "bool_xor",
+    "linear",
+    "all_diff",
+    "at_most_one",
+    "exactly_one",
+    "automaton",
+    "circuit",
+    "cumulative",
+    "dummy_constraint",
+    "element",
+    "int_div",
+    "int_mod",
+    "int_prod",
+    "interval",
+    "inverse",
+    "lin_max",
+    "no_overlap",
+    "no_overlap_2d",
+    "reservoir",
+    "routes",
+    "table",
+)
+
+
+def _count_constraint_types(proto: Any) -> dict[str, int]:
+    """Count CP-SAT model constraints grouped by their oneof type name.
+
+    Used both for INFEASIBLE diagnostics and for the always-on stats capture
+    that surfaces in the solver debug tab. Constraints whose oneof type isn't
+    in ``_CONSTRAINT_TYPES`` (e.g. a future OR-Tools upgrade) land in an
+    ``"unknown"`` bucket so ``sum(counts.values()) == len(proto.constraints)``
+    holds — the impact-analysis breakdown never silently shrinks.
+    """
+    counts: dict[str, int] = {}
+    for c in proto.constraints:
+        matched = False
+        for kind in _CONSTRAINT_TYPES:
+            checker = getattr(c, f"has_{kind}", None)
+            if callable(checker) and checker():
+                counts[kind] = counts.get(kind, 0) + 1
+                matched = True
+                break
+        if not matched:
+            counts["unknown"] = counts.get("unknown", 0) + 1
+    return counts
+
+
+def _compute_optimality_gap(objective: float | None, best_bound: float | None) -> float | None:
+    """Relative gap between solution and proven best bound.
+
+    Returns ``|obj - bound| / max(|obj|, 1)`` as a float in ``[0, ∞)``,
+    or ``None`` if either input is ``None``. The frontend formats as percent.
+    """
+    if objective is None or best_bound is None:
+        return None
+    return abs(objective - best_bound) / max(abs(objective), 1.0)
+
+
+def _build_stats_dict(
+    solver: Any,
+    status: int,
+    model_proto: Any,
+    time_limit_seconds: int,
+    num_workers: int,
+    num_persons: int,
+    num_bunks: int,
+    num_requests: int,
+    satisfied_count: int,
+) -> dict[str, Any]:
+    """Build the full stats dict captured per solver run.
+
+    Wrapped in ``getattr`` guards for OR-Tools forward/back compat — a missing
+    method returns ``None`` instead of crashing the solver path. The dict
+    round-trips through ``solver_runs.stats`` and is rendered by the solver
+    debug tab.
+    """
+    response_proto = solver.ResponseProto()
+    objective = solver.ObjectiveValue()
+    best_bound = getattr(solver, "BestObjectiveBound", lambda: None)()
+    solution_info = getattr(response_proto, "solution_info", None) or None
+
+    return {
+        # Existing back-compat fields
+        "status": solver.StatusName(status),
+        "status_code": status,
+        "objective_value": objective,
+        "solve_time": solver.WallTime(),
+        "total_persons": num_persons,
+        "total_bunks": num_bunks,
+        "total_requests": num_requests,
+        "satisfied_request_count": satisfied_count,
+        # Timing
+        "walltime_seconds": solver.WallTime(),
+        "user_time_seconds": getattr(solver, "UserTime", lambda: None)(),
+        "deterministic_time": getattr(solver, "DeterministicTime", lambda: None)(),
+        "time_budget_seconds": time_limit_seconds,
+        "num_workers": num_workers,
+        # Quality
+        "best_objective_bound": best_bound,
+        "optimality_gap": _compute_optimality_gap(objective, best_bound),
+        "gap_integral": getattr(response_proto, "gap_integral", None),
+        "num_solutions_found": getattr(response_proto, "num_solutions", None),
+        "solution_info": solution_info,
+        # Search
+        "num_branches": solver.NumBranches(),
+        "num_conflicts": solver.NumConflicts(),
+        "num_booleans": solver.NumBooleans(),
+        "num_integer_variables": getattr(solver, "NumIntegers", lambda: None)(),
+        # Model
+        "model_num_variables": len(model_proto.variables),
+        "model_num_constraints": len(model_proto.constraints),
+        "constraint_type_breakdown": _count_constraint_types(model_proto),
+    }
+
+
 def _is_material_parent(request: DirectBunkRequest) -> bool:
     """True iff a request's source_field classifies as MATERIAL_PARENT.
 
@@ -600,12 +720,13 @@ class DirectBunkingSolver:
         """
         bunk = self.bunks[0]
         bunk_cm_id = bunk.campminder_id
+        over_capacity = len(self.person_ids) > bunk.capacity
 
         logger.info(f"Single-bunk session: {bunk.name} (capacity: {bunk.capacity})")
         logger.info(f"Campers to assign: {len(self.person_ids)}")
 
         # Check if we have too many campers for the bunk
-        if len(self.person_ids) > bunk.capacity:
+        if over_capacity:
             logger.warning(f"WARNING: {len(self.person_ids)} campers but only {bunk.capacity} spots!")
             logger.warning("This will be infeasible, but continuing anyway...")
 
@@ -622,30 +743,58 @@ class DirectBunkingSolver:
                 )
             )
 
-        # Calculate simple satisfaction stats
-        satisfied_requests = {}
-        for person_cm_id, requests in self.input.requests_by_person.items():
-            if person_cm_id not in self.person_ids:
-                continue
-
-            satisfied = []
-            for request in requests:
-                if request.request_type == RequestType.BUNK_WITH.value and request.requested_person_cm_id:
-                    # Check if requested person is also in this session
-                    if request.requested_person_cm_id in self.person_ids:
-                        satisfied.append(f"bunk_with:{request.requested_person_cm_id}")
-
-            if satisfied:
-                satisfied_requests[person_cm_id] = satisfied
+        # Use the shared helper so single-bunk satisfied_requests carry real
+        # PocketBase request IDs (matching the multi-bunk path) rather than
+        # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
+        # and so all request types — NOT_BUNK_WITH, AGE_PREFERENCE, etc. —
+        # are evaluated, not just BUNK_WITH.
+        satisfied_requests = calculate_satisfied_requests(
+            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+        )
 
         # Log results
         logger.info(f"Assigned {len(assignments)} campers to {bunk.name}")
         logger.info(f"Satisfied {len(satisfied_requests)} campers' requests")
 
-        # Return output
+        # Single-bunk runs bypass CP-SAT, but the frontend impact-analysis
+        # table renders every key from `_build_stats_dict`. Emit the full
+        # key set with `None` for fields the simplified path can't populate
+        # so column rendering is identical across session types.
+        stats: dict[str, Any] = {
+            "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
+            "status_code": cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL,
+            "objective_value": None,
+            "solve_time": 0.0,
+            "total_persons": len(self.person_ids),
+            "total_bunks": len(self.bunks),
+            "total_requests": len(self.input.requests),
+            "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
+            # CP-SAT-only fields are None, not absent — keeps frontend
+            # `stats?.foo` lookups consistent (always null, never undefined).
+            "walltime_seconds": None,
+            "user_time_seconds": None,
+            "deterministic_time": None,
+            "time_budget_seconds": None,
+            "num_workers": None,
+            "best_objective_bound": None,
+            "optimality_gap": None,
+            "gap_integral": None,
+            "num_solutions_found": None,
+            "solution_info": None,
+            "num_branches": None,
+            "num_conflicts": None,
+            "num_booleans": None,
+            "num_integer_variables": None,
+            "model_num_variables": None,
+            "model_num_constraints": None,
+            "constraint_type_breakdown": {},
+            "single_bunk_session": True,
+        }
+
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
+            stats=stats,
             analysis={
                 "single_bunk_session": True,
                 "bunk_name": bunk.name,
@@ -721,14 +870,8 @@ class DirectBunkingSolver:
 
                 # Try to find minimal infeasible subset
                 logger.info("Attempting to identify conflicting constraints...")
-                # Log some basic stats about constraints
-                proto = self.model.Proto()
-                bool_and_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_and")
-                bool_or_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "bool_or")
-                linear_count = sum(1 for c in proto.constraints if c.WhichOneof("constraint") == "linear")
-                logger.info(
-                    f"Constraint types: bool_and={bool_and_count}, bool_or={bool_or_count}, linear={linear_count}"
-                )
+                type_counts = _count_constraint_types(self.model.Proto())
+                logger.info("Constraint types: " + ", ".join(f"{k}={v}" for k, v in sorted(type_counts.items())))
 
             except Exception as e:
                 logger.error(f"Failed to export model: {e}")
@@ -823,19 +966,22 @@ class DirectBunkingSolver:
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
         # Create output
+        stats = _build_stats_dict(
+            solver=solver,
+            status=status,
+            model_proto=self.model.Proto(),
+            time_limit_seconds=time_limit_seconds,
+            num_workers=num_workers,
+            num_persons=len(self.person_ids),
+            num_bunks=len(self.bunks),
+            num_requests=len(self.input.requests),
+            satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
+        )
+        stats["request_validation"] = self.request_validation_summary
+
         return DirectSolverOutput(
             assignments=assignments,
-            stats={
-                "status": solver.StatusName(status),
-                "objective_value": solver.ObjectiveValue(),
-                "solve_time": solver.WallTime(),
-                "total_persons": len(self.person_ids),
-                "total_bunks": len(self.bunks),
-                "total_requests": len(self.input.requests),
-                "satisfied_request_count": sum(len(reqs) for reqs in satisfied_requests.values()),
-                # Request validation statistics
-                "request_validation": self.request_validation_summary,
-            },
+            stats=stats,
             satisfied_requests=satisfied_requests,
             analysis=analysis,
             log_file_path=log_file_path,

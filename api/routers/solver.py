@@ -47,14 +47,23 @@ from ..schemas import (
     SolverRequest,
     SolverResponse,
 )
+from ..schemas.solver import SweepRequest, SweepResponse
 from ..services.session_context import build_session_context
 from ..services.solver_runner import run_solver_task_v2
+from ..services.sweep_input_snapshot import snapshot_session_input
+from ..services.sweep_registry import sweep_registry
+from ..services.sweep_runner import run_sweep
 from ..utils.pb_error import pb_error_to_http
 from ..utils.session_metrics import get_session_from_expand
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["solver"])
+
+# Strong references to in-flight sweep orchestration tasks. asyncio.create_task
+# returns a weakly-held task which can be GC'd mid-flight if the handler
+# function returns; storing here keeps the orchestration alive until done.
+_sweep_tasks: set[asyncio.Task[None]] = set()
 
 
 def _resolve_time_limit(value: int | None, default: int = 60) -> int:
@@ -119,6 +128,162 @@ async def run_solver(
     )
 
     return SolverResponse(run_id=run_id, status="started", message="Solver run started in background")
+
+
+@router.post("/solver/run-sweep", response_model=SweepResponse, status_code=202)
+async def post_run_sweep(
+    request: SweepRequest,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> SweepResponse:
+    """Kick off a sequential multi-budget benchmark sweep.
+
+    For session-based sweeps, inputs are frozen at kickoff so each child
+    runs against identical data. Returns immediately; child runs poll
+    the existing /solver/run/{run_id} endpoint.
+    """
+    # Resolve the target session_cm_id (and scenario metadata) before doing any
+    # heavy work or registering with the sweep registry — both the in-flight
+    # guard and snapshotting need this.
+    if request.session_cm_id is not None:
+        if request.year is None:
+            raise HTTPException(status_code=400, detail="year is required for session-based sweeps")
+        scenario_name = None
+        scenario_id = None
+        session_cm_id = request.session_cm_id
+        year = request.year
+    else:
+        if request.scenario_id is None:
+            raise HTTPException(status_code=400, detail="scenario_id is required when session_cm_id is unset")
+        try:
+            # `expand=session` is required: saved_scenarios stores `session`
+            # as a relation FK string, not as `session_cm_id`. The cm_id only
+            # comes through via `expand['session'].cm_id` — mirrors the
+            # frontend's `scenarioTransform.ts` and the existing /scenarios
+            # routes (api/routers/scenarios.py) that pass the same expand.
+            scenario_record = await asyncio.to_thread(
+                pb.collection("saved_scenarios").get_one,
+                request.scenario_id,
+                {"expand": "session"},
+            )
+        except ClientResponseError as e:
+            raise pb_error_to_http(e) from e
+        # Other exceptions intentionally propagate to the global handler (generic 500)
+        # rather than getting downgraded to a misleading 400 with raw error text.
+        scenario_id = request.scenario_id
+        scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
+        expanded = getattr(scenario_record, "expand", None) or {}
+        expanded_session = expanded.get("session") if isinstance(expanded, dict) else None
+        session_cm_id = int(getattr(expanded_session, "cm_id", 0)) if expanded_session is not None else 0
+        year = int(getattr(scenario_record, "year", 0))
+        # A malformed saved_scenarios record (missing session expand or zero
+        # year) would otherwise produce session_cm_id=0/year=0 — which the
+        # in-flight guard below can never match against a real run, slipping
+        # past into a doomed sweep that fails later in fetch_session_data_v2.
+        # Reject up front with 422.
+        if session_cm_id == 0 or year == 0:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Scenario {scenario_id} has missing or invalid session_cm_id ({session_cm_id}) or year ({year})"
+                ),
+            )
+
+    # Single-flight guard: reject duplicate in-progress sweeps/runs against the
+    # same session or scenario. Mirrors /solver/run and /solver/run-multi-session.
+    for run in solver_runs.values():
+        if run.get("status") not in {"pending", "running"}:
+            continue
+        if run.get("session_cm_id") == session_cm_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"Solver already running for session {session_cm_id}",
+                    "in_progress_run_id": run["id"],
+                },
+            )
+        if scenario_id is not None and run.get("scenario") == scenario_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "detail": f"Sweep already running for scenario {scenario_id}",
+                    "in_progress_run_id": run["id"],
+                },
+            )
+
+    # Pre-create the registry entry and pending solver_runs entries BEFORE the
+    # snapshot await. The await yields the event loop, which leaves a TOCTOU
+    # window where a second concurrent POST passes the in-flight guard and
+    # launches a duplicate sweep. Pre-creating closes that window — any later
+    # request now sees the pending entries and gets 409.
+    #
+    # `scenario` is set on each pre-created entry so the scenario guard above
+    # fires for pending sweep children too (run_solver_task_v2 only stamps it
+    # post-completion, which would leave a multi-minute hole otherwise).
+    sweep_id = f"sweep_{uuid4().hex[:12]}"
+    run_ids = [f"run_{uuid4().hex[:12]}" for _ in request.time_budgets]
+    sweep_registry.register(sweep_id)
+
+    now = datetime.now(UTC)
+    for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
+        entry: dict[str, Any] = {
+            "id": run_id,
+            "session_cm_id": session_cm_id,
+            "status": "pending",
+            "created_at": now,
+            "config": {
+                "time_limit": budget,
+                "sweep_id": sweep_id,
+                "sweep_label": request.label,
+            },
+        }
+        if scenario_id is not None:
+            entry["scenario"] = scenario_id
+        solver_runs[run_id] = entry
+
+    # Snapshot the input. Scenario sweeps include scenario lock_groups; both
+    # paths use the same helper. On failure, undo the pre-creation so the
+    # session/scenario isn't permanently locked by the in-flight guard.
+    try:
+        frozen_input: Any = await snapshot_session_input(
+            pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
+        )
+    except Exception as e:
+        for run_id in run_ids:
+            solver_runs.pop(run_id, None)
+        sweep_registry.release(sweep_id)
+        if isinstance(e, ClientResponseError):
+            raise pb_error_to_http(e) from e
+        raise  # unexpected — let the global handler turn it into a generic 500
+
+    # Fire-and-forget orchestration. Background task survives this handler's return.
+    # Hold a reference to prevent the task from being garbage-collected mid-flight (RUF006).
+    task = asyncio.create_task(
+        run_sweep(
+            sweep_id=sweep_id,
+            run_ids=run_ids,
+            time_budgets=request.time_budgets,
+            session_cm_id=session_cm_id,
+            year=year,
+            scenario=scenario_id,
+            scenario_name=scenario_name,
+            label=request.label,
+            registry=sweep_registry,
+            frozen_input=frozen_input,
+        )
+    )
+    _sweep_tasks.add(task)
+    task.add_done_callback(_sweep_tasks.discard)
+
+    return SweepResponse(sweep_id=sweep_id, run_ids=run_ids)
+
+
+@router.post("/solver/run-sweep/{sweep_id}/cancel", status_code=204)
+async def post_cancel_sweep(
+    sweep_id: str,
+    user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE)),
+) -> None:
+    """Cancel an in-flight sweep. Idempotent — unknown sweep_id is a no-op."""
+    sweep_registry.cancel(sweep_id)
 
 
 @router.get("/solver/run/{run_id}")
