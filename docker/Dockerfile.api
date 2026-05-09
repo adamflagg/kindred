@@ -35,6 +35,12 @@ COPY --link --chown=65532:65532 campminder/ ./campminder/
 COPY --link --chown=65532:65532 api/ ./api/
 COPY --link --chown=65532:65532 bunking/ ./bunking/
 
+# Git SHA injection — passed as a build arg from CI / local builds and surfaced
+# at runtime so the run-tagging module (bunking/solver/run_tagging.py) can stamp
+# every solver_runs row with the exact commit it ran on.
+ARG GIT_SHA=unknown
+ENV KINDRED_GIT_SHA=${GIT_SHA}
+
 USER nonroot
 
 EXPOSE 8000

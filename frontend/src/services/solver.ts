@@ -1,4 +1,49 @@
 import type { Constraint, SolverRun } from '../types/app-types'
+import type { SweepRequest, SweepResponse } from '../types/api-generated'
+
+export type { SweepRequest, SweepResponse }
+
+type FetchWithAuth = (url: string, options?: RequestInit) => Promise<Response>
+
+// FastAPI HTTPException(detail=...) lands in the response body as { detail: <whatever> }.
+// For our solver routes that's typically either a plain string or { detail: string, ... }.
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: unknown }
+    const detail = body?.detail
+    if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && 'detail' in detail) {
+      const inner = (detail as { detail?: unknown }).detail
+      if (typeof inner === 'string') return inner
+    }
+  } catch {
+    // Body was empty or not JSON — fall through to status-only message.
+  }
+  return `${fallback}: ${res.status}`
+}
+
+export async function postRunSweep(
+  fetchWithAuth: FetchWithAuth,
+  req: SweepRequest
+): Promise<SweepResponse> {
+  const res = await fetchWithAuth('/api/solver/run-sweep', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, 'Sweep request failed'))
+  return (await res.json()) as SweepResponse
+}
+
+export async function postCancelSweep(
+  fetchWithAuth: FetchWithAuth,
+  sweepId: string
+): Promise<void> {
+  const res = await fetchWithAuth(`/api/solver/run-sweep/${sweepId}/cancel`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, 'Sweep cancel failed'))
+}
 
 interface CapacityBreakdownItem {
   campers: number

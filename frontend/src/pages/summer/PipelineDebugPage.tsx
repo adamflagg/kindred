@@ -10,7 +10,8 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { Link } from 'react-router'
-import { Bug, GitGraph, ArrowLeft, Loader2, FileText, Plus } from 'lucide-react'
+import { Bug, GitGraph, ArrowLeft, Loader2, Plus } from 'lucide-react'
+import { DebugTabs } from '../../components/debug/DebugTabs'
 import { useYear } from '../../hooks/useCurrentYear'
 import {
   PipelineRunSelector,
@@ -173,7 +174,7 @@ export default function PipelineDebugPage() {
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4" data-tour="debug-header">
           <div className="shadow-lodge flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 ring-4 shadow-amber-500/25 ring-amber-100 dark:ring-amber-900/30">
             <Bug className="text-forest-900 h-7 w-7" />
           </div>
@@ -214,6 +215,8 @@ export default function PipelineDebugPage() {
             Back to batch view
           </button>
         </div>
+
+        <DebugTabs />
 
         {/* Sidebar layout: detail panel (flex-1) + sidebar (220px fixed right) */}
         <QueryGuard
@@ -287,7 +290,7 @@ export default function PipelineDebugPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4" data-tour="debug-header">
         <div className="shadow-lodge flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 ring-4 shadow-amber-500/25 ring-amber-100 dark:ring-amber-900/30">
           <Bug className="text-forest-900 h-7 w-7" />
         </div>
@@ -304,14 +307,9 @@ export default function PipelineDebugPage() {
           <Plus className="h-4 w-4" />
           New Trace
         </button>
-        <Link
-          to="/summer/debug/prompts"
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border border-transparent px-3 py-1.5 text-sm transition-colors hover:border-gray-200 dark:hover:border-gray-700"
-        >
-          <FileText className="h-4 w-4" />
-          Prompt Editor
-        </Link>
       </div>
+
+      <DebugTabs />
 
       {/* Run selector */}
       <QueryGuard
