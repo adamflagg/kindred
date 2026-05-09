@@ -1,7 +1,11 @@
 /// <reference path="../pb_data/types.d.ts" />
 
 // Standardize source_field values from CampMinder CSV headers (V1) to
-// internal field names (V2) across bunk_requests and bunk_request_sources.
+// internal field names (V2) across bunk_request_sources.
+//
+// The bunk_requests.source_field / source_fields backfill that originally
+// lived here was unreachable on fresh DBs (no rows to update) and was
+// dropped during the bunk_requests consolidation round.
 migrate(
   (app) => {
     const mappings = {
@@ -13,40 +17,15 @@ migrate(
     };
 
     for (const [oldVal, newVal] of Object.entries(mappings)) {
-      // Update bunk_requests.source_field
-      app.db()
-        .newQuery(
-          `UPDATE bunk_requests SET source_field = {:new} WHERE source_field = {:old}`
-        )
-        .bind({ new: newVal, old: oldVal })
-        .execute();
-
-      // Update bunk_request_sources.source_field
       app.db()
         .newQuery(
           `UPDATE bunk_request_sources SET source_field = {:new} WHERE source_field = {:old}`
         )
         .bind({ new: newVal, old: oldVal })
         .execute();
-
-      // Update source_fields JSON array in bunk_requests
-      // This is a JSON array column — replace V1 strings with V2
-      app.db()
-        .newQuery(
-          `UPDATE bunk_requests
-           SET source_fields = REPLACE(source_fields, {:oldQuoted}, {:newQuoted})
-           WHERE source_fields LIKE {:pattern}`
-        )
-        .bind({
-          oldQuoted: '"' + oldVal + '"',
-          newQuoted: '"' + newVal + '"',
-          pattern: "%" + oldVal + "%",
-        })
-        .execute();
     }
   },
   (app) => {
-    // Reverse migration: V2 back to V1
     const mappings = {
       bunk_with: "Share Bunk With",
       not_bunk_with: "Do Not Share Bunk With",
@@ -58,29 +37,9 @@ migrate(
     for (const [oldVal, newVal] of Object.entries(mappings)) {
       app.db()
         .newQuery(
-          `UPDATE bunk_requests SET source_field = {:new} WHERE source_field = {:old}`
-        )
-        .bind({ new: newVal, old: oldVal })
-        .execute();
-
-      app.db()
-        .newQuery(
           `UPDATE bunk_request_sources SET source_field = {:new} WHERE source_field = {:old}`
         )
         .bind({ new: newVal, old: oldVal })
-        .execute();
-
-      app.db()
-        .newQuery(
-          `UPDATE bunk_requests
-           SET source_fields = REPLACE(source_fields, {:oldQuoted}, {:newQuoted})
-           WHERE source_fields LIKE {:pattern}`
-        )
-        .bind({
-          oldQuoted: '"' + oldVal + '"',
-          newQuoted: '"' + newVal + '"',
-          pattern: "%" + oldVal + "%",
-        })
         .execute();
     }
   }
