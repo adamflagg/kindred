@@ -29,6 +29,9 @@ migrate((app) => {
     deleteRule: bunkingManage,
     fields: [
       {
+        // cascadeDelete=true: deleting a saved scenario should sweep its draft
+        // assignments server-side. Was false originally; flipping it removed an
+        // N+1 client-side pre-delete loop in useDeleteScenario.
         type: "relation",
         name: "scenario",
         required: false,

@@ -45,7 +45,7 @@ migrate((app) => {
   }
 
   // Read+Write: bunking.manage (frontend writes directly)
-  // Note: "bunk_assignments_draft" trimmed — final-state rules baked into merged CREATE.
+  // Note: "bunk_assignments_draft" trimmed — all 5 rules use bunkingManage, baked into merged CREATE.
   const bunkingManageReadWrite = ["locked_groups", "locked_group_members", "saved_scenarios"]
   for (const name of bunkingManageReadWrite) {
     setRules(name, bunkingManage, bunkingManage, bunkingManage, bunkingManage, bunkingManage)
