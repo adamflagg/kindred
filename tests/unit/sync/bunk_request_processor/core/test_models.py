@@ -393,5 +393,37 @@ class TestResolvedName:
         assert resolved.resolution_method == "unresolved"
 
 
+class TestSourceFromField:
+    """Pin the canonical source_field → RequestSource projection (6→2 after #1142)."""
+
+    def test_manual_returns_staff(self):
+        """'manual' is the admin-UI input channel — admin entry is always staff entry."""
+        from bunking.sync.bunk_request_processor.core.models import (
+            RequestSource,
+            source_from_field,
+        )
+
+        assert source_from_field("manual") == RequestSource.STAFF
+
+    def test_canonical_family_fields_return_family(self):
+        from bunking.sync.bunk_request_processor.core.models import (
+            RequestSource,
+            source_from_field,
+        )
+
+        assert source_from_field("bunk_with") == RequestSource.FAMILY
+        assert source_from_field("socialize_with") == RequestSource.FAMILY
+
+    def test_canonical_staff_fields_return_staff(self):
+        from bunking.sync.bunk_request_processor.core.models import (
+            RequestSource,
+            source_from_field,
+        )
+
+        assert source_from_field("not_bunk_with") == RequestSource.STAFF
+        assert source_from_field("bunking_notes") == RequestSource.STAFF
+        assert source_from_field("internal_notes") == RequestSource.STAFF
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

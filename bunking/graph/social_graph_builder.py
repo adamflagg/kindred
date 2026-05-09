@@ -120,7 +120,7 @@ def build_request_edge_attrs(
         "priority": getattr(request, "priority", 5),
         "confidence": getattr(request, "confidence_score", 1.0),
         "reciprocal": reciprocal,
-        "source": getattr(request, "source", None),
+        "source": _derive_source(request),
         "source_field": sf,
         # `or` instead of getattr default so explicit-None becomes the default.
         "request_type": getattr(request, "request_type", None) or "bunk_with",

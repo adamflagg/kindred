@@ -2,7 +2,7 @@
 /**
  * Migration: Drop the redundant `source` field from `bunk_requests`.
  *
- * `RequestSource` (FAMILY/STAFF) is a deterministic 5→2 projection of
+ * `RequestSource` (FAMILY/STAFF) is a deterministic 6→2 projection of
  * `source_field` and is now derived at every read site via the
  * `source_from_field()` helper. The column adds no information.
  *
@@ -57,7 +57,7 @@ migrate(
       UPDATE bunk_requests
       SET source = CASE
         WHEN source_field IN ('bunk_with', 'socialize_with') THEN 'family'
-        WHEN source_field IN ('not_bunk_with', 'bunking_notes', 'internal_notes') THEN 'staff'
+        WHEN source_field IN ('not_bunk_with', 'bunking_notes', 'internal_notes', 'manual') THEN 'staff'
         ELSE 'family'
       END
     `).execute();

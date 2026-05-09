@@ -156,9 +156,10 @@ export function evaluateRequest({
  * The centralized aggregator (`CamperSatisfaction.per_request[i].bucket`) is
  * the source of truth when present — that's what #1158/#1159 consolidated.
  * When the aggregator is unavailable (`/api/satisfaction` 500, empty response,
- * loading state), bucket is `undefined` and the badge silently disappears
- * unless we fall back to the row's own `source_field`/`source` — which is
- * what drove the badge pre-#1158 and cannot fail.
+ * loading state), bucket is `undefined` and we fall back to deriving badges
+ * from the row's `source_field` via the canonical 6→2 projection
+ * (`safeSourceFromField`). #1142 stage 4 dropped the `source` column, so
+ * `source_field` is now the single source of truth for classification.
  *
  * Centralized bucket wins; row-level fields are ONLY consulted when the
  * centralized map has no entry for this row.

@@ -4,9 +4,10 @@
  * Mirrors the Python `source_from_field` in
  * `bunking/sync/bunk_request_processor/core/models.py`.
  *
- * This is the authoritative 5→2 mapping that makes RequestSource a
+ * This is the authoritative 6→2 mapping that makes RequestSource a
  * deterministic projection of source_field rather than an independent axis.
- * See issue #1142 for context.
+ * See issue #1142 for context. 'manual' is the admin-UI input channel
+ * (CreateRequestModal) — admin entry is staff entry by definition.
  */
 
 type RequestSource = 'family' | 'staff'
@@ -17,6 +18,7 @@ const SOURCE_FIELD_MAP: Readonly<Record<string, RequestSource>> = {
   not_bunk_with: 'staff',
   bunking_notes: 'staff',
   internal_notes: 'staff',
+  manual: 'staff',
 }
 
 /**

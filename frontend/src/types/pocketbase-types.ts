@@ -1675,8 +1675,7 @@ type ProcessCreateAndUpdateFields<T> = Omit<
     // Omit AutoDate fields
     [K in keyof T as Extract<T[K], IsoAutoDateString> extends never
       ? K
-      : never]: // Convert FileNameString to File
-    T[K] extends infer U
+      : never]: T[K] extends infer U // Convert FileNameString to File
       ? U extends FileNameString | FileNameString[]
         ? U extends any[]
           ? File[]

@@ -504,7 +504,7 @@ def test_request_edges_carry_source_attribute() -> None:
     pb = MagicMock()
     pb.collection.return_value.get_full_list.return_value = [
         _fake_request(1, 2, source="family"),
-        _fake_request(2, 3, source="staff"),
+        _fake_request(2, 3, source="staff", request_type="not_bunk_with"),
     ]
     builder = SocialGraphBuilder(pb=pb)
     builder.graph = nx.Graph()

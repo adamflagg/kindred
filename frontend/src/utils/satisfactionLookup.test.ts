@@ -161,7 +161,7 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
   })
 
-  it('undefined bucket + source=staff → S badge (fallback)', () => {
+  it('undefined bucket + source_field=bunking_notes → S badge (fallback)', () => {
     const result = resolveBadgeBucket(undefined, { source_field: 'bunking_notes' })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
   })
@@ -217,5 +217,16 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
       source_field: 'legacy_unknown_field',
     })
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
+  })
+
+  it('undefined bucket + source_field=manual → S badge (admin-UI staff entry)', () => {
+    // CreateRequestModal writes source_field='manual' for staff-created requests.
+    // Manual entry is staff entry by definition — recognize 'manual' as a 6th
+    // canonical source_field value mapping to STAFF (#1142 stage 4 follow-up).
+    const result = resolveBadgeBucket(undefined, {
+      source_field: 'manual',
+      request_type: 'age_preference',
+    })
+    expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: true })
   })
 })

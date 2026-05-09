@@ -20,7 +20,7 @@ def _req(source_field: str) -> BunkRequest:
         requester_cm_id=1,
         requested_cm_id=2,
         request_type=RequestType.BUNK_WITH,
-        session_cm_id=2025001,
+        session_cm_id=1000001,
         priority=4,
         confidence_score=0.9,
         source_field=source_field,
@@ -46,3 +46,13 @@ def test_resolve_source_empty_field_falls_back_to_family() -> None:
 
 def test_resolve_source_unknown_field_falls_back_to_family() -> None:
     assert _resolve_source(_req("garbage_value")) == "family"
+
+
+def test_resolve_source_manual_field_returns_staff() -> None:
+    """source_field='manual' is the admin-UI input channel — always staff-entered.
+
+    Manually-created bunk requests (CreateRequestModal) write source_field='manual'
+    as a marker. The 5-CSV-fields → 2-source projection must extend to recognize
+    'manual' as the 6th canonical value, mapping to STAFF.
+    """
+    assert _resolve_source(_req("manual")) == "staff"

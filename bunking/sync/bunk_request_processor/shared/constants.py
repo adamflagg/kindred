@@ -66,13 +66,19 @@ VALID_AGE_TARGETS: set[str] = {
 # Canonical source field names as stored in the bunk_requests table
 # V2 internal names — used everywhere post-CSV-import
 class SourceField:
-    """Canonical source field values — V2 internal names used everywhere post-CSV-import."""
+    """Canonical source field values — V2 internal names used everywhere post-CSV-import.
+
+    Five values describe CSV/form input channels (parent or staff). MANUAL is the
+    sixth canonical value: the admin-UI input channel for staff-created requests
+    via CreateRequestModal. All non-parent channels project to RequestSource.STAFF.
+    """
 
     BUNK_WITH = "bunk_with"
     NOT_BUNK_WITH = "not_bunk_with"
     BUNKING_NOTES = "bunking_notes"
     INTERNAL_NOTES = "internal_notes"
     SOCIALIZE_WITH = "socialize_with"
+    MANUAL = "manual"
 
 
 # Mapping from SourceField values to solver config schema keys

@@ -24,7 +24,7 @@ def _make_request() -> BunkRequest:
         requester_cm_id=1001,
         requested_cm_id=1002,
         request_type=RequestType.BUNK_WITH,
-        session_cm_id=2025001,
+        session_cm_id=1000001,
         priority=4,
         confidence_score=0.9,
         source_field="bunk_with",
