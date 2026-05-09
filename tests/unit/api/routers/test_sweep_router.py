@@ -58,7 +58,7 @@ def _sweep_client(
         mock_pb.collection.return_value.get_one.side_effect = scenario_get_one_side_effect
     else:
         scenario_record = MagicMock()
-        scenario_record.session_cm_id = 5001
+        scenario_record.session_cm_id = 1000001
         scenario_record.year = 2026
         scenario_record.name = "test-scenario"
         mock_pb.collection.return_value.get_one.return_value = scenario_record
@@ -85,7 +85,8 @@ def _sweep_client(
         # Prevent the asyncio.create_task background sweep from actually running
         patch("api.routers.solver.run_sweep", AsyncMock()),
     ):
-        yield TestClient(app, raise_server_exceptions=False)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield client
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +100,7 @@ class TestSweepInflightGuard:
         solver_runs_state: dict[str, Any] = {
             existing_run_id: {
                 "id": existing_run_id,
-                "session_cm_id": 1001,
+                "session_cm_id": 1000001,
                 "status": "pending",
             }
         }
@@ -107,13 +108,13 @@ class TestSweepInflightGuard:
         with _sweep_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 1001, "year": 2026},
+                json={"session_cm_id": 1000001, "year": 2026},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
         body = resp.json()
         detail = body["detail"]
-        assert detail["detail"] == "Solver already running for session 1001"
+        assert detail["detail"] == "Solver already running for session 1000001"
         assert detail["in_progress_run_id"] == existing_run_id
 
     def test_409_when_session_has_running_run(self) -> None:
@@ -121,7 +122,7 @@ class TestSweepInflightGuard:
         solver_runs_state: dict[str, Any] = {
             existing_run_id: {
                 "id": existing_run_id,
-                "session_cm_id": 2002,
+                "session_cm_id": 1000002,
                 "status": "running",
             }
         }
@@ -129,7 +130,7 @@ class TestSweepInflightGuard:
         with _sweep_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 2002, "year": 2026},
+                json={"session_cm_id": 1000002, "year": 2026},
             )
 
         assert resp.status_code == 409, f"Expected 409, got {resp.status_code}: {resp.text}"
@@ -139,7 +140,7 @@ class TestSweepInflightGuard:
         solver_runs_state: dict[str, Any] = {
             "old-run": {
                 "id": "old-run",
-                "session_cm_id": 3003,
+                "session_cm_id": 1000003,
                 "status": "completed",
             }
         }
@@ -147,7 +148,7 @@ class TestSweepInflightGuard:
         with _sweep_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 3003, "year": 2026},
+                json={"session_cm_id": 1000003, "year": 2026},
             )
 
         assert resp.status_code == 202, f"Expected 202, got {resp.status_code}: {resp.text}"
@@ -156,7 +157,7 @@ class TestSweepInflightGuard:
         solver_runs_state: dict[str, Any] = {
             "other-run": {
                 "id": "other-run",
-                "session_cm_id": 9999,  # different session
+                "session_cm_id": 1999999,  # different session
                 "status": "running",
             }
         }
@@ -164,7 +165,7 @@ class TestSweepInflightGuard:
         with _sweep_client(solver_runs_state) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 4004, "year": 2026},
+                json={"session_cm_id": 1000004, "year": 2026},
             )
 
         assert resp.status_code == 202
@@ -175,7 +176,7 @@ class TestSweepInflightGuard:
         solver_runs_state: dict[str, Any] = {
             existing_run_id: {
                 "id": existing_run_id,
-                "session_cm_id": 5001,
+                "session_cm_id": 1000001,
                 "status": "running",
                 "scenario": "scen-target",
             }
@@ -216,7 +217,7 @@ class TestSweepExceptionHandling:
         with _sweep_client(snapshot_side_effect=upstream_error) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 7007, "year": 2026},
+                json={"session_cm_id": 1000007, "year": 2026},
             )
 
         assert resp.status_code == 502, f"Expected 502, got {resp.status_code}: {resp.text}"
@@ -229,7 +230,7 @@ class TestSweepExceptionHandling:
         with _sweep_client(snapshot_side_effect=RuntimeError("internal kaboom")) as client:
             resp = client.post(
                 "/api/solver/run-sweep",
-                json={"session_cm_id": 8008, "year": 2026},
+                json={"session_cm_id": 1000008, "year": 2026},
             )
 
         assert resp.status_code == 500, f"Expected 500, got {resp.status_code}: {resp.text}"
@@ -309,7 +310,7 @@ class TestSweepPreCreationLock:
             with _sweep_client(solver_runs_state, snapshot_side_effect=upstream_error) as client:
                 resp = client.post(
                     "/api/solver/run-sweep",
-                    json={"session_cm_id": 7007, "year": 2026},
+                    json={"session_cm_id": 1000007, "year": 2026},
                 )
 
             assert resp.status_code == 502, resp.text
@@ -319,3 +320,92 @@ class TestSweepPreCreationLock:
             # No orphan solver_runs entries remain.
             sweep_entries = [r for r in solver_runs_state.values() if r.get("config", {}).get("sweep_id")]
             assert sweep_entries == [], f"expected pre-created entries cleaned up on failure; got {sweep_entries}"
+
+
+# ---------------------------------------------------------------------------
+# Fix #4 / #9: malformed scenario record (missing session_cm_id or year)
+# must surface as a 422 — not as a sweep that silently fails downstream
+# because session_cm_id=0 slips past the in-flight guard.
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _sweep_client_with_scenario(scenario_record: Any) -> Iterator[TestClient]:
+    """Variant of _sweep_client that returns a custom scenario_record from
+    pb.collection("saved_scenarios").get_one — for malformed-record tests."""
+    from api.routers.solver import router
+
+    mock_pb = MagicMock()
+    mock_pb.collection.return_value.get_one.return_value = scenario_record
+    snapshot_mock = AsyncMock()
+    snapshot_mock.return_value = MagicMock()
+
+    app = FastAPI()
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+    app.include_router(router)
+    app.dependency_overrides[get_current_user] = _mock_admin_user
+
+    with (
+        patch("api.routers.solver.solver_runs", {}),
+        patch("api.routers.solver.pb", mock_pb),
+        patch("api.routers.solver.snapshot_session_input", snapshot_mock),
+        patch("api.routers.solver.run_sweep", AsyncMock()),
+    ):
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield client
+
+
+class TestSweepMalformedScenarioRecord:
+    """A saved_scenarios row that's missing session_cm_id or year would otherwise
+    pass through `getattr(..., 0)` and produce a sweep with session_cm_id=0,
+    which never matches a real run in the in-flight guard. The handler must
+    reject this with 422 immediately rather than launching a doomed sweep."""
+
+    def test_422_when_scenario_record_missing_session_cm_id(self) -> None:
+        # `spec=[]` ensures session_cm_id, year, name are absent → getattr fallback fires
+        scenario = MagicMock(spec=[])
+        scenario.year = 2026
+        scenario.name = "broken"
+        # session_cm_id deliberately not set → getattr returns 0
+
+        with _sweep_client_with_scenario(scenario) as client:
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-broken"},
+            )
+
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+
+    def test_422_when_scenario_record_missing_year(self) -> None:
+        scenario = MagicMock(spec=[])
+        scenario.session_cm_id = 1000001
+        scenario.name = "broken"
+        # year deliberately not set → getattr returns 0
+
+        with _sweep_client_with_scenario(scenario) as client:
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-broken"},
+            )
+
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
+
+    def test_422_when_scenario_record_session_cm_id_is_zero(self) -> None:
+        """Explicit zero (rather than missing) must also be rejected — the
+        handler can't distinguish them via getattr."""
+        scenario = MagicMock()
+        scenario.session_cm_id = 0
+        scenario.year = 2026
+        scenario.name = "explicit-zero"
+
+        with _sweep_client_with_scenario(scenario) as client:
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={"scenario_id": "scen-zero"},
+            )
+
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"

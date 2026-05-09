@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 from ortools.sat.python import cp_model
 
-from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput
+from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver, _compute_optimality_gap, _count_constraint_types
 
 
@@ -316,3 +316,252 @@ class TestSingleBunkPathStats:
         assert result is not None
         assert result.stats.get("status") == "INFEASIBLE"
         assert result.stats.get("status_code") == cp_model.INFEASIBLE
+
+
+# Keys emitted by _build_stats_dict on the multi-bunk path. Single-bunk runs
+# must emit the same key set (with None for fields the simplified path can't
+# populate) so impact-analysis frontend rendering is consistent across
+# session types.
+_BUILD_STATS_DICT_KEYS = frozenset(
+    {
+        "status",
+        "status_code",
+        "objective_value",
+        "solve_time",
+        "total_persons",
+        "total_bunks",
+        "total_requests",
+        "satisfied_request_count",
+        "walltime_seconds",
+        "user_time_seconds",
+        "deterministic_time",
+        "time_budget_seconds",
+        "num_workers",
+        "best_objective_bound",
+        "optimality_gap",
+        "gap_integral",
+        "num_solutions_found",
+        "solution_info",
+        "num_branches",
+        "num_conflicts",
+        "num_booleans",
+        "num_integer_variables",
+        "model_num_variables",
+        "model_num_constraints",
+        "constraint_type_breakdown",
+    }
+)
+
+
+class TestSingleBunkStatsKeyParity:
+    """Single-bunk stats must include every key from `_build_stats_dict`.
+
+    The PR comment claims "the keys match `_build_stats_dict`" but the actual
+    dict was a strict subset. Frontend code doing `stats?.walltime_seconds`
+    gets `undefined` for AG runs but `null` for multi-bunk runs — different
+    rendering paths for the same logical "no value".
+    """
+
+    def _make_input(self, num_persons: int = 3, capacity: int = 12) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="AG-1",
+            capacity=capacity,
+            gender="Mixed",
+            session_cm_id=500,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M" if i % 2 == 0 else "F",
+                session_cm_id=500,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+
+    def test_single_bunk_stats_emits_full_key_set(self) -> None:
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        emitted = set(result.stats.keys())
+        missing = _BUILD_STATS_DICT_KEYS - emitted
+        assert not missing, f"single-bunk stats missing keys vs _build_stats_dict: {missing}"
+
+    def test_single_bunk_stats_cp_sat_only_fields_are_none(self) -> None:
+        """Fields the simplified path cannot populate must be `None`, not absent."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        for key in (
+            "user_time_seconds",
+            "deterministic_time",
+            "time_budget_seconds",
+            "num_workers",
+            "best_objective_bound",
+            "optimality_gap",
+            "gap_integral",
+            "num_solutions_found",
+            "solution_info",
+            "num_branches",
+            "num_conflicts",
+            "num_booleans",
+            "num_integer_variables",
+            "model_num_variables",
+            "model_num_constraints",
+        ):
+            assert key in result.stats, f"single-bunk stats missing key {key!r}"
+            assert result.stats[key] is None, f"expected {key!r} to be None for single-bunk, got {result.stats[key]!r}"
+
+    def test_single_bunk_stats_constraint_type_breakdown_is_empty_dict(self) -> None:
+        """`constraint_type_breakdown` is a dict on the multi-bunk path; for
+        single-bunk it must still be a dict (empty), not None or missing,
+        so the frontend can iterate it safely."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.stats.get("constraint_type_breakdown") == {}
+
+
+class TestSingleBunkSatisfiedRequestsCentralization:
+    """Single-bunk path must use shared `calculate_satisfied_requests` so it:
+
+    1. Stores real PocketBase request IDs (not synthetic 'bunk_with:<id>'
+       strings) — the frontend looks them up by ID.
+    2. Counts NOT_BUNK_WITH satisfied requests (skipped by the hand-rolled
+       BUNK_WITH-only loop) — though in a single-bunk session a NOT_BUNK_WITH
+       between two co-bunked persons is *unsatisfied*, not satisfied.
+    """
+
+    def _make_input(
+        self, num_persons: int = 3, capacity: int = 12, requests: list[DirectBunkRequest] | None = None
+    ) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="AG-1",
+            capacity=capacity,
+            gender="Mixed",
+            session_cm_id=500,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M" if i % 2 == 0 else "F",
+                session_cm_id=500,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=requests or [], bunks=[bunk])
+
+    def test_single_bunk_satisfied_uses_real_request_ids(self) -> None:
+        """`satisfied_requests[person_cm_id]` values must be real PB record IDs,
+        matching what the multi-bunk path emits via `calculate_satisfied_requests`."""
+        req = DirectBunkRequest(
+            id="pb_req_abc123",
+            requester_person_cm_id=1000,
+            requested_person_cm_id=1001,
+            request_type="bunk_with",
+            session_cm_id=500,
+            year=2026,
+        )
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(num_persons=3, requests=[req]),
+            config_service=MagicMock(),
+        )
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert result.satisfied_requests.get(1000) == ["pb_req_abc123"]
+
+    def test_single_bunk_satisfied_does_not_emit_synthetic_strings(self) -> None:
+        """The old hand-rolled loop emitted strings like 'bunk_with:1001'.
+        These must not appear in the satisfied_requests output any more."""
+        req = DirectBunkRequest(
+            id="pb_req_real",
+            requester_person_cm_id=1000,
+            requested_person_cm_id=1001,
+            request_type="bunk_with",
+            session_cm_id=500,
+            year=2026,
+        )
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(num_persons=3, requests=[req]),
+            config_service=MagicMock(),
+        )
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        for ids in result.satisfied_requests.values():
+            for rid in ids:
+                assert not rid.startswith("bunk_with:"), f"synthetic ID leaked: {rid!r}"
+
+    def test_single_bunk_not_bunk_with_between_co_bunked_is_unsatisfied(self) -> None:
+        """In a single-bunk session both persons are in the same bunk, so a
+        NOT_BUNK_WITH request between them is *not* satisfied. The shared
+        helper handles this; the old hand-rolled loop ignored NOT_BUNK_WITH
+        entirely (returning satisfied_count of 0 instead of the correct 0,
+        but for the wrong reason)."""
+        req = DirectBunkRequest(
+            id="pb_req_not_with",
+            requester_person_cm_id=1000,
+            requested_person_cm_id=1001,
+            request_type="not_bunk_with",
+            session_cm_id=500,
+            year=2026,
+        )
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(num_persons=3, requests=[req]),
+            config_service=MagicMock(),
+        )
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert 1000 not in result.satisfied_requests, (
+            "NOT_BUNK_WITH between two persons in the same bunk must NOT be satisfied"
+        )
+        assert result.stats.get("satisfied_request_count") == 0
+
+
+class TestUnknownConstraintBucket:
+    """Constraints whose oneof type isn't in `_CONSTRAINT_TYPES` must land in an
+    'unknown' bucket so `sum(breakdown.values()) == model_num_constraints` —
+    otherwise OR-Tools upgrades silently shrink the displayed breakdown.
+    """
+
+    def test_unknown_constraint_lands_in_unknown_bucket(self) -> None:
+        """A bare MagicMock proto with one constraint that has no `has_*`
+        method matching `_CONSTRAINT_TYPES` must produce `{'unknown': 1}`."""
+        proto = MagicMock()
+        fake_constraint = MagicMock(spec=[])  # spec=[] → no `has_*` attrs
+        proto.constraints = [fake_constraint]
+
+        result = _count_constraint_types(proto)
+        assert result.get("unknown") == 1
+        assert sum(result.values()) == 1
+
+    def test_known_and_unknown_are_both_counted(self) -> None:
+        model = cp_model.CpModel()
+        a = model.NewBoolVar("a")
+        b = model.NewBoolVar("b")
+        model.AddBoolAnd([a, b])
+        # Known bool_and constraint plus a synthetic unknown one
+        proto = model.Proto()
+        # Wrap in MagicMock to splice in a fake constraint whose `has_*`
+        # methods all return False
+        fake_unknown = MagicMock(spec=[])
+        constraints_list = list(proto.constraints) + [fake_unknown]
+
+        wrapper = MagicMock()
+        wrapper.constraints = constraints_list
+
+        result = _count_constraint_types(wrapper)
+        assert result.get("bool_and") == 1
+        assert result.get("unknown") == 1
+        assert sum(result.values()) == 2

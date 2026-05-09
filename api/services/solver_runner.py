@@ -26,7 +26,7 @@ from .data_fetcher import (
     fetch_session_data_v2,
     prepare_direct_solver_input,
 )
-from .run_tagging import build_run_details
+from .run_tagging import build_run_details, compose_minimal_run_details
 
 logger = get_logger(__name__)
 
@@ -47,14 +47,20 @@ async def run_solver_task_v2(
     frozen_input: Any = None,
 ) -> None:
     """Background task to run the solver with direct bunk_requests data."""
-    # Minimal details available even if the run fails before tagging — keeps
-    # failed sweep children groupable in the impact-analysis UI.
-    minimal_details: dict[str, Any] = {
-        "time_limit_seconds": time_limit,
-        "sweep_id": sweep_id,
-        "sweep_label": sweep_label,
-        "scenario_id_at_run": scenario,
-    }
+    # Minimal details available even if the run fails before tagging. Includes
+    # git_sha + source_label + source_kind (no PocketBase needed) so failed
+    # sweep children render the same column set as their successful siblings
+    # in the impact-analysis sweep view — not blank rows alongside.
+    # session_attendee_count remains None until prepare_direct_solver_input
+    # runs; it is patched in below the moment that data lands.
+    minimal_details: dict[str, Any] = compose_minimal_run_details(
+        session_label=f"Session {session_cm_id} — {year}",
+        scenario_id=scenario,
+        scenario_name=scenario_name,
+        sweep_id=sweep_id,
+        sweep_label=sweep_label,
+        time_limit_seconds=time_limit,
+    )
 
     # Create a new PocketBase client for this background task
     task_pb = PocketBase(pb_url)

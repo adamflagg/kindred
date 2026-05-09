@@ -589,3 +589,119 @@ class TestFailedRunPersistsDetails:
         assert "time_limit" not in details, (
             "Fallback details must use canonical time_limit_seconds, not the legacy time_limit key"
         )
+
+    @pytest.mark.asyncio
+    async def test_failure_path_persists_git_sha_and_source_label(self, mock_solver_input):
+        """Failed sweep children must carry git_sha + source_label + source_kind
+        so the impact-analysis UI can render the same columns for failed and
+        successful runs (otherwise failed-row columns are blank, breaking
+        same-row alignment in the table).
+
+        These three fields don't require PocketBase access — git_sha is cached
+        at process start, and source_label/source_kind are pure derivations of
+        session label + scenario_id — so they must be present even when the
+        run fails before tagging.
+        """
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+            # Pin git_sha so the assertion is deterministic
+            patch("api.services.run_tagging.get_git_sha", return_value="deadbeef"),
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_solver.solve.side_effect = ValueError("simulated solver failure")
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["sweep_child"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="sweep_child",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=180,
+                scenario="scen-X",
+                scenario_name="my-scenario",
+                sweep_id="sweep_abc",
+                sweep_label="post-cleanup",
+            )
+
+        create_calls = mock_pb_instance.collection.return_value.create.call_args_list
+        assert len(create_calls) == 1
+        pb_data = create_calls[0][0][0]
+        assert pb_data["status"] == "failed"
+
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert details.get("git_sha") == "deadbeef", f"Failure-path details must include git_sha; got {details!r}"
+        assert details.get("source_kind") == "scenario", (
+            f"Failure-path details must include source_kind='scenario'; got {details!r}"
+        )
+        assert "my-scenario" in (details.get("source_label") or ""), (
+            f"Failure-path details must include source_label with scenario name; got {details!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_failure_path_production_run_has_production_source_kind(self, mock_solver_input):
+        """A failed production (non-scenario) run must report source_kind='production'."""
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+            patch("api.services.run_tagging.get_git_sha", return_value="cafef00d"),
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_solver.solve.side_effect = ValueError("boom")
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["prod_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="prod_run",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=60,
+                # No scenario → production
+            )
+
+        pb_data = mock_pb_instance.collection.return_value.create.call_args_list[0][0][0]
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert details.get("source_kind") == "production"
+        assert details.get("git_sha") == "cafef00d"

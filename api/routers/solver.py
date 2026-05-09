@@ -164,6 +164,18 @@ async def post_run_sweep(
         scenario_name = getattr(scenario_record, "name", None) or request.scenario_id
         session_cm_id = int(getattr(scenario_record, "session_cm_id", 0))
         year = int(getattr(scenario_record, "year", 0))
+        # A malformed saved_scenarios record (missing or zero fields) would
+        # otherwise produce session_cm_id=0/year=0 — which the in-flight
+        # guard below can never match against a real run, slipping past
+        # into a doomed sweep that fails later in fetch_session_data_v2.
+        # Reject up front with 422.
+        if session_cm_id == 0 or year == 0:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Scenario {scenario_id} has missing or invalid session_cm_id ({session_cm_id}) or year ({year})"
+                ),
+            )
 
     # Single-flight guard: reject duplicate in-progress sweeps/runs against the
     # same session or scenario. Mirrors /solver/run and /solver/run-multi-session.

@@ -80,15 +80,22 @@ def _count_constraint_types(proto: Any) -> dict[str, int]:
     """Count CP-SAT model constraints grouped by their oneof type name.
 
     Used both for INFEASIBLE diagnostics and for the always-on stats capture
-    that surfaces in the solver debug tab.
+    that surfaces in the solver debug tab. Constraints whose oneof type isn't
+    in ``_CONSTRAINT_TYPES`` (e.g. a future OR-Tools upgrade) land in an
+    ``"unknown"`` bucket so ``sum(counts.values()) == len(proto.constraints)``
+    holds — the impact-analysis breakdown never silently shrinks.
     """
     counts: dict[str, int] = {}
     for c in proto.constraints:
+        matched = False
         for kind in _CONSTRAINT_TYPES:
             checker = getattr(c, f"has_{kind}", None)
             if callable(checker) and checker():
                 counts[kind] = counts.get(kind, 0) + 1
+                matched = True
                 break
+        if not matched:
+            counts["unknown"] = counts.get("unknown", 0) + 1
     return counts
 
 
@@ -736,31 +743,23 @@ class DirectBunkingSolver:
                 )
             )
 
-        # Calculate simple satisfaction stats
-        satisfied_requests = {}
-        for person_cm_id, requests in self.input.requests_by_person.items():
-            if person_cm_id not in self.person_ids:
-                continue
-
-            satisfied = []
-            for request in requests:
-                if request.request_type == RequestType.BUNK_WITH.value and request.requested_person_cm_id:
-                    # Check if requested person is also in this session
-                    if request.requested_person_cm_id in self.person_ids:
-                        satisfied.append(f"bunk_with:{request.requested_person_cm_id}")
-
-            if satisfied:
-                satisfied_requests[person_cm_id] = satisfied
+        # Use the shared helper so single-bunk satisfied_requests carry real
+        # PocketBase request IDs (matching the multi-bunk path) rather than
+        # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
+        # and so all request types — NOT_BUNK_WITH, AGE_PREFERENCE, etc. —
+        # are evaluated, not just BUNK_WITH.
+        satisfied_requests = calculate_satisfied_requests(
+            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+        )
 
         # Log results
         logger.info(f"Assigned {len(assignments)} campers to {bunk.name}")
         logger.info(f"Satisfied {len(satisfied_requests)} campers' requests")
 
-        # Minimal stats payload — single-bunk runs bypass CP-SAT, so most
-        # solver-internal fields are None. The keys match _build_stats_dict so
-        # the impact-analysis debug table renders these rows consistently.
-        # Status reflects actual outcome: over-capacity assignments are
-        # physically infeasible even though we still emit them.
+        # Single-bunk runs bypass CP-SAT, but the frontend impact-analysis
+        # table renders every key from `_build_stats_dict`. Emit the full
+        # key set with `None` for fields the simplified path can't populate
+        # so column rendering is identical across session types.
         stats: dict[str, Any] = {
             "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
             "status_code": cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL,
@@ -770,6 +769,25 @@ class DirectBunkingSolver:
             "total_bunks": len(self.bunks),
             "total_requests": len(self.input.requests),
             "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
+            # CP-SAT-only fields are None, not absent — keeps frontend
+            # `stats?.foo` lookups consistent (always null, never undefined).
+            "walltime_seconds": None,
+            "user_time_seconds": None,
+            "deterministic_time": None,
+            "time_budget_seconds": None,
+            "num_workers": None,
+            "best_objective_bound": None,
+            "optimality_gap": None,
+            "gap_integral": None,
+            "num_solutions_found": None,
+            "solution_info": None,
+            "num_branches": None,
+            "num_conflicts": None,
+            "num_booleans": None,
+            "num_integer_variables": None,
+            "model_num_variables": None,
+            "model_num_constraints": None,
+            "constraint_type_breakdown": {},
             "single_bunk_session": True,
         }
 
