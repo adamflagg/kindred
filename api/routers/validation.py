@@ -289,7 +289,6 @@ async def validate_bunking(
                 status=getattr(request_data, "status", "pending"),
                 session_cm_id=str(getattr(request_data, "session_id", "")),
                 year=getattr(request_data, "year", ctx.year),
-                source=getattr(request_data, "source", None),
                 source_field=getattr(request_data, "source_field", None),
                 ai_reasoning=getattr(request_data, "ai_reasoning", None),
                 ai_p1_reasoning=getattr(request_data, "ai_p1_reasoning", None),

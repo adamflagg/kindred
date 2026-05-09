@@ -16,7 +16,6 @@ from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseRequest,
     ParseResult,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.debug.trace_models import Phase3IntentTrace
@@ -56,7 +55,6 @@ def _make_parse_result(original_request_id: str = "orig_req_1") -> ParseResult:
         target_name="Olivia Chen",
         age_preference=None,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence=0.5,
         csv_position=1,
         metadata={},

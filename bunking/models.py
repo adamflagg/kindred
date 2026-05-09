@@ -296,7 +296,6 @@ class BunkRequest(BaseModel):
     requested_person_cm_id: str | None = None
     priority: int = 5
     status: str = "pending"  # pending, approved, rejected
-    source: str | None = None
     notes: str | None = None
     source_field: str | None = None  # CSV field that generated this request
     ai_reasoning: str | dict[str, Any] | None = None  # Legacy AI reasoning data

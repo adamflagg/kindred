@@ -20,7 +20,6 @@ from bunking.sync.bunk_request_processor.core.models import (
     ParseRequest,
     ParseResult,
     Person,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.integration.ai_service import AIRequestContext
@@ -98,7 +97,6 @@ def _create_parsed_request(
         target_name=target_name,
         age_preference=None,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence=confidence,
         csv_position=0,
         metadata={},
@@ -187,7 +185,6 @@ def _create_ranked_ai_response(
                 target_name=target_name,
                 age_preference=None,
                 source_field="bunk_with",
-                source=RequestSource.FAMILY,
                 confidence=confidence,
                 csv_position=0,
                 metadata=metadata,
@@ -852,7 +849,6 @@ class TestPhase3ReturnTypeUnwrapping:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.5,
                     csv_position=0,
                     metadata={},  # No target_person_id
@@ -1056,7 +1052,6 @@ class TestTryRerankerPath:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.8,
                     csv_position=0,
                     metadata={"target_person_id": 111},
@@ -1081,7 +1076,6 @@ class TestTryRerankerPath:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.5,
                     csv_position=0,
                     metadata={"no_match": True, "no_match_reason": "none fit"},
@@ -1110,7 +1104,6 @@ class TestTryRerankerPath:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={
@@ -1155,7 +1148,6 @@ class TestTryRerankerPath:
                     target_name="Zzzzz Qqqqq",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={
@@ -1245,7 +1237,6 @@ class TestPhase3StatsMatchTrace:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={
@@ -1308,7 +1299,6 @@ class TestPhase3StatsMatchTrace:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={
@@ -1516,7 +1506,6 @@ class TestPhase3StatsMatchTrace:
                     target_name="Sarah Smith",
                     age_preference=None,
                     source_field="bunk_with",
-                    source=RequestSource.FAMILY,
                     confidence=0.9,
                     csv_position=0,
                     metadata={

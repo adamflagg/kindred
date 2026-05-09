@@ -23,7 +23,6 @@ import pytest
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseResult,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.services.staff_name_detector import StaffNameDetector
@@ -41,7 +40,6 @@ def _make_parsed_req(
         target_name=target_name,
         age_preference=None,
         source_field="bunking_notes",
-        source=RequestSource.FAMILY,
         confidence=1.0,
         csv_position=0,
         metadata={},

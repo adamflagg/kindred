@@ -12,7 +12,6 @@ from pocketbase import PocketBase
 
 from ...core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -266,7 +265,6 @@ class RequestRepository:
             "session_id": request.session_cm_id,
             "priority": request.priority,
             "confidence_score": request.confidence_score,
-            "source": request.source.value,
             "source_field": request.source_field,
             "csv_position": request.csv_position,
             "year": request.year,
@@ -562,9 +560,6 @@ class RequestRepository:
             session_cm_id=get_field(db_record, "session_id"),
             priority=get_field(db_record, "priority"),
             confidence_score=get_field(db_record, "confidence_score"),
-            source=RequestSource(get_field(db_record, "source"))
-            if get_field(db_record, "source")
-            else RequestSource.FAMILY,
             source_field=get_field(db_record, "source_field"),
             csv_position=get_field(db_record, "csv_position"),
             year=get_field(db_record, "year"),

@@ -11,7 +11,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 from bunking.sync.bunk_request_processor.integration.ai_schemas import AIDisambiguationResponse
@@ -55,7 +54,6 @@ class TestBatchProcessorDisambiguation:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.5,
             csv_position=0,
             metadata={},

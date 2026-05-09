@@ -493,7 +493,6 @@ describe('BunkRequestRow — material age preference marker', () => {
       request_type: 'age_preference',
       age_preference_target: 'older',
       source_field: 'bunk_with',
-      source: 'family',
       status: 'resolved',
       ...overrides,
     })
@@ -525,10 +524,7 @@ describe('BunkRequestRow — material age preference marker', () => {
 
   it('renders S badge when staffAgeBadge=true', () => {
     render(
-      <BunkRequestRow
-        request={ageReq({ source_field: 'bunking_notes', source: 'staff' })}
-        staffAgeBadge={true}
-      />
+      <BunkRequestRow request={ageReq({ source_field: 'bunking_notes' })} staffAgeBadge={true} />
     )
     expect(screen.getByText('S')).toBeInTheDocument()
   })

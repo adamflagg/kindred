@@ -24,7 +24,6 @@ from ..core.models import (
     ParsedRequest,
     ParseRequest,
     ParseResult,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -1749,7 +1748,6 @@ class RequestOrchestrator:
             target_name=None,
             age_preference=target,
             source_field=SourceField.SOCIALIZE_WITH,
-            source=RequestSource.FAMILY,
             confidence=1.0,  # 100% confidence for exact dropdown matches
             csv_position=1,
             metadata={

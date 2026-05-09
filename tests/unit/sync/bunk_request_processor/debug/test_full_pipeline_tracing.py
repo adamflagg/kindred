@@ -55,7 +55,6 @@ class TestFullPipelineTracing:
             ParsedRequest,
             ParseRequest,
             ParseResult,
-            RequestSource,
             RequestType,
         )
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
@@ -88,7 +87,6 @@ class TestFullPipelineTracing:
             target_name="Olivia Chen",
             age_preference=None,
             source_field=SourceField.BUNK_WITH,
-            source=RequestSource.FAMILY,
             confidence=0.95,
             csv_position=1,
             metadata={},

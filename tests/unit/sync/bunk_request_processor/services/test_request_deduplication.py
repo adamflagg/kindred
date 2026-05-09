@@ -50,7 +50,6 @@ def create_parse_result(
     target_names: list[str] | None = None,
 ) -> ParseResult:
     """Helper to create a ParseResult for testing."""
-    from bunking.sync.bunk_request_processor.core.models import RequestSource
 
     parsed_requests = []
     for idx, name in enumerate(target_names or ["John Smith"]):
@@ -61,7 +60,6 @@ def create_parse_result(
                 target_name=name,
                 age_preference=None,
                 source_field=parse_request.field_name,
-                source=RequestSource.FAMILY,
                 confidence=0.9,
                 csv_position=idx,
                 metadata={},

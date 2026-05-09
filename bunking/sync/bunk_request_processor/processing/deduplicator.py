@@ -8,15 +8,20 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass, field
 
+from bunking.logging_config import get_logger
+
 from ..core.models import BunkRequest, RequestStatus, RequestType, source_from_field
 from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
+logger = get_logger(__name__)
+
 # Source field priority for dedup tiebreak.
-# Materiality model: material parent intent > staff exclusion > staff
-# observation > immaterial parent input. Higher number = higher priority.
+# Materiality model: admin authority / material parent intent > staff exclusion >
+# staff observation > immaterial parent input. Higher number = higher priority.
 # confidence_score breaks ties within rank.
 SOURCE_FIELD_PRIORITY = {
+    SourceField.MANUAL: 4,  # admin-UI staff entry (tied with bunk_with — both top-tier positive intent)
     SourceField.BUNK_WITH: 4,  # material parent
     SourceField.NOT_BUNK_WITH: 3,  # staff exclusion
     SourceField.BUNKING_NOTES: 2,  # staff observation (tied with internal_notes)
@@ -28,14 +33,19 @@ SOURCE_FIELD_PRIORITY = {
 def _resolve_source(req: BunkRequest) -> str:
     """Best-effort source string for metadata, never raises.
 
-    Mirrors the validator pattern (bunking_validator.py:527-531) — falls back
-    to the in-memory `req.source` when `source_field` is empty or unknown so
-    a single legacy/malformed row can't abort the whole dedup pass.
+    Defaults to "family" when `source_field` is empty or unknown — matches the
+    historical read-path default at request_repository.py from the era when
+    `source` was a stored column. After #1142 Stage 4 this is the single
+    fallback in the codebase.
     """
     try:
         return source_from_field(req.source_field).value
     except ValueError:
-        return req.source.value
+        logger.debug(
+            "deduplicator: unknown source_field %r, defaulting to 'family'",
+            req.source_field,
+        )
+        return "family"
 
 
 def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bool:
@@ -276,7 +286,7 @@ class Deduplicator:
         for req in all_requests:
             source_record = {
                 # Identifying info
-                "source": req.source.value,
+                "source": _resolve_source(req),
                 "source_field": req.source_field,
                 # AI processing details
                 "confidence_score": req.confidence_score,
@@ -295,9 +305,8 @@ class Deduplicator:
         primary.metadata["is_merged_duplicate"] = True
 
         # Track duplicate sources (legacy, for backwards compatibility).
-        # Falls back to req.source.value when source_field is unknown/empty so
-        # one bad row can't abort the whole merge — mirrors the validator's
-        # try/except pattern at bunking_validator.py:527-531.
+        # `_resolve_source` defaults unknown/empty source_field to "family" so
+        # one bad row can't abort the whole merge.
         duplicate_sources = [_resolve_source(r) for r in duplicates]
         primary.metadata["duplicate_sources"] = duplicate_sources
 

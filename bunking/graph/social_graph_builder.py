@@ -106,7 +106,6 @@ def build_request_edge_attrs(
         "priority": getattr(request, "priority", 5),
         "confidence": getattr(request, "confidence_score", 1.0),
         "reciprocal": reciprocal,
-        "source": getattr(request, "source", None),
         "source_field": sf,
         # `or` instead of getattr default so explicit-None becomes the default.
         "request_type": getattr(request, "request_type", None) or "bunk_with",
@@ -394,7 +393,6 @@ class SocialGraphBuilder:
                             edge_data["has_request"] = True
                             edge_data["request_priority"] = priority
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
-                            edge_data["source"] = getattr(request, "source", None)
                             edge_data["weight"] = max(edge_data["weight"], weight)
                             edge_data["reciprocal_rows"] = reciprocal_rows
                             logger.info(
@@ -434,7 +432,6 @@ class SocialGraphBuilder:
                                 edge_data["has_request"] = True
                                 edge_data["request_priority"] = req_priority
                                 edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
-                                edge_data["source"] = getattr(request, "source", None)
                                 edge_data["weight"] = max(edge_data["weight"], weight)
                                 logger.info(
                                     f"Added request as secondary type to sibling edge: {requester} -> {requestee}"

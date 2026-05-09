@@ -12,7 +12,6 @@ from bunking.sync.bunk_request_processor.conflict.conflict_detector import (
 )
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
-    RequestSource,
     RequestType,
 )
 
@@ -39,7 +38,6 @@ def make_parsed_request(
         target_name=target_name or text,
         age_preference=None,
         source_field="bunk_with",
-        source=RequestSource.FAMILY,
         confidence=0.9,
         csv_position=0,
         metadata={},

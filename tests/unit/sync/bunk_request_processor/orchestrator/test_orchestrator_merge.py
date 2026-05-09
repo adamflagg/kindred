@@ -19,7 +19,6 @@ sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
-    RequestSource,
     RequestStatus,
     RequestType,
 )
@@ -35,7 +34,6 @@ class TestOrchestratorMergeOnSave:
         request_type: RequestType = RequestType.BUNK_WITH,
         session_cm_id: int = 1000002,
         source_field: str = "bunk_with",
-        source: RequestSource = RequestSource.FAMILY,
         confidence_score: float = 0.95,
         year: int = 2025,
         metadata: dict[str, Any] | None = None,
@@ -48,7 +46,6 @@ class TestOrchestratorMergeOnSave:
             session_cm_id=session_cm_id,
             priority=3,
             confidence_score=confidence_score,
-            source=source,
             source_field=source_field,
             csv_position=0,
             year=year,

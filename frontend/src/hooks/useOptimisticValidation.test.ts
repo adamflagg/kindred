@@ -28,7 +28,6 @@ function createMockRequest(overrides: Partial<BunkRequestsResponse> = {}): BunkR
     session_id: 1000001,
     priority: 3,
     confidence_score: 0.95,
-    source: 'family',
     source_field: 'share_bunk_with',
     status: 'pending',
     year: 2025,

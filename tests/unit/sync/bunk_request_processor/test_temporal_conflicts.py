@@ -14,7 +14,6 @@ from unittest.mock import Mock
 from bunking.sync.bunk_request_processor.core.models import (
     ParsedRequest,
     ParseResult,
-    RequestSource,
     RequestType,
 )
 
@@ -119,7 +118,6 @@ class TestTemporalConflictFiltering:
             target_name=target_name,
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=csv_position,
             metadata={},
@@ -415,7 +413,6 @@ class TestParsedRequestTemporalFields:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=1,
             metadata={},
@@ -431,7 +428,6 @@ class TestParsedRequestTemporalFields:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=1,
             metadata={},
@@ -446,7 +442,6 @@ class TestParsedRequestTemporalFields:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=1,
             metadata={},
@@ -470,7 +465,6 @@ class TestResolveByDateOrPosition:
             target_name="SIBLING",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.9,
             csv_position=csv_position,
             metadata={},

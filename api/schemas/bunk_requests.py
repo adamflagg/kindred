@@ -20,7 +20,6 @@ class BunkRequestCreate(BaseModel):
     confidence_score: float = 1.0
     parse_notes: str = ""
     socialize_explain: str = ""
-    request_source: str
     is_reciprocal: bool = False
 
 

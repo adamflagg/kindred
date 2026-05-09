@@ -124,6 +124,23 @@ unless the user overrides explicitly.
 Hold for user input. Don't auto-pick. If the user says "you choose,"
 suggest the highest re-tallied count from Step 2.
 
+## Step 4a: Create a worktree for this round
+
+Every consolidation round happens in a worktree, never the main repo folder.
+Even if the user invokes the skill from `~/kindred`, create a worktree.
+
+```bash
+WORKTREE_NAME="consolidate-${TABLE}-$(date +%Y%m%d)"
+"$MAIN_REPO/scripts/worktree/new.sh" "$WORKTREE_NAME"
+WORKTREE_DIR="$HOME/kindred-worktrees/$WORKTREE_NAME"
+```
+
+All filesystem writes from Step 7 onward target `$WORKTREE_DIR/...`, NEVER
+`$MAIN_REPO/...`. The tracking doc is the only artifact in `$MAIN_REPO`
+(gitignored, not branched).
+
+If a worktree with that name already exists, append `-$(date +%H%M)` and retry.
+
 ## Step 5: Walk the chosen table's migration chain
 
 For the chosen table T, enumerate every file that mutates T. For each,
@@ -165,16 +182,16 @@ SCRATCH=$(mktemp -d -t pb-consolidate-XXXX)
 trap 'rm -rf "$SCRATCH"' EXIT INT TERM
 
 mkdir -p "$SCRATCH/proposed"
-cp "$MAIN_REPO"/pocketbase/pb_migrations/*.js "$SCRATCH/proposed/"
+cp "$WORKTREE_DIR"/pocketbase/pb_migrations/*.js "$SCRATCH/proposed/"
 
 # 1) Replace base CREATE with the merged version
 # 2) Delete absorbed files from $SCRATCH/proposed/
 # 3) Trim multi-table files (write trimmed versions in-place)
 # (do these steps with Write/Edit tools using the in-memory mutation log)
 
-"$MAIN_REPO/scripts/dev/verify-consolidation.sh" \
+"$WORKTREE_DIR/scripts/dev/verify-consolidation.sh" \
   "$SCRATCH/proposed" \
-  "$MAIN_REPO/pocketbase/pb_migrations"
+  "$WORKTREE_DIR/pocketbase/pb_migrations"
 ```
 
 Exit 0: proceed to Step 8. Exit 1: drift detected. Save the diff output
@@ -246,3 +263,38 @@ See spec §"Edge cases" for full detail. Quick reference:
    override only with explicit user statement.
 6. **Hardcoded collection IDs** — preserve verbatim in merged CREATE.
 7. **Indexes** — only the final set in the merged CREATE.
+8. **Merged CREATE comments** — the merged file reads like a fresh CREATE
+   migration. Do NOT include comments referencing absorbed/deleted file
+   numbers ("From #1500000092", "added in #095", consolidated-migrations
+   block headers, etc.). Those filenames vanish after the round ships and
+   the references rot. Keep functional comments only when they explain WHY
+   a non-obvious value was chosen ("max=200 because CampMinder caps name
+   at 200"). The commit message and tracking-doc per-round detail block
+   carry the historical context.
+9. **Collapse `app.save()` calls — only when truly redundant**
+
+   When the original CREATE used multiple `app.save()` calls, evaluate
+   whether the consolidated form still needs them. Three patterns to
+   recognize:
+
+   a. **Self-referencing relation (collapsible)** — original does
+      `app.save(collection)` then `collection.fields.add(new Field({...,
+      collectionId: SELF_ID}))` then `app.save(collection)`. With a
+      hardcoded collection-ID constant defined before the constructor,
+      the self-relation can move into the initial `fields:` array.
+      **Collapse to one save.**
+
+   b. **Seed-data inserts (NOT collapsible)** — original does
+      `app.save(collection)` then `new Record(collection)` followed by
+      `app.save(record)` for each seed row. The Record constructor needs
+      a saved collection (it copies the schema by reference). **Keep
+      multi-save.** Pattern is common for `config`, `roles`, and other
+      lookup-style tables.
+
+   c. **Cross-collection circular refs (NOT collapsible)** — rare; two
+      collections reference each other via relation fields and neither
+      can be created with both fields populated. Keep both saves; document
+      in the commit message.
+
+   The verification harness must still pass after any collapse — if a
+   collapse breaks the diff, restore the original multi-save structure.

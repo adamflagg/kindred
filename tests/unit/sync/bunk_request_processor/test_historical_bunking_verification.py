@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestSource, RequestType
+from bunking.sync.bunk_request_processor.core.models import ParsedRequest, RequestType
 
 # Import modules under test
 from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import TemporalNameCache
@@ -199,7 +199,6 @@ class TestLastYearKeywordDetection:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.8,
             csv_position=0,
             metadata={"keywords_found": ["from last year"]},
@@ -221,7 +220,6 @@ class TestLastYearKeywordDetection:
             target_name="Emma",
             age_preference=None,
             source_field="bunk_with",
-            source=RequestSource.FAMILY,
             confidence=0.8,
             csv_position=0,
             metadata={},

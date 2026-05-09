@@ -18,6 +18,7 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestSource,
     RequestStatus,
     RequestType,
+    source_from_field,
 )
 from bunking.sync.bunk_request_processor.processing.deduplicator import (
     Deduplicator,
@@ -48,7 +49,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -86,7 +86,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -118,7 +117,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -133,7 +131,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.75,
-            source=RequestSource.FAMILY,  # Same source!
             source_field="bunk_with",
             csv_position=1,
             year=2025,
@@ -158,7 +155,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -174,7 +170,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.STAFF,
             source_field="not_bunk_with",
             csv_position=0,
             year=2025,
@@ -222,7 +217,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.85,
-            source=RequestSource.FAMILY,  # Same source!
             source_field="bunk_with",
             csv_position=1,
             year=2025,
@@ -256,7 +250,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.99,  # Higher than base, exercises confidence_boosted_from path too
-            source=RequestSource.FAMILY,
             source_field="",  # Empty string — would raise ValueError without the guard
             csv_position=1,
             year=2025,
@@ -283,7 +276,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -298,7 +290,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.FAMILY,  # Same source!
             source_field="bunk_with",
             csv_position=1,
             year=2025,
@@ -315,7 +306,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.STAFF,
             source_field="not_bunk_with",
             csv_position=0,
             year=2025,
@@ -330,7 +320,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.85,
-            source=RequestSource.STAFF,  # Same source!
             source_field="not_bunk_with",
             csv_position=1,
             year=2025,
@@ -356,7 +345,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.99,  # Higher confidence
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=1,
             year=2025,
@@ -372,7 +360,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.70,  # Lower confidence
-            source=RequestSource.FAMILY,  # Same source!
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -442,7 +429,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
@@ -459,7 +445,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -495,7 +480,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.95,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",  # Family form field
             csv_position=0,
             year=2025,
@@ -512,7 +496,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",  # Free text notes field
             csv_position=0,
             year=2025,
@@ -526,7 +509,7 @@ class TestDeduplicator:
         # Should deduplicate - only ONE kept (source priority first, then max confidence)
         assert len(result.kept_requests) == 1
         # FAMILY source wins over STAFF (#1088 parent-paramount flip), keeps max confidence from both
-        assert result.kept_requests[0].source == RequestSource.FAMILY
+        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.FAMILY
         assert result.kept_requests[0].confidence_score == 0.95  # Max confidence from both
         assert result.kept_requests[0].metadata["origin"] == "form"
         assert result.statistics["duplicates_removed"] == 1
@@ -545,7 +528,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -562,7 +544,6 @@ class TestDeduplicator:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field="internal_notes",  # Staff internal notes
             csv_position=0,
             year=2025,
@@ -602,7 +583,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,  # Higher confidence
-            source=RequestSource.FAMILY,
             source_field="bunk_with",  # Parent embedded negative in bunk_with
             csv_position=0,
             year=2025,
@@ -618,7 +598,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.90,  # Lower confidence
-            source=RequestSource.STAFF,
             source_field=SourceField.NOT_BUNK_WITH,  # Staff explicit validation
             csv_position=0,
             year=2025,
@@ -632,7 +611,7 @@ class TestSimplifiedSourcePriority:
 
         # Family wins even with staff having a different source_field (source > confidence)
         assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].source == RequestSource.FAMILY
+        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.FAMILY
         assert result.kept_requests[0].source_field == "bunk_with"
         assert result.statistics["duplicates_removed"] == 1
 
@@ -648,7 +627,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.98,  # Higher confidence
-            source=RequestSource.FAMILY,
             source_field="bunk_with",
             csv_position=0,
             year=2025,
@@ -664,7 +642,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=3,
             confidence_score=0.75,  # Lower confidence
-            source=RequestSource.FAMILY,  # Same source
             source_field="bunk_with",
             csv_position=1,
             year=2025,
@@ -682,23 +659,26 @@ class TestSimplifiedSourcePriority:
         assert result.statistics["duplicates_removed"] == 1
 
     def test_source_field_priority_structure(self):
-        """SOURCE_FIELD_PRIORITY contains all 5 source fields with materiality-based ordering.
+        """SOURCE_FIELD_PRIORITY contains all 6 source fields with materiality-based ordering.
 
-        Locks the Stage 3 ordering: bunk_with (material parent) > not_bunk_with
-        (staff exclusion) > bunking_notes/internal_notes (staff observation, tied) >
-        socialize_with (immaterial parent). Confidence breaks ties within rank.
+        Locks the Stage 3 ordering: manual (admin authority) tied with bunk_with
+        (material parent) > not_bunk_with (staff exclusion) > bunking_notes/
+        internal_notes (staff observation, tied) > socialize_with (immaterial parent).
+        Confidence breaks ties within rank.
         """
         from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_FIELD_PRIORITY
 
-        # All 5 canonical source_field values must be present
-        assert len(SOURCE_FIELD_PRIORITY) == 5
+        # All 6 canonical source_field values must be present
+        assert len(SOURCE_FIELD_PRIORITY) == 6
         assert SourceField.BUNK_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.NOT_BUNK_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.BUNKING_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.INTERNAL_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.SOCIALIZE_WITH in SOURCE_FIELD_PRIORITY
+        assert SourceField.MANUAL in SOURCE_FIELD_PRIORITY
 
         # Materiality ordering
+        assert SOURCE_FIELD_PRIORITY[SourceField.MANUAL] == SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH]
         assert SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] == SOURCE_FIELD_PRIORITY[SourceField.INTERNAL_NOTES]
@@ -728,7 +708,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.70,  # Lower confidence
-            source=RequestSource.STAFF,
             source_field=SourceField.NOT_BUNK_WITH,
             csv_position=0,
             year=2025,
@@ -744,7 +723,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.95,  # Higher confidence
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
@@ -776,7 +754,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.70,  # Lower confidence
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
@@ -792,7 +769,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.95,  # Higher confidence
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
@@ -824,7 +800,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.85,  # Lower confidence
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
@@ -840,7 +815,6 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=2,
             confidence_score=0.95,  # Higher confidence
-            source=RequestSource.STAFF,
             source_field=SourceField.INTERNAL_NOTES,
             csv_position=0,
             year=2025,
@@ -881,7 +855,6 @@ class TestDatabaseDuplicateMerge:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source=RequestSource.STAFF,
             source_field="not_bunk_with",
             csv_position=0,
             year=2025,
@@ -936,7 +909,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,  # AI-parsed from staff notes
             csv_position=0,
             year=2025,
@@ -953,7 +925,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=1.0,  # Dropdown is 100% confidence
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,  # Dropdown field (immaterial parent)
             csv_position=0,
             year=2025,
@@ -970,7 +941,7 @@ class TestAgePreferenceDeduplication:
 
         # bunking_notes (rank 2) outranks socialize_with (rank 1) under #1142 Stage 3
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.STAFF
+        assert source_from_field(kept.source_field) == RequestSource.STAFF
         assert kept.source_field == SourceField.BUNKING_NOTES
 
         # Confidence is boosted to max from all sources via merge_metadata
@@ -1000,7 +971,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
@@ -1017,7 +987,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=1.0,  # Higher confidence — but rank dominates
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
@@ -1031,7 +1000,7 @@ class TestAgePreferenceDeduplication:
         # Deduplicated — bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
         assert len(result.kept_requests) == 1
         kept = result.kept_requests[0]
-        assert kept.source == RequestSource.STAFF
+        assert source_from_field(kept.source_field) == RequestSource.STAFF
         assert kept.source_field == SourceField.BUNKING_NOTES
         assert kept.metadata["age_preference"] == "older"
         # Confidence boosted to max from all sources via merge_metadata
@@ -1046,7 +1015,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=0,
             year=2025,
@@ -1062,7 +1030,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field="bunking_notes",
             csv_position=1,
             year=2025,
@@ -1086,7 +1053,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,  # Session 2
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -1102,7 +1068,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000003,  # Session 3 - different!
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -1126,7 +1091,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -1142,7 +1106,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -1181,7 +1144,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
@@ -1216,7 +1178,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=0,
             year=2025,
@@ -1233,7 +1194,6 @@ class TestAgePreferenceDeduplication:
             session_cm_id=1000002,
             priority=1,
             confidence_score=1.0,
-            source=RequestSource.FAMILY,
             source_field=SourceField.SOCIALIZE_WITH,
             csv_position=0,
             year=2025,
@@ -1251,7 +1211,7 @@ class TestAgePreferenceDeduplication:
         )
         assert result.statistics["duplicates_removed"] == 1
         # bunking_notes (rank 2) wins over socialize_with (rank 1) under #1142 Stage 3
-        assert result.kept_requests[0].source == RequestSource.STAFF
+        assert source_from_field(result.kept_requests[0].source_field) == RequestSource.STAFF
         assert result.kept_requests[0].source_field == SourceField.BUNKING_NOTES
 
 
@@ -1277,7 +1237,6 @@ class TestParentAgePreferenceDeduplication:
         self,
         source_field: str,
         confidence: float,
-        source: RequestSource = RequestSource.FAMILY,
         requester_cm_id: int = 1001,
         year: int = 2025,
         session_cm_id: int = 1000001,
@@ -1289,7 +1248,6 @@ class TestParentAgePreferenceDeduplication:
             session_cm_id=session_cm_id,
             priority=1,
             confidence_score=confidence,
-            source=source,
             source_field=source_field,
             csv_position=0,
             year=year,
@@ -1332,23 +1290,6 @@ class TestParentAgePreferenceDeduplication:
         result2 = deduplicator.deduplicate_batch([bunk_with_req, socialize_req])
         assert result2.kept_requests[0].source_field == SourceField.BUNK_WITH
 
-    def test_family_paramount_dominates_bunk_with_bias(self, deduplicator):
-        """SOURCE_PRIORITY (family > staff, #1088) dominates the bunk_with source_field tiebreaker.
-
-        A FAMILY bunk_with request beats a STAFF socialize_with request because
-        SOURCE_PRIORITY is the first sort key. The bunk_with bias is secondary and
-        only changes outcomes within same-source (parent-vs-parent) ties.
-        """
-        family_bunk_with = self._age_pref(SourceField.BUNK_WITH, confidence=0.92, source=RequestSource.FAMILY)
-        staff_socialize = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=0.80, source=RequestSource.STAFF)
-
-        result = deduplicator.deduplicate_batch([family_bunk_with, staff_socialize])
-
-        assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].source == RequestSource.FAMILY, (
-            "Family source must win over staff socialize_with; SOURCE_PRIORITY (family > staff) dominates"
-        )
-
     def test_rank_dominates_confidence_when_both_non_bunk_with(self, deduplicator):
         """Even when neither request is bunk_with, source_field rank dominates confidence.
 
@@ -1388,7 +1329,6 @@ class TestConflictTargetDemotion:
         source_field: str,
         age_target: str,
         confidence: float = 0.90,
-        source: RequestSource = RequestSource.FAMILY,
         requester_cm_id: int = 4001,
         year: int = 2025,
         session_cm_id: int = 1000001,
@@ -1400,7 +1340,6 @@ class TestConflictTargetDemotion:
             session_cm_id=session_cm_id,
             priority=1,
             confidence_score=confidence,
-            source=source,
             source_field=source_field,
             csv_position=0,
             year=year,
@@ -1567,7 +1506,6 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=3,
             confidence_score=0.90,
-            source=RequestSource.FAMILY,
             source_field=SourceField.BUNK_WITH,
             csv_position=0,
             year=2025,
@@ -1583,7 +1521,6 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=1,
             confidence_score=0.85,
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=1,
             year=2025,
@@ -1600,8 +1537,8 @@ class TestFamilyParamountTiebreak:
         survivor = result.kept_requests[0]
 
         # FAMILY is primary — origin of intent is authoritative
-        assert survivor.source == RequestSource.FAMILY, (
-            f"Expected FAMILY to be primary (parent-paramount); got {survivor.source}"
+        assert source_from_field(survivor.source_field) == RequestSource.FAMILY, (
+            f"Expected FAMILY to be primary (parent-paramount); got {source_from_field(survivor.source_field)}"
         )
         assert survivor.source_field == SourceField.BUNK_WITH, (
             f"Expected source_field=bunk_with on survivor; got {survivor.source_field}"
@@ -1609,10 +1546,10 @@ class TestFamilyParamountTiebreak:
 
         # Staff row is the dropped duplicate
         assert len(result.duplicate_groups) == 1
-        assert result.duplicate_groups[0].primary.source == RequestSource.FAMILY
+        assert source_from_field(result.duplicate_groups[0].primary.source_field) == RequestSource.FAMILY
         dropped = result.duplicate_groups[0].duplicates
         assert len(dropped) == 1
-        assert dropped[0].source == RequestSource.STAFF
+        assert source_from_field(dropped[0].source_field) == RequestSource.STAFF
 
         # _merge_metadata must have folded the staff row's metadata into the survivor
         assert survivor.metadata.get("is_merged_duplicate") is True
@@ -1647,7 +1584,6 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=1,
             confidence_score=0.88,
-            source=RequestSource.FAMILY,
             source_field=SourceField.BUNK_WITH,  # Parent prose AI-parsed to age_preference
             csv_position=0,
             year=2025,
@@ -1663,7 +1599,6 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=1,
             confidence_score=0.80,
-            source=RequestSource.STAFF,
             source_field=SourceField.BUNKING_NOTES,
             csv_position=1,
             year=2025,
@@ -1680,15 +1615,15 @@ class TestFamilyParamountTiebreak:
         survivor = result.kept_requests[0]
 
         # FAMILY wins as primary — parent-paramount
-        assert survivor.source == RequestSource.FAMILY, (
-            f"Expected FAMILY to win age_preference tiebreak (parent-paramount); got {survivor.source}"
+        assert source_from_field(survivor.source_field) == RequestSource.FAMILY, (
+            f"Expected FAMILY to win age_preference tiebreak (parent-paramount); got {source_from_field(survivor.source_field)}"
         )
 
         # Staff row recorded as the dropped duplicate
         assert len(result.duplicate_groups) == 1
         dropped = result.duplicate_groups[0].duplicates
         assert len(dropped) == 1
-        assert dropped[0].source == RequestSource.STAFF
+        assert source_from_field(dropped[0].source_field) == RequestSource.STAFF
 
 
 if __name__ == "__main__":
