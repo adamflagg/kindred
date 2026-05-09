@@ -298,7 +298,7 @@ Add cross-cutting findings if anything novel surfaced (e.g., a
 multi-table migration was trimmed and the remainder is queued for another
 table's future round).
 
-## Step 10: Print summary, hand back
+## Step 10: Print summary
 
 | Field | Value |
 |-------|-------|
@@ -307,15 +307,84 @@ table's future round).
 | Files absorbed | M (deleted) + K (trimmed multi-table) |
 | Net migration count delta | -M (no new files) |
 | Verification | ✅ schema match |
-| PR draft message | "refactor(pb): consolidate $TABLE migrations (round N, -M files)" |
+| PR title | "refactor(pb): consolidate $TABLE migrations (round N, -M files)" |
 
-Stop. Do NOT auto-commit, do NOT push, do NOT open a PR. The user reviews
-the working-tree changes manually and decides when/how to ship.
+Print the table, then proceed directly to Step 11 — do NOT stop and ask.
 
 After the PR merges to main and prod restarts, the OnServe hook in
 `pocketbase/main.go` automatically calls `migrate history-sync` on first
 boot, removing orphan `_migrations` rows for the absorbed files. Fresh
 deploys see this hook as a no-op.
+
+## Step 11: Auto-commit, push, open PR
+
+Stage the migration changes, commit with the standard consolidation
+message, push, and open a PR. All git operations run from `$WORKTREE_DIR`.
+
+```bash
+cd "$WORKTREE_DIR"
+git add pocketbase/pb_migrations/
+git commit -m "$(cat <<'EOF'
+refactor(pb): consolidate $TABLE migrations (round N, -M files)
+
+<one-paragraph summary of what was absorbed/trimmed and the verified
+final state — fields, indexes, rules. Mirrors the per-table tracking-doc
+entry but written for the squash-merge commit log.>
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+git push -u origin "$(git branch --show-current)"
+```
+
+Then open the PR:
+
+```bash
+gh pr create --title "refactor(pb): consolidate $TABLE migrations (round N, -M files)" --body "$(cat <<'EOF'
+## Summary
+- Collapses M modify-migrations into base #BBB (CREATE)
+- <multi-table trim notes if any>
+- Net delta: **-M files** in `pocketbase/pb_migrations/`
+- Verified empirically by `scripts/dev/verify-consolidation.sh`: schemas match between proposed (1 file) and current (M+1 files)
+
+Absorbed:
+- `<file1>` — <one-line summary>
+- `<file2>` — <one-line summary>
+- ...
+
+Final state of `$TABLE`: <field count>, <index count>, <rules summary>.
+
+## Test plan
+- [x] Local schema-diff harness passes (`schemas match`)
+- [ ] CI green
+- [ ] After merge, prod boot's OnServe `migrate history-sync` hook auto-cleans the orphan `_migrations` rows for the M absorbed files
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+Capture the PR number from `gh pr create` output for Step 12.
+
+If pre-push hooks fail, fix the underlying issue and retry — never use
+`--no-verify`. If the commit hits a commitlint warning about footer
+spacing, that's non-blocking and the commit succeeds.
+
+## Step 12: Auto-invoke scan-it
+
+Immediately invoke the `scan-it` skill against the new PR:
+
+```
+Skill tool: scan-it <PR#>
+```
+
+scan-it runs the internal code-review chain (5 parallel reviewer agents
++ Haiku scoring) plus pulls CodeRabbit findings, dedupes, and presents a
+table. Hold for user input on which findings (if any) to action.
+
+If the user accepts the consolidation as-is (no fixes) or asks for "handle
+it", invoke `handle-it` to enable auto-merge, monitor CI, and clean up
+the worktree.
 
 ## Edge cases the skill must handle
 
