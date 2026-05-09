@@ -28,6 +28,16 @@ for d in "$PROPOSED_DIR" "$CURRENT_DIR"; do
   fi
 done
 
+# Canonicalize to absolute paths so the symlink in pb_apply() resolves
+# correctly regardless of whether the caller passed relative or absolute paths.
+PROPOSED_DIR=$(cd "$PROPOSED_DIR" && pwd)
+CURRENT_DIR=$(cd "$CURRENT_DIR" && pwd)
+
+# PB v0.37 ships 6 default collections (_authOrigins, _externalAuths, _mfas,
+# _otps, _superusers, users). Smoke check uses this as a lower bound — if a
+# future PB version ships more or fewer defaults, update this constant.
+PB_DEFAULT_COLLECTIONS=6
+
 if [[ ! -x "$DIFF_SCRIPT" ]]; then
   echo "error: $DIFF_SCRIPT missing or not executable" >&2
   exit 2
@@ -73,6 +83,8 @@ pb_apply() {
               --automigrate=true \
               > "$log" 2>&1 &
   local pid=$!
+  # Ensure backgrounded PB is cleaned up on every exit path from this function.
+  trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' RETURN
 
   local ok=0
   for _ in $(seq 1 100); do
@@ -82,8 +94,8 @@ pb_apply() {
     sleep 0.1
   done
 
-  kill "$pid" 2>/dev/null
-  wait "$pid" 2>/dev/null
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
   rm -rf "$hooks_dir"
 
   if [[ "$ok" -ne 1 ]]; then
@@ -95,8 +107,8 @@ pb_apply() {
   local coll_count js_mig_count
   coll_count=$(sqlite3 "$db_dir/data.db" "SELECT COUNT(*) FROM _collections")
   js_mig_count=$(sqlite3 "$db_dir/data.db" "SELECT COUNT(*) FROM _migrations WHERE file LIKE '%.js'")
-  if [[ "$coll_count" -le 6 ]]; then
-    echo "error: smoke check failed — $coll_count collections in $db_dir (expected >6, only PB defaults applied)" >&2
+  if [[ "$coll_count" -le "$PB_DEFAULT_COLLECTIONS" ]]; then
+    echo "error: smoke check failed — $coll_count collections in $db_dir (expected >$PB_DEFAULT_COLLECTIONS, only PB defaults applied)" >&2
     exit 2
   fi
   if [[ "$js_mig_count" -lt 1 ]]; then

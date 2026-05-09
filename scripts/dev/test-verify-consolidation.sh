@@ -97,4 +97,18 @@ else
 fi
 
 echo
+echo "=== TEST 5: relative-path invocation should still work (regression for canonicalization fix) ==="
+# This catches the symlink-with-relative-path footgun. Before canonicalization,
+# the harness silently failed when called with relative paths from any cwd.
+( cd "$REPO_ROOT" && "$VERIFY_SCRIPT" pocketbase/pb_migrations pocketbase/pb_migrations >/dev/null 2>"$SCRATCH/t5.err" )
+rc=$?
+if [[ $rc -eq 0 ]]; then
+  echo "PASS: relative paths handled correctly"
+else
+  echo "FAIL: relative-path invocation expected exit 0, got $rc; stderr:" >&2
+  cat "$SCRATCH/t5.err" >&2
+  exit 1
+fi
+
+echo
 echo "All tests passed."
