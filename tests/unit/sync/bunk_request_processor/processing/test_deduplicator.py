@@ -659,23 +659,26 @@ class TestSimplifiedSourcePriority:
         assert result.statistics["duplicates_removed"] == 1
 
     def test_source_field_priority_structure(self):
-        """SOURCE_FIELD_PRIORITY contains all 5 source fields with materiality-based ordering.
+        """SOURCE_FIELD_PRIORITY contains all 6 source fields with materiality-based ordering.
 
-        Locks the Stage 3 ordering: bunk_with (material parent) > not_bunk_with
-        (staff exclusion) > bunking_notes/internal_notes (staff observation, tied) >
-        socialize_with (immaterial parent). Confidence breaks ties within rank.
+        Locks the Stage 3 ordering: manual (admin authority) tied with bunk_with
+        (material parent) > not_bunk_with (staff exclusion) > bunking_notes/
+        internal_notes (staff observation, tied) > socialize_with (immaterial parent).
+        Confidence breaks ties within rank.
         """
         from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_FIELD_PRIORITY
 
-        # All 5 canonical source_field values must be present
-        assert len(SOURCE_FIELD_PRIORITY) == 5
+        # All 6 canonical source_field values must be present
+        assert len(SOURCE_FIELD_PRIORITY) == 6
         assert SourceField.BUNK_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.NOT_BUNK_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.BUNKING_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.INTERNAL_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.SOCIALIZE_WITH in SOURCE_FIELD_PRIORITY
+        assert SourceField.MANUAL in SOURCE_FIELD_PRIORITY
 
         # Materiality ordering
+        assert SOURCE_FIELD_PRIORITY[SourceField.MANUAL] == SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH]
         assert SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] == SOURCE_FIELD_PRIORITY[SourceField.INTERNAL_NOTES]

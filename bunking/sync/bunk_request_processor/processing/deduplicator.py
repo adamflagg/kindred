@@ -17,10 +17,11 @@ from ..shared.constants import SourceField
 logger = get_logger(__name__)
 
 # Source field priority for dedup tiebreak.
-# Materiality model: material parent intent > staff exclusion > staff
-# observation > immaterial parent input. Higher number = higher priority.
+# Materiality model: admin authority / material parent intent > staff exclusion >
+# staff observation > immaterial parent input. Higher number = higher priority.
 # confidence_score breaks ties within rank.
 SOURCE_FIELD_PRIORITY = {
+    SourceField.MANUAL: 4,  # admin-UI staff entry (tied with bunk_with — both top-tier positive intent)
     SourceField.BUNK_WITH: 4,  # material parent
     SourceField.NOT_BUNK_WITH: 3,  # staff exclusion
     SourceField.BUNKING_NOTES: 2,  # staff observation (tied with internal_notes)

@@ -47,6 +47,7 @@ class RequestSource(Enum):
       - do_not_share_bunk_with (not_bunk_with)
       - bunking_notes
       - internal_notes
+      - manual (admin-UI / CreateRequestModal — admin entry is staff entry)
     """
 
     FAMILY = "family"

@@ -424,6 +424,14 @@ class TestSourceFromField:
         assert source_from_field("bunking_notes") == RequestSource.STAFF
         assert source_from_field("internal_notes") == RequestSource.STAFF
 
+    def test_unknown_source_field_raises_value_error(self):
+        """Unknown input must raise ValueError — `_resolve_source` and
+        `_derive_source` rely on this contract for their try/except fallback."""
+        from bunking.sync.bunk_request_processor.core.models import source_from_field
+
+        with pytest.raises(ValueError, match="unknown source_field"):
+            source_from_field("garbage")
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
