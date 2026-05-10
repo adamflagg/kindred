@@ -24,9 +24,9 @@ migrate((app) => {
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         type: "number",
@@ -43,7 +43,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: personsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: 1,
         maxSelect: 1
       },
@@ -53,7 +53,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: sessionsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: 1,
         maxSelect: 1
       },
@@ -63,7 +63,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: bunksCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: 1,
         maxSelect: 1
       },
@@ -85,12 +85,6 @@ migrate((app) => {
         min: 2010,
         max: 2100,
         onlyInt: true
-      },
-      {
-        type: "bool",
-        name: "is_deleted",
-        required: false,
-        presentable: false
       },
       {
         type: "autodate",

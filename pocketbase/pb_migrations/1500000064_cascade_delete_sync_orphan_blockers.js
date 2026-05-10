@@ -3,7 +3,7 @@
  * Migration: Enable cascadeDelete on remaining orphan-blocking relations
  *
  * Extends migration 1500000059 which fixed 5 derived-table relations.
- * This migration fixes the remaining 12 relations where child tables have
+ * This migration fixes the remaining 9 relations where child tables have
  * required references with cascadeDelete=false to parent tables that perform
  * orphan deletion during sync.
  *
@@ -23,9 +23,6 @@
  * - staff_applications.staff -> staff
  * - staff_vehicle_info.staff -> staff
  * - original_bunk_requests.requester -> persons
- * - bunk_assignments.bunk -> bunks
- * - bunk_assignments.person -> persons
- * - bunk_assignments.session -> camp_sessions
  */
 
 migrate((app) => {
@@ -158,42 +155,6 @@ migrate((app) => {
   }))
   app.save(origRequests)
 
-  // 10. bunk_assignments.bunk -> bunks
-  const bunkAssignments = app.findCollectionByNameOrId("bunk_assignments")
-  bunkAssignments.fields.add(new Field({
-    type: "relation",
-    name: "bunk",
-    required: true,
-    presentable: false,
-    collectionId: bunksCol.id,
-    cascadeDelete: true,
-    minSelect: 1,
-    maxSelect: 1
-  }))
-  // 11. bunk_assignments.person -> persons
-  bunkAssignments.fields.add(new Field({
-    type: "relation",
-    name: "person",
-    required: true,
-    presentable: false,
-    collectionId: personsCol.id,
-    cascadeDelete: true,
-    minSelect: 1,
-    maxSelect: 1
-  }))
-  // 12. bunk_assignments.session -> camp_sessions
-  bunkAssignments.fields.add(new Field({
-    type: "relation",
-    name: "session",
-    required: true,
-    presentable: false,
-    collectionId: sessionsCol.id,
-    cascadeDelete: true,
-    minSelect: 1,
-    maxSelect: 1
-  }))
-  app.save(bunkAssignments)
-
 }, (app) => {
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
@@ -262,19 +223,4 @@ migrate((app) => {
     collectionId: personsCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
   }))
   app.save(origRequests)
-
-  const bunkAssignments = app.findCollectionByNameOrId("bunk_assignments")
-  bunkAssignments.fields.add(new Field({
-    type: "relation", name: "bunk", required: true, presentable: false,
-    collectionId: bunksCol.id, cascadeDelete: false, minSelect: 1, maxSelect: 1
-  }))
-  bunkAssignments.fields.add(new Field({
-    type: "relation", name: "person", required: true, presentable: false,
-    collectionId: personsCol.id, cascadeDelete: false, minSelect: 1, maxSelect: 1
-  }))
-  bunkAssignments.fields.add(new Field({
-    type: "relation", name: "session", required: true, presentable: false,
-    collectionId: sessionsCol.id, cascadeDelete: false, minSelect: 1, maxSelect: 1
-  }))
-  app.save(bunkAssignments)
 })
