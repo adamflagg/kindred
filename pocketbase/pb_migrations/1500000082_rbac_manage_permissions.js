@@ -80,13 +80,7 @@ migrate((app) => {
   urCol.deleteRule = usersManageRule
   app.save(urCol)
 
-  // 4. Update config collection — allow registration.manage for writes
-  const configCol = app.findCollectionByNameOrId("config")
-  const configWriteRule = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "registration.manage"'
-  configCol.createRule = configWriteRule
-  configCol.updateRule = configWriteRule
-  configCol.deleteRule = '@request.auth.is_admin = true'
-  app.save(configCol)
+  // 4. Update config collection — trimmed; final rules baked into merged CREATE.
 
 }, (app) => {
   // Revert: remove new permissions from roles, restore strict admin rules
@@ -121,10 +115,5 @@ migrate((app) => {
   urCol.deleteRule = '@request.auth.is_admin = true'
   app.save(urCol)
 
-  // Revert config collection to admin-only writes
-  const configCol = app.findCollectionByNameOrId("config")
-  configCol.createRule = '@request.auth.is_admin = true'
-  configCol.updateRule = '@request.auth.is_admin = true'
-  configCol.deleteRule = '@request.auth.is_admin = true'
-  app.save(configCol)
+  // Revert config collection — trimmed; merged CREATE owns the rule state.
 })
