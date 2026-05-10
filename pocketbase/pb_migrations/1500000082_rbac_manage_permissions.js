@@ -7,7 +7,7 @@
  * - Adds sheets.export to Finance and Bunking Staff roles
  * - Recomputes cached_permissions for affected users
  * - Restores users.manage support in user_roles collection rules
- * - Updates config collection to allow registration.manage for writes
+ * - (config write rule for registration.manage trimmed — baked into merged CREATE #011)
  */
 
 migrate((app) => {

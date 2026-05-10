@@ -40,6 +40,19 @@ def test_historical_context_keys_in_history_tracking_section():
     assert "'ai.history_tracking.enabled': 'history-tracking'" in text
 
 
-def test_history_tracking_fixup_migration_exists():
-    matches = list((REPO_ROOT / "pocketbase/pb_migrations").glob("*history_tracking_section_split*"))
-    assert matches, "fix-up migration for history-tracking split not found"
+def test_history_tracking_seed_bakeover_in_main_migration():
+    """The standalone fix-up migration was absorbed into the base config CREATE
+    (1500000011) — the SECTION_MAPPING in #011 now seeds these keys directly into
+    'history-tracking', so the fix-up file is unreachable on a fresh DB and was
+    deleted during config consolidation. This test guards the bakeover."""
+    text = MAIN_MIGRATION.read_text()
+    for key in [
+        "ai.historical_context.enabled",
+        "ai.historical_context.years_to_check",
+        "ai.history_tracking.enabled",
+    ]:
+        assert f"'{key}': 'history-tracking'" in text, f"{key} must be seeded with section='history-tracking' in #011"
+    for key in ["ai.historical_context.enabled", "ai.history_tracking.enabled"]:
+        assert f"'{key}': 'ai-validation-rules'" not in text, (
+            f"{key} must not leak back into 'ai-validation-rules' section"
+        )
