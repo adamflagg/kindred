@@ -122,6 +122,8 @@ migrate((app) => {
       { type: "number", name: "year", required: true },
       { type: "autodate", name: "created", onCreate: true, onUpdate: false },
       { type: "autodate", name: "updated", onCreate: true, onUpdate: true },
+      { type: "text", name: "disposition_reason", max: 100 },
+      { type: "bool", name: "is_reciprocal" },
     ],
     indexes: [
       "CREATE INDEX idx_debug_summary_run_id ON debug_pipeline_summary (run_id)",
