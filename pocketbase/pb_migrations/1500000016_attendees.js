@@ -5,8 +5,6 @@
  *
  * Links persons to camp sessions with enrollment status. Year-scoped to prevent
  * data contamination when CampMinder reuses session IDs across years.
- *
- * CONSOLIDATED: Includes changes from migration 1500000040 (add "none" status)
  */
 
 const COLLECTION_ID_ATTENDEES = "col_attendees";
@@ -21,9 +19,9 @@ migrate((app) => {
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         name: "person_id",
@@ -91,12 +89,6 @@ migrate((app) => {
         max: ""
       },
       {
-        name: "is_active",
-        type: "bool",
-        required: false,
-        presentable: false
-      },
-      {
         name: "session",
         type: "relation",
         required: true,
@@ -128,6 +120,26 @@ migrate((app) => {
       "CREATE UNIQUE INDEX `idx_attendees_unique` ON `attendees` (`person_id`, `year`, `session`)"
     ]
   });
+
+  app.save(collection);
+
+  collection.fields.add(new Field({
+    type: "date",
+    name: "effective_date",
+    required: false,
+    presentable: false,
+    min: "",
+    max: ""
+  }));
+
+  collection.fields.add(new Field({
+    type: "date",
+    name: "last_updated_utc",
+    required: false,
+    presentable: false,
+    min: "",
+    max: ""
+  }));
 
   app.save(collection);
 }, (app) => {
