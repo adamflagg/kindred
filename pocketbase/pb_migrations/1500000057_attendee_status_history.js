@@ -31,9 +31,9 @@ migrate((app) => {
     type: "base",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: null,
-    updateRule: null,
-    deleteRule: null,
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         type: "number",
