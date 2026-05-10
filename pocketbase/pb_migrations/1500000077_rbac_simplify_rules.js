@@ -22,8 +22,8 @@ migrate((app) => {
   }
 
   // Previously anyRole (required at least one permission) — now any authenticated user
-  // Note: "persons" trimmed — final-state rules baked into merged CREATE.
-  const openReadOnly = ["attendees", "attendee_status_history", "camp_sessions", "divisions", "config"]
+  // Note: "persons" and "attendees" trimmed — final-state rules baked into merged CREATE.
+  const openReadOnly = ["attendee_status_history", "camp_sessions", "divisions", "config"]
   for (const name of openReadOnly) {
     setRules(name, authed, authed, adminOnly, adminOnly, adminOnly)
   }
@@ -57,7 +57,7 @@ migrate((app) => {
     app.save(col)
   }
 
-  const anyRoleReadOnly = ["attendees", "attendee_status_history", "camp_sessions", "divisions", "config"]
+  const anyRoleReadOnly = ["attendee_status_history", "camp_sessions", "divisions", "config"]
   for (const name of anyRoleReadOnly) {
     setRules(name, anyRole, anyRole, adminOnly, adminOnly, adminOnly)
   }
