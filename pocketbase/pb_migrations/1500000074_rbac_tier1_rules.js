@@ -25,9 +25,10 @@ migrate((app) => {
   }
 
   // Read-only: any role (shared reference data written by sync)
-  // Note: "persons", "attendees", "attendee_status_history" trimmed — final rules
-  // are baked into merged CREATE (list/view: authed; create/update/delete: admin only).
-  const anyRoleReadOnly = ["camp_sessions", "divisions", "config"]
+  // Note: "persons", "attendees", "attendee_status_history", "config" trimmed —
+  // final-state rules baked into merged CREATE. (config-specific:
+  // list/view = authed; create/update = admin || registration.manage; delete = admin only.)
+  const anyRoleReadOnly = ["camp_sessions", "divisions"]
   for (const name of anyRoleReadOnly) {
     setRules(name, anyRole, anyRole, adminOnly, adminOnly, adminOnly)
   }
@@ -75,7 +76,7 @@ migrate((app) => {
 
   const collections = [
     "camp_sessions", "divisions",
-    "config", "bunk_plans", "bunks",
+    "bunk_plans", "bunks",
     "bunk_request_sources", "original_bunk_requests",
     "locked_groups", "locked_group_members", "saved_scenarios"
   ]

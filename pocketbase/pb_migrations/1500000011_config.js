@@ -99,9 +99,9 @@ migrate((app) => {
     ],
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "registration.manage"',
+    updateRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "registration.manage"',
+    deleteRule: '@request.auth.is_admin = true',
     options: {}
   });
 
@@ -607,6 +607,14 @@ migrate((app) => {
     "constraint.cabin_minimum_occupancy.penalty": {
       component_type: "number",
       component_config: { min: 0, max: 10000, step: 100 }
+    },
+    "constraint.age_spread.preferred_months": {
+      component_type: "number",
+      component_config: { min: 0, max: 60, step: 1, suffix: " months" }
+    },
+    "constraint.age_spread.preferred_bonus": {
+      component_type: "slider",
+      component_config: { min: 0, max: 10000, step: 100, showValue: true }
     }
   };
 
@@ -742,6 +750,18 @@ migrate((app) => {
     "constraint.age_spread.penalty": {
       value: 1500,
       description: "Penalty for age spread violations",
+      min: 0,
+      max: 10000
+    },
+    "constraint.age_spread.preferred_months": {
+      value: 12,
+      description: "Preferred age spread in months — cabins at or below this spread earn a bonus (0 = disabled)",
+      min: 0,
+      max: 60
+    },
+    "constraint.age_spread.preferred_bonus": {
+      value: 500,
+      description: "Bonus weight for cabins whose age spread is within the preferred threshold",
       min: 0,
       max: 10000
     },
