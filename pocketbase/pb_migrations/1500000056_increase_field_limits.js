@@ -3,19 +3,6 @@
 // Several fields had values exceeding the original max limits.
 
 migrate((app) => {
-  // camper_history.synagogue: 200 -> 400
-  const camperHistory = app.findCollectionByNameOrId("camper_history")
-  camperHistory.fields.add(new Field({
-    type: "text",
-    name: "synagogue",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 400,
-    pattern: ""
-  }))
-  app.save(camperHistory)
-
   // financial_aid_applications.special_circumstances: 5000 -> 10000
   const financialAid = app.findCollectionByNameOrId("financial_aid_applications")
   financialAid.fields.add(new Field({
@@ -94,18 +81,6 @@ migrate((app) => {
   app.save(staffApps)
 }, (app) => {
   // Restore original limits
-
-  const camperHistory = app.findCollectionByNameOrId("camper_history")
-  camperHistory.fields.add(new Field({
-    type: "text",
-    name: "synagogue",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 200,
-    pattern: ""
-  }))
-  app.save(camperHistory)
 
   const financialAid = app.findCollectionByNameOrId("financial_aid_applications")
   financialAid.fields.add(new Field({

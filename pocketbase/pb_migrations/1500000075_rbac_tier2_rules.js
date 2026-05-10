@@ -24,7 +24,7 @@ migrate((app) => {
   const tier2 = [
     "household_custom_values", "household_demographics",
     "financial_transactions", "financial_categories", "financial_aid_applications",
-    "payment_methods", "camper_dietary", "camper_transportation", "camper_history",
+    "payment_methods", "camper_dietary", "camper_transportation",
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
@@ -61,7 +61,7 @@ migrate((app) => {
   const all = [
     "household_custom_values", "household_demographics",
     "financial_transactions", "financial_categories", "financial_aid_applications",
-    "payment_methods", "camper_dietary", "camper_transportation", "camper_history",
+    "payment_methods", "camper_dietary", "camper_transportation",
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",

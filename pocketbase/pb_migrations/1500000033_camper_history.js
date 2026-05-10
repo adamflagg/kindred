@@ -8,9 +8,6 @@
  *
  * Computed by Go: pocketbase/sync/camper_history.go
  * Exported to Google Sheets: {year}-camper-history
- *
- * CONSOLIDATED: Includes changes from migrations 36, 37, 40 (session_types, v2 rework)
- * Note: first_year_summer and first_year_family fields removed - is_returning_* booleans suffice
  */
 
 const COLLECTION_ID_CAMPER_HISTORY = "col_camper_history";
@@ -19,15 +16,17 @@ migrate((app) => {
   const personsCol = app.findCollectionByNameOrId("persons");
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions");
 
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     id: COLLECTION_ID_CAMPER_HISTORY,
     type: "base",
     name: "camper_history",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // Person identification (CampMinder ID, not PB ID)
       {
@@ -69,7 +68,7 @@ migrate((app) => {
         onlyInt: true
       },
 
-      // Session identification (added in v2 rework)
+      // Session identification
       {
         type: "number",
         name: "session_cm_id",
@@ -107,7 +106,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Person relation (added in v2 rework)
+      // Person relation
       {
         type: "relation",
         name: "person",
@@ -119,7 +118,7 @@ migrate((app) => {
         maxSelect: 1
       },
 
-      // Bunk data (single value per record in v2)
+      // Bunk data (single value per record)
       {
         type: "number",
         name: "bunk_cm_id",
@@ -186,7 +185,7 @@ migrate((app) => {
         onlyInt: false
       },
 
-      // Context-aware retention metrics (v2 rework)
+      // Context-aware retention metrics
       {
         type: "bool",
         name: "is_returning_summer",
@@ -261,7 +260,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 200,
+        max: 400,
         pattern: ""
       },
 
@@ -296,6 +295,37 @@ migrate((app) => {
       "CREATE INDEX `idx_camper_history_session_rel` ON `camper_history` (`session`)"
     ]
   });
+
+  app.save(collection);
+
+  // Normalized geographic columns populated by pocketbase/sync/normalize_geographic.go
+  collection.fields.add(new Field({
+    type: "text",
+    name: "city_normalized",
+    required: false,
+    presentable: false,
+    min: 0,
+    max: 100,
+    pattern: ""
+  }));
+  collection.fields.add(new Field({
+    type: "text",
+    name: "school_normalized",
+    required: false,
+    presentable: false,
+    min: 0,
+    max: 200,
+    pattern: ""
+  }));
+  collection.fields.add(new Field({
+    type: "text",
+    name: "congregation_normalized",
+    required: false,
+    presentable: false,
+    min: 0,
+    max: 300,
+    pattern: ""
+  }));
 
   app.save(collection);
 }, (app) => {
