@@ -14,7 +14,6 @@
  * per year). Cascade operates on PB IDs, not CampMinder IDs.
  *
  * Affected relations:
- * - camper_dietary.attendee -> attendees
  * - camper_transportation.attendee -> attendees
  * - locked_group_members.attendee -> attendees
  * - staff_vehicle_info.staff -> staff
@@ -27,25 +26,13 @@
  * baked into merged CREATE migration #046.
  * Note: bunk_plans.bunk + bunk_plans.session trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #017.
+ * Note: camper_dietary.attendee trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #044.
  */
 
 migrate((app) => {
   const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
-
-  // 1. camper_dietary.attendee -> attendees
-  const camperDietary = app.findCollectionByNameOrId("camper_dietary")
-  camperDietary.fields.add(new Field({
-    type: "relation",
-    name: "attendee",
-    required: true,
-    presentable: false,
-    collectionId: attendeesCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(camperDietary)
 
   // 2. camper_transportation.attendee -> attendees
   const camperTransport = app.findCollectionByNameOrId("camper_transportation")
@@ -94,13 +81,6 @@ migrate((app) => {
   const staffCol = app.findCollectionByNameOrId("staff")
 
   // Revert all to cascadeDelete: false
-
-  const camperDietary = app.findCollectionByNameOrId("camper_dietary")
-  camperDietary.fields.add(new Field({
-    type: "relation", name: "attendee", required: true, presentable: false,
-    collectionId: attendeesCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(camperDietary)
 
   const camperTransport = app.findCollectionByNameOrId("camper_transportation")
   camperTransport.fields.add(new Field({
