@@ -90,17 +90,6 @@ jobs:
           exit 1
         fi
 
-        # Check for release-worthy commits (skip if only docs/test/refactor)
-        if [ -z "$INPUT_VERSION" ]; then
-          RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
-          RANGE="${RANGE:-HEAD}"
-          WORTHY=$(git log $RANGE --oneline | grep -cE '^[a-f0-9]+ (feat|fix|perf)(\(.+\))?(!)?:' || true)
-          if [ "$WORTHY" -eq 0 ]; then
-            echo "::error::No release-worthy commits (feat/fix/perf) since $LAST_TAG. Use version override to force."
-            exit 1
-          fi
-        fi
-
         echo "version=$VER" >> "$GITHUB_OUTPUT"
         echo "### Version: $VER" >> "$GITHUB_STEP_SUMMARY"
 
