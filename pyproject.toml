@@ -37,7 +37,7 @@ dependencies = [
     "ortools>=9.15",
     # Data processing
     "pandas>=3.0.2",
-    "tzdata>=2026.1",
+    "tzdata>=2026.2",
     "numpy>=1.26.0",
     "networkx>=3.0",
     # Configuration & validation
