@@ -101,7 +101,7 @@ class TestRunSweepPreCreatesPbRows:
             resp = client.post(
                 "/api/solver/run-sweep",
                 json={
-                    "session_cm_id": 1001,
+                    "session_cm_id": 1000001,
                     "year": 2026,
                     "time_budgets": [30, 60, 180],
                     "label": "test-sweep",
@@ -120,7 +120,7 @@ class TestRunSweepPreCreatesPbRows:
             resp = client.post(
                 "/api/solver/run-sweep",
                 json={
-                    "session_cm_id": 1001,
+                    "session_cm_id": 1000001,
                     "year": 2026,
                     "time_budgets": [30, 60],
                     "label": "test-sweep",
@@ -148,7 +148,7 @@ class TestRunSweepPreCreatesPbRows:
             resp = client.post(
                 "/api/solver/run-sweep",
                 json={
-                    "session_cm_id": 1001,
+                    "session_cm_id": 1000001,
                     "year": 2026,
                     "time_budgets": [30, 60],
                 },
@@ -170,7 +170,7 @@ class TestRunSweepPreCreatesPbRows:
             resp = client.post(
                 "/api/solver/run-sweep",
                 json={
-                    "session_cm_id": 1001,
+                    "session_cm_id": 1000001,
                     "year": 2026,
                     "time_budgets": [30, 60, 180],
                 },
@@ -198,7 +198,7 @@ class TestRunSweepPreCreatesPbRows:
             resp = client.post(
                 "/api/solver/run-sweep",
                 json={
-                    "session_cm_id": 1001,
+                    "session_cm_id": 1000001,
                     "year": 2026,
                     "time_budgets": [30, 60],
                 },

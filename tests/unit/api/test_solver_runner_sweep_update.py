@@ -114,7 +114,7 @@ class TestSweepChildUpdatesPreCreatedRow:
 
             await sr_module.run_solver_task_v2(
                 run_id="sweep_child_1",
-                session_cm_id=100,
+                session_cm_id=1000001,
                 year=2026,
                 time_limit=60,
                 sweep_id="sweep_abc123",
@@ -163,7 +163,7 @@ class TestSweepChildUpdatesPreCreatedRow:
 
             await sr_module.run_solver_task_v2(
                 run_id="sweep_child_2",
-                session_cm_id=100,
+                session_cm_id=1000001,
                 year=2026,
                 time_limit=60,
                 sweep_id="sweep_xyz789",
@@ -207,7 +207,7 @@ class TestSweepChildUpdatesPreCreatedRow:
 
             await sr_module.run_solver_task_v2(
                 run_id="solo_run",
-                session_cm_id=100,
+                session_cm_id=1000001,
                 year=2026,
                 time_limit=60,
                 sweep_id=None,
@@ -217,3 +217,63 @@ class TestSweepChildUpdatesPreCreatedRow:
             update_calls = mock_pb.collection.return_value.update.call_args_list
             assert len(create_calls) == 1, f"solo run must CREATE, got {len(create_calls)}"
             assert len(update_calls) == 0, f"solo run must not UPDATE, got {len(update_calls)}"
+
+    @pytest.mark.asyncio
+    async def test_non_404_lookup_error_re_raises_without_create(self, mock_solver_input: DirectSolverInput) -> None:
+        """A transient lookup failure (e.g. 503) must NOT fall through to CREATE.
+
+        The bare-except fallback would silently write a duplicate solver_runs row
+        if the pre-created row actually exists but the lookup glitched. Narrowing
+        the handler to 404-only ensures transient errors propagate so the orchestrator
+        sees them.
+        """
+        from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
+
+        mock_runs: dict[str, dict[str, object]] = {"sweep_child_x": {"status": "pending"}}
+        patches = _patches()
+        with (
+            patch.object(sr_module, "solver_runs", mock_runs),
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = MagicMock()
+            mock_pb.admins.auth_with_password = MagicMock(return_value=MagicMock(token="t"))
+            mock_pb.collection.return_value.get_first_list_item.side_effect = ClientResponseError(
+                url="x", status=503, data={}
+            )
+            mock_pb.collection.return_value.create.return_value = MagicMock(id="should_not_happen")
+            m7.return_value = mock_pb
+            _configure_solver(mocks, mock_solver_input, succeeds=True)
+
+            # _persist_run_record propagates the 503 — the outer try/except in
+            # run_solver_task_v2 logs it and the task completes without persisting.
+            # Critical behavior: CREATE must NOT happen (would produce a duplicate
+            # row if the lookup actually succeeded server-side).
+            await sr_module.run_solver_task_v2(
+                run_id="sweep_child_x",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=60,
+                sweep_id="sweep_xyz",
+            )
+
+            create_calls = mock_pb.collection.return_value.create.call_args_list
+            assert len(create_calls) == 0, (
+                f"non-404 lookup error must NOT fall through to CREATE, got {len(create_calls)}: {create_calls}"
+            )

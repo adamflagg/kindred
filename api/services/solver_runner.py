@@ -12,6 +12,8 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from pocketbase.errors import ClientResponseError
+
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
 from bunking.logging_config import get_logger
@@ -49,14 +51,19 @@ async def _persist_run_record(
                 task_pb.collection(SOLVER_RUNS).get_first_list_item,
                 f'run_id = "{run_id}"',
             )
-            return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).update, existing.id, payload)
-        except Exception as e:
+        except ClientResponseError as e:
+            # Only treat 404 as "pre-created row missing → fall back to CREATE".
+            # Transient errors (503, timeout, etc.) re-raise so we don't write
+            # a duplicate row when the lookup might have succeeded server-side.
+            if e.status != 404:
+                raise
             logger.warning(
-                "No pre-created PB row for sweep child %s (%s); creating fresh: %s",
+                "No pre-created PB row for sweep child %s (%s); creating fresh",
                 run_id,
                 sweep_id,
-                e,
             )
+        else:
+            return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).update, existing.id, payload)
     return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).create, payload)
 
 

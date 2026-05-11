@@ -26,6 +26,8 @@ function formatDelta(metricKey: string, delta: number | null): string {
   const arrow = delta > 0 ? ' ↑' : delta < 0 ? ' ↓' : ''
   if (meta.format === 'percent') return `${sign}${(delta * 100).toFixed(2)}%${arrow}`
   if (meta.format === 'duration') return `${sign}${delta.toFixed(1)}s${arrow}`
+  if (meta.format === 'decimal')
+    return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 2 })}${arrow}`
   return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}${arrow}`
 }
 

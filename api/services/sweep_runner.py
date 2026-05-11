@@ -10,6 +10,7 @@ for cores and contaminate walltime measurements.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from bunking.logging_config import get_logger
@@ -22,7 +23,7 @@ from .sweep_registry import SweepRegistry
 logger = get_logger(__name__)
 
 
-def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: Any = None) -> None:
+async def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: Any = None) -> None:
     """Transition pre-created sweep children that never launched out of 'pending'.
 
     The /run-sweep handler pre-creates a solver_runs entry per child so the UI
@@ -32,8 +33,9 @@ def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: Any = N
 
     When ``pb`` is provided, the PocketBase row for each orphan is also
     updated so frontend refresh-recovery doesn't see stale 'pending' rows
-    after a cancel/crash. PB errors are swallowed: this runs in cleanup
-    paths and must not crash the orchestrator.
+    after a cancel/crash. PB calls are wrapped in :func:`asyncio.to_thread`
+    so the blocking SDK doesn't stall the event loop. PB errors are
+    swallowed: this runs in cleanup paths and must not crash the orchestrator.
     """
     for orphan in run_ids[start_idx:]:
         entry = solver_runs.get(orphan)
@@ -43,8 +45,8 @@ def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: Any = N
         if pb is None:
             continue
         try:
-            rec = pb.collection(SOLVER_RUNS).get_first_list_item(f'run_id = "{orphan}"')
-            pb.collection(SOLVER_RUNS).update(rec.id, {"status": status})
+            rec = await asyncio.to_thread(pb.collection(SOLVER_RUNS).get_first_list_item, f'run_id = "{orphan}"')
+            await asyncio.to_thread(pb.collection(SOLVER_RUNS).update, rec.id, {"status": status})
         except Exception as e:
             logger.warning("Failed to sync orphan %s to PocketBase: %s", orphan, e)
 
@@ -81,7 +83,7 @@ async def run_sweep(
             next_idx = idx + 1
             if registry.is_cancelled(sweep_id):
                 logger.info("Sweep %s cancelled; aborting remaining runs", sweep_id)
-                _mark_remaining(run_ids, idx, "cancelled", pb=pb)
+                await _mark_remaining(run_ids, idx, "cancelled", pb=pb)
                 break
             try:
                 await run_solver_task_v2(
@@ -98,7 +100,7 @@ async def run_sweep(
             except Exception:
                 # Child crashed — mark un-launched siblings as failed so they
                 # don't sit forever in pending, then re-raise so the caller sees it.
-                _mark_remaining(run_ids, next_idx, "failed", pb=pb)
+                await _mark_remaining(run_ids, next_idx, "failed", pb=pb)
                 raise
     finally:
         registry.release(sweep_id)

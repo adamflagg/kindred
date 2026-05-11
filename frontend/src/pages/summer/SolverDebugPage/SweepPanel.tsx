@@ -43,8 +43,10 @@ export interface SweepPanelProps {
 }
 
 function formatBudget(b: SweepBudgetProgress): string {
-  if (b.state === 'done' && b.walltime !== null)
-    return `${b.seconds}s done in ${b.walltime.toFixed(1)}s`
+  if (b.state === 'done')
+    return b.walltime !== null
+      ? `${b.seconds}s done in ${b.walltime.toFixed(1)}s`
+      : `${b.seconds}s done`
   if (b.state === 'running') return `${b.seconds}s running…`
   return `${b.seconds}s pending`
 }

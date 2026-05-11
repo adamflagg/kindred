@@ -82,10 +82,11 @@ export default function SolverDebugPage() {
   useEffect(() => {
     const unsettled = items.some(
       (r) =>
-        r.details?.sweep_id != null &&
+        !!r.details?.sweep_id &&
         r.status !== 'success' &&
         r.status !== 'failed' &&
-        r.status !== 'error'
+        r.status !== 'error' &&
+        r.status !== 'cancelled'
     )
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing derived flag with fetched data; needed so refetchInterval reacts on the next render.
     setHasUnsettledSweepInData(unsettled)
@@ -136,21 +137,27 @@ export default function SolverDebugPage() {
       bySweep.set(sid, list)
     }
     const isSettled = (r: (typeof items)[number]) =>
-      r.status === 'success' || r.status === 'failed' || r.status === 'error'
+      r.status === 'success' ||
+      r.status === 'failed' ||
+      r.status === 'error' ||
+      r.status === 'cancelled'
     for (const [sid, children] of bySweep) {
       const completed = children.filter(isSettled).length
       if (completed === children.length) continue
+      // Prefer the actual stats budget (set once the solver runs), but fall
+      // back to details.time_limit_seconds so pre-created pending rows still
+      // contribute a slot to the budget bar.
       const budgets = children
-        .filter((r) => r.stats?.time_budget_seconds != null)
-        .map((r) => {
-          const seconds = r.stats!.time_budget_seconds!
+        .flatMap((r) => {
+          const seconds = r.stats?.time_budget_seconds ?? r.details?.time_limit_seconds
+          if (seconds == null) return []
           const walltime = r.stats?.walltime_seconds ?? null
           const state: 'done' | 'running' | 'pending' = isSettled(r)
             ? 'done'
             : r.stats
               ? 'running'
               : 'pending'
-          return { seconds, walltime, state }
+          return [{ seconds, walltime, state }]
         })
         .sort((a, b) => a.seconds - b.seconds)
       return { sweep_id: sid, completed, total: children.length, budgets }
@@ -173,7 +180,11 @@ export default function SolverDebugPage() {
     const sweepChildren = items.filter((r) => r.details?.sweep_id === activeSweepId)
     if (sweepChildren.length === 0) return
     const allSettled = sweepChildren.every(
-      (r) => r.status === 'success' || r.status === 'failed' || r.status === 'error'
+      (r) =>
+        r.status === 'success' ||
+        r.status === 'failed' ||
+        r.status === 'error' ||
+        r.status === 'cancelled'
     )
     if (allSettled) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing local "is sweep running?" flag with external runs data; clearing this flag is precisely what stops the 5s poll.
