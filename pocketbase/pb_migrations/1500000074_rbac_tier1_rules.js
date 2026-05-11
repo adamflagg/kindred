@@ -41,8 +41,8 @@ migrate((app) => {
   }
 
   // Read-only: bunking.manage (request source data written by sync)
-  // Note: "bunk_request_sources" trimmed — final-state rules baked into merged CREATE.
-  const bunkingManageReadOnly = ["original_bunk_requests"]
+  // Note: "bunk_request_sources", "original_bunk_requests" trimmed — final-state rules baked into merged CREATE.
+  const bunkingManageReadOnly = []
   for (const name of bunkingManageReadOnly) {
     setRules(name, bunkingManage, bunkingManage, adminOnly, adminOnly, adminOnly)
   }
@@ -78,7 +78,6 @@ migrate((app) => {
   const collections = [
     "camp_sessions", "divisions",
     "bunk_plans", "bunks",
-    "original_bunk_requests",
     "locked_groups", "locked_group_members", "saved_scenarios"
   ]
   for (const name of collections) {

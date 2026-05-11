@@ -12,6 +12,9 @@
 const COLLECTION_ID_ORIG_REQUESTS = "col_orig_requests";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true'
+  const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
+
   // Dynamic lookups for relations
   const personsCol = app.findCollectionByNameOrId("persons")
 
@@ -19,11 +22,11 @@ migrate((app) => {
     id: COLLECTION_ID_ORIG_REQUESTS,
     name: "original_bunk_requests",
     type: "base",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: bunkingManage,
+    viewRule: bunkingManage,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         type: "number",
@@ -40,7 +43,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: personsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
