@@ -45,10 +45,12 @@ else
     BASE="HEAD~1"
 fi
 
-CHANGED_FILES=$(git diff --name-only "$BASE" HEAD 2>/dev/null || true)
+# --diff-filter=ACMRT excludes Deletions (and Unmerged/X) so per-file loops
+# below don't try to head/grep paths that no longer exist on disk.
+CHANGED_FILES=$(git diff --diff-filter=ACMRT --name-only "$BASE" HEAD 2>/dev/null || true)
 # Also include staged but uncommitted changes and unstaged modifications
-CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --name-only --cached 2>/dev/null || true)
-CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --name-only 2>/dev/null || true)
+CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only --cached 2>/dev/null || true)
+CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only 2>/dev/null || true)
 # Deduplicate
 CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' || true)
 
