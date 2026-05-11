@@ -69,3 +69,16 @@ describe('formatMetric', () => {
     expect(formatMetric('user_time_seconds', null)).toBe('—')
   })
 })
+
+describe('metric labels (mockup parity)', () => {
+  it('prefixes model-group metrics with "Model"', () => {
+    expect(getMetric('num_booleans').label).toBe('Model Booleans')
+    expect(getMetric('num_integer_variables').label).toBe('Model Integers')
+    expect(getMetric('model_num_variables').label).toBe('Model variables')
+    expect(getMetric('model_num_constraints').label).toBe('Model constraints')
+  })
+
+  it('labels num_bool_or as "bool_or constraints"', () => {
+    expect(getMetric('num_bool_or').label).toBe('bool_or constraints')
+  })
+})

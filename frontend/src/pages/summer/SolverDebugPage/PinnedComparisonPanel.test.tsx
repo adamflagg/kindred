@@ -83,8 +83,8 @@ describe('PinnedComparisonPanel', () => {
     expect(screen.getByText('Convergence (∫gap)')).toBeInTheDocument()
     expect(screen.getByText('Branches')).toBeInTheDocument()
     expect(screen.getByText('Solutions')).toBeInTheDocument()
-    expect(screen.getByText('Variables')).toBeInTheDocument()
-    expect(screen.getByText('Constraints')).toBeInTheDocument()
+    expect(screen.getByText('Model variables')).toBeInTheDocument()
+    expect(screen.getByText('Model constraints')).toBeInTheDocument()
   })
 
   it('renders row with em-dash on missing side and skips delta when either side null', () => {

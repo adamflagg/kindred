@@ -86,7 +86,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_booleans: {
     key: 'num_booleans',
-    label: 'Booleans',
+    label: 'Model Booleans',
     description: 'Boolean variables in the solved model.',
     interpretation: 'context',
     format: 'integer',
@@ -94,7 +94,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_integer_variables: {
     key: 'num_integer_variables',
-    label: 'Integers',
+    label: 'Model Integers',
     description: 'Integer (non-boolean) variables in the solved model.',
     interpretation: 'context',
     format: 'integer',
@@ -102,7 +102,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   model_num_variables: {
     key: 'model_num_variables',
-    label: 'Variables',
+    label: 'Model variables',
     description: 'Total decision variables in the model.',
     interpretation: 'lower-better',
     format: 'integer',
@@ -110,7 +110,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   model_num_constraints: {
     key: 'model_num_constraints',
-    label: 'Constraints',
+    label: 'Model constraints',
     description: 'Total constraints in the model.',
     interpretation: 'lower-better',
     format: 'integer',
@@ -118,7 +118,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_bool_or: {
     key: 'num_bool_or',
-    label: 'bool_or',
+    label: 'bool_or constraints',
     description:
       'Disjunctive (bool_or) constraints in the model; cleanup signal — fewer = simpler.',
     interpretation: 'lower-better',

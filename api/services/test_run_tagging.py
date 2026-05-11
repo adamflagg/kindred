@@ -26,7 +26,7 @@ def _config_row(category: str, subcategory: str | None, config_key: str, value: 
 # ---------------------------------------------------------------------------
 
 
-def test_shorten_session_name_numbered():
+def test_shorten_session_name_numbered() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("Session 2") == "2"
@@ -34,27 +34,27 @@ def test_shorten_session_name_numbered():
     assert _shorten_session_name("Session 10") == "10"
 
 
-def test_shorten_session_name_quest():
+def test_shorten_session_name_quest() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("Quest Session 1") == "Quest"
     assert _shorten_session_name("Quest 2026") == "Quest"
 
 
-def test_shorten_session_name_taste():
+def test_shorten_session_name_taste() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("Taste of Camp") == "Taste"
 
 
-def test_shorten_session_name_ag():
+def test_shorten_session_name_ag() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("All-Gender Cabin-Session 2 (Grades 7-8)") == "2"
     assert _shorten_session_name("AG Session 3") == "3"
 
 
-def test_shorten_session_name_empty():
+def test_shorten_session_name_empty() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("") == ""
@@ -65,7 +65,7 @@ def test_shorten_session_name_empty():
 # ---------------------------------------------------------------------------
 
 
-def _mock_pb_returning(name: str):
+def _mock_pb_returning(name: str) -> MagicMock:
     """Build a PB mock whose camp_sessions.get_first_list_item returns a record with `name`."""
     record = MagicMock()
     record.name = name
@@ -77,7 +77,7 @@ def _mock_pb_returning(name: str):
 
 
 @pytest.mark.asyncio
-async def test_lookup_session_short_name_numbered():
+async def test_lookup_session_short_name_numbered() -> None:
     from api.services.run_tagging import _lookup_session_short_name
 
     pb = _mock_pb_returning("Session 2 (Grades 6-8)")
@@ -86,7 +86,7 @@ async def test_lookup_session_short_name_numbered():
 
 
 @pytest.mark.asyncio
-async def test_lookup_session_short_name_quest():
+async def test_lookup_session_short_name_quest() -> None:
     from api.services.run_tagging import _lookup_session_short_name
 
     pb = _mock_pb_returning("Quest Session 1")
@@ -95,7 +95,7 @@ async def test_lookup_session_short_name_quest():
 
 
 @pytest.mark.asyncio
-async def test_lookup_session_short_name_fallback_on_lookup_failure():
+async def test_lookup_session_short_name_fallback_on_lookup_failure() -> None:
     """When PB lookup raises, return S{cm_id} so the run still records."""
     from api.services.run_tagging import _lookup_session_short_name
 
