@@ -115,6 +115,7 @@ jobs:
             - 'go.mod'
             - 'go.sum'
             - '.golangci.yml'
+            - '.python-version'
           python:
             - 'api/**/*.py'
             - 'bunking/**/*.py'
@@ -125,6 +126,7 @@ jobs:
             - 'uv.lock'
             - 'tests/**'
             - 'conftest.py'
+            - '.python-version'
           go:
             - 'pocketbase/**/*.go'
             - 'go.mod'
@@ -134,6 +136,7 @@ jobs:
             - 'pocketbase/pb_migrations/**'
             - 'pocketbase/main.go'
             - 'scripts/ci/validate_migrations.py'
+            - '.python-version'
           frontend:
             - 'frontend/**'
             - 'package*.json'
