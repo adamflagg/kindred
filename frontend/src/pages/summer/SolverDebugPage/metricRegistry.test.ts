@@ -31,6 +31,9 @@ describe('METRIC_REGISTRY', () => {
         'model_num_variables',
         'model_num_constraints',
         'num_bool_or',
+        'num_linear',
+        'num_bool_and',
+        'num_lin_max',
       ].sort()
     )
   })
@@ -80,5 +83,35 @@ describe('metric labels (mockup parity)', () => {
 
   it('labels num_bool_or as "bool_or constraints"', () => {
     expect(getMetric('num_bool_or').label).toBe('bool_or constraints')
+  })
+})
+
+describe('constraint-type metrics (mockup parity)', () => {
+  it('includes new constraint-type metrics with parent and highlight', () => {
+    const linear = getMetric('num_linear')
+    expect(linear.parent).toBe('model_num_constraints')
+    expect(linear.highlight).toBeFalsy()
+
+    const lin_max = getMetric('num_lin_max')
+    expect(lin_max.parent).toBe('model_num_constraints')
+    expect(lin_max.highlight).toBe(true)
+
+    const bool_or = getMetric('num_bool_or')
+    expect(bool_or.parent).toBe('model_num_constraints')
+    expect(bool_or.highlight).toBe(true)
+  })
+
+  it('COMPARABLE_METRICS surfaces all four constraint-type metrics', () => {
+    expect(COMPARABLE_METRICS).toContain('num_linear')
+    expect(COMPARABLE_METRICS).toContain('num_bool_and')
+    expect(COMPARABLE_METRICS).toContain('num_bool_or')
+    expect(COMPARABLE_METRICS).toContain('num_lin_max')
+  })
+
+  it('COMPARABLE_METRICS surfaces user_time and best_bound (parity with drilldown)', () => {
+    expect(COMPARABLE_METRICS).toContain('user_time_seconds')
+    expect(COMPARABLE_METRICS).toContain('best_objective_bound')
+    expect(COMPARABLE_METRICS).toContain('num_booleans')
+    expect(COMPARABLE_METRICS).toContain('num_integer_variables')
   })
 })
