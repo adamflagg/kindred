@@ -22,7 +22,9 @@
  * - locked_group_members.attendee -> attendees
  * - staff_applications.staff -> staff
  * - staff_vehicle_info.staff -> staff
- * - original_bunk_requests.requester -> persons
+ *
+ * Note: original_bunk_requests.requester trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #020.
  */
 
 migrate((app) => {
@@ -30,7 +32,6 @@ migrate((app) => {
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
-  const personsCol = app.findCollectionByNameOrId("persons")
 
   // 1. bunk_plans.bunk -> bunks
   const bunkPlans = app.findCollectionByNameOrId("bunk_plans")
@@ -141,26 +142,11 @@ migrate((app) => {
   }))
   app.save(staffVehicle)
 
-  // 9. original_bunk_requests.requester -> persons
-  const origRequests = app.findCollectionByNameOrId("original_bunk_requests")
-  origRequests.fields.add(new Field({
-    type: "relation",
-    name: "requester",
-    required: true,
-    presentable: false,
-    collectionId: personsCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(origRequests)
-
 }, (app) => {
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
-  const personsCol = app.findCollectionByNameOrId("persons")
 
   // Revert all to cascadeDelete: false
 
@@ -216,11 +202,4 @@ migrate((app) => {
     collectionId: staffCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
   }))
   app.save(staffVehicle)
-
-  const origRequests = app.findCollectionByNameOrId("original_bunk_requests")
-  origRequests.fields.add(new Field({
-    type: "relation", name: "requester", required: true, presentable: false,
-    collectionId: personsCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(origRequests)
 })
