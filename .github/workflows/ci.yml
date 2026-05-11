@@ -85,8 +85,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      python: ${{ steps.filter.outputs.python }}
+      go: ${{ steps.filter.outputs.go }}
+      migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      tests: ${{ steps.filter.outputs.tests }}
       scripts: ${{ steps.filter.outputs.scripts }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
@@ -113,16 +115,29 @@ jobs:
             - 'go.mod'
             - 'go.sum'
             - '.golangci.yml'
+          python:
+            - 'api/**/*.py'
+            - 'bunking/**/*.py'
+            - 'campminder/**/*.py'
+            - 'scripts/**/*.py'
+            - 'pyproject.toml'
+            - 'ruff.toml'
+            - 'uv.lock'
+            - 'tests/**'
+            - 'conftest.py'
+          go:
+            - 'pocketbase/**/*.go'
+            - 'go.mod'
+            - 'go.sum'
+            - '.golangci.yml'
+          migrations:
+            - 'pocketbase/pb_migrations/**'
+            - 'pocketbase/main.go'
+            - 'scripts/ci/validate_migrations.py'
           frontend:
             - 'frontend/**'
             - 'package*.json'
             - 'tsconfig*.json'
-          tests:
-            - 'tests/**'
-            - 'conftest.py'
-            - 'frontend/src/**/*.test.*'
-            - 'frontend/src/**/*.spec.*'
-            - 'pocketbase/**/*_test.go'
           scripts:
             - 'scripts/**/*.sh'
             - '.shellcheckrc'
