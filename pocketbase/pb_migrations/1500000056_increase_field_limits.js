@@ -3,19 +3,6 @@
 // Several fields had values exceeding the original max limits.
 
 migrate((app) => {
-  // financial_aid_applications.special_circumstances: 5000 -> 10000
-  const financialAid = app.findCollectionByNameOrId("financial_aid_applications")
-  financialAid.fields.add(new Field({
-    type: "text",
-    name: "special_circumstances",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 10000,
-    pattern: ""
-  }))
-  app.save(financialAid)
-
   // household_demographics.away_phone: 200 -> 400
   const householdDemo = app.findCollectionByNameOrId("household_demographics")
   householdDemo.fields.add(new Field({
@@ -81,18 +68,6 @@ migrate((app) => {
   app.save(staffApps)
 }, (app) => {
   // Restore original limits
-
-  const financialAid = app.findCollectionByNameOrId("financial_aid_applications")
-  financialAid.fields.add(new Field({
-    type: "text",
-    name: "special_circumstances",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 5000,
-    pattern: ""
-  }))
-  app.save(financialAid)
 
   const householdDemo = app.findCollectionByNameOrId("household_demographics")
   householdDemo.fields.add(new Field({
