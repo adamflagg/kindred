@@ -6,6 +6,7 @@ export interface SweepPanelSession {
   cm_id: number
   name: string
   year: number
+  attendee_count?: number // optional — older callers may not provide it
 }
 
 export interface SweepPanelScenario {
@@ -144,6 +145,7 @@ export function SweepPanel({
             {sessions.map((s) => (
               <option key={s.id} value={s.cm_id}>
                 {s.name} — {s.year}
+                {s.attendee_count != null ? ` (${s.attendee_count})` : ''}
               </option>
             ))}
           </select>

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { SweepPanel } from './SweepPanel'
+import { SweepPanel, type SweepPanelSession } from './SweepPanel'
 
 const fakeSessions = [
   { id: '1', cm_id: 1, name: 'Session 1', year: 2026 },
@@ -291,5 +291,42 @@ describe('SweepPanel', () => {
     // immediate placeholder.
     const runBtn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
     expect(runBtn).toBeDisabled()
+  })
+
+  it('renders attendee count in session dropdown option (#1250)', () => {
+    const sessions: SweepPanelSession[] = [
+      { id: 'sess1', cm_id: 1001, name: 'Session 2', year: 2026, attendee_count: 142 },
+    ]
+    render(
+      <SweepPanel
+        sessions={sessions}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // The option text should include "(142)"
+    expect(screen.getByText(/\(142\)/)).toBeInTheDocument()
+  })
+
+  it('omits attendee count from option text when attendee_count is not provided (#1250)', () => {
+    // SweepPanelSession.attendee_count is optional — older callers may omit it.
+    const sessions: SweepPanelSession[] = [
+      { id: 'sess1', cm_id: 1001, name: 'Session 2', year: 2026 },
+    ]
+    render(
+      <SweepPanel
+        sessions={sessions}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // No count parenthetical should appear when attendee_count is absent.
+    expect(screen.queryByText(/\(\d+\)/)).not.toBeInTheDocument()
+    // The option itself still renders correctly.
+    expect(screen.getByRole('option', { name: /Session 2/i })).toBeInTheDocument()
   })
 })
