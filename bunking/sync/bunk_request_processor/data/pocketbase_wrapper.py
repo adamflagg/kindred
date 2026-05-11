@@ -1,17 +1,14 @@
 """PocketBase client wrapper to fix URL encoding issues.
 
-The PocketBase Python SDK v0.15.0 has an issue where query parameters
-are URL-encoded with '+' for spaces, but PocketBase server expects
-%20 for spaces in filter parameters. This wrapper fixes that issue."""
+The PocketBase Python SDK URL-encodes query parameters with '+' for spaces,
+but PocketBase server expects %20 for spaces in filter parameters. This
+wrapper fixes that issue."""
 
 from __future__ import annotations
 
 from typing import Any
 
-try:
-    from pocketbase.models.list_result import ListResult  # SDK >= 0.17.0
-except ImportError:
-    from pocketbase.models.utils.list_result import ListResult  # SDK < 0.17.0
+from pocketbase.models.list_result import ListResult
 from pocketbase.services.record_service import RecordService
 
 # Import TRACE constant and ensure trace method is available
