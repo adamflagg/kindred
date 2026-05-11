@@ -14,7 +14,6 @@
  * per year). Cascade operates on PB IDs, not CampMinder IDs.
  *
  * Affected relations:
- * - locked_group_members.attendee -> attendees
  * - staff_vehicle_info.staff -> staff
  *
  * Note: original_bunk_requests.requester trimmed — final cascadeDelete: true
@@ -29,25 +28,12 @@
  * baked into merged CREATE migration #044.
  * Note: camper_transportation.attendee trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #043.
+ * Note: locked_group_members.attendee trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #025.
  */
 
 migrate((app) => {
-  const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
-
-  // 3. locked_group_members.attendee -> attendees
-  const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
-  lockedGroupMembers.fields.add(new Field({
-    type: "relation",
-    name: "attendee",
-    required: true,
-    presentable: true,
-    collectionId: attendeesCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(lockedGroupMembers)
 
   // 4. staff_vehicle_info.staff -> staff
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
@@ -64,17 +50,9 @@ migrate((app) => {
   app.save(staffVehicle)
 
 }, (app) => {
-  const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
 
   // Revert all to cascadeDelete: false
-
-  const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
-  lockedGroupMembers.fields.add(new Field({
-    type: "relation", name: "attendee", required: true, presentable: true,
-    collectionId: attendeesCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(lockedGroupMembers)
 
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
   staffVehicle.fields.add(new Field({

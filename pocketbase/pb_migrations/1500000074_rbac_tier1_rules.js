@@ -49,8 +49,8 @@ migrate((app) => {
   }
 
   // Read+Write: bunking.manage (frontend writes directly)
-  // Note: "bunk_assignments_draft" trimmed — all 5 rules use bunkingManage, baked into merged CREATE.
-  const bunkingManageReadWrite = ["locked_groups", "locked_group_members", "saved_scenarios"]
+  // Note: "bunk_assignments_draft", "locked_group_members" trimmed — all 5 rules use bunkingManage, baked into merged CREATE.
+  const bunkingManageReadWrite = ["locked_groups", "saved_scenarios"]
   for (const name of bunkingManageReadWrite) {
     setRules(name, bunkingManage, bunkingManage, bunkingManage, bunkingManage, bunkingManage)
   }
@@ -79,7 +79,7 @@ migrate((app) => {
   const collections = [
     "camp_sessions", "divisions",
     "bunks",
-    "locked_groups", "locked_group_members", "saved_scenarios"
+    "locked_groups", "saved_scenarios"
   ]
   for (const name of collections) {
     revertRules(name)
