@@ -10,6 +10,8 @@ export interface SolverRunsFilters {
   sessionId?: number
   sourceKind?: 'production' | 'scenario' | 'all'
   sweepId?: string
+  /** When true, restrict to runs not associated with any sweep. */
+  manualOnly?: boolean
   hideFailed?: boolean
   since?: string
   /**

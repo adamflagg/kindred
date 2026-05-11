@@ -78,6 +78,142 @@ describe('SolverFiltersBar', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 1000002 }))
   })
 
+  it('emits sourceKind when source dropdown changes', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by source/i), {
+      target: { value: 'production' },
+    })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sourceKind: 'production' }))
+  })
+
+  it('drops sourceKind when source dropdown reset to All', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{ sourceKind: 'scenario' }}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by source/i), { target: { value: '' } })
+    const arg = onChange.mock.calls[0]?.[0]
+    expect(arg).toBeDefined()
+    expect(arg.sourceKind).toBeUndefined()
+  })
+
+  it('renders sweep options derived from availableSweeps', () => {
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        availableSweeps={[
+          { id: 'sw_abc1234', label: 'post-cleanup', count: 4 },
+          { id: 'sw_def5678', label: 'baseline', count: 4 },
+        ]}
+        onExport={vi.fn()}
+      />
+    )
+    const select = screen.getByLabelText<HTMLSelectElement>(/filter by sweep/i)
+    const values = Array.from(select.options).map((o) => o.value)
+    // '' = All, '__manual__' = Manual runs only, then real sweep ids.
+    expect(values).toEqual(['', '__manual__', 'sw_abc1234', 'sw_def5678'])
+  })
+
+  it('emits sweepId when sweep dropdown changes to a specific sweep', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        availableSweeps={[{ id: 'sw_abc1234', label: 'post-cleanup', count: 4 }]}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by sweep/i), {
+      target: { value: 'sw_abc1234' },
+    })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sweepId: 'sw_abc1234' }))
+  })
+
+  it('emits manualOnly when sweep dropdown picks Manual', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        availableSweeps={[]}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by sweep/i), {
+      target: { value: '__manual__' },
+    })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ manualOnly: true }))
+  })
+
+  it('emits since when date dropdown changes', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by date/i), { target: { value: '7d' } })
+    const arg = onChange.mock.calls[0]?.[0]
+    expect(arg).toBeDefined()
+    expect(arg.since).toBeDefined()
+    // since must be a parseable ISO date roughly 7 days ago.
+    const sinceDate = new Date(arg.since)
+    const expected = Date.now() - 7 * 24 * 60 * 60 * 1000
+    // Allow ±60s wiggle for the timer.
+    expect(Math.abs(sinceDate.getTime() - expected)).toBeLessThan(60_000)
+  })
+
+  it('drops since when date dropdown picks All time', () => {
+    const onChange = vi.fn()
+    render(
+      <SolverFiltersBar
+        filters={{ since: '2026-01-01T00:00:00Z' }}
+        onFiltersChange={onChange}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        onExport={vi.fn()}
+      />
+    )
+    fireEvent.change(screen.getByLabelText(/filter by date/i), { target: { value: 'all' } })
+    const arg = onChange.mock.calls[0]?.[0]
+    expect(arg).toBeDefined()
+    expect(arg.since).toBeUndefined()
+  })
+
   it('calls onFiltersChange when hide-failed toggled', () => {
     const onChange = vi.fn()
     render(

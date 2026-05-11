@@ -193,4 +193,68 @@ describe('SweepPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onCancel).toHaveBeenCalledWith('sw_abc')
   })
+
+  it('shows per-budget timing detail when supplied', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{
+          sweep_id: 'sw_abc',
+          completed: 1,
+          total: 3,
+          budgets: [
+            { seconds: 30, walltime: 23.1, state: 'done' },
+            { seconds: 60, walltime: null, state: 'running' },
+            { seconds: 180, walltime: null, state: 'pending' },
+          ],
+        }}
+      />
+    )
+    // Done budget shows formatted walltime; running shows running…; pending
+    // can be present in the joined string too. Assert the meaningful parts.
+    expect(screen.getByText(/30s done in 23\.1s/)).toBeInTheDocument()
+    expect(screen.getByText(/60s running/)).toBeInTheDocument()
+  })
+
+  it('still shows the simple "X of N" headline when budgets is omitted', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{ sweep_id: 'sw_xyz', completed: 1, total: 4 }}
+      />
+    )
+    expect(screen.getByText(/1 of 4/)).toBeInTheDocument()
+    // Per-budget detail must not appear when there's no budgets array.
+    expect(screen.queryByText(/done in/)).not.toBeInTheDocument()
+  })
+
+  it('shows a placeholder banner when total is 0 (sweep accepted, no rows yet)', () => {
+    // Backend has accepted the sweep but the first solver_runs row hasn't
+    // landed in the polled fetch yet. Banner must still show so the user
+    // doesn't re-click and trip the 409 single-flight guard.
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{ sweep_id: 'sw_kickoff', completed: 0, total: 0 }}
+      />
+    )
+    expect(screen.getByText(/sw_kickoff/i)).toBeInTheDocument()
+    // Must NOT show the misleading "0 of 0 complete" copy.
+    expect(screen.queryByText(/0 of 0/i)).not.toBeInTheDocument()
+    // Must show a kickoff indicator that's distinguishable from steady-state.
+    expect(screen.getByText(/^— spinning up…$/)).toBeInTheDocument()
+    // Run Sweep button must be disabled — that's the whole point of the
+    // immediate placeholder.
+    const runBtn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
+    expect(runBtn).toBeDisabled()
+  })
 })

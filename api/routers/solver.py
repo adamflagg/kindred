@@ -224,6 +224,8 @@ async def post_run_sweep(
     sweep_registry.register(sweep_id)
 
     now = datetime.now(UTC)
+    # Pre-create the in-memory entries first so the in-flight guard sees
+    # them immediately on subsequent requests.
     for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
         entry: dict[str, Any] = {
             "id": run_id,
@@ -240,6 +242,47 @@ async def post_run_sweep(
             entry["scenario"] = scenario_id
         solver_runs[run_id] = entry
 
+    # Also pre-create the PocketBase rows so the frontend can derive
+    # "sweep in progress" state from PB items alone. Without this, a page
+    # refresh during a sweep that hasn't had any child complete yet loses
+    # the banner (the previous client-only `activeSweepId` was wiped on
+    # remount, and PB had no rows until completion).
+    created_pb_ids: list[str] = []
+    try:
+        for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
+            pb_data: dict[str, Any] = {
+                "run_id": run_id,
+                "session": str(session_cm_id),
+                "session_id": session_cm_id,
+                "status": "pending",
+                "details": json.dumps(
+                    {
+                        "sweep_id": sweep_id,
+                        "sweep_label": request.label,
+                        "time_limit_seconds": budget,
+                        "scenario_id_at_run": scenario_id,
+                    }
+                ),
+            }
+            if scenario_id is not None:
+                pb_data["scenario"] = scenario_id
+            rec = await asyncio.to_thread(pb.collection(SOLVER_RUNS).create, pb_data)
+            created_pb_ids.append(rec.id)
+    except Exception as e:
+        # Roll back any partial PB creates and release in-memory state so the
+        # sweep slot isn't permanently locked.
+        for prev in created_pb_ids:
+            try:
+                await asyncio.to_thread(pb.collection(SOLVER_RUNS).delete, prev)
+            except Exception as cleanup_err:
+                logger.warning("Failed to roll back PB row %s: %s", prev, cleanup_err)
+        for rid in run_ids:
+            solver_runs.pop(rid, None)
+        sweep_registry.release(sweep_id)
+        if isinstance(e, ClientResponseError):
+            raise pb_error_to_http(e) from e
+        raise
+
     # Snapshot the input. Scenario sweeps include scenario lock_groups; both
     # paths use the same helper. On failure, undo the pre-creation so the
     # session/scenario isn't permanently locked by the in-flight guard.
@@ -248,6 +291,11 @@ async def post_run_sweep(
             pb, session_cm_id=session_cm_id, year=year, scenario=scenario_id
         )
     except Exception as e:
+        for prev in created_pb_ids:
+            try:
+                await asyncio.to_thread(pb.collection(SOLVER_RUNS).delete, prev)
+            except Exception as cleanup_err:
+                logger.warning("Failed to roll back PB row %s: %s", prev, cleanup_err)
         for run_id in run_ids:
             solver_runs.pop(run_id, None)
         sweep_registry.release(sweep_id)
@@ -269,6 +317,7 @@ async def post_run_sweep(
             label=request.label,
             registry=sweep_registry,
             frozen_input=frozen_input,
+            pb=pb,
         )
     )
     _sweep_tasks.add(task)

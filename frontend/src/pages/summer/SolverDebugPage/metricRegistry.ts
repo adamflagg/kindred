@@ -116,6 +116,15 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     format: 'integer',
     group: 'model',
   },
+  num_bool_or: {
+    key: 'num_bool_or',
+    label: 'bool_or',
+    description:
+      'Disjunctive (bool_or) constraints in the model; cleanup signal — fewer = simpler.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+  },
 }
 
 /** Subset rendered in pin-to-compare delta panel (numeric, comparable). */
@@ -129,6 +138,7 @@ export const COMPARABLE_METRICS: readonly string[] = [
   'num_solutions_found',
   'model_num_variables',
   'model_num_constraints',
+  'num_bool_or',
 ] as const
 
 export function getMetric(key: string): MetricMeta {

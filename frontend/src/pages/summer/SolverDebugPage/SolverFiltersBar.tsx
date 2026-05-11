@@ -15,6 +15,14 @@ export interface SolverFiltersBarSession {
   year?: number
 }
 
+export interface SolverFiltersBarSweep {
+  id: string
+  label?: string | null
+  count?: number
+}
+
+type DateRange = '7d' | '30d' | 'all'
+
 interface SolverFiltersBarProps {
   filters: SolverRunsFilters
   onFiltersChange: (next: SolverRunsFilters) => void
@@ -25,7 +33,29 @@ interface SolverFiltersBarProps {
    * the filter dropdown can't resolve to actual run rows.
    */
   sessions: SolverFiltersBarSession[]
+  /** Distinct sweeps present in the current run set, for the sweep dropdown. */
+  availableSweeps?: SolverFiltersBarSweep[]
   onExport: () => void
+}
+
+const MANUAL_SENTINEL = '__manual__'
+
+function dateRangeToSince(range: DateRange): string | undefined {
+  if (range === 'all') return undefined
+  const ms = range === '7d' ? 7 : 30
+  return new Date(Date.now() - ms * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function currentDateRange(filters: SolverRunsFilters): DateRange {
+  if (!filters.since) return 'all'
+  const ageMs = Date.now() - new Date(filters.since).getTime()
+  // 14 days = midpoint between 7 and 30 — picks the closer label for stale state.
+  return ageMs <= 14 * 24 * 60 * 60 * 1000 ? '7d' : '30d'
+}
+
+function currentSweepValue(filters: SolverRunsFilters): string {
+  if (filters.manualOnly) return MANUAL_SENTINEL
+  return filters.sweepId ?? ''
 }
 
 export function SolverFiltersBar({
@@ -34,6 +64,7 @@ export function SolverFiltersBar({
   visibleColumns,
   onColumnsChange,
   sessions,
+  availableSweeps = [],
   onExport,
 }: SolverFiltersBarProps) {
   const [showPicker, setShowPicker] = useState(false)
@@ -89,6 +120,71 @@ export function SolverFiltersBar({
             {s.year ? ` — ${s.year}` : ''}
           </option>
         ))}
+      </select>
+      <select
+        aria-label="Filter by source"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5"
+        value={filters.sourceKind ?? ''}
+        onChange={(e) => {
+          const next: SolverRunsFilters = { ...filters }
+          const v = e.target.value
+          if (v === 'production' || v === 'scenario') {
+            next.sourceKind = v
+          } else {
+            delete next.sourceKind
+          }
+          onFiltersChange(next)
+        }}
+      >
+        <option value="">All sources</option>
+        <option value="production">Production only</option>
+        <option value="scenario">Scenarios only</option>
+      </select>
+      <select
+        aria-label="Filter by sweep"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5"
+        value={currentSweepValue(filters)}
+        onChange={(e) => {
+          const next: SolverRunsFilters = { ...filters }
+          const v = e.target.value
+          delete next.sweepId
+          delete next.manualOnly
+          if (v === MANUAL_SENTINEL) {
+            next.manualOnly = true
+          } else if (v) {
+            next.sweepId = v
+          }
+          onFiltersChange(next)
+        }}
+      >
+        <option value="">All sweeps</option>
+        <option value={MANUAL_SENTINEL}>Manual runs only</option>
+        {availableSweeps.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.label ?? `Sweep ${s.id.slice(0, 8)}`}
+            {s.count !== undefined ? ` (${s.count})` : ''}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Filter by date"
+        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5"
+        value={currentDateRange(filters)}
+        onChange={(e) => {
+          const range = e.target.value as DateRange
+          const next: SolverRunsFilters = { ...filters }
+          const since = dateRangeToSince(range)
+          if (since) {
+            next.since = since
+          } else {
+            delete next.since
+          }
+          onFiltersChange(next)
+        }}
+      >
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="all">All time</option>
       </select>
       <label className="flex items-center gap-1.5 text-gray-600">
         <input

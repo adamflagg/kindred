@@ -30,6 +30,7 @@ describe('METRIC_REGISTRY', () => {
         'num_integer_variables',
         'model_num_variables',
         'model_num_constraints',
+        'num_bool_or',
       ].sort()
     )
   })

@@ -31,6 +31,35 @@ from .run_tagging import build_run_details, compose_minimal_run_details
 logger = get_logger(__name__)
 
 
+async def _persist_run_record(
+    task_pb: PocketBase, run_id: str, payload: dict[str, Any], *, sweep_id: str | None
+) -> Any:
+    """Persist the final solver_runs record.
+
+    Sweep children have a pre-created row from /run-sweep (status='pending')
+    so we update that row by run_id rather than create a duplicate. Solo
+    runs (sweep_id=None) keep the legacy CREATE behavior — no pre-created
+    row exists for them. A sweep child whose pre-created row was deleted
+    (snapshot rollback raced a child write) falls back to CREATE so the
+    record is still persisted instead of silently lost.
+    """
+    if sweep_id is not None:
+        try:
+            existing = await asyncio.to_thread(
+                task_pb.collection(SOLVER_RUNS).get_first_list_item,
+                f'run_id = "{run_id}"',
+            )
+            return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).update, existing.id, payload)
+        except Exception as e:
+            logger.warning(
+                "No pre-created PB row for sweep child %s (%s); creating fresh: %s",
+                run_id,
+                sweep_id,
+                e,
+            )
+    return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).create, payload)
+
+
 async def run_solver_task_v2(
     run_id: str,
     session_cm_id: int,
@@ -240,7 +269,10 @@ async def run_solver_task_v2(
             details = dict(minimal_details)
         details["time_limit_seconds"] = time_limit
 
-        # Record in PocketBase
+        # Record in PocketBase. Sweep children have a pre-created row written
+        # at /run-sweep kickoff so the frontend can show the in-progress banner
+        # across page refreshes — for those, update the existing row rather
+        # than create a duplicate. Solo runs keep CREATE.
         try:
             pb_data: dict[str, Any] = {
                 "run_id": run_id,
@@ -257,8 +289,8 @@ async def run_solver_task_v2(
                 pb_data["scenario"] = scenario
             logger.debug(f"Attempting to save to PocketBase with data: {pb_data}")
 
-            pb_record = await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).create, pb_data)
-            logger.info(f"Created PocketBase record: {pb_record.id}")
+            pb_record = await _persist_run_record(task_pb, run_id, pb_data, sweep_id=sweep_id)
+            logger.info(f"Persisted PocketBase record: {pb_record.id}")
         except Exception as pb_error:
             logger.error(f"Failed to save to PocketBase: {type(pb_error).__name__}: {pb_error}")
             import traceback
@@ -278,20 +310,18 @@ async def run_solver_task_v2(
         # sweep children group correctly with their successful siblings in
         # the impact-analysis UI rather than appearing as orphans.
         try:
-            await asyncio.to_thread(
-                task_pb.collection(SOLVER_RUNS).create,
-                {
-                    "run_id": run_id,
-                    "session": str(session_cm_id),
-                    "session_id": session_cm_id,
-                    "status": "failed",
-                    "started_at": solver_runs[run_id]
-                    .get("started_at", datetime.now(UTC))
-                    .strftime("%Y-%m-%d %H:%M:%S.000Z"),
-                    "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
-                    "error": json.dumps({"message": str(e)}),
-                    "details": json.dumps(minimal_details),
-                },
-            )
+            failure_payload = {
+                "run_id": run_id,
+                "session": str(session_cm_id),
+                "session_id": session_cm_id,
+                "status": "failed",
+                "started_at": solver_runs[run_id]
+                .get("started_at", datetime.now(UTC))
+                .strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
+                "error": json.dumps({"message": str(e)}),
+                "details": json.dumps(minimal_details),
+            }
+            await _persist_run_record(task_pb, run_id, failure_payload, sweep_id=sweep_id)
         except Exception:  # noqa: S110 — intentional silent handling
             pass

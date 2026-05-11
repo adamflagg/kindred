@@ -14,6 +14,7 @@ from typing import Any
 
 from bunking.logging_config import get_logger
 
+from ..constants.collections import SOLVER_RUNS
 from ..dependencies import solver_runs
 from .solver_runner import run_solver_task_v2
 from .sweep_registry import SweepRegistry
@@ -21,18 +22,31 @@ from .sweep_registry import SweepRegistry
 logger = get_logger(__name__)
 
 
-def _mark_remaining(run_ids: list[str], start_idx: int, status: str) -> None:
+def _mark_remaining(run_ids: list[str], start_idx: int, status: str, pb: Any = None) -> None:
     """Transition pre-created sweep children that never launched out of 'pending'.
 
     The /run-sweep handler pre-creates a solver_runs entry per child so the UI
     sees the full sweep immediately. If the sweep is cancelled mid-loop or a
     child raises, those un-launched entries would otherwise sit forever in
     'pending' — visible to the impact-analysis table as ghosts.
+
+    When ``pb`` is provided, the PocketBase row for each orphan is also
+    updated so frontend refresh-recovery doesn't see stale 'pending' rows
+    after a cancel/crash. PB errors are swallowed: this runs in cleanup
+    paths and must not crash the orchestrator.
     """
     for orphan in run_ids[start_idx:]:
         entry = solver_runs.get(orphan)
-        if entry is not None and entry.get("status") == "pending":
-            entry["status"] = status
+        if entry is None or entry.get("status") != "pending":
+            continue
+        entry["status"] = status
+        if pb is None:
+            continue
+        try:
+            rec = pb.collection(SOLVER_RUNS).get_first_list_item(f'run_id = "{orphan}"')
+            pb.collection(SOLVER_RUNS).update(rec.id, {"status": status})
+        except Exception as e:
+            logger.warning("Failed to sync orphan %s to PocketBase: %s", orphan, e)
 
 
 async def run_sweep(
@@ -46,11 +60,15 @@ async def run_sweep(
     label: str | None,
     registry: SweepRegistry,
     frozen_input: Any,
+    pb: Any = None,
 ) -> None:
     """Run each ``(run_id, budget)`` pair sequentially; abort remaining if cancelled.
 
     ``finally`` releases the sweep_id from the registry so it doesn't leak
     even if a child run raises or validation fails.
+
+    ``pb`` is forwarded to :func:`_mark_remaining` so orphaned sweep children
+    have their PocketBase rows transitioned alongside the in-memory dict.
     """
     next_idx = 0
     try:
@@ -63,7 +81,7 @@ async def run_sweep(
             next_idx = idx + 1
             if registry.is_cancelled(sweep_id):
                 logger.info("Sweep %s cancelled; aborting remaining runs", sweep_id)
-                _mark_remaining(run_ids, idx, "cancelled")
+                _mark_remaining(run_ids, idx, "cancelled", pb=pb)
                 break
             try:
                 await run_solver_task_v2(
@@ -80,7 +98,7 @@ async def run_sweep(
             except Exception:
                 # Child crashed — mark un-launched siblings as failed so they
                 # don't sit forever in pending, then re-raise so the caller sees it.
-                _mark_remaining(run_ids, next_idx, "failed")
+                _mark_remaining(run_ids, next_idx, "failed", pb=pb)
                 raise
     finally:
         registry.release(sweep_id)

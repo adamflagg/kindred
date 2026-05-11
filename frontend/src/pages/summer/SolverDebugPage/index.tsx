@@ -46,8 +46,14 @@ export default function SolverDebugPage() {
     () => (validSessionIds !== undefined ? { ...filters, validSessionIds } : filters),
     [filters, validSessionIds]
   )
+  // Polling: kicks in when the user just clicked Run sweep (activeSweepId) or
+  // when the fetched data shows an unsettled sweep (page-refresh case). The
+  // latter is synced via effect so first render polls=false; once data arrives
+  // and the effect runs, the next render flips to 5s and React Query picks up
+  // the new interval.
+  const [hasUnsettledSweepInData, setHasUnsettledSweepInData] = useState(false)
   const runs = useSolverRuns(scopedFilters, {
-    pollMs: activeSweepId ? 5_000 : false,
+    pollMs: activeSweepId != null || hasUnsettledSweepInData ? 5_000 : false,
   })
   const runSweep = useRunSweep()
   const cancelSweep = useCancelSweep()
@@ -69,6 +75,22 @@ export default function SolverDebugPage() {
   // fresh array reference each render.
   const items = useMemo(() => runs.data?.items ?? [], [runs.data])
 
+  // Sync the "unsettled sweep in data" flag so polling can recover after a
+  // page refresh (where activeSweepId is wiped). Must be an effect because
+  // the flag drives pollMs which is a hook arg to useSolverRuns — feeding
+  // items directly into pollMs would be a forward reference.
+  useEffect(() => {
+    const unsettled = items.some(
+      (r) =>
+        r.details?.sweep_id != null &&
+        r.status !== 'success' &&
+        r.status !== 'failed' &&
+        r.status !== 'error'
+    )
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing derived flag with fetched data; needed so refetchInterval reacts on the next render.
+    setHasUnsettledSweepInData(unsettled)
+  }, [items])
+
   // Restrict pinned ids to runs currently visible in the fetched window.
   // Computed at render time — no setState-in-effect cascade — and the
   // underlying `pinnedIds` state is preserved so a pin re-appears when the
@@ -83,15 +105,63 @@ export default function SolverDebugPage() {
 
   const selectedRun = selectedRunId ? (items.find((r) => r.id === selectedRunId) ?? null) : null
 
+  // Distinct sweeps in the current run window, for the sweep filter dropdown.
+  // Counted from the fetched page; not a server-side aggregate.
+  const availableSweeps = useMemo(() => {
+    const byId = new Map<string, { id: string; label?: string | null; count: number }>()
+    for (const r of items) {
+      const id = r.details?.sweep_id
+      if (!id) continue
+      const existing = byId.get(id)
+      if (existing) {
+        existing.count += 1
+      } else {
+        byId.set(id, { id, label: r.details?.sweep_label ?? null, count: 1 })
+      }
+    }
+    return Array.from(byId.values())
+  }, [items])
+
   const inFlightSweep = useMemo(() => {
-    if (!activeSweepId) return null
-    const sweepChildren = items.filter((r) => r.details?.sweep_id === activeSweepId)
-    if (sweepChildren.length === 0) return null
-    const completed = sweepChildren.filter(
-      (r) => r.status === 'success' || r.status === 'failed' || r.status === 'error'
-    ).length
-    if (completed === sweepChildren.length) return null
-    return { sweep_id: activeSweepId, completed, total: sweepChildren.length }
+    // Derive the in-flight sweep from the items themselves so a page refresh
+    // (which wipes activeSweepId from React state) doesn't lose the banner.
+    // Group children by sweep_id, find the most recent one that isn't fully
+    // settled. items is already sorted by -created in the query.
+    const bySweep = new Map<string, typeof items>()
+    for (const r of items) {
+      const sid = r.details?.sweep_id
+      if (!sid) continue
+      const list = bySweep.get(sid) ?? []
+      list.push(r)
+      bySweep.set(sid, list)
+    }
+    const isSettled = (r: (typeof items)[number]) =>
+      r.status === 'success' || r.status === 'failed' || r.status === 'error'
+    for (const [sid, children] of bySweep) {
+      const completed = children.filter(isSettled).length
+      if (completed === children.length) continue
+      const budgets = children
+        .filter((r) => r.stats?.time_budget_seconds != null)
+        .map((r) => {
+          const seconds = r.stats!.time_budget_seconds!
+          const walltime = r.stats?.walltime_seconds ?? null
+          const state: 'done' | 'running' | 'pending' = isSettled(r)
+            ? 'done'
+            : r.stats
+              ? 'running'
+              : 'pending'
+          return { seconds, walltime, state }
+        })
+        .sort((a, b) => a.seconds - b.seconds)
+      return { sweep_id: sid, completed, total: children.length, budgets }
+    }
+    // No in-flight sweep visible in the data — but if we just kicked one off,
+    // show a placeholder until the first child row lands (otherwise the user
+    // sees nothing and re-clicks, tripping the backend's single-flight 409).
+    if (activeSweepId) {
+      return { sweep_id: activeSweepId, completed: 0, total: 0, budgets: [] }
+    }
+    return null
   }, [activeSweepId, items])
 
   // Once the in-flight sweep settles (children have all landed and finished),
@@ -184,6 +254,7 @@ export default function SolverDebugPage() {
         visibleColumns={visibleColumns}
         onColumnsChange={handleColumnsChange}
         sessions={sessions.data ?? []}
+        availableSweeps={availableSweeps}
         onExport={handleExport}
       />
 

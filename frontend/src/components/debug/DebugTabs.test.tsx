@@ -27,13 +27,13 @@ describe('DebugTabs', () => {
     expect(active).toHaveAttribute('aria-current', 'page')
   })
 
-  it('marks the new Solver Stats tab with a "new" badge', () => {
+  it('does not render a "new" badge on the Solver Stats tab', () => {
     render(
       <MemoryRouter initialEntries={['/summer/debug/parse-analysis']}>
         <DebugTabs />
       </MemoryRouter>
     )
     const solverTab = screen.getByRole('link', { name: /solver stats/i })
-    expect(solverTab.textContent?.toLowerCase()).toContain('new')
+    expect(solverTab.textContent?.toLowerCase()).not.toContain('new')
   })
 })

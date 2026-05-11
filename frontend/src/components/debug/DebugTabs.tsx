@@ -4,7 +4,7 @@ const TABS = [
   { to: '/summer/debug/parse-analysis', label: 'Parse Analysis' },
   { to: '/summer/debug/prompt-editor', label: 'Prompt Editor' },
   { to: '/summer/debug/pipeline', label: 'Pipeline' },
-  { to: '/summer/debug/solver', label: 'Solver Stats', isNew: true },
+  { to: '/summer/debug/solver', label: 'Solver Stats' },
 ] as const
 
 export function DebugTabs() {
@@ -24,11 +24,6 @@ export function DebugTabs() {
             }
           >
             {tab.label}
-            {'isNew' in tab && tab.isNew ? (
-              <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
-                new
-              </span>
-            ) : null}
           </NavLink>
         ))}
       </nav>

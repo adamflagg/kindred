@@ -121,6 +121,18 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
       if (filters.hideFailed) {
         filterParts.push('status != "failed" && status != "error"')
       }
+      if (filters.sourceKind && filters.sourceKind !== 'all') {
+        filterParts.push('details.source_kind = {:sourceKind}')
+        filterParams['sourceKind'] = filters.sourceKind
+      }
+      if (filters.manualOnly) {
+        // sweep_id is null for runs that aren't part of a sweep; PB JSON field
+        // semantics treat absent and empty consistently, so match both forms.
+        filterParts.push('(details.sweep_id = null || details.sweep_id = "")')
+      } else if (filters.sweepId) {
+        filterParts.push('details.sweep_id = {:sweepId}')
+        filterParams['sweepId'] = filters.sweepId
+      }
       if (filters.since) {
         filterParts.push('created >= {:since}')
         filterParams['since'] = filters.since

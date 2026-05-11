@@ -21,12 +21,32 @@ export interface SweepPanelPayload {
   label?: string
 }
 
+export interface SweepBudgetProgress {
+  seconds: number
+  walltime: number | null
+  state: 'done' | 'running' | 'pending'
+}
+
+export interface InFlightSweep {
+  sweep_id: string
+  completed: number
+  total: number
+  budgets?: SweepBudgetProgress[]
+}
+
 export interface SweepPanelProps {
   sessions: SweepPanelSession[]
   scenarios: SweepPanelScenario[]
   onRunSweep: (req: SweepPanelPayload) => void | Promise<void>
   onCancelSweep: (sweepId: string) => void
-  inFlightSweep: { sweep_id: string; completed: number; total: number } | null
+  inFlightSweep: InFlightSweep | null
+}
+
+function formatBudget(b: SweepBudgetProgress): string {
+  if (b.state === 'done' && b.walltime !== null)
+    return `${b.seconds}s done in ${b.walltime.toFixed(1)}s`
+  if (b.state === 'running') return `${b.seconds}s running…`
+  return `${b.seconds}s pending`
 }
 
 const DEFAULT_BUDGETS = [30, 60, 180, 300]
@@ -202,14 +222,23 @@ export function SweepPanel({
       </div>
 
       {inFlightSweep ? (
-        <div className="bg-forest-50 border-forest-200 mt-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm">
+        <div className="bg-forest-50 border-forest-200 mt-4 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm">
           <div className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
           <span className="text-forest-700 font-medium">
             Sweep {inFlightSweep.sweep_id} in progress
           </span>
-          <span className="text-gray-600">
-            — {inFlightSweep.completed} of {inFlightSweep.total} complete
-          </span>
+          {inFlightSweep.total > 0 ? (
+            <span className="text-gray-600">
+              — {inFlightSweep.completed} of {inFlightSweep.total} complete
+            </span>
+          ) : (
+            <span className="text-gray-600">— spinning up…</span>
+          )}
+          {inFlightSweep.budgets && inFlightSweep.budgets.length > 0 ? (
+            <span className="text-xs text-gray-500">
+              ({inFlightSweep.budgets.map(formatBudget).join(', ')})
+            </span>
+          ) : null}
           <button
             onClick={() => onCancelSweep(inFlightSweep.sweep_id)}
             className="ml-auto rounded border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100"
