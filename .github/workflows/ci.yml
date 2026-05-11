@@ -603,7 +603,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests]
+    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -617,7 +617,10 @@ jobs:
         FRONTEND_LINT: ${{ needs.frontend-lint.result }}
         DOCKER_LINT: ${{ needs.docker-lint.result }}
         SECURITY_LINT: ${{ needs.security-lint.result }}
-        TESTS: ${{ needs.tests.result }}
+        TESTS_PYTHON: ${{ needs.tests-python.result }}
+        TESTS_GO: ${{ needs.tests-go.result }}
+        TESTS_MIGRATIONS: ${{ needs.tests-migrations.result }}
+        TESTS_FRONTEND: ${{ needs.tests-frontend.result }}
       run: |
         # detect-changes: blocking — if this fails, all conditional jobs are skipped
         # and CI passes with zero validation (the paths-filter incident of March 2026)
@@ -656,8 +659,20 @@ jobs:
           echo "Actions security lint failed!"
           exit 1
         fi
-        if [ "$TESTS" != "success" ] && [ "$TESTS" != "skipped" ]; then
-          echo "Tests failed!"
+        if [ "$TESTS_PYTHON" != "success" ] && [ "$TESTS_PYTHON" != "skipped" ]; then
+          echo "Python tests failed!"
+          exit 1
+        fi
+        if [ "$TESTS_GO" != "success" ] && [ "$TESTS_GO" != "skipped" ]; then
+          echo "Go tests failed!"
+          exit 1
+        fi
+        if [ "$TESTS_MIGRATIONS" != "success" ] && [ "$TESTS_MIGRATIONS" != "skipped" ]; then
+          echo "Migration smoke test failed!"
+          exit 1
+        fi
+        if [ "$TESTS_FRONTEND" != "success" ] && [ "$TESTS_FRONTEND" != "skipped" ]; then
+          echo "Frontend tests failed!"
           exit 1
         fi
         echo "All CI checks passed!"
