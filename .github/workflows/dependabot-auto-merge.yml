@@ -11,6 +11,11 @@ jobs:
     if: github.triggering_actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
+        with:
+          egress-policy: audit
+
       - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v2
         id: metadata
       - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
