@@ -582,12 +582,17 @@ jobs:
 
         echo "✅ Migration smoke test passed"
 
-  # Frontend tests (parallel)
+  # Frontend tests — sharded across 2 matrix jobs to cut wall-clock
+  # (vitest --shard splits files; matrix gives each shard its own runner)
   tests-frontend:
     name: Frontend Tests
     needs: detect-changes
     if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -605,9 +610,9 @@ jobs:
       working-directory: ./frontend
       run: npm ci
 
-    - name: Run frontend tests
+    - name: Run frontend tests (shard ${{ matrix.shard }}/2)
       working-directory: ./frontend
-      run: npm run test -- --run
+      run: npm run test -- --run --shard=${{ matrix.shard }}/2
 
   # Summary job - gate for PR merges
   summary:
