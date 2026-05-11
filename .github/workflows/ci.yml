@@ -400,6 +400,38 @@ jobs:
       run: |
         pipx run zizmor --config zizmor.yml --min-severity medium .
 
+  tests-python:
+    name: Python Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version-file: '.python-version'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      with:
+        enable-cache: true
+
+    - name: Install Python dependencies
+      run: uv sync --frozen
+
+    - name: Create logs directory
+      run: mkdir -p logs
+
+    - name: Run Python unit tests (no external deps)
+      env:
+        SKIP_POCKETBASE_TESTS: true
+      run: uv run pytest tests/unit/ -v --tb=short --ignore=tests/unit/api/
+
   # Run tests in parallel with lint jobs
   tests:
     name: Run Tests
