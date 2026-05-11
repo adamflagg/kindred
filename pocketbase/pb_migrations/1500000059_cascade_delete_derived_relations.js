@@ -10,7 +10,6 @@
  * If the source person/household is gone, derived data should cascade-delete.
  *
  * Affected relations:
- * - financial_aid_applications.person -> persons
  * - household_demographics.household -> households
  * - family_camp_adults.household -> households
  * - family_camp_registrations.household -> households
@@ -18,24 +17,9 @@
  */
 
 migrate((app) => {
-  const personsCol = app.findCollectionByNameOrId("persons");
   const householdsCol = app.findCollectionByNameOrId("households");
 
-  // 1. financial_aid_applications.person
-  const faApps = app.findCollectionByNameOrId("financial_aid_applications");
-  faApps.fields.add(new Field({
-    type: "relation",
-    name: "person",
-    required: true,
-    presentable: true,
-    collectionId: personsCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(faApps);
-
-  // 2. household_demographics.household
+  // 1. household_demographics.household
   const hhDemo = app.findCollectionByNameOrId("household_demographics");
   hhDemo.fields.add(new Field({
     type: "relation",
@@ -49,7 +33,7 @@ migrate((app) => {
   }));
   app.save(hhDemo);
 
-  // 3. family_camp_adults.household
+  // 2. family_camp_adults.household
   const fcAdults = app.findCollectionByNameOrId("family_camp_adults");
   fcAdults.fields.add(new Field({
     type: "relation",
@@ -63,7 +47,7 @@ migrate((app) => {
   }));
   app.save(fcAdults);
 
-  // 4. family_camp_registrations.household
+  // 3. family_camp_registrations.household
   const fcRegs = app.findCollectionByNameOrId("family_camp_registrations");
   fcRegs.fields.add(new Field({
     type: "relation",
@@ -77,7 +61,7 @@ migrate((app) => {
   }));
   app.save(fcRegs);
 
-  // 5. family_camp_medical.household
+  // 4. family_camp_medical.household
   const fcMed = app.findCollectionByNameOrId("family_camp_medical");
   fcMed.fields.add(new Field({
     type: "relation",
@@ -92,21 +76,7 @@ migrate((app) => {
   app.save(fcMed);
 
 }, (app) => {
-  const personsCol = app.findCollectionByNameOrId("persons");
   const householdsCol = app.findCollectionByNameOrId("households");
-
-  const faApps = app.findCollectionByNameOrId("financial_aid_applications");
-  faApps.fields.add(new Field({
-    type: "relation",
-    name: "person",
-    required: true,
-    presentable: true,
-    collectionId: personsCol.id,
-    cascadeDelete: false,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(faApps);
 
   const hhDemo = app.findCollectionByNameOrId("household_demographics");
   hhDemo.fields.add(new Field({
