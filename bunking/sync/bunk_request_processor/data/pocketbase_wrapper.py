@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from pocketbase.models.utils.list_result import ListResult
+try:
+    from pocketbase.models.list_result import ListResult  # SDK >= 0.17.0
+except ImportError:
+    from pocketbase.models.utils.list_result import ListResult  # SDK < 0.17.0
 from pocketbase.services.record_service import RecordService
 
 # Import TRACE constant and ensure trace method is available
