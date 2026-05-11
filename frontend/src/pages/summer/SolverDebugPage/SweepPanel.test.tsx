@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { SweepPanel } from './SweepPanel'
 
@@ -126,16 +126,7 @@ describe('SweepPanel', () => {
   })
 
   describe('budget editing', () => {
-    let promptSpy: ReturnType<typeof vi.spyOn>
-
-    beforeEach(() => {
-      promptSpy = vi.spyOn(window, 'prompt')
-    })
-    afterEach(() => {
-      promptSpy.mockRestore()
-    })
-
-    it('rejects duplicate budget values', () => {
+    it('rejects duplicate budget values entered in the inline input', () => {
       const onRunSweep = vi.fn()
       render(
         <SweepPanel
@@ -146,7 +137,9 @@ describe('SweepPanel', () => {
           inFlightSweep={null}
         />
       )
-      promptSpy.mockReturnValueOnce('60') // 60 is already in DEFAULT_BUDGETS
+      // Type 60 into the inline number input (already in DEFAULT_BUDGETS).
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '60' } })
       act(() => {
         fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
       })
@@ -156,7 +149,7 @@ describe('SweepPanel', () => {
       )
     })
 
-    it('adds a new unique budget in sorted order', () => {
+    it('adds a new unique budget in sorted order via the inline input', () => {
       const onRunSweep = vi.fn()
       render(
         <SweepPanel
@@ -167,13 +160,55 @@ describe('SweepPanel', () => {
           inFlightSweep={null}
         />
       )
-      promptSpy.mockReturnValueOnce('90')
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '90' } })
       act(() => {
         fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
       })
       fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
       expect(onRunSweep).toHaveBeenCalledWith(
         expect.objectContaining({ time_budgets: [30, 60, 90, 180, 300] })
+      )
+    })
+
+    it('clears the input after a successful add', () => {
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={vi.fn()}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '120' } })
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      expect(input.value).toBe('')
+    })
+
+    it('ignores non-positive and non-numeric input', () => {
+      const onRunSweep = vi.fn()
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={onRunSweep}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '-5' } })
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
+      // Defaults unchanged.
+      expect(onRunSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ time_budgets: [30, 60, 180, 300] })
       )
     })
   })

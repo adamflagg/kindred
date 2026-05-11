@@ -196,6 +196,7 @@ export function SolverFiltersBar({
       </label>
       <div ref={pickerWrapperRef} className="relative ml-auto flex items-center gap-2">
         <button
+          type="button"
           onClick={() => setShowPicker((v) => !v)}
           className="rounded border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:text-gray-900"
         >

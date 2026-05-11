@@ -67,6 +67,7 @@ export function SweepPanel({
   const [pickedSessionCmId, setPickedSessionCmId] = useState<number | null>(null)
   const [pickedSourceValue, setPickedSourceValue] = useState<string>('production')
   const [budgets, setBudgets] = useState<number[]>(DEFAULT_BUDGETS)
+  const [budgetDraft, setBudgetDraft] = useState<string>('')
   const [label, setLabel] = useState<string>('')
 
   const sessionCmId = pickedSessionCmId ?? sessions[sessions.length - 1]?.cm_id ?? 0
@@ -107,10 +108,10 @@ export function SweepPanel({
     })
 
   const addBudget = () => {
-    const next = window.prompt('Add budget in seconds (e.g., 90):')
-    const n = next ? parseInt(next, 10) : NaN
+    const n = budgetDraft ? parseInt(budgetDraft, 10) : NaN
     if (!Number.isFinite(n) || n <= 0) return
     setBudgets((prev) => (prev.includes(n) ? prev : [...prev, n].sort((a, b) => a - b)))
+    setBudgetDraft('')
   }
 
   return (
@@ -189,7 +190,23 @@ export function SweepPanel({
                 {b}s ×
               </button>
             ))}
+            <input
+              type="number"
+              min={1}
+              aria-label="Add budget in seconds"
+              value={budgetDraft}
+              onChange={(e) => setBudgetDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addBudget()
+                }
+              }}
+              placeholder="90"
+              className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+            />
             <button
+              type="button"
               onClick={addBudget}
               className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-sm text-gray-500 hover:border-gray-400"
             >

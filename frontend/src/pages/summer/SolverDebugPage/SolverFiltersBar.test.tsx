@@ -25,6 +25,21 @@ describe('SolverFiltersBar', () => {
     expect(screen.getByRole('button', { name: /columns/i })).toBeInTheDocument()
   })
 
+  it('all action buttons have explicit type="button" so they never act as form submits', () => {
+    render(
+      <SolverFiltersBar
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        onColumnsChange={vi.fn()}
+        sessions={fakeSessions}
+        onExport={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: /columns/i })).toHaveAttribute('type', 'button')
+    expect(screen.getByRole('button', { name: /export json/i })).toHaveAttribute('type', 'button')
+  })
+
   it('renders an Export JSON button next to Columns and calls onExport when clicked', () => {
     const onExport = vi.fn()
     render(

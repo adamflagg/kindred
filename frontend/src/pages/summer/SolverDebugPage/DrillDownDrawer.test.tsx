@@ -67,4 +67,25 @@ describe('DrillDownDrawer', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
+
+  it('does not refocus the close button when only onClose reference changes', () => {
+    // Simulates the parent (SolverDebugPage) re-rendering every 5s during
+    // polling: it passes an inline `() => setSelectedRunId(null)` so the
+    // onClose reference changes each tick. The effect must not re-fire and
+    // steal focus from wherever the user navigated to inside the drawer.
+    const { rerender } = render(<DrillDownDrawer run={run} onClose={() => {}} />)
+    const closeBtn = screen.getByRole('button', { name: /close/i })
+
+    // User tabs to a link inside the drawer.
+    const link = screen.getByRole('link', { name: /view commit/i })
+    link.focus()
+    expect(document.activeElement).toBe(link)
+
+    // Parent re-renders with a fresh onClose reference (poll tick).
+    rerender(<DrillDownDrawer run={run} onClose={() => {}} />)
+
+    // Focus must stay on the link, not jump back to the close button.
+    expect(document.activeElement).toBe(link)
+    expect(document.activeElement).not.toBe(closeBtn)
+  })
 })

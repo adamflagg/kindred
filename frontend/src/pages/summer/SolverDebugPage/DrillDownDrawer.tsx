@@ -16,21 +16,27 @@ export function DrillDownDrawer({ run, onClose }: Props) {
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
   const titleId = useId()
 
+  // Escape listener — re-binds whenever the onClose callback changes so it
+  // always closes the *current* drawer. Cheap; no focus side effects.
   useEffect(() => {
     if (!run) return
-    // Close on Escape
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
-    // Capture the element that opened the drawer so we can restore focus on close.
+    return () => window.removeEventListener('keydown', onKey)
+  }, [run, onClose])
+
+  // Focus management — fires only when the drawer opens/closes for a new run,
+  // not when the parent re-renders (e.g. every 5 s during polling). Splitting
+  // this out of the Escape effect prevents stealing focus from elements the
+  // user has tabbed to inside the drawer.
+  useEffect(() => {
+    if (!run) return
     const previouslyFocused = document.activeElement as HTMLElement | null
     closeBtnRef.current?.focus()
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      previouslyFocused?.focus()
-    }
-  }, [run, onClose])
+    return () => previouslyFocused?.focus()
+  }, [run])
 
   if (!run) return null
   const s = run.stats ?? {}
