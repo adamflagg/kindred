@@ -60,9 +60,9 @@ export function SolverRunsTable({
   pinnedRunIds,
   onTogglePin,
   onRowClick,
-  hasNextPage: _hasNextPage,
-  fetchNextPage: _fetchNextPage,
-  totalItems: _totalItems,
+  hasNextPage,
+  fetchNextPage,
+  totalItems,
 }: SolverRunsTableProps) {
   const pinSlot = (id: string): 'A' | 'B' | null => {
     const idx = pinnedRunIds.indexOf(id)
@@ -350,6 +350,25 @@ export function SolverRunsTable({
           })}
         </tbody>
       </table>
+      {/* Footer: legend + Load more */}
+      <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-5 py-3 text-xs text-gray-500">
+        <span>
+          Showing {runs.length} of {totalItems ?? runs.length} runs &nbsp;·&nbsp;
+          <span className="inline-flex items-center gap-0.5 rounded bg-yellow-100 px-1.5 py-0.5 text-yellow-800">
+            <Zap className="h-3 w-3" /> label
+          </span>{' '}
+          = part of a multi-budget sweep · &quot;manual&quot; = single ad-hoc run
+        </span>
+        {hasNextPage && fetchNextPage && (
+          <button
+            onClick={fetchNextPage}
+            className="font-medium text-gray-700 hover:text-gray-900"
+            type="button"
+          >
+            Load more
+          </button>
+        )}
+      </div>
     </div>
   )
 }
