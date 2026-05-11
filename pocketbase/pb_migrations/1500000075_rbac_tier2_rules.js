@@ -5,6 +5,9 @@
  *
  * Tier 2: Sensitive collections not accessed by frontend. Admin-only.
  * Tier 3: Collections only accessed via FastAPI admin endpoints. Deny direct access.
+ *
+ * Note: staff_applications trimmed — final adminOnly rules baked into
+ * merged CREATE migration #046.
  */
 
 migrate((app) => {

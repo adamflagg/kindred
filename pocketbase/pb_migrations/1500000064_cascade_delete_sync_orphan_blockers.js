@@ -3,7 +3,7 @@
  * Migration: Enable cascadeDelete on remaining orphan-blocking relations
  *
  * Extends migration 1500000059 which fixed 5 derived-table relations.
- * This migration fixes the remaining 9 relations where child tables have
+ * This migration fixes the remaining 6 relations where child tables have
  * required references with cascadeDelete=false to parent tables that perform
  * orphan deletion during sync.
  *
