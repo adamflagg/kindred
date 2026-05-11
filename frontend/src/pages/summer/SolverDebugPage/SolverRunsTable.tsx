@@ -226,7 +226,9 @@ export function SolverRunsTable({
                     {run.created.slice(5, 16).replace('T', ' ')}
                   </td>
                   {showCol('source') && (
-                    <td className="px-3 py-2 text-gray-700">{run.details?.source_label ?? '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-700">
+                      {run.details?.source_label ?? '—'}
+                    </td>
                   )}
                   {showCol('budget') && (
                     <td className="px-3 py-2 text-gray-600">
