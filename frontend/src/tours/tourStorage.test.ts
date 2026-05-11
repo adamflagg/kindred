@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest'
 import {
   getTourStorage,
-  markTourCompleted,
   markLayerCompleted,
   batchComplete,
   getLayerCompletion,
@@ -44,16 +43,33 @@ describe('tourStorage', () => {
   })
 
   describe('backward compatibility', () => {
-    it('handles old storage shape without layers field', () => {
+    it('handles legacy storage shape that still has a completed field', () => {
       localStorage.setItem(
         TOUR_STORAGE_KEY,
         JSON.stringify({
           completed: { debug: { tourId: 'debug', completedVersion: 1, completedAt: '2026-01-01' } },
+          layers: {},
         })
       )
       const storage = getTourStorage()
       expect(storage.layers).toEqual({})
-      expect(storage.completed.debug).toBeDefined()
+    })
+
+    it('handles storage that only has layers', () => {
+      localStorage.setItem(
+        TOUR_STORAGE_KEY,
+        JSON.stringify({
+          layers: {
+            'metrics-header': {
+              layerId: 'metrics-header',
+              completedVersion: 1,
+              completedAt: '2026-01-01',
+            },
+          },
+        })
+      )
+      const storage = getTourStorage()
+      expect(storage.layers['metrics-header']).toBeDefined()
     })
   })
 
@@ -120,35 +136,28 @@ describe('tourStorage', () => {
   })
 
   describe('batchComplete', () => {
-    it('writes layers and tour in a single localStorage write', () => {
-      batchComplete(
-        [
-          { layerId: 'metrics-header', version: 1 },
-          { layerId: 'registration-intro', version: 1 },
-        ],
-        { tourId: 'debug', version: 2 }
-      )
+    it('writes multiple layers in a single localStorage write', () => {
+      batchComplete([
+        { layerId: 'metrics-header', version: 1 },
+        { layerId: 'registration-intro', version: 1 },
+      ])
       const storage = getTourStorage()
       expect(storage.layers['metrics-header']?.completedVersion).toBe(1)
       expect(storage.layers['registration-intro']?.completedVersion).toBe(1)
-      expect(storage.completed.debug?.completedVersion).toBe(2)
     })
 
-    it('works with layers only (no tour)', () => {
-      batchComplete([{ layerId: 'metrics-header', version: 1 }])
+    it('is a no-op when given an empty array', () => {
+      batchComplete([])
       const storage = getTourStorage()
-      expect(storage.layers['metrics-header']).toBeDefined()
-      expect(Object.keys(storage.completed)).toHaveLength(0)
+      expect(storage.layers).toEqual({})
     })
   })
 
   describe('resetAllTours', () => {
-    it('clears both tours and layers', () => {
-      markTourCompleted('debug', 1)
+    it('clears layer storage', () => {
       markLayerCompleted('metrics-header', 1)
       resetAllTours()
       const storage = getTourStorage()
-      expect(storage.completed).toEqual({})
       expect(storage.layers).toEqual({})
     })
   })

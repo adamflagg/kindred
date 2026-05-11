@@ -1,29 +1,16 @@
-import type { TourId, TourStorageData, LayerId } from './types'
+import type { LayerId, TourStorageData } from './types'
 
 export const TOUR_STORAGE_KEY = 'kindred_tours'
 
 export function getTourStorage(): TourStorageData {
   try {
     const raw = localStorage.getItem(TOUR_STORAGE_KEY)
-    if (!raw) return { completed: {}, layers: {} }
+    if (!raw) return { layers: {} }
     const parsed = JSON.parse(raw) as Partial<TourStorageData>
-    return {
-      completed: parsed.completed ?? {},
-      layers: parsed.layers ?? {},
-    }
+    return { layers: parsed.layers ?? {} }
   } catch {
-    return { completed: {}, layers: {} }
+    return { layers: {} }
   }
-}
-
-export function markTourCompleted(tourId: TourId, version: number): void {
-  const storage = getTourStorage()
-  storage.completed[tourId] = {
-    tourId,
-    completedVersion: version,
-    completedAt: new Date().toISOString(),
-  }
-  localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
 }
 
 export function getLayerCompletion(layerId: LayerId) {
@@ -57,35 +44,14 @@ export function isLayerStaleOrUnseen(
   return daysSince >= staleDays
 }
 
-/** Single-write batch: mark layers and optionally a page tour as completed */
-export function batchComplete(
-  layers: Array<{ layerId: LayerId; version: number }>,
-  tour?: { tourId: TourId; version: number }
-): void {
+/** Single-write batch mark for layers. No-op when given an empty array. */
+export function batchComplete(layers: Array<{ layerId: LayerId; version: number }>): void {
+  if (layers.length === 0) return
   const storage = getTourStorage()
   const now = new Date().toISOString()
   for (const { layerId, version } of layers) {
     storage.layers[layerId] = { layerId, completedVersion: version, completedAt: now }
   }
-  if (tour) {
-    storage.completed[tour.tourId] = {
-      tourId: tour.tourId,
-      completedVersion: tour.version,
-      completedAt: now,
-    }
-  }
-  localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
-}
-
-export function resetTour(tourId: TourId): void {
-  const storage = getTourStorage()
-  const completed: TourStorageData['completed'] = {}
-  for (const key of Object.keys(storage.completed) as TourId[]) {
-    if (key !== tourId && storage.completed[key]) {
-      completed[key] = storage.completed[key]
-    }
-  }
-  storage.completed = completed
   localStorage.setItem(TOUR_STORAGE_KEY, JSON.stringify(storage))
 }
 
