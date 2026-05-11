@@ -16,7 +16,7 @@ import { screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render, waitFor } from '../test/testUtils'
 import RequestReviewPanel from './RequestReviewPanel'
-import type { BunkRequestsResponse } from '../types/pocketbase-types'
+import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
 /**
  * Helper for the approve/reject handler tests: sets up the pb mock with a
@@ -2023,6 +2023,136 @@ describe('RequestReviewPanel', () => {
       const providerPos = requestsTabBlock.indexOf('BunkRequestProvider')
       const panelPos = requestsTabBlock.indexOf('RequestReviewPanel')
       expect(providerPos).toBeLessThan(panelPos)
+    })
+  })
+
+  // #1310 — seedPersons avoids the ID→name resolution flash and the extra
+  // round-trip when the parent already has the in-session campers loaded.
+  describe('seedPersons prop (#1310)', () => {
+    async function renderWithSeed({
+      seedPersons,
+      requesterId,
+      requesteeId,
+    }: {
+      seedPersons: Array<Partial<PersonsResponse>>
+      requesterId: number
+      requesteeId: number
+    }) {
+      const personsFetchSpy = vi.fn().mockResolvedValue([])
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: { collection: ReturnType<typeof vi.fn> }
+      }
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn().mockResolvedValue([
+              {
+                id: 'req-seed-1',
+                requester_id: requesterId,
+                requestee_id: requesteeId,
+                session_id: 1001,
+                year: 2025,
+                status: 'pending',
+                request_type: 'bunk_with',
+                confidence_score: 0.9,
+                priority: 1,
+              },
+            ]),
+            getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+            update: vi.fn().mockResolvedValue({}),
+          }
+        }
+        if (name === 'persons') {
+          return {
+            getFullList: personsFetchSpy,
+            getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+      render(
+        <RequestReviewPanel
+          sessionId={1001}
+          year={2025}
+          seedPersons={seedPersons as unknown as PersonsResponse[]}
+        />
+      )
+      return { personsFetchSpy }
+    }
+
+    it('renders requester name from seedPersons without firing the persons fetch when all IDs are seeded', async () => {
+      const { personsFetchSpy } = await renderWithSeed({
+        requesterId: 9100,
+        requesteeId: 9101,
+        seedPersons: [
+          { cm_id: 9100, first_name: 'Emma', last_name: 'Johnson', year: 2025 },
+          { cm_id: 9101, first_name: 'Liam', last_name: 'Garcia', year: 2025 },
+        ],
+      })
+
+      // Name renders from seed on first paint (no "Person 9100" placeholder).
+      await waitFor(() => {
+        const matches = screen.getAllByText((_, el) =>
+          (el?.textContent ?? '').includes('Emma Johnson')
+        )
+        expect(matches.length).toBeGreaterThan(0)
+      })
+
+      // Placeholder must never have rendered.
+      expect(screen.queryByText(/Person 9100/)).toBeNull()
+
+      // No persons fetch fires because seed covers every ID we need.
+      expect(personsFetchSpy).not.toHaveBeenCalled()
+    }, 10000)
+
+    it('falls back to persons fetch for IDs missing from seedPersons', async () => {
+      const { personsFetchSpy } = await renderWithSeed({
+        requesterId: 9200,
+        requesteeId: 9201,
+        // Only the requester is seeded; the requestee is missing.
+        seedPersons: [{ cm_id: 9200, first_name: 'Olivia', last_name: 'Chen', year: 2025 }],
+      })
+
+      // Seeded name shows up immediately.
+      await waitFor(() => {
+        const matches = screen.getAllByText((_, el) =>
+          (el?.textContent ?? '').includes('Olivia Chen')
+        )
+        expect(matches.length).toBeGreaterThan(0)
+      })
+
+      // Persons fetch IS called because at least one ID (the requestee) is unseeded.
+      await waitFor(() => {
+        expect(personsFetchSpy).toHaveBeenCalled()
+      })
+
+      // And the call only includes the missing ID, not the seeded one.
+      const calls = personsFetchSpy.mock.calls as Array<[{ filter: string }]>
+      const allFilters = calls.map((c) => c[0]?.filter ?? '').join(' | ')
+      expect(allFilters).toContain('cm_id = 9201')
+      expect(allFilters).not.toContain('cm_id = 9200')
+    }, 10000)
+  })
+
+  // #1310 — the desktop row is extracted into a memoized child component so
+  // parent re-renders triggered by another row's selection/expansion skip
+  // unaffected rows. This test pins the implementation choice; behavioral
+  // coverage of the row's rendering still lives in the panel-level tests.
+  describe('memoized row component (#1310)', () => {
+    it('exports a React.memo-wrapped RequestRowDesktop', async () => {
+      const mod = await import('./RequestRowDesktop')
+      const Comp = mod.default as { $$typeof?: symbol }
+      expect(Comp.$$typeof).toBe(Symbol.for('react.memo'))
+    })
+
+    it('exports a React.memo-wrapped RequestRowMobile', async () => {
+      const mod = await import('./RequestRowMobile')
+      const Comp = mod.default as { $$typeof?: symbol }
+      expect(Comp.$$typeof).toBe(Symbol.for('react.memo'))
     })
   })
 })
