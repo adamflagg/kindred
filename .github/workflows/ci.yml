@@ -85,8 +85,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      python: ${{ steps.filter.outputs.python }}
+      go: ${{ steps.filter.outputs.go }}
+      migrations: ${{ steps.filter.outputs.migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      tests: ${{ steps.filter.outputs.tests }}
       scripts: ${{ steps.filter.outputs.scripts }}
       docker: ${{ steps.filter.outputs.docker }}
       actions: ${{ steps.filter.outputs.actions }}
@@ -113,16 +115,32 @@ jobs:
             - 'go.mod'
             - 'go.sum'
             - '.golangci.yml'
+            - '.python-version'
+          python:
+            - 'api/**/*.py'
+            - 'bunking/**/*.py'
+            - 'campminder/**/*.py'
+            - 'scripts/**/*.py'
+            - 'pyproject.toml'
+            - 'ruff.toml'
+            - 'uv.lock'
+            - 'tests/**'
+            - 'conftest.py'
+            - '.python-version'
+          go:
+            - 'pocketbase/**/*.go'
+            - 'go.mod'
+            - 'go.sum'
+            - '.golangci.yml'
+          migrations:
+            - 'pocketbase/pb_migrations/**'
+            - 'pocketbase/main.go'
+            - 'scripts/ci/validate_migrations.py'
+            - '.python-version'
           frontend:
             - 'frontend/**'
             - 'package*.json'
             - 'tsconfig*.json'
-          tests:
-            - 'tests/**'
-            - 'conftest.py'
-            - 'frontend/src/**/*.test.*'
-            - 'frontend/src/**/*.spec.*'
-            - 'pocketbase/**/*_test.go'
           scripts:
             - 'scripts/**/*.sh'
             - '.shellcheckrc'
@@ -385,15 +403,11 @@ jobs:
       run: |
         pipx run zizmor --config zizmor.yml --min-severity medium .
 
-  # Run tests in parallel with lint jobs
-  tests:
-    name: Run Tests
+  # Python tests (parallel)
+  tests-python:
+    name: Python Tests
     needs: detect-changes
-    # Run when relevant code changed (backend, frontend, or tests)
-    if: |
-      needs.detect-changes.outputs.backend == 'true' ||
-      needs.detect-changes.outputs.frontend == 'true' ||
-      needs.detect-changes.outputs.tests == 'true'
+    if: needs.detect-changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -411,21 +425,6 @@ jobs:
       with:
         enable-cache: true
 
-    - name: Setup Node.js
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-      with:
-        node-version: '22'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-
-    - name: Setup Go
-      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-      with:
-        go-version: '1.26.3'
-        cache: true
-        cache-dependency-path: pocketbase/go.sum
-
-    # Backend tests (Python) - uv manages dependencies
     - name: Install Python dependencies
       run: uv sync --frozen
 
@@ -437,12 +436,55 @@ jobs:
         SKIP_POCKETBASE_TESTS: true
       run: uv run pytest tests/unit/ -v --tb=short --ignore=tests/unit/api/
 
-    # Backend tests (Go) - tools pre-installed
+  # Go tests (parallel)
+  tests-go:
+    name: Go Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Setup Go
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      with:
+        go-version: '1.26.3'
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
     - name: Run Go tests
       working-directory: ./pocketbase
       run: go test -race ./... -v
 
-    # Migration smoke test - catches self-reference, dependency, and schema issues
+  # Migration smoke test — catches schema/binary issues against a fresh DB
+  tests-migrations:
+    name: Migration Smoke Test
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.migrations == 'true' ||
+      needs.detect-changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Setup Go
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+      with:
+        go-version: '1.26.3'
+        cache: true
+        cache-dependency-path: pocketbase/go.sum
+
+    - name: Setup Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version-file: '.python-version'
+
     - name: Migration smoke test (fresh database)
       working-directory: ./pocketbase
       run: |
@@ -540,7 +582,25 @@ jobs:
 
         echo "✅ Migration smoke test passed"
 
-    # Frontend tests - Node.js pre-installed
+  # Frontend tests (parallel)
+  tests-frontend:
+    name: Frontend Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
     - name: Install frontend dependencies
       working-directory: ./frontend
       run: npm ci
@@ -552,7 +612,7 @@ jobs:
   # Summary job - gate for PR merges
   summary:
     name: CI Summary
-    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests]
+    needs: [pr-title-lint, detect-changes, secret-scan, python-lint, go-lint, frontend-lint, docker-lint, security-lint, tests-python, tests-go, tests-migrations, tests-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -566,7 +626,10 @@ jobs:
         FRONTEND_LINT: ${{ needs.frontend-lint.result }}
         DOCKER_LINT: ${{ needs.docker-lint.result }}
         SECURITY_LINT: ${{ needs.security-lint.result }}
-        TESTS: ${{ needs.tests.result }}
+        TESTS_PYTHON: ${{ needs.tests-python.result }}
+        TESTS_GO: ${{ needs.tests-go.result }}
+        TESTS_MIGRATIONS: ${{ needs.tests-migrations.result }}
+        TESTS_FRONTEND: ${{ needs.tests-frontend.result }}
       run: |
         # detect-changes: blocking — if this fails, all conditional jobs are skipped
         # and CI passes with zero validation (the paths-filter incident of March 2026)
@@ -605,8 +668,20 @@ jobs:
           echo "Actions security lint failed!"
           exit 1
         fi
-        if [ "$TESTS" != "success" ] && [ "$TESTS" != "skipped" ]; then
-          echo "Tests failed!"
+        if [ "$TESTS_PYTHON" != "success" ] && [ "$TESTS_PYTHON" != "skipped" ]; then
+          echo "Python tests failed!"
+          exit 1
+        fi
+        if [ "$TESTS_GO" != "success" ] && [ "$TESTS_GO" != "skipped" ]; then
+          echo "Go tests failed!"
+          exit 1
+        fi
+        if [ "$TESTS_MIGRATIONS" != "success" ] && [ "$TESTS_MIGRATIONS" != "skipped" ]; then
+          echo "Migration smoke test failed!"
+          exit 1
+        fi
+        if [ "$TESTS_FRONTEND" != "success" ] && [ "$TESTS_FRONTEND" != "skipped" ]; then
+          echo "Frontend tests failed!"
           exit 1
         fi
         echo "All CI checks passed!"

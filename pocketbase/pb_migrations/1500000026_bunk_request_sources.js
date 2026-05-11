@@ -20,15 +20,18 @@ migrate((app) => {
   const bunkRequestsCol = app.findCollectionByNameOrId("bunk_requests");
   const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests");
 
+  const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"';
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     id: COLLECTION_ID_BUNK_REQUEST_SOURCES,
     type: "base",
     name: "bunk_request_sources",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: bunkingManage,
+    viewRule: bunkingManage,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // FK to bunk_requests
       {
