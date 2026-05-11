@@ -10,7 +10,6 @@
  * If the source person/household is gone, derived data should cascade-delete.
  *
  * Affected relations:
- * - financial_aid_applications.person -> persons
  * - household_demographics.household -> households
  * - family_camp_adults.household -> households
  * - family_camp_registrations.household -> households
@@ -18,22 +17,7 @@
  */
 
 migrate((app) => {
-  const personsCol = app.findCollectionByNameOrId("persons");
   const householdsCol = app.findCollectionByNameOrId("households");
-
-  // 1. financial_aid_applications.person
-  const faApps = app.findCollectionByNameOrId("financial_aid_applications");
-  faApps.fields.add(new Field({
-    type: "relation",
-    name: "person",
-    required: true,
-    presentable: true,
-    collectionId: personsCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(faApps);
 
   // 2. household_demographics.household
   const hhDemo = app.findCollectionByNameOrId("household_demographics");
@@ -92,21 +76,7 @@ migrate((app) => {
   app.save(fcMed);
 
 }, (app) => {
-  const personsCol = app.findCollectionByNameOrId("persons");
   const householdsCol = app.findCollectionByNameOrId("households");
-
-  const faApps = app.findCollectionByNameOrId("financial_aid_applications");
-  faApps.fields.add(new Field({
-    type: "relation",
-    name: "person",
-    required: true,
-    presentable: true,
-    collectionId: personsCol.id,
-    cascadeDelete: false,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(faApps);
 
   const hhDemo = app.findCollectionByNameOrId("household_demographics");
   hhDemo.fields.add(new Field({
