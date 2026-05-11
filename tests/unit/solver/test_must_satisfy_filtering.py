@@ -24,20 +24,20 @@ class TestExplicitSourceFieldFiltering:
     """Test that _filter_and_categorize_requests uses EXPLICIT_SOURCE_FIELDS correctly."""
 
     def test_bunk_with_source_field_is_explicit(self):
-        """A request with source_field=SourceField.BUNK_WITH IS included as bunk request."""
+        """A request with source_field=SourceField.BUNK_REQUEST_FORM IS included as bunk request."""
         from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
 
-        request = _make_request(SourceField.BUNK_WITH, "bunk_with")
+        request = _make_request(SourceField.BUNK_REQUEST_FORM, "bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
 
         assert len(bunk_reqs) == 1
         assert len(age_reqs) == 0
 
     def test_not_bunk_with_source_field_is_explicit(self):
-        """A request with source_field=SourceField.NOT_BUNK_WITH IS included as bunk request."""
+        """A request with source_field=SourceField.STAFF_NOT_BUNK_WITH IS included as bunk request."""
         from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
 
-        request = _make_request(SourceField.NOT_BUNK_WITH, "not_bunk_with")
+        request = _make_request(SourceField.STAFF_NOT_BUNK_WITH, "not_bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
 
         assert len(bunk_reqs) == 1
@@ -75,7 +75,7 @@ class TestExplicitSourceFieldFiltering:
         """An age_preference request from an explicit source field IS included in age_requests."""
         from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
 
-        request = _make_request(SourceField.BUNK_WITH, "age_preference")
+        request = _make_request(SourceField.BUNK_REQUEST_FORM, "age_preference")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
 
         assert len(bunk_reqs) == 0

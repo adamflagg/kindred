@@ -98,16 +98,16 @@ def calculate_field_level_stats(
     """
     # Define explicit CSV fields
     explicit_csv_fields = {
-        SourceField.BUNK_WITH,
-        SourceField.NOT_BUNK_WITH,
+        SourceField.BUNK_REQUEST_FORM,
+        SourceField.STAFF_NOT_BUNK_WITH,
         SourceField.BUNKING_NOTES,
         SourceField.INTERNAL_NOTES,
     }
 
     # Initialize field stats
     field_stats: dict[str, dict[str, Any]] = {
-        SourceField.BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        SourceField.NOT_BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.BUNK_REQUEST_FORM: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
+        SourceField.STAFF_NOT_BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
         SourceField.BUNKING_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
         SourceField.INTERNAL_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
         SourceField.SOCIALIZE_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},

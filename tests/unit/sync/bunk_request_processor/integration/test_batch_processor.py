@@ -386,7 +386,7 @@ class TestConvertToParseResult:
         processor = BatchProcessor(ai_provider=mock_provider)
 
         parse_request = Mock()
-        parse_request.field_name = SourceField.BUNK_WITH
+        parse_request.field_name = SourceField.BUNK_REQUEST_FORM
 
         parsed_request = Mock()
         parsed_request.source_field = None
@@ -404,7 +404,7 @@ class TestConvertToParseResult:
 
         assert result.is_valid is True
         assert len(result.parsed_requests) == 1
-        assert result.parsed_requests[0].source_field == SourceField.BUNK_WITH
+        assert result.parsed_requests[0].source_field == SourceField.BUNK_REQUEST_FORM
         assert result.metadata["ai_provider"] == "openai"
 
     def test_convert_empty_response(self):
@@ -428,7 +428,7 @@ class TestConvertToParseResult:
         processor = BatchProcessor(ai_provider=mock_provider)
 
         parse_request = Mock()
-        parse_request.field_name = SourceField.BUNK_WITH
+        parse_request.field_name = SourceField.BUNK_REQUEST_FORM
 
         req1 = Mock()
         req1.source_field = None
@@ -502,7 +502,7 @@ class TestBatchParseRequests:
 
         request = Mock()
         request.request_text = "test"
-        request.field_name = SourceField.BUNK_WITH
+        request.field_name = SourceField.BUNK_REQUEST_FORM
 
         # Use a real dict context, not Mock
         context = Mock()

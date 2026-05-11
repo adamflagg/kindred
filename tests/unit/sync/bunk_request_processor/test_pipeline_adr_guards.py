@@ -28,7 +28,7 @@ from bunking.sync.bunk_request_processor.shared.constants import SourceField
 def _make_parsed_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     target_name: str = "Emma Johnson",
-    source_field: str = SourceField.BUNK_WITH,
+    source_field: str = SourceField.BUNK_REQUEST_FORM,
     csv_position: int = 1,
     is_superseded: bool = False,
     temporal_date: datetime | None = None,
@@ -52,7 +52,7 @@ def _make_parsed_request(
 
 def _make_parse_result(
     requests: list[ParsedRequest],
-    field_name: str = SourceField.BUNK_WITH,
+    field_name: str = SourceField.BUNK_REQUEST_FORM,
     is_valid: bool = True,
 ) -> ParseResult:
     parse_request = Mock()
@@ -155,7 +155,7 @@ class TestADR4TemporalConflictFieldGuard:
         older = _make_parsed_request(
             request_type=RequestType.NOT_BUNK_WITH,
             target_name="Liam Garcia",
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             csv_position=1,
             is_superseded=True,
             supersedes_reason="changed mind",
@@ -163,11 +163,11 @@ class TestADR4TemporalConflictFieldGuard:
         newer = _make_parsed_request(
             request_type=RequestType.BUNK_WITH,
             target_name="Liam Garcia",
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             csv_position=2,
         )
 
-        parse_results = [_make_parse_result([older, newer], field_name=SourceField.BUNK_WITH)]
+        parse_results = [_make_parse_result([older, newer], field_name=SourceField.BUNK_REQUEST_FORM)]
         kept, filtered = orchestrator._filter_temporal_conflicts(parse_results)
 
         # Guard should skip — both requests kept unmodified
@@ -182,13 +182,13 @@ class TestADR4TemporalConflictFieldGuard:
         req = _make_parsed_request(
             request_type=RequestType.NOT_BUNK_WITH,
             target_name="Liam Garcia",
-            source_field=SourceField.NOT_BUNK_WITH,
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
             csv_position=1,
             is_superseded=True,
             supersedes_reason="changed mind",
         )
 
-        parse_results = [_make_parse_result([req], field_name=SourceField.NOT_BUNK_WITH)]
+        parse_results = [_make_parse_result([req], field_name=SourceField.STAFF_NOT_BUNK_WITH)]
         kept, filtered = orchestrator._filter_temporal_conflicts(parse_results)
 
         assert filtered == 0
@@ -229,7 +229,7 @@ class TestADR5NAStrippingScopedToBunkWith:
         """_prepare_parse_requests should NOT call is_no_preference for non-bunk_with fields.
 
         Verify via source inspection that the is_no_preference call is guarded
-        by a field_name == SourceField.BUNK_WITH check.
+        by a field_name == SourceField.BUNK_REQUEST_FORM check.
         """
         import inspect
 
@@ -242,14 +242,14 @@ class TestADR5NAStrippingScopedToBunkWith:
         # After the guard, is_no_preference should be inside a field_name check block.
         # The unguarded pattern is a bare `self._is_no_preference(request_text)` call
         # without a preceding field_name guard on the same line or wrapping if.
-        # We check that the guard exists by looking for the SourceField.BUNK_WITH guard
+        # We check that the guard exists by looking for the SourceField.BUNK_REQUEST_FORM guard
         # near the no_preference check.
-        assert "SourceField.BUNK_WITH" in source, (
-            "Expected a SourceField.BUNK_WITH guard around is_no_preference in _prepare_parse_requests"
+        assert "SourceField.BUNK_REQUEST_FORM" in source, (
+            "Expected a SourceField.BUNK_REQUEST_FORM guard around is_no_preference in _prepare_parse_requests"
         )
 
     def test_strip_na_prefix_guard_in_source(self):
-        """strip_na_prefix call should be guarded by field_name == SourceField.BUNK_WITH."""
+        """strip_na_prefix call should be guarded by field_name == SourceField.BUNK_REQUEST_FORM."""
         import inspect
 
         from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
@@ -259,8 +259,8 @@ class TestADR5NAStrippingScopedToBunkWith:
         source = inspect.getsource(RequestOrchestrator._prepare_parse_requests)
 
         # The guard should scope both is_no_preference and strip_na_prefix to bunk_with
-        assert "SourceField.BUNK_WITH" in source, (
-            "Expected a SourceField.BUNK_WITH guard around strip_na_prefix in _prepare_parse_requests"
+        assert "SourceField.BUNK_REQUEST_FORM" in source, (
+            "Expected a SourceField.BUNK_REQUEST_FORM guard around strip_na_prefix in _prepare_parse_requests"
         )
 
 
@@ -340,7 +340,7 @@ class TestADR6StaffDetectionNotesGuard:
 
         staff_calls: list[str] = []
         service = self._make_phase2_service(self._tracking_staff_filter(staff_calls, "Eve Johnson"))
-        pr = self._make_parse_result_for_phase2("Eve Johnson", SourceField.BUNK_WITH)
+        pr = self._make_parse_result_for_phase2("Eve Johnson", SourceField.BUNK_REQUEST_FORM)
 
         service._resolve_batch([ResolutionCase(pr)])
 
@@ -356,7 +356,7 @@ class TestADR6StaffDetectionNotesGuard:
 
         staff_calls: list[str] = []
         service = self._make_phase2_service(self._tracking_staff_filter(staff_calls, "Staff Person"))
-        pr = self._make_parse_result_for_phase2("Staff Person", SourceField.NOT_BUNK_WITH)
+        pr = self._make_parse_result_for_phase2("Staff Person", SourceField.STAFF_NOT_BUNK_WITH)
 
         service._resolve_batch([ResolutionCase(pr)])
 

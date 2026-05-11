@@ -55,7 +55,7 @@ class TestScoreBreakdown:
             total_requests=10,
             satisfied_requests=8,
             satisfaction_rate=0.8,
-            field_scores={SourceField.BUNK_WITH: {"total": 5, "satisfied": 4}},
+            field_scores={SourceField.BUNK_REQUEST_FORM: {"total": 5, "satisfied": 4}},
             penalties={"grade_spread": 100},
         )
 
@@ -65,7 +65,7 @@ class TestScoreBreakdown:
         assert breakdown.total_requests == 10
         assert breakdown.satisfied_requests == 8
         assert breakdown.satisfaction_rate == 0.8
-        assert SourceField.BUNK_WITH in breakdown.field_scores
+        assert SourceField.BUNK_REQUEST_FORM in breakdown.field_scores
         assert "grade_spread" in breakdown.penalties
 
 
@@ -139,7 +139,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
         assignments = [
@@ -175,7 +175,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
         assignments = [
@@ -213,7 +213,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "not_bunk_with",
                 "priority": 8,
-                "source_field": SourceField.NOT_BUNK_WITH,
+                "source_field": SourceField.STAFF_NOT_BUNK_WITH,
             }
         ]
         assignments = [
@@ -252,7 +252,7 @@ class TestEvaluateScenarioScore:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 1,
-                    "source_field": SourceField.BUNK_WITH,
+                    "source_field": SourceField.BUNK_REQUEST_FORM,
                 }
             ],
             assignments=[
@@ -275,7 +275,7 @@ class TestEvaluateScenarioScore:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 10,
-                    "source_field": SourceField.BUNK_WITH,
+                    "source_field": SourceField.BUNK_REQUEST_FORM,
                 }
             ],
             assignments=[
@@ -339,21 +339,21 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 200,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             },
             {
                 "requester_id": 100,
                 "requestee_id": 300,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             },
             {
                 "requester_id": 100,
                 "requestee_id": 400,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             },
         ]
         assignments = [

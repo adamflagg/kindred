@@ -22,8 +22,8 @@ logger = get_logger(__name__)
 # confidence_score breaks ties within rank.
 SOURCE_FIELD_PRIORITY = {
     SourceField.MANUAL: 4,  # admin-UI staff entry (tied with bunk_with — both top-tier positive intent)
-    SourceField.BUNK_WITH: 4,  # material parent
-    SourceField.NOT_BUNK_WITH: 3,  # staff exclusion
+    SourceField.BUNK_REQUEST_FORM: 4,  # material parent
+    SourceField.STAFF_NOT_BUNK_WITH: 3,  # staff exclusion
     SourceField.BUNKING_NOTES: 2,  # staff observation (tied with internal_notes)
     SourceField.INTERNAL_NOTES: 2,  # staff observation (tied with bunking_notes)
     SourceField.SOCIALIZE_WITH: 1,  # immaterial parent
@@ -50,7 +50,7 @@ def _resolve_source(req: BunkRequest) -> str:
 
 def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bool:
     """Return True when the group is exactly two AGE_PREFERENCE requests — one from
-    SourceField.BUNK_WITH and one from SourceField.SOCIALIZE_WITH — and their
+    SourceField.BUNK_REQUEST_FORM and one from SourceField.SOCIALIZE_WITH — and their
     age_preference metadata values are both present but differ.
 
     This is the Stage 3a conflict case: prose-derived age direction contradicts the
@@ -60,7 +60,7 @@ def _is_conflicting_age_preference_pair(group_requests: list[BunkRequest]) -> bo
     if len(group_requests) != 2:
         return False
     fields = {r.source_field for r in group_requests}
-    if fields != {SourceField.BUNK_WITH, SourceField.SOCIALIZE_WITH}:
+    if fields != {SourceField.BUNK_REQUEST_FORM, SourceField.SOCIALIZE_WITH}:
         return False
     targets = [r.metadata.get("age_preference") for r in group_requests]
     # Both must be non-None strings and they must differ
@@ -74,7 +74,7 @@ def _split_age_pref_pair(
 ) -> tuple[BunkRequest, BunkRequest]:
     """Return (bunk_with_row, socialize_with_row) from a two-element group known to
     contain exactly one BUNK_WITH and one SOCIALIZE_WITH AGE_PREFERENCE request."""
-    bunk_with_req = next(r for r in group_requests if r.source_field == SourceField.BUNK_WITH)
+    bunk_with_req = next(r for r in group_requests if r.source_field == SourceField.BUNK_REQUEST_FORM)
     socialize_with_req = next(r for r in group_requests if r.source_field == SourceField.SOCIALIZE_WITH)
     return bunk_with_req, socialize_with_req
 

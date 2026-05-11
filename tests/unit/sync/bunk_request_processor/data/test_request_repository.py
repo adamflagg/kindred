@@ -91,7 +91,7 @@ class TestRequestRepository:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.95,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -118,7 +118,7 @@ class TestRequestRepository:
         assert create_args["priority"] == 4
         assert create_args["confidence_score"] == 0.95
         assert "source" not in create_args  # #1142 stage 4: column dropped
-        assert create_args["source_field"] == SourceField.BUNK_WITH
+        assert create_args["source_field"] == SourceField.BUNK_REQUEST_FORM
         assert create_args["csv_position"] == 0
         assert create_args["year"] == 2025
         assert create_args["status"] == "resolved"

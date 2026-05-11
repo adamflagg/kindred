@@ -72,10 +72,15 @@ class SourceField:
     sixth canonical value: the admin-UI input channel for staff-created requests
     via CreateRequestModal. All non-parent channels project to "staff" via
     source_from_field().
+
+    Python attribute names disambiguate from RequestType (#1246): each name
+    describes the form field of origin, while the string values remain the
+    persisted V2 wire format ("bunk_with", "not_bunk_with", …) and MUST NOT
+    change without a data migration.
     """
 
-    BUNK_WITH = "bunk_with"
-    NOT_BUNK_WITH = "not_bunk_with"
+    BUNK_REQUEST_FORM = "bunk_with"
+    STAFF_NOT_BUNK_WITH = "not_bunk_with"
     BUNKING_NOTES = "bunking_notes"
     INTERNAL_NOTES = "internal_notes"
     SOCIALIZE_WITH = "socialize_with"
@@ -85,8 +90,8 @@ class SourceField:
 # Mapping from SourceField values to solver config schema keys
 # Used by solver files to look up objective.source_multipliers.* config values
 SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
-    SourceField.BUNK_WITH: "share_bunk_with",
-    SourceField.NOT_BUNK_WITH: "do_not_share_with",
+    SourceField.BUNK_REQUEST_FORM: "share_bunk_with",
+    SourceField.STAFF_NOT_BUNK_WITH: "do_not_share_with",
     SourceField.BUNKING_NOTES: "bunking_notes",
     SourceField.INTERNAL_NOTES: "internal_notes",
     SourceField.SOCIALIZE_WITH: "socialize_preference",
