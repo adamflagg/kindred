@@ -2,24 +2,48 @@
 
 migrate(
   (app) => {
+    // 1. Drop the tour staleness config row. Wrap only the find in try/catch
+    //    so delete errors propagate (mirrors the down migration's pattern).
+    let config = null
     try {
-      const config = app.findFirstRecordByFilter(
+      config = app.findFirstRecordByFilter(
         "config",
         'category = "tour" && config_key = "staleness_days"'
       )
-      if (config) app.delete(config)
     } catch {
       // already absent
     }
+    if (config) app.delete(config)
 
+    // 2. Drop the ui-preferences section only if no other config rows still
+    //    reference it via metadata.section. Today nothing else does, but the
+    //    guard future-proofs against any sibling config landing here later.
+    let section = null
     try {
-      const section = app.findFirstRecordByFilter(
+      section = app.findFirstRecordByFilter(
         "config_sections",
         'section_key = "ui-preferences"'
       )
-      if (section) app.delete(section)
     } catch {
       // already absent
+    }
+    if (section) {
+      let sectionHasOtherRefs
+      try {
+        const remaining = app.findRecordsByFilter(
+          "config",
+          'metadata.section = "ui-preferences"',
+          "",
+          1,
+          0
+        )
+        sectionHasOtherRefs = remaining.length > 0
+      } catch {
+        // If the JSON-path filter is unsupported in some build, err on the
+        // side of preserving the section rather than silently deleting it.
+        sectionHasOtherRefs = true
+      }
+      if (!sectionHasOtherRefs) app.delete(section)
     }
   },
   (app) => {

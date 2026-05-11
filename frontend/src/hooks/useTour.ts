@@ -54,9 +54,12 @@ export function useTour() {
     const id = getTourIdForRoute(pathname)
     setTourId(id)
 
+    // Clear cached refs synchronously so a manual replay between routes
+    // cannot start the previous page's tour while the new load is in flight.
+    definitionRef.current = null
+    layerDefsRef.current = []
+
     if (!id) {
-      definitionRef.current = null
-      layerDefsRef.current = []
       return
     }
 
@@ -93,7 +96,15 @@ export function useTour() {
 
     if (driverRef.current) {
       driverRef.current.destroy()
+      driverRef.current = null
     }
+
+    // Clear any queued readiness timers from a prior replay so their stale
+    // closures cannot fire drive()/destroy() on a freshly created driver.
+    for (const id of pendingTimersRef.current) {
+      clearTimeout(id)
+    }
+    pendingTimersRef.current.clear()
 
     let highestStepReached = -1
 
@@ -169,10 +180,14 @@ function assembleSteps(
 
   for (const layerDef of layerDefs) {
     const record = storage.layers[layerDef.id]
-    const include =
-      !record ||
-      record.completedVersion < layerDef.version ||
-      (Date.now() - new Date(record.completedAt).getTime()) / 86_400_000 >= STALE_DAYS
+    let include = !record || record.completedVersion < layerDef.version
+    if (!include && record) {
+      const completedTime = new Date(record.completedAt).getTime()
+      // Treat malformed timestamps as stale so a corrupted record can't
+      // permanently suppress a layer (NaN >= STALE_DAYS would be false).
+      include =
+        Number.isNaN(completedTime) || (Date.now() - completedTime) / 86_400_000 >= STALE_DAYS
+    }
 
     if (include) {
       steps.push(...layerDef.steps)

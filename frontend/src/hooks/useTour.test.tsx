@@ -198,4 +198,125 @@ describe('useTour', () => {
 
     vi.mocked(document.querySelector).mockRestore()
   })
+
+  it('replay() with a malformed completedAt treats the layer as stale and includes it', async () => {
+    const tourWithLayers: TourDefinition = {
+      ...mockTourDefinition,
+      id: 'retention-overview',
+      layers: ['metrics-header'],
+    }
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(tourWithLayers)
+    vi.mocked(tourStorage.getTourStorage).mockReturnValue({
+      layers: {
+        'metrics-header': {
+          layerId: 'metrics-header',
+          completedVersion: 1,
+          completedAt: 'not-a-real-timestamp',
+        },
+      },
+    })
+
+    const headerEl = document.createElement('div')
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="metrics-header"]') return headerEl
+      return originalQuerySelector(selector)
+    })
+
+    const { driver } = await import('driver.js')
+    const { result } = renderHook(() => useTour())
+    await flushAndAdvance(1000)
+
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    expect(driver).toHaveBeenCalled()
+    const lastCall = vi.mocked(driver).mock.calls.at(-1)?.[0]
+    // Both layer step + page step should be present when completedAt is malformed
+    expect(lastCall?.steps).toHaveLength(2)
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
+
+  it('rapid double-replay() does not fire drive() on the destroyed prior driver', async () => {
+    const headerEl = document.createElement('div')
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="debug-header"]') return headerEl
+      return originalQuerySelector(selector)
+    })
+
+    const { result } = renderHook(() => useTour())
+    await flushAndAdvance(1000)
+
+    // First replay queues a checkReady timer (AUTO_START_DELAY = 300ms)
+    act(() => {
+      result.current.replay()
+    })
+    // Second replay arrives before the first's checkReady fires
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    // Only the second driver should reach drive(); the first's queued timer must
+    // have been cleared, otherwise drive() fires twice on what's now a destroyed instance.
+    expect(mockDrive).toHaveBeenCalledTimes(1)
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
+
+  it('clears cached tour definition synchronously when route changes', async () => {
+    const reactRouter = await import('react-router')
+    const useLocationSpy = vi.mocked(reactRouter.useLocation)
+
+    // Page A: debug — loads successfully
+    useLocationSpy.mockReturnValue({
+      pathname: '/summer/debug',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'default',
+    })
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
+
+    const headerEl = document.createElement('div')
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="debug-header"]') return headerEl
+      return originalQuerySelector(selector)
+    })
+
+    const { result, rerender } = renderHook(() => useTour())
+    await flushAndAdvance(0)
+
+    // Pivot to Page B: retention — but make its tour-definition load HANG so the
+    // race window is wide open (definitionRef for A is still set at this point
+    // without the fix).
+    useLocationSpy.mockReturnValue({
+      pathname: '/analytics/retention',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'pageB',
+    })
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('retention-overview')
+    vi.mocked(tourRegistry.loadTourDefinition).mockReturnValue(new Promise(() => {}))
+
+    rerender()
+    // Click replay before Page B's tour finishes loading.
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    // No tour should have started — definitionRef must have been cleared on route change.
+    expect(mockDrive).not.toHaveBeenCalled()
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
 })
