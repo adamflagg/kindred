@@ -214,3 +214,25 @@ class TestRunSweepPreCreatesPbRows:
         assert len(delete_calls) == 2, (
             f"expected 2 deletes after snapshot failure, got {len(delete_calls)}: {delete_calls}"
         )
+
+    def test_each_row_has_year(self) -> None:
+        """Each pre-created PB row must include year (required by schema)."""
+        solver_runs_state: dict[str, Any] = {}
+        with _sweep_client(solver_runs_state) as (client, mock_pb):
+            resp = client.post(
+                "/api/solver/run-sweep",
+                json={
+                    "session_cm_id": 1000001,
+                    "year": 2026,
+                    "time_budgets": [30, 60],
+                    "label": "test-sweep",
+                },
+            )
+
+        assert resp.status_code == 202, resp.text
+        payloads = _pb_create_payloads(mock_pb)
+        pending = [p for p in payloads if p.get("status") == "pending"]
+        assert len(pending) == 2, f"expected 2 pre-created rows, got {len(pending)}: {payloads}"
+        for payload in pending:
+            assert "year" in payload, f"year must be present in pre-created PB row: {payload}"
+            assert payload["year"] == 2026, f"year must equal request.year=2026: {payload}"

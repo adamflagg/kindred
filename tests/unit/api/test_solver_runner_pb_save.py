@@ -318,6 +318,46 @@ class TestSolverRunnerPocketBaseSave:
             assert pb_data["session_id"] == 100
 
     @pytest.mark.asyncio
+    async def test_success_path_sends_year(self, mock_solver_input):
+        """year field must be written to PB on success path (required by schema)."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
+            assert "year" in pb_data, "year must be present in pb_data (required by schema)"
+            assert pb_data["year"] == 2026
+
+    @pytest.mark.asyncio
     async def test_failure_path_sends_correct_fields(self, mock_solver_input):
         """Error path must also use correct field names and status='failed'."""
         patches, mock_runs = self._setup_mocks(mock_solver_input)
@@ -359,6 +399,8 @@ class TestSolverRunnerPocketBaseSave:
             assert pb_data["session_id"] == 100
             assert pb_data["status"] == "failed"
             assert "session_cm_id" not in pb_data
+            assert "year" in pb_data, "year must be present in failure pb_data (required by schema)"
+            assert pb_data["year"] == 2026
 
     @pytest.mark.asyncio
     async def test_failure_path_sends_error_as_json(self, mock_solver_input):

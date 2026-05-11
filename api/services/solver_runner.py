@@ -286,6 +286,7 @@ async def run_solver_task_v2(
                 "run_id": run_id,
                 "session": str(session_cm_id),
                 "session_id": session_cm_id,
+                "year": year,
                 "status": "success",
                 "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
@@ -322,6 +323,7 @@ async def run_solver_task_v2(
                 "run_id": run_id,
                 "session": str(session_cm_id),
                 "session_id": session_cm_id,
+                "year": year,
                 "status": "failed",
                 "started_at": solver_runs[run_id]
                 .get("started_at", datetime.now(UTC))
