@@ -130,7 +130,7 @@ export function ConfigTab() {
     <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
       {/* Mobile Category Tabs */}
       <div className="lg:hidden">
-        <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
+        <div className="-mx-1 flex scrollbar-none gap-2 overflow-x-auto px-1 pb-2">
           {CONFIG_CATEGORIES.map((category) => {
             const Icon = category.icon
             const isActive = activeCategory === category.id
