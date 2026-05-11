@@ -129,6 +129,112 @@ describe('SolverRunsTable', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
+  it('inserts a SHA-divider row when adjacent runs have different git_sha', () => {
+    const newer: SolverRun = {
+      ...r1,
+      id: 'newer',
+      created: '2026-05-08T11:00:00Z',
+      details: { ...(r1.details ?? {}), git_sha: 'aaaa111' },
+    }
+    const older: SolverRun = {
+      ...r1,
+      id: 'older',
+      created: '2026-05-08T09:00:00Z',
+      details: { ...(r1.details ?? {}), git_sha: 'bbbb222' },
+    }
+    render(
+      <SolverRunsTable
+        runs={[newer, older]}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    // Exactly one divider row, labelled with the short SHA of the new group.
+    const dividers = document.querySelectorAll<HTMLElement>('[data-sha-divider]')
+    expect(dividers.length).toBe(1)
+    expect(dividers[0]!.textContent).toContain('bbbb222')
+  })
+
+  it('does not insert a divider when all runs share the same git_sha', () => {
+    const a: SolverRun = { ...r1, id: 'a' }
+    const b: SolverRun = { ...r1, id: 'b' }
+    render(
+      <SolverRunsTable
+        runs={[a, b]}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    // No row should be tagged as a sha-divider — the test selector keys off a
+    // dedicated data attribute the component must emit.
+    expect(document.querySelectorAll('[data-sha-divider]').length).toBe(0)
+  })
+
+  it('renders bool_or column from stats.constraint_type_breakdown when toggled on', () => {
+    const withBoolOr: SolverRun = {
+      ...r1,
+      stats: {
+        ...(r1.stats ?? {}),
+        constraint_type_breakdown: { bool_or: 96, bool_and: 12 },
+      },
+    }
+    render(
+      <SolverRunsTable
+        runs={[withBoolOr]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, 'num_bool_or']}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('columnheader', { name: /bool_or/i })).toBeInTheDocument()
+    expect(screen.getByText('96')).toBeInTheDocument()
+  })
+
+  it('renders em-dash for bool_or when constraint_type_breakdown is missing', () => {
+    render(
+      <SolverRunsTable
+        runs={[r1]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, 'num_bool_or']}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    const header = screen.getByRole('columnheader', { name: /bool_or/i })
+    const colIndex = Array.from(header.parentElement!.children).indexOf(header)
+    const row = screen.getByText(/OPTIMAL/i).closest('tr')
+    expect(row!.children[colIndex]!.textContent).toBe('—')
+  })
+
+  it('exposes metric descriptions as title tooltips on column headers', () => {
+    render(
+      <SolverRunsTable
+        runs={[r1]}
+        visibleColumns={DEFAULT_VISIBLE_COLUMNS}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('columnheader', { name: /^wall/i })).toHaveAttribute(
+      'title',
+      'Real seconds the solver ran.'
+    )
+    expect(screen.getByRole('columnheader', { name: /^gap$/i })).toHaveAttribute(
+      'title',
+      expect.stringContaining('Distance between solution')
+    )
+    expect(screen.getByRole('columnheader', { name: /confl\./i })).toHaveAttribute(
+      'title',
+      expect.stringContaining('backtracks')
+    )
+  })
+
   it('renders em-dash without "s" suffix when budget is missing', () => {
     const { time_budget_seconds: _omit, ...statsWithoutBudget } = r1.stats ?? {}
     void _omit

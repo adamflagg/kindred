@@ -21,12 +21,34 @@ export interface SweepPanelPayload {
   label?: string
 }
 
+export interface SweepBudgetProgress {
+  seconds: number
+  walltime: number | null
+  state: 'done' | 'running' | 'pending'
+}
+
+export interface InFlightSweep {
+  sweep_id: string
+  completed: number
+  total: number
+  budgets?: SweepBudgetProgress[]
+}
+
 export interface SweepPanelProps {
   sessions: SweepPanelSession[]
   scenarios: SweepPanelScenario[]
   onRunSweep: (req: SweepPanelPayload) => void | Promise<void>
   onCancelSweep: (sweepId: string) => void
-  inFlightSweep: { sweep_id: string; completed: number; total: number } | null
+  inFlightSweep: InFlightSweep | null
+}
+
+function formatBudget(b: SweepBudgetProgress): string {
+  if (b.state === 'done')
+    return b.walltime !== null
+      ? `${b.seconds}s done in ${b.walltime.toFixed(1)}s`
+      : `${b.seconds}s done`
+  if (b.state === 'running') return `${b.seconds}s running…`
+  return `${b.seconds}s pending`
 }
 
 const DEFAULT_BUDGETS = [30, 60, 180, 300]
@@ -45,6 +67,7 @@ export function SweepPanel({
   const [pickedSessionCmId, setPickedSessionCmId] = useState<number | null>(null)
   const [pickedSourceValue, setPickedSourceValue] = useState<string>('production')
   const [budgets, setBudgets] = useState<number[]>(DEFAULT_BUDGETS)
+  const [budgetDraft, setBudgetDraft] = useState<string>('')
   const [label, setLabel] = useState<string>('')
 
   const sessionCmId = pickedSessionCmId ?? sessions[sessions.length - 1]?.cm_id ?? 0
@@ -85,10 +108,10 @@ export function SweepPanel({
     })
 
   const addBudget = () => {
-    const next = window.prompt('Add budget in seconds (e.g., 90):')
-    const n = next ? parseInt(next, 10) : NaN
+    const n = budgetDraft ? parseInt(budgetDraft, 10) : NaN
     if (!Number.isFinite(n) || n <= 0) return
     setBudgets((prev) => (prev.includes(n) ? prev : [...prev, n].sort((a, b) => a - b)))
+    setBudgetDraft('')
   }
 
   return (
@@ -167,7 +190,23 @@ export function SweepPanel({
                 {b}s ×
               </button>
             ))}
+            <input
+              type="number"
+              min={1}
+              aria-label="Add budget in seconds"
+              value={budgetDraft}
+              onChange={(e) => setBudgetDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addBudget()
+                }
+              }}
+              placeholder="90"
+              className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+            />
             <button
+              type="button"
               onClick={addBudget}
               className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-sm text-gray-500 hover:border-gray-400"
             >
@@ -202,14 +241,23 @@ export function SweepPanel({
       </div>
 
       {inFlightSweep ? (
-        <div className="bg-forest-50 border-forest-200 mt-4 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm">
+        <div className="bg-forest-50 border-forest-200 mt-4 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm">
           <div className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
           <span className="text-forest-700 font-medium">
             Sweep {inFlightSweep.sweep_id} in progress
           </span>
-          <span className="text-gray-600">
-            — {inFlightSweep.completed} of {inFlightSweep.total} complete
-          </span>
+          {inFlightSweep.total > 0 ? (
+            <span className="text-gray-600">
+              — {inFlightSweep.completed} of {inFlightSweep.total} complete
+            </span>
+          ) : (
+            <span className="text-gray-600">— spinning up…</span>
+          )}
+          {inFlightSweep.budgets && inFlightSweep.budgets.length > 0 ? (
+            <span className="text-xs text-gray-500">
+              ({inFlightSweep.budgets.map(formatBudget).join(', ')})
+            </span>
+          ) : null}
           <button
             onClick={() => onCancelSweep(inFlightSweep.sweep_id)}
             className="ml-auto rounded border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100"

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { SweepPanel } from './SweepPanel'
 
@@ -126,16 +126,7 @@ describe('SweepPanel', () => {
   })
 
   describe('budget editing', () => {
-    let promptSpy: ReturnType<typeof vi.spyOn>
-
-    beforeEach(() => {
-      promptSpy = vi.spyOn(window, 'prompt')
-    })
-    afterEach(() => {
-      promptSpy.mockRestore()
-    })
-
-    it('rejects duplicate budget values', () => {
+    it('rejects duplicate budget values entered in the inline input', () => {
       const onRunSweep = vi.fn()
       render(
         <SweepPanel
@@ -146,7 +137,9 @@ describe('SweepPanel', () => {
           inFlightSweep={null}
         />
       )
-      promptSpy.mockReturnValueOnce('60') // 60 is already in DEFAULT_BUDGETS
+      // Type 60 into the inline number input (already in DEFAULT_BUDGETS).
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '60' } })
       act(() => {
         fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
       })
@@ -156,7 +149,7 @@ describe('SweepPanel', () => {
       )
     })
 
-    it('adds a new unique budget in sorted order', () => {
+    it('adds a new unique budget in sorted order via the inline input', () => {
       const onRunSweep = vi.fn()
       render(
         <SweepPanel
@@ -167,13 +160,55 @@ describe('SweepPanel', () => {
           inFlightSweep={null}
         />
       )
-      promptSpy.mockReturnValueOnce('90')
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '90' } })
       act(() => {
         fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
       })
       fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
       expect(onRunSweep).toHaveBeenCalledWith(
         expect.objectContaining({ time_budgets: [30, 60, 90, 180, 300] })
+      )
+    })
+
+    it('clears the input after a successful add', () => {
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={vi.fn()}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '120' } })
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      expect(input.value).toBe('')
+    })
+
+    it('ignores non-positive and non-numeric input', () => {
+      const onRunSweep = vi.fn()
+      render(
+        <SweepPanel
+          sessions={fakeSessions}
+          scenarios={fakeScenarios}
+          onRunSweep={onRunSweep}
+          onCancelSweep={vi.fn()}
+          inFlightSweep={null}
+        />
+      )
+      const input = screen.getByLabelText<HTMLInputElement>(/add budget/i)
+      fireEvent.change(input, { target: { value: '-5' } })
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: /\+ add/i }))
+      })
+      fireEvent.click(screen.getByRole('button', { name: /run sweep/i }))
+      // Defaults unchanged.
+      expect(onRunSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ time_budgets: [30, 60, 180, 300] })
       )
     })
   })
@@ -192,5 +227,69 @@ describe('SweepPanel', () => {
     expect(screen.getByText(/2 of 4/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onCancel).toHaveBeenCalledWith('sw_abc')
+  })
+
+  it('shows per-budget timing detail when supplied', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{
+          sweep_id: 'sw_abc',
+          completed: 1,
+          total: 3,
+          budgets: [
+            { seconds: 30, walltime: 23.1, state: 'done' },
+            { seconds: 60, walltime: null, state: 'running' },
+            { seconds: 180, walltime: null, state: 'pending' },
+          ],
+        }}
+      />
+    )
+    // Done budget shows formatted walltime; running shows running…; pending
+    // can be present in the joined string too. Assert the meaningful parts.
+    expect(screen.getByText(/30s done in 23\.1s/)).toBeInTheDocument()
+    expect(screen.getByText(/60s running/)).toBeInTheDocument()
+  })
+
+  it('still shows the simple "X of N" headline when budgets is omitted', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{ sweep_id: 'sw_xyz', completed: 1, total: 4 }}
+      />
+    )
+    expect(screen.getByText(/1 of 4/)).toBeInTheDocument()
+    // Per-budget detail must not appear when there's no budgets array.
+    expect(screen.queryByText(/done in/)).not.toBeInTheDocument()
+  })
+
+  it('shows a placeholder banner when total is 0 (sweep accepted, no rows yet)', () => {
+    // Backend has accepted the sweep but the first solver_runs row hasn't
+    // landed in the polled fetch yet. Banner must still show so the user
+    // doesn't re-click and trip the 409 single-flight guard.
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={{ sweep_id: 'sw_kickoff', completed: 0, total: 0 }}
+      />
+    )
+    expect(screen.getByText(/sw_kickoff/i)).toBeInTheDocument()
+    // Must NOT show the misleading "0 of 0 complete" copy.
+    expect(screen.queryByText(/0 of 0/i)).not.toBeInTheDocument()
+    // Must show a kickoff indicator that's distinguishable from steady-state.
+    expect(screen.getByText(/^— spinning up…$/)).toBeInTheDocument()
+    // Run Sweep button must be disabled — that's the whole point of the
+    // immediate placeholder.
+    const runBtn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
+    expect(runBtn).toBeDisabled()
   })
 })

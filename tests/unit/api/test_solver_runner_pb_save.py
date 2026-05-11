@@ -501,6 +501,9 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance = MagicMock()
             mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            mock_pb_instance.collection.return_value.update.return_value = MagicMock(id="pb_record")
+            # Sweep children have a pre-created row found by run_id filter and updated in place
+            mock_pb_instance.collection.return_value.get_first_list_item.return_value = MagicMock(id="pre_created_id")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
             mock_solver = MagicMock()
@@ -521,9 +524,10 @@ class TestFailedRunPersistsDetails:
                 sweep_label="post-cleanup",
             )
 
-        create_calls = mock_pb_instance.collection.return_value.create.call_args_list
-        assert len(create_calls) == 1, "Failure path must persist a PB record"
-        pb_data = create_calls[0][0][0]
+        # Sweep child uses UPDATE on the pre-created row, not CREATE
+        update_calls = mock_pb_instance.collection.return_value.update.call_args_list
+        assert len(update_calls) == 1, "Failure path must persist a PB record (via update for sweep child)"
+        pb_data = update_calls[0].args[1]
         assert pb_data["status"] == "failed"
         # Failure record must include details so the failed run groups correctly
         assert "details" in pb_data, "Failed run must persist details for impact-analysis grouping"
@@ -623,6 +627,9 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance = MagicMock()
             mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            mock_pb_instance.collection.return_value.update.return_value = MagicMock(id="pb_record")
+            # Sweep children have a pre-created row found by run_id filter and updated in place
+            mock_pb_instance.collection.return_value.get_first_list_item.return_value = MagicMock(id="pre_created_id")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
             mock_solver = MagicMock()
@@ -643,9 +650,10 @@ class TestFailedRunPersistsDetails:
                 sweep_label="post-cleanup",
             )
 
-        create_calls = mock_pb_instance.collection.return_value.create.call_args_list
-        assert len(create_calls) == 1
-        pb_data = create_calls[0][0][0]
+        # Sweep child uses UPDATE on the pre-created row, not CREATE
+        update_calls = mock_pb_instance.collection.return_value.update.call_args_list
+        assert len(update_calls) == 1
+        pb_data = update_calls[0].args[1]
         assert pb_data["status"] == "failed"
 
         import json

@@ -19,6 +19,7 @@ export const ALL_COLUMNS = [
   { key: 'model_num_variables_constraints', label: 'Vars / Cons', group: 'Model' },
   { key: 'num_booleans', label: 'Booleans', group: 'Model' },
   { key: 'num_integer_variables', label: 'Integers', group: 'Model' },
+  { key: 'num_bool_or', label: 'bool_or', group: 'Model' },
 ] as const
 
 export const DEFAULT_VISIBLE_COLUMNS: string[] = [

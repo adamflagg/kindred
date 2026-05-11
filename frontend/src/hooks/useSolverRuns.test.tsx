@@ -27,7 +27,15 @@ vi.mock('../lib/pocketbase', () => ({
     collection: () => ({
       getList: (...args: unknown[]) => mockGetList(...args),
     }),
-    filter: (raw: string) => raw,
+    // Mimic PB's filter param-substitution so tests can assert against the
+    // resolved string (matches the real client's `{:key}` → quoted value).
+    filter: (raw: string, params?: Record<string, unknown>) => {
+      if (!params) return raw
+      return Object.entries(params).reduce((acc, [k, v]) => {
+        const replacement = typeof v === 'string' ? `"${v}"` : String(v)
+        return acc.split(`{:${k}}`).join(replacement)
+      }, raw)
+    },
   },
 }))
 
@@ -65,5 +73,37 @@ describe('useSolverRuns', () => {
     expect(result.current.data?.totalItems).toBe(0)
     // Critical: must NOT call PB at all — that would return cross-year rows.
     expect(mockGetList).not.toHaveBeenCalled()
+  })
+
+  it('applies sourceKind filter against details.source_kind', async () => {
+    mockGetList.mockClear()
+    const { result } = renderHook(() => useSolverRuns({ sourceKind: 'production' }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const opts = mockGetList.mock.calls[0]?.[2] as { filter?: string } | undefined
+    expect(opts?.filter).toContain('details.source_kind = "production"')
+  })
+
+  it('does not apply sourceKind when set to "all"', async () => {
+    mockGetList.mockClear()
+    const { result } = renderHook(() => useSolverRuns({ sourceKind: 'all' }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const opts = mockGetList.mock.calls[0]?.[2] as { filter?: string } | undefined
+    expect(opts?.filter ?? '').not.toContain('source_kind')
+  })
+
+  it('applies sweepId filter against details.sweep_id', async () => {
+    mockGetList.mockClear()
+    const { result } = renderHook(() => useSolverRuns({ sweepId: 'sw_abc' }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const opts = mockGetList.mock.calls[0]?.[2] as { filter?: string } | undefined
+    expect(opts?.filter).toContain('details.sweep_id = "sw_abc"')
+  })
+
+  it('applies manualOnly as null/empty check on details.sweep_id', async () => {
+    mockGetList.mockClear()
+    const { result } = renderHook(() => useSolverRuns({ manualOnly: true }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const opts = mockGetList.mock.calls[0]?.[2] as { filter?: string } | undefined
+    expect(opts?.filter).toMatch(/details\.sweep_id\s*=\s*(""|null)/)
   })
 })

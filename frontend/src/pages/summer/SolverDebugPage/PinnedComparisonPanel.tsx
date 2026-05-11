@@ -8,7 +8,8 @@ interface Props {
   onClear: () => void
 }
 
-function deltaClass(metricKey: string, delta: number): string {
+function deltaClass(metricKey: string, delta: number | null): string {
+  if (delta === null) return 'text-gray-400'
   const meta = getMetric(metricKey)
   if (delta === 0) return 'text-gray-500'
   if (meta.interpretation === 'context') return 'text-gray-500 font-semibold'
@@ -18,16 +19,21 @@ function deltaClass(metricKey: string, delta: number): string {
   return better ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold'
 }
 
-function formatDelta(metricKey: string, delta: number): string {
+function formatDelta(metricKey: string, delta: number | null): string {
+  if (delta === null) return '—'
   const meta = getMetric(metricKey)
   const sign = delta >= 0 ? '+' : ''
-  if (meta.format === 'percent') return `${sign}${(delta * 100).toFixed(2)}%`
-  if (meta.format === 'duration') return `${sign}${delta.toFixed(1)}s`
-  return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+  const arrow = delta > 0 ? ' ↑' : delta < 0 ? ' ↓' : ''
+  if (meta.format === 'percent') return `${sign}${(delta * 100).toFixed(2)}%${arrow}`
+  if (meta.format === 'duration') return `${sign}${delta.toFixed(1)}s${arrow}`
+  if (meta.format === 'decimal')
+    return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 2 })}${arrow}`
+  return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}${arrow}`
 }
 
 function pickMetric(stats: SolverRunStats | undefined, key: string): number | null | undefined {
   if (!stats) return undefined
+  if (key === 'num_bool_or') return stats.constraint_type_breakdown?.['bool_or'] ?? null
   return (stats as unknown as Record<string, number | null | undefined>)[key]
 }
 
@@ -72,8 +78,7 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
             const meta = getMetric(key)
             const va = pickMetric(runA.stats, key)
             const vb = pickMetric(runB.stats, key)
-            if (va === undefined || va === null || vb === undefined || vb === null) return null
-            const delta = vb - va
+            const delta = va != null && vb != null ? vb - va : null
             return (
               <tr key={key} className="hover:bg-forest-50/30">
                 <td className="px-5 py-2">{meta.label}</td>

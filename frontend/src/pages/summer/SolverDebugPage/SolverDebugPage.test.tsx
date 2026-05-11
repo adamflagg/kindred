@@ -144,6 +144,53 @@ describe('SolverDebugPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/could not load sweep options/i)
   })
 
+  it('shows the in-flight banner derived from data (survives refresh)', () => {
+    // After a refresh, activeSweepId is null but the in-flight sweep's
+    // children still exist in solver_runs. Banner must derive from data.
+    mode = 'success'
+    mockRuns = [
+      {
+        id: 'sw_a_1',
+        run_id: 'run_1',
+        status: 'started',
+        created: '2026-05-08T10:14:00Z',
+        details: { sweep_id: 'sw_refresh_test' },
+      },
+      {
+        id: 'sw_a_2',
+        run_id: 'run_2',
+        status: 'started',
+        created: '2026-05-08T10:14:01Z',
+        details: { sweep_id: 'sw_refresh_test' },
+      },
+    ]
+    render(<SolverDebugPage />, { wrapper })
+    expect(screen.getByText(/sw_refresh_test/i)).toBeInTheDocument()
+    expect(screen.getByText(/0 of 2 complete/i)).toBeInTheDocument()
+  })
+
+  it('does not show the in-flight banner when all sweep children are settled', () => {
+    mode = 'success'
+    mockRuns = [
+      {
+        id: 'done_1',
+        run_id: 'r1',
+        status: 'success',
+        created: '2026-05-08T10:14:00Z',
+        details: { sweep_id: 'sw_finished' },
+      },
+      {
+        id: 'done_2',
+        run_id: 'r2',
+        status: 'success',
+        created: '2026-05-08T10:14:01Z',
+        details: { sweep_id: 'sw_finished' },
+      },
+    ]
+    render(<SolverDebugPage />, { wrapper })
+    expect(screen.queryByText(/sw_finished/i)).not.toBeInTheDocument()
+  })
+
   it('shows a toast when the sweep mutation fails (handleRunSweep error path)', async () => {
     mode = 'empty'
     mockSessions = [
