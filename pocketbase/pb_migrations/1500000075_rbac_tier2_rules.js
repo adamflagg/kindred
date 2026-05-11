@@ -29,7 +29,7 @@ migrate((app) => {
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
     "family_camp_adults", "family_camp_medical",
-    "family_camp_registrations", "quest_registrations", "session_groups",
+    "family_camp_registrations", "session_groups",
     "config_sections", "sheets_workbooks"
   ]
 
@@ -66,7 +66,7 @@ migrate((app) => {
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
     "family_camp_adults", "family_camp_medical",
-    "family_camp_registrations", "quest_registrations", "session_groups",
+    "family_camp_registrations", "session_groups",
     "config_sections", "sheets_workbooks",
     "debug_parse_results", "solver_runs"
   ]

@@ -18,13 +18,14 @@
  * - bunk_plans.session -> camp_sessions
  * - camper_dietary.attendee -> attendees
  * - camper_transportation.attendee -> attendees
- * - quest_registrations.attendee -> attendees
  * - locked_group_members.attendee -> attendees
  * - staff_applications.staff -> staff
  * - staff_vehicle_info.staff -> staff
  *
  * Note: original_bunk_requests.requester trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #020.
+ * Note: quest_registrations.attendee trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #045.
  */
 
 migrate((app) => {
@@ -86,21 +87,7 @@ migrate((app) => {
   }))
   app.save(camperTransport)
 
-  // 5. quest_registrations.attendee -> attendees
-  const questRegs = app.findCollectionByNameOrId("quest_registrations")
-  questRegs.fields.add(new Field({
-    type: "relation",
-    name: "attendee",
-    required: true,
-    presentable: false,
-    collectionId: attendeesCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(questRegs)
-
-  // 6. locked_group_members.attendee -> attendees
+  // 5. locked_group_members.attendee -> attendees
   const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
   lockedGroupMembers.fields.add(new Field({
     type: "relation",
@@ -114,7 +101,7 @@ migrate((app) => {
   }))
   app.save(lockedGroupMembers)
 
-  // 7. staff_applications.staff -> staff
+  // 6. staff_applications.staff -> staff
   const staffApps = app.findCollectionByNameOrId("staff_applications")
   staffApps.fields.add(new Field({
     type: "relation",
@@ -128,7 +115,7 @@ migrate((app) => {
   }))
   app.save(staffApps)
 
-  // 8. staff_vehicle_info.staff -> staff
+  // 7. staff_vehicle_info.staff -> staff
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
   staffVehicle.fields.add(new Field({
     type: "relation",
@@ -174,13 +161,6 @@ migrate((app) => {
     collectionId: attendeesCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
   }))
   app.save(camperTransport)
-
-  const questRegs = app.findCollectionByNameOrId("quest_registrations")
-  questRegs.fields.add(new Field({
-    type: "relation", name: "attendee", required: true, presentable: false,
-    collectionId: attendeesCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(questRegs)
 
   const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
   lockedGroupMembers.fields.add(new Field({

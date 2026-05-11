@@ -3,19 +3,6 @@
 // Several fields had values exceeding the original max limits.
 
 migrate((app) => {
-  // quest_registrations.preferred_name: 100 -> 200
-  const questReg = app.findCollectionByNameOrId("quest_registrations")
-  questReg.fields.add(new Field({
-    type: "text",
-    name: "preferred_name",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 200,
-    pattern: ""
-  }))
-  app.save(questReg)
-
   // staff_applications: 3 fields
   const staffApps = app.findCollectionByNameOrId("staff_applications")
 
@@ -55,18 +42,6 @@ migrate((app) => {
   app.save(staffApps)
 }, (app) => {
   // Restore original limits
-
-  const questReg = app.findCollectionByNameOrId("quest_registrations")
-  questReg.fields.add(new Field({
-    type: "text",
-    name: "preferred_name",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 100,
-    pattern: ""
-  }))
-  app.save(questReg)
 
   const staffApps = app.findCollectionByNameOrId("staff_applications")
   staffApps.fields.add(new Field({

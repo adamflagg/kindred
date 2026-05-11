@@ -14,14 +14,16 @@
 migrate((app) => {
   const attendeesCol = app.findCollectionByNameOrId("attendees");
 
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     type: "base",
     name: "quest_registrations",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: null,
-    updateRule: null,
-    deleteRule: null,
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // === Core Identity ===
       {
@@ -30,7 +32,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: attendeesCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
@@ -78,7 +80,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 100,
+        max: 200,
         pattern: ""
       },
 
