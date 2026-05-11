@@ -10,6 +10,8 @@
  * merged CREATE migration #046.
  * Note: camper_dietary trimmed — final adminOnly rules baked into
  * merged CREATE migration #044.
+ * Note: camper_transportation trimmed — final adminOnly rules baked into
+ * merged CREATE migration #043.
  */
 
 migrate((app) => {
@@ -29,7 +31,7 @@ migrate((app) => {
   const tier2 = [
     "household_custom_values",
     "financial_transactions", "financial_categories",
-    "payment_methods", "camper_transportation",
+    "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
@@ -66,7 +68,7 @@ migrate((app) => {
   const all = [
     "household_custom_values",
     "financial_transactions", "financial_categories",
-    "payment_methods", "camper_transportation",
+    "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills", "staff_vehicle_info",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
