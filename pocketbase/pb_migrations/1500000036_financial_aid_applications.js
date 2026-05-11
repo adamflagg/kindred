@@ -26,11 +26,11 @@ migrate((app) => {
     id: COLLECTION_ID_FA_APPLICATIONS,
     type: "base",
     name: "financial_aid_applications",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: "@request.auth.is_admin = true",
+    viewRule: "@request.auth.is_admin = true",
+    createRule: "@request.auth.is_admin = true",
+    updateRule: "@request.auth.is_admin = true",
+    deleteRule: "@request.auth.is_admin = true",
     fields: [
       // === Identity (4 fields) ===
       {
@@ -39,7 +39,7 @@ migrate((app) => {
         required: true,
         presentable: true,
         collectionId: personsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
@@ -391,7 +391,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 5000,
+        max: 10000,
         pattern: ""
       },
 
