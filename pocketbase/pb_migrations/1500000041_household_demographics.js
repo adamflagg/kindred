@@ -21,17 +21,19 @@
  */
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   // Get households collection for relation
   const householdsCol = app.findCollectionByNameOrId("households");
 
   const collection = new Collection({
     type: "base",
     name: "household_demographics",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: null,  // Sync only
-    updateRule: null,
-    deleteRule: null,
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // === Core Identity ===
       {
@@ -40,7 +42,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: householdsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
@@ -214,7 +216,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 200,
+        max: 400,
         pattern: ""
       },
       {

@@ -22,7 +22,7 @@ migrate((app) => {
 
   // Tier 2: Admin-only (sensitive data not accessed by frontend)
   const tier2 = [
-    "household_custom_values", "household_demographics",
+    "household_custom_values",
     "financial_transactions", "financial_categories",
     "payment_methods", "camper_dietary", "camper_transportation",
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
@@ -59,7 +59,7 @@ migrate((app) => {
   }
 
   const all = [
-    "household_custom_values", "household_demographics",
+    "household_custom_values",
     "financial_transactions", "financial_categories",
     "payment_methods", "camper_dietary", "camper_transportation",
     "staff", "staff_applications", "staff_org_categories", "staff_positions",
