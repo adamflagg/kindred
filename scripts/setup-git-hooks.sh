@@ -17,7 +17,7 @@ echo -e "${YELLOW}Setting up git hooks via lefthook...${NC}"
 if ! command -v lefthook &> /dev/null; then
     echo -e "${YELLOW}Installing lefthook...${NC}"
     if command -v go &> /dev/null; then
-        go install github.com/evilmartians/lefthook@latest
+        go install github.com/evilmartians/lefthook/v2@latest
     else
         echo -e "${RED}Error: Go is required to install lefthook${NC}"
         echo "Install Go first: https://go.dev/dl/"

@@ -69,7 +69,6 @@ migrate((app) => {
       { type: "text", name: "source_field", required: false },
       { type: "json", name: "trace_data", required: false, maxSize: 5000000 },
       { type: "bool", name: "pinned", required: false },
-      { type: "number", name: "schema_version", required: false },
       { type: "autodate", name: "created", onCreate: true, onUpdate: false },
       { type: "autodate", name: "updated", onCreate: true, onUpdate: true },
     ],
