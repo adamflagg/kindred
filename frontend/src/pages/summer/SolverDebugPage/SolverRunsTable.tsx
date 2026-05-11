@@ -15,6 +15,18 @@ interface SolverRunsTableProps {
   onRowClick: (run: SolverRun) => void
 }
 
+function effectiveStatus(run: SolverRun): string | undefined {
+  // OR-Tools terminal status wins when present; otherwise show PB lifecycle.
+  return run.stats?.status ?? run.status
+}
+
+function effectiveStatusLabel(status: string | undefined): string {
+  if (!status) return '—'
+  if (status === 'started' || status === 'running') return 'running'
+  if (status === 'pending') return 'pending'
+  return status // OR-Tools statuses already uppercase
+}
+
 function statusChipClass(status?: string): string {
   switch (status) {
     case 'OPTIMAL':
@@ -23,6 +35,16 @@ function statusChipClass(status?: string): string {
       return 'bg-yellow-100 text-yellow-800'
     case 'INFEASIBLE':
     case 'MODEL_INVALID':
+      return 'bg-red-100 text-red-800'
+    case 'pending':
+      return 'bg-gray-200 text-gray-700'
+    case 'started':
+    case 'running':
+      return 'bg-blue-100 text-blue-800 animate-pulse'
+    case 'success':
+      return 'bg-green-100 text-green-800'
+    case 'failed':
+    case 'error':
       return 'bg-red-100 text-red-800'
     default:
       return 'bg-gray-100 text-gray-700'
@@ -209,17 +231,17 @@ export function SolverRunsTable({
                   )}
                   {showCol('status') && (
                     <td className="px-3 py-2">
-                      {run.stats?.status ? (
-                        <span
-                          className={`rounded px-2 py-0.5 text-[11px] font-semibold ${statusChipClass(
-                            run.stats.status
-                          )}`}
-                        >
-                          {run.stats.status}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
+                      {(() => {
+                        const status = effectiveStatus(run)
+                        if (!status) return <span className="text-gray-400">—</span>
+                        return (
+                          <span
+                            className={`rounded px-2 py-0.5 text-[11px] font-semibold ${statusChipClass(status)}`}
+                          >
+                            {effectiveStatusLabel(status)}
+                          </span>
+                        )
+                      })()}
                     </td>
                   )}
                   {showCol('walltime_seconds') && (

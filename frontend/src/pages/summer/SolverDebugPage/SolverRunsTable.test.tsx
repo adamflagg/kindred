@@ -258,3 +258,76 @@ describe('SolverRunsTable', () => {
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 })
+
+describe('SolverRunsTable in-flight chip (#1260)', () => {
+  it('renders running chip with animate-pulse when PB status is started and stats are missing', () => {
+    const runs = [
+      {
+        id: 'r1',
+        run_id: 'run_1',
+        status: 'started',
+        stats: undefined,
+        details: { sweep_id: 'sw_1' },
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    const chip = screen.getByText(/^running$/i)
+    expect(chip).toBeInTheDocument()
+    expect(chip.className).toContain('animate-pulse')
+  })
+
+  it('renders pending chip when PB status is pending (sweep child not yet started)', () => {
+    const runs = [
+      {
+        id: 'r2',
+        run_id: 'run_2',
+        status: 'pending',
+        stats: undefined,
+        details: { sweep_id: 'sw_2' },
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    expect(screen.getByText(/^pending$/i)).toBeInTheDocument()
+  })
+
+  it('prefers OR-Tools status when stats.status is present', () => {
+    const runs = [
+      {
+        id: 'r3',
+        run_id: 'run_3',
+        status: 'success',
+        stats: { status: 'OPTIMAL', walltime_seconds: 5 },
+        details: {},
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    expect(screen.getByText('OPTIMAL')).toBeInTheDocument()
+  })
+})
