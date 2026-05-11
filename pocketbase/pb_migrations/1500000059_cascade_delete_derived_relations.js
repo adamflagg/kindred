@@ -19,7 +19,7 @@
 migrate((app) => {
   const householdsCol = app.findCollectionByNameOrId("households");
 
-  // 2. household_demographics.household
+  // 1. household_demographics.household
   const hhDemo = app.findCollectionByNameOrId("household_demographics");
   hhDemo.fields.add(new Field({
     type: "relation",
@@ -33,7 +33,7 @@ migrate((app) => {
   }));
   app.save(hhDemo);
 
-  // 3. family_camp_adults.household
+  // 2. family_camp_adults.household
   const fcAdults = app.findCollectionByNameOrId("family_camp_adults");
   fcAdults.fields.add(new Field({
     type: "relation",
@@ -47,7 +47,7 @@ migrate((app) => {
   }));
   app.save(fcAdults);
 
-  // 4. family_camp_registrations.household
+  // 3. family_camp_registrations.household
   const fcRegs = app.findCollectionByNameOrId("family_camp_registrations");
   fcRegs.fields.add(new Field({
     type: "relation",
@@ -61,7 +61,7 @@ migrate((app) => {
   }));
   app.save(fcRegs);
 
-  // 5. family_camp_medical.household
+  // 4. family_camp_medical.household
   const fcMed = app.findCollectionByNameOrId("family_camp_medical");
   fcMed.fields.add(new Field({
     type: "relation",
