@@ -28,8 +28,8 @@ from bunking.sync.bunk_request_processor.shared.constants import (
 # This is the single source of truth: adding a new SourceField means adding one
 # entry here, and all input variations are handled automatically.
 _SOURCEFIELD_TO_STATS_KEY: dict[str, str] = {
-    SourceField.BUNK_WITH: "share_bunk_with",
-    SourceField.NOT_BUNK_WITH: "do_not_share_with",
+    SourceField.BUNK_REQUEST_FORM: "share_bunk_with",
+    SourceField.STAFF_NOT_BUNK_WITH: "do_not_share_with",
     SourceField.BUNKING_NOTES: "bunking_notes",
     SourceField.INTERNAL_NOTES: "internal_notes",
     SourceField.SOCIALIZE_WITH: "socialize_with",
@@ -137,7 +137,7 @@ class ValidationStatistics(BaseModel):
     best_effort_parent_request_satisfaction_rate: float = 0.0
 
     # Staff-source request tracking (source_from_field returns "staff"). Source fields:
-    # SourceField.NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
+    # SourceField.STAFF_NOT_BUNK_WITH (stats key "do_not_share_with"), BUNKING_NOTES,
     # INTERNAL_NOTES. Tracked separately because they don't satisfy the
     # "every camper gets one parent request" rule that Stage 4 will enforce.
     staff_requests: int = 0
@@ -547,7 +547,7 @@ class BunkingValidator:
                     )
 
                 is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH
-                if raw_source_field == SourceField.BUNK_WITH:
+                if raw_source_field == SourceField.BUNK_REQUEST_FORM:
                     material_parent_by_person[requester_id].append(request)
                     alerting_requests_by_person[requester_id].append(request)
                 elif is_best_effort:
@@ -564,7 +564,7 @@ class BunkingValidator:
                 # Check if this valid request is satisfied (#1170 — canonical predicate via _is_satisfied adapter).
                 if _is_satisfied(request):
                     satisfied_requests_by_person[requester_id].append(request)
-                    if raw_source_field == SourceField.BUNK_WITH:
+                    if raw_source_field == SourceField.BUNK_REQUEST_FORM:
                         satisfied_material_parent_by_person[requester_id].append(request)
                         satisfied_alerting_by_person[requester_id].append(request)
                     elif is_best_effort:

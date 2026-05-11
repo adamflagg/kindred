@@ -18,11 +18,11 @@ logger = get_logger(__name__)
 
 # Fields with strict type requirements
 STRICT_FIELD_TYPES = {
-    SourceField.NOT_BUNK_WITH: RequestType.NOT_BUNK_WITH,
+    SourceField.STAFF_NOT_BUNK_WITH: RequestType.NOT_BUNK_WITH,
 }
 
 # Fields that can produce any request type
-FLEXIBLE_FIELDS = {SourceField.BUNK_WITH, SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES}
+FLEXIBLE_FIELDS = {SourceField.BUNK_REQUEST_FORM, SourceField.BUNKING_NOTES, SourceField.INTERNAL_NOTES}
 
 # Request types that require a target_name
 TYPES_REQUIRING_TARGET = {RequestType.BUNK_WITH, RequestType.NOT_BUNK_WITH}
@@ -80,7 +80,7 @@ def validate_request_type_for_field(parsed: ParsedRequest) -> ParsedRequest | No
             return None
 
         # Log unusual but valid combinations for observability
-        if source_field == SourceField.BUNK_WITH and parsed.request_type != RequestType.BUNK_WITH:
+        if source_field == SourceField.BUNK_REQUEST_FORM and parsed.request_type != RequestType.BUNK_WITH:
             logger.info(f"AI parsed {parsed.request_type} from {source_field} field - respecting AI decision")
 
     return parsed

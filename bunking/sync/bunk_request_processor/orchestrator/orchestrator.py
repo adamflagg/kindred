@@ -1828,7 +1828,7 @@ class RequestOrchestrator:
                 na_stripped = False
 
                 # ADR 5: NA/no-preference stripping only applies to bunk_with field
-                if field_name == SourceField.BUNK_WITH:
+                if field_name == SourceField.BUNK_REQUEST_FORM:
                     # Check for "no preference" indicators before processing
                     if self._is_no_preference(request_text):
                         self._stats["no_preference_skipped"] += 1

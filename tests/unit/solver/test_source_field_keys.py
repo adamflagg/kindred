@@ -87,7 +87,7 @@ class TestScoreEvaluatorCanonicalKeys:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 5,
-                    "source_field": SourceField.BUNK_WITH,
+                    "source_field": SourceField.BUNK_REQUEST_FORM,
                 }
             ],
             assignments=[
@@ -117,7 +117,7 @@ class TestScoreEvaluatorCanonicalKeys:
                     "requestee_id": 200,
                     "request_type": "bunk_with",
                     "priority": 5,
-                    "source_field": SourceField.BUNK_WITH,
+                    "source_field": SourceField.BUNK_REQUEST_FORM,
                 },
                 {
                     "requester_id": 300,
@@ -147,8 +147,8 @@ class TestScoreEvaluatorCanonicalKeys:
             config=mock_config,
         )
 
-        assert SourceField.BUNK_WITH in result.field_scores
-        assert result.field_scores[SourceField.BUNK_WITH]["satisfied"] == 1
+        assert SourceField.BUNK_REQUEST_FORM in result.field_scores
+        assert result.field_scores[SourceField.BUNK_REQUEST_FORM]["satisfied"] == 1
         assert SourceField.BUNKING_NOTES in result.field_scores
         assert result.field_scores[SourceField.BUNKING_NOTES]["satisfied"] == 0
 
@@ -156,8 +156,8 @@ class TestScoreEvaluatorCanonicalKeys:
         """_get_source_fields should return canonical value from source_field."""
         from bunking.solver.score_evaluator import _get_source_fields
 
-        request = {"source_field": SourceField.BUNK_WITH}
-        assert _get_source_fields(request) == [SourceField.BUNK_WITH]
+        request = {"source_field": SourceField.BUNK_REQUEST_FORM}
+        assert _get_source_fields(request) == [SourceField.BUNK_REQUEST_FORM]
 
     def test_get_source_fields_age_preference_returns_canonical(self):
         """age_preference requests should return SourceField.SOCIALIZE_WITH."""
@@ -183,7 +183,7 @@ class TestSolutionCanonicalKeys:
             priority=5,
             session_cm_id=1000,
             year=2025,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
         )
 
         result = calculate_field_level_stats(
@@ -192,9 +192,9 @@ class TestSolutionCanonicalKeys:
         )
 
         field_stats = result["by_field"]
-        assert SourceField.BUNK_WITH in field_stats
-        assert field_stats[SourceField.BUNK_WITH]["total"] == 1
-        assert field_stats[SourceField.BUNK_WITH]["satisfied"] == 1
+        assert SourceField.BUNK_REQUEST_FORM in field_stats
+        assert field_stats[SourceField.BUNK_REQUEST_FORM]["total"] == 1
+        assert field_stats[SourceField.BUNK_REQUEST_FORM]["satisfied"] == 1
 
     def test_explicit_csv_fields_match_canonical_values(self):
         """Explicit CSV field detection must use canonical SourceField values."""
@@ -209,7 +209,7 @@ class TestSolutionCanonicalKeys:
             priority=5,
             session_cm_id=1000,
             year=2025,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
         )
 
         result = calculate_field_level_stats(
@@ -246,7 +246,7 @@ class TestDirectSolverCanonicalKeys:
             priority=5,
             session_cm_id=1000,
             year=2025,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
         )
 
         multiplier = solver._get_csv_field_multiplier(request)

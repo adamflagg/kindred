@@ -18,9 +18,9 @@ class TestSourceFromFieldMapping:
     @pytest.mark.parametrize(
         ("source_field_value", "expected_source"),
         [
-            (SourceField.BUNK_WITH, "family"),
+            (SourceField.BUNK_REQUEST_FORM, "family"),
             (SourceField.SOCIALIZE_WITH, "family"),
-            (SourceField.NOT_BUNK_WITH, "staff"),
+            (SourceField.STAFF_NOT_BUNK_WITH, "staff"),
             (SourceField.BUNKING_NOTES, "staff"),
             (SourceField.INTERNAL_NOTES, "staff"),
             (SourceField.MANUAL, "staff"),
@@ -50,18 +50,18 @@ class TestSourceFromFieldMapping:
 
     def test_source_from_field_returns_string(self) -> None:
         """source_from_field always returns a plain string, not an enum."""
-        result = source_from_field(SourceField.BUNK_WITH)
+        result = source_from_field(SourceField.BUNK_REQUEST_FORM)
         assert isinstance(result, str)
         assert result in ("family", "staff")
 
     def test_bunk_with_and_socialize_with_are_both_family(self) -> None:
         """The two parent-visible fields both map to "family"."""
-        assert source_from_field(SourceField.BUNK_WITH) == "family"
+        assert source_from_field(SourceField.BUNK_REQUEST_FORM) == "family"
         assert source_from_field(SourceField.SOCIALIZE_WITH) == "family"
 
     def test_all_notes_fields_are_staff(self) -> None:
         """All four staff-written channels map to "staff"."""
-        assert source_from_field(SourceField.NOT_BUNK_WITH) == "staff"
+        assert source_from_field(SourceField.STAFF_NOT_BUNK_WITH) == "staff"
         assert source_from_field(SourceField.BUNKING_NOTES) == "staff"
         assert source_from_field(SourceField.INTERNAL_NOTES) == "staff"
         assert source_from_field(SourceField.MANUAL) == "staff"

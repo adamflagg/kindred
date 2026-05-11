@@ -25,8 +25,8 @@ SOURCE_FIELD_TO_CONFIG_KEY = _mod.SOURCE_FIELD_TO_CONFIG_KEY
 
 def test_source_field_values_are_v2():
     """SourceField constants must be V2 internal names, not V1 CSV headers."""
-    assert SourceField.BUNK_WITH == "bunk_with"
-    assert SourceField.NOT_BUNK_WITH == "not_bunk_with"
+    assert SourceField.BUNK_REQUEST_FORM == "bunk_with"
+    assert SourceField.STAFF_NOT_BUNK_WITH == "not_bunk_with"
     assert SourceField.BUNKING_NOTES == "bunking_notes"
     assert SourceField.INTERNAL_NOTES == "internal_notes"
     assert SourceField.SOCIALIZE_WITH == "socialize_with"
@@ -57,8 +57,8 @@ def test_no_v1_strings_in_source_field():
         "RetParent-Socializewithbest",
     }
     source_field_values = {
-        SourceField.BUNK_WITH,
-        SourceField.NOT_BUNK_WITH,
+        SourceField.BUNK_REQUEST_FORM,
+        SourceField.STAFF_NOT_BUNK_WITH,
         SourceField.BUNKING_NOTES,
         SourceField.INTERNAL_NOTES,
         SourceField.SOCIALIZE_WITH,

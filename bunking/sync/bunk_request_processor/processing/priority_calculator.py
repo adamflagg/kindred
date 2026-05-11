@@ -129,7 +129,7 @@ class PriorityCalculator:
         any_family_request_has_priority = self._any_family_request_has_priority(all_requests_for_person)
 
         # Priority 4 cases
-        if parsed.source_field == SourceField.BUNK_WITH:
+        if parsed.source_field == SourceField.BUNK_REQUEST_FORM:
             if parsed.request_type == RequestType.BUNK_WITH:
                 if any_family_request_has_priority:
                     # List has keywords = unordered, only keyword requests get highest
@@ -150,7 +150,7 @@ class PriorityCalculator:
             if parsed.request_type == RequestType.AGE_PREFERENCE and not has_other_requests:
                 return self._get_rule_priority("age_preference_sole")
 
-        if parsed.source_field == SourceField.NOT_BUNK_WITH and parsed.request_type == RequestType.NOT_BUNK_WITH:
+        if parsed.source_field == SourceField.STAFF_NOT_BUNK_WITH and parsed.request_type == RequestType.NOT_BUNK_WITH:
             return self._get_rule_priority("staff_not_bunk_with")
 
         # Priority 2 cases - staff notes
@@ -194,7 +194,7 @@ class PriorityCalculator:
         result = any(
             self._has_priority_keyword(r.raw_text)
             for r in all_requests_for_person
-            if r.source_field == SourceField.BUNK_WITH and r.request_type == RequestType.BUNK_WITH
+            if r.source_field == SourceField.BUNK_REQUEST_FORM and r.request_type == RequestType.BUNK_WITH
         )
         self._family_priority_cache[cache_key] = result
         return result
