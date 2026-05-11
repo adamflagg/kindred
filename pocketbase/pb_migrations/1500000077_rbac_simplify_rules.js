@@ -30,8 +30,8 @@ migrate((app) => {
   }
 
   // Previously bunking.view — now any authenticated user
-  // Note: "bunk_assignments" trimmed — final-state rules baked into merged CREATE.
-  const bunkingReadOnly = ["bunk_plans", "bunks"]
+  // Note: "bunk_assignments", "bunk_plans" trimmed — final-state rules baked into merged CREATE.
+  const bunkingReadOnly = ["bunks"]
   for (const name of bunkingReadOnly) {
     setRules(name, authed, authed, adminOnly, adminOnly, adminOnly)
   }
@@ -63,7 +63,7 @@ migrate((app) => {
     setRules(name, anyRole, anyRole, adminOnly, adminOnly, adminOnly)
   }
 
-  const bunkingViewReadOnly = ["bunk_plans", "bunks"]
+  const bunkingViewReadOnly = ["bunks"]
   for (const name of bunkingViewReadOnly) {
     setRules(name, bunkingView, bunkingView, adminOnly, adminOnly, adminOnly)
   }
