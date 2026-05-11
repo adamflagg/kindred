@@ -1,5 +1,7 @@
-import { Zap } from 'lucide-react'
-import { useId, useState } from 'react'
+import { ChevronDown, ChevronRight, Zap } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+
+const SWEEP_PANEL_STORAGE_KEY = 'solver-debug.sweep-panel-expanded'
 
 export interface SweepPanelSession {
   id: string
@@ -61,6 +63,20 @@ export function SweepPanel({
   onCancelSweep,
   inFlightSweep,
 }: SweepPanelProps) {
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    const stored = localStorage.getItem(SWEEP_PANEL_STORAGE_KEY)
+    return stored == null ? true : stored === 'true'
+  })
+
+  const isMounted = useRef(false)
+  useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true
+      return
+    }
+    localStorage.setItem(SWEEP_PANEL_STORAGE_KEY, String(expanded))
+  }, [expanded])
+
   // The user's explicit session pick (null = follow default — the last session in
   // the list, which is typically the most recent / highest cm_id). Tracked
   // separately from the resolved value so we don't need an effect to backfill
@@ -116,134 +132,27 @@ export function SweepPanel({
   }
 
   return (
-    <div className="shadow-lodge rounded-xl border border-gray-200 bg-white p-5">
-      <div className="mb-4 flex items-start justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 font-semibold text-gray-900">
-            <Zap className="h-4 w-4" /> Run benchmark sweep
-          </h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Sequential runs at each time budget. Inputs frozen at kickoff.
-          </p>
-        </div>
+    <div className="shadow-lodge rounded-xl border border-gray-200 bg-white">
+      {/* Header row — always visible */}
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <Zap className="h-4 w-4 text-amber-500" />
+          Run benchmark sweep
+        </h3>
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="text-gray-500 hover:text-gray-700"
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Collapse' : 'Expand'}
+        >
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </button>
       </div>
 
-      <div className="mb-4 grid grid-cols-12 items-end gap-4">
-        <div className="col-span-3">
-          <label
-            htmlFor={sessionId}
-            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
-          >
-            Session
-          </label>
-          <select
-            id={sessionId}
-            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-            value={sessionCmId}
-            onChange={(e) => setPickedSessionCmId(Number(e.target.value))}
-          >
-            {sessions.map((s) => (
-              <option key={s.id} value={s.cm_id}>
-                {s.name} — {s.year}
-                {s.attendee_count != null ? ` (${s.attendee_count})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col-span-4">
-          <label
-            htmlFor={sourceId}
-            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
-          >
-            Source
-          </label>
-          <select
-            id={sourceId}
-            className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-            value={sourceValue}
-            onChange={(e) => setPickedSourceValue(e.target.value)}
-          >
-            <optgroup label="CampMinder">
-              <option value="production">Production</option>
-            </optgroup>
-            {sessionScenarios.length > 0 ? (
-              <optgroup label="Scenarios">
-                {sessionScenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
-        </div>
-        <div className="col-span-3">
-          <span className="text-xs font-medium tracking-wide text-gray-600 uppercase">
-            Time budgets
-          </span>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {budgets.map((b) => (
-              <button
-                key={b}
-                onClick={() => removeBudget(b)}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-sm font-medium text-amber-900"
-                title="click to remove"
-              >
-                {b}s ×
-              </button>
-            ))}
-            <input
-              type="number"
-              min={1}
-              aria-label="Add budget in seconds"
-              value={budgetDraft}
-              onChange={(e) => setBudgetDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addBudget()
-                }
-              }}
-              placeholder="90"
-              className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
-            />
-            <button
-              type="button"
-              onClick={addBudget}
-              className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-sm text-gray-500 hover:border-gray-400"
-            >
-              + add
-            </button>
-          </div>
-        </div>
-        <div className="col-span-2">
-          <button
-            onClick={handleRun}
-            disabled={!isSubmittable}
-            className="from-forest-500 to-forest-700 w-full rounded-lg bg-gradient-to-br px-4 py-2 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ▶ Run sweep
-          </button>
-        </div>
-        <div className="col-span-12">
-          <label
-            htmlFor={labelId}
-            className="text-xs font-medium tracking-wide text-gray-600 uppercase"
-          >
-            Label (optional)
-          </label>
-          <input
-            id={labelId}
-            className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. post-grade-spread-cleanup"
-          />
-        </div>
-      </div>
-
+      {/* In-flight banner — always visible (status info, not config) */}
       {inFlightSweep ? (
-        <div className="bg-forest-50 border-forest-200 mt-4 flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 text-sm">
+        <div className="bg-forest-50 border-forest-200 flex flex-wrap items-center gap-3 border-b px-4 py-3 text-sm">
           <div className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
           <span className="text-forest-700 font-medium">
             Sweep {inFlightSweep.sweep_id} in progress
@@ -268,6 +177,129 @@ export function SweepPanel({
           </button>
         </div>
       ) : null}
+
+      {/* Collapsible body */}
+      {expanded && (
+        <div className="p-5">
+          <p className="mb-4 text-xs text-gray-500">
+            Sequential runs at each time budget. Inputs frozen at kickoff.
+          </p>
+
+          <div className="mb-4 grid grid-cols-12 items-end gap-4">
+            <div className="col-span-3">
+              <label
+                htmlFor={sessionId}
+                className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+              >
+                Session
+              </label>
+              <select
+                id={sessionId}
+                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                value={sessionCmId}
+                onChange={(e) => setPickedSessionCmId(Number(e.target.value))}
+              >
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.cm_id}>
+                    {s.name} — {s.year}
+                    {s.attendee_count != null ? ` (${s.attendee_count})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-4">
+              <label
+                htmlFor={sourceId}
+                className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+              >
+                Source
+              </label>
+              <select
+                id={sourceId}
+                className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+                value={sourceValue}
+                onChange={(e) => setPickedSourceValue(e.target.value)}
+              >
+                <optgroup label="CampMinder">
+                  <option value="production">Production</option>
+                </optgroup>
+                {sessionScenarios.length > 0 ? (
+                  <optgroup label="Scenarios">
+                    {sessionScenarios.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </div>
+            <div className="col-span-3">
+              <span className="text-xs font-medium tracking-wide text-gray-600 uppercase">
+                Time budgets
+              </span>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {budgets.map((b) => (
+                  <button
+                    key={b}
+                    onClick={() => removeBudget(b)}
+                    className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-sm font-medium text-amber-900"
+                    title="click to remove"
+                  >
+                    {b}s ×
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={1}
+                  aria-label="Add budget in seconds"
+                  value={budgetDraft}
+                  onChange={(e) => setBudgetDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addBudget()
+                    }
+                  }}
+                  placeholder="90"
+                  className="w-16 rounded-lg border border-gray-200 px-2 py-1 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={addBudget}
+                  className="rounded-lg border border-dashed border-gray-300 px-2.5 py-1 text-sm text-gray-500 hover:border-gray-400"
+                >
+                  + add
+                </button>
+              </div>
+            </div>
+            <div className="col-span-2">
+              <button
+                onClick={handleRun}
+                disabled={!isSubmittable}
+                className="from-forest-500 to-forest-700 w-full rounded-lg bg-gradient-to-br px-4 py-2 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ▶ Run sweep
+              </button>
+            </div>
+            <div className="col-span-12">
+              <label
+                htmlFor={labelId}
+                className="text-xs font-medium tracking-wide text-gray-600 uppercase"
+              >
+                Label (optional)
+              </label>
+              <input
+                id={labelId}
+                className="mt-1.5 w-full rounded-lg border border-gray-200 px-3 py-1.5 text-sm"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="e.g. post-grade-spread-cleanup"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
