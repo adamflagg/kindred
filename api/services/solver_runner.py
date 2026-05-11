@@ -264,7 +264,8 @@ async def run_solver_task_v2(
         try:
             details = await build_run_details(
                 pb=task_pb,
-                session_label=f"Session {session_cm_id} — {year}",
+                session_cm_id=session_cm_id,
+                year=year,
                 scenario_id=scenario,
                 scenario_name=scenario_name,
                 session_attendee_count=len(solver_input.persons),
