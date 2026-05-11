@@ -39,7 +39,7 @@ dependencies = [
     "pandas>=3.0.2",
     "tzdata>=2026.1",
     "numpy>=1.26.0",
-    "networkx>=3.0",
+    "networkx>=3.6.1",
     # Configuration & validation
     "pydantic>=2.7.0",
     "pydantic-settings>=2.14.0",
