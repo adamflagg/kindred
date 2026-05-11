@@ -3,19 +3,6 @@
 // Several fields had values exceeding the original max limits.
 
 migrate((app) => {
-  // household_demographics.away_phone: 200 -> 400
-  const householdDemo = app.findCollectionByNameOrId("household_demographics")
-  householdDemo.fields.add(new Field({
-    type: "text",
-    name: "away_phone",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 400,
-    pattern: ""
-  }))
-  app.save(householdDemo)
-
   // quest_registrations.preferred_name: 100 -> 200
   const questReg = app.findCollectionByNameOrId("quest_registrations")
   questReg.fields.add(new Field({
@@ -68,18 +55,6 @@ migrate((app) => {
   app.save(staffApps)
 }, (app) => {
   // Restore original limits
-
-  const householdDemo = app.findCollectionByNameOrId("household_demographics")
-  householdDemo.fields.add(new Field({
-    type: "text",
-    name: "away_phone",
-    required: false,
-    presentable: false,
-    min: 0,
-    max: 200,
-    pattern: ""
-  }))
-  app.save(householdDemo)
 
   const questReg = app.findCollectionByNameOrId("quest_registrations")
   questReg.fields.add(new Field({
