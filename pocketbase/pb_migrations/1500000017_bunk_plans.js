@@ -16,15 +16,18 @@ migrate((app) => {
   const bunksCol = app.findCollectionByNameOrId("bunks")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
 
+  const adminOnly = '@request.auth.is_admin = true'
+  const authed = '@request.auth.id != ""'
+
   const collection = new Collection({
     id: COLLECTION_ID_BUNK_PLANS,
     name: "bunk_plans",
     type: "base",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: authed,
+    viewRule: authed,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         name: "cm_id",
@@ -41,7 +44,7 @@ migrate((app) => {
         required: true,
         presentable: true,
         collectionId: bunksCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
@@ -51,7 +54,7 @@ migrate((app) => {
         required: true,
         presentable: true,
         collectionId: sessionsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },

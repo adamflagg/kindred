@@ -3,7 +3,7 @@
  * Migration: Enable cascadeDelete on remaining orphan-blocking relations
  *
  * Extends migration 1500000059 which fixed 5 derived-table relations.
- * This migration fixes the remaining 6 relations where child tables have
+ * This migration fixes the remaining 4 relations where child tables have
  * required references with cascadeDelete=false to parent tables that perform
  * orphan deletion during sync.
  *
@@ -14,8 +14,6 @@
  * per year). Cascade operates on PB IDs, not CampMinder IDs.
  *
  * Affected relations:
- * - bunk_plans.bunk -> bunks
- * - bunk_plans.session -> camp_sessions
  * - camper_dietary.attendee -> attendees
  * - camper_transportation.attendee -> attendees
  * - locked_group_members.attendee -> attendees
@@ -27,40 +25,15 @@
  * baked into merged CREATE migration #045.
  * Note: staff_applications.staff trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #046.
+ * Note: bunk_plans.bunk + bunk_plans.session trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #017.
  */
 
 migrate((app) => {
-  const bunksCol = app.findCollectionByNameOrId("bunks")
-  const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
 
-  // 1. bunk_plans.bunk -> bunks
-  const bunkPlans = app.findCollectionByNameOrId("bunk_plans")
-  bunkPlans.fields.add(new Field({
-    type: "relation",
-    name: "bunk",
-    required: true,
-    presentable: true,
-    collectionId: bunksCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  // 2. bunk_plans.session -> camp_sessions
-  bunkPlans.fields.add(new Field({
-    type: "relation",
-    name: "session",
-    required: true,
-    presentable: true,
-    collectionId: sessionsCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(bunkPlans)
-
-  // 3. camper_dietary.attendee -> attendees
+  // 1. camper_dietary.attendee -> attendees
   const camperDietary = app.findCollectionByNameOrId("camper_dietary")
   camperDietary.fields.add(new Field({
     type: "relation",
@@ -74,7 +47,7 @@ migrate((app) => {
   }))
   app.save(camperDietary)
 
-  // 4. camper_transportation.attendee -> attendees
+  // 2. camper_transportation.attendee -> attendees
   const camperTransport = app.findCollectionByNameOrId("camper_transportation")
   camperTransport.fields.add(new Field({
     type: "relation",
@@ -88,7 +61,7 @@ migrate((app) => {
   }))
   app.save(camperTransport)
 
-  // 5. locked_group_members.attendee -> attendees
+  // 3. locked_group_members.attendee -> attendees
   const lockedGroupMembers = app.findCollectionByNameOrId("locked_group_members")
   lockedGroupMembers.fields.add(new Field({
     type: "relation",
@@ -102,7 +75,7 @@ migrate((app) => {
   }))
   app.save(lockedGroupMembers)
 
-  // 6. staff_vehicle_info.staff -> staff
+  // 4. staff_vehicle_info.staff -> staff
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
   staffVehicle.fields.add(new Field({
     type: "relation",
@@ -117,23 +90,10 @@ migrate((app) => {
   app.save(staffVehicle)
 
 }, (app) => {
-  const bunksCol = app.findCollectionByNameOrId("bunks")
-  const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
   const attendeesCol = app.findCollectionByNameOrId("attendees")
   const staffCol = app.findCollectionByNameOrId("staff")
 
   // Revert all to cascadeDelete: false
-
-  const bunkPlans = app.findCollectionByNameOrId("bunk_plans")
-  bunkPlans.fields.add(new Field({
-    type: "relation", name: "bunk", required: true, presentable: true,
-    collectionId: bunksCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  bunkPlans.fields.add(new Field({
-    type: "relation", name: "session", required: true, presentable: true,
-    collectionId: sessionsCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(bunkPlans)
 
   const camperDietary = app.findCollectionByNameOrId("camper_dietary")
   camperDietary.fields.add(new Field({

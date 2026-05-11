@@ -34,8 +34,9 @@ migrate((app) => {
   }
 
   // Read-only: bunking.view (bunking data written by sync/solver)
-  // Note: "bunk_assignments" trimmed — final-state rules baked into merged CREATE.
-  const bunkingViewReadOnly = ["bunk_plans", "bunks"]
+  // Note: "bunk_assignments", "bunk_plans" trimmed — final-state rules baked into merged CREATE.
+  // (bunk_plans final-state rules from #077 simplification: list/view = authed, c/u/d = adminOnly.)
+  const bunkingViewReadOnly = ["bunks"]
   for (const name of bunkingViewReadOnly) {
     setRules(name, bunkingView, bunkingView, adminOnly, adminOnly, adminOnly)
   }
@@ -77,7 +78,7 @@ migrate((app) => {
 
   const collections = [
     "camp_sessions", "divisions",
-    "bunk_plans", "bunks",
+    "bunks",
     "locked_groups", "locked_group_members", "saved_scenarios"
   ]
   for (const name of collections) {
