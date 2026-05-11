@@ -19,13 +19,14 @@
  * - camper_dietary.attendee -> attendees
  * - camper_transportation.attendee -> attendees
  * - locked_group_members.attendee -> attendees
- * - staff_applications.staff -> staff
  * - staff_vehicle_info.staff -> staff
  *
  * Note: original_bunk_requests.requester trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #020.
  * Note: quest_registrations.attendee trimmed — final cascadeDelete: true
  * baked into merged CREATE migration #045.
+ * Note: staff_applications.staff trimmed — final cascadeDelete: true
+ * baked into merged CREATE migration #046.
  */
 
 migrate((app) => {
@@ -101,21 +102,7 @@ migrate((app) => {
   }))
   app.save(lockedGroupMembers)
 
-  // 6. staff_applications.staff -> staff
-  const staffApps = app.findCollectionByNameOrId("staff_applications")
-  staffApps.fields.add(new Field({
-    type: "relation",
-    name: "staff",
-    required: true,
-    presentable: false,
-    collectionId: staffCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }))
-  app.save(staffApps)
-
-  // 7. staff_vehicle_info.staff -> staff
+  // 6. staff_vehicle_info.staff -> staff
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
   staffVehicle.fields.add(new Field({
     type: "relation",
@@ -168,13 +155,6 @@ migrate((app) => {
     collectionId: attendeesCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
   }))
   app.save(lockedGroupMembers)
-
-  const staffApps = app.findCollectionByNameOrId("staff_applications")
-  staffApps.fields.add(new Field({
-    type: "relation", name: "staff", required: true, presentable: false,
-    collectionId: staffCol.id, cascadeDelete: false, minSelect: null, maxSelect: 1
-  }))
-  app.save(staffApps)
 
   const staffVehicle = app.findCollectionByNameOrId("staff_vehicle_info")
   staffVehicle.fields.add(new Field({
