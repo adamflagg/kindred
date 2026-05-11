@@ -152,9 +152,9 @@ EOF
 
 # Install lefthook hooks in the worktree
 if command -v lefthook &> /dev/null; then
-    lefthook install
+    lefthook install --reset-hooks-path
 else
-    echo -e "${YELLOW}Warning: lefthook not installed — run 'go install github.com/evilmartians/lefthook@latest'${NC}"
+    echo -e "${YELLOW}Warning: lefthook not installed — run 'go install github.com/evilmartians/lefthook/v2@latest'${NC}"
 fi
 
 # Install dependencies (fast with caching)
