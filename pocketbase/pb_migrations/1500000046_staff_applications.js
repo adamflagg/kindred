@@ -4,7 +4,7 @@
  * Dependencies: staff, person_custom_values
  *
  * Extracts App-* custom fields for staff application data.
- * Contains 40 fields covering work availability, qualifications,
+ * Contains 43 fields covering work availability, qualifications,
  * position preferences, essays, references, and reflection prompts.
  *
  * Unique key: (person_id, year) - one record per staff applicant per year
@@ -14,14 +14,16 @@
 migrate((app) => {
   const staffCol = app.findCollectionByNameOrId("staff");
 
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     type: "base",
     name: "staff_applications",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: null,
-    updateRule: null,
-    deleteRule: null,
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // === Core Identity ===
       {
@@ -30,7 +32,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: staffCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
@@ -183,7 +185,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 2000,
+        max: 4000,
         pattern: ""
       },
       {
@@ -292,7 +294,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 100,
+        max: 1000,
         pattern: ""
       },
       {
@@ -339,7 +341,7 @@ migrate((app) => {
         required: false,
         presentable: false,
         min: 0,
-        max: 2000,
+        max: 4000,
         pattern: ""
       },
       {
