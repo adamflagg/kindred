@@ -212,7 +212,7 @@ class TestPriorityCalculator:
                 request_type=RequestType.BUNK_WITH,
                 target_name="Emma Johnson",
                 age_preference=None,
-                source_field=SourceField.SOCIALIZE_WITH,  # NOT source_field BUNK_WITH
+                source_field=SourceField.SOCIALIZE_WITH,  # NOT source_field BUNK_REQUEST_FORM
                 confidence=0.95,
                 csv_position=1,
                 metadata={},

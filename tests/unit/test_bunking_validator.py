@@ -815,7 +815,7 @@ class TestNormalizeSourceField:
             session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
         )
         assert result.statistics.material_parent_requests == 1, (
-            f"canonical BUNK_WITH must increment material_parent_requests; "
+            f"canonical BUNK_REQUEST_FORM must increment material_parent_requests; "
             f"got {result.statistics.material_parent_requests}"
         )
         assert result.statistics.satisfied_material_parent_requests == 1
@@ -925,7 +925,7 @@ def test_validator_bins_parent_requests_separately_from_staff():
     requests = [
         # Material parent: 20001 wants to bunk with 20002 (source_field=bunk_with) — satisfied (both in 30001)
         _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),
-        # Staff: 20002 has an internal note not_bunk_with 20003 (20003 not present) — satisfied (20003 absent)
+        # Staff: 20002 has a staff not_bunk_with entry for 20003 (20003 not present) — satisfied (20003 absent)
         _mock_request("20002", "20003", SourceField.STAFF_NOT_BUNK_WITH, "staff", request_type="not_bunk_with"),
     ]
 

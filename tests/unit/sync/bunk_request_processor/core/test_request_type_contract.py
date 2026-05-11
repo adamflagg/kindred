@@ -26,3 +26,9 @@ def test_request_type_enums_stay_in_lockstep() -> None:
         "Solver-layer RequestType and sync-pipeline RequestType have drifted. "
         f"solver={solver_members} sync={sync_members}"
     )
+    # Catch base-class drift (e.g. one side migrating to StrEnum), which would
+    # silently change == / `in` / serialization semantics without changing the
+    # {name: value} mapping above.
+    assert SolverRequestType.__mro__[1:] == SyncRequestType.__mro__[1:], (
+        f"RequestType base classes diverged. solver={SolverRequestType.__mro__[1:]} sync={SyncRequestType.__mro__[1:]}"
+    )
