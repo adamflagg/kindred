@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
 import { queryKeys, type SolverRunsFilters } from '../utils/queryKeys'
@@ -95,28 +95,28 @@ export interface UseSolverRunsOptions {
   pollMs?: number | false
 }
 
+interface SolverRunsPage {
+  items: SolverRun[]
+  totalItems: number
+}
+
+const PER_PAGE = 100
+
 export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRunsOptions) {
   const pollMs = options?.pollMs ?? false
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: queryKeys.solverRuns(filters),
-    queryFn: async () => {
-      // Empty validSessionIds means "year scope is active but no sessions
-      // in this year" — short-circuit before hitting PB so we never return
-      // cross-year rows. (undefined means "no year filter at all".)
-      if (filters.validSessionIds && filters.validSessionIds.length === 0) {
-        return { items: [], totalItems: 0 }
-      }
-
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }): Promise<SolverRunsPage> => {
       const filterParts: string[] = []
       const filterParams: Record<string, unknown> = {}
+      if (filters.year !== undefined) {
+        filterParts.push('year = {:year}')
+        filterParams['year'] = filters.year
+      }
       if (filters.sessionId !== undefined) {
         filterParts.push('session_id = {:sessionId}')
         filterParams['sessionId'] = filters.sessionId
-      } else if (filters.validSessionIds && filters.validSessionIds.length > 0) {
-        // Year scoping: solver_runs has no `year` column, so we OR-match
-        // session_id against the cm_ids from the year-scoped session list.
-        const orParts = filters.validSessionIds.map((id) => `session_id = ${id}`)
-        filterParts.push(`(${orParts.join(' || ')})`)
       }
       if (filters.hideFailed) {
         filterParts.push('status != "failed" && status != "error"')
@@ -139,7 +139,7 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
       }
       const filterStr = filterParts.length ? pb.filter(filterParts.join(' && '), filterParams) : ''
 
-      const result = await pb.collection('solver_runs').getList(1, 100, {
+      const result = await pb.collection('solver_runs').getList(pageParam as number, PER_PAGE, {
         filter: filterStr,
         sort: '-created',
       })
@@ -148,6 +148,11 @@ export function useSolverRuns(filters: SolverRunsFilters, options?: UseSolverRun
         items: (result.items as unknown as RawSolverRunRecord[]).map(parseRecord),
         totalItems: result.totalItems,
       }
+    },
+    getNextPageParam: (_lastPage, allPages, lastPageParam) => {
+      const fetched = allPages.reduce((sum, p) => sum + p.items.length, 0)
+      const total = allPages[0]?.totalItems ?? 0
+      return fetched < total ? (lastPageParam as number) + 1 : undefined
     },
     staleTime: 5_000,
     refetchInterval: pollMs === false ? false : pollMs,

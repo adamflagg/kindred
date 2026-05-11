@@ -13,6 +13,9 @@ interface SolverRunsTableProps {
   pinnedRunIds: string[] // index 0 = slot A, index 1 = slot B
   onTogglePin: (runId: string) => void
   onRowClick: (run: SolverRun) => void
+  hasNextPage?: boolean
+  fetchNextPage?: () => void
+  totalItems?: number
 }
 
 function effectiveStatus(run: SolverRun): string | undefined {
@@ -57,6 +60,9 @@ export function SolverRunsTable({
   pinnedRunIds,
   onTogglePin,
   onRowClick,
+  hasNextPage: _hasNextPage,
+  fetchNextPage: _fetchNextPage,
+  totalItems: _totalItems,
 }: SolverRunsTableProps) {
   const pinSlot = (id: string): 'A' | 'B' | null => {
     const idx = pinnedRunIds.indexOf(id)

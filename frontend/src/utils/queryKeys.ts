@@ -15,13 +15,10 @@ export interface SolverRunsFilters {
   hideFailed?: boolean
   since?: string
   /**
-   * Session cm_ids that belong to the currently-selected year. The
-   * `solver_runs` table has no `year` column, so year scoping is enforced
-   * via this set: rows whose `session_id` isn't in here are excluded.
-   * Pass an empty array to hide everything (e.g. while sessions load).
-   * Omit for legacy unscoped queries.
+   * Scopes runs to a specific year via the `year` column on `solver_runs`.
+   * Omit for no year scoping (used in tests and non-year-scoped views).
    */
-  validSessionIds?: number[]
+  year?: number
 }
 
 export const queryKeys = {
