@@ -10,17 +10,19 @@
 const COLLECTION_ID_STAFF_POSITIONS = "col_staff_positions";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   const programAreasCol = app.findCollectionByNameOrId("staff_program_areas");
 
   const collection = new Collection({
     id: COLLECTION_ID_STAFF_POSITIONS,
     type: "base",
     name: "staff_positions",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         type: "number",
