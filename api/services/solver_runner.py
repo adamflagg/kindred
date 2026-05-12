@@ -90,7 +90,10 @@ async def run_solver_task_v2(
     # session_attendee_count remains None until prepare_direct_solver_input
     # runs; it is patched in below the moment that data lands.
     minimal_details: dict[str, Any] = compose_minimal_run_details(
-        session_label=f"Session {session_cm_id} — {year}",
+        # Short S<cm_id> form matches _lookup_session_short_name's PB-failure
+        # fallback, so failed-run rows align with successful siblings in the
+        # sweep impact-analysis UI. No PB available here (pre-auth).
+        session_label=f"S{session_cm_id}",
         scenario_id=scenario,
         scenario_name=scenario_name,
         sweep_id=sweep_id,

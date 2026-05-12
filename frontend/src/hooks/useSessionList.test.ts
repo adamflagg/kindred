@@ -95,8 +95,8 @@ describe('useSessionList', () => {
     // Attendees: 2 belong to sess1 (status_id=2), 1 belongs to sess2 (status_id=2).
     // Expected: sess1.attendee_count === 2, sess2.attendee_count === 1.
     const sessionsGetFullList = vi.fn().mockResolvedValue([
-      { id: 'sess1', cm_id: 1001, name: 'Session 1', year: 2026 },
-      { id: 'sess2', cm_id: 1002, name: 'Session 2', year: 2026 },
+      { id: 'sess1', cm_id: 1000001, name: 'Session 1', year: 2026 },
+      { id: 'sess2', cm_id: 1000002, name: 'Session 2', year: 2026 },
     ])
     const attendeesGetFullList = vi
       .fn()
@@ -107,8 +107,8 @@ describe('useSessionList', () => {
     const { result } = renderHook(() => useSessionList(), { wrapper: createWrapper() })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual([
-      { id: 'sess1', cm_id: 1001, name: 'Session 1', year: 2026, attendee_count: 2 },
-      { id: 'sess2', cm_id: 1002, name: 'Session 2', year: 2026, attendee_count: 1 },
+      { id: 'sess1', cm_id: 1000001, name: 'Session 1', year: 2026, attendee_count: 2 },
+      { id: 'sess2', cm_id: 1000002, name: 'Session 2', year: 2026, attendee_count: 1 },
     ])
   })
 
@@ -132,7 +132,7 @@ describe('useSessionList', () => {
   it('assigns 0 attendee_count to sessions with no matching attendees', async () => {
     const sessionsGetFullList = vi
       .fn()
-      .mockResolvedValue([{ id: 'sess1', cm_id: 1001, name: 'Session 1', year: 2026 }])
+      .mockResolvedValue([{ id: 'sess1', cm_id: 1000001, name: 'Session 1', year: 2026 }])
     const attendeesGetFullList = vi.fn().mockResolvedValue([])
     mockCollection.mockImplementation((name: string) => ({
       getFullList: name === 'camp_sessions' ? sessionsGetFullList : attendeesGetFullList,

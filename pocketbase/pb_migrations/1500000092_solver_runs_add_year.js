@@ -6,9 +6,13 @@
  * Year-stamps each solver_run so the frontend can filter/group by year
  * without relying on the validSessionIds workaround from PR #1242.
  * The writer (api/services/solver_runner.py + api/routers/solver.py)
- * populates year from the request on every new row. No backfill — old
- * rows have NULL year and are naturally excluded from year-filtered
- * queries; they're historical noise.
+ * populates year from the request on every new row.
+ *
+ * No backfill: old rows keep NULL year and are excluded from
+ * year-filtered queries. `required: true` enforces year on all new
+ * writes, which means legacy NULL-year rows are effectively write-
+ * frozen — any future PATCH would have to supply year. That's
+ * acceptable since pre-#1247 rows are historical / read-only.
  */
 
 migrate((app) => {

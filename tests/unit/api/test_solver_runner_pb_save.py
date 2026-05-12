@@ -755,3 +755,55 @@ class TestFailedRunPersistsDetails:
         details = json.loads(pb_data["details"])
         assert details.get("source_kind") == "production"
         assert details.get("git_sha") == "cafef00d"
+
+    @pytest.mark.asyncio
+    async def test_failure_path_uses_short_session_label(self, mock_solver_input):
+        """Failure-path source_label must use the short `S{cm_id}` shape so failed
+        sweep children align visually with successful siblings in the impact-analysis
+        UI. Successful runs produce labels like "S2 · Production" via build_run_details
+        → _lookup_session_short_name; the failure path runs before PocketBase auth and
+        can't fetch the session name, so it falls back to the same `S{cm_id}` form that
+        _lookup_session_short_name emits on lookup failure.
+        """
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_solver.solve.side_effect = ValueError("boom")
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["prod_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="prod_run",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=60,
+            )
+
+        pb_data = mock_pb_instance.collection.return_value.create.call_args_list[0][0][0]
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert details["source_label"] == "S1000001 · Production", (
+            f"Failure-path label must be short (S<cm_id>) to align with successful siblings; got {details['source_label']!r}"
+        )
