@@ -11,15 +11,17 @@
 const COLLECTION_ID_PAYMENT_METHODS = "col_payment_methods";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     id: COLLECTION_ID_PAYMENT_METHODS,
     type: "base",
     name: "payment_methods",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         type: "number",
