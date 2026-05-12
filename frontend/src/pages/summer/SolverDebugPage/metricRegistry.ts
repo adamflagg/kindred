@@ -402,20 +402,21 @@ export const METRIC_REGISTRY_BY_GROUP: Record<MetricGroup, MetricMeta[]> = (() =
 
 /** Subset rendered in pin-to-compare delta panel (numeric, comparable). */
 export const COMPARABLE_METRICS: readonly string[] = [
-  // outcome (PR1)
+  // outcome — requests (PR1)
   'mp_request_rate',
-  'mp_camper_rate',
+  'all_request_rate',
   'mp_requests_satisfied',
   'mp_requests_total',
-  'mp_campers_satisfied',
-  'mp_campers_total',
-  'all_request_rate',
-  'all_camper_rate',
   'satisfied_request_count',
   'total_requests',
+  'impossible_requests',
+  // outcome — campers (PR1)
+  'mp_camper_rate',
+  'all_camper_rate',
+  'mp_campers_satisfied',
+  'mp_campers_total',
   'all_campers_satisfied',
   'all_campers_total',
-  'impossible_requests',
   'affected_campers',
   'unsatisfied_no_possible',
   'unsatisfied_material_parent_unmet',

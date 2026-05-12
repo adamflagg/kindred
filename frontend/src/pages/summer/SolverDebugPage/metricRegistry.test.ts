@@ -172,7 +172,7 @@ describe('HighlightRule discriminated union (PR1)', () => {
   })
 })
 
-describe('MetricGroup type accepts outcome/size/churn', () => {
+describe('MetricGroup type accepts outcome_requests/outcome_campers/size/churn', () => {
   it('mp_request_rate is in outcome_requests group', () => {
     expect(getMetric('mp_request_rate').group).toBe('outcome_requests')
   })
