@@ -123,15 +123,27 @@ def _build_stats_dict(
 ) -> dict[str, Any]:
     """Build the full stats dict captured per solver run.
 
-    Wrapped in ``getattr`` guards for OR-Tools forward/back compat — a missing
-    method returns ``None`` instead of crashing the solver path. The dict
-    round-trips through ``solver_runs.stats`` and is rendered by the solver
-    debug tab.
+    Core CP-SAT internals (``deterministic_time``, ``num_integers``,
+    ``additional_solutions``) are read directly from the response proto — if
+    OR-Tools renames them again, we want a loud ``AttributeError`` over silent
+    null data. Peripheral PascalCase methods (``UserTime``,
+    ``BestObjectiveBound``) and optional proto fields (``gap_integral``,
+    ``solution_info``) keep ``getattr`` guards because losing them is recoverable.
+    The dict round-trips through ``solver_runs.stats`` and is rendered by the
+    solver debug tab.
     """
     response_proto = solver.ResponseProto()
     objective = solver.ObjectiveValue()
     best_bound = getattr(solver, "BestObjectiveBound", lambda: None)()
     solution_info = getattr(response_proto, "solution_info", None) or None
+    # ortools 9.15 dropped PascalCase `DeterministicTime` / `NumIntegers` on
+    # CpSolver and `num_solutions` on the response proto. Read snake_case proto
+    # fields directly — if a future bump drops these too we want a loud
+    # AttributeError, not the silent-None data loss this replaces.
+    deterministic_time = response_proto.deterministic_time
+    num_integers = response_proto.num_integers
+    has_solution = int(status) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    num_solutions_found = (1 + len(response_proto.additional_solutions)) if has_solution else 0
 
     return {
         # Existing back-compat fields
@@ -149,20 +161,20 @@ def _build_stats_dict(
         # Timing
         "walltime_seconds": solver.WallTime(),
         "user_time_seconds": getattr(solver, "UserTime", lambda: None)(),
-        "deterministic_time": getattr(solver, "DeterministicTime", lambda: None)(),
+        "deterministic_time": deterministic_time,
         "time_budget_seconds": time_limit_seconds,
         "num_workers": num_workers,
         # Quality
         "best_objective_bound": best_bound,
         "optimality_gap": _compute_optimality_gap(objective, best_bound),
         "gap_integral": getattr(response_proto, "gap_integral", None),
-        "num_solutions_found": getattr(response_proto, "num_solutions", None),
+        "num_solutions_found": num_solutions_found,
         "solution_info": solution_info,
         # Search
         "num_branches": solver.NumBranches(),
         "num_conflicts": solver.NumConflicts(),
         "num_booleans": solver.NumBooleans(),
-        "num_integer_variables": getattr(solver, "NumIntegers", lambda: None)(),
+        "num_integer_variables": num_integers,
         # Model
         "model_num_variables": len(model_proto.variables),
         "model_num_constraints": len(model_proto.constraints),
