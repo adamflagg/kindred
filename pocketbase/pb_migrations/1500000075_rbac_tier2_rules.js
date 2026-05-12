@@ -49,10 +49,12 @@
  * Note: staff_program_areas trimmed — final adminOnly rules baked into
  * merged CREATE migration #007.
  * Note: staff_skills trimmed — final adminOnly rules baked into
- * merged CREATE migration #042. tier2[] is now empty; only tier3
- * (debug_parse_results, solver_runs) remains in this file.
+ * merged CREATE migration #042.
  * Note: debug_parse_results trimmed — final denyAll ('') rules baked into
  * merged CREATE migration #027.
+ * Note: solver_runs trimmed — final denyAll ('') rules baked into
+ * merged CREATE migration #023. Both tier2[] and tier3[] are now empty;
+ * this file is dead code and can be deleted in a follow-up cleanup round.
  */
 
 migrate((app) => {
@@ -76,7 +78,7 @@ migrate((app) => {
   }
 
   // Tier 3: Deny direct access (FastAPI-only via admin auth)
-  const tier3 = ["solver_runs"]
+  const tier3 = []
 
   for (const name of tier3) {
     setRules(name, '', '', '', '', '')
@@ -96,9 +98,7 @@ migrate((app) => {
     app.save(col)
   }
 
-  const all = [
-    "solver_runs"
-  ]
+  const all = []
 
   for (const name of all) {
     revertRules(name)
