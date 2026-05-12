@@ -381,4 +381,40 @@ describe('useTour', () => {
 
     vi.mocked(document.querySelector).mockRestore()
   })
+
+  it('replay() — Next click on the last step destroys the tour', async () => {
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
+    vi.mocked(tourStorage.getTourStorage).mockReturnValue({ layers: {} })
+
+    const el = document.createElement('div')
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="debug-header"]') return el
+      return originalQuerySelector(selector)
+    })
+
+    const driverModule = await import('driver.js')
+    const { result } = renderHook(() => useTour())
+    await flushAndAdvance(1000)
+
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    const lastCall = vi.mocked(driverModule.driver).mock.calls.at(-1)?.[0]
+    act(() => {
+      lastCall!.onNextClick!(undefined, mockTourDefinition.steps[0] as never, {
+        config: lastCall!,
+        state: { activeIndex: 0 } as never,
+        driver: mockDriverInstance as never,
+      })
+    })
+
+    expect(mockDestroy).toHaveBeenCalled()
+    expect(mockMoveNext).not.toHaveBeenCalled()
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
 })
