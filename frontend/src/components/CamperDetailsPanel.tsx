@@ -1130,11 +1130,11 @@ export default function CamperDetailsPanel({
           </section>
         )}
 
-        {/* Bunk Request Form — parent-sourced form input, collapsed by default.
-            Quick-ref for the share_bunk_with field only; full 5-field CSV is
+        {/* Bunk Request Form — parent-sourced form input, expanded by default (quick-ref).
+            Shows the share_bunk_with field only; full 5-field CSV is
             available on the manage-requests modal, the requests row expansion,
             and the full-page bunk-csv view. */}
-        {originalBunkData?.share_bunk_with && (
+        {originalBunkData?.share_bunk_with?.trim() && (
           <section>
             <SectionHeader
               title="Bunk Request Form"
