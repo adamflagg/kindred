@@ -4,6 +4,7 @@ import { Fragment } from 'react'
 import { REPO_URL } from '../../../constants/repo'
 
 import { formatMetric, getMetric } from './metricRegistry'
+import { pickStat } from './pickStat'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
@@ -177,6 +178,118 @@ export function SolverRunsTable({
                 bool_or
               </th>
             )}
+            {showCol('mp_request_rate') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('mp_request_rate').description}
+              >
+                Optimized
+              </th>
+            )}
+            {showCol('mp_camper_rate') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('mp_camper_rate').description}
+              >
+                Acceptable
+              </th>
+            )}
+            {showCol('all_request_rate') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('all_request_rate').description}
+              >
+                Request rate
+              </th>
+            )}
+            {showCol('all_camper_rate') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('all_camper_rate').description}
+              >
+                Camper rate
+              </th>
+            )}
+            {showCol('satisfied_request_count') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('satisfied_request_count').description}
+              >
+                Req met
+              </th>
+            )}
+            {showCol('total_requests') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('total_requests').description}
+              >
+                Req total
+              </th>
+            )}
+            {showCol('impossible_requests') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('impossible_requests').description}
+              >
+                Impossible
+              </th>
+            )}
+            {showCol('affected_campers') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('affected_campers').description}
+              >
+                Affected
+              </th>
+            )}
+            {showCol('total_persons') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('total_persons').description}
+              >
+                Persons
+              </th>
+            )}
+            {showCol('total_bunks') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('total_bunks').description}
+              >
+                Bunks
+              </th>
+            )}
+            {showCol('num_workers') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('num_workers').description}
+              >
+                Workers
+              </th>
+            )}
+            {showCol('assignments_changed') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('assignments_changed').description}
+              >
+                Δ assignments
+              </th>
+            )}
+            {showCol('new_assignments') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('new_assignments').description}
+              >
+                New
+              </th>
+            )}
+            {showCol('objective_value') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('objective_value').description}
+              >
+                Objective
+              </th>
+            )}
             {showCol('sha') && <th className="px-3 py-2.5 text-left font-medium">SHA</th>}
             {showCol('sweep') && <th className="px-3 py-2.5 text-left font-medium">Sweep</th>}
           </tr>
@@ -314,6 +427,127 @@ export function SolverRunsTable({
                         'num_bool_or',
                         run.stats?.constraint_type_breakdown?.['bool_or'] ?? null
                       )}
+                    </td>
+                  )}
+                  {showCol('mp_request_rate') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('mp_request_rate').description}
+                    >
+                      {formatMetric('mp_request_rate', pickStat(run.stats, 'mp_request_rate'))}
+                    </td>
+                  )}
+                  {showCol('mp_camper_rate') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('mp_camper_rate').description}
+                    >
+                      {formatMetric('mp_camper_rate', pickStat(run.stats, 'mp_camper_rate'))}
+                    </td>
+                  )}
+                  {showCol('all_request_rate') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('all_request_rate').description}
+                    >
+                      {formatMetric('all_request_rate', pickStat(run.stats, 'all_request_rate'))}
+                    </td>
+                  )}
+                  {showCol('all_camper_rate') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('all_camper_rate').description}
+                    >
+                      {formatMetric('all_camper_rate', pickStat(run.stats, 'all_camper_rate'))}
+                    </td>
+                  )}
+                  {showCol('satisfied_request_count') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('satisfied_request_count').description}
+                    >
+                      {formatMetric(
+                        'satisfied_request_count',
+                        pickStat(run.stats, 'satisfied_request_count')
+                      )}
+                    </td>
+                  )}
+                  {showCol('total_requests') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('total_requests').description}
+                    >
+                      {formatMetric('total_requests', pickStat(run.stats, 'total_requests'))}
+                    </td>
+                  )}
+                  {showCol('impossible_requests') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('impossible_requests').description}
+                    >
+                      {formatMetric(
+                        'impossible_requests',
+                        pickStat(run.stats, 'impossible_requests')
+                      )}
+                    </td>
+                  )}
+                  {showCol('affected_campers') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('affected_campers').description}
+                    >
+                      {formatMetric('affected_campers', pickStat(run.stats, 'affected_campers'))}
+                    </td>
+                  )}
+                  {showCol('total_persons') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('total_persons').description}
+                    >
+                      {formatMetric('total_persons', pickStat(run.stats, 'total_persons'))}
+                    </td>
+                  )}
+                  {showCol('total_bunks') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('total_bunks').description}
+                    >
+                      {formatMetric('total_bunks', pickStat(run.stats, 'total_bunks'))}
+                    </td>
+                  )}
+                  {showCol('num_workers') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('num_workers').description}
+                    >
+                      {formatMetric('num_workers', pickStat(run.stats, 'num_workers'))}
+                    </td>
+                  )}
+                  {showCol('assignments_changed') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('assignments_changed').description}
+                    >
+                      {formatMetric(
+                        'assignments_changed',
+                        pickStat(run.stats, 'assignments_changed')
+                      )}
+                    </td>
+                  )}
+                  {showCol('new_assignments') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('new_assignments').description}
+                    >
+                      {formatMetric('new_assignments', pickStat(run.stats, 'new_assignments'))}
+                    </td>
+                  )}
+                  {showCol('objective_value') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('objective_value').description}
+                    >
+                      {formatMetric('objective_value', pickStat(run.stats, 'objective_value'))}
                     </td>
                   )}
                   {showCol('sha') && (

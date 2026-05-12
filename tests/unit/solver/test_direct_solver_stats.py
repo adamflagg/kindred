@@ -546,6 +546,107 @@ class TestSingleBunkStatsKeyParity:
         assert result.stats.get("constraint_type_breakdown") == {}
 
 
+class TestSingleBunkRequestValidation:
+    """Single-bunk stats must include the `request_validation` payload that
+    the multi-bunk path attaches at the end of `solve()`. Without it, the
+    debug page's MP/all-camper outcome rate columns render blank for every
+    AG / single-bunk session — different rendering from multi-bunk runs
+    even when the underlying signal exists.
+    """
+
+    def _make_input(
+        self,
+        num_persons: int = 3,
+        capacity: int = 12,
+        requests: list[DirectBunkRequest] | None = None,
+    ) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="AG-1",
+            capacity=capacity,
+            gender="Mixed",
+            session_cm_id=500,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M" if i % 2 == 0 else "F",
+                session_cm_id=500,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=requests or [], bunks=[bunk])
+
+    def test_single_bunk_stats_includes_request_validation_key(self) -> None:
+        """The `request_validation` key must be present on single-bunk stats.
+
+        Frontend `pickStat` reads `stats.request_validation?.mp_requests_total`
+        etc.; a missing key collapses every bucket-aware outcome column to `—`
+        for AG sessions.
+        """
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        assert "request_validation" in result.stats, (
+            "single-bunk stats missing 'request_validation' key — debug-page outcome columns will render blank"
+        )
+
+    def test_single_bunk_request_validation_has_bucket_aware_count_keys(self) -> None:
+        """All 6 bucket-aware count keys must be populated on the single-bunk path."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats.get("request_validation")
+        assert isinstance(rv, dict), f"expected dict request_validation payload, got {type(rv)!r}"
+        for key in (
+            "mp_requests_total",
+            "mp_requests_satisfied",
+            "mp_campers_total",
+            "mp_campers_satisfied",
+            "all_campers_total",
+            "all_campers_satisfied",
+        ):
+            assert key in rv, f"single-bunk request_validation missing {key!r}"
+
+    def test_single_bunk_counts_satisfied_mp_request(self) -> None:
+        """In a single-bunk session every camper shares a bunk, so a `bunk_with`
+        request between two enrolled campers is satisfied. The MP/all-camper
+        counts must reflect this — not return zeros because the diagnostic loop
+        was never run.
+        """
+        requests = [
+            DirectBunkRequest(
+                id="r1",
+                requester_person_cm_id=1000,
+                requested_person_cm_id=1001,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=500,
+                year=2026,
+            )
+        ]
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(num_persons=2, requests=requests),
+            config_service=MagicMock(),
+        )
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats["request_validation"]
+        assert rv["mp_requests_total"] == 1
+        assert rv["mp_requests_satisfied"] == 1
+        assert rv["mp_campers_total"] == 1
+        assert rv["mp_campers_satisfied"] == 1
+        assert rv["all_campers_total"] == 1
+        assert rv["all_campers_satisfied"] == 1
+
+
 class TestSingleBunkSatisfiedRequestsCentralization:
     """Single-bunk path must use shared `calculate_satisfied_requests` so it:
 

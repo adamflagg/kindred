@@ -24,6 +24,27 @@ export interface SolverRunStats {
   model_num_constraints?: number
   constraint_type_breakdown?: Record<string, number>
   objective_value?: number | null
+  total_requests?: number | null
+  total_persons?: number | null
+  total_bunks?: number | null
+  satisfied_request_count?: number | null
+  assignments_changed?: number | null
+  new_assignments?: number | null
+  request_validation?: {
+    total_requests?: number
+    possible_requests?: number
+    impossible_requests?: number
+    affected_campers?: number
+    unsatisfied_no_possible?: number
+    unsatisfied_material_parent_unmet?: number
+    unsatisfied_other_unmet?: number
+    mp_requests_total?: number
+    mp_requests_satisfied?: number
+    mp_campers_total?: number
+    mp_campers_satisfied?: number
+    all_campers_total?: number
+    all_campers_satisfied?: number
+  }
 }
 
 export interface SolverRunDetails {

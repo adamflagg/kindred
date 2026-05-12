@@ -808,6 +808,13 @@ class DirectBunkingSolver:
             "single_bunk_session": True,
         }
 
+        # Populate `request_validation` so the debug page's bucket-aware
+        # outcome columns (mp_request_rate, all_camper_rate, ...) render for
+        # single-bunk sessions identically to multi-bunk. Mirrors the
+        # multi-bunk solve() path that attaches the summary post-solve.
+        self._check_must_satisfy_one_violations(assignments)
+        stats["request_validation"] = self.request_validation_summary
+
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
@@ -1169,6 +1176,18 @@ class DirectBunkingSolver:
         # directly would overstate the number shown in the diagnostic.
         resolved_possible_count: dict[int, int] = {}
 
+        # Symmetric met/total counts for the symmetric outcome metrics added in
+        # PR1 of the solver-debug metric expansion. Hoisted ABOVE the loop's
+        # early-continues because the diagnostic skips campers with >=1
+        # satisfied request, and we need every camper in scope here. Uses the
+        # canonical `classify_request()` from `bunking.satisfaction.bucket`.
+        mp_requests_total = 0
+        mp_requests_satisfied = 0
+        mp_campers_total = 0
+        mp_campers_satisfied = 0
+        all_campers_total = 0
+        all_campers_satisfied = 0
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
@@ -1176,6 +1195,22 @@ class DirectBunkingSolver:
             resolved_requests = [r for r in requests if r.status == "resolved"]
             if not resolved_requests:
                 continue
+
+            # PR1 symmetric counts -- must happen before the early-continue
+            # below, which skips campers with >=1 satisfied request.
+            satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
+
+            resolved_mp = [r for r in resolved_requests if _is_material_parent(r)]
+            mp_requests_total += len(resolved_mp)
+            satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
+            mp_requests_satisfied += len(satisfied_mp)
+            if resolved_mp:
+                mp_campers_total += 1
+                if satisfied_mp:
+                    mp_campers_satisfied += 1
+            all_campers_total += 1
+            if any(r.id in satisfied_ids_for_person for r in resolved_requests):
+                all_campers_satisfied += 1
 
             resolved_ids = {r.id for r in resolved_requests}
             if any(rid in resolved_ids for rid in all_satisfied.get(person_cm_id, [])):
@@ -1187,6 +1222,11 @@ class DirectBunkingSolver:
                 continue
 
             resolved_possible_count[person_cm_id] = len(resolved_possible)
+            # TODO(stage-4-retire): when the parent-paramount Stage 4 reweighting
+            # lands, retire `_is_material_parent()` (a legacy wrapper around
+            # `classify_request()` from bunking.satisfaction.bucket) and the
+            # Stage-4-era `staff_*` / `immaterial_*` metric mirrors that read
+            # from this same diagnostic.
             if any(_is_material_parent(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
@@ -1197,6 +1237,16 @@ class DirectBunkingSolver:
         self.request_validation_summary["unsatisfied_no_possible"] = len(no_possible)
         self.request_validation_summary["unsatisfied_material_parent_unmet"] = len(material_parent_unmet)
         self.request_validation_summary["unsatisfied_other_unmet"] = len(other_unmet)
+
+        # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
+        # above with positive-side counts. Consumers (debug page) derive unmet
+        # = total - satisfied; we don't persist unmet redundantly.
+        self.request_validation_summary["mp_requests_total"] = mp_requests_total
+        self.request_validation_summary["mp_requests_satisfied"] = mp_requests_satisfied
+        self.request_validation_summary["mp_campers_total"] = mp_campers_total
+        self.request_validation_summary["mp_campers_satisfied"] = mp_campers_satisfied
+        self.request_validation_summary["all_campers_total"] = all_campers_total
+        self.request_validation_summary["all_campers_satisfied"] = all_campers_satisfied
 
         if no_possible:
             logger.info(

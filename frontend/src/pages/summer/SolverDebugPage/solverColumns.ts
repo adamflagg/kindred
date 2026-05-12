@@ -20,6 +20,24 @@ export const ALL_COLUMNS = [
   { key: 'num_booleans', label: 'Booleans', group: 'Model' },
   { key: 'num_integer_variables', label: 'Integers', group: 'Model' },
   { key: 'num_bool_or', label: 'bool_or', group: 'Model' },
+  // PR1: outcome group
+  { key: 'mp_request_rate', label: 'Optimized', group: 'Outcome' },
+  { key: 'mp_camper_rate', label: 'Acceptable', group: 'Outcome' },
+  { key: 'all_request_rate', label: 'Request rate', group: 'Outcome' },
+  { key: 'all_camper_rate', label: 'Camper rate', group: 'Outcome' },
+  { key: 'satisfied_request_count', label: 'Req met', group: 'Outcome' },
+  { key: 'total_requests', label: 'Req total', group: 'Outcome' },
+  { key: 'impossible_requests', label: 'Impossible', group: 'Outcome' },
+  { key: 'affected_campers', label: 'Affected', group: 'Outcome' },
+  // PR1: size group
+  { key: 'total_persons', label: 'Persons', group: 'Size' },
+  { key: 'total_bunks', label: 'Bunks', group: 'Size' },
+  { key: 'num_workers', label: 'Workers', group: 'Size' },
+  // PR1: churn group
+  { key: 'assignments_changed', label: 'Δ assignments', group: 'Churn' },
+  { key: 'new_assignments', label: 'New', group: 'Churn' },
+  // PR1: quality additions
+  { key: 'objective_value', label: 'Objective', group: 'Quality' },
 ] as const
 
 export const DEFAULT_VISIBLE_COLUMNS: string[] = [
@@ -28,6 +46,8 @@ export const DEFAULT_VISIBLE_COLUMNS: string[] = [
   'status',
   'sha',
   'sweep',
+  'mp_request_rate', // PR1: headline outcome
+  'mp_camper_rate', // PR1: headline outcome
   'walltime_seconds',
   'deterministic_time',
   'optimality_gap',
