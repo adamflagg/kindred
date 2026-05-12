@@ -21,11 +21,11 @@ migrate((app) => {
   const adultsCollection = new Collection({
     type: "base",
     name: "family_camp_adults",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: '@request.auth.is_admin = true',
+    viewRule: '@request.auth.is_admin = true',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       // Household relation
       {
@@ -34,7 +34,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: householdsCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },

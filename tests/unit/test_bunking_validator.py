@@ -245,7 +245,7 @@ class TestBunkingValidator:
                 status="resolved",
                 # Bin into material_parent so total_requests reflects this row
                 # (total = material + staff).
-                source_field=SourceField.BUNK_WITH,
+                source_field=SourceField.BUNK_REQUEST_FORM,
                 source="family",
             )
         ]
@@ -279,7 +279,7 @@ class TestBunkingValidator:
                 # alerting bucket requires the row to bin into material_parent
                 # (source_field=bunk_with) or staff. Production CSV import
                 # always sets source_field, so the test mirrors real data.
-                source_field=SourceField.BUNK_WITH,
+                source_field=SourceField.BUNK_REQUEST_FORM,
                 source="family",
             )
         ]
@@ -312,7 +312,7 @@ class TestBunkingValidator:
                 status="resolved",
                 # Staff source so the row bins into staff_requests and
                 # contributes to total_requests (= material + staff).
-                source_field=SourceField.NOT_BUNK_WITH,
+                source_field=SourceField.STAFF_NOT_BUNK_WITH,
                 source="staff",
             )
         ]
@@ -344,7 +344,7 @@ class TestBunkingValidator:
                 # alerting bucket needs the row to bin into staff
                 # (source_field=not_bunk_with, source=staff). In production the
                 # CSV/sync path always sets these.
-                source_field=SourceField.NOT_BUNK_WITH,
+                source_field=SourceField.STAFF_NOT_BUNK_WITH,
                 source="staff",
             )
         ]
@@ -695,13 +695,13 @@ class TestNormalizeSourceField:
         assert self._get_field_total(result, "socialize_with") == 1
 
     def test_canonical_bunk_with_value(self, validator, session, bunks, persons, assignments):
-        """SourceField.BUNK_WITH canonical value is counted in share_bunk_with stats."""
+        """SourceField.BUNK_REQUEST_FORM canonical value is counted in share_bunk_with stats."""
         requests = [
             MockBunkRequest(
                 requester_person_cm_id="10001",
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
-                source_field=SourceField.BUNK_WITH,  # "Share Bunk With"
+                source_field=SourceField.BUNK_REQUEST_FORM,  # "Share Bunk With"
             )
         ]
 
@@ -712,13 +712,13 @@ class TestNormalizeSourceField:
         assert self._get_field_total(result, "share_bunk_with") == 1
 
     def test_canonical_not_bunk_with_value(self, validator, session, bunks, persons, assignments):
-        """SourceField.NOT_BUNK_WITH canonical value is counted in do_not_share_with stats."""
+        """SourceField.STAFF_NOT_BUNK_WITH canonical value is counted in do_not_share_with stats."""
         requests = [
             MockBunkRequest(
                 requester_person_cm_id="10001",
                 requested_person_cm_id="10002",
                 request_type="not_bunk_with",
-                source_field=SourceField.NOT_BUNK_WITH,  # "Do Not Share Bunk With"
+                source_field=SourceField.STAFF_NOT_BUNK_WITH,  # "Do Not Share Bunk With"
             )
         ]
 
@@ -800,14 +800,14 @@ class TestNormalizeSourceField:
     def test_canonical_bunk_with_increments_material_parent_counters(
         self, validator, session, bunks, persons, assignments
     ):
-        """A canonical SourceField.BUNK_WITH input must populate
+        """A canonical SourceField.BUNK_REQUEST_FORM input must populate
         material_parent_requests (in addition to field_stats['share_bunk_with'])."""
         requests = [
             MockBunkRequest(
                 requester_person_cm_id="10001",
                 requested_person_cm_id="10002",
                 request_type="bunk_with",
-                source_field=SourceField.BUNK_WITH,
+                source_field=SourceField.BUNK_REQUEST_FORM,
                 source="family",
             )
         ]
@@ -815,7 +815,7 @@ class TestNormalizeSourceField:
             session=session, bunks=bunks, assignments=assignments, persons=persons, requests=requests
         )
         assert result.statistics.material_parent_requests == 1, (
-            f"canonical BUNK_WITH must increment material_parent_requests; "
+            f"canonical BUNK_REQUEST_FORM must increment material_parent_requests; "
             f"got {result.statistics.material_parent_requests}"
         )
         assert result.statistics.satisfied_material_parent_requests == 1
@@ -924,9 +924,9 @@ def test_validator_bins_parent_requests_separately_from_staff():
     ]
     requests = [
         # Material parent: 20001 wants to bunk with 20002 (source_field=bunk_with) — satisfied (both in 30001)
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
-        # Staff: 20002 has an internal note not_bunk_with 20003 (20003 not present) — satisfied (20003 absent)
-        _mock_request("20002", "20003", SourceField.NOT_BUNK_WITH, "staff", request_type="not_bunk_with"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),
+        # Staff: 20002 has a staff not_bunk_with entry for 20003 (20003 not present) — satisfied (20003 absent)
+        _mock_request("20002", "20003", SourceField.STAFF_NOT_BUNK_WITH, "staff", request_type="not_bunk_with"),
     ]
 
     validator = BunkingValidator()
@@ -963,7 +963,7 @@ def test_validator_flags_camper_with_unsatisfied_parent_but_satisfied_staff():
     ]
     requests = [
         # Material parent: 20001 wants to bunk with 20002 (source_field=bunk_with) — UNSATISFIED
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),
         # Staff: 20001 should not bunk with 20003 — SATISFIED (20003 in 30002, 20001 in 30001)
         _mock_request("20001", "20003", SourceField.INTERNAL_NOTES, "staff", request_type="not_bunk_with"),
     ]
@@ -1044,7 +1044,7 @@ def test_validator_source_field_drives_binning_regardless_of_source_enum():
     requests = [
         # source_field=bunk_with, source=notes (legacy/unknown enum value)
         # bins as material_parent because source_field drives binning
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "notes"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "notes"),
     ]
 
     validator = BunkingValidator()
@@ -1088,7 +1088,7 @@ def test_total_requests_excludes_best_effort():
     ]
     requests = [
         # Material parent: 20001 wants to bunk with 20002 (bunk_with) — satisfied
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),
         # Best-effort parent: 20001 wants to socialize with 20003 — satisfied (same bunk)
         _mock_request("20001", "20003", SourceField.SOCIALIZE_WITH, "family"),
         # Staff: 20002 has internal note bunk_with 20003 — satisfied (same bunk)
@@ -1161,7 +1161,7 @@ def test_bunk_with_request_counts_as_material_parent():
             requested_person_cm_id="1002",
             request_type="bunk_with",
             status="resolved",
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         )
     ]
@@ -1337,7 +1337,7 @@ def test_unassigned_requester_excluded_from_all_buckets():
             requested_person_cm_id="2002",
             request_type="bunk_with",
             status="resolved",
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         )
     ]
@@ -1460,21 +1460,21 @@ def test_three_grade_bunk_age_preference_evaluation():
     ("request_type", "source_field", "source", "expected_slice"),
     [
         # row 1: bunk_with / bunk_with / family → materialParent
-        ("bunk_with", SourceField.BUNK_WITH, "family", "material"),
+        ("bunk_with", SourceField.BUNK_REQUEST_FORM, "family", "material"),
         # row 2: bunk_with / bunking_notes / staff → staff
         ("bunk_with", SourceField.BUNKING_NOTES, "staff", "staff"),
         # row 3: bunk_with / internal_notes / staff → staff
         ("bunk_with", SourceField.INTERNAL_NOTES, "staff", "staff"),
         # row 4: not_bunk_with / bunk_with / family → materialParent  (bug-fix parity)
-        ("not_bunk_with", SourceField.BUNK_WITH, "family", "material"),
+        ("not_bunk_with", SourceField.BUNK_REQUEST_FORM, "family", "material"),
         # row 5: not_bunk_with / not_bunk_with / staff → staff
-        ("not_bunk_with", SourceField.NOT_BUNK_WITH, "staff", "staff"),
+        ("not_bunk_with", SourceField.STAFF_NOT_BUNK_WITH, "staff", "staff"),
         # row 6: not_bunk_with / bunking_notes / staff → staff
         ("not_bunk_with", SourceField.BUNKING_NOTES, "staff", "staff"),
         # row 7: not_bunk_with / internal_notes / staff → staff
         ("not_bunk_with", SourceField.INTERNAL_NOTES, "staff", "staff"),
         # row 8: age_preference / bunk_with / family → materialParent
-        ("age_preference", SourceField.BUNK_WITH, "family", "material"),
+        ("age_preference", SourceField.BUNK_REQUEST_FORM, "family", "material"),
         # row 9: age_preference / socialize_with / family → bestEffortParent
         ("age_preference", SourceField.SOCIALIZE_WITH, "family", "best_effort"),
         # row 10: age_preference / null / family → not binned (#1086 fallback removed)
@@ -1647,7 +1647,7 @@ def test_unsatisfied_material_parent_persons_empty_when_all_satisfied():
     persons = [_mock_person("20001"), _mock_person("20002")]
     bunks = [_mock_bunk("30001")]
     assignments = [_mock_assignment("20001", "30001"), _mock_assignment("20002", "30001")]
-    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family")]
 
     result = BunkingValidator().validate_bunking(
         session=session,
@@ -1670,7 +1670,7 @@ def test_unsatisfied_material_parent_persons_populated_when_request_unmet():
         _mock_assignment("20002", "30002"),  # NOT with 20001 — request unsatisfied
         _mock_assignment("20003", "30001"),
     ]
-    requests = [_mock_request("20001", "20002", SourceField.BUNK_WITH, "family")]
+    requests = [_mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family")]
 
     result = BunkingValidator().validate_bunking(
         session=session,
@@ -1704,8 +1704,8 @@ def test_unsatisfied_material_parent_persons_excludes_partial_satisfaction():
         _mock_assignment("20003", "30002"),  # unsatisfied: 20001 NOT bunked with 20003
     ]
     requests = [
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),  # satisfied
-        _mock_request("20001", "20003", SourceField.BUNK_WITH, "family"),  # unsatisfied
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),  # satisfied
+        _mock_request("20001", "20003", SourceField.BUNK_REQUEST_FORM, "family"),  # unsatisfied
     ]
 
     result = BunkingValidator().validate_bunking(
@@ -1744,9 +1744,9 @@ def test_unsatisfied_material_parent_persons_sorted_alphabetically():
         _mock_assignment("20099", "30002"),
     ]
     requests = [
-        _mock_request("20001", "20099", SourceField.BUNK_WITH, "family"),  # Zoe Smith
-        _mock_request("20002", "20099", SourceField.BUNK_WITH, "family"),  # Anna Brown
-        _mock_request("20003", "20099", SourceField.BUNK_WITH, "family"),  # Mara Lee
+        _mock_request("20001", "20099", SourceField.BUNK_REQUEST_FORM, "family"),  # Zoe Smith
+        _mock_request("20002", "20099", SourceField.BUNK_REQUEST_FORM, "family"),  # Anna Brown
+        _mock_request("20003", "20099", SourceField.BUNK_REQUEST_FORM, "family"),  # Mara Lee
     ]
 
     result = BunkingValidator().validate_bunking(
@@ -1777,7 +1777,7 @@ def test_unsatisfied_material_parent_persons_falls_back_when_person_missing():
         _mock_assignment("20999", "30001"),  # requester assigned (so request is processed)
         _mock_assignment("20002", "30002"),  # target in different bunk → unsatisfied
     ]
-    requests = [_mock_request("20999", "20002", SourceField.BUNK_WITH, "family")]
+    requests = [_mock_request("20999", "20002", SourceField.BUNK_REQUEST_FORM, "family")]
 
     result = BunkingValidator().validate_bunking(
         session=session,
@@ -1842,11 +1842,11 @@ def test_validator_satisfied_counts_match_canonical_predicate_on_mixed_fixture()
     ]
     requests = [
         # satisfied bunk_with parent: 20001 → 20002 (same bunk)
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family"),
         # unsatisfied bunk_with parent: 20001 → 20003 (different bunks)
-        _mock_request("20001", "20003", SourceField.BUNK_WITH, "family"),
+        _mock_request("20001", "20003", SourceField.BUNK_REQUEST_FORM, "family"),
         # unsatisfied bunk_with parent: 20003 → 20001 (different bunks)
-        _mock_request("20003", "20001", SourceField.BUNK_WITH, "family"),
+        _mock_request("20003", "20001", SourceField.BUNK_REQUEST_FORM, "family"),
     ]
 
     result = BunkingValidator().validate_bunking(
@@ -1937,9 +1937,9 @@ def test_unsatisfied_material_parent_persons_skips_non_numeric_requester_id():
     # test surgically scoped to the unmet-parent drill-down code path.
     requests = [
         # Bad requester — should be skipped by the drill-down without crashing.
-        _mock_request("abc", "20002", SourceField.BUNK_WITH, "family", request_type="age_preference"),
+        _mock_request("abc", "20002", SourceField.BUNK_REQUEST_FORM, "family", request_type="age_preference"),
         # Good requester — should still appear in unmet list.
-        _mock_request("20001", "20002", SourceField.BUNK_WITH, "family", request_type="age_preference"),
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family", request_type="age_preference"),
     ]
 
     # Must not raise.

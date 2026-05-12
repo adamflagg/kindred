@@ -72,6 +72,10 @@ interface GraphEdge {
   target: number
   weight: number
   edge_type: string
+  // The backend (build_bunk_graph) collapses reciprocal pairs into a single
+  // edge with this flag set, so the frontend never sees two mirror edges. The
+  // cytoscape stylesheet reads it to render the bold solid double-headed
+  // line for mutual requests (#1309).
   reciprocal: boolean
   confidence?: number
   priority?: number
@@ -321,7 +325,14 @@ export default function BunkSocialGraphModal({
         {
           selector: 'edge',
           style: {
-            width: 2, // Uniform width for all edges
+            // Default is a dashed one-way request arrow. The backend
+            // (build_bunk_graph) already collapses mutual pairs into a single
+            // edge tagged reciprocal — those pick up the bold solid
+            // double-headed style from the edge[?reciprocal] selector below.
+            // Mirrors the session-level treatment in
+            // graph/cytoscapeStyles.ts (#1309).
+            width: 2,
+            'line-style': 'dashed',
             'line-color': (ele: EdgeSingular) => {
               const edgeType = ele.data('edge_type')
               return EDGE_COLORS[edgeType] ?? '#95a5a6'
@@ -334,16 +345,6 @@ export default function BunkSocialGraphModal({
               const edgeType = ele.data('edge_type')
               return EDGE_COLORS[edgeType] ?? '#95a5a6'
             },
-            'source-arrow-shape': (ele: EdgeSingular) => {
-              // Show arrow at source for reciprocal requests
-              const edgeType = ele.data('edge_type')
-              const reciprocal = ele.data('reciprocal')
-              return edgeType === 'request' && reciprocal ? 'triangle' : 'none'
-            },
-            'source-arrow-color': (ele: EdgeSingular) => {
-              const edgeType = ele.data('edge_type')
-              return EDGE_COLORS[edgeType] ?? '#95a5a6'
-            },
             'line-opacity': (ele: EdgeSingular) => {
               const confidence = ele.data('confidence') ?? 0.5
               // Opacity based on confidence: 0.3 to 0.9
@@ -352,6 +353,19 @@ export default function BunkSocialGraphModal({
             'curve-style': 'straight',
             'control-point-step-size': 40,
             'overlay-padding': '3px',
+          },
+        },
+        {
+          selector: 'edge[?reciprocal]',
+          style: {
+            // Bold solid double-headed line for backend-collapsed mutual pairs.
+            width: 4,
+            'line-style': 'solid',
+            'source-arrow-shape': 'triangle',
+            'source-arrow-color': (ele: EdgeSingular) => {
+              const edgeType = ele.data('edge_type')
+              return EDGE_COLORS[edgeType] ?? '#95a5a6'
+            },
           },
         },
       ],
@@ -419,8 +433,9 @@ export default function BunkSocialGraphModal({
       })
     })
 
-    // Process request edges. The backend sends both directions of mutual
-    // requests; we keep both so reciprocal source-arrows render.
+    // Backend already collapses mutual same-type pairs into a single edge
+    // tagged reciprocal=true; the edge[?reciprocal] cytoscape selector picks
+    // those up for the bold solid double-headed render (#1309).
     let edgeIndex = 0
     graphData.edges.forEach((edge) => {
       elements.push({
@@ -786,18 +801,38 @@ export default function BunkSocialGraphModal({
                         </div>
                       </div>
 
-                      {/* Directionality */}
+                      {/* Directionality — line style matches the canvas:
+                          dashed for one-way, bold solid for mutual (#1309). */}
                       <div className="mb-2">
                         <div className="text-muted-foreground mb-1 text-[11px] font-medium">
                           Direction
                         </div>
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px]">→</span>
+                            <svg width="20" height="6" className="flex-shrink-0">
+                              <line
+                                x1="0"
+                                y1="3"
+                                x2="20"
+                                y2="3"
+                                stroke={EDGE_COLORS['request']}
+                                strokeWidth="2"
+                                strokeDasharray="4 2"
+                              />
+                            </svg>
                             <span>One-way</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px]">↔</span>
+                            <svg width="20" height="8" className="flex-shrink-0">
+                              <line
+                                x1="0"
+                                y1="4"
+                                x2="20"
+                                y2="4"
+                                stroke={EDGE_COLORS['request']}
+                                strokeWidth="3"
+                              />
+                            </svg>
                             <span>Mutual</span>
                           </div>
                         </div>

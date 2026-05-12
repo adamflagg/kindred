@@ -86,7 +86,7 @@ class TestFullPipelineTracing:
             request_type=RequestType.BUNK_WITH,
             target_name="Olivia Chen",
             age_preference=None,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             confidence=0.95,
             csv_position=1,
             metadata={},
@@ -94,7 +94,7 @@ class TestFullPipelineTracing:
         row_data = _make_raw_request()
         parse_request = ParseRequest(
             request_text="Olivia Chen",
-            field_name=SourceField.BUNK_WITH,
+            field_name=SourceField.BUNK_REQUEST_FORM,
             requester_cm_id=12345,
             requester_name="Emma Johnson",
             requester_grade="5",

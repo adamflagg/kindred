@@ -15,15 +15,17 @@ migrate((app) => {
   const lockedGroupsCol = app.findCollectionByNameOrId("locked_groups")
   const attendeesCol = app.findCollectionByNameOrId("attendees")
 
+  const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
+
   const collection = new Collection({
     id: "col_locked_members",
     type: "base",
     name: "locked_group_members",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: bunkingManage,
+    viewRule: bunkingManage,
+    createRule: bunkingManage,
+    updateRule: bunkingManage,
+    deleteRule: bunkingManage,
     fields: [
       {
         type: "relation",
@@ -41,7 +43,7 @@ migrate((app) => {
         required: true,
         presentable: true,
         collectionId: attendeesCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
