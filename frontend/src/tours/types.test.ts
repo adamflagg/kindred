@@ -29,9 +29,8 @@ describe('tour types', () => {
     expect(record.completedAt).toBeTruthy()
   })
 
-  it('TourStorageData includes layers field', () => {
+  it('TourStorageData has only layers field', () => {
     const data: TourStorageData = {
-      completed: {},
       layers: {
         'metrics-header': {
           layerId: 'metrics-header',
@@ -41,6 +40,8 @@ describe('tour types', () => {
       },
     }
     expect(data.layers['metrics-header']).toBeDefined()
+    // @ts-expect-error - completed field has been removed
+    expect(data.completed).toBeUndefined()
   })
 
   it('TourDefinition includes layers array', () => {
