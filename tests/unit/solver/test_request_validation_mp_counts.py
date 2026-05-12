@@ -11,12 +11,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
-
 from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
-from bunking.sync.bunk_request_processor.core.models import RequestType
-
 
 # --- Test fixture builders -------------------------------------------------
 
