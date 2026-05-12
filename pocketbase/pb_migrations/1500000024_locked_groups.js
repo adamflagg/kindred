@@ -11,6 +11,8 @@
  */
 
 migrate((app) => {
+  const bunkingManage = '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "bunking.manage"'
+
   // Dynamic lookups - these collections were created in earlier migrations
   const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions")
@@ -19,11 +21,11 @@ migrate((app) => {
     id: "col_locked_groups",
     type: "base",
     name: "locked_groups",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: bunkingManage,
+    viewRule: bunkingManage,
+    createRule: bunkingManage,
+    updateRule: bunkingManage,
+    deleteRule: bunkingManage,
     fields: [
       {
         type: "relation",
