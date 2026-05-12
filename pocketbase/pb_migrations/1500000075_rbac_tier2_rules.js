@@ -40,6 +40,8 @@
  * merged CREATE migration #001.
  * Note: sheets_workbooks trimmed — final adminOnly rules baked into
  * merged CREATE migration #039.
+ * Note: staff trimmed — final adminOnly rules baked into
+ * merged CREATE migration #030.
  */
 
 migrate((app) => {
@@ -57,7 +59,7 @@ migrate((app) => {
 
   // Tier 2: Admin-only (sensitive data not accessed by frontend)
   const tier2 = [
-    "staff", "staff_org_categories", "staff_positions",
+    "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills"
   ]
 
@@ -87,7 +89,7 @@ migrate((app) => {
   }
 
   const all = [
-    "staff", "staff_org_categories", "staff_positions",
+    "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
     "debug_parse_results", "solver_runs"
   ]

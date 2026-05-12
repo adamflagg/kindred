@@ -14,6 +14,8 @@
 const COLLECTION_ID_STAFF = "col_staff";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   // Lookup related collections for relations
   const personsCol = app.findCollectionByNameOrId("persons");
   const positionsCol = app.findCollectionByNameOrId("staff_positions");
@@ -25,11 +27,11 @@ migrate((app) => {
     id: COLLECTION_ID_STAFF,
     type: "base",
     name: "staff",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // Person relation
       {
