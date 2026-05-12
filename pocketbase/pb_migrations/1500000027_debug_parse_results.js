@@ -13,6 +13,9 @@
 const COLLECTION_ID_DEBUG_PARSE_RESULTS = "col_debug_parse_results";
 
 migrate((app) => {
+  // Tier 3 (FastAPI-only): deny all direct collection access; access only via admin endpoints.
+  const denyAll = '';
+
   // Dynamic lookups - these collections were created in earlier migrations
   const originalRequestsCol = app.findCollectionByNameOrId("original_bunk_requests");
   const sessionsCol = app.findCollectionByNameOrId("camp_sessions");
@@ -21,11 +24,11 @@ migrate((app) => {
     id: COLLECTION_ID_DEBUG_PARSE_RESULTS,
     type: "base",
     name: "debug_parse_results",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: denyAll,
+    viewRule: denyAll,
+    createRule: denyAll,
+    updateRule: denyAll,
+    deleteRule: denyAll,
     fields: [
       {
         type: "relation",

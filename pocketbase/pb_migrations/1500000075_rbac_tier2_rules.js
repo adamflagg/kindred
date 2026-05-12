@@ -51,6 +51,8 @@
  * Note: staff_skills trimmed — final adminOnly rules baked into
  * merged CREATE migration #042. tier2[] is now empty; only tier3
  * (debug_parse_results, solver_runs) remains in this file.
+ * Note: debug_parse_results trimmed — final denyAll ('') rules baked into
+ * merged CREATE migration #027.
  */
 
 migrate((app) => {
@@ -74,7 +76,7 @@ migrate((app) => {
   }
 
   // Tier 3: Deny direct access (FastAPI-only via admin auth)
-  const tier3 = ["debug_parse_results", "solver_runs"]
+  const tier3 = ["solver_runs"]
 
   for (const name of tier3) {
     setRules(name, '', '', '', '', '')
@@ -95,7 +97,7 @@ migrate((app) => {
   }
 
   const all = [
-    "debug_parse_results", "solver_runs"
+    "solver_runs"
   ]
 
   for (const name of all) {
