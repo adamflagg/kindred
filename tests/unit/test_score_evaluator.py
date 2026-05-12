@@ -31,7 +31,6 @@ class _CanonicalKeyConfig:
     _values: ClassVar[dict[str, int]] = {
         "constraint.grade_spread.penalty": 100,
         "constraint.cabin_capacity.penalty": 500,
-        "constraint.cabin_minimum_occupancy.min": 8,
         "constraint.cabin_minimum_occupancy.penalty": 50,
     }
 
@@ -92,7 +91,6 @@ class TestCalculatePenalties:
             # Canonical keys read via centralized accessors
             "constraint.grade_spread.penalty": 100,
             "constraint.cabin_capacity.penalty": 500,
-            "constraint.cabin_minimum_occupancy.min": 8,
             "constraint.cabin_minimum_occupancy.penalty": 50,
             # Other keys still read via the config= parameter
             "constraint.grade_spread.max_spread": 2,
@@ -111,10 +109,10 @@ class TestCalculatePenalties:
         }
         bunk_by_cm_id = {100: {"cm_id": 100, "max_size": 12}}
 
-        # Under 8 persons but that's expected
+        # Under-occupancy is expected (3 campers, well below preferred=10)
         penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
 
-        # Under occupancy penalty expected (3 < 8 minimum)
+        # Under occupancy penalty expected (3 < 10 preferred)
         assert "grade_spread" not in penalties
         assert "over_capacity" not in penalties
         assert "under_occupancy" in penalties
@@ -151,9 +149,14 @@ class TestCalculatePenalties:
     # cannot appear in solved scenarios.
 
     def test_under_occupancy_penalty(self, mock_config):
-        """Test under occupancy penalty calculation."""
+        """Test under occupancy penalty calculation.
+
+        B5 fix: under-occupancy is charged against PREFERRED_BUNK_OCCUPANCY=10,
+        not the hard minimum, so the displayed score matches what the OR-Tools
+        cost path actually optimized.
+        """
         person_to_bunk = {1: 100, 2: 100}
-        bunk_to_persons = {100: [1, 2]}  # Only 2, minimum is 8
+        bunk_to_persons = {100: [1, 2]}  # Only 2 campers, preferred is 10
         person_by_cm_id = {
             1: {"cm_id": 1, "grade": 5},
             2: {"cm_id": 2, "grade": 5},
@@ -162,9 +165,9 @@ class TestCalculatePenalties:
 
         penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
 
-        # 8 - 2 = 6 under minimum, 6 * 50 = 300
+        # preferred 10 - occupancy 2 = 8 under preferred, 8 * 50 = 400
         assert "under_occupancy" in penalties
-        assert penalties["under_occupancy"] == 300
+        assert penalties["under_occupancy"] == 400
 
     def test_empty_bunks(self, mock_config):
         """Test with empty data."""
@@ -219,7 +222,6 @@ class TestEvaluateScenarioScore:
                 # Canonical keys (matched values)
                 "constraint.grade_spread.penalty": 100,
                 "constraint.cabin_capacity.penalty": 500,
-                "constraint.cabin_minimum_occupancy.min": 8,
                 "constraint.cabin_minimum_occupancy.penalty": 50,
                 "constraint.grade_spread.max_spread": 2,
                 "constraint.cabin_capacity.standard": 12,

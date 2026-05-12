@@ -156,44 +156,19 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Cabin Minimum Occupancy
     # =========================================================================
-    "constraint.cabin_minimum_occupancy.enabled": ConfigKey(
-        key="constraint.cabin_minimum_occupancy.enabled",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Enable minimum occupancy constraint (1=enabled, 0=disabled)",
-        min_value=0,
-        max_value=1,
-    ),
-    "constraint.cabin_minimum_occupancy.min": ConfigKey(
-        key="constraint.cabin_minimum_occupancy.min",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Minimum campers per cabin when used",
-        min_value=1,
-        max_value=20,
-    ),
-    "constraint.cabin_minimum_occupancy.preferred": ConfigKey(
-        key="constraint.cabin_minimum_occupancy.preferred",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Preferred occupancy target (soft penalty if below)",
-        min_value=1,
-        max_value=20,
-    ),
+    # Phase 2 cleanup: cabin_minimum_occupancy.{enabled, min, preferred,
+    # force_all_used} were removed in favor of two hardcoded constants in
+    # bunking/solver/constants.py — MIN_BUNK_OCCUPANCY (hard floor, =8) and
+    # PREFERRED_BUNK_OCCUPANCY (soft target, =10). The `enabled` and
+    # `force_all_used` toggles were dead (constraint is a staff invariant);
+    # `min` and `preferred` were never tuned at runtime. The `penalty` key
+    # below is KEPT as the lone tunable knob in this domain.
     "constraint.cabin_minimum_occupancy.penalty": ConfigKey(
         key="constraint.cabin_minimum_occupancy.penalty",
         config_type=ConfigType.INT,
         required=True,
         description="Penalty weight for being below preferred occupancy",
         min_value=0,
-    ),
-    "constraint.cabin_minimum_occupancy.force_all_used": ConfigKey(
-        key="constraint.cabin_minimum_occupancy.force_all_used",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Force all cabins to be used (1=enabled, 0=allow empty cabins)",
-        min_value=0,
-        max_value=1,
     ),
     # =========================================================================
     # SOLVER CONSTRAINTS - Age/Grade Flow

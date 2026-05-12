@@ -30,9 +30,16 @@ def test_grade_spread_penalty_reads_canonical_key(mock_config):
     assert grade_spread_penalty() == 9999
 
 
-def test_min_occupancy_threshold_reads_canonical_key(mock_config):
+def test_min_occupancy_threshold_returns_hardcoded_constant(mock_config):
+    """After Phase 2 cleanup the threshold is hardcoded — the accessor returns
+    MIN_BUNK_OCCUPANCY (=8) regardless of config. Tests that previously set
+    `constraint.cabin_minimum_occupancy.min` to a different value should not
+    expect that value to be honored.
+    """
+    from bunking.solver.constants import MIN_BUNK_OCCUPANCY
+
     _set(mock_config, "constraint.cabin_minimum_occupancy.min", 7)
-    assert min_occupancy_threshold() == 7
+    assert min_occupancy_threshold() == MIN_BUNK_OCCUPANCY == 8
 
 
 def test_accessors_use_get_instance(mock_config):

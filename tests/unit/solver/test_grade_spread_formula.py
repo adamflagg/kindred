@@ -34,7 +34,6 @@ class _Config:
             "constraint.grade_spread.max_spread": max_spread,
             "constraint.cabin_capacity.penalty": 500,
             "constraint.cabin_capacity.standard": 12,
-            "constraint.cabin_minimum_occupancy.min": 8,
             "constraint.cabin_minimum_occupancy.penalty": 50,
         }
 

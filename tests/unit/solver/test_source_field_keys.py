@@ -19,12 +19,12 @@ from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 
 class _CanonicalKeyConfig:
-    """Stub loader for the four centralized penalty keys (B1/B2/B4 fix)."""
+    """Stub loader for the centralized penalty keys (B1/B2/B4 fix; B5 PR #1331
+    collapsed ``constraint.cabin_minimum_occupancy.min`` into a constant)."""
 
     _values: ClassVar[dict[str, int]] = {
         "constraint.grade_spread.penalty": 100,
         "constraint.cabin_capacity.penalty": 500,
-        "constraint.cabin_minimum_occupancy.min": 8,
         "constraint.cabin_minimum_occupancy.penalty": 50,
     }
 
@@ -62,7 +62,6 @@ class TestScoreEvaluatorCanonicalKeys:
             # Canonical keys (matched values)
             "constraint.grade_spread.penalty": 100,
             "constraint.cabin_capacity.penalty": 500,
-            "constraint.cabin_minimum_occupancy.min": 8,
             "constraint.cabin_minimum_occupancy.penalty": 50,
             "constraint.grade_spread.max_spread": 2,
             "constraint.cabin_capacity.standard": 12,
