@@ -67,6 +67,26 @@ async def _persist_run_record(
     return await asyncio.to_thread(task_pb.collection(SOLVER_RUNS).create, payload)
 
 
+async def resolve_session_relation(pb: PocketBase, session_cm_id: int, year: int) -> str | None:
+    """Look up the camp_sessions PB id for a (cm_id, year) pair.
+
+    Returns the PB record id if a matching row exists, else None.
+    A 404 means no match — non-fatal; callers store NULL relation and
+    the row still records via session_id numeric + details.source_label.
+    Non-404 errors propagate so writes don't silently drop real failures.
+    """
+    try:
+        rec = await asyncio.to_thread(
+            pb.collection("camp_sessions").get_first_list_item,
+            f"cm_id = {int(session_cm_id)} && year = {int(year)}",
+        )
+    except ClientResponseError as e:
+        if e.status == 404:
+            return None
+        raise
+    return str(rec.id)
+
+
 async def run_solver_task_v2(
     run_id: str,
     session_cm_id: int,
@@ -287,7 +307,7 @@ async def run_solver_task_v2(
         try:
             pb_data: dict[str, Any] = {
                 "run_id": run_id,
-                "session": str(session_cm_id),
+                "session": await resolve_session_relation(task_pb, session_cm_id, year),
                 "session_id": session_cm_id,
                 "year": year,
                 "status": "success",
@@ -324,7 +344,7 @@ async def run_solver_task_v2(
         try:
             failure_payload = {
                 "run_id": run_id,
-                "session": str(session_cm_id),
+                "session": await resolve_session_relation(task_pb, session_cm_id, year),
                 "session_id": session_cm_id,
                 "year": year,
                 "status": "failed",

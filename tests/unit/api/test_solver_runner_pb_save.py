@@ -119,7 +119,7 @@ class TestSolverRunnerPocketBaseSave:
 
     @pytest.mark.asyncio
     async def test_success_path_sends_session_field(self, mock_solver_input):
-        """Schema field is 'session' (text), not 'session_cm_id'."""
+        """Schema field is 'session' (relation to camp_sessions), not 'session_cm_id'."""
         patches, mock_runs = self._setup_mocks(mock_solver_input)
 
         with (
@@ -144,6 +144,10 @@ class TestSolverRunnerPocketBaseSave:
                 "get_settings": m8,
             }
             mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            # Wire a known PB id so resolve_session_relation returns it
+            fake_session = MagicMock()
+            fake_session.id = "camp_sessions_pb_id_xyz"
+            mock_pb.collection.return_value.get_first_list_item.return_value = fake_session
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -156,7 +160,8 @@ class TestSolverRunnerPocketBaseSave:
             pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
             assert "session" in pb_data
             assert "session_cm_id" not in pb_data
-            assert pb_data["session"] == "100"
+            # session is now a PB relation id resolved from camp_sessions
+            assert pb_data["session"] == "camp_sessions_pb_id_xyz"
 
     @pytest.mark.asyncio
     async def test_success_path_sends_status_success(self, mock_solver_input):
@@ -384,6 +389,10 @@ class TestSolverRunnerPocketBaseSave:
                 "get_settings": m8,
             }
             mock_pb = self._configure_mocks(mocks, mock_solver_input, solver_succeeds=False)
+            # Wire a known PB id so resolve_session_relation returns it
+            fake_session = MagicMock()
+            fake_session.id = "camp_sessions_pb_id_xyz"
+            mock_pb.collection.return_value.get_first_list_item.return_value = fake_session
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -395,7 +404,8 @@ class TestSolverRunnerPocketBaseSave:
 
             pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
             assert pb_data["run_id"] == "test_run"
-            assert pb_data["session"] == "100"
+            # session is now a PB relation id resolved from camp_sessions
+            assert pb_data["session"] == "camp_sessions_pb_id_xyz"
             assert pb_data["session_id"] == 100
             assert pb_data["status"] == "failed"
             assert "session_cm_id" not in pb_data
