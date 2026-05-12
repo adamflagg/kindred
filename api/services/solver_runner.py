@@ -342,9 +342,13 @@ async def run_solver_task_v2(
         # sweep children group correctly with their successful siblings in
         # the impact-analysis UI rather than appearing as orphans.
         try:
+            try:
+                failure_session_relation = await resolve_session_relation(task_pb, session_cm_id, year)
+            except Exception:
+                failure_session_relation = None
             failure_payload = {
                 "run_id": run_id,
-                "session": await resolve_session_relation(task_pb, session_cm_id, year),
+                "session": failure_session_relation,
                 "session_id": session_cm_id,
                 "year": year,
                 "status": "failed",
