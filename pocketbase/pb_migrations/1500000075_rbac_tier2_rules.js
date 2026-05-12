@@ -48,6 +48,9 @@
  * merged CREATE migration #014.
  * Note: staff_program_areas trimmed — final adminOnly rules baked into
  * merged CREATE migration #007.
+ * Note: staff_skills trimmed — final adminOnly rules baked into
+ * merged CREATE migration #042. tier2[] is now empty; only tier3
+ * (debug_parse_results, solver_runs) remains in this file.
  */
 
 migrate((app) => {
@@ -64,9 +67,7 @@ migrate((app) => {
   }
 
   // Tier 2: Admin-only (sensitive data not accessed by frontend)
-  const tier2 = [
-    "staff_skills"
-  ]
+  const tier2 = []
 
   for (const name of tier2) {
     setRules(name, adminOnly, adminOnly, adminOnly, adminOnly, adminOnly)
@@ -94,7 +95,6 @@ migrate((app) => {
   }
 
   const all = [
-    "staff_skills",
     "debug_parse_results", "solver_runs"
   ]
 

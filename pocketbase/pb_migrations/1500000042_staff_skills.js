@@ -23,17 +23,19 @@
 const COLLECTION_ID_STAFF_SKILLS = "col_staff_skills";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   const personsCol = app.findCollectionByNameOrId("persons");
 
   const collection = new Collection({
     id: COLLECTION_ID_STAFF_SKILLS,
     type: "base",
     name: "staff_skills",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // Person identification (CampMinder ID for sync lookup)
       {
