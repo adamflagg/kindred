@@ -19,7 +19,7 @@ from bunking.direct_solver import DirectBunkingSolver
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
-from ..constants.collections import SOLVER_RUNS, SUPERUSERS
+from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
 from ..dependencies import pb_url, solver_runs
 from ..settings import get_settings
 from .data_fetcher import (
@@ -77,7 +77,7 @@ async def resolve_session_relation(pb: PocketBase, session_cm_id: int, year: int
     """
     try:
         rec = await asyncio.to_thread(
-            pb.collection("camp_sessions").get_first_list_item,
+            pb.collection(CAMP_SESSIONS).get_first_list_item,
             f"cm_id = {int(session_cm_id)} && year = {int(year)}",
         )
     except ClientResponseError as e:
