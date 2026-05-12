@@ -32,6 +32,35 @@ interface LayerBoundary {
   endIndex: number
 }
 
+/** Poll for `selector` in the DOM. Resolves true when found, false on timeout or abort. */
+function waitForSelector(
+  selector: string | null,
+  schedule: (fn: () => void, ms: number) => void,
+  signal: AbortSignal
+): Promise<boolean> {
+  if (selector === null) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    let retries = 0
+    const check = () => {
+      if (signal.aborted) {
+        resolve(false)
+        return
+      }
+      if (document.querySelector(selector) !== null) {
+        resolve(true)
+        return
+      }
+      if (retries >= MAX_READY_RETRIES) {
+        resolve(false)
+        return
+      }
+      retries++
+      schedule(check, READY_CHECK_INTERVAL)
+    }
+    schedule(check, 0)
+  })
+}
+
 export function useTour() {
   const { pathname } = useLocation()
   const [tourId, setTourId] = useState<TourId | null>(null)
@@ -39,6 +68,7 @@ export function useTour() {
   const definitionRef = useRef<TourDefinition | null>(null)
   const layerDefsRef = useRef<LayerDefinition[]>([])
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
     const id = setTimeout(() => {
@@ -131,29 +161,28 @@ export function useTour() {
 
     const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
 
-    let retries = 0
-    const checkReady = () => {
-      const ready = firstSelector ? document.querySelector(firstSelector) !== null : true
-      if (ready) {
-        d.drive()
-        return
-      }
-      if (retries >= MAX_READY_RETRIES) {
-        d.destroy()
-        driverRef.current = null
-        return
-      }
-      retries++
-      scheduleTimeout(checkReady, READY_CHECK_INTERVAL)
-    }
+    abortControllerRef.current?.abort()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
 
-    scheduleTimeout(checkReady, AUTO_START_DELAY)
+    scheduleTimeout(() => {
+      waitForSelector(firstSelector, scheduleTimeout, abortController.signal).then((ready) => {
+        if (abortController.signal.aborted) return
+        if (ready) {
+          d.drive()
+        } else {
+          d.destroy()
+          driverRef.current = null
+        }
+      })
+    }, AUTO_START_DELAY)
   }, [scheduleTimeout])
 
   // Cleanup on unmount
   useEffect(() => {
     const timers = pendingTimersRef.current
     return () => {
+      abortControllerRef.current?.abort()
       if (driverRef.current) {
         driverRef.current.destroy()
       }
