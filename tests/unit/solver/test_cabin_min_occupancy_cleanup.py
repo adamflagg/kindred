@@ -88,8 +88,8 @@ def test_cabin_occupancy_module_imports_occupancy_constants():
     assert hasattr(mod, "PREFERRED_BUNK_OCCUPANCY"), (
         "cabin_occupancy.py must import PREFERRED_BUNK_OCCUPANCY from bunking.solver.constants"
     )
-    assert mod.MIN_BUNK_OCCUPANCY == solver_constants.MIN_BUNK_OCCUPANCY
-    assert mod.PREFERRED_BUNK_OCCUPANCY == solver_constants.PREFERRED_BUNK_OCCUPANCY
+    assert getattr(mod, "MIN_BUNK_OCCUPANCY") == solver_constants.MIN_BUNK_OCCUPANCY
+    assert getattr(mod, "PREFERRED_BUNK_OCCUPANCY") == solver_constants.PREFERRED_BUNK_OCCUPANCY
 
 
 # Centralized accessor ---------------------------------------------------------
