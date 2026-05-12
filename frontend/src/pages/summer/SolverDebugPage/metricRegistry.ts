@@ -6,7 +6,8 @@ export type MetricGroup =
   | 'search'
   | 'model'
   | 'context'
-  | 'outcome'
+  | 'outcome_requests'
+  | 'outcome_campers'
   | 'size'
   | 'churn'
 
@@ -174,7 +175,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Material-parent requests honored / MP requests total. 100% is the ideal outcome — every parent priority request satisfied.',
     interpretation: 'higher-better',
     format: 'percent',
-    group: 'outcome',
+    group: 'outcome_requests',
   },
   mp_camper_rate: {
     key: 'mp_camper_rate',
@@ -183,7 +184,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Campers with ≥1 MP request satisfied / Campers with ≥1 MP request. 100% means every camper with a parent priority got at least one MP request honored.',
     interpretation: 'higher-better',
     format: 'percent',
-    group: 'outcome',
+    group: 'outcome_campers',
   },
   all_request_rate: {
     key: 'all_request_rate',
@@ -191,7 +192,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'All requests honored / all requests total, across every source bucket.',
     interpretation: 'higher-better',
     format: 'percent',
-    group: 'outcome',
+    group: 'outcome_requests',
   },
   all_camper_rate: {
     key: 'all_camper_rate',
@@ -199,7 +200,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 any-source request satisfied / campers with ≥1 request.',
     interpretation: 'higher-better',
     format: 'percent',
-    group: 'outcome',
+    group: 'outcome_campers',
   },
   mp_requests_satisfied: {
     key: 'mp_requests_satisfied',
@@ -207,7 +208,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Number of material-parent requests the solver honored.',
     interpretation: 'higher-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_requests',
     parent: 'mp_request_rate',
   },
   mp_requests_total: {
@@ -216,7 +217,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Total resolved material-parent requests in scope this run.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_requests',
     parent: 'mp_request_rate',
   },
   mp_campers_satisfied: {
@@ -225,7 +226,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 material-parent request satisfied.',
     interpretation: 'higher-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'mp_camper_rate',
   },
   mp_campers_total: {
@@ -234,7 +235,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 resolved material-parent request.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'mp_camper_rate',
   },
   all_campers_satisfied: {
@@ -243,7 +244,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 request of any source satisfied.',
     interpretation: 'higher-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'all_camper_rate',
   },
   all_campers_total: {
@@ -252,7 +253,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 resolved request of any source.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'all_camper_rate',
   },
   satisfied_request_count: {
@@ -261,7 +262,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Total requests honored across all sources.',
     interpretation: 'higher-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_requests',
     parent: 'all_request_rate',
   },
   total_requests: {
@@ -270,7 +271,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Total resolved requests in scope this run, across all sources.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_requests',
     parent: 'all_request_rate',
   },
   impossible_requests: {
@@ -280,7 +281,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Requests that can never be satisfied (cross-session, requestee absent, etc.). Floor on unsatisfiability.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_requests',
   },
   affected_campers: {
     key: 'affected_campers',
@@ -288,7 +289,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     description: 'Campers with ≥1 impossible request — blast radius of the impossibility floor.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'impossible_requests',
   },
   unsatisfied_no_possible: {
@@ -298,7 +299,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Campers with only impossible requests. Should equal affected_campers; divergence is a bug signal.',
     interpretation: 'context',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
     parent: 'impossible_requests',
     highlight: { mode: 'diverges-from', from: 'affected_campers' },
   },
@@ -309,7 +310,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Campers who got zero requests satisfied AND had ≥1 possible MP request. The worst-case parent-priority failures.',
     interpretation: 'lower-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
   },
   unsatisfied_other_unmet: {
     key: 'unsatisfied_other_unmet',
@@ -318,7 +319,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
       'Campers who got zero requests satisfied AND had only non-MP possible requests (STAFF / IMMATERIAL_PARENT).',
     interpretation: 'lower-better',
     format: 'integer',
-    group: 'outcome',
+    group: 'outcome_campers',
   },
   total_persons: {
     key: 'total_persons',
@@ -383,7 +384,8 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
 /** Group metrics by their `group` field, preserving insertion order from METRIC_REGISTRY. */
 export const METRIC_REGISTRY_BY_GROUP: Record<MetricGroup, MetricMeta[]> = (() => {
   const groups: Record<MetricGroup, MetricMeta[]> = {
-    outcome: [],
+    outcome_requests: [],
+    outcome_campers: [],
     size: [],
     timing: [],
     quality: [],
@@ -400,20 +402,21 @@ export const METRIC_REGISTRY_BY_GROUP: Record<MetricGroup, MetricMeta[]> = (() =
 
 /** Subset rendered in pin-to-compare delta panel (numeric, comparable). */
 export const COMPARABLE_METRICS: readonly string[] = [
-  // outcome (PR1)
+  // outcome — requests (PR1)
   'mp_request_rate',
-  'mp_camper_rate',
+  'all_request_rate',
   'mp_requests_satisfied',
   'mp_requests_total',
-  'mp_campers_satisfied',
-  'mp_campers_total',
-  'all_request_rate',
-  'all_camper_rate',
   'satisfied_request_count',
   'total_requests',
+  'impossible_requests',
+  // outcome — campers (PR1)
+  'mp_camper_rate',
+  'all_camper_rate',
+  'mp_campers_satisfied',
+  'mp_campers_total',
   'all_campers_satisfied',
   'all_campers_total',
-  'impossible_requests',
   'affected_campers',
   'unsatisfied_no_possible',
   'unsatisfied_material_parent_unmet',

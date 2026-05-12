@@ -122,6 +122,41 @@ describe('PinnedComparisonPanel', () => {
     expect(screen.getByText(/^Model$/i)).toBeInTheDocument()
   })
 
+  it('renders Outcome (requests) and Outcome (campers) section headers in that order', () => {
+    const aOut: SolverRun = {
+      ...a,
+      stats: {
+        ...a.stats,
+        request_validation: {
+          mp_requests_satisfied: 85,
+          mp_requests_total: 100,
+          mp_campers_satisfied: 18,
+          mp_campers_total: 20,
+        },
+      },
+    }
+    const bOut: SolverRun = {
+      ...b,
+      stats: {
+        ...b.stats,
+        request_validation: {
+          mp_requests_satisfied: 92,
+          mp_requests_total: 100,
+          mp_campers_satisfied: 19,
+          mp_campers_total: 20,
+        },
+      },
+    }
+    render(<PinnedComparisonPanel runA={aOut} runB={bOut} onClear={vi.fn()} />)
+    const reqHeader = screen.getByText(/Outcome \(requests\)/i)
+    const camperHeader = screen.getByText(/Outcome \(campers\)/i)
+    expect(reqHeader).toBeInTheDocument()
+    expect(camperHeader).toBeInTheDocument()
+    expect(
+      reqHeader.compareDocumentPosition(camperHeader) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
   it('renders constraint-type sub-rows indented under model constraints (#mockup-parity)', () => {
     const statsWithBreakdown = {
       walltime_seconds: 10,

@@ -49,7 +49,7 @@ from ..schemas import (
 )
 from ..schemas.solver import SweepRequest, SweepResponse
 from ..services.session_context import build_session_context
-from ..services.solver_runner import run_solver_task_v2
+from ..services.solver_runner import resolve_session_relation, run_solver_task_v2
 from ..services.sweep_input_snapshot import snapshot_session_input
 from ..services.sweep_registry import sweep_registry
 from ..services.sweep_runner import run_sweep
@@ -249,10 +249,11 @@ async def post_run_sweep(
     # remount, and PB had no rows until completion).
     created_pb_ids: list[str] = []
     try:
+        session_relation_id = await resolve_session_relation(pb, session_cm_id, year)
         for run_id, budget in zip(run_ids, request.time_budgets, strict=True):
             pb_data: dict[str, Any] = {
                 "run_id": run_id,
-                "session": str(session_cm_id),
+                "session": session_relation_id,
                 "session_id": session_cm_id,
                 "year": year,
                 "status": "pending",

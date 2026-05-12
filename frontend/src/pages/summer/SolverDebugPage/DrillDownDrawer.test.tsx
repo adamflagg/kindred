@@ -91,20 +91,30 @@ describe('DrillDownDrawer', () => {
 })
 
 describe('Registry-driven group rendering (PR1)', () => {
-  it('renders Outcome group when run has request_validation data', () => {
+  it('renders Outcome (requests) and Outcome (campers) section headers when run has both', () => {
     const outcomeRun: SolverRun = {
-      ...run,
+      id: 'r1',
+      run_id: 'r1',
+      status: 'success',
+      created: '2026-05-12T12:00:00Z',
       stats: {
-        ...(run.stats ?? {}),
         request_validation: {
-          mp_requests_satisfied: 80,
-          mp_requests_total: 100,
+          mp_requests_satisfied: 40,
+          mp_requests_total: 50,
+          mp_campers_satisfied: 17,
+          mp_campers_total: 20,
         },
       },
+      details: {},
     }
     render(<DrillDownDrawer run={outcomeRun} onClose={vi.fn()} />)
-    expect(screen.getByText('Outcome')).toBeInTheDocument()
-    expect(screen.getByText('Optimized (MP req)')).toBeInTheDocument()
+    const reqHeader = screen.getByText(/Outcome \(requests\)/i)
+    const camperHeader = screen.getByText(/Outcome \(campers\)/i)
+    expect(reqHeader).toBeInTheDocument()
+    expect(camperHeader).toBeInTheDocument()
+    expect(
+      reqHeader.compareDocumentPosition(camperHeader) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   it('renders Solution strategy row when solution_info is set', () => {

@@ -9,7 +9,8 @@ import { pickStat } from './pickStat'
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
 const GROUP_LABELS: Record<MetricGroup, string> = {
-  outcome: 'Outcome',
+  outcome_requests: 'Outcome (requests)',
+  outcome_campers: 'Outcome (campers)',
   size: 'Size',
   timing: 'Timing',
   quality: 'Quality',
@@ -20,7 +21,8 @@ const GROUP_LABELS: Record<MetricGroup, string> = {
 }
 
 const GROUP_ORDER: MetricGroup[] = [
-  'outcome',
+  'outcome_requests',
+  'outcome_campers',
   'size',
   'timing',
   'quality',

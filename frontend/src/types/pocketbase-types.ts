@@ -1172,6 +1172,7 @@ export const SolverRunsStatusOptions = {
   success: 'success',
   failed: 'failed',
   error: 'error',
+  cancelled: 'cancelled',
 } as const
 export type SolverRunsStatusOptions =
   (typeof SolverRunsStatusOptions)[keyof typeof SolverRunsStatusOptions]
@@ -1180,7 +1181,6 @@ export type SolverRunsRecord<
   Tdetails = unknown,
   Terror = unknown,
   Tlogs = unknown,
-  Trequest_data = unknown,
   Tresult = unknown,
   Tstats = unknown,
 > = {
@@ -1192,18 +1192,18 @@ export type SolverRunsRecord<
   id: string
   logs?: null | Tlogs
   progress?: number
-  request_data?: null | Trequest_data
   result?: null | Tresult
   run_id: string
   run_type?: string
   scenario?: RecordIdString
-  session: string
+  session?: RecordIdString
   session_id?: number
   started_at?: IsoDateString
   stats?: null | Tstats
   status?: SolverRunsStatusOptions
   triggered_by?: string
   updated: IsoAutoDateString
+  year: number
 }
 
 export const StaffStatusOptions = {
@@ -1514,13 +1514,10 @@ export type SolverRunsResponse<
   Tdetails = unknown,
   Terror = unknown,
   Tlogs = unknown,
-  Trequest_data = unknown,
   Tresult = unknown,
   Tstats = unknown,
   Texpand = unknown,
-> = Required<
-  SolverRunsRecord<Tassignment_counts, Tdetails, Terror, Tlogs, Trequest_data, Tresult, Tstats>
-> &
+> = Required<SolverRunsRecord<Tassignment_counts, Tdetails, Terror, Tlogs, Tresult, Tstats>> &
   BaseSystemFields<Texpand>
 export type StaffResponse<Texpand = unknown> = Required<StaffRecord> & BaseSystemFields<Texpand>
 export type StaffApplicationsResponse<Texpand = unknown> = Required<StaffApplicationsRecord> &
