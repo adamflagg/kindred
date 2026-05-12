@@ -108,8 +108,13 @@ describe('Registry-driven group rendering (PR1)', () => {
       details: {},
     }
     render(<DrillDownDrawer run={outcomeRun} onClose={vi.fn()} />)
-    expect(screen.getByText(/Outcome \(requests\)/i)).toBeInTheDocument()
-    expect(screen.getByText(/Outcome \(campers\)/i)).toBeInTheDocument()
+    const reqHeader = screen.getByText(/Outcome \(requests\)/i)
+    const camperHeader = screen.getByText(/Outcome \(campers\)/i)
+    expect(reqHeader).toBeInTheDocument()
+    expect(camperHeader).toBeInTheDocument()
+    expect(
+      reqHeader.compareDocumentPosition(camperHeader) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   it('renders Solution strategy row when solution_info is set', () => {
