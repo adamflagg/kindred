@@ -255,7 +255,7 @@ describe('SolverRunsTable', () => {
     )
     // Budget cell should be exactly "—" (not "—s")
     expect(screen.queryByText(/^—s$/)).not.toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 })
 
@@ -316,6 +316,55 @@ describe('SolverRunsTable footer (#1254)', () => {
     expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
     // Legend still shown
     expect(screen.getByText(/Showing 0 of 5 runs/i)).toBeInTheDocument()
+  })
+})
+
+describe('MP rate cells (PR1)', () => {
+  it('renders Optimized cell with MP request rate', () => {
+    const run: SolverRun = {
+      id: 'r1',
+      run_id: 'run_1',
+      status: 'success',
+      created: '2026-05-12T00:00:00Z',
+      stats: {
+        request_validation: {
+          mp_requests_satisfied: 80,
+          mp_requests_total: 100,
+        },
+      },
+    } as SolverRun
+    render(
+      <SolverRunsTable
+        runs={[run]}
+        visibleColumns={['mp_request_rate']}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('80.00%')).toBeInTheDocument()
+  })
+
+  it('renders em-dash for MP rate when total is 0', () => {
+    const run: SolverRun = {
+      id: 'r1',
+      run_id: 'run_1',
+      status: 'success',
+      created: '2026-05-12T00:00:00Z',
+      stats: {
+        request_validation: { mp_requests_satisfied: 0, mp_requests_total: 0 },
+      },
+    } as SolverRun
+    render(
+      <SolverRunsTable
+        runs={[run]}
+        visibleColumns={['mp_request_rate']}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })
 

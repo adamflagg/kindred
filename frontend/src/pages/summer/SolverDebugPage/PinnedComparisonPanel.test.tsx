@@ -1,10 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { getMetric } from './metricRegistry'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
 
-import type { SolverRun, SolverRunStats } from '../../../hooks/useSolverRuns'
+import type { SolverRun } from '../../../hooks/useSolverRuns'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const makeRun = (statsOverride: Record<string, any> = {}, id = 'a'): SolverRun => ({
@@ -12,7 +12,7 @@ const makeRun = (statsOverride: Record<string, any> = {}, id = 'a'): SolverRun =
   run_id: id,
   status: 'success',
   created: '2026-05-07T16:42:00Z',
-  stats: statsOverride as unknown as SolverRun['stats'] & SolverRunStats,
+  stats: statsOverride,
   details: { git_sha: id === 'a' ? '4a2b1f3' : '8c9d2e7', source_label: 'S2 · Production' },
 })
 
@@ -102,8 +102,8 @@ describe('PinnedComparisonPanel', () => {
     // runA has num_branches=8421, runB is missing it. Branches row should
     // appear; runB cell should show — ; delta cell should show — (not 0,
     // not NaN, not a bogus number).
-    const aWith: SolverRun = { ...a, stats: { walltime_seconds: 45.2, num_branches: 8421 } }
-    const bWithout: SolverRun = { ...b, stats: { walltime_seconds: 23.1 } }
+    const aWith = { ...a, stats: { walltime_seconds: 45.2, num_branches: 8421 } }
+    const bWithout = { ...b, stats: { walltime_seconds: 23.1 } }
     render(<PinnedComparisonPanel runA={aWith} runB={bWithout} onClear={vi.fn()} />)
     const branchesRow = screen.getByText('Branches').closest('tr')
     expect(branchesRow).not.toBeNull()
@@ -138,20 +138,24 @@ describe('PinnedComparisonPanel', () => {
     expect(linearCell.className).toContain('pl-10')
   })
 
-  it('highlights cleanup-signal rows with yellow background (#mockup-parity)', () => {
-    const statsWithBreakdown = {
+  it('highlights cleanup-signal rows with yellow background only when values differ (#mockup-parity)', () => {
+    const aStats = {
       walltime_seconds: 10,
       constraint_type_breakdown: { bool_or: 5, linear: 20, bool_and: 3, lin_max: 2 },
     }
-    const aFull = makeRun(statsWithBreakdown, 'a')
-    const bFull = makeRun(statsWithBreakdown, 'b')
+    const bStats = {
+      walltime_seconds: 8,
+      constraint_type_breakdown: { bool_or: 7, linear: 20, bool_and: 3, lin_max: 2 },
+    }
+    const aFull = makeRun(aStats, 'a')
+    const bFull = makeRun(bStats, 'b')
     render(<PinnedComparisonPanel runA={aFull} runB={bFull} onClear={vi.fn()} />)
-    // bool_or row should have yellow bg (highlight=true)
+    // bool_or row should have yellow bg (on-delta, values differ: 5 vs 7)
     const boolOrRow = screen.getByText(/bool_or constraints/i).closest('tr')!
     expect(boolOrRow.className).toContain('bg-yellow-50')
-    // lin_max row also highlighted
+    // lin_max values match (2 vs 2), so NOT highlighted
     const linMaxRow = screen.getByText(/lin_max constraints/i).closest('tr')!
-    expect(linMaxRow.className).toContain('bg-yellow-50')
+    expect(linMaxRow.className).not.toContain('bg-yellow-50')
     // linear row is NOT highlighted
     const linearRow = screen.getByText(/linear constraints/i).closest('tr')!
     expect(linearRow.className).not.toContain('bg-yellow-50')
@@ -190,5 +194,111 @@ describe('PinnedComparisonPanel', () => {
     expect(boolOrRow.textContent).toContain('5')
     expect(boolOrRow.textContent).toContain('3')
     expect(boolOrRow.textContent).toMatch(/-2\s*↓/)
+  })
+})
+
+describe('Conditional highlighting (PR1)', () => {
+  function makeRun(overrides: Partial<SolverRun> = {}): SolverRun {
+    const base: SolverRun = {
+      id: 'r1',
+      run_id: 'run_1',
+      status: 'success',
+      created: '2026-05-12T00:00:00Z',
+      details: {
+        git_sha: 'abc1234',
+        config_snapshot: { 'solver.time_limit.seconds': '60' },
+      },
+      stats: {
+        walltime_seconds: 60,
+        objective_value: 100000,
+        constraint_type_breakdown: { bool_or: 5 },
+        request_validation: {
+          impossible_requests: 4,
+          affected_campers: 4,
+          unsatisfied_no_possible: 4,
+        },
+      },
+    }
+    return { ...base, ...overrides }
+  }
+
+  it('highlights num_bool_or when pinned runs differ', () => {
+    const runA = makeRun({
+      stats: { constraint_type_breakdown: { bool_or: 5 } },
+    })
+    const runB = makeRun({
+      stats: { constraint_type_breakdown: { bool_or: 7 } },
+    })
+    const { container } = render(
+      <PinnedComparisonPanel runA={runA} runB={runB} onClear={() => {}} />
+    )
+    const row = within(container).getByText('bool_or constraints').closest('tr')
+    expect(row).toHaveClass('bg-yellow-50')
+  })
+
+  it('does NOT highlight num_bool_or when pinned runs match', () => {
+    const runA = makeRun({
+      stats: { constraint_type_breakdown: { bool_or: 5 } },
+    })
+    const runB = makeRun({
+      stats: { constraint_type_breakdown: { bool_or: 5 } },
+    })
+    const { container } = render(
+      <PinnedComparisonPanel runA={runA} runB={runB} onClear={() => {}} />
+    )
+    const row = within(container).getByText('bool_or constraints').closest('tr')
+    expect(row).not.toHaveClass('bg-yellow-50')
+  })
+
+  it('highlights unsatisfied_no_possible when it diverges from affected_campers', () => {
+    const runA = makeRun({
+      stats: {
+        request_validation: {
+          impossible_requests: 4,
+          affected_campers: 4,
+          unsatisfied_no_possible: 2,
+        },
+      },
+    })
+    const runB = makeRun()
+    const { container } = render(
+      <PinnedComparisonPanel runA={runA} runB={runB} onClear={() => {}} />
+    )
+    const row = within(container).getByText('No-possible').closest('tr')
+    expect(row).toHaveClass('bg-yellow-50')
+  })
+
+  it('shows objective_value as higher-better when config_snapshots match', () => {
+    const runA = makeRun({
+      stats: { objective_value: 100000 },
+      details: { config_snapshot: { 'solver.time_limit.seconds': '60' } },
+    })
+    const runB = makeRun({
+      stats: { objective_value: 120000 },
+      details: { config_snapshot: { 'solver.time_limit.seconds': '60' } },
+    })
+    const { container } = render(
+      <PinnedComparisonPanel runA={runA} runB={runB} onClear={() => {}} />
+    )
+    const row = within(container).getByText('Objective').closest('tr')
+    const deltaCell = row?.querySelector('td:last-child')
+    expect(deltaCell).toHaveClass('text-green-700')
+  })
+
+  it('shows objective_value as context (gray) when config_snapshots differ', () => {
+    const runA = makeRun({
+      stats: { objective_value: 100000 },
+      details: { config_snapshot: { 'soft.grade_spread.penalty': '3000' } },
+    })
+    const runB = makeRun({
+      stats: { objective_value: 120000 },
+      details: { config_snapshot: { 'soft.grade_spread.penalty': '5000' } },
+    })
+    const { container } = render(
+      <PinnedComparisonPanel runA={runA} runB={runB} onClear={() => {}} />
+    )
+    const row = within(container).getByText('Objective').closest('tr')
+    const deltaCell = row?.querySelector('td:last-child')
+    expect(deltaCell).toHaveClass('text-gray-500')
   })
 })

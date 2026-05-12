@@ -3,9 +3,31 @@ import { useEffect, useId, useRef } from 'react'
 
 import { REPO_URL } from '../../../constants/repo'
 
-import { formatMetric } from './metricRegistry'
+import { formatMetric, METRIC_REGISTRY_BY_GROUP, type MetricGroup } from './metricRegistry'
+import { pickStat } from './pickStat'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
+
+const GROUP_LABELS: Record<MetricGroup, string> = {
+  outcome: 'Outcome',
+  size: 'Size',
+  timing: 'Timing',
+  quality: 'Quality',
+  churn: 'Churn',
+  search: 'Search',
+  model: 'Model',
+  context: 'Context',
+}
+
+const GROUP_ORDER: MetricGroup[] = [
+  'outcome',
+  'size',
+  'timing',
+  'quality',
+  'churn',
+  'search',
+  'model',
+]
 
 interface Props {
   run: SolverRun | null
@@ -98,46 +120,35 @@ export function DrillDownDrawer({ run, onClose }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <StatCard
-              title="Timing"
-              rows={[
-                ['Wall time', formatMetric('walltime_seconds', s.walltime_seconds)],
-                ['User time', formatMetric('user_time_seconds', s.user_time_seconds)],
-                ['Det. work', formatMetric('deterministic_time', s.deterministic_time)],
-              ]}
-            />
-            <StatCard
-              title="Quality"
-              rows={[
-                [
-                  'Objective',
-                  s.objective_value !== undefined && s.objective_value !== null
-                    ? s.objective_value.toLocaleString()
-                    : '—',
-                ],
-                ['Best bound', formatMetric('best_objective_bound', s.best_objective_bound)],
-                ['Gap', formatMetric('optimality_gap', s.optimality_gap)],
-                ['∫gap', formatMetric('gap_integral', s.gap_integral)],
-              ]}
-            />
-            <StatCard
-              title="Search"
-              rows={[
-                ['Branches', formatMetric('num_branches', s.num_branches)],
-                ['Conflicts', formatMetric('num_conflicts', s.num_conflicts)],
-                ['Solutions found', formatMetric('num_solutions_found', s.num_solutions_found)],
-              ]}
-            />
-            <StatCard
-              title="Model"
-              rows={[
-                ['Variables', formatMetric('model_num_variables', s.model_num_variables)],
-                ['Constraints', formatMetric('model_num_constraints', s.model_num_constraints)],
-                ['Booleans', formatMetric('num_booleans', s.num_booleans)],
-                ['Integers', formatMetric('num_integer_variables', s.num_integer_variables)],
-              ]}
-            />
+            {GROUP_ORDER.map((group) => {
+              const metas = METRIC_REGISTRY_BY_GROUP[group]
+              if (metas.length === 0) return null
+              return (
+                <StatCard
+                  key={group}
+                  title={GROUP_LABELS[group]}
+                  rows={metas.map((meta) => [
+                    meta.label,
+                    formatMetric(meta.key, pickStat(s, meta.key)),
+                  ])}
+                />
+              )
+            })}
           </div>
+
+          {s.solution_info ? (
+            <div className="mt-4">
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Solution strategy
+              </div>
+              <div
+                className="rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-700"
+                title={s.solution_info}
+              >
+                {s.solution_info}
+              </div>
+            </div>
+          ) : null}
 
           {s.constraint_type_breakdown ? (
             <div>
@@ -151,17 +162,6 @@ export function DrillDownDrawer({ run, onClose }: Props) {
                   </span>
                 ))}
               </div>
-            </div>
-          ) : null}
-
-          {s.solution_info ? (
-            <div>
-              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
-                Solution info
-              </div>
-              <code className="block rounded bg-gray-50 px-3 py-2 text-xs text-gray-700">
-                {s.solution_info}
-              </code>
             </div>
           ) : null}
 

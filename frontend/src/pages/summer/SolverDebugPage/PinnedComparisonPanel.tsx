@@ -1,8 +1,15 @@
 import React from 'react'
 
-import { COMPARABLE_METRICS, formatMetric, getMetric, type MetricGroup } from './metricRegistry'
+import {
+  COMPARABLE_METRICS,
+  formatMetric,
+  getMetric,
+  type MetricGroup,
+  type MetricInterpretation,
+} from './metricRegistry'
+import { pickStat } from './pickStat'
 
-import type { SolverRun, SolverRunStats } from '../../../hooks/useSolverRuns'
+import type { SolverRun } from '../../../hooks/useSolverRuns'
 
 interface Props {
   runA: SolverRun | null
@@ -10,14 +17,20 @@ interface Props {
   onClear: () => void
 }
 
-function deltaClass(metricKey: string, delta: number | null): string {
+function deltaClass(
+  metricKey: string,
+  delta: number | null,
+  runA: SolverRun,
+  runB: SolverRun
+): string {
   if (delta === null) return 'text-gray-400'
   const meta = getMetric(metricKey)
   if (delta === 0) return 'text-gray-500'
-  if (meta.interpretation === 'context') return 'text-gray-500 font-semibold'
+  const interpretation = effectiveInterpretation(meta, runA, runB)
+  if (interpretation === 'context') return 'text-gray-500 font-semibold'
   const better =
-    (meta.interpretation === 'lower-better' && delta < 0) ||
-    (meta.interpretation === 'higher-better' && delta > 0)
+    (interpretation === 'lower-better' && delta < 0) ||
+    (interpretation === 'higher-better' && delta > 0)
   return better ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold'
 }
 
@@ -33,24 +46,64 @@ function formatDelta(metricKey: string, delta: number | null): string {
   return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}${arrow}`
 }
 
-function pickMetric(stats: SolverRunStats | undefined, key: string): number | null | undefined {
-  if (!stats) return undefined
-  if (key === 'num_bool_or') return stats.constraint_type_breakdown?.['bool_or'] ?? null
-  if (key === 'num_linear') return stats.constraint_type_breakdown?.['linear'] ?? null
-  if (key === 'num_bool_and') return stats.constraint_type_breakdown?.['bool_and'] ?? null
-  if (key === 'num_lin_max') return stats.constraint_type_breakdown?.['lin_max'] ?? null
-  return (stats as unknown as Record<string, number | null | undefined>)[key]
+function shouldHighlight(
+  meta: ReturnType<typeof getMetric>,
+  runA: SolverRun,
+  runB: SolverRun
+): boolean {
+  if (!meta.highlight) return false
+  if (meta.highlight.mode === 'on-delta') {
+    return pickStat(runA.stats, meta.key) !== pickStat(runB.stats, meta.key)
+  }
+  // diverges-from: remaining union branch
+  const fromKey = meta.highlight.from
+  return (
+    pickStat(runA.stats, meta.key) !== pickStat(runA.stats, fromKey) ||
+    pickStat(runB.stats, meta.key) !== pickStat(runB.stats, fromKey)
+  )
+}
+
+function configSnapshotsMatch(runA: SolverRun, runB: SolverRun): boolean {
+  const a = runA.details?.config_snapshot
+  const b = runB.details?.config_snapshot
+  if (!a || !b) return false
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  return keysA.every((k) => a[k] === b[k])
+}
+
+function effectiveInterpretation(
+  meta: ReturnType<typeof getMetric>,
+  runA: SolverRun,
+  runB: SolverRun
+): MetricInterpretation {
+  if (meta.key === 'objective_value' && configSnapshotsMatch(runA, runB)) {
+    return 'higher-better'
+  }
+  return meta.interpretation
 }
 
 const GROUP_LABELS: Record<MetricGroup, string> = {
+  outcome: 'Outcome',
+  size: 'Size',
   timing: 'Timing',
   quality: 'Quality',
+  churn: 'Churn',
   search: 'Search',
   model: 'Model',
   context: 'Context',
 }
 
-const GROUP_ORDER: MetricGroup[] = ['timing', 'quality', 'search', 'model']
+const GROUP_ORDER: MetricGroup[] = [
+  'outcome',
+  'size',
+  'timing',
+  'quality',
+  'churn',
+  'search',
+  'model',
+]
 
 export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
   if (!runA || !runB) return null
@@ -61,8 +114,11 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
 
   // Group metrics by their `group` field, preserving COMPARABLE_METRICS order within each group
   const byGroup: Record<MetricGroup, string[]> = {
+    outcome: [],
+    size: [],
     timing: [],
     quality: [],
+    churn: [],
     search: [],
     model: [],
     context: [],
@@ -116,11 +172,11 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                 </tr>
                 {keys.map((key) => {
                   const meta = getMetric(key)
-                  const va = pickMetric(runA.stats, key)
-                  const vb = pickMetric(runB.stats, key)
+                  const va = pickStat(runA.stats, key)
+                  const vb = pickStat(runB.stats, key)
                   const delta = va != null && vb != null ? vb - va : null
                   const isChild = meta.parent != null
-                  const rowBg = meta.highlight ? 'bg-yellow-50' : ''
+                  const rowBg = shouldHighlight(meta, runA, runB) ? 'bg-yellow-50' : ''
                   return (
                     <tr key={key} className={`hover:bg-forest-50/30 ${rowBg}`}>
                       <td
@@ -135,7 +191,7 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                       <td className="px-3 py-2 text-right text-gray-600">
                         {formatMetric(key, vb)}
                       </td>
-                      <td className={`px-5 py-2 text-right ${deltaClass(key, delta)}`}>
+                      <td className={`px-5 py-2 text-right ${deltaClass(key, delta, runA, runB)}`}>
                         {formatDelta(key, delta)}
                       </td>
                     </tr>
