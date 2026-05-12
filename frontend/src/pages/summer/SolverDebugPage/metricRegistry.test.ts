@@ -16,7 +16,8 @@ describe('METRIC_REGISTRY', () => {
         'search',
         'model',
         'context',
-        'outcome',
+        'outcome_requests',
+        'outcome_campers',
         'size',
         'churn',
       ]).toContain(m.group)
@@ -172,8 +173,38 @@ describe('HighlightRule discriminated union (PR1)', () => {
 })
 
 describe('MetricGroup type accepts outcome/size/churn', () => {
-  it('mp_request_rate is in outcome group', () => {
-    expect(getMetric('mp_request_rate').group).toBe('outcome')
+  it('mp_request_rate is in outcome_requests group', () => {
+    expect(getMetric('mp_request_rate').group).toBe('outcome_requests')
+  })
+
+  it('partitions outcome metrics by accounting unit', () => {
+    const expectedRequests = [
+      'mp_request_rate',
+      'all_request_rate',
+      'mp_requests_satisfied',
+      'mp_requests_total',
+      'satisfied_request_count',
+      'total_requests',
+      'impossible_requests',
+    ]
+    const expectedCampers = [
+      'mp_camper_rate',
+      'all_camper_rate',
+      'mp_campers_satisfied',
+      'mp_campers_total',
+      'all_campers_satisfied',
+      'all_campers_total',
+      'affected_campers',
+      'unsatisfied_no_possible',
+      'unsatisfied_material_parent_unmet',
+      'unsatisfied_other_unmet',
+    ]
+    for (const k of expectedRequests) {
+      expect(getMetric(k).group).toBe('outcome_requests')
+    }
+    for (const k of expectedCampers) {
+      expect(getMetric(k).group).toBe('outcome_campers')
+    }
   })
 
   it('total_persons is in size group', () => {
