@@ -11,9 +11,10 @@
  *
  * Affected relations:
  * - family_camp_registrations.household -> households
- * - family_camp_medical.household -> households
  *
  * Note: family_camp_adults trimmed — final cascadeDelete=true baked into
+ * merged CREATE migration #035.
+ * Note: family_camp_medical trimmed — final cascadeDelete=true baked into
  * merged CREATE migration #035.
  */
 
@@ -34,20 +35,6 @@ migrate((app) => {
   }));
   app.save(fcRegs);
 
-  // 2. family_camp_medical.household
-  const fcMed = app.findCollectionByNameOrId("family_camp_medical");
-  fcMed.fields.add(new Field({
-    type: "relation",
-    name: "household",
-    required: true,
-    presentable: false,
-    collectionId: householdsCol.id,
-    cascadeDelete: true,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(fcMed);
-
 }, (app) => {
   const householdsCol = app.findCollectionByNameOrId("households");
 
@@ -63,17 +50,4 @@ migrate((app) => {
     maxSelect: 1
   }));
   app.save(fcRegs);
-
-  const fcMed = app.findCollectionByNameOrId("family_camp_medical");
-  fcMed.fields.add(new Field({
-    type: "relation",
-    name: "household",
-    required: true,
-    presentable: false,
-    collectionId: householdsCol.id,
-    cascadeDelete: false,
-    minSelect: null,
-    maxSelect: 1
-  }));
-  app.save(fcMed);
 });
