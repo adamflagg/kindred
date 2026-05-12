@@ -258,3 +258,136 @@ describe('SolverRunsTable', () => {
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 })
+
+describe('SolverRunsTable footer (#1254)', () => {
+  it('renders showing-N-of-M and legend in the footer', () => {
+    const runs: SolverRun[] = [
+      { id: 'r1', run_id: 'run_1', status: 'success', created: '2026-05-11T10:00:00Z' },
+      { id: 'r2', run_id: 'run_2', status: 'success', created: '2026-05-11T10:01:00Z' },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+        totalItems={24}
+        hasNextPage={true}
+        fetchNextPage={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Showing 2 of 24 runs/i)).toBeInTheDocument()
+    expect(screen.getByText(/part of a multi-budget sweep/i)).toBeInTheDocument()
+    expect(screen.getByText(/single ad-hoc run/i)).toBeInTheDocument()
+  })
+
+  it('calls fetchNextPage when "Load more" is clicked', () => {
+    const fetchNextPage = vi.fn()
+    render(
+      <SolverRunsTable
+        runs={[]}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+        totalItems={100}
+        hasNextPage={true}
+        fetchNextPage={fetchNextPage}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(fetchNextPage).toHaveBeenCalled()
+  })
+
+  it('hides "Load more" when hasNextPage is false', () => {
+    render(
+      <SolverRunsTable
+        runs={[]}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+        totalItems={5}
+        hasNextPage={false}
+        fetchNextPage={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
+    // Legend still shown
+    expect(screen.getByText(/Showing 0 of 5 runs/i)).toBeInTheDocument()
+  })
+})
+
+describe('SolverRunsTable in-flight chip (#1260)', () => {
+  it('renders running chip with animate-pulse when PB status is started and stats are missing', () => {
+    const runs = [
+      {
+        id: 'r1',
+        run_id: 'run_1',
+        status: 'started',
+        stats: undefined,
+        details: { sweep_id: 'sw_1' },
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    const chip = screen.getByText(/^running$/i)
+    expect(chip).toBeInTheDocument()
+    expect(chip.className).toContain('animate-pulse')
+  })
+
+  it('renders pending chip when PB status is pending (sweep child not yet started)', () => {
+    const runs = [
+      {
+        id: 'r2',
+        run_id: 'run_2',
+        status: 'pending',
+        stats: undefined,
+        details: { sweep_id: 'sw_2' },
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    expect(screen.getByText(/^pending$/i)).toBeInTheDocument()
+  })
+
+  it('prefers OR-Tools status when stats.status is present', () => {
+    const runs = [
+      {
+        id: 'r3',
+        run_id: 'run_3',
+        status: 'success',
+        stats: { status: 'OPTIMAL', walltime_seconds: 5 },
+        details: {},
+        created: '2026-05-11T10:00:00Z',
+      },
+    ] as unknown as SolverRun[]
+    render(
+      <SolverRunsTable
+        runs={runs}
+        visibleColumns={['status']}
+        pinnedRunIds={[]}
+        onTogglePin={() => {}}
+        onRowClick={() => {}}
+      />
+    )
+    expect(screen.getByText('OPTIMAL')).toBeInTheDocument()
+  })
+})

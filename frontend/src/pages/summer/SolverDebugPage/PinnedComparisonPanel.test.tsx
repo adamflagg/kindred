@@ -3,7 +3,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
 
-import type { SolverRun } from '../../../hooks/useSolverRuns'
+import type { SolverRun, SolverRunStats } from '../../../hooks/useSolverRuns'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const makeRun = (statsOverride: Record<string, any> = {}, id = 'a'): SolverRun => ({
+  id,
+  run_id: id,
+  status: 'success',
+  created: '2026-05-07T16:42:00Z',
+  stats: statsOverride as unknown as SolverRun['stats'] & SolverRunStats,
+  details: { git_sha: id === 'a' ? '4a2b1f3' : '8c9d2e7', source_label: 'S2 · Production' },
+})
 
 const a: SolverRun = {
   id: 'a',
@@ -83,8 +93,8 @@ describe('PinnedComparisonPanel', () => {
     expect(screen.getByText('Convergence (∫gap)')).toBeInTheDocument()
     expect(screen.getByText('Branches')).toBeInTheDocument()
     expect(screen.getByText('Solutions')).toBeInTheDocument()
-    expect(screen.getByText('Variables')).toBeInTheDocument()
-    expect(screen.getByText('Constraints')).toBeInTheDocument()
+    expect(screen.getByText('Model variables')).toBeInTheDocument()
+    expect(screen.getByText('Model constraints')).toBeInTheDocument()
   })
 
   it('renders row with em-dash on missing side and skips delta when either side null', () => {
@@ -101,5 +111,67 @@ describe('PinnedComparisonPanel', () => {
     const dashCells = branchesRow!.querySelectorAll('td')
     const dashes = Array.from(dashCells).filter((td) => td.textContent === '—')
     expect(dashes.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders section headers for each group (#mockup-parity)', () => {
+    render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
+    expect(screen.getByText(/^Timing$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Quality$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Search$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Model$/i)).toBeInTheDocument()
+  })
+
+  it('renders constraint-type sub-rows indented under model constraints (#mockup-parity)', () => {
+    const statsWithBreakdown = {
+      walltime_seconds: 10,
+      constraint_type_breakdown: { bool_or: 5, linear: 20, bool_and: 3, lin_max: 2 },
+    }
+    const aFull = makeRun(statsWithBreakdown, 'a')
+    const bFull = makeRun(statsWithBreakdown, 'b')
+    render(<PinnedComparisonPanel runA={aFull} runB={bFull} onClear={vi.fn()} />)
+    // bool_or row label td should have pl-10 class (isChild indent)
+    const boolOrCell = screen.getByText(/bool_or constraints/i).closest('td')!
+    expect(boolOrCell.className).toContain('pl-10')
+    // linear row also indented
+    const linearCell = screen.getByText(/linear constraints/i).closest('td')!
+    expect(linearCell.className).toContain('pl-10')
+  })
+
+  it('highlights cleanup-signal rows with yellow background (#mockup-parity)', () => {
+    const statsWithBreakdown = {
+      walltime_seconds: 10,
+      constraint_type_breakdown: { bool_or: 5, linear: 20, bool_and: 3, lin_max: 2 },
+    }
+    const aFull = makeRun(statsWithBreakdown, 'a')
+    const bFull = makeRun(statsWithBreakdown, 'b')
+    render(<PinnedComparisonPanel runA={aFull} runB={bFull} onClear={vi.fn()} />)
+    // bool_or row should have yellow bg (highlight=true)
+    const boolOrRow = screen.getByText(/bool_or constraints/i).closest('tr')!
+    expect(boolOrRow.className).toContain('bg-yellow-50')
+    // lin_max row also highlighted
+    const linMaxRow = screen.getByText(/lin_max constraints/i).closest('tr')!
+    expect(linMaxRow.className).toContain('bg-yellow-50')
+    // linear row is NOT highlighted
+    const linearRow = screen.getByText(/linear constraints/i).closest('tr')!
+    expect(linearRow.className).not.toContain('bg-yellow-50')
+  })
+
+  it('renders constraint-type values from constraint_type_breakdown (#mockup-parity)', () => {
+    const aStats = {
+      walltime_seconds: 10,
+      constraint_type_breakdown: { bool_or: 5, linear: 20, bool_and: 3, lin_max: 2 },
+    }
+    const bStats = {
+      walltime_seconds: 8,
+      constraint_type_breakdown: { bool_or: 3, linear: 18, bool_and: 3, lin_max: 1 },
+    }
+    const aFull = makeRun(aStats, 'a')
+    const bFull = makeRun(bStats, 'b')
+    render(<PinnedComparisonPanel runA={aFull} runB={bFull} onClear={vi.fn()} />)
+    // bool_or: 5 → 3, delta = -2
+    const boolOrRow = screen.getByText(/bool_or constraints/i).closest('tr')!
+    expect(boolOrRow.textContent).toContain('5')
+    expect(boolOrRow.textContent).toContain('3')
+    expect(boolOrRow.textContent).toMatch(/-2\s*↓/)
   })
 })

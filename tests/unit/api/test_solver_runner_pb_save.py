@@ -318,6 +318,46 @@ class TestSolverRunnerPocketBaseSave:
             assert pb_data["session_id"] == 100
 
     @pytest.mark.asyncio
+    async def test_success_path_sends_year(self, mock_solver_input):
+        """year field must be written to PB on success path (required by schema)."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
+            assert "year" in pb_data, "year must be present in pb_data (required by schema)"
+            assert pb_data["year"] == 2026
+
+    @pytest.mark.asyncio
     async def test_failure_path_sends_correct_fields(self, mock_solver_input):
         """Error path must also use correct field names and status='failed'."""
         patches, mock_runs = self._setup_mocks(mock_solver_input)
@@ -359,6 +399,8 @@ class TestSolverRunnerPocketBaseSave:
             assert pb_data["session_id"] == 100
             assert pb_data["status"] == "failed"
             assert "session_cm_id" not in pb_data
+            assert "year" in pb_data, "year must be present in failure pb_data (required by schema)"
+            assert pb_data["year"] == 2026
 
     @pytest.mark.asyncio
     async def test_failure_path_sends_error_as_json(self, mock_solver_input):
@@ -713,3 +755,55 @@ class TestFailedRunPersistsDetails:
         details = json.loads(pb_data["details"])
         assert details.get("source_kind") == "production"
         assert details.get("git_sha") == "cafef00d"
+
+    @pytest.mark.asyncio
+    async def test_failure_path_uses_short_session_label(self, mock_solver_input):
+        """Failure-path source_label must use the short `S{cm_id}` shape so failed
+        sweep children align visually with successful siblings in the impact-analysis
+        UI. Successful runs produce labels like "S2 · Production" via build_run_details
+        → _lookup_session_short_name; the failure path runs before PocketBase auth and
+        can't fetch the session name, so it falls back to the same `S{cm_id}` form that
+        _lookup_session_short_name emits on lookup failure.
+        """
+        patches, mock_runs = self._setup_for_failure()
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            mock_solver.solve.side_effect = ValueError("boom")
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["prod_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="prod_run",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=60,
+            )
+
+        pb_data = mock_pb_instance.collection.return_value.create.call_args_list[0][0][0]
+        import json
+
+        details = json.loads(pb_data["details"])
+        assert details["source_label"] == "S1000001 · Production", (
+            f"Failure-path label must be short (S<cm_id>) to align with successful siblings; got {details['source_label']!r}"
+        )

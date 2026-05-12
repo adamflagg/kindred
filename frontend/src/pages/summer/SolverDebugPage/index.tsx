@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { DebugTabs } from '../../../components/debug/DebugTabs'
+import { useYear } from '../../../hooks/useCurrentYear'
 import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
 import { useScenarioList } from '../../../hooks/useScenarioList'
 import { useSessionList } from '../../../hooks/useSessionList'
@@ -37,22 +38,15 @@ export default function SolverDebugPage() {
 
   const sessions = useSessionList()
   const scenarios = useScenarioList()
-  // Year scoping: solver_runs has no `year` column, so we exclude runs whose
-  // session_id isn't in the current-year session list. Empty array (sessions
-  // loaded, none for year) → no rows. undefined while sessions are still
-  // loading → keep prior behavior, then re-query when sessions resolve.
-  const validSessionIds = sessions.data ? sessions.data.map((s) => s.cm_id) : undefined
-  const scopedFilters = useMemo(
-    () => (validSessionIds !== undefined ? { ...filters, validSessionIds } : filters),
-    [filters, validSessionIds]
-  )
+  const year = useYear()
+  const filtersWithYear = useMemo(() => ({ ...filters, year }), [filters, year])
   // Polling: kicks in when the user just clicked Run sweep (activeSweepId) or
   // when the fetched data shows an unsettled sweep (page-refresh case). The
   // latter is synced via effect so first render polls=false; once data arrives
   // and the effect runs, the next render flips to 5s and React Query picks up
   // the new interval.
   const [hasUnsettledSweepInData, setHasUnsettledSweepInData] = useState(false)
-  const runs = useSolverRuns(scopedFilters, {
+  const runs = useSolverRuns(filtersWithYear, {
     pollMs: activeSweepId != null || hasUnsettledSweepInData ? 5_000 : false,
   })
   const runSweep = useRunSweep()
@@ -71,9 +65,9 @@ export default function SolverDebugPage() {
   }
 
   // Memoize the items array so downstream useMemo/useEffect deps are stable
-  // when no fetch happened — `runs.data?.items ?? []` would otherwise create a
-  // fresh array reference each render.
-  const items = useMemo(() => runs.data?.items ?? [], [runs.data])
+  // when no fetch happened — flatMap creates a fresh array reference each render.
+  const items = useMemo(() => runs.data?.pages.flatMap((p) => p.items) ?? [], [runs.data])
+  const totalItems = runs.data?.pages[0]?.totalItems ?? 0
 
   // Sync the "unsettled sweep in data" flag so polling can recover after a
   // page refresh (where activeSweepId is wiped). Must be an effect because
@@ -219,7 +213,7 @@ export default function SolverDebugPage() {
     }
   }
 
-  const hasNoRuns = runs.isSuccess && runs.data.totalItems === 0
+  const hasNoRuns = runs.isSuccess && totalItems === 0
 
   return (
     <div className="relative space-y-6">
@@ -299,6 +293,9 @@ export default function SolverDebugPage() {
           pinnedRunIds={visiblePinnedIds}
           onTogglePin={handleTogglePin}
           onRowClick={(run) => setSelectedRunId(run.id)}
+          hasNextPage={runs.hasNextPage}
+          fetchNextPage={runs.fetchNextPage}
+          totalItems={totalItems}
         />
       )}
 

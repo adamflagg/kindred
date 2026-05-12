@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { SweepPanel } from './SweepPanel'
+import { SweepPanel, type SweepPanelSession } from './SweepPanel'
 
 const fakeSessions = [
   { id: '1', cm_id: 1, name: 'Session 1', year: 2026 },
@@ -291,5 +291,116 @@ describe('SweepPanel', () => {
     // immediate placeholder.
     const runBtn = screen.getByRole<HTMLButtonElement>('button', { name: /run sweep/i })
     expect(runBtn).toBeDisabled()
+  })
+
+  it('renders attendee count in session dropdown option (#1250)', () => {
+    const sessions: SweepPanelSession[] = [
+      { id: 'sess1', cm_id: 1001, name: 'Session 2', year: 2026, attendee_count: 142 },
+    ]
+    render(
+      <SweepPanel
+        sessions={sessions}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // The option text should include "(142)"
+    expect(screen.getByText(/\(142\)/)).toBeInTheDocument()
+  })
+
+  it('omits attendee count from option text when attendee_count is not provided (#1250)', () => {
+    // SweepPanelSession.attendee_count is optional — older callers may omit it.
+    const sessions: SweepPanelSession[] = [
+      { id: 'sess1', cm_id: 1001, name: 'Session 2', year: 2026 },
+    ]
+    render(
+      <SweepPanel
+        sessions={sessions}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // No count parenthetical should appear when attendee_count is absent.
+    expect(screen.queryByText(/\(\d+\)/)).not.toBeInTheDocument()
+    // The option itself still renders correctly.
+    expect(screen.getByRole('option', { name: /Session 2/i })).toBeInTheDocument()
+  })
+})
+
+describe('SweepPanel collapse (#mockup-parity)', () => {
+  const STORAGE_KEY = 'solver-debug.sweep-panel-expanded'
+
+  // The global test setup mocks localStorage with vi.fn() stubs.
+  // We need a real in-memory store for these tests to work correctly.
+  let store: Record<string, string> = {}
+  beforeEach(() => {
+    store = {}
+    vi.spyOn(window.localStorage, 'getItem').mockImplementation((key: string) => store[key] ?? null)
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation((key: string, value: string) => {
+      store[key] = value
+    })
+    vi.spyOn(window.localStorage, 'removeItem').mockImplementation((key: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [key]: _removed, ...rest } = store
+      store = rest
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renders expanded by default (no localStorage key set)', () => {
+    render(
+      <SweepPanel
+        sessions={[]}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // Body content is visible: the Run button
+    expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
+    // Collapse control visible
+    expect(screen.getByRole('button', { name: /collapse/i })).toBeInTheDocument()
+  })
+
+  it('renders collapsed when localStorage says false', () => {
+    store[STORAGE_KEY] = 'false'
+    render(
+      <SweepPanel
+        sessions={[]}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    // Body content hidden
+    expect(screen.queryByRole('button', { name: /run sweep/i })).not.toBeInTheDocument()
+    // Expand control visible
+    expect(screen.getByRole('button', { name: /expand/i })).toBeInTheDocument()
+  })
+
+  it('persists collapse state to localStorage when toggled', () => {
+    render(
+      <SweepPanel
+        sessions={[]}
+        scenarios={[]}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    expect(store[STORAGE_KEY]).toBeUndefined()
+    fireEvent.click(screen.getByRole('button', { name: /collapse/i }))
+    expect(store[STORAGE_KEY]).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: /expand/i }))
+    expect(store[STORAGE_KEY]).toBe('true')
   })
 })
