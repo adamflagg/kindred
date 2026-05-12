@@ -161,22 +161,26 @@ export function useTour() {
           return
         }
         const nextSelector =
-          typeof steps[nextIdx]?.element === 'string' ? (steps[nextIdx].element as string) : null
-        waitForSelector(nextSelector, scheduleTimeout, abortController.signal).then((ready) => {
-          if (abortController.signal.aborted) return
-          if (ready) opts.driver.moveNext()
-        })
+          typeof steps[nextIdx]?.element === 'string' ? steps[nextIdx].element : null
+        void waitForSelector(nextSelector, scheduleTimeout, abortController.signal).then(
+          (ready) => {
+            if (abortController.signal.aborted) return
+            if (ready) opts.driver.moveNext()
+          }
+        )
       },
       onPrevClick: (_el, _step, opts) => {
         const currentIdx = opts.state.activeIndex ?? 0
         const prevIdx = currentIdx - 1
         if (prevIdx < 0) return
         const prevSelector =
-          typeof steps[prevIdx]?.element === 'string' ? (steps[prevIdx].element as string) : null
-        waitForSelector(prevSelector, scheduleTimeout, abortController.signal).then((ready) => {
-          if (abortController.signal.aborted) return
-          if (ready) opts.driver.movePrevious()
-        })
+          typeof steps[prevIdx]?.element === 'string' ? steps[prevIdx].element : null
+        void waitForSelector(prevSelector, scheduleTimeout, abortController.signal).then(
+          (ready) => {
+            if (abortController.signal.aborted) return
+            if (ready) opts.driver.movePrevious()
+          }
+        )
       },
       onDestroyed: () => {
         const completedLayers = layerBoundaries
@@ -191,7 +195,7 @@ export function useTour() {
     const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
 
     scheduleTimeout(() => {
-      waitForSelector(firstSelector, scheduleTimeout, abortController.signal).then((ready) => {
+      void waitForSelector(firstSelector, scheduleTimeout, abortController.signal).then((ready) => {
         if (abortController.signal.aborted) return
         if (ready) {
           d.drive()
