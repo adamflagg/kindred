@@ -6,8 +6,11 @@ export function getTourStorage(): TourStorageData {
   try {
     const raw = localStorage.getItem(TOUR_STORAGE_KEY)
     if (!raw) return { layers: {} }
-    const parsed = JSON.parse(raw) as Partial<TourStorageData>
-    return { layers: parsed.layers ?? {} }
+    const parsed: unknown = JSON.parse(raw)
+    const layers =
+      parsed && typeof parsed === 'object' && 'layers' in parsed ? parsed.layers : undefined
+    const isPlainObject = typeof layers === 'object' && layers !== null && !Array.isArray(layers)
+    return { layers: isPlainObject ? layers : {} }
   } catch {
     return { layers: {} }
   }

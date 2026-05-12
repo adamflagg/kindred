@@ -57,13 +57,12 @@ async function flushAndAdvance(ms: number) {
 
 describe('useTour', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.useFakeTimers()
     vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
     vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(mockTourDefinition)
     vi.mocked(tourRegistry.loadLayerDefinition).mockResolvedValue(mockLayerDefinition)
     vi.mocked(tourStorage.getTourStorage).mockReturnValue({ layers: {} })
-    mockDrive.mockClear()
-    mockDestroy.mockClear()
   })
 
   afterEach(() => {
