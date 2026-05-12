@@ -138,6 +138,10 @@ export function useTour() {
 
     let highestStepReached = -1
 
+    abortControllerRef.current?.abort()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     const d = driver({
       showProgress: true,
       showButtons: ['next', 'previous', 'close'],
@@ -148,6 +152,20 @@ export function useTour() {
         if (idx !== undefined && idx > highestStepReached) {
           highestStepReached = idx
         }
+      },
+      onNextClick: (_el, _step, opts) => {
+        const currentIdx = opts.state.activeIndex ?? 0
+        const nextIdx = currentIdx + 1
+        if (nextIdx >= steps.length) {
+          opts.driver.destroy()
+          return
+        }
+        const nextSelector =
+          typeof steps[nextIdx]?.element === 'string' ? (steps[nextIdx].element as string) : null
+        waitForSelector(nextSelector, scheduleTimeout, abortController.signal).then((ready) => {
+          if (abortController.signal.aborted) return
+          if (ready) opts.driver.moveNext()
+        })
       },
       onDestroyed: () => {
         const completedLayers = layerBoundaries
@@ -160,10 +178,6 @@ export function useTour() {
     driverRef.current = d
 
     const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
-
-    abortControllerRef.current?.abort()
-    const abortController = new AbortController()
-    abortControllerRef.current = abortController
 
     scheduleTimeout(() => {
       waitForSelector(firstSelector, scheduleTimeout, abortController.signal).then((ready) => {
