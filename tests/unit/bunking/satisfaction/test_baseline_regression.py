@@ -73,7 +73,6 @@ class _MinimalConfig:
         # production magnitudes.
         "constraint.grade_spread.penalty": 100,
         "constraint.cabin_capacity.penalty": 500,
-        "constraint.cabin_minimum_occupancy.min": 8,
         "constraint.cabin_minimum_occupancy.penalty": 50,
         # Other canonical keys
         "constraint.grade_spread.max_spread": 2,

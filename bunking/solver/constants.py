@@ -5,7 +5,7 @@ max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into the two
 constants below. None were ever tuned at runtime, and ``max_size`` was never
 backed by a real PB column.
 
-Cabin minimum occupancy (this PR): collapsed from
+Cabin minimum occupancy (PR #1331): collapsed from
 ``constraint.cabin_minimum_occupancy.{enabled,min,preferred,force_all_used}``
 into the two constants below. The constraint always runs (staff invariant —
 never fewer than ~8 campers per bunk), so the ``enabled`` and

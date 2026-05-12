@@ -28,7 +28,6 @@ class _CanonicalKeyConfig:
     _values: ClassVar[dict[str, int]] = {
         "constraint.grade_spread.penalty": 100,
         "constraint.cabin_capacity.penalty": 500,
-        "constraint.cabin_minimum_occupancy.min": 8,
         "constraint.cabin_minimum_occupancy.penalty": 50,
     }
 
@@ -95,7 +94,6 @@ class TestEvaluateScenarioScore:
             # Canonical keys (matched values; consulted by the autouse loader)
             "constraint.grade_spread.penalty": 100,
             "constraint.cabin_capacity.penalty": 500,
-            "constraint.cabin_minimum_occupancy.min": 8,
             "constraint.cabin_minimum_occupancy.penalty": 50,
             # Other keys read via the config= parameter
             "constraint.grade_spread.max_spread": 2,
@@ -447,7 +445,6 @@ class TestCalculatePenalties:
             # Canonical keys
             "constraint.grade_spread.penalty": 100,
             "constraint.cabin_capacity.penalty": 500,
-            "constraint.cabin_minimum_occupancy.min": 8,
             "constraint.cabin_minimum_occupancy.penalty": 50,
             "constraint.grade_spread.max_spread": 2,
             "constraint.cabin_capacity.standard": 12,

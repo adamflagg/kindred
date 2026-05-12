@@ -13,7 +13,7 @@ Canonical keys:
 
 (``constraint.cabin_capacity.penalty`` was removed in PR #1226 along with the
 soft cabin-capacity constraint path. ``constraint.cabin_minimum_occupancy.min``
-was removed in this PR — the threshold is now the hardcoded
+was removed in PR #1331 — the threshold is now the hardcoded
 ``MIN_BUNK_OCCUPANCY`` constant; ``min_occupancy_threshold()`` is preserved as
 a thin wrapper so existing call sites and the centralization invariant tests
 keep working.)
