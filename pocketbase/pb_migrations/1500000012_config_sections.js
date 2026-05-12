@@ -83,11 +83,11 @@ migrate((app) => {
       "CREATE UNIQUE INDEX idx_config_sections_key ON config_sections (section_key)",
       "CREATE INDEX idx_config_sections_order ON config_sections (display_order)"
     ],
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: '@request.auth.is_admin = true',
+    viewRule: '@request.auth.is_admin = true',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     options: {}
   });
 
@@ -204,13 +204,6 @@ migrate((app) => {
       title: "Historical Context & Tracking",
       description: "Settings for incorporating historical bunking and request data",
       display_order: 28,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ui-preferences",
-      title: "UI Preferences",
-      description: "User interface preferences and display settings",
-      display_order: 29,
       expanded_by_default: false
     }
   ];

@@ -22,6 +22,8 @@
  * merged CREATE migration #035.
  * Note: session_groups trimmed — final adminOnly rules baked into
  * merged CREATE migration #005.
+ * Note: config_sections trimmed — final adminOnly rules baked into
+ * merged CREATE migration #012.
  */
 
 migrate((app) => {
@@ -45,7 +47,7 @@ migrate((app) => {
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "config_sections", "sheets_workbooks"
+    "sheets_workbooks"
   ]
 
   for (const name of tier2) {
@@ -80,7 +82,7 @@ migrate((app) => {
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "config_sections", "sheets_workbooks",
+    "sheets_workbooks",
     "debug_parse_results", "solver_runs"
   ]
 
