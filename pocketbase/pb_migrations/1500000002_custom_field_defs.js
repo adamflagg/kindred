@@ -10,15 +10,17 @@
 const COLLECTION_ID_CUSTOM_FIELD_DEFS = "col_custom_field_defs";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   const collection = new Collection({
     id: COLLECTION_ID_CUSTOM_FIELD_DEFS,
     type: "base",
     name: "custom_field_defs",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       {
         type: "number",
