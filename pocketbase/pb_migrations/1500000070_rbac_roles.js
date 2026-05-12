@@ -5,6 +5,8 @@
  *
  * Stores role definitions with JSON permission arrays.
  * System roles (is_system=true) cannot be deleted by non-admins.
+ *
+ * Seeds the final-state system roles inline (bunking-staff, registrar, finance).
  */
 
 migrate((app) => {
@@ -75,6 +77,40 @@ migrate((app) => {
   });
 
   app.save(collection);
+
+  const systemRoles = [
+    {
+      name: "Bunking Staff",
+      slug: "bunking-staff",
+      description: "Full bunking access: board, requests, scenarios, solver, CSV upload, CampMinder sync",
+      permissions: ["bunking.manage", "sheets.export"],
+      is_system: true
+    },
+    {
+      name: "Registrar",
+      slug: "registrar",
+      description: "Registration metrics and geographic data management",
+      permissions: ["metrics.geo", "registration.manage"],
+      is_system: true
+    },
+    {
+      name: "Finance",
+      slug: "finance",
+      description: "General metrics plus financial projections and transaction data",
+      permissions: ["metrics.financial", "sheets.export"],
+      is_system: true
+    }
+  ];
+
+  for (const role of systemRoles) {
+    const record = new Record(collection);
+    record.set("name", role.name);
+    record.set("slug", role.slug);
+    record.set("description", role.description);
+    record.set("permissions", role.permissions);
+    record.set("is_system", role.is_system);
+    app.save(record);
+  }
 }, (app) => {
   const collection = app.findCollectionByNameOrId("roles");
   app.delete(collection);
