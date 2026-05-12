@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { getMetric } from './metricRegistry'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
 
 import type { SolverRun, SolverRunStats } from '../../../hooks/useSolverRuns'
@@ -154,6 +155,22 @@ describe('PinnedComparisonPanel', () => {
     // linear row is NOT highlighted
     const linearRow = screen.getByText(/linear constraints/i).closest('tr')!
     expect(linearRow.className).not.toContain('bg-yellow-50')
+  })
+
+  it('shows metric description on each row label as a title tooltip (mirrors historical-list headers)', () => {
+    render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
+    // The metric label cell in column 1 of each row should carry a title
+    // attribute matching getMetric(key).description — same explanation as
+    // the historical SolverRunsTable column headers.
+    const wallCell = screen.getByText('Wall time').closest('td')!
+    expect(wallCell.getAttribute('title')).toBe(getMetric('walltime_seconds').description)
+    expect(wallCell.className).toContain('cursor-help')
+
+    const gapCell = screen.getByText('Gap').closest('td')!
+    expect(gapCell.getAttribute('title')).toBe(getMetric('optimality_gap').description)
+
+    const branchesCell = screen.getByText('Branches').closest('td')!
+    expect(branchesCell.getAttribute('title')).toBe(getMetric('num_branches').description)
   })
 
   it('renders constraint-type values from constraint_type_breakdown (#mockup-parity)', () => {

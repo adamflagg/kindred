@@ -123,7 +123,10 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                   const rowBg = meta.highlight ? 'bg-yellow-50' : ''
                   return (
                     <tr key={key} className={`hover:bg-forest-50/30 ${rowBg}`}>
-                      <td className={`px-5 py-2 text-gray-700 ${isChild ? 'pl-10' : ''}`}>
+                      <td
+                        className={`px-5 py-2 text-gray-700 ${isChild ? 'pl-10' : ''} ${meta.description ? 'cursor-help' : ''}`}
+                        title={meta.description || undefined}
+                      >
                         {meta.label}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-600">
