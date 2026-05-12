@@ -475,4 +475,63 @@ describe('useTour', () => {
 
     vi.mocked(document.querySelector).mockRestore()
   })
+
+  it('replay() — pending Next-readiness wait is aborted on unmount', async () => {
+    const twoStepTour: TourDefinition = {
+      id: 'debug',
+      version: 1,
+      layers: [],
+      steps: [
+        {
+          element: '[data-tour="step-one"]',
+          popover: { title: 'One', description: 'First' },
+        },
+        {
+          element: '[data-tour="step-two"]',
+          popover: { title: 'Two', description: 'Second' },
+        },
+      ],
+    }
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(twoStepTour)
+    vi.mocked(tourStorage.getTourStorage).mockReturnValue({ layers: {} })
+
+    const stepOneEl = document.createElement('div')
+    let stepTwoExists = false
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="step-one"]') return stepOneEl
+      if (selector === '[data-tour="step-two"]') return stepTwoExists ? stepOneEl : null
+      return originalQuerySelector(selector)
+    })
+
+    const driverModule = await import('driver.js')
+    const { result, unmount } = renderHook(() => useTour())
+    await flushAndAdvance(1000)
+
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    const lastCall = vi.mocked(driverModule.driver).mock.calls.at(-1)?.[0]
+    act(() => {
+      lastCall!.onNextClick!(undefined, twoStepTour.steps[0] as never, {
+        config: lastCall!,
+        state: { activeIndex: 0 } as never,
+        driver: mockDriverInstance as never,
+      })
+    })
+
+    act(() => {
+      unmount()
+    })
+
+    stepTwoExists = true
+    await flushAndAdvance(5000)
+
+    expect(mockMoveNext).not.toHaveBeenCalled()
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
 })
