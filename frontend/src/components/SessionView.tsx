@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Activity } from 'react'
+import { useState, useEffect, useCallback, useMemo, Activity } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { toast } from 'react-hot-toast'
 import { socialGraphService } from '../services/socialGraph'
@@ -183,6 +183,23 @@ export default function SessionView() {
     currentYear,
     scenarioId: currentScenario?.id,
   })
+
+  // #1310 — feed in-session campers into RequestReviewPanel as the seed for
+  // its personMap. The panel only needs cm_id + first/last name + grade for
+  // display, but the prop is typed as PersonsResponse[] (full PB shape) for
+  // homogeneity with the fetched persons. The cast bypasses the fact that
+  // many PersonsResponse fields are unused by request rows.
+  const requestSeedPersons = useMemo(
+    () =>
+      campers.map((c) => ({
+        cm_id: c.person_cm_id,
+        first_name: c.first_name ?? '',
+        last_name: c.last_name ?? '',
+        grade: c.grade,
+        year: currentYear,
+      })) as unknown as import('../types/pocketbase-types').PersonsResponse[],
+    [campers, currentYear]
+  )
 
   const { data: bunkRequestsCount = 0 } = useBunkRequestsCount({
     selectedSession,
@@ -370,6 +387,11 @@ export default function SessionView() {
                   sessionName={
                     allSessionsForLookup.find((s) => s.cm_id === selectedSessionCmId)?.name
                   }
+                  // #1310 — seed the panel's personMap with in-session campers
+                  // we already have, so rows show names on first paint without
+                  // a second round-trip. The persons fetch still fires for any
+                  // requestee that points outside this session.
+                  seedPersons={requestSeedPersons}
                 />
               </BunkRequestProvider>
             ) : (

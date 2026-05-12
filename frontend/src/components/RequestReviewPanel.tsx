@@ -17,7 +17,6 @@ import {
   Shield,
   Plus,
   GitMerge,
-  Scissors,
   Users,
   Loader2,
   Star,
@@ -36,16 +35,11 @@ import clsx from 'clsx'
 import {
   getDispositionClasses,
   formatDispositionReason,
-  formatReason,
-  shouldShowReasonInStatus,
-  CONFIDENCE_AUTO_ACCEPT,
-  CONFIDENCE_RESOLVED,
   MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
-import EditableRequestType from './EditableRequestType'
-import EditableRequestTarget from './EditableRequestTarget'
-import { computeTypeUpdate, computeTargetUpdate } from './requestEditableHelpers'
 import EditablePriority from './EditablePriority'
+import RequestRowDesktop from './RequestRowDesktop'
+import RequestRowMobile from './RequestRowMobile'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { CamperRequestSummary } from './CamperRequestSummary'
@@ -53,13 +47,18 @@ import MergeRequestsModal from './MergeRequestsModal'
 import SplitRequestModal from './SplitRequestModal'
 import { ConfirmActionPopover } from './ConfirmActionPopover'
 import { useOptimisticValidation } from '../hooks/useOptimisticValidation'
-import { formatGradeOrdinal } from '../utils/gradeUtils'
 
 interface RequestReviewPanelProps {
   sessionId: number
   relatedSessionIds?: number[] // Additional session IDs to include (sub-sessions, AG sessions)
   year: number
   sessionName?: string | undefined // Session display name (e.g., "TOC2") — passed to EditableRequestTarget
+  // #1310 — when the parent already holds the in-session campers, pass them in
+  // so rows show real names on first paint and the secondary persons fetch can
+  // be skipped (or scoped down to only IDs the seed doesn't cover, e.g. a
+  // cross-session requestee). Each entry needs at minimum cm_id + first_name +
+  // last_name to drive the displayed label; grade is used for the ordinal.
+  seedPersons?: PersonsResponse[]
 }
 
 interface FilterState {
@@ -76,6 +75,7 @@ export default function RequestReviewPanel({
   relatedSessionIds = [],
   year,
   sessionName,
+  seedPersons,
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
@@ -125,14 +125,17 @@ export default function RequestReviewPanel({
     }
   }, [bulkConfirm])
 
-  function openConfirmPopover(
-    e: React.MouseEvent<HTMLButtonElement>,
-    action: 'approve' | 'decline',
-    requestId: string
-  ): void {
-    e.stopPropagation()
-    setConfirmPopover({ action, anchorRect: e.currentTarget.getBoundingClientRect(), requestId })
-  }
+  const openConfirmPopover = useCallback(
+    (
+      e: React.MouseEvent<HTMLButtonElement>,
+      action: 'approve' | 'decline',
+      requestId: string
+    ): void => {
+      e.stopPropagation()
+      setConfirmPopover({ action, anchorRect: e.currentTarget.getBoundingClientRect(), requestId })
+    },
+    []
+  )
   const [filters, setFilters] = useState<FilterState>(() => {
     try {
       const stored = localStorage.getItem(storageKey)
@@ -252,15 +255,26 @@ export default function RequestReviewPanel({
     enabled: !!user,
   })
 
-  // Fetch person data for display - use string-based key for stability
+  // #1310 — seed map keyed on cm_id from parent-supplied campers. Stable
+  // identity across renders unless seedPersons itself changes.
+  const seedMap = useMemo(() => {
+    const m = new Map<number, PersonsResponse>()
+    if (seedPersons) {
+      for (const p of seedPersons) m.set(p.cm_id, p)
+    }
+    return m
+  }, [seedPersons])
+
+  // Fetch person data for display - use string-based key for stability.
+  // Only IDs NOT in the seed need a network round-trip.
   const personIds = useMemo(() => {
     const ids = new Set<number>()
     requests.forEach((r: BunkRequestsResponse) => {
-      ids.add(r.requester_id)
-      if (r.requestee_id) ids.add(r.requestee_id)
+      if (!seedMap.has(r.requester_id)) ids.add(r.requester_id)
+      if (r.requestee_id && !seedMap.has(r.requestee_id)) ids.add(r.requestee_id)
     })
     return Array.from(ids).sort((a, b) => a - b)
-  }, [requests])
+  }, [requests, seedMap])
 
   // Stable string key prevents unnecessary refetches when array reference changes
   const personIdsKey = useMemo(() => personIds.join(','), [personIds])
@@ -289,9 +303,14 @@ export default function RequestReviewPanel({
     enabled: !!user && personIds.length > 0,
   })
 
+  // Merge seed (for instant in-session names) with fetched (for cross-session
+  // requestees). Fetched entries win on conflict so a stale seed doesn't mask
+  // a fresher record.
   const personMap = useMemo(() => {
-    return new Map(persons.map((p: PersonsResponse) => [p.cm_id, p]))
-  }, [persons])
+    const m = new Map<number, PersonsResponse>(seedMap)
+    for (const p of persons as PersonsResponse[]) m.set(p.cm_id, p)
+    return m
+  }, [seedMap, persons])
 
   // Staff-review exemption: absorbed-request lookup for the split modal.
   // Merged-away rows scoped by merged_into, used by staff to undo a merge.
@@ -786,55 +805,6 @@ export default function RequestReviewPanel({
     setConflictingRequest(null)
   }, [clearConflicts])
 
-  const getConfidenceColor = (score: number) => {
-    if (score >= CONFIDENCE_AUTO_ACCEPT)
-      return 'text-forest-700 bg-forest-50 dark:text-forest-300 dark:bg-forest-900/30'
-    if (score >= CONFIDENCE_RESOLVED)
-      return 'text-forest-600 bg-forest-50/70 dark:text-forest-400 dark:bg-forest-900/20'
-    if (score >= 0.5) return 'text-amber-700 bg-amber-50 dark:text-amber-300 dark:bg-amber-900/30'
-    return 'text-bark-700 bg-bark-50 dark:text-bark-300 dark:bg-bark-900/30'
-  }
-
-  // Get confidence indicator icon based on score
-  const getConfidenceIndicator = (score: number) => {
-    if (score >= CONFIDENCE_AUTO_ACCEPT) {
-      return <CheckCheck className="mr-1 inline h-3 w-3" /> // Double check for high confidence
-    }
-    if (score >= CONFIDENCE_RESOLVED) {
-      return <CheckCircle className="mr-1 inline h-3 w-3" /> // Single check for standard
-    }
-    return null // No indicator for low confidence
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return (
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-            Pending
-          </span>
-        )
-      case 'resolved':
-        return (
-          <span className="bg-forest-100 text-forest-800 dark:bg-forest-900/40 dark:text-forest-200 rounded-full px-2.5 py-1 text-xs font-medium">
-            Resolved
-          </span>
-        )
-      case 'declined':
-        return (
-          <span className="bg-bark-100 text-bark-800 dark:bg-bark-900/40 dark:text-bark-200 rounded-full px-2.5 py-1 text-xs font-medium">
-            Declined
-          </span>
-        )
-      default:
-        return (
-          <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-1 text-xs font-medium">
-            {status}
-          </span>
-        )
-    }
-  }
-
   const getRequestTypeLabel = (type: string) => {
     switch (type) {
       case 'bunk_with':
@@ -872,6 +842,34 @@ export default function RequestReviewPanel({
     },
     [sortedRequests, selectedRequests, personMap]
   )
+
+  // #1310 — stable callbacks for memoized row children. Each closes over the
+  // row's id rather than the row object, so identity is stable across renders.
+  const handleSelectCamperId = useCallback((cmId: string) => {
+    setSelectedCamperId(cmId)
+  }, [])
+
+  const handleUnlockRow = useCallback(
+    (id: string) => {
+      updateRequestMutation.mutate({
+        id,
+        updates: { request_locked: false },
+      })
+    },
+    [updateRequestMutation]
+  )
+
+  const handlePriorityChangeRow = useCallback(
+    (id: string, priority: number) => {
+      updateRequestMutation.mutate({ id, updates: { priority } })
+    },
+    [updateRequestMutation]
+  )
+
+  const handleSplitRow = useCallback((request: BunkRequestsResponse) => {
+    setRequestToSplit(request)
+    setShowSplitModal(true)
+  }, [])
 
   return (
     <>
@@ -1169,168 +1167,34 @@ export default function RequestReviewPanel({
                 <div className="pb-[100px] md:hidden">
                   {sortedRequests.map((request) => {
                     const requester = personMap.get(request.requester_id)
+                    const requestee =
+                      request.requestee_id > 0 ? personMap.get(request.requestee_id) : undefined
                     const isExpanded = expandedRows.has(request.id)
+                    const rowHasMultipleSources = hasMultipleSources(request)
 
                     return (
-                      <div key={request.id} data-request-row-id={request.id}>
-                        <div
-                          className="request-card-mobile hover:bg-muted/50 cursor-pointer transition-colors"
-                          data-testid="request-card-mobile"
-                          onClick={() => toggleRowExpansion(request.id, request)}
-                        >
-                          {/* Checkbox */}
-                          <div className="card-checkbox" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedRequests.has(request.id)}
-                              onChange={() => toggleRequestSelection(request.id)}
-                              className="h-5 w-5 rounded"
-                            />
-                          </div>
-
-                          {/* Main info: Requester name and type */}
-                          <div className="card-main">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedCamperId(String(request.requester_id))
-                                }}
-                                className="hover:text-primary min-w-0 text-left font-medium transition-colors hover:underline"
-                              >
-                                {requester
-                                  ? `${requester.first_name || ''} ${requester.last_name || ''}`
-                                  : `Person ${request.requester_id}`}
-                                {requester?.grade != null && requester.grade > 0 && (
-                                  <span className="text-muted-foreground ml-1 text-xs font-normal">
-                                    ({formatGradeOrdinal(requester.grade)})
-                                  </span>
-                                )}
-                              </button>
-                              {request.is_reciprocal && (
-                                <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
-                              )}
-                            </div>
-                            <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
-                              <EditableRequestType
-                                value={request.request_type}
-                                onChange={(newType) =>
-                                  handleValidatedUpdate(
-                                    request,
-                                    computeTypeUpdate(
-                                      newType as BunkRequestsResponse['request_type']
-                                    )
-                                  )
-                                }
-                                disabled={request.request_locked}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Badges: Confidence & Status */}
-                          <div className="card-badges">
-                            <span
-                              className={clsx(
-                                'flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                                getConfidenceColor(request.confidence_score)
-                              )}
-                            >
-                              {getConfidenceIndicator(request.confidence_score)}
-                              {(request.confidence_score * 100).toFixed(0)}%
-                            </span>
-                            <div className="flex flex-col items-end gap-0.5">
-                              {getStatusBadge(request.status)}
-                              {shouldShowReasonInStatus(
-                                request.status,
-                                request.disposition_reason
-                              ) && (
-                                <span
-                                  data-testid="status-reason-line"
-                                  className="text-muted-foreground max-w-[8rem] truncate text-right text-[11px]"
-                                >
-                                  {formatReason(request.disposition_reason)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Request target info */}
-                          <div className="card-request" onClick={(e) => e.stopPropagation()}>
-                            <EditableRequestTarget
-                              requestType={request.request_type}
-                              currentPersonId={request.requestee_id}
-                              agePreferenceTarget={request.age_preference_target}
-                              sessionId={sessionId}
-                              year={year}
-                              requesterCmId={request.requester_id}
-                              onChange={(updates) => {
-                                handleValidatedUpdate(request, computeTargetUpdate(updates))
-                              }}
-                              disabled={request.request_locked}
-                              originalText={request.original_text}
-                              requestedPersonName={request.requested_person_name}
-                              parseNotes={request.parse_notes}
-                              onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
-                              personMap={personMap}
-                              sessionName={sessionName}
-                            />
-                            {(() => {
-                              const targetPerson =
-                                request.requestee_id > 0
-                                  ? personMap.get(request.requestee_id)
-                                  : undefined
-                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
-                                <span className="text-muted-foreground ml-1 text-xs">
-                                  ({formatGradeOrdinal(targetPerson.grade)})
-                                </span>
-                              ) : null
-                            })()}
-                          </div>
-
-                          {/* Actions */}
-                          <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-                            {request.status === 'resolved' && request.request_locked && (
-                              <button
-                                onClick={() =>
-                                  updateRequestMutation.mutate({
-                                    id: request.id,
-                                    updates: { request_locked: false },
-                                  })
-                                }
-                                className="hover:bg-primary/10 text-primary touch-manipulation rounded-lg p-2 transition-colors"
-                                title="Unprotect"
-                              >
-                                <Shield className="h-5 w-5" />
-                              </button>
-                            )}
-                            {hasMultipleSources(request) && (
-                              <button
-                                onClick={() => {
-                                  setRequestToSplit(request)
-                                  setShowSplitModal(true)
-                                }}
-                                className="touch-manipulation rounded-lg p-2 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/30"
-                                title="Split merged request"
-                              >
-                                <Scissors className="h-5 w-5" />
-                              </button>
-                            )}
-                            <button
-                              onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
-                              className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 touch-manipulation rounded-lg p-2 transition-colors"
-                              title="Approve"
-                            >
-                              <CheckCircle className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
-                              className="hover:bg-destructive/10 text-destructive touch-manipulation rounded-lg p-2 transition-colors"
-                              title="Reject"
-                            >
-                              <XCircle className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </div>
+                      <div
+                        key={request.id}
+                        data-request-row-id={request.id}
+                        onClick={() => toggleRowExpansion(request.id, request)}
+                      >
+                        <RequestRowMobile
+                          request={request}
+                          requester={requester}
+                          requestee={requestee}
+                          isSelected={selectedRequests.has(request.id)}
+                          sessionId={sessionId}
+                          year={year}
+                          sessionName={sessionName}
+                          personMap={personMap}
+                          hasMultipleSources={rowHasMultipleSources}
+                          onToggleSelection={toggleRequestSelection}
+                          onSelectCamper={handleSelectCamperId}
+                          onValidatedUpdate={handleValidatedUpdate}
+                          onUnlock={handleUnlockRow}
+                          onSplit={handleSplitRow}
+                          onConfirmAction={openConfirmPopover}
+                        />
 
                         {/* Expanded details - mobile */}
                         {isExpanded && (
@@ -1402,7 +1266,10 @@ export default function RequestReviewPanel({
                 <div className="hidden min-w-[1064px] pb-[200px] md:block">
                   {sortedRequests.map((request) => {
                     const requester = personMap.get(request.requester_id)
+                    const requestee =
+                      request.requestee_id > 0 ? personMap.get(request.requestee_id) : undefined
                     const isExpanded = expandedRows.has(request.id)
+                    const rowHasMultipleSources = hasMultipleSources(request)
 
                     return (
                       <div
@@ -1416,179 +1283,24 @@ export default function RequestReviewPanel({
                         )}
                         onClick={() => toggleRowExpansion(request.id, request)}
                       >
-                        <div className="request-table-grid">
-                          <div
-                            className="flex items-center justify-center px-3 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedRequests.has(request.id)}
-                              onChange={() => toggleRequestSelection(request.id)}
-                              className="rounded"
-                            />
-                          </div>
-                          <div className="flex min-w-0 items-center gap-1.5 px-4 py-3">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setSelectedCamperId(String(request.requester_id))
-                              }}
-                              className="hover:text-primary cursor-pointer truncate text-left font-medium transition-colors hover:underline"
-                              title="View camper details"
-                            >
-                              {requester
-                                ? `${requester.first_name || ''} ${requester.last_name || ''}`
-                                : `Person ${request.requester_id}`}
-                              {requester?.grade != null && requester.grade > 0 && (
-                                <span className="text-muted-foreground ml-1 text-xs font-normal">
-                                  ({formatGradeOrdinal(requester.grade)})
-                                </span>
-                              )}
-                            </button>
-                            {request.is_reciprocal && (
-                              <span className={MUTUAL_BADGE_CLASSES}>mutual</span>
-                            )}
-                          </div>
-                          <div
-                            className="flex items-center px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <EditableRequestTarget
-                              requestType={request.request_type}
-                              currentPersonId={request.requestee_id}
-                              agePreferenceTarget={request.age_preference_target}
-                              sessionId={sessionId}
-                              year={year}
-                              requesterCmId={request.requester_id}
-                              onChange={(updates) => {
-                                handleValidatedUpdate(request, computeTargetUpdate(updates))
-                              }}
-                              disabled={request.request_locked}
-                              originalText={request.original_text}
-                              requestedPersonName={request.requested_person_name}
-                              parseNotes={request.parse_notes}
-                              onViewCamper={(personCmId) => setSelectedCamperId(String(personCmId))}
-                              personMap={personMap}
-                              sessionName={sessionName}
-                            />
-                            {(() => {
-                              const targetPerson =
-                                request.requestee_id > 0
-                                  ? personMap.get(request.requestee_id)
-                                  : undefined
-                              return targetPerson?.grade != null && targetPerson.grade > 0 ? (
-                                <span className="text-muted-foreground ml-1 text-xs">
-                                  ({formatGradeOrdinal(targetPerson.grade)})
-                                </span>
-                              ) : null
-                            })()}
-                          </div>
-                          <div
-                            className="flex items-center px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <EditableRequestType
-                              value={request.request_type}
-                              onChange={(newType) =>
-                                handleValidatedUpdate(
-                                  request,
-                                  computeTypeUpdate(newType as BunkRequestsResponse['request_type'])
-                                )
-                              }
-                              disabled={request.request_locked}
-                            />
-                          </div>
-                          <div
-                            className="flex items-center justify-center px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <EditablePriority
-                              value={request.priority}
-                              onChange={(newPriority) => {
-                                updateRequestMutation.mutate({
-                                  id: request.id,
-                                  updates: { priority: newPriority },
-                                })
-                              }}
-                              disabled={false} // Allow priority changes even for resolved requests
-                            />
-                          </div>
-                          <div className="flex items-center justify-center px-4 py-3">
-                            <span
-                              className={clsx(
-                                'flex items-center rounded-full px-2 py-1 text-xs font-medium',
-                                getConfidenceColor(request.confidence_score)
-                              )}
-                            >
-                              {getConfidenceIndicator(request.confidence_score)}
-                              {(request.confidence_score * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-center justify-center gap-0.5 px-4 py-3">
-                            {getStatusBadge(request.status)}
-                            {shouldShowReasonInStatus(
-                              request.status,
-                              request.disposition_reason
-                            ) && (
-                              <span
-                                data-testid="status-reason-line"
-                                className="text-muted-foreground max-w-full truncate text-[11px]"
-                              >
-                                {formatReason(request.disposition_reason)}
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            className="flex items-center justify-end px-4 py-3"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex min-w-[100px] items-center justify-end gap-1">
-                              {request.status === 'resolved' && request.request_locked && (
-                                <button
-                                  onClick={() =>
-                                    updateRequestMutation.mutate({
-                                      id: request.id,
-                                      updates: {
-                                        request_locked: false,
-                                      },
-                                    })
-                                  }
-                                  className="hover:bg-primary/10 text-primary rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
-                                  title="Click to unprotect and allow editing"
-                                >
-                                  <Shield className="h-4 w-4" />
-                                </button>
-                              )}
-                              {hasMultipleSources(request) && (
-                                <button
-                                  onClick={() => {
-                                    setRequestToSplit(request)
-                                    setShowSplitModal(true)
-                                  }}
-                                  className="rounded-lg p-1.5 text-amber-600 opacity-80 transition-colors hover:bg-amber-100 hover:opacity-100 dark:text-amber-400 dark:hover:bg-amber-900/30"
-                                  title="Split merged request"
-                                >
-                                  <Scissors className="h-4 w-4" />
-                                </button>
-                              )}
-                              <button
-                                onClick={(e) => openConfirmPopover(e, 'approve', request.id)}
-                                className="hover:bg-forest-100 dark:hover:bg-forest-900/30 text-forest-600 dark:text-forest-400 rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
-                                title="Approve"
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={(e) => openConfirmPopover(e, 'decline', request.id)}
-                                className="hover:bg-destructive/10 text-destructive rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
-                                title="Reject"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                        <RequestRowDesktop
+                          request={request}
+                          requester={requester}
+                          requestee={requestee}
+                          isSelected={selectedRequests.has(request.id)}
+                          sessionId={sessionId}
+                          year={year}
+                          sessionName={sessionName}
+                          personMap={personMap}
+                          hasMultipleSources={rowHasMultipleSources}
+                          onToggleSelection={toggleRequestSelection}
+                          onSelectCamper={handleSelectCamperId}
+                          onValidatedUpdate={handleValidatedUpdate}
+                          onPriorityChange={handlePriorityChangeRow}
+                          onUnlock={handleUnlockRow}
+                          onSplit={handleSplitRow}
+                          onConfirmAction={openConfirmPopover}
+                        />
                         {isExpanded && (
                           <div
                             className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4"
