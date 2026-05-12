@@ -13,6 +13,8 @@
 const COLLECTION_ID_HOUSEHOLD_CUSTOM_VALUES = "col_household_cf_vals";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   const householdsCol = app.findCollectionByNameOrId("households");
   const customFieldDefsCol = app.findCollectionByNameOrId("custom_field_defs");
 
@@ -20,11 +22,11 @@ migrate((app) => {
     id: COLLECTION_ID_HOUSEHOLD_CUSTOM_VALUES,
     type: "base",
     name: "household_custom_values",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // Relation to households collection
       {

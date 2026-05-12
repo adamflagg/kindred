@@ -30,6 +30,8 @@
  * merged CREATE migration #009.
  * Note: financial_transactions trimmed — final adminOnly rules baked into
  * merged CREATE migration #031.
+ * Note: household_custom_values trimmed — final adminOnly rules baked into
+ * merged CREATE migration #029.
  */
 
 migrate((app) => {
@@ -47,7 +49,6 @@ migrate((app) => {
 
   // Tier 2: Admin-only (sensitive data not accessed by frontend)
   const tier2 = [
-    "household_custom_values",
     "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
@@ -81,7 +82,6 @@ migrate((app) => {
   }
 
   const all = [
-    "household_custom_values",
     "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
