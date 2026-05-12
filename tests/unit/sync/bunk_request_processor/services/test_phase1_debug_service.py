@@ -362,7 +362,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         assert parse_request.requester_name == "Li Garcia"  # Uses preferred_name
         assert parse_request.requester_cm_id == 12345
         assert parse_request.request_text == "With Emma"
-        assert parse_request.field_name == SourceField.BUNK_WITH
+        assert parse_request.field_name == SourceField.BUNK_REQUEST_FORM
 
     def test_convert_uses_first_name_when_no_preferred(self, debug_service: Phase1DebugService) -> None:
         """Test that first_name is used when preferred_name is None."""

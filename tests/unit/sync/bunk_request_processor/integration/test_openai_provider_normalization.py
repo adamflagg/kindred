@@ -10,13 +10,13 @@ def test_source_field_v2_identity():
     """V2: source_field values are used directly, no mapping needed."""
     # In V2, raw_field IS the canonical name
     raw_field = "bunk_with"
-    assert raw_field == SourceField.BUNK_WITH
+    assert raw_field == SourceField.BUNK_REQUEST_FORM
 
 
 def test_source_field_v2_not_bunk_with():
     """V2: not_bunk_with passes through directly."""
     raw_field = "not_bunk_with"
-    assert raw_field == SourceField.NOT_BUNK_WITH
+    assert raw_field == SourceField.STAFF_NOT_BUNK_WITH
 
 
 def test_source_field_unknown_passes_through():

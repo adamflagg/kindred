@@ -12,7 +12,7 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-import { getBunkType, extractSortKey } from './BunkSocialGraphModal'
+import { extractSortKey, getBunkType } from './BunkSocialGraphModal'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
 // Mirrors the useMemo body in BunkSocialGraphModal so we can assert the

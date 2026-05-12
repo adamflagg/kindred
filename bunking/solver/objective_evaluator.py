@@ -146,8 +146,10 @@ class ObjectiveEvaluator:
 
         # Source field multipliers (same as solver)
         source_multipliers = {
-            SourceField.BUNK_WITH: self.config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
-            SourceField.NOT_BUNK_WITH: self.config.get_float(
+            SourceField.BUNK_REQUEST_FORM: self.config.get_float(
+                "objective.source_multipliers.share_bunk_with", default=1.5
+            ),
+            SourceField.STAFF_NOT_BUNK_WITH: self.config.get_float(
                 "objective.source_multipliers.do_not_share_with", default=1.5
             ),
             SourceField.BUNKING_NOTES: self.config.get_float("objective.source_multipliers.bunking_notes", default=1.2),

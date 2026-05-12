@@ -36,8 +36,8 @@ logger = get_logger(__name__)
 
 # Source fields that contain explicit camper requests (not inferred preferences)
 EXPLICIT_SOURCE_FIELDS = {
-    SourceField.BUNK_WITH,
-    SourceField.NOT_BUNK_WITH,
+    SourceField.BUNK_REQUEST_FORM,
+    SourceField.STAFF_NOT_BUNK_WITH,
     SourceField.BUNKING_NOTES,
     SourceField.INTERNAL_NOTES,
 }

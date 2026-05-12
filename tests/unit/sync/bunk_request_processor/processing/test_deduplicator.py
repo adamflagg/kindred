@@ -597,7 +597,7 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.90,  # Lower confidence
-            source_field=SourceField.NOT_BUNK_WITH,  # Staff explicit validation
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,  # Staff explicit validation
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -669,17 +669,20 @@ class TestSimplifiedSourcePriority:
 
         # All 6 canonical source_field values must be present
         assert len(SOURCE_FIELD_PRIORITY) == 6
-        assert SourceField.BUNK_WITH in SOURCE_FIELD_PRIORITY
-        assert SourceField.NOT_BUNK_WITH in SOURCE_FIELD_PRIORITY
+        assert SourceField.BUNK_REQUEST_FORM in SOURCE_FIELD_PRIORITY
+        assert SourceField.STAFF_NOT_BUNK_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.BUNKING_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.INTERNAL_NOTES in SOURCE_FIELD_PRIORITY
         assert SourceField.SOCIALIZE_WITH in SOURCE_FIELD_PRIORITY
         assert SourceField.MANUAL in SOURCE_FIELD_PRIORITY
 
         # Materiality ordering
-        assert SOURCE_FIELD_PRIORITY[SourceField.MANUAL] == SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH]
-        assert SOURCE_FIELD_PRIORITY[SourceField.BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH]
-        assert SOURCE_FIELD_PRIORITY[SourceField.NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
+        assert SOURCE_FIELD_PRIORITY[SourceField.MANUAL] == SOURCE_FIELD_PRIORITY[SourceField.BUNK_REQUEST_FORM]
+        assert (
+            SOURCE_FIELD_PRIORITY[SourceField.BUNK_REQUEST_FORM]
+            > SOURCE_FIELD_PRIORITY[SourceField.STAFF_NOT_BUNK_WITH]
+        )
+        assert SOURCE_FIELD_PRIORITY[SourceField.STAFF_NOT_BUNK_WITH] > SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] == SOURCE_FIELD_PRIORITY[SourceField.INTERNAL_NOTES]
         assert SOURCE_FIELD_PRIORITY[SourceField.BUNKING_NOTES] > SOURCE_FIELD_PRIORITY[SourceField.SOCIALIZE_WITH]
 
@@ -698,7 +701,7 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             priority=4,
             confidence_score=0.70,  # Lower confidence
-            source_field=SourceField.NOT_BUNK_WITH,
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -725,7 +728,7 @@ class TestSimplifiedSourcePriority:
         result = deduplicator.deduplicate_batch([socialize_with_req, not_bunk_with_req])
 
         assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].source_field == SourceField.NOT_BUNK_WITH, (
+        assert result.kept_requests[0].source_field == SourceField.STAFF_NOT_BUNK_WITH, (
             f"Expected not_bunk_with to win over socialize_with; got {result.kept_requests[0].source_field}"
         )
 
@@ -1254,14 +1257,14 @@ class TestParentAgePreferenceDeduplication:
         Without this fix, confidence_score tiebreaks (checkbox=1.0 > AI parse=0.92)
         pick the wrong winner.
         """
-        bunk_with_req = self._age_pref(SourceField.BUNK_WITH, confidence=0.92)
+        bunk_with_req = self._age_pref(SourceField.BUNK_REQUEST_FORM, confidence=0.92)
         socialize_req = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
 
         result = deduplicator.deduplicate_batch([socialize_req, bunk_with_req])
 
         assert len(result.kept_requests) == 1
         primary = result.kept_requests[0]
-        assert primary.source_field == SourceField.BUNK_WITH, (
+        assert primary.source_field == SourceField.BUNK_REQUEST_FORM, (
             f"Expected bunk_with to win parent-vs-parent age_pref dedupe; got {primary.source_field}"
         )
         assert len(result.duplicate_groups) == 1
@@ -1269,16 +1272,16 @@ class TestParentAgePreferenceDeduplication:
 
     def test_bunk_with_wins_even_when_listed_second(self, deduplicator):
         """Input order must not affect outcome — bunk_with wins regardless of position."""
-        bunk_with_req = self._age_pref(SourceField.BUNK_WITH, confidence=0.88)
+        bunk_with_req = self._age_pref(SourceField.BUNK_REQUEST_FORM, confidence=0.88)
         socialize_req = self._age_pref(SourceField.SOCIALIZE_WITH, confidence=1.0)
 
         # bunk_with listed second
         result = deduplicator.deduplicate_batch([socialize_req, bunk_with_req])
-        assert result.kept_requests[0].source_field == SourceField.BUNK_WITH
+        assert result.kept_requests[0].source_field == SourceField.BUNK_REQUEST_FORM
 
         # bunk_with listed first
         result2 = deduplicator.deduplicate_batch([bunk_with_req, socialize_req])
-        assert result2.kept_requests[0].source_field == SourceField.BUNK_WITH
+        assert result2.kept_requests[0].source_field == SourceField.BUNK_REQUEST_FORM
 
     def test_rank_dominates_confidence_when_both_non_bunk_with(self, deduplicator):
         """Even when neither request is bunk_with, source_field rank dominates confidence.
@@ -1349,7 +1352,7 @@ class TestConflictTargetDemotion:
         checkbox says "younger".
         """
         bunk_with_row = self._age_pref(
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             age_target="older",
             confidence=0.85,
         )
@@ -1366,11 +1369,11 @@ class TestConflictTargetDemotion:
 
         # Find each row by source_field
         kept_by_field = {r.source_field: r for r in result.kept_requests}
-        assert SourceField.BUNK_WITH in kept_by_field, "bunk_with row must be in output"
+        assert SourceField.BUNK_REQUEST_FORM in kept_by_field, "bunk_with row must be in output"
         assert SourceField.SOCIALIZE_WITH in kept_by_field, "socialize_with row must be in output"
 
         # bunk_with-parsed row demoted to pending
-        bunk_with_kept = kept_by_field[SourceField.BUNK_WITH]
+        bunk_with_kept = kept_by_field[SourceField.BUNK_REQUEST_FORM]
         assert bunk_with_kept.status == RequestStatus.PENDING, (
             f"Expected bunk_with row status=pending, got {bunk_with_kept.status!r}"
         )
@@ -1384,7 +1387,7 @@ class TestConflictTargetDemotion:
     def test_conflict_target_other_direction_also_demotes(self, deduplicator):
         """Same demotion fires when prose=younger and boolean=older (reverse direction)."""
         bunk_with_row = self._age_pref(
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             age_target="younger",
             confidence=0.88,
         )
@@ -1399,7 +1402,7 @@ class TestConflictTargetDemotion:
         assert len(result.kept_requests) == 2
 
         kept_by_field = {r.source_field: r for r in result.kept_requests}
-        assert kept_by_field[SourceField.BUNK_WITH].status == RequestStatus.PENDING
+        assert kept_by_field[SourceField.BUNK_REQUEST_FORM].status == RequestStatus.PENDING
         assert kept_by_field[SourceField.SOCIALIZE_WITH].status == RequestStatus.RESOLVED
 
     def test_same_target_age_preference_still_merges(self, deduplicator):
@@ -1409,7 +1412,7 @@ class TestConflictTargetDemotion:
         Exactly ONE row remains with source_field=bunk_with.
         """
         bunk_with_row = self._age_pref(
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             age_target="older",
             confidence=0.92,
         )
@@ -1423,7 +1426,7 @@ class TestConflictTargetDemotion:
 
         # Same-target: merges to ONE row
         assert len(result.kept_requests) == 1, f"Expected 1 row (same-target merge), got {len(result.kept_requests)}"
-        assert result.kept_requests[0].source_field == SourceField.BUNK_WITH, (
+        assert result.kept_requests[0].source_field == SourceField.BUNK_REQUEST_FORM, (
             f"Expected bunk_with to survive merge; got {result.kept_requests[0].source_field}"
         )
         # Merged row stays resolved
@@ -1437,7 +1440,7 @@ class TestConflictTargetDemotion:
         Status stays resolved.
         """
         bunk_with_row = self._age_pref(
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             age_target="older",
             confidence=0.85,
         )
@@ -1458,7 +1461,7 @@ class TestConflictTargetDemotion:
             f"{[(r.source_field, r.status) for r in result.kept_requests]}"
         )
         survivor = result.kept_requests[0]
-        assert survivor.source_field == SourceField.BUNK_WITH, (
+        assert survivor.source_field == SourceField.BUNK_REQUEST_FORM, (
             f"bunk_with must beat socialize_with in fallback merge; got source_field={survivor.source_field}"
         )
         assert survivor.status == RequestStatus.RESOLVED, (
@@ -1496,7 +1499,7 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=3,
             confidence_score=0.90,
-            source_field=SourceField.BUNK_WITH,
+            source_field=SourceField.BUNK_REQUEST_FORM,
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -1530,7 +1533,7 @@ class TestFamilyParamountTiebreak:
         assert source_from_field(survivor.source_field) == "family", (
             f"Expected FAMILY to be primary (parent-paramount); got {source_from_field(survivor.source_field)}"
         )
-        assert survivor.source_field == SourceField.BUNK_WITH, (
+        assert survivor.source_field == SourceField.BUNK_REQUEST_FORM, (
             f"Expected source_field=bunk_with on survivor; got {survivor.source_field}"
         )
 
@@ -1574,7 +1577,7 @@ class TestFamilyParamountTiebreak:
             session_cm_id=1000001,
             priority=1,
             confidence_score=0.88,
-            source_field=SourceField.BUNK_WITH,  # Parent prose AI-parsed to age_preference
+            source_field=SourceField.BUNK_REQUEST_FORM,  # Parent prose AI-parsed to age_preference
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,

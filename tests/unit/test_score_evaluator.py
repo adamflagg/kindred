@@ -258,7 +258,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
         assignments = [
@@ -450,7 +450,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,  # 1.5x multiplier (share_bunk_with)
+                "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.5x multiplier (share_bunk_with)
             }
         ]
         socialize_request = [
@@ -486,7 +486,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 5,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             },
             {
                 "requester_id": 3,
@@ -516,9 +516,9 @@ class TestEvaluateScenarioScore:
 
         result = evaluate_scenario_score(requests, assignments, persons, bunks, config=mock_config)
 
-        assert SourceField.BUNK_WITH in result.field_scores
+        assert SourceField.BUNK_REQUEST_FORM in result.field_scores
         assert SourceField.BUNKING_NOTES in result.field_scores
-        assert result.field_scores[SourceField.BUNK_WITH]["satisfied"] == 1
+        assert result.field_scores[SourceField.BUNK_REQUEST_FORM]["satisfied"] == 1
         assert result.field_scores[SourceField.BUNKING_NOTES]["satisfied"] == 0
 
     def test_penalties_applied(self, mock_config):
@@ -534,7 +534,7 @@ class TestEvaluateScenarioScore:
                 "requestee_id": 2,
                 "request_type": "bunk_with",
                 "priority": 10,
-                "source_field": SourceField.BUNK_WITH,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
         assignments = [
@@ -592,10 +592,10 @@ class TestScoreBreakdown:
             total_requests=10,
             satisfied_requests=8,
             satisfaction_rate=0.8,
-            field_scores={SourceField.BUNK_WITH: {"total": 5, "satisfied": 4}},
+            field_scores={SourceField.BUNK_REQUEST_FORM: {"total": 5, "satisfied": 4}},
             penalties={"grade_spread": 100},
         )
 
         assert breakdown.total_score == 1000
         assert breakdown.satisfaction_rate == 0.8
-        assert SourceField.BUNK_WITH in breakdown.field_scores
+        assert SourceField.BUNK_REQUEST_FORM in breakdown.field_scores

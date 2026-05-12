@@ -36,7 +36,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.BUNK_WITH,  # WRONG - should be NOT_BUNK_WITH
             target_name="Jake Smith",
             age_preference=None,
-            source_field=SourceField.NOT_BUNK_WITH,  # This field should ONLY produce NOT_BUNK_WITH
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,  # This field should ONLY produce NOT_BUNK_WITH
             confidence=0.85,
             csv_position=0,
             metadata={},
@@ -65,7 +65,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.NOT_BUNK_WITH,  # CORRECT
             target_name="Jake Smith",
             age_preference=None,
-            source_field=SourceField.NOT_BUNK_WITH,
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
             confidence=0.90,
             csv_position=0,
             metadata={},
@@ -93,7 +93,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.BUNK_WITH,
             target_name=None,  # No target - invalid for not_bunk_with
             age_preference=None,
-            source_field=SourceField.NOT_BUNK_WITH,
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
             confidence=0.50,
             csv_position=0,
             metadata={},
@@ -119,7 +119,7 @@ class TestRequestTypeValidationForSourceField:
             request_type=RequestType.NOT_BUNK_WITH,
             target_name="Jake Smith",
             age_preference=None,
-            source_field=SourceField.BUNK_WITH,  # Flexible field
+            source_field=SourceField.BUNK_REQUEST_FORM,  # Flexible field
             confidence=0.85,
             csv_position=0,
             metadata={},
@@ -135,7 +135,7 @@ class TestRequestTypeValidationForSourceField:
         # Assert: Should pass through unchanged
         assert validated is not None
         assert validated.request_type == RequestType.NOT_BUNK_WITH
-        assert validated.source_field == SourceField.BUNK_WITH
+        assert validated.source_field == SourceField.BUNK_REQUEST_FORM
 
     def test_flexible_field_without_target_for_bunk_type_returns_none(self):
         """Even for flexible fields, BUNK_WITH and NOT_BUNK_WITH require a target name.

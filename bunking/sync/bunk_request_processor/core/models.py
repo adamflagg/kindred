@@ -35,9 +35,9 @@ class SessionFamily(Enum):
 
 
 _SOURCE_FIELD_MAP: dict[str, Literal["family", "staff"]] = {
-    SourceField.BUNK_WITH: "family",
+    SourceField.BUNK_REQUEST_FORM: "family",
     SourceField.SOCIALIZE_WITH: "family",
-    SourceField.NOT_BUNK_WITH: "staff",
+    SourceField.STAFF_NOT_BUNK_WITH: "staff",
     SourceField.BUNKING_NOTES: "staff",
     SourceField.INTERNAL_NOTES: "staff",
     SourceField.MANUAL: "staff",

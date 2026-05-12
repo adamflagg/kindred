@@ -16,11 +16,11 @@ migrate((app) => {
   const collection = new Collection({
     type: "base",
     name: "camper_transportation",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: null,
-    updateRule: null,
-    deleteRule: null,
+    listRule: '@request.auth.is_admin = true',
+    viewRule: '@request.auth.is_admin = true',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       // === Core Identity ===
       {
@@ -29,7 +29,7 @@ migrate((app) => {
         required: true,
         presentable: false,
         collectionId: attendeesCol.id,
-        cascadeDelete: false,
+        cascadeDelete: true,
         minSelect: null,
         maxSelect: 1
       },
