@@ -7,12 +7,12 @@ import {
   Heart,
   ChevronDown,
   ChevronRight,
-  FileText,
   MapPin,
   TreePine,
   Home,
   Users,
   ExternalLink,
+  MessageSquareQuote,
 } from 'lucide-react'
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
 import { pb } from '../lib/pocketbase'
@@ -51,6 +51,7 @@ import {
 } from '../utils/satisfactionLookup'
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
@@ -236,7 +237,7 @@ export default function CamperDetailsPanel({
     requests: true,
     history: true,
     siblings: true,
-    rawData: false,
+    bunkRequestForm: true,
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -543,35 +544,10 @@ export default function CamperDetailsPanel({
     enabled: !!(person?.household_id && person.household_id > 0),
   })
 
-  // Fetch original CSV data
-  interface OriginalBunkData {
-    share_bunk_with?: string
-    share_bunk_with_updated?: string
-    do_not_share_bunk_with?: string
-    do_not_share_bunk_with_updated?: string
-    internal_bunk_notes?: string
-    internal_bunk_notes_updated?: string
-    bunking_notes_notes?: string
-    bunking_notes_notes_updated?: string
-    ret_parent_socialize_with_best?: string
-    ret_parent_socialize_with_best_updated?: string
-  }
-
-  const { data: originalBunkData } = useQuery({
-    queryKey: queryKeys.originalBunkRequestsByPersonId(camper?.person_cm_id, currentYear),
-    queryFn: async (): Promise<OriginalBunkData | null> => {
-      if (!camper?.person_cm_id) throw new Error('No camper person ID')
-      try {
-        const filter = `person_id = ${camper.person_cm_id} && year = ${currentYear}`
-        const records = await pb.collection('original_bunk_requests').getList(1, 1, { filter })
-        if (records.items.length === 0) return null
-        return records.items[0] as OriginalBunkData
-      } catch {
-        return null
-      }
-    },
-    enabled: !!camper?.person_cm_id,
-  })
+  // Original parent-sourced bunk-request form text (CSV import, normalized
+  // per-field). Re-uses the same hook the full-page camper detail does so the
+  // sidebar reads the same source of truth via `requester.cm_id`.
+  const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
 
   // Trigger close - for embedded mode, call directly; for slide panel, start exit animation
   const handleClose = useCallback(() => {
@@ -1154,60 +1130,24 @@ export default function CamperDetailsPanel({
           </section>
         )}
 
-        {/* Raw CSV Data - Collapsed by default */}
-        {originalBunkData && (
+        {/* Bunk Request Form — parent-sourced form input, expanded by default (quick-ref).
+            Shows the share_bunk_with field only; full 5-field CSV is
+            available on the manage-requests modal, the requests row expansion,
+            and the full-page bunk-csv view. */}
+        {originalBunkData?.share_bunk_with?.trim() && (
           <section>
             <SectionHeader
-              title="Raw CSV Data"
-              icon={FileText}
-              isExpanded={expandedSections.rawData}
-              onToggle={() => toggleSection('rawData')}
-              accentColor="stone"
+              title="Bunk Request Form"
+              icon={MessageSquareQuote}
+              isExpanded={expandedSections.bunkRequestForm}
+              onToggle={() => toggleSection('bunkRequestForm')}
+              accentColor="amber"
             />
-            {expandedSections.rawData && (
-              <div className="mt-2 space-y-2 text-xs">
-                {originalBunkData.share_bunk_with && (
-                  <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Bunk Request Form:</span>
-                    <p className="text-foreground mt-1 whitespace-pre-wrap">
-                      {originalBunkData.share_bunk_with}
-                    </p>
-                  </div>
-                )}
-                {originalBunkData.do_not_share_bunk_with && (
-                  <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">
-                      Do NOT Share Bunk With:
-                    </span>
-                    <p className="text-foreground mt-1 whitespace-pre-wrap">
-                      {originalBunkData.do_not_share_bunk_with}
-                    </p>
-                  </div>
-                )}
-                {originalBunkData.internal_bunk_notes && (
-                  <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Internal Notes:</span>
-                    <p className="text-foreground mt-1 whitespace-pre-wrap">
-                      {originalBunkData.internal_bunk_notes}
-                    </p>
-                  </div>
-                )}
-                {originalBunkData.bunking_notes_notes && (
-                  <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Bunking Notes:</span>
-                    <p className="text-foreground mt-1 whitespace-pre-wrap">
-                      {originalBunkData.bunking_notes_notes}
-                    </p>
-                  </div>
-                )}
-                {originalBunkData.ret_parent_socialize_with_best && (
-                  <div className="bg-muted/50 rounded-lg p-2">
-                    <span className="text-muted-foreground font-medium">Social With Checkbox:</span>
-                    <p className="text-foreground mt-1 whitespace-pre-wrap">
-                      {originalBunkData.ret_parent_socialize_with_best}
-                    </p>
-                  </div>
-                )}
+            {expandedSections.bunkRequestForm && (
+              <div className="mt-2 pl-1">
+                <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
+                  {originalBunkData.share_bunk_with}
+                </blockquote>
               </div>
             )}
           </section>

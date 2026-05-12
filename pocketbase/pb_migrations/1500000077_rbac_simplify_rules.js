@@ -22,16 +22,16 @@ migrate((app) => {
   }
 
   // Previously anyRole (required at least one permission) — now any authenticated user
-  // Note: "persons", "attendees", "attendee_status_history", "config" trimmed —
-  // final-state rules baked into merged CREATE.
-  const openReadOnly = ["camp_sessions", "divisions"]
+  // Note: "persons", "attendees", "attendee_status_history", "config",
+  // "camp_sessions", "divisions" trimmed — final-state rules baked into merged CREATE.
+  const openReadOnly = []
   for (const name of openReadOnly) {
     setRules(name, authed, authed, adminOnly, adminOnly, adminOnly)
   }
 
   // Previously bunking.view — now any authenticated user
-  // Note: "bunk_assignments", "bunk_plans" trimmed — final-state rules baked into merged CREATE.
-  const bunkingReadOnly = ["bunks"]
+  // Note: "bunk_assignments", "bunk_plans", "bunks" trimmed — final-state rules baked into merged CREATE.
+  const bunkingReadOnly = []
   for (const name of bunkingReadOnly) {
     setRules(name, authed, authed, adminOnly, adminOnly, adminOnly)
   }
@@ -58,12 +58,12 @@ migrate((app) => {
     app.save(col)
   }
 
-  const anyRoleReadOnly = ["camp_sessions", "divisions"]
+  const anyRoleReadOnly = []
   for (const name of anyRoleReadOnly) {
     setRules(name, anyRole, anyRole, adminOnly, adminOnly, adminOnly)
   }
 
-  const bunkingViewReadOnly = ["bunks"]
+  const bunkingViewReadOnly = []
   for (const name of bunkingViewReadOnly) {
     setRules(name, bunkingView, bunkingView, adminOnly, adminOnly, adminOnly)
   }

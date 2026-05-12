@@ -2,7 +2,8 @@
  * Tests for CamperDetailsPanel component.
  *
  * This component displays detailed camper information in a slide-in panel,
- * including bunking preferences, camp journey history, siblings, and raw CSV data.
+ * including bunking preferences, camp journey history, siblings, and the
+ * parent-sourced bunk request form text.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
@@ -1047,6 +1048,120 @@ describe('CamperDetailsPanel', () => {
       await waitFor(() => {
         expect(screen.getByText('Bunk with')).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('Bunk Request Form section (parent-sourced quick-ref)', () => {
+    /** Build a minimal original_bunk_requests record matching the hook's schema. */
+    function originalBunkRecord(content: string) {
+      return {
+        id: 'obr-1',
+        field: 'bunk_with' as const,
+        content,
+        requester: 'pb-emma',
+        year: 2025,
+        created: '2025-01-01T00:00:00Z',
+        updated: '2025-05-01T00:00:00Z',
+        collectionId: 'original_bunk_requests',
+        collectionName: 'original_bunk_requests',
+        expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
+      }
+    }
+
+    /** Set up mocks for Emma with a populated parent bunk-request form input. */
+    function setupParentBunkRequestText(content: string) {
+      mockGetFullListPersons.mockResolvedValue([EMMA])
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue([])
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({
+        items: [originalBunkRecord(content)],
+        totalItems: 1,
+      })
+    }
+
+    it('renders the "Bunk Request Form" section header when parent text exists', async () => {
+      setupParentBunkRequestText('Riley Sam, Olivia Chen')
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bunk Request Form/i)).toBeInTheDocument()
+      })
+    })
+
+    it('shows the parent text by default (default expanded for quick-ref)', async () => {
+      setupParentBunkRequestText('Riley Sam, Olivia Chen')
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Bunk Request Form/i)).toBeInTheDocument()
+      })
+      // Parent text immediately visible without any click
+      expect(screen.getByText('Riley Sam, Olivia Chen')).toBeInTheDocument()
+    })
+
+    it('collapses the parent text when the section header is clicked', async () => {
+      setupParentBunkRequestText('Riley Sam, Olivia Chen')
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      // Wait for the section to render with text visible
+      await waitFor(() => {
+        expect(screen.getByText('Riley Sam, Olivia Chen')).toBeInTheDocument()
+      })
+
+      // Click the header to collapse
+      const header = screen.getByRole('button', { name: /Bunk Request Form/i })
+      header.click()
+
+      await waitFor(() => {
+        expect(screen.queryByText('Riley Sam, Olivia Chen')).not.toBeInTheDocument()
+      })
+    })
+
+    it('does not render the section when there is no parent bunk-request text', async () => {
+      // No original_bunk_requests record at all
+      mockGetFullListPersons.mockResolvedValue([EMMA])
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue([])
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      // Wait for camper to load (heading appears)
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Bunk Request Form/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render the section when bunk_with record exists but content is empty', async () => {
+      setupParentBunkRequestText('')
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Bunk Request Form/i)).not.toBeInTheDocument()
+    })
+
+    it('queries original_bunk_requests using the working requester.cm_id filter (not the broken person_id)', async () => {
+      setupParentBunkRequestText('Riley Sam, Olivia Chen')
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(mockGetListOriginalBunkRequests).toHaveBeenCalled()
+      })
+      const filter = String(mockGetListOriginalBunkRequests.mock.calls[0]?.[2]?.filter ?? '')
+      expect(filter).toContain('requester.cm_id = 100')
+      expect(filter).not.toContain('person_id =')
     })
   })
 })

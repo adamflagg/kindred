@@ -17,9 +17,9 @@ migrate((app) => {
     name: "divisions",
     listRule: '@request.auth.id != ""',
     viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    createRule: '@request.auth.is_admin = true',
+    updateRule: '@request.auth.is_admin = true',
+    deleteRule: '@request.auth.is_admin = true',
     fields: [
       {
         type: "number",
