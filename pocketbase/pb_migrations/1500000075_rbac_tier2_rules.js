@@ -24,6 +24,8 @@
  * merged CREATE migration #005.
  * Note: config_sections trimmed — final adminOnly rules baked into
  * merged CREATE migration #012.
+ * Note: custom_field_defs trimmed — final adminOnly rules baked into
+ * merged CREATE migration #002.
  */
 
 migrate((app) => {
@@ -46,7 +48,7 @@ migrate((app) => {
     "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
-    "person_custom_values", "person_tag_defs", "custom_field_defs",
+    "person_custom_values", "person_tag_defs",
     "sheets_workbooks"
   ]
 
@@ -81,7 +83,7 @@ migrate((app) => {
     "payment_methods",
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
-    "person_custom_values", "person_tag_defs", "custom_field_defs",
+    "person_custom_values", "person_tag_defs",
     "sheets_workbooks",
     "debug_parse_results", "solver_runs"
   ]
