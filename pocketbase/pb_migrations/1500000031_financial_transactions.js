@@ -15,6 +15,8 @@
 const COLLECTION_ID_FINANCIAL_TRANSACTIONS = "col_financial_transactions";
 
 migrate((app) => {
+  const adminOnly = '@request.auth.is_admin = true';
+
   // Lookup related collections for relations
   const financialCategoriesCol = app.findCollectionByNameOrId("financial_categories");
   const paymentMethodsCol = app.findCollectionByNameOrId("payment_methods");
@@ -28,11 +30,11 @@ migrate((app) => {
     id: COLLECTION_ID_FINANCIAL_TRANSACTIONS,
     type: "base",
     name: "financial_transactions",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: adminOnly,
+    viewRule: adminOnly,
+    createRule: adminOnly,
+    updateRule: adminOnly,
+    deleteRule: adminOnly,
     fields: [
       // Identity
       {
