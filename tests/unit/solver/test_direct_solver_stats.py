@@ -64,13 +64,17 @@ class TestStatsDictIsJsonSerializable:
         solver.ObjectiveValue.return_value = 100.0
         solver.WallTime.return_value = 1.0
         solver.UserTime.return_value = 1.0
-        solver.DeterministicTime.return_value = 1.0
         solver.BestObjectiveBound.return_value = 100.0
         solver.NumBranches.return_value = 0
         solver.NumConflicts.return_value = 0
         solver.NumBooleans.return_value = 0
-        solver.NumIntegers.return_value = 0
-        response = MagicMock(gap_integral=0.0, num_solutions=1, solution_info="")
+        response = MagicMock(
+            gap_integral=0.0,
+            deterministic_time=1.0,
+            num_integers=0,
+            additional_solutions=[],
+            solution_info="",
+        )
         solver.ResponseProto.return_value = response
         proto = MagicMock()
         proto.variables = []
@@ -126,13 +130,19 @@ class TestBuildStatsDict:
         solver.ObjectiveValue.return_value = 100.0
         solver.WallTime.return_value = 23.1
         solver.UserTime.return_value = 47.1
-        solver.DeterministicTime.return_value = 4.3e8
         solver.BestObjectiveBound.return_value = 100.0
         solver.NumBranches.return_value = 3210
         solver.NumConflicts.return_value = 147
         solver.NumBooleans.return_value = 14801
-        solver.NumIntegers.return_value = 433
-        response = MagicMock(gap_integral=67.2, num_solutions=7, solution_info="feasibility_jump_search worker 3")
+        # ortools 9.15: deterministic_time, num_integers, additional_solutions
+        # live on the response proto (snake_case). Mirror that here.
+        response = MagicMock(
+            gap_integral=67.2,
+            deterministic_time=4.3e8,
+            num_integers=433,
+            additional_solutions=[MagicMock()] * 6,  # +1 final solution = 7
+            solution_info="feasibility_jump_search worker 3",
+        )
         solver.ResponseProto.return_value = response
         for k, v in overrides.items():
             getattr(solver, k).return_value = v
@@ -247,13 +257,19 @@ class TestBuildStatsDict:
         assert stats["model_num_constraints"] == 0
         assert stats["constraint_type_breakdown"] == {}
 
-    def test_handles_missing_ortools_methods_gracefully(self) -> None:
-        """getattr guards must return None when OR-Tools API drifts, not raise."""
+    def test_optional_solver_methods_fall_back_to_none(self) -> None:
+        """Defensive guards on PascalCase methods that exist in 9.15 but aren't core.
+
+        `UserTime` and `BestObjectiveBound` are wrapped in `getattr(..., lambda:
+        None)` because they're peripheral — if a future OR-Tools drops them, the
+        debug row can still save with `None` for those cells. Core attrs
+        (deterministic_time, num_integers, additional_solutions) intentionally
+        raise loudly instead — silent-None data loss is what we just got out of.
+        """
         from unittest.mock import MagicMock
 
         from bunking.solver.direct_solver import _build_stats_dict
 
-        # spec= limits which methods exist; missing ones must default to None
         solver = MagicMock(
             spec=[
                 "StatusName",
@@ -271,7 +287,13 @@ class TestBuildStatsDict:
         solver.NumBranches.return_value = 100
         solver.NumConflicts.return_value = 5
         solver.NumBooleans.return_value = 200
-        solver.ResponseProto.return_value = MagicMock(gap_integral=None, num_solutions=None, solution_info="")
+        solver.ResponseProto.return_value = MagicMock(
+            gap_integral=None,
+            deterministic_time=0.5,
+            num_integers=10,
+            additional_solutions=[],
+            solution_info="",
+        )
 
         stats = _build_stats_dict(
             solver=solver,
@@ -286,10 +308,57 @@ class TestBuildStatsDict:
         )
 
         assert stats["user_time_seconds"] is None
-        assert stats["deterministic_time"] is None
         assert stats["best_objective_bound"] is None
-        assert stats["num_integer_variables"] is None
         assert stats["optimality_gap"] is None  # bound was None
+        # status_code 2 = FEASIBLE → 1 solution + 0 additional
+        assert stats["num_solutions_found"] == 1
+
+
+class TestBuildStatsDictWithRealSolver:
+    """Smoke test against the actual OR-Tools API.
+
+    Mock-based tests above invented attribute names that don't exist on a real
+    `cp_model.CpSolver` — they passed because `MagicMock` happily returns
+    `MagicMock()` for any attribute access. Production then silently captured
+    `None` via the `getattr(solver, "Whatever", lambda: None)()` fallback and
+    the debug UI showed empty cells. A real solve is the only thing that
+    catches that drift.
+    """
+
+    def test_real_solve_populates_cp_sat_internals(self) -> None:
+        from bunking.solver.direct_solver import _build_stats_dict
+
+        model = cp_model.CpModel()
+        x = model.NewIntVar(0, 10, "x")
+        y = model.NewIntVar(0, 10, "y")
+        model.Add(x + y <= 7)
+        model.Maximize(x + y)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+        stats = _build_stats_dict(
+            solver=solver,
+            status=status,
+            model_proto=model.Proto(),
+            time_limit_seconds=10,
+            num_workers=1,
+            num_persons=1,
+            num_bunks=1,
+            num_requests=0,
+            satisfied_count=0,
+        )
+
+        # The three fields that silently went None against ortools 9.15+:
+        # `solver.DeterministicTime()` / `solver.NumIntegers()` / `response.num_solutions`
+        # do not exist on the real surface — code must read snake_case proto fields.
+        assert stats["deterministic_time"] is not None
+        assert isinstance(stats["deterministic_time"], float)
+        assert stats["num_integer_variables"] is not None
+        assert isinstance(stats["num_integer_variables"], int)
+        assert stats["num_solutions_found"] is not None
+        assert stats["num_solutions_found"] >= 1
 
 
 class TestSingleBunkPathStats:
