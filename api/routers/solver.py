@@ -254,6 +254,7 @@ async def post_run_sweep(
                 "run_id": run_id,
                 "session": str(session_cm_id),
                 "session_id": session_cm_id,
+                "year": year,
                 "status": "pending",
                 "details": json.dumps(
                     {

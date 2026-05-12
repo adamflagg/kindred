@@ -12,10 +12,73 @@ scenario rename or deletion.
 
 from __future__ import annotations
 
+import asyncio
+import re
 from typing import Any
+
+from bunking.logging_config import get_logger
 
 from .config_snapshot import snapshot_solver_config
 from .git_sha import get_git_sha
+
+logger = get_logger(__name__)
+
+
+def _shorten_session_name(session_name: str) -> str:
+    """Mirror of frontend/src/utils/sessionDisplay.ts:getSessionShorthand.
+
+    Numbered → "2" / "2a"; Quest → "Quest"; Taste → "Taste";
+    AG → parent session number; fallback → first number found, else first word.
+    """
+    if not session_name:
+        return ""
+    lower = session_name.lower()
+    # Order matters: check special types BEFORE the generic "Session N" pattern
+    # (a session named "Quest Session 1" must short to "Quest", not "1").
+    if "quest" in lower:
+        return "Quest"
+    if "taste" in lower:
+        return "Taste"
+    m = re.search(r"Session\s*(\d+[a-z]?)", session_name, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    if "all-gender" in lower or "ag session" in lower:
+        for pattern in (
+            r"ag\s*session\s*(\d+)",
+            r"all-gender.*session\s*(\d+)",
+            r"session\s*(\d+).*all-gender",
+        ):
+            m = re.search(pattern, session_name, re.IGNORECASE)
+            if m:
+                return m.group(1)
+    m = re.search(r"(\d+[a-z]?)", session_name)
+    if m:
+        return m.group(1)
+    return session_name.split(" ")[0] if session_name else ""
+
+
+async def _lookup_session_short_name(pb: Any, session_cm_id: int, year: int) -> str:
+    """Look up a session's friendly name from PocketBase and shorten it.
+
+    Falls back to ``S{cm_id}`` (e.g. ``"S1235406"``) when the lookup fails so
+    the solver run still records — a cosmetic source-label divergence is
+    preferable to a failed run.
+    """
+    try:
+        record = await asyncio.to_thread(
+            pb.collection("camp_sessions").get_first_list_item,
+            f"cm_id = {session_cm_id} && year = {year}",
+        )
+    except Exception as e:  # cosmetic field, never crash a run
+        logger.warning(
+            "Session name lookup failed for cm_id=%s year=%s: %s — falling back to S%s",
+            session_cm_id,
+            year,
+            e,
+            session_cm_id,
+        )
+        return f"S{session_cm_id}"
+    return f"S{_shorten_session_name(record.name)}"
 
 
 def _compose_source_label(
@@ -65,16 +128,26 @@ def compose_minimal_run_details(
 
 async def build_run_details(
     pb: Any,
-    session_label: str,
+    session_cm_id: int,
+    year: int,
     scenario_id: str | None,
     scenario_name: str | None,
     session_attendee_count: int,
     sweep_id: str | None,
     sweep_label: str | None,
 ) -> dict[str, Any]:
-    """Return the dict written to ``solver_runs.details`` for one run."""
+    """Return the dict written to ``solver_runs.details`` for one run.
+
+    Takes session_cm_id + year (instead of pre-formatted session_label) so it
+    can look up the friendly short name from PB and compose ``S2 · Production``.
+    """
     config_snapshot = await snapshot_solver_config(pb)
-    source_label, source_kind = _compose_source_label(session_label, scenario_id, scenario_name)
+    short = await _lookup_session_short_name(pb, session_cm_id, year)
+    if scenario_id is None:
+        source_label, source_kind = f"{short} · Production", "production"
+    else:
+        display = scenario_name or scenario_id
+        source_label, source_kind = f'{short} · scenario "{display}"', "scenario"
 
     return {
         "git_sha": get_git_sha(),

@@ -13,7 +13,6 @@ import type {
   LayerDefinition,
   TourStorageData,
 } from '../tours/types'
-import { useSolverConfigValue } from './useSolverConfig'
 
 /** Delay before checking readiness (ms) */
 const AUTO_START_DELAY = 300
@@ -24,8 +23,8 @@ const MAX_READY_RETRIES = 25
 /** Interval between readiness checks (ms) */
 const READY_CHECK_INTERVAL = 200
 
-/** Default staleness threshold in days */
-const DEFAULT_STALE_DAYS = 30
+/** Days before a previously-seen shared layer replays on "Tour This Page" */
+const STALE_DAYS = 30
 
 interface LayerBoundary {
   layerId: LayerId
@@ -36,15 +35,10 @@ interface LayerBoundary {
 export function useTour() {
   const { pathname } = useLocation()
   const [tourId, setTourId] = useState<TourId | null>(null)
-  const [loadedPath, setLoadedPath] = useState<string | null>(null)
   const driverRef = useRef<Driver | null>(null)
   const definitionRef = useRef<TourDefinition | null>(null)
   const layerDefsRef = useRef<LayerDefinition[]>([])
   const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
-  const autoPlayFiredRef = useRef<string | null>(null)
-
-  const staleDays =
-    useSolverConfigValue<number>('tour.staleness_days', DEFAULT_STALE_DAYS) ?? DEFAULT_STALE_DAYS
 
   const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
     const id = setTimeout(() => {
@@ -59,12 +53,13 @@ export function useTour() {
   useEffect(() => {
     const id = getTourIdForRoute(pathname)
     setTourId(id)
-    setLoadedPath(null)
-    autoPlayFiredRef.current = null
+
+    // Clear cached refs synchronously so a manual replay between routes
+    // cannot start the previous page's tour while the new load is in flight.
+    definitionRef.current = null
+    layerDefsRef.current = []
 
     if (!id) {
-      definitionRef.current = null
-      layerDefsRef.current = []
       return
     }
 
@@ -78,9 +73,6 @@ export function useTour() {
         const layerDefs = await Promise.all(def.layers.map(loadLayerDefinition))
         if (cancelled) return
         layerDefsRef.current = layerDefs
-
-        // Signal that definitions are loaded so auto-play effect can fire
-        setLoadedPath(pathname)
       })
       .catch(() => {
         if (cancelled) return
@@ -93,93 +85,70 @@ export function useTour() {
     }
   }, [pathname])
 
-  const startTour = useCallback(
-    (mode: 'auto' | 'manual') => {
-      const def = definitionRef.current
-      if (!def) return
-
-      const storage = getTourStorage()
-      const { steps, layerBoundaries } = assembleSteps(
-        def,
-        layerDefsRef.current,
-        mode,
-        staleDays,
-        storage
-      )
-
-      if (steps.length === 0) return
-
-      // Clean up any existing driver
-      if (driverRef.current) {
-        driverRef.current.destroy()
-      }
-
-      let highestStepReached = -1
-
-      const d = driver({
-        showProgress: true,
-        showButtons: ['next', 'previous', 'close'],
-        popoverClass: 'kindred-tour',
-        steps,
-        onHighlightStarted: (_el, _step, opts) => {
-          const idx = opts.state.activeIndex
-          if (idx !== undefined && idx > highestStepReached) {
-            highestStepReached = idx
-          }
-        },
-        onDestroyed: () => {
-          const completedLayers = layerBoundaries
-            .filter((b) => highestStepReached >= b.endIndex)
-            .map((b) => ({ layerId: b.layerId, version: b.version }))
-          const completedTour =
-            mode === 'manual' && highestStepReached >= steps.length - 1
-              ? { tourId: def.id, version: def.version }
-              : undefined
-          if (completedLayers.length > 0 || completedTour) {
-            batchComplete(completedLayers, completedTour)
-          }
-        },
-      })
-
-      driverRef.current = d
-
-      // Readiness: check first step's element exists in DOM (computed once, polled)
-      const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
-
-      let retries = 0
-      const checkReady = () => {
-        const ready = firstSelector ? document.querySelector(firstSelector) !== null : true
-        if (ready) {
-          d.drive()
-          return
-        }
-        if (retries >= MAX_READY_RETRIES) {
-          d.destroy()
-          driverRef.current = null
-          return
-        }
-        retries++
-        scheduleTimeout(checkReady, READY_CHECK_INTERVAL)
-      }
-
-      scheduleTimeout(checkReady, AUTO_START_DELAY)
-    },
-    [scheduleTimeout, staleDays]
-  )
-
-  // Auto-play unseen layers after definitions are loaded
-  useEffect(() => {
-    if (!loadedPath || !definitionRef.current || autoPlayFiredRef.current === loadedPath) return
-    if (definitionRef.current.layers.length === 0) return
-    if (layerDefsRef.current.length === 0) return
+  const startTour = useCallback(() => {
+    const def = definitionRef.current
+    if (!def) return
 
     const storage = getTourStorage()
-    const hasUnseenLayers = definitionRef.current.layers.some((id) => !storage.layers[id])
-    if (!hasUnseenLayers) return
+    const { steps, layerBoundaries } = assembleSteps(def, layerDefsRef.current, storage)
 
-    autoPlayFiredRef.current = loadedPath
-    startTour('auto')
-  }, [loadedPath, startTour])
+    if (steps.length === 0) return
+
+    if (driverRef.current) {
+      driverRef.current.destroy()
+      driverRef.current = null
+    }
+
+    // Clear any queued readiness timers from a prior replay so their stale
+    // closures cannot fire drive()/destroy() on a freshly created driver.
+    for (const id of pendingTimersRef.current) {
+      clearTimeout(id)
+    }
+    pendingTimersRef.current.clear()
+
+    let highestStepReached = -1
+
+    const d = driver({
+      showProgress: true,
+      showButtons: ['next', 'previous', 'close'],
+      popoverClass: 'kindred-tour',
+      steps,
+      onHighlightStarted: (_el, _step, opts) => {
+        const idx = opts.state.activeIndex
+        if (idx !== undefined && idx > highestStepReached) {
+          highestStepReached = idx
+        }
+      },
+      onDestroyed: () => {
+        const completedLayers = layerBoundaries
+          .filter((b) => highestStepReached >= b.endIndex)
+          .map((b) => ({ layerId: b.layerId, version: b.version }))
+        batchComplete(completedLayers)
+      },
+    })
+
+    driverRef.current = d
+
+    const firstSelector = typeof steps[0]?.element === 'string' ? steps[0].element : null
+
+    let retries = 0
+    const checkReady = () => {
+      const ready = firstSelector ? document.querySelector(firstSelector) !== null : true
+      if (ready) {
+        d.drive()
+        return
+      }
+      if (retries >= MAX_READY_RETRIES) {
+        d.destroy()
+        driverRef.current = null
+        return
+      }
+      retries++
+      scheduleTimeout(checkReady, READY_CHECK_INTERVAL)
+    }
+
+    scheduleTimeout(checkReady, AUTO_START_DELAY)
+  }, [scheduleTimeout])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -195,18 +164,12 @@ export function useTour() {
     }
   }, [])
 
-  const replay = useCallback(() => {
-    startTour('manual')
-  }, [startTour])
-
-  return { tourId, replay }
+  return { tourId, replay: startTour }
 }
 
 function assembleSteps(
   def: TourDefinition,
   layerDefs: LayerDefinition[],
-  mode: 'auto' | 'manual',
-  staleDays: number,
   storage: TourStorageData
 ): {
   steps: TourStep[]
@@ -217,12 +180,14 @@ function assembleSteps(
 
   for (const layerDef of layerDefs) {
     const record = storage.layers[layerDef.id]
-    const include =
-      mode === 'auto'
-        ? !record
-        : !record ||
-          record.completedVersion < layerDef.version ||
-          (Date.now() - new Date(record.completedAt).getTime()) / 86_400_000 >= staleDays
+    let include = !record || record.completedVersion < layerDef.version
+    if (!include && record) {
+      const completedTime = new Date(record.completedAt).getTime()
+      // Treat malformed timestamps as stale so a corrupted record can't
+      // permanently suppress a layer (NaN >= STALE_DAYS would be false).
+      include =
+        Number.isNaN(completedTime) || (Date.now() - completedTime) / 86_400_000 >= STALE_DAYS
+    }
 
     if (include) {
       steps.push(...layerDef.steps)
@@ -234,9 +199,7 @@ function assembleSteps(
     }
   }
 
-  if (mode === 'manual') {
-    steps.push(...def.steps)
-  }
+  steps.push(...def.steps)
 
   return { steps, layerBoundaries }
 }

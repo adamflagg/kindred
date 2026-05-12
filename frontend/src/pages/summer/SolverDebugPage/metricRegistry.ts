@@ -9,6 +9,8 @@ export interface MetricMeta {
   interpretation: MetricInterpretation
   format: MetricFormat
   group: MetricGroup
+  parent?: string // sub-rows render indented under this metric key
+  highlight?: boolean // yellow background — cleanup signal
 }
 
 export const METRIC_REGISTRY: Record<string, MetricMeta> = {
@@ -86,7 +88,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_booleans: {
     key: 'num_booleans',
-    label: 'Booleans',
+    label: 'Model Booleans',
     description: 'Boolean variables in the solved model.',
     interpretation: 'context',
     format: 'integer',
@@ -94,7 +96,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_integer_variables: {
     key: 'num_integer_variables',
-    label: 'Integers',
+    label: 'Model Integers',
     description: 'Integer (non-boolean) variables in the solved model.',
     interpretation: 'context',
     format: 'integer',
@@ -102,7 +104,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   model_num_variables: {
     key: 'model_num_variables',
-    label: 'Variables',
+    label: 'Model variables',
     description: 'Total decision variables in the model.',
     interpretation: 'lower-better',
     format: 'integer',
@@ -110,7 +112,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   model_num_constraints: {
     key: 'model_num_constraints',
-    label: 'Constraints',
+    label: 'Model constraints',
     description: 'Total constraints in the model.',
     interpretation: 'lower-better',
     format: 'integer',
@@ -118,27 +120,69 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
   num_bool_or: {
     key: 'num_bool_or',
-    label: 'bool_or',
+    label: 'bool_or constraints',
     description:
       'Disjunctive (bool_or) constraints in the model; cleanup signal — fewer = simpler.',
     interpretation: 'lower-better',
     format: 'integer',
     group: 'model',
+    parent: 'model_num_constraints',
+    highlight: true,
+  },
+  num_linear: {
+    key: 'num_linear',
+    label: 'linear constraints',
+    description: 'Linear constraints in the model.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+    parent: 'model_num_constraints',
+  },
+  num_bool_and: {
+    key: 'num_bool_and',
+    label: 'bool_and constraints',
+    description: 'Conjunctive (bool_and) constraints in the model.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+    parent: 'model_num_constraints',
+  },
+  num_lin_max: {
+    key: 'num_lin_max',
+    label: 'lin_max constraints',
+    description: 'Lin_max / lin_min constraints in the model; cleanup signal — fewer = simpler.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+    parent: 'model_num_constraints',
+    highlight: true,
   },
 }
 
 /** Subset rendered in pin-to-compare delta panel (numeric, comparable). */
 export const COMPARABLE_METRICS: readonly string[] = [
+  // timing
   'walltime_seconds',
+  'user_time_seconds',
   'deterministic_time',
+  // quality
   'optimality_gap',
   'gap_integral',
+  'best_objective_bound',
+  'num_solutions_found',
+  // search
   'num_branches',
   'num_conflicts',
-  'num_solutions_found',
+  // model
   'model_num_variables',
+  'num_booleans',
+  'num_integer_variables',
   'model_num_constraints',
+  // model > constraint sub-types (rendered indented under model_num_constraints)
+  'num_linear',
+  'num_bool_and',
   'num_bool_or',
+  'num_lin_max',
 ] as const
 
 export function getMetric(key: string): MetricMeta {

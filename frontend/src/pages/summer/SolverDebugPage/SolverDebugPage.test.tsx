@@ -10,6 +10,17 @@ import toast from 'react-hot-toast'
 import SolverDebugPage from '.'
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
+vi.mock('../../../hooks/useCurrentYear', () => ({
+  useYear: () => 2026,
+  useCurrentYear: () => ({
+    currentYear: 2026,
+    setCurrentYear: vi.fn(),
+    availableYears: [2026],
+    isTransitioning: false,
+    isYearReady: true,
+  }),
+}))
+
 type Mode = 'loading' | 'error' | 'empty' | 'success'
 
 let mode: Mode = 'empty'
@@ -37,6 +48,9 @@ vi.mock('../../../hooks/useSolverRuns', () => ({
         isError: false,
         isSuccess: false,
         error: null,
+        hasNextPage: false,
+        fetchNextPage: vi.fn(),
+        isFetchingNextPage: false,
       }
     }
     if (mode === 'error') {
@@ -46,14 +60,20 @@ vi.mock('../../../hooks/useSolverRuns', () => ({
         isError: true,
         isSuccess: false,
         error: new Error('boom'),
+        hasNextPage: false,
+        fetchNextPage: vi.fn(),
+        isFetchingNextPage: false,
       }
     }
     return {
-      data: { items: mockRuns, totalItems: mockRuns.length },
+      data: { pages: [{ items: mockRuns, totalItems: mockRuns.length }] },
       isLoading: false,
       isError: false,
       isSuccess: true,
       error: null,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
     }
   },
 }))

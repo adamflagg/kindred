@@ -16,6 +16,10 @@
  * merged CREATE migration #047.
  * Note: family_camp_adults trimmed — final adminOnly rules baked into
  * merged CREATE migration #035.
+ * Note: family_camp_medical trimmed — final adminOnly rules baked into
+ * merged CREATE migration #035.
+ * Note: family_camp_registrations trimmed — final adminOnly rules baked into
+ * merged CREATE migration #035.
  */
 
 migrate((app) => {
@@ -39,8 +43,7 @@ migrate((app) => {
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "family_camp_medical",
-    "family_camp_registrations", "session_groups",
+    "session_groups",
     "config_sections", "sheets_workbooks"
   ]
 
@@ -76,8 +79,7 @@ migrate((app) => {
     "staff", "staff_org_categories", "staff_positions",
     "staff_program_areas", "staff_skills",
     "person_custom_values", "person_tag_defs", "custom_field_defs",
-    "family_camp_medical",
-    "family_camp_registrations", "session_groups",
+    "session_groups",
     "config_sections", "sheets_workbooks",
     "debug_parse_results", "solver_runs"
   ]

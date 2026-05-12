@@ -28,13 +28,6 @@ export interface LayerDefinition {
   steps: TourStep[]
 }
 
-/** Persisted record of a completed tour */
-export interface TourCompletionRecord {
-  tourId: TourId
-  completedVersion: number
-  completedAt: string
-}
-
 /** Persisted record of a completed layer with timestamp for staleness */
 export interface LayerCompletionRecord {
   layerId: LayerId
@@ -44,7 +37,6 @@ export interface LayerCompletionRecord {
 
 /** Shape of the localStorage data */
 export interface TourStorageData {
-  completed: Partial<Record<TourId, TourCompletionRecord>>
   layers: Partial<Record<LayerId, LayerCompletionRecord>>
 }
 

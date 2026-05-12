@@ -90,7 +90,10 @@ async def run_solver_task_v2(
     # session_attendee_count remains None until prepare_direct_solver_input
     # runs; it is patched in below the moment that data lands.
     minimal_details: dict[str, Any] = compose_minimal_run_details(
-        session_label=f"Session {session_cm_id} — {year}",
+        # Short S<cm_id> form matches _lookup_session_short_name's PB-failure
+        # fallback, so failed-run rows align with successful siblings in the
+        # sweep impact-analysis UI. No PB available here (pre-auth).
+        session_label=f"S{session_cm_id}",
         scenario_id=scenario,
         scenario_name=scenario_name,
         sweep_id=sweep_id,
@@ -264,7 +267,8 @@ async def run_solver_task_v2(
         try:
             details = await build_run_details(
                 pb=task_pb,
-                session_label=f"Session {session_cm_id} — {year}",
+                session_cm_id=session_cm_id,
+                year=year,
                 scenario_id=scenario,
                 scenario_name=scenario_name,
                 session_attendee_count=len(solver_input.persons),
@@ -285,6 +289,7 @@ async def run_solver_task_v2(
                 "run_id": run_id,
                 "session": str(session_cm_id),
                 "session_id": session_cm_id,
+                "year": year,
                 "status": "success",
                 "started_at": solver_runs[run_id]["started_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
@@ -321,6 +326,7 @@ async def run_solver_task_v2(
                 "run_id": run_id,
                 "session": str(session_cm_id),
                 "session_id": session_cm_id,
+                "year": year,
                 "status": "failed",
                 "started_at": solver_runs[run_id]
                 .get("started_at", datetime.now(UTC))

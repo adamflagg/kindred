@@ -11,11 +11,16 @@ interface RawSession {
   year: number
 }
 
+interface RawAttendee {
+  session: string // PB record id of camp_sessions, NOT cm_id
+}
+
 export interface SessionListItem {
   id: string
   cm_id: number
   name: string
   year: number
+  attendee_count: number
 }
 
 // The solver session list mirrors the bunking board's SessionList — only main +
@@ -27,15 +32,28 @@ export function useSessionList() {
   return useQuery<SessionListItem[]>({
     queryKey: queryKeys.allSessionsList(year),
     queryFn: async () => {
-      const result = await pb.collection('camp_sessions').getFullList({
-        filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
-        sort: 'start_date,cm_id',
-      })
-      return (result as unknown as RawSession[]).map((r) => ({
+      const [sessions, attendees] = await Promise.all([
+        pb.collection('camp_sessions').getFullList({
+          filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
+          sort: 'start_date,cm_id',
+        }),
+        pb.collection('attendees').getFullList({
+          filter: `year = ${year} && status_id = 2`,
+          fields: 'session', // minimize payload
+        }),
+      ])
+      const countsBySession = (attendees as unknown as RawAttendee[]).reduce<
+        Record<string, number>
+      >((acc, a) => {
+        acc[a.session] = (acc[a.session] ?? 0) + 1
+        return acc
+      }, {})
+      return (sessions as unknown as RawSession[]).map((r) => ({
         id: r.id,
         cm_id: r.cm_id,
         name: r.name,
         year: r.year,
+        attendee_count: countsBySession[r.id] ?? 0,
       }))
     },
   })
