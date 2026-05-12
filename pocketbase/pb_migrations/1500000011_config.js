@@ -186,12 +186,9 @@ migrate((app) => {
     'constraint.grade_ratio.max_percentage': 'Max Single Grade Percentage',
     'constraint.grade_ratio.penalty': 'Grade Ratio Violation Penalty',
 
-    // Constraint Settings - Cabin Minimum Occupancy
-    'constraint.cabin_minimum_occupancy.enabled': 'Enable Minimum Occupancy',
-    'constraint.cabin_minimum_occupancy.min': 'Hard Minimum Campers',
-    'constraint.cabin_minimum_occupancy.preferred': 'Preferred Minimum Campers',
+    // Constraint Settings - Cabin Minimum Occupancy (Phase 2: min/preferred/
+    // enabled/force_all_used collapsed to constants in bunking/solver/constants.py)
     'constraint.cabin_minimum_occupancy.penalty': 'Under-Occupancy Penalty',
-    'constraint.cabin_minimum_occupancy.force_all_used': 'Force All Cabins Used',
 
     // Constraint Settings - Level Progression
     'constraint.level_progression.no_regression': 'Prevent Level Regression',
@@ -256,12 +253,9 @@ migrate((app) => {
     'constraint.grade_ratio.max_percentage': 'Maximum percentage of cabin that can be from a single grade',
     'constraint.grade_ratio.penalty': 'Penalty weight for exceeding grade ratio limit',
 
-    // Constraint Settings - Cabin Minimum Occupancy
-    'constraint.cabin_minimum_occupancy.enabled': 'Enable minimum occupancy constraint for non-AG bunks',
-    'constraint.cabin_minimum_occupancy.min': 'Hard minimum: if bunk has any campers, must have at least this many',
-    'constraint.cabin_minimum_occupancy.preferred': 'Soft preferred: penalize bunks with fewer than this many campers',
-    'constraint.cabin_minimum_occupancy.penalty': 'Penalty weight for each spot below preferred occupancy',
-    'constraint.cabin_minimum_occupancy.force_all_used': 'Force all cabins to be used when enough campers exist',
+    // Constraint Settings - Cabin Minimum Occupancy (Phase 2: only the
+    // penalty weight is tunable; thresholds are constants in code)
+    'constraint.cabin_minimum_occupancy.penalty': 'Penalty weight for each spot below preferred occupancy (10)',
 
     // Constraint Settings - Level Progression
     'constraint.level_progression.no_regression': 'Prevent returning campers from being placed in lower level bunks than previous year',
@@ -328,11 +322,7 @@ migrate((app) => {
     'constraint.grade_ratio.max_percentage': 'age-grade',
     'constraint.grade_ratio.penalty': 'age-grade',
     // Cabin Minimum Occupancy
-    'constraint.cabin_minimum_occupancy.enabled': 'cabin-occupancy',
-    'constraint.cabin_minimum_occupancy.min': 'cabin-occupancy',
-    'constraint.cabin_minimum_occupancy.preferred': 'cabin-occupancy',
     'constraint.cabin_minimum_occupancy.penalty': 'cabin-occupancy',
-    'constraint.cabin_minimum_occupancy.force_all_used': 'cabin-occupancy',
 
     // Level Progression
     'constraint.level_progression.no_regression': 'level-progression',
@@ -596,14 +586,6 @@ migrate((app) => {
   // Special case mappings by full key
   const fullKeyMappings = {
     "ai.model": componentMappings.model,
-    "constraint.cabin_minimum_occupancy.min": {
-      component_type: "number",
-      component_config: { min: 4, max: 12, step: 1 }
-    },
-    "constraint.cabin_minimum_occupancy.preferred": {
-      component_type: "number",
-      component_config: { min: 8, max: 14, step: 1 }
-    },
     "constraint.cabin_minimum_occupancy.penalty": {
       component_type: "number",
       component_config: { min: 0, max: 10000, step: 100 }
@@ -701,36 +683,13 @@ migrate((app) => {
       max: 50000
     },
 
-    // Cabin minimum occupancy
-    "constraint.cabin_minimum_occupancy.enabled": {
-      value: 1,
-      description: "Enable minimum occupancy constraint for non-AG bunks",
-      min: 0,
-      max: 1
-    },
-    "constraint.cabin_minimum_occupancy.min": {
-      value: 8,
-      description: "Hard minimum: if bunk has any campers, must have at least this many",
-      min: 1,
-      max: 12
-    },
-    "constraint.cabin_minimum_occupancy.preferred": {
-      value: 10,
-      description: "Soft preferred: penalize bunks with fewer than this many campers",
-      min: 1,
-      max: 12
-    },
+    // Cabin minimum occupancy (Phase 2: only the penalty weight is tunable;
+    // hard floor and preferred target are constants in bunking/solver/constants.py)
     "constraint.cabin_minimum_occupancy.penalty": {
       value: 2000,
       description: "Penalty weight for each spot below preferred occupancy",
       min: 0,
       max: 10000
-    },
-    "constraint.cabin_minimum_occupancy.force_all_used": {
-      value: 1,
-      description: "Force all cabins to be used when enough campers exist (1=enabled)",
-      min: 0,
-      max: 1
     },
 
     // Unified spread limits (used by both solver and request processor)

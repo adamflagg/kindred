@@ -2,9 +2,11 @@
 Cabin Minimum Occupancy Constraints - Ensure bunks have enough campers.
 
 Staff never put fewer than ~8 campers in a cabin. This module adds:
-1. Hard constraint: If bunk has ANY campers, must have at least MIN
-2. Force all cabins used: All non-AG bunks must be used (per gender)
-3. Soft penalty: Encourages filling bunks to preferred capacity (not just minimum)
+1. Hard constraint: If bunk has ANY campers, must have at least MIN_BUNK_OCCUPANCY
+2. Force all cabins used: All non-AG bunks must be used (per gender), when
+   enrollment supports it (graceful step-aside otherwise — logged WARNING)
+3. Soft penalty: Charges PREFERRED_BUNK_OCCUPANCY - occupancy per spot for used
+   non-AG bunks (penalty weight read from config — the lone tunable knob)
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.solver.constants import MIN_BUNK_OCCUPANCY, PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.penalties import min_occupancy_penalty, min_occupancy_threshold
 
 from .base import SolverContext
@@ -28,8 +31,11 @@ def add_cabin_minimum_occupancy_constraints(
     """Add minimum occupancy constraints for non-AG bunks.
 
     Staff never put fewer than ~8 campers in a cabin. This adds:
-    1. Hard constraint: If bunk has ANY campers, must have at least MIN
-    2. Force all cabins used: All non-AG bunks must be used (per gender)
+    1. Hard constraint: If bunk has ANY campers, must have at least
+       ``MIN_BUNK_OCCUPANCY``.
+    2. Force all cabins used: All non-AG bunks must be used (per gender) when
+       enrollment supports it. Graceful step-aside (log WARNING, no force-bind)
+       if a gender has too few campers for its bunks at minimum occupancy.
 
     Args:
         ctx: Solver context with model, assignments, and mappings
@@ -39,15 +45,10 @@ def add_cabin_minimum_occupancy_constraints(
     """
     bunk_is_used: dict[int, cp_model.IntVar] = {}
 
-    if not ctx.config.get_constraint("cabin_minimum_occupancy", "enabled", default=True):
-        logger.info("Cabin minimum occupancy constraints DISABLED by config")
-        return bunk_is_used
-
     min_occupancy = min_occupancy_threshold()
-    force_all_used = ctx.config.get_constraint("cabin_minimum_occupancy", "force_all_used", default=True)
 
-    # Count bunks and campers per gender for force_all_used logic
-    bunks_by_gender: dict[str, list[int]] = {"M": [], "F": []}  # bunk indices
+    # Count bunks and campers per gender for force-all-used logic
+    bunks_by_gender: dict[str, list[int]] = {"M": [], "F": []}
     campers_by_gender: dict[str, int] = {"M": 0, "F": 0}
 
     # Identify AG session IDs (sessions with Mixed/AG bunks)
@@ -71,23 +72,24 @@ def add_cabin_minimum_occupancy_constraints(
         if gender in campers_by_gender:
             campers_by_gender[gender] += 1
 
-    # Determine which genders can have all bunks forced
+    # Determine which genders qualify for force-all-used. Genders that fail
+    # the headcount check step aside with a WARNING; their bunks still get
+    # the per-bunk hard floor but are not forced to be occupied.
     force_genders: set[str] = set()
-    if force_all_used:
-        for gender in ["M", "F"]:
-            num_bunks = len(bunks_by_gender[gender])
-            num_campers = campers_by_gender[gender]
-            if num_bunks > 0 and num_campers >= min_occupancy * num_bunks:
-                force_genders.add(gender)
-                logger.debug(
-                    f"Force all {gender} bunks used: {num_campers} campers, "
-                    f"{num_bunks} bunks, min {min_occupancy}/bunk = {min_occupancy * num_bunks} needed"
-                )
-            elif num_bunks > 0:
-                logger.warning(
-                    f"Cannot force all {gender} bunks: only {num_campers} campers for "
-                    f"{num_bunks} bunks (need {min_occupancy * num_bunks} for min {min_occupancy})"
-                )
+    for gender in ["M", "F"]:
+        num_bunks = len(bunks_by_gender[gender])
+        num_campers = campers_by_gender[gender]
+        if num_bunks > 0 and num_campers >= min_occupancy * num_bunks:
+            force_genders.add(gender)
+            logger.debug(
+                f"Force all {gender} bunks used: {num_campers} campers, "
+                f"{num_bunks} bunks, min {min_occupancy}/bunk = {min_occupancy * num_bunks} needed"
+            )
+        elif num_bunks > 0:
+            logger.warning(
+                f"Cannot force all {gender} bunks: only {num_campers} campers for "
+                f"{num_bunks} bunks (need {min_occupancy * num_bunks} for min {min_occupancy})"
+            )
 
     # Count how many bunks get this constraint (skip AG)
     applicable_bunks = sum(len(bunks_by_gender[g]) for g in bunks_by_gender)
@@ -142,31 +144,27 @@ def add_cabin_minimum_occupancy_soft_penalty(
 ) -> None:
     """Add soft penalty for bunks between min and preferred occupancy.
 
-    This encourages the solver to fill bunks closer to preferred capacity
-    rather than just meeting the hard minimum.
+    Encourages the solver to fill bunks closer to ``PREFERRED_BUNK_OCCUPANCY``
+    rather than just meeting the hard minimum. The penalty weight is the
+    lone tunable in this domain.
 
     Args:
         ctx: Solver context with model, assignments, and mappings
         objective_terms: List to append penalty terms to (negative values)
         bunk_is_used: Dict mapping bunk_idx to is_used variable (from hard constraint)
     """
-    if not ctx.config.get_constraint("cabin_minimum_occupancy", "enabled", default=True):
-        return
-
     if not bunk_is_used:
         return
 
-    min_occupancy = min_occupancy_threshold()
-    preferred_occupancy = ctx.config.get_int("constraint.cabin_minimum_occupancy.preferred", default=10)
     penalty_weight = min_occupancy_penalty()
-
-    # No soft penalty if preferred == min
-    if preferred_occupancy <= min_occupancy:
+    if penalty_weight <= 0:
         return
+
+    max_underfill = PREFERRED_BUNK_OCCUPANCY - MIN_BUNK_OCCUPANCY
 
     logger.debug(
         f"Adding cabin minimum occupancy soft penalties "
-        f"(min={min_occupancy}, preferred={preferred_occupancy}, penalty={penalty_weight})"
+        f"(min={MIN_BUNK_OCCUPANCY}, preferred={PREFERRED_BUNK_OCCUPANCY}, penalty={penalty_weight})"
     )
 
     penalties_added = 0
@@ -181,14 +179,13 @@ def add_cabin_minimum_occupancy_soft_penalty(
         # Calculate occupancy for this bunk
         occupancy_expr = sum(ctx.assignments[(person_idx, bunk_idx)] for person_idx in range(len(ctx.person_ids)))
 
-        # Create underfill variable: how many spots below preferred
-        # Range: 0 to (preferred - min), since hard constraint ensures >= min when used
-        max_underfill = preferred_occupancy - min_occupancy
+        # Underfill: how many spots below preferred. Bounded above by
+        # (preferred - min) since the hard constraint forces occupancy >= min
+        # whenever the bunk is used.
         underfill = ctx.model.NewIntVar(0, max_underfill, f"underfill_b{bunk_idx}")
 
-        # underfill = max(0, preferred - occupancy)
-        # But only when bunk is used
-        ctx.model.Add(underfill >= preferred_occupancy - occupancy_expr).OnlyEnforceIf(is_used)
+        # underfill = max(0, preferred - occupancy) when bunk is used; 0 otherwise.
+        ctx.model.Add(underfill >= PREFERRED_BUNK_OCCUPANCY - occupancy_expr).OnlyEnforceIf(is_used)
         ctx.model.Add(underfill == 0).OnlyEnforceIf(is_used.Not())
 
         # Penalty for each spot below preferred

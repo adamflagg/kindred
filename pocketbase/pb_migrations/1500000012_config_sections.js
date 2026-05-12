@@ -152,7 +152,7 @@ migrate((app) => {
     {
       section_key: "cabin-occupancy",
       title: "Cabin Minimum Occupancy",
-      description: "Rules for minimum cabin occupancy and under-fill penalties",
+      description: "Soft penalty weight for under-filled bunks (hard floor 8 and preferred target 10 are hardcoded)",
       display_order: 13,
       expanded_by_default: false
     },

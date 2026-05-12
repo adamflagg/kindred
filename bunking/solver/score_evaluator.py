@@ -22,10 +22,11 @@ from typing import Any
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.satisfaction import is_request_satisfied
+from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.penalties import (
     grade_spread_penalty,
     min_occupancy_penalty,
-    min_occupancy_threshold,
+    min_occupancy_threshold,  # noqa: F401 — re-exported for centralization-invariant tests
 )
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -286,15 +287,18 @@ def _calculate_penalties(
     # solved scenarios. This penalty term used to back-fill the displayed
     # score; with the soft path gone there's nothing to back-fill.
 
-    # Under-occupancy penalty (B4 fix — prefer fuller bunks).
-    # Read via centralized accessors so this matches the OR-Tools cost.
-    min_occupancy = min_occupancy_threshold()
+    # Under-occupancy penalty (B5 fix — charge against PREFERRED_BUNK_OCCUPANCY,
+    # not the hard minimum, so the displayed score matches what the OR-Tools
+    # cost path actually optimized. The cost path adds
+    # ``-penalty * max(0, preferred - occupancy)`` for each used non-AG bunk.
+    # Reading ``min_occupancy_threshold()`` here used to make every feasible
+    # bunk in the (min, preferred] band contribute 0 to the displayed score.
     under_occupancy_penalty = min_occupancy_penalty()
 
     under_occupancy_count = 0
     for person_ids in bunk_to_persons.values():
-        if len(person_ids) > 0 and len(person_ids) < min_occupancy:
-            under_occupancy_count += min_occupancy - len(person_ids)
+        if 0 < len(person_ids) < PREFERRED_BUNK_OCCUPANCY:
+            under_occupancy_count += PREFERRED_BUNK_OCCUPANCY - len(person_ids)
 
     if under_occupancy_count > 0:
         penalties["under_occupancy"] = under_occupancy_count * under_occupancy_penalty

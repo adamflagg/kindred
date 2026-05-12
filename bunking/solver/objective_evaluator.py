@@ -24,10 +24,11 @@ from typing import Any
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
+from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.penalties import (
     grade_spread_penalty,
     min_occupancy_penalty,
-    min_occupancy_threshold,
+    min_occupancy_threshold,  # noqa: F401 — re-exported for centralization-invariant tests
 )
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -446,20 +447,22 @@ class ObjectiveEvaluator:
     ) -> int:
         """Calculate under-occupancy penalty (prefer fuller bunks).
 
-        Reads via the centralized ``min_occupancy_threshold()`` and
-        ``min_occupancy_penalty()`` accessors so this replicates the OR-Tools
-        cost contribution exactly (B4 fix; the previous read of the legacy
-        ``constraint.cabin_occupancy.minimum`` was a stale alias).
+        Charges against ``PREFERRED_BUNK_OCCUPANCY`` to match the OR-Tools cost
+        path in ``cabin_occupancy.add_cabin_minimum_occupancy_soft_penalty``,
+        which adds ``-penalty * max(0, preferred - occupancy)`` per used
+        non-AG bunk. The previous implementation charged against the hard
+        minimum (B5 drift) so any feasible bunk in the (min, preferred] band
+        contributed 0 to the displayed score even though the solver was
+        actively pushing toward preferred.
         """
-        min_occupancy = min_occupancy_threshold()
         penalty_per_person = min_occupancy_penalty()
 
         total_penalty = 0
 
         for person_ids in bunk_to_persons.values():
             occupancy = len(person_ids)
-            if 0 < occupancy < min_occupancy:
-                deficit = min_occupancy - occupancy
+            if 0 < occupancy < PREFERRED_BUNK_OCCUPANCY:
+                deficit = PREFERRED_BUNK_OCCUPANCY - occupancy
                 total_penalty += deficit * penalty_per_person
 
         return total_penalty

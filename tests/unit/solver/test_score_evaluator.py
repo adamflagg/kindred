@@ -455,28 +455,38 @@ class TestCalculatePenalties:
         return config
 
     def test_no_penalties_for_good_state(self, mock_config):
-        """Good assignment state should have no penalties."""
+        """Good assignment state should have no penalties.
+
+        Uses a 10-camper bunk: at or above PREFERRED_BUNK_OCCUPANCY=10 so the
+        soft underfill path contributes 0.
+        """
         from bunking.solver.score_evaluator import _calculate_penalties
 
-        person_to_bunk = {1: 100, 2: 100, 3: 100, 4: 100, 5: 100, 6: 100, 7: 100, 8: 100}
-        bunk_to_persons = {100: [1, 2, 3, 4, 5, 6, 7, 8]}
-        person_by_cm_id = {i: {"cm_id": i, "grade": 5} for i in range(1, 9)}
+        person_to_bunk = dict.fromkeys(range(1, 11), 100)
+        bunk_to_persons = {100: list(range(1, 11))}
+        person_by_cm_id = {i: {"cm_id": i, "grade": 5} for i in range(1, 11)}
         bunk_by_cm_id = {100: {"cm_id": 100, "max_size": 12}}
 
         penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
 
         # All grades are 5, so no spread violation
-        # 8 campers meets minimum
+        # 10 campers meets preferred occupancy
         # Not over capacity
         assert penalties.get("grade_spread", 0) == 0
         assert penalties.get("over_capacity", 0) == 0
         assert penalties.get("under_occupancy", 0) == 0
 
-    def test_under_occupancy_penalty(self, mock_config):
-        """Bunks with fewer than minimum should get penalty."""
+    def test_under_occupancy_penalty_charges_against_preferred(self, mock_config):
+        """Bunks below PREFERRED_BUNK_OCCUPANCY=10 should be penalized.
+
+        B5 drift fix: the OR-Tools cost path charges underfill against the
+        preferred threshold (10), so the post-solve evaluator must do the
+        same. Previously it charged against the hard minimum (8), which made
+        the displayed score silently 0 for any feasible bunk between 8 and 9.
+        """
         from bunking.solver.score_evaluator import _calculate_penalties
 
-        # Only 3 campers in bunk (minimum is 8)
+        # 3 campers in bunk; preferred=10 → deficit 7, penalty 50 per spot → 350
         person_to_bunk = {1: 100, 2: 100, 3: 100}
         bunk_to_persons = {100: [1, 2, 3]}
         person_by_cm_id = {i: {"cm_id": i, "grade": 5} for i in [1, 2, 3]}
@@ -484,5 +494,21 @@ class TestCalculatePenalties:
 
         penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
 
-        # 8 - 3 = 5 under minimum, * 50 penalty each
-        assert penalties.get("under_occupancy", 0) == 5 * 50
+        assert penalties.get("under_occupancy", 0) == 7 * 50
+
+    def test_under_occupancy_charges_for_bunks_between_min_and_preferred(self, mock_config):
+        """The B5 regression case: a feasibly-filled bunk at 9 was invisible.
+
+        With hard floor 8 and preferred 10, a 9-camper bunk used to evaluate to
+        0 (because 9 >= min=8). After the fix it charges (10-9)*50 = 50.
+        """
+        from bunking.solver.score_evaluator import _calculate_penalties
+
+        person_to_bunk = dict.fromkeys(range(1, 10), 100)
+        bunk_to_persons = {100: list(range(1, 10))}  # 9 campers
+        person_by_cm_id = {i: {"cm_id": i, "grade": 5} for i in range(1, 10)}
+        bunk_by_cm_id = {100: {"cm_id": 100, "max_size": 12}}
+
+        penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
+
+        assert penalties.get("under_occupancy", 0) == 1 * 50
