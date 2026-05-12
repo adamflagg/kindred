@@ -9,7 +9,13 @@ band (8 or 9 campers) contributed zero to the displayed score even though the
 solver was actively pushing toward 10. Worst-case the displayed score
 under-reports by ~120k.
 
-These tests pin both evaluators to the same formula the OR-Tools cost uses.
+These tests pin both Python evaluators to the same formula and assert they
+agree at every point. In the feasible band (occupancy >= MIN_BUNK_OCCUPANCY)
+this formula also matches the OR-Tools cost contribution; sub-MIN cases
+cannot occur in a valid solver solution (the hard constraint forbids them)
+and the OR-Tools ``underfill`` IntVar is bounded at ``PREFERRED - MIN``, so
+those parametrize rows exercise only the Python evaluators, not OR-Tools
+alignment.
 """
 
 from __future__ import annotations
