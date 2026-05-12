@@ -18,6 +18,7 @@ constants, fails fast.
 from __future__ import annotations
 
 import inspect
+import re
 from pathlib import Path
 
 # Schema -----------------------------------------------------------------------
@@ -76,11 +77,9 @@ def test_cabin_occupancy_module_drops_preferred_direct_read():
 
 
 def test_cabin_occupancy_module_imports_occupancy_constants():
-    """The module must import the new constants so the soft-penalty math is
-    constant-driven, not config-driven. Identity-check the values against the
-    canonical module to catch a local redefinition that drops the import."""
+    """The module must import the new constants from bunking.solver.constants
+    (not redefine them locally) so the soft-penalty math is centralized."""
     import bunking.solver.constraints.cabin_occupancy as mod
-    from bunking.solver import constants as solver_constants
 
     assert hasattr(mod, "MIN_BUNK_OCCUPANCY"), (
         "cabin_occupancy.py must import MIN_BUNK_OCCUPANCY from bunking.solver.constants"
@@ -88,8 +87,16 @@ def test_cabin_occupancy_module_imports_occupancy_constants():
     assert hasattr(mod, "PREFERRED_BUNK_OCCUPANCY"), (
         "cabin_occupancy.py must import PREFERRED_BUNK_OCCUPANCY from bunking.solver.constants"
     )
-    assert getattr(mod, "MIN_BUNK_OCCUPANCY") == solver_constants.MIN_BUNK_OCCUPANCY
-    assert getattr(mod, "PREFERRED_BUNK_OCCUPANCY") == solver_constants.PREFERRED_BUNK_OCCUPANCY
+    # Source check: hasattr alone passes if someone redefines the constants
+    # locally with the same value. Verifying the import statement catches
+    # that drift.
+    src = inspect.getsource(mod)
+    assert re.search(r"from bunking\.solver\.constants import[^\n]*MIN_BUNK_OCCUPANCY", src), (
+        "cabin_occupancy.py must import MIN_BUNK_OCCUPANCY from bunking.solver.constants, not redefine locally"
+    )
+    assert re.search(r"from bunking\.solver\.constants import[^\n]*PREFERRED_BUNK_OCCUPANCY", src), (
+        "cabin_occupancy.py must import PREFERRED_BUNK_OCCUPANCY from bunking.solver.constants, not redefine locally"
+    )
 
 
 # Centralized accessor ---------------------------------------------------------
