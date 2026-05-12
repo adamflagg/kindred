@@ -7,22 +7,22 @@
  * and error information. Each run is associated with a scenario and
  * contains detailed logs and statistics.
  *
- * Uses dynamic collection lookups via findCollectionByNameOrId().
+ * Access: tier3 denyAll — frontend hits FastAPI admin endpoints; direct
+ * PB CRUD is denied via empty-string rules.
  */
 
 migrate((app) => {
-  // Dynamic lookup for relation field
   const scenariosCol = app.findCollectionByNameOrId("saved_scenarios")
 
   const collection = new Collection({
     id: "col_solver_runs",
     type: "base",
     name: "solver_runs",
-    listRule: '@request.auth.id != ""',
-    viewRule: '@request.auth.id != ""',
-    createRule: '@request.auth.id != ""',
-    updateRule: '@request.auth.id != ""',
-    deleteRule: '@request.auth.id != ""',
+    listRule: '',
+    viewRule: '',
+    createRule: '',
+    updateRule: '',
+    deleteRule: '',
     fields: [
       {
         type: "text",
@@ -51,7 +51,7 @@ migrate((app) => {
         name: "status",
         required: false,
         presentable: false,
-        values: ["pending", "running", "success", "failed", "error"],
+        values: ["pending", "running", "success", "failed", "error", "cancelled"],
         maxSelect: 1
       },
       {
@@ -215,6 +215,26 @@ migrate((app) => {
   });
 
   app.save(collection);
+
+  collection.fields.add(new Field({
+    type: "number",
+    name: "year",
+    required: true,
+    presentable: false,
+    min: 2000,
+    max: 2100,
+    onlyInt: true,
+  }))
+
+  app.save(collection);
+
+  // idx_solver_runs_year is created via raw SQL (not collection.indexes) to
+  // match the historical chain: the original #092 used the same raw-SQL form,
+  // which means the index exists in sqlite but `collection.indexes` keeps
+  // only the 4 entries declared at create time.
+  app.db().newQuery(
+    "CREATE INDEX IF NOT EXISTS idx_solver_runs_year ON solver_runs (year)"
+  ).execute()
 }, (app) => {
   const collection = app.findCollectionByNameOrId("solver_runs");
   app.delete(collection);
