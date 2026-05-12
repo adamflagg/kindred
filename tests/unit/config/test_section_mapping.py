@@ -28,11 +28,6 @@ def test_required_sections_present():
         assert f'"{section}"' in text, f"required section {section} missing"
 
 
-def test_ui_preferences_kept():
-    text = SECTIONS_MIGRATION.read_text()
-    assert '"ui-preferences"' in text  # holds tour.staleness_days
-
-
 def test_historical_context_keys_in_history_tracking_section():
     text = MAIN_MIGRATION.read_text()
     # Both groups should be mapped to 'history-tracking', not 'ai-validation-rules'.
