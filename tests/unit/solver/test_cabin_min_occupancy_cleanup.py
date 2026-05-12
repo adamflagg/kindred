@@ -77,8 +77,10 @@ def test_cabin_occupancy_module_drops_preferred_direct_read():
 
 def test_cabin_occupancy_module_imports_occupancy_constants():
     """The module must import the new constants so the soft-penalty math is
-    constant-driven, not config-driven."""
+    constant-driven, not config-driven. Identity-check the values against the
+    canonical module to catch a local redefinition that drops the import."""
     import bunking.solver.constraints.cabin_occupancy as mod
+    from bunking.solver import constants as solver_constants
 
     assert hasattr(mod, "MIN_BUNK_OCCUPANCY"), (
         "cabin_occupancy.py must import MIN_BUNK_OCCUPANCY from bunking.solver.constants"
@@ -86,6 +88,8 @@ def test_cabin_occupancy_module_imports_occupancy_constants():
     assert hasattr(mod, "PREFERRED_BUNK_OCCUPANCY"), (
         "cabin_occupancy.py must import PREFERRED_BUNK_OCCUPANCY from bunking.solver.constants"
     )
+    assert mod.MIN_BUNK_OCCUPANCY == solver_constants.MIN_BUNK_OCCUPANCY
+    assert mod.PREFERRED_BUNK_OCCUPANCY == solver_constants.PREFERRED_BUNK_OCCUPANCY
 
 
 # Centralized accessor ---------------------------------------------------------

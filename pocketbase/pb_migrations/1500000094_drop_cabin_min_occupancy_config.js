@@ -19,15 +19,18 @@ migrate(
   (app) => {
     const configKeys = ["enabled", "min", "preferred", "force_all_used"]
     for (const key of configKeys) {
+      let record
       try {
-        const record = app.findFirstRecordByFilter(
+        record = app.findFirstRecordByFilter(
           "config",
           `category = "constraint" && subcategory = "cabin_minimum_occupancy" && config_key = "${key}"`,
         )
-        if (record) app.delete(record)
       } catch {
-        // already gone — ignore
+        // already gone — ignore (findFirstRecordByFilter throws on no match)
       }
+      // Delete runs OUTSIDE the catch so real delete errors (permissions,
+      // FK, runtime) surface instead of being silently swallowed.
+      if (record) app.delete(record)
     }
   },
   (app) => {
