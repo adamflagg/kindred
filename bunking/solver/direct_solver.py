@@ -808,6 +808,13 @@ class DirectBunkingSolver:
             "single_bunk_session": True,
         }
 
+        # Populate `request_validation` so the debug page's bucket-aware
+        # outcome columns (mp_request_rate, all_camper_rate, ...) render for
+        # single-bunk sessions identically to multi-bunk. Mirrors the
+        # multi-bunk solve() path that attaches the summary post-solve.
+        self._check_must_satisfy_one_violations(assignments)
+        stats["request_validation"] = self.request_validation_summary
+
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
@@ -1193,16 +1200,7 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            def _is_mp(r: DirectBunkRequest) -> bool:
-                """Canonical MP classification, defensive on unknown source_field."""
-                if not r.source_field:
-                    return False
-                try:
-                    return classify_request(r.source_field) == RequestBucket.MATERIAL_PARENT
-                except ValueError:
-                    return False
-
-            resolved_mp = [r for r in resolved_requests if _is_mp(r)]
+            resolved_mp = [r for r in resolved_requests if _is_material_parent(r)]
             mp_requests_total += len(resolved_mp)
             satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
             mp_requests_satisfied += len(satisfied_mp)
@@ -1225,11 +1223,10 @@ class DirectBunkingSolver:
 
             resolved_possible_count[person_cm_id] = len(resolved_possible)
             # TODO(stage-4-retire): when the parent-paramount Stage 4 reweighting
-            # lands, retire `_is_material_parent()` (it's a legacy wrapper around
-            # the canonical `classify_request()` from bunking.satisfaction.bucket;
-            # PR1's new MP counts above already use the canonical helper) and
-            # also retire the Stage-4-era `staff_*` / `immaterial_*` metric
-            # mirrors that read from this same diagnostic.
+            # lands, retire `_is_material_parent()` (a legacy wrapper around
+            # `classify_request()` from bunking.satisfaction.bucket) and the
+            # Stage-4-era `staff_*` / `immaterial_*` metric mirrors that read
+            # from this same diagnostic.
             if any(_is_material_parent(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
