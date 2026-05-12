@@ -46,6 +46,8 @@
  * merged CREATE migration #008.
  * Note: staff_positions trimmed — final adminOnly rules baked into
  * merged CREATE migration #014.
+ * Note: staff_program_areas trimmed — final adminOnly rules baked into
+ * merged CREATE migration #007.
  */
 
 migrate((app) => {
@@ -63,7 +65,7 @@ migrate((app) => {
 
   // Tier 2: Admin-only (sensitive data not accessed by frontend)
   const tier2 = [
-    "staff_program_areas", "staff_skills"
+    "staff_skills"
   ]
 
   for (const name of tier2) {
@@ -92,7 +94,7 @@ migrate((app) => {
   }
 
   const all = [
-    "staff_program_areas", "staff_skills",
+    "staff_skills",
     "debug_parse_results", "solver_runs"
   ]
 
