@@ -89,3 +89,42 @@ describe('DrillDownDrawer', () => {
     expect(document.activeElement).not.toBe(closeBtn)
   })
 })
+
+describe('Registry-driven group rendering (PR1)', () => {
+  it('renders Outcome group when run has request_validation data', () => {
+    const outcomeRun: SolverRun = {
+      ...run,
+      stats: {
+        ...(run.stats ?? {}),
+        request_validation: {
+          mp_requests_satisfied: 80,
+          mp_requests_total: 100,
+        },
+      },
+    }
+    render(<DrillDownDrawer run={outcomeRun} onClose={vi.fn()} />)
+    expect(screen.getByText('Outcome')).toBeInTheDocument()
+    expect(screen.getByText('Optimized (MP req)')).toBeInTheDocument()
+  })
+
+  it('renders Solution strategy row when solution_info is set', () => {
+    const stallingRun: SolverRun = {
+      ...run,
+      stats: {
+        ...(run.stats ?? {}),
+        solution_info: 'rnd_var_lns (d=8.93e-01 s=1183 t=0.10 p=0.54 stall=30 h=stalling)',
+      },
+    }
+    render(<DrillDownDrawer run={stallingRun} onClose={vi.fn()} />)
+    expect(screen.getByText('Solution strategy')).toBeInTheDocument()
+    expect(screen.getByText(/rnd_var_lns/)).toBeInTheDocument()
+  })
+
+  it('does NOT render Solution strategy when solution_info is missing', () => {
+    const { solution_info: _omit, ...statsNoSolutionInfo } = run.stats ?? {}
+    void _omit
+    const noInfoRun: SolverRun = { ...run, stats: statsNoSolutionInfo }
+    render(<DrillDownDrawer run={noInfoRun} onClose={vi.fn()} />)
+    expect(screen.queryByText('Solution strategy')).not.toBeInTheDocument()
+  })
+})

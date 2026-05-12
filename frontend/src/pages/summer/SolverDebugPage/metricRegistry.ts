@@ -380,6 +380,24 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   },
 }
 
+/** Group metrics by their `group` field, preserving insertion order from METRIC_REGISTRY. */
+export const METRIC_REGISTRY_BY_GROUP: Record<MetricGroup, MetricMeta[]> = (() => {
+  const groups: Record<MetricGroup, MetricMeta[]> = {
+    outcome: [],
+    size: [],
+    timing: [],
+    quality: [],
+    churn: [],
+    search: [],
+    model: [],
+    context: [],
+  }
+  for (const meta of Object.values(METRIC_REGISTRY)) {
+    groups[meta.group].push(meta)
+  }
+  return groups
+})()
+
 /** Subset rendered in pin-to-compare delta panel (numeric, comparable). */
 export const COMPARABLE_METRICS: readonly string[] = [
   // outcome (PR1)

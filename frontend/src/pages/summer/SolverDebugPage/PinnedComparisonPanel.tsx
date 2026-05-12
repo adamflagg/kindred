@@ -7,8 +7,9 @@ import {
   type MetricGroup,
   type MetricInterpretation,
 } from './metricRegistry'
+import { pickStat } from './pickStat'
 
-import type { SolverRun, SolverRunStats } from '../../../hooks/useSolverRuns'
+import type { SolverRun } from '../../../hooks/useSolverRuns'
 
 interface Props {
   runA: SolverRun | null
@@ -45,44 +46,6 @@ function formatDelta(metricKey: string, delta: number | null): string {
   return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}${arrow}`
 }
 
-function pickMetric(stats: SolverRunStats | undefined, key: string): number | null | undefined {
-  if (!stats) return undefined
-
-  // Existing: constraint sub-types live under constraint_type_breakdown
-  if (key === 'num_bool_or') return stats.constraint_type_breakdown?.['bool_or'] ?? null
-  if (key === 'num_linear') return stats.constraint_type_breakdown?.['linear'] ?? null
-  if (key === 'num_bool_and') return stats.constraint_type_breakdown?.['bool_and'] ?? null
-  if (key === 'num_lin_max') return stats.constraint_type_breakdown?.['lin_max'] ?? null
-
-  // PR1: derived rates computed at render time, not stored
-  if (key === 'mp_request_rate') {
-    const sat = stats.request_validation?.mp_requests_satisfied
-    const tot = stats.request_validation?.mp_requests_total
-    return tot ? (sat ?? 0) / tot : null
-  }
-  if (key === 'mp_camper_rate') {
-    const sat = stats.request_validation?.mp_campers_satisfied
-    const tot = stats.request_validation?.mp_campers_total
-    return tot ? (sat ?? 0) / tot : null
-  }
-  if (key === 'all_request_rate') {
-    const sat = stats.satisfied_request_count
-    const tot = stats.total_requests
-    return tot ? (sat ?? 0) / tot : null
-  }
-  if (key === 'all_camper_rate') {
-    const sat = stats.request_validation?.all_campers_satisfied
-    const tot = stats.request_validation?.all_campers_total
-    return tot ? (sat ?? 0) / tot : null
-  }
-
-  // PR1: outcome keys nested under request_validation get flattened
-  const rv = stats.request_validation as Record<string, number | null | undefined> | undefined
-  if (rv && key in rv) return rv[key]
-
-  return (stats as unknown as Record<string, number | null | undefined>)[key]
-}
-
 function shouldHighlight(
   meta: ReturnType<typeof getMetric>,
   runA: SolverRun,
@@ -90,13 +53,13 @@ function shouldHighlight(
 ): boolean {
   if (!meta.highlight) return false
   if (meta.highlight.mode === 'on-delta') {
-    return pickMetric(runA.stats, meta.key) !== pickMetric(runB.stats, meta.key)
+    return pickStat(runA.stats, meta.key) !== pickStat(runB.stats, meta.key)
   }
   // diverges-from: remaining union branch
   const fromKey = meta.highlight.from
   return (
-    pickMetric(runA.stats, meta.key) !== pickMetric(runA.stats, fromKey) ||
-    pickMetric(runB.stats, meta.key) !== pickMetric(runB.stats, fromKey)
+    pickStat(runA.stats, meta.key) !== pickStat(runA.stats, fromKey) ||
+    pickStat(runB.stats, meta.key) !== pickStat(runB.stats, fromKey)
   )
 }
 
@@ -209,8 +172,8 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                 </tr>
                 {keys.map((key) => {
                   const meta = getMetric(key)
-                  const va = pickMetric(runA.stats, key)
-                  const vb = pickMetric(runB.stats, key)
+                  const va = pickStat(runA.stats, key)
+                  const vb = pickStat(runB.stats, key)
                   const delta = va != null && vb != null ? vb - va : null
                   const isChild = meta.parent != null
                   const rowBg = shouldHighlight(meta, runA, runB) ? 'bg-yellow-50' : ''
