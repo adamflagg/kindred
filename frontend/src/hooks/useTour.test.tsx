@@ -417,4 +417,62 @@ describe('useTour', () => {
 
     vi.mocked(document.querySelector).mockRestore()
   })
+
+  it('replay() — Prev click waits for target step selector before going back', async () => {
+    const twoStepTour: TourDefinition = {
+      id: 'debug',
+      version: 1,
+      layers: [],
+      steps: [
+        {
+          element: '[data-tour="step-one"]',
+          popover: { title: 'One', description: 'First' },
+        },
+        {
+          element: '[data-tour="step-two"]',
+          popover: { title: 'Two', description: 'Second' },
+        },
+      ],
+    }
+    vi.mocked(tourRegistry.getTourIdForRoute).mockReturnValue('debug')
+    vi.mocked(tourRegistry.loadTourDefinition).mockResolvedValue(twoStepTour)
+    vi.mocked(tourStorage.getTourStorage).mockReturnValue({ layers: {} })
+
+    const stepTwoEl = document.createElement('div')
+    let stepOneExists = false
+    const originalQuerySelector = document.querySelector.bind(document)
+    vi.spyOn(document, 'querySelector').mockImplementation((selector: string) => {
+      if (selector === '[data-tour="step-two"]') return stepTwoEl
+      if (selector === '[data-tour="step-one"]') return stepOneExists ? stepTwoEl : null
+      return originalQuerySelector(selector)
+    })
+
+    const driverModule = await import('driver.js')
+    const { result } = renderHook(() => useTour())
+    await flushAndAdvance(1000)
+
+    act(() => {
+      result.current.replay()
+    })
+    await flushAndAdvance(1000)
+
+    const lastCall = vi.mocked(driverModule.driver).mock.calls.at(-1)?.[0]
+    expect(lastCall?.onPrevClick).toBeDefined()
+
+    act(() => {
+      lastCall!.onPrevClick!(undefined, twoStepTour.steps[1] as never, {
+        config: lastCall!,
+        state: { activeIndex: 1 } as never,
+        driver: mockDriverInstance as never,
+      })
+    })
+    await flushAndAdvance(1000)
+    expect(mockMovePrevious).not.toHaveBeenCalled()
+
+    stepOneExists = true
+    await flushAndAdvance(1000)
+    expect(mockMovePrevious).toHaveBeenCalledTimes(1)
+
+    vi.mocked(document.querySelector).mockRestore()
+  })
 })

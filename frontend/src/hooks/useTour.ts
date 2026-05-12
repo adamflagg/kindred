@@ -167,6 +167,17 @@ export function useTour() {
           if (ready) opts.driver.moveNext()
         })
       },
+      onPrevClick: (_el, _step, opts) => {
+        const currentIdx = opts.state.activeIndex ?? 0
+        const prevIdx = currentIdx - 1
+        if (prevIdx < 0) return
+        const prevSelector =
+          typeof steps[prevIdx]?.element === 'string' ? (steps[prevIdx].element as string) : null
+        waitForSelector(prevSelector, scheduleTimeout, abortController.signal).then((ready) => {
+          if (abortController.signal.aborted) return
+          if (ready) opts.driver.movePrevious()
+        })
+      },
       onDestroyed: () => {
         const completedLayers = layerBoundaries
           .filter((b) => highestStepReached >= b.endIndex)
