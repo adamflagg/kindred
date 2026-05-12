@@ -618,12 +618,20 @@ jobs:
     # Consolidated: scans all 4 images in one step instead of 8 separate action invocations.
     # Generates SARIF reports (HIGH+CRITICAL) and blocks on CRITICAL vulnerabilities.
     # Trivy DB is downloaded once and reused across all scans.
+    # Replaces a previous `curl | sudo sh` against raw.githubusercontent.com so
+    # we can drop that endpoint from the harden-runner allowlist. setup-trivy
+    # checks out the install script from a pinned commit of aquasecurity/trivy
+    # rather than the floating `main` branch.
+    - name: Install Trivy
+      if: steps.check.outputs.build == 'true'
+      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+      with:
+        version: v0.69.3
+
     - name: Scan all images with Trivy
       id: trivy-scan
       if: steps.check.outputs.build == 'true'
       run: |
-        # Install Trivy CLI
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.69.3
         trivy version
 
         IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
