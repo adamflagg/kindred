@@ -86,3 +86,65 @@ def test_reciprocal_pair_both_flagged(mock_config):
 
     assert PREDICATE.check_pair(req_a, ctx) is not None
     assert PREDICATE.check_pair(req_b, ctx) is not None
+
+
+# ---- Cluster-layer tests ----
+
+
+def test_cluster_within_range_is_not_impossible(mock_config):
+    """A→B (g4↔g4), B→C (g4↔g5): component is {g4, g5}, within range."""
+    from dataclasses import replace as dc_replace
+
+    p1 = make_person(1, session=100, gender="F", grade=4)
+    p2 = make_person(2, session=100, gender="F", grade=4)
+    p3 = make_person(3, session=100, gender="F", grade=5)
+    reqs = [
+        make_request("r1", requester=1, requestee=2, session=100),
+        make_request("r2", requester=2, requestee=3, session=100),
+    ]
+    input_data = make_input([p1, p2, p3], [make_bunk(10, session=100)], reqs)
+    ctx = _build_context(input_data, mock_config)
+    component = {1, 2, 3}
+    ctx_c = dc_replace(ctx, bunk_with_components=[component])
+
+    assert PREDICATE.check_cluster(component, ctx_c) is None
+
+
+def test_cluster_spanning_three_grades_is_impossible(mock_config):
+    """Chain A↔B (g3↔g5), B↔C (g5↔g7): component spans {g3, g5, g7}."""
+    from dataclasses import replace as dc_replace
+
+    p1 = make_person(1, session=100, gender="F", grade=3)
+    p2 = make_person(2, session=100, gender="F", grade=5)
+    p3 = make_person(3, session=100, gender="F", grade=7)
+    reqs = [
+        make_request("r1", requester=1, requestee=2, session=100),
+        make_request("r2", requester=2, requestee=3, session=100),
+    ]
+    input_data = make_input([p1, p2, p3], [make_bunk(10, session=100)], reqs)
+    ctx = _build_context(input_data, mock_config)
+    component = {1, 2, 3}
+    ctx_c = dc_replace(ctx, bunk_with_components=[component])
+
+    reason = PREDICATE.check_cluster(component, ctx_c)
+    assert reason is not None
+    assert reason.code == "cluster_grade_compatibility"
+    assert reason.detail["grade_min"] == 3
+    assert reason.detail["grade_max"] == 7
+    assert reason.detail["range"] == 4
+
+
+def test_cluster_consecutive_grades_only_is_not_impossible(mock_config):
+    """Component is {g4, g4, g4, g5}: range 1, within 2-grade allowance."""
+    from dataclasses import replace as dc_replace
+
+    p1 = make_person(1, session=100, gender="F", grade=4)
+    p2 = make_person(2, session=100, gender="F", grade=4)
+    p3 = make_person(3, session=100, gender="F", grade=4)
+    p4 = make_person(4, session=100, gender="F", grade=5)
+    input_data = make_input([p1, p2, p3, p4], [make_bunk(10, session=100)], [])
+    ctx = _build_context(input_data, mock_config)
+    component = {1, 2, 3, 4}
+    ctx_c = dc_replace(ctx, bunk_with_components=[component])
+
+    assert PREDICATE.check_cluster(component, ctx_c) is None
