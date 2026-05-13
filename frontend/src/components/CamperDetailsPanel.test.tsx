@@ -1231,4 +1231,117 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText(/Do NOT Share Bunk With/i)).not.toBeInTheDocument()
     })
   })
+
+  describe('Staff Notes section (combines internal + bunking notes)', () => {
+    function originalBunkRecord(
+      id: string,
+      field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
+      content: string
+    ) {
+      return {
+        id,
+        field,
+        content,
+        requester: 'pb-emma',
+        year: 2025,
+        created: '2025-01-01T00:00:00Z',
+        updated: '2025-05-01T00:00:00Z',
+        collectionId: 'original_bunk_requests',
+        collectionName: 'original_bunk_requests',
+        expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
+      }
+    }
+
+    function setupOriginalBunkRecords(records: ReturnType<typeof originalBunkRecord>[]) {
+      mockGetFullListPersons.mockResolvedValue([EMMA])
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue([])
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({
+        items: records,
+        totalItems: records.length,
+      })
+    }
+
+    it('renders Staff Notes with only internal notes when bunking notes is empty', async () => {
+      setupOriginalBunkRecords([
+        originalBunkRecord('obr-1', 'internal_notes', 'Watch for homesickness'),
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Staff Notes/i)).toBeInTheDocument()
+      })
+      expect(screen.getByText('Watch for homesickness')).toBeInTheDocument()
+    })
+
+    it('renders Staff Notes with only bunking notes when internal is empty', async () => {
+      setupOriginalBunkRecords([
+        originalBunkRecord('obr-1', 'bunking_notes', 'Allergic to peanuts'),
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Staff Notes/i)).toBeInTheDocument()
+      })
+      expect(screen.getByText('Allergic to peanuts')).toBeInTheDocument()
+    })
+
+    it('renders Staff Notes with both texts stacked when both are populated', async () => {
+      setupOriginalBunkRecords([
+        originalBunkRecord('obr-1', 'internal_notes', 'Watch for homesickness'),
+        originalBunkRecord('obr-2', 'bunking_notes', 'Allergic to peanuts'),
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Staff Notes/i)).toBeInTheDocument()
+      })
+      expect(screen.getByText('Watch for homesickness')).toBeInTheDocument()
+      expect(screen.getByText('Allergic to peanuts')).toBeInTheDocument()
+    })
+
+    it('does not render Staff Notes when neither field is populated', async () => {
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_with', 'Riley Sam')])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Staff Notes/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render Staff Notes when both fields are whitespace-only', async () => {
+      setupOriginalBunkRecords([
+        originalBunkRecord('obr-1', 'internal_notes', '   '),
+        originalBunkRecord('obr-2', 'bunking_notes', '\n\t'),
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Staff Notes/i)).not.toBeInTheDocument()
+    })
+
+    it('never surfaces the Social With Checkbox field (5th, excluded)', async () => {
+      setupOriginalBunkRecords([
+        originalBunkRecord('obr-1', 'socialize_with', 'Marked social-with-best'),
+      ])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Social With/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Marked social-with-best/)).not.toBeInTheDocument()
+    })
+  })
 })
