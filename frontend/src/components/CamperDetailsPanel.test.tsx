@@ -1164,4 +1164,71 @@ describe('CamperDetailsPanel', () => {
       expect(filter).not.toContain('person_id =')
     })
   })
+
+  describe('Do NOT Share Bunk With section (parent-sourced quick-ref)', () => {
+    /** Build a minimal original_bunk_requests record with a custom field. */
+    function originalBunkRecord(
+      id: string,
+      field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
+      content: string
+    ) {
+      return {
+        id,
+        field,
+        content,
+        requester: 'pb-emma',
+        year: 2025,
+        created: '2025-01-01T00:00:00Z',
+        updated: '2025-05-01T00:00:00Z',
+        collectionId: 'original_bunk_requests',
+        collectionName: 'original_bunk_requests',
+        expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
+      }
+    }
+
+    function setupOriginalBunkRecords(records: ReturnType<typeof originalBunkRecord>[]) {
+      mockGetFullListPersons.mockResolvedValue([EMMA])
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue([])
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({
+        items: records,
+        totalItems: records.length,
+      })
+    }
+
+    it('renders the "Do NOT Share Bunk With" section header when negative text exists', async () => {
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'not_bunk_with', 'Liam Garcia')])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByText(/Do NOT Share Bunk With/i)).toBeInTheDocument()
+      })
+      expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    })
+
+    it('does not render the section when there is no negative text', async () => {
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_with', 'Riley Sam')])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Do NOT Share Bunk With/i)).not.toBeInTheDocument()
+    })
+
+    it('does not render the section when negative content is whitespace-only', async () => {
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'not_bunk_with', '   ')])
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.queryByText(/Do NOT Share Bunk With/i)).not.toBeInTheDocument()
+    })
+  })
 })

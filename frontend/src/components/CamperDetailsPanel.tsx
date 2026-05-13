@@ -238,6 +238,8 @@ export default function CamperDetailsPanel({
     history: true,
     siblings: true,
     bunkRequestForm: true,
+    doNotShareBunkWith: true,
+    staffNotes: true,
   })
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -1147,6 +1149,26 @@ export default function CamperDetailsPanel({
               <div className="mt-2 pl-1">
                 <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
                   {originalBunkData.share_bunk_with}
+                </blockquote>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Do NOT Share Bunk With — parent-sourced negative preference, expanded by default. */}
+        {originalBunkData?.do_not_share_bunk_with?.trim() && (
+          <section>
+            <SectionHeader
+              title="Do NOT Share Bunk With"
+              icon={MessageSquareQuote}
+              isExpanded={expandedSections.doNotShareBunkWith}
+              onToggle={() => toggleSection('doNotShareBunkWith')}
+              accentColor="amber"
+            />
+            {expandedSections.doNotShareBunkWith && (
+              <div className="mt-2 pl-1">
+                <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
+                  {originalBunkData.do_not_share_bunk_with}
                 </blockquote>
               </div>
             )}
