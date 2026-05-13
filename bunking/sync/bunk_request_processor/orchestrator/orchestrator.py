@@ -178,33 +178,6 @@ class RequestOrchestrator:
         smart_config = config.get("smart_local_resolution", {})
         return bool(smart_config.get("enabled", True))
 
-    _OLDER_KEYWORDS = frozenset({"older", "above", "higher grade", "grade above", "one above", "grade up"})
-    _YOUNGER_KEYWORDS = frozenset({"younger", "below", "lower grade", "grade below", "one below", "grade down"})
-
-    @staticmethod
-    def _map_age_preference_direction(parsed_request: ParsedRequest) -> None:
-        """Map AI reasoning to AgePreference enum for age_preference requests.
-
-        Examines parse_notes and ai_reasoning for directional keywords to set
-        OLDER/YOUNGER. If no clear direction, leaves age_preference as None.
-        """
-        if parsed_request.request_type != RequestType.AGE_PREFERENCE:
-            return
-        if parsed_request.age_preference is not None:
-            return  # Already set (e.g., socialize_with direct mapping)
-
-        notes = (parsed_request.metadata.get("parse_notes", "") or "").lower()
-        reasoning = parsed_request.metadata.get("ai_reasoning", "") or ""
-        if isinstance(reasoning, dict):
-            reasoning = str(reasoning)
-        reasoning = reasoning.lower()
-        text = f"{notes} {reasoning}"
-
-        if any(kw in text for kw in RequestOrchestrator._OLDER_KEYWORDS):
-            parsed_request.age_preference = AgePreference.OLDER
-        elif any(kw in text for kw in RequestOrchestrator._YOUNGER_KEYWORDS):
-            parsed_request.age_preference = AgePreference.YOUNGER
-
     def __init__(
         self,
         pb: PocketBase | None = None,
@@ -1188,12 +1161,6 @@ class RequestOrchestrator:
                 f"(hallucinated={self._stats.get('hallucination_rejected', 0)}, "
                 f"unit_names={self._stats.get('unit_name_rejected', 0)})"
             )
-
-        # Enrich age preference requests with directional keywords from AI reasoning
-        for pr in parse_results:
-            if pr.is_valid:
-                for parsed_req in pr.parsed_requests:
-                    self._map_age_preference_direction(parsed_req)
 
         # --- Trace: Validation results ---
         # Gated on trace_collector.enabled to skip per-request trace work in prod (#923).
