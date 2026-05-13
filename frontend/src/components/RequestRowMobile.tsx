@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import clsx from 'clsx'
-import { CheckCircle, CheckCheck, XCircle, Shield, Scissors } from 'lucide-react'
+import { CheckCircle, CheckCheck, XCircle, Scissors } from 'lucide-react'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
@@ -27,7 +27,6 @@ export interface RequestRowMobileProps {
   onToggleSelection: (id: string) => void
   onSelectCamper: (cmId: string) => void
   onValidatedUpdate: (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => void
-  onUnlock: (id: string) => void
   onSplit: (request: BunkRequestsResponse) => void
   onConfirmAction: (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -93,7 +92,6 @@ function RequestRowMobile({
   onToggleSelection,
   onSelectCamper,
   onValidatedUpdate,
-  onUnlock,
   onSplit,
   onConfirmAction,
 }: RequestRowMobileProps) {
@@ -129,10 +127,6 @@ function RequestRowMobile({
     },
     [onSelectCamper]
   )
-
-  const handleUnlock = useCallback(() => {
-    onUnlock(request.id)
-  }, [onUnlock, request.id])
 
   const handleSplit = useCallback(() => {
     onSplit(request)
@@ -184,11 +178,7 @@ function RequestRowMobile({
           {request.is_reciprocal && <span className={MUTUAL_BADGE_CLASSES}>mutual</span>}
         </div>
         <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
-          <EditableRequestType
-            value={request.request_type}
-            onChange={handleTypeChange}
-            disabled={request.request_locked}
-          />
+          <EditableRequestType value={request.request_type} onChange={handleTypeChange} />
         </div>
       </div>
 
@@ -224,7 +214,6 @@ function RequestRowMobile({
           year={year}
           requesterCmId={request.requester_id}
           onChange={handleTargetChange}
-          disabled={request.request_locked}
           originalText={request.original_text}
           requestedPersonName={request.requested_person_name}
           parseNotes={request.parse_notes}
@@ -240,15 +229,6 @@ function RequestRowMobile({
       </div>
 
       <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-        {request.status === 'resolved' && request.request_locked && (
-          <button
-            onClick={handleUnlock}
-            className="hover:bg-primary/10 text-primary touch-manipulation rounded-lg p-2 transition-colors"
-            title="Unprotect"
-          >
-            <Shield className="h-5 w-5" />
-          </button>
-        )}
         {hasMultipleSources && (
           <button
             onClick={handleSplit}
