@@ -1582,6 +1582,15 @@ func TestParseHouseholdSalutation(t *testing.T) {
 			want:    []want{{"", "Johnson"}, {"", "Johnson"}},
 		},
 		{
+			// Regression: previously this fell through to per-side parsing,
+			// left stripped to "" → nil, right parsed alone as "David Garcia",
+			// yielding only 1 parent. Should yield 2 sharing the surname,
+			// with the right parent's first name preserved.
+			name:    "honorific joint with first name on right",
+			mailing: "Mr. and Mrs. David Garcia",
+			want:    []want{{"", "Garcia"}, {"David", "Garcia"}},
+		},
+		{
 			name:    "honorific joint different surnames",
 			mailing: "Mr. Johnson and Mrs. Garcia",
 			want:    []want{{"", "Johnson"}, {"", "Garcia"}},
@@ -1711,4 +1720,78 @@ func TestTransformPersonToPB_ParentNamesFromMailingTitle(t *testing.T) {
 
 func contains(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
+}
+
+// TestTransformPersonToPB_ParentNamesClearedOnParseFail verifies that when the
+// salutation parser yields nothing, parent_names is explicitly set to "" in
+// pbData so a row's previously-good value gets cleared during update. Without
+// this, the upsert path skips the field (only fields present in pbData are
+// compared/written), and stale guardian data persists indefinitely.
+func TestTransformPersonToPB_ParentNamesClearedOnParseFail(t *testing.T) {
+	cases := []struct {
+		name        string
+		households  any
+		wantCleared bool
+		wantStat    bool
+	}{
+		{
+			name: "unparseable mailing title",
+			households: map[string]any{
+				"PrimaryChildhoodHousehold": map[string]any{"MailingTitle": "???"},
+			},
+			wantCleared: true,
+			wantStat:    true,
+		},
+		{
+			name: "empty mailing and alternate",
+			households: map[string]any{
+				"PrimaryChildhoodHousehold": map[string]any{
+					"MailingTitle":          "",
+					"AlternateMailingTitle": "",
+				},
+			},
+			wantCleared: true,
+			wantStat:    true,
+		},
+		{
+			name:        "missing households block entirely",
+			households:  nil,
+			wantCleared: true,
+			wantStat:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &PersonsSync{missingDataStats: make(map[string]int)}
+			personData := map[string]any{
+				"ID":            float64(12345),
+				"Name":          map[string]any{"First": "Emma", "Last": "Johnson"},
+				"CamperDetails": map[string]any{"CampGradeID": float64(7)},
+			}
+			if tc.households != nil {
+				personData["Households"] = tc.households
+			}
+
+			pbData, err := s.transformPersonToPB(personData, 2026, true)
+			if err != nil {
+				t.Fatalf("transformPersonToPB returned error: %v", err)
+			}
+
+			val, exists := pbData["parent_names"]
+			if !exists {
+				t.Fatalf("parent_names key absent from pbData; expected explicit clear (empty string)")
+			}
+			if tc.wantCleared {
+				if val != "" {
+					t.Errorf("parent_names = %v (%T), want \"\"", val, val)
+				}
+			}
+			if tc.wantStat {
+				if got := s.missingDataStats["missing_parent_names"]; got != 1 {
+					t.Errorf("missingDataStats[missing_parent_names] = %d, want 1", got)
+				}
+			}
+		})
+	}
 }

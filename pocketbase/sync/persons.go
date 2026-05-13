@@ -705,11 +705,23 @@ func (s *PersonsSync) transformPersonToPB(
 	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries only
 	// guardian IDs — no names — so a salutation parse is the only name source
 	// available without a follow-up GetPersons call. See #1393.
+	//
+	// Always set parent_names (to "" on failure) so the upsert path clears any
+	// stale value from a prior sync when the source MailingTitle changes to
+	// something unparseable — the PB update loop skips fields not present in
+	// pbData, so an unset key would freeze old data indefinitely.
 	mailing, alternate := extractHouseholdSalutations(cmPerson)
-	if parents := s.parseHouseholdSalutation(mailing, alternate); len(parents) > 0 {
+	parents := s.parseHouseholdSalutation(mailing, alternate)
+	if len(parents) > 0 {
 		if parentsJSON, err := json.Marshal(parents); err == nil {
 			pbData["parent_names"] = string(parentsJSON)
+		} else {
+			pbData["parent_names"] = ""
+			s.missingDataStats["missing_parent_names"]++
 		}
+	} else {
+		pbData["parent_names"] = ""
+		s.missingDataStats["missing_parent_names"]++
 	}
 
 	// Set camper status based on whether this person came from attendees
@@ -890,12 +902,19 @@ func parseJointSalutation(left, right string) []map[string]any {
 	leftTokens := strings.Fields(leftStripped)
 	rightTokens := strings.Fields(rightStripped)
 
-	// "Mr. and Mrs. Garcia" — left strips to nothing, right is "Garcia".
-	if len(leftTokens) == 0 && len(rightTokens) == 1 {
-		surname := titleCase(rightTokens[0])
+	// Left strips to nothing (honorific-only): right side carries the shared
+	// surname for both parents. Covers:
+	//   "Mr. and Mrs. Garcia"        → both parents surname-only
+	//   "Mr. and Mrs. David Garcia"  → left surname-only, right has first name
+	if len(leftTokens) == 0 && len(rightTokens) >= 1 {
+		sharedLast := titleCase(rightTokens[len(rightTokens)-1])
+		rightFirst := ""
+		if len(rightTokens) >= 2 {
+			rightFirst = titleCase(strings.Join(rightTokens[:len(rightTokens)-1], " "))
+		}
 		return []map[string]any{
-			parent("", surname, false),
-			parent("", surname, false),
+			parent("", sharedLast, false),
+			parent(rightFirst, sharedLast, false),
 		}
 	}
 
@@ -1055,6 +1074,7 @@ func (s *PersonsSync) printDataQualitySummary() {
 		"missingNames", s.missingDataStats["missing_name"],
 		"missingAges", s.missingDataStats["missing_age"],
 		"missingGrades", s.missingDataStats["missing_grade"],
+		"missingParentNames", s.missingDataStats["missing_parent_names"],
 	)
 }
 

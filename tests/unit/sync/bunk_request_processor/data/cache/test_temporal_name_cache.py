@@ -490,3 +490,166 @@ class TestTemporalNameCache:
 
         cache._build_parent_surname_index()
         assert cache._parent_surname_index == {}
+
+    def test_find_by_parent_surname_returns_empty_for_unknown_surname(self):
+        """Negative case: lookup for a surname not in any parent_names returns
+        []. Locks the contract that absence is silent, not exceptional."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        emma = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "Sarah", "last": "Johnson", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1001] = emma
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # Surname not in any indexed parent_names
+        assert cache.find_by_parent_surname("Emma", "Patel") == []
+
+    def test_find_by_parent_surname_returns_empty_for_first_name_mismatch(self):
+        """Negative case: surname matches the index but first name doesn't.
+        The surname index is a candidate set; first-name filter narrows it."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        emma = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "David", "last": "Garcia", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1001] = emma
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # "Garcia" is in the index (Emma's dad), but no camper named "Liam" has
+        # a Garcia parent.
+        assert cache.find_by_parent_surname("Liam", "Garcia") == []
+
+    def test_find_by_parent_surname_matches_via_preferred_name(self):
+        """Preferred name should match alongside first_name. Otherwise campers
+        who go by a nickname (Liam → Bo) would be invisible to surname lookups
+        even when the surname matches."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        liam = Person(
+            cm_id=1002,
+            first_name="Liam",
+            last_name="Garcia",
+            preferred_name="Bo",
+            birth_date=datetime(2012, 9, 1),
+            grade=8,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "Olivia", "last": "Chen", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1002] = liam
+        cache._attendees_with_sessions[1002] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # Request submitted using preferred name "Bo" + mom's surname "Chen"
+        results = cache.find_by_parent_surname("Bo", "Chen")
+        assert len(results) == 1
+        assert results[0].cm_id == 1002
+
+    def test_parent_surname_index_empty_when_parent_names_is_empty_array(self):
+        """Empty JSON array `[]` is distinct from `None` but yields the same
+        empty-index result. Locks the contract that the index is a function of
+        actual parent records, not of the JSON wrapper."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        person = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps([]),
+        )
+        cache._person_cache[1001] = person
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+
+        cache._build_parent_surname_index()
+        assert cache._parent_surname_index == {}
+        assert cache.find_by_parent_surname("Emma", "Johnson") == []
