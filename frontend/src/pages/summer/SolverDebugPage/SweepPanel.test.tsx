@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SweepPanel, type SweepPanelSession } from './SweepPanel'
@@ -328,6 +329,92 @@ describe('SweepPanel', () => {
     expect(screen.queryByText(/\(\d+\)/)).not.toBeInTheDocument()
     // The option itself still renders correctly.
     expect(screen.getByRole('option', { name: /Session 2/i })).toBeInTheDocument()
+  })
+})
+
+describe('SweepPanel — pre-check chip', () => {
+  it('renders pre-check chip showing impossibility count when count > 0', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={3}
+      />
+    )
+    const chip = screen.getByRole('button', { name: /pre-check/i })
+    expect(chip).toBeInTheDocument()
+    expect(chip).toHaveTextContent('3')
+  })
+
+  it('renders chip in "no issues" state when count is 0', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={0}
+      />
+    )
+    const chip = screen.getByRole('button', { name: /pre-check/i })
+    expect(chip).toBeInTheDocument()
+    expect(chip).toHaveTextContent(/no issues/i)
+  })
+
+  it('does not render the chip when preCheckImpossibilityCount is not provided', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /pre-check/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking the chip invokes onOpenPreCheck', async () => {
+    const onOpenPreCheck = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={2}
+        onOpenPreCheck={onOpenPreCheck}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /pre-check/i }))
+    expect(onOpenPreCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the chip does not toggle panel collapse', async () => {
+    const user = userEvent.setup()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={5}
+        onOpenPreCheck={vi.fn()}
+      />
+    )
+    // Panel is expanded — run button is visible
+    expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
+    // Click the chip
+    await user.click(screen.getByRole('button', { name: /pre-check/i }))
+    // Panel should still be expanded
+    expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
   })
 })
 

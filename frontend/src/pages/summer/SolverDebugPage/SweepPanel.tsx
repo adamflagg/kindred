@@ -43,6 +43,9 @@ export interface SweepPanelProps {
   onRunSweep: (req: SweepPanelPayload) => void | Promise<void>
   onCancelSweep: (sweepId: string) => void
   inFlightSweep: InFlightSweep | null
+  preCheckImpossibilityCount?: number
+  onOpenPreCheck?: () => void
+  onSessionChange?: (sessionCmId: number) => void
 }
 
 function formatBudget(b: SweepBudgetProgress): string {
@@ -62,6 +65,9 @@ export function SweepPanel({
   onRunSweep,
   onCancelSweep,
   inFlightSweep,
+  preCheckImpossibilityCount,
+  onOpenPreCheck,
+  onSessionChange,
 }: SweepPanelProps) {
   const [expanded, setExpanded] = useState<boolean>(() => {
     const stored = localStorage.getItem(SWEEP_PANEL_STORAGE_KEY)
@@ -89,6 +95,12 @@ export function SweepPanel({
 
   const sessionCmId = pickedSessionCmId ?? sessions[sessions.length - 1]?.cm_id ?? 0
   const sessionScenarios = scenarios.filter((s) => s.session_id === sessionCmId)
+
+  // Notify parent when the resolved session changes (including initial default).
+  useEffect(() => {
+    if (sessionCmId > 0) onSessionChange?.(sessionCmId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire when sessionCmId changes; onSessionChange is a stable callback prop
+  }, [sessionCmId])
   // Drop the picked source if it no longer belongs to the selected session,
   // otherwise we'd submit a scenario_id from a different session. Computed each
   // render so changing the session immediately clears a stale scenario.
@@ -139,6 +151,25 @@ export function SweepPanel({
           <Zap className="h-4 w-4 text-amber-500" />
           Run benchmark sweep
         </h3>
+        {typeof preCheckImpossibilityCount === 'number' && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenPreCheck?.()
+            }}
+            className={
+              preCheckImpossibilityCount > 0
+                ? 'rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200'
+                : 'rounded-full border border-green-300 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 hover:bg-green-100'
+            }
+            aria-label="Pre-check"
+          >
+            {preCheckImpossibilityCount > 0
+              ? `⚠ Pre-check · ${preCheckImpossibilityCount} issues`
+              : '✓ Pre-check · no issues'}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
