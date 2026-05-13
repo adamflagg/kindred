@@ -7,7 +7,6 @@ from bunking.solver.impossibility import _build_context
 
 from .conftest import make_bunk, make_input, make_person, make_request
 
-
 PREDICATE = GenderImpossibility()
 
 

@@ -1,13 +1,13 @@
 """BunkCapacityImpossibility: bunk_with cluster larger than any bunk."""
 
 from __future__ import annotations
+
 from dataclasses import replace
 
 from bunking.solver.constraints.cabin_capacity import BunkCapacityImpossibility
 from bunking.solver.impossibility import _build_context
 
-from .conftest import make_bunk, make_input, make_person, make_request
-
+from .conftest import make_bunk, make_input, make_person
 
 PREDICATE = BunkCapacityImpossibility()
 

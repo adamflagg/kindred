@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from bunking.solver.impossibility import HARD_CONSTRAINT_REGISTRY, HardConstraintImpossibility
 
-
 # Names every constraint module that owns a hard-constraint variant.
 # When a new hard constraint is added, add the expected predicate name here.
 # This is the "registry discipline" check.

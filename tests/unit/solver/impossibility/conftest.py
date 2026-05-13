@@ -9,7 +9,6 @@ import pytest
 
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 
-
 FICTIONAL_NAMES = [
     ("Emma", "Johnson"),
     ("Liam", "Garcia"),

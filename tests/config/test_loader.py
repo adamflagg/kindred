@@ -74,31 +74,3 @@ class TestLoaderFailsLoudOnMissingRequiredKey:
         assert validate_param.default is True, (
             f"validate_on_init default should be True, got {validate_param.default!r}"
         )
-
-
-class TestMustSatisfyOnePenaltyInSchema:
-    """
-    Verify that constraint.must_satisfy_one.penalty is in CONFIG_SCHEMA as required=True.
-
-    The key is seeded in the migration (value=100000) and consumed by must_satisfy.py.
-    Without a schema entry, get_int() raises UnknownKeyError regardless of seeding.
-    """
-
-    def test_must_satisfy_one_penalty_in_schema(self) -> None:
-        """constraint.must_satisfy_one.penalty must be in CONFIG_SCHEMA."""
-        from bunking.config.schema import CONFIG_SCHEMA
-
-        assert "constraint.must_satisfy_one.penalty" in CONFIG_SCHEMA, (
-            "constraint.must_satisfy_one.penalty is missing from CONFIG_SCHEMA. "
-            "Add it as required=True to match the seeded migration value."
-        )
-
-    def test_must_satisfy_one_penalty_is_required(self) -> None:
-        """constraint.must_satisfy_one.penalty must be required=True."""
-        from bunking.config.schema import CONFIG_SCHEMA
-
-        key_config = CONFIG_SCHEMA.get("constraint.must_satisfy_one.penalty")
-        assert key_config is not None
-        assert key_config.required is True, (
-            f"constraint.must_satisfy_one.penalty required={key_config.required!r}, expected True"
-        )

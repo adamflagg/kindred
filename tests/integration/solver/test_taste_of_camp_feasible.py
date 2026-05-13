@@ -17,7 +17,6 @@ import pytest
 from bunking.config import ConfigLoader
 from bunking.solver.direct_solver import DirectBunkingSolver
 from bunking.solver.impossibility import validate_impossibility
-
 from tests.unit.solver.impossibility.conftest import (
     make_bunk,
     make_input,
