@@ -65,6 +65,9 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     present in the input) are recorded in ctx.mp_set_entirely_impossible.
     """
     logger.info("=== Parent Paramount (Hard MP Must-Satisfy-One) Constraints ===")
+    if ctx.is_constraint_disabled("parent_paramount"):
+        logger.info("Parent-paramount hard constraints DISABLED via debug settings")
+        return
     logger.info(f"Total campers in solver: {len(ctx.person_ids)}")
     logger.info(f"Campers with requests: {len(ctx.input.requests_by_person)}")
 

@@ -259,6 +259,7 @@ def find_infeasibility_cause(
     constraint_types = [
         "session_boundary",
         "must_satisfy_one",
+        "parent_paramount",
         "grade_spread",
         "gender",
         "level_progression",

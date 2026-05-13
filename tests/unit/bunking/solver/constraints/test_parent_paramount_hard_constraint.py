@@ -205,6 +205,47 @@ class TestParentParamountSkipsAllImpossibleMP:
         )
 
 
+class TestParentParamountDebugToggle:
+    """The infeasibility analyzer needs to isolate parent_paramount.
+
+    Without an honored debug toggle, the analyzer at feasibility.py iterates
+    constraint_types but the new hard MP constraint is always added — making
+    the analyzer's diagnosis misleading (it blames whatever else interacts
+    with the hard MP, typically gender).
+    """
+
+    def test_debug_constraints_skips_hard_mp_constraint(self):
+        """debug_constraints['parent_paramount']=True must skip the hard constraint."""
+        camper1 = create_person(cm_id=100, first_name="Emma", last_name="Johnson", gender="F", grade=5)
+        camper2 = create_person(cm_id=200, first_name="Liam", last_name="Garcia", gender="F", grade=5)
+        bunk1 = create_bunk(cm_id=2001, name="G-1", gender="F", capacity=12)
+        bunk2 = create_bunk(cm_id=2002, name="G-2", gender="F", capacity=12)
+
+        req = _mp_request("r1", requester_cm_id=100, requested_cm_id=200)
+
+        ctx = build_solver_context(
+            persons=[camper1, camper2],
+            bunks=[bunk1, bunk2],
+            requests=[req],
+            debug_constraints={"parent_paramount": True},
+        )
+
+        from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
+
+        add_must_satisfy_one_request_constraints(ctx)
+
+        # No hard constraint was added — forcing campers apart should remain feasible.
+        _force_apart(ctx, 100, 200)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_optimal_or_feasible(status), (
+            "With parent_paramount disabled via debug_constraints, the hard MP constraint "
+            "must not be added — forcing the only MP request unsatisfied should remain feasible"
+        )
+
+
 class TestParentParamountPartialImpossible:
     def test_partial_impossible_constrains_only_possible(self):
         """Camper has 2 MP requests: 1 possible, 1 impossible.

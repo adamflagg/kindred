@@ -127,9 +127,19 @@ from S2.
 ### Safety gate
 
 `unsatisfied_no_possible` from `feasibility.py:196` counts campers whose
-ENTIRE MP set is structurally impossible. Currently 0 for S2, meaning
-every MP-having camper has at least one survivable MP request — the
-hard constraint binds cleanly on all of them.
+ENTIRE MP set is structurally impossible. The gate is enforced upstream
+by `_validate_requests` in `direct_solver.py`, which classifies a
+request as impossible when any of the following holds:
+
+- `target_not_in_solver` — requestee absent from `person_idx_map`
+- `cross_session` — `bunk_with` across sessions (boundary forbids)
+- `malformed` — `bunk_with`/`not_bunk_with` with no `requested_person_cm_id`
+- `pair_no_shared_bunk` — `bunk_with` where the requester and target
+  have no gender-compatible same-session bunk (added 2026-05-13 after
+  PR #1391's Taste 1 INFEASIBLE; cross-gender `bunk_with` slipped past
+  the prior gate and the hard MP constraint then forced impossible
+  co-placement). `not_bunk_with` with no shared bunk is trivially
+  satisfied and remains `possible`.
 
 **Defensive pattern when adding the hard constraint:**
 
@@ -141,10 +151,16 @@ for person_cm_id, possible_reqs in possible_requests.items():
 ```
 
 If a future sweep returns `unsatisfied_no_possible > 0`, those campers
-are skipped (the constraint isn't added for them) and a warning is
-logged. The 4 current `impossible_requests` (synthetic IDs from
-unresolvable names) are spread across kids who ALSO have viable MP
-alternatives, so the constraint still applies to those kids.
+are skipped (the constraint isn't added for them) and surfaced via
+`mp_set_entirely_impossible` for staff review. The 4 current S2
+`impossible_requests` (synthetic IDs from unresolvable names) are spread
+across kids who ALSO have viable MP alternatives, so the constraint
+still applies to those kids.
+
+**Pair-feasibility scope today:** gender + session. Group locks,
+AG-eligibility quirks, and other pre-fixed-assignment conflicts are
+NOT yet checked. If a future failure mode emerges from one of those,
+extend `_pair_has_shared_bunk` rather than adding a new reason.
 
 ### Code refs (post-#1391)
 
@@ -529,3 +545,11 @@ diffs are clearer.
   filed: #1395 (sat var unification), #1396 (penalty-driven
   investigation), #1397 (`solution.py` cleanup), #1398 (golden
   alignment test).
+- **2026-05-13** — Stage 4 follow-up bundled into #1391: Taste 1
+  produced INFEASIBLE on first real-data run because cross-gender
+  `bunk_with` MP requests slipped past the safety gate. Widened
+  `_validate_requests` with a new `pair_no_shared_bunk` impossibility
+  reason (gender + session check via `_pair_has_shared_bunk`). Added
+  `parent_paramount` toggle to `feasibility.py`'s analyzer
+  `constraint_types` list — without it the analyzer mis-diagnoses
+  "gender" as the cause when hard MP is the real culprit.

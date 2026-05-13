@@ -207,3 +207,91 @@ class TestValidateRequestsCrossSession:
 
         assert solver.request_validation_summary["impossible_requests"] == 1
         assert solver.request_validation_summary["affected_campers"] == 1
+
+
+class TestValidateRequestsPairNoSharedBunk:
+    """bunk_with between campers with no shared eligible bunk is impossible.
+
+    The Taste-1 infeasibility uncovered by PR #1391 (Stage 4 hard MSO) traced
+    to cross-gender bunk_with MP requests slipping past _validate_requests.
+    The hard MP constraint then forced co-placement that gender constraints
+    forbid → INFEASIBLE.
+    """
+
+    def test_bunk_with_cross_gender_is_impossible(self, mock_config):
+        """Girl asks bunk_with a boy in same session — no gender-compatible shared bunk."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="F"),
+                    _make_person(1002, 100, gender="M"),
+                ],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[
+                    _make_bunk(2001, 100, gender="F"),
+                    _make_bunk(2002, 100, gender="M"),
+                ],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+        assert solver.request_validation_summary["impossible_by_reason"]["pair_no_shared_bunk"] == 1
+
+    def test_not_bunk_with_cross_gender_is_possible(self, mock_config):
+        """not_bunk_with cross-gender is trivially satisfied — gender already separates them."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="F"),
+                    _make_person(1002, 100, gender="M"),
+                ],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
+                bunks=[
+                    _make_bunk(2001, 100, gender="F"),
+                    _make_bunk(2002, 100, gender="M"),
+                ],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_bunk_with_with_ag_bunk_available_is_possible(self, mock_config):
+        """AG/Mixed bunks accept any gender — cross-gender bunk_with stays possible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="F"),
+                    _make_person(1002, 100, gender="M"),
+                ],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 100, gender="AG")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_same_gender_bunk_with_remains_possible(self, mock_config):
+        """Sanity: same-gender bunk_with is unaffected by the new check."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="F"),
+                    _make_person(1002, 100, gender="F"),
+                ],
+                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                bunks=[
+                    _make_bunk(2001, 100, gender="F"),
+                    _make_bunk(2002, 100, gender="M"),
+                ],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0

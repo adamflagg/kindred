@@ -1093,6 +1093,7 @@ class TestImpossibleRequestBreakdownByReason:
             "target_not_in_solver": 0,
             "cross_session": 0,
             "malformed": 0,
+            "pair_no_shared_bunk": 0,
         }
 
     def test_target_not_in_solver_counted(self) -> None:

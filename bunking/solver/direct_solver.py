@@ -370,6 +370,29 @@ class DirectBunkingSolver:
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
         )
 
+    def _pair_has_shared_bunk(self, person1_idx: int, person2_idx: int) -> bool:
+        """Return True if the two persons can co-occupy at least one bunk.
+
+        Checks session compatibility and gender compatibility. Short-circuits
+        on first match. Used by _validate_requests to reject bunk_with requests
+        that no placement could ever satisfy (e.g. cross-gender with no AG bunk).
+        """
+        person1 = self.input.person_by_cm_id[self.person_ids[person1_idx]]
+        person2 = self.input.person_by_cm_id[self.person_ids[person2_idx]]
+
+        if person1.session_cm_id != person2.session_cm_id:
+            return False
+
+        for bunk in self.bunks:
+            if bunk.session_cm_id != person1.session_cm_id:
+                continue
+            if bunk.gender in ("Mixed", "AG"):
+                return True
+            if bunk.gender and person1.gender == bunk.gender and person2.gender == bunk.gender:
+                return True
+
+        return False
+
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
         """Get list of bunk indices where both campers can be validly assigned.
 
@@ -437,6 +460,7 @@ class DirectBunkingSolver:
             "target_not_in_solver": 0,
             "cross_session": 0,
             "malformed": 0,
+            "pair_no_shared_bunk": 0,
         }
 
         for person_cm_id, requests in self.input.requests_by_person.items():
@@ -469,6 +493,20 @@ class DirectBunkingSolver:
                             self.impossible_requests[person_cm_id].append(request)
                             impossible_count += 1
                             impossible_by_reason["cross_session"] += 1
+                            affected_campers.add(person_cm_id)
+                        elif request.request_type == RequestType.BUNK_WITH.value and not self._pair_has_shared_bunk(
+                            self.person_idx_map[person_cm_id],
+                            self.person_idx_map[request.requested_person_cm_id],
+                        ):
+                            # bunk_with where no bunk is gender-compatible for both
+                            # campers is impossible. Without this gate, a hard MP
+                            # constraint (Stage 4) would force co-placement that
+                            # gender constraints forbid → INFEASIBLE.
+                            # (not_bunk_with is trivially satisfied when no shared
+                            # bunk exists, so we keep it possible.)
+                            self.impossible_requests[person_cm_id].append(request)
+                            impossible_count += 1
+                            impossible_by_reason["pair_no_shared_bunk"] += 1
                             affected_campers.add(person_cm_id)
                         else:
                             self.possible_requests[person_cm_id].append(request)
