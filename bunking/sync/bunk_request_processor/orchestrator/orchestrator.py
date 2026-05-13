@@ -1271,6 +1271,7 @@ class RequestOrchestrator:
                         intent_trace=Phase2IntentTrace(
                             target_name=rr.target_name or "",
                             all_candidates=candidates_trace,
+                            pipeline_strategies_tried=list(rr_meta.get("pipeline_strategies_tried", [])),
                             staff_filtered=rr.method == "staff_filtered",
                             hallucination_detected=bool(rr_meta.get("below_threshold")),
                             final_result=Phase2FinalResult(
