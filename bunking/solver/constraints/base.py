@@ -68,6 +68,13 @@ class SolverContext:
     # Keys map to (IntVar, weight) where IntVar=1 means bonus earned
     soft_constraint_bonuses: dict[str, tuple[cp_model.IntVar, int]] = field(default_factory=dict)
 
+    # Hard-constraint diagnostics
+    # CM IDs of campers whose entire Material-Parent request set is impossible
+    # (cross-session, unresolved name, etc.) — the hard MP constraint is not
+    # added for them. Populated by parent_paramount; read post-solve into
+    # solver_runs.stats for SolverDebug visibility.
+    mp_set_entirely_impossible: list[int] = field(default_factory=list)
+
     def is_constraint_disabled(self, constraint_name: str) -> bool:
         """Check if a constraint is disabled in debug mode."""
         return self.debug_constraints.get(constraint_name, False)
