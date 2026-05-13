@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
+import { useAuth } from '../contexts/AuthContext'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -166,7 +167,13 @@ function ordinalGrade(grade: number): string {
 }
 
 // Impossibility items renderer — used only here, not exported
-function ImpossibilityItems({ items }: { items: ImpossibilityReportItem[] }) {
+function ImpossibilityItems({
+  items,
+  showTechnical = false,
+}: {
+  items: ImpossibilityReportItem[]
+  showTechnical?: boolean
+}) {
   return (
     <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
       {items.map((item) => (
@@ -178,6 +185,16 @@ function ImpossibilityItems({ items }: { items: ImpossibilityReportItem[] }) {
             <div className="text-stone-600">
               wants to bunk with <strong>{item.requestee.name}</strong> ·{' '}
               {ordinalGrade(item.requestee.grade)}
+            </div>
+          )}
+          {showTechnical && (
+            <div className="mt-2 rounded bg-stone-100 p-2 font-mono text-xs">
+              <div className="text-stone-500">{item.reason_code}</div>
+              {Object.entries(item.detail ?? {}).map(([k, v]) => (
+                <div key={k}>
+                  {k}={String(v)}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -248,6 +265,9 @@ export default function PreValidationResultsModal({
   results,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const { user } = useAuth()
+  const canShowTechnicalDetail = !!user?.['is_admin']
+  const [showTechnical, setShowTechnical] = useState(false)
 
   const { valid, errors, warnings, statistics, impossibility_report } = results
 
@@ -418,6 +438,17 @@ export default function PreValidationResultsModal({
 
       {/* Impossibility Report — staff view (always visible) */}
       <div className="space-y-3 px-5 py-4">
+        {canShowTechnicalDetail && (
+          <div className="mb-2">
+            <button
+              type="button"
+              onClick={() => setShowTechnical((v) => !v)}
+              className="rounded border border-stone-300 bg-stone-50 px-2 py-1 text-xs hover:bg-stone-100"
+            >
+              {showTechnical ? 'Hide technical detail' : 'Show technical detail'}
+            </button>
+          </div>
+        )}
         {impossibility_report.total_impossible === 0 &&
         impossibility_report.clusters.length === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
@@ -438,7 +469,7 @@ export default function PreValidationResultsModal({
                     {items.length}
                   </span>
                 </summary>
-                <ImpossibilityItems items={items} />
+                <ImpossibilityItems items={items} showTechnical={showTechnical} />
               </details>
             ))}
 
@@ -448,6 +479,16 @@ export default function PreValidationResultsModal({
                   {friendlyReasonLabel(cluster.reason_code)}
                 </div>
                 <div className="mt-1 text-sm text-stone-700">{cluster.reason_message}</div>
+                {showTechnical && (
+                  <div className="mt-2 rounded bg-stone-100 p-2 font-mono text-xs">
+                    <div className="text-stone-500">{cluster.reason_code}</div>
+                    {Object.entries(cluster.detail ?? {}).map(([k, v]) => (
+                      <div key={k}>
+                        {k}={String(v)}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </>
