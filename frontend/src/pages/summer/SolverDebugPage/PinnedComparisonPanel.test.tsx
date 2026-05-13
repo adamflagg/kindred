@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getMetric } from './metricRegistry'
@@ -67,8 +67,7 @@ describe('PinnedComparisonPanel', () => {
     it('writes a comparison summary to the clipboard on click', async () => {
       render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
       fireEvent.click(screen.getByRole('button', { name: /copy json/i }))
-      await new Promise((r) => setTimeout(r, 0))
-      expect(writeText).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
       const payload = JSON.parse(writeText.mock.calls[0]?.[0] ?? '{}')
       expect(payload.kind).toBe('solver_run_comparison')
       expect(payload.run_a.run_id).toBe(a.run_id)

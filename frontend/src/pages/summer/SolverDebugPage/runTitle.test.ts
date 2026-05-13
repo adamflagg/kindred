@@ -41,6 +41,21 @@ describe('buildRunTitle', () => {
     expect(title.startsWith('Solver run · ')).toBe(true)
   })
 
+  it('falls back to "Solver run" when source_label is whitespace-only', () => {
+    const { sweep_label: _drop, ...details } = base.details ?? {}
+    void _drop
+    const run: SolverRun = { ...base, details: { ...details, source_label: '   ' } }
+    const title = buildRunTitle(run)
+    expect(title.startsWith('Solver run · ')).toBe(true)
+  })
+
+  it('omits sweep_label when whitespace-only', () => {
+    const run: SolverRun = { ...base, details: { ...base.details, sweep_label: '   ' } }
+    const title = buildRunTitle(run)
+    expect(title).not.toMatch(/^\s/)
+    expect(title.startsWith('S2 · Production · ')).toBe(true)
+  })
+
   it('omits the timestamp segment when created is unparseable', () => {
     const run: SolverRun = { ...base, created: 'not-a-date' }
     const title = buildRunTitle(run)

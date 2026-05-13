@@ -26,7 +26,7 @@ export async function copyText(text: string): Promise<boolean> {
   ta.style.left = '0'
   ta.style.opacity = '0'
   document.body.appendChild(ta)
-  let ok = false
+  let ok: boolean
   try {
     ta.select()
     ta.setSelectionRange(0, text.length)

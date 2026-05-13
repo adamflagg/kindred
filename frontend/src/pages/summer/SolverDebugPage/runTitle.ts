@@ -1,8 +1,8 @@
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
 export function buildRunTitle(run: SolverRun): string {
-  const sweep = run.details?.sweep_label?.trim()
-  const source = run.details?.source_label?.trim() ?? 'Solver run'
+  const sweep = run.details?.sweep_label?.trim() || undefined
+  const source = run.details?.source_label?.trim() || 'Solver run'
   const created = run.created ? new Date(run.created) : null
   const time =
     created && !Number.isNaN(created.getTime())
