@@ -53,6 +53,74 @@ describe('DrillDownDrawer', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  describe('Tier 1 observability metrics (issue #1380)', () => {
+    const tier1Run: SolverRun = {
+      ...run,
+      stats: {
+        ...run.stats,
+        num_reified_linear: 164,
+        max_linear_coefficient: 250_000,
+        soft_constraints_by_module: { must_satisfy: 83, grade_ratio: 420, age_spread: 17 },
+        request_density_histogram: { 1: 142, 2: 38, 3: 12, 5: 1 },
+        request_validation: {
+          total_requests: 240,
+          possible_requests: 236,
+          impossible_requests: 4,
+          affected_campers: 3,
+          impossible_by_reason: { target_not_in_solver: 2, cross_session: 1, malformed: 1 },
+        },
+      },
+    }
+
+    it('renders soft constraints by module as chips', () => {
+      render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
+      expect(screen.getByText(/Soft constraints by module/i)).toBeInTheDocument()
+      expect(screen.getByText(/must_satisfy: 83/)).toBeInTheDocument()
+      expect(screen.getByText(/grade_ratio: 420/)).toBeInTheDocument()
+      expect(screen.getByText(/age_spread: 17/)).toBeInTheDocument()
+    })
+
+    it('renders request density histogram', () => {
+      render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
+      expect(screen.getByText(/Request density/i)).toBeInTheDocument()
+      // Chip format: "{count}× requests: {camper_count}"
+      expect(screen.getByText(/1× requests: 142/)).toBeInTheDocument()
+      expect(screen.getByText(/5× requests: 1/)).toBeInTheDocument()
+    })
+
+    it('renders impossible request breakdown by reason', () => {
+      render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
+      expect(screen.getByText(/Impossible requests by reason/i)).toBeInTheDocument()
+      expect(screen.getByText(/target_not_in_solver: 2/)).toBeInTheDocument()
+      expect(screen.getByText(/cross_session: 1/)).toBeInTheDocument()
+      expect(screen.getByText(/malformed: 1/)).toBeInTheDocument()
+    })
+
+    it('hides empty dict-shaped sections', () => {
+      const emptyRun: SolverRun = {
+        ...run,
+        stats: {
+          ...run.stats,
+          soft_constraints_by_module: {},
+          request_density_histogram: {},
+          request_validation: {
+            total_requests: 0,
+            possible_requests: 0,
+            impossible_requests: 0,
+            affected_campers: 0,
+            impossible_by_reason: { target_not_in_solver: 0, cross_session: 0, malformed: 0 },
+          },
+        },
+      }
+      render(<DrillDownDrawer run={emptyRun} onClose={vi.fn()} />)
+      expect(screen.queryByText(/Soft constraints by module/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Request density/i)).not.toBeInTheDocument()
+      // 0/0/0 breakdown is still meaningful when validation ran — hide only
+      // when all three reasons are zero.
+      expect(screen.queryByText(/Impossible requests by reason/i)).not.toBeInTheDocument()
+    })
+  })
+
   it('exposes drawer as an aria dialog labeled by its heading', () => {
     render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
     const dialog = screen.getByRole('dialog')

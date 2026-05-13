@@ -176,6 +176,56 @@ export function DrillDownDrawer({ run, onClose }: Props) {
             </div>
           ) : null}
 
+          {s.soft_constraints_by_module && Object.keys(s.soft_constraints_by_module).length > 0 ? (
+            <div>
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Soft constraints by module
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {Object.entries(s.soft_constraints_by_module).map(([mod, count]) => (
+                  <span key={mod} className="rounded bg-amber-50 px-3 py-1 text-amber-900">
+                    {mod}: {count.toLocaleString()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {s.request_density_histogram && Object.keys(s.request_density_histogram).length > 0 ? (
+            <div>
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Request density (campers grouped by request count)
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {Object.entries(s.request_density_histogram)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([count, campers]) => (
+                    <span key={count} className="rounded bg-emerald-50 px-3 py-1 text-emerald-900">
+                      {count}× requests: {campers.toLocaleString()}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+
+          {s.request_validation?.impossible_by_reason &&
+          Object.values(s.request_validation.impossible_by_reason).some((n) => n > 0) ? (
+            <div>
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Impossible requests by reason
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {Object.entries(s.request_validation.impossible_by_reason).map(
+                  ([reason, count]) => (
+                    <span key={reason} className="rounded bg-red-50 px-3 py-1 text-red-900">
+                      {reason}: {count.toLocaleString()}
+                    </span>
+                  )
+                )}
+              </div>
+            </div>
+          ) : null}
+
           {d.config_snapshot ? (
             <details className="rounded-lg bg-gray-50">
               <summary className="cursor-pointer px-4 py-3 text-xs font-medium tracking-wide text-gray-500 uppercase">

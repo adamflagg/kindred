@@ -110,6 +110,85 @@ def _compute_optimality_gap(objective: float | None, best_bound: float | None) -
     return abs(objective - best_bound) / max(abs(objective), 1.0)
 
 
+def _is_linear_constraint(c: Any) -> bool:
+    """True if the constraint proto is a linear constraint.
+
+    Uses the ``has_linear()`` accessor exposed by ortools' wrapped protobuf,
+    matching the pattern used by :func:`_count_constraint_types`.
+    """
+    checker = getattr(c, "has_linear", None)
+    return bool(callable(checker) and checker())
+
+
+def _count_reified_linear_constraints(proto: Any) -> int:
+    """Count linear constraints with non-empty enforcement_literal.
+
+    Stage 4 of Stream 1 (hard MSO) cuts ~164 reified-linear constraints from
+    the S2 model. Without this metric in `solver_runs.stats` the
+    simplification wins are invisible on the dashboard.
+    """
+    return sum(1 for c in proto.constraints if _is_linear_constraint(c) and len(c.enforcement_literal) > 0)
+
+
+# Soft-constraint key prefixes set by each constraint helper. New constraint
+# modules should append a (prefix, module-label) pair here so they roll up
+# correctly. Keys whose prefix doesn't match any entry fall into "other".
+_SOFT_CONSTRAINT_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("must_satisfy_", "must_satisfy"),
+    ("grade_ratio_", "grade_ratio"),
+    ("level_regression_", "level_regression"),
+    ("age_spread_b", "age_spread"),
+)
+
+
+def _count_soft_constraints_by_module(violations: dict[str, Any]) -> dict[str, int]:
+    """Group `soft_constraint_violations` keys by constraint module prefix.
+
+    The dashboard uses this to show which constraint families dominate the
+    penalty surface — e.g. `grade_ratio=420` vs `must_satisfy=83` tells a
+    very different optimization story.
+    """
+    result: dict[str, int] = {}
+    for key in violations:
+        bucket = "other"
+        for prefix, label in _SOFT_CONSTRAINT_PREFIXES:
+            if key.startswith(prefix):
+                bucket = label
+                break
+        result[bucket] = result.get(bucket, 0) + 1
+    return result
+
+
+def _max_linear_coefficient(proto: Any) -> int:
+    """Max absolute linear coefficient across all linear constraints (plain
+    and reified). Values >100K signal big-M modeling; weak LP relaxation."""
+    max_coef = 0
+    for c in proto.constraints:
+        if _is_linear_constraint(c):
+            for coef in c.linear.coeffs:
+                abs_coef = abs(coef)
+                if abs_coef > max_coef:
+                    max_coef = abs_coef
+    return max_coef
+
+
+def _build_request_density_histogram(
+    requests_by_person: dict[int, list[Any]],
+) -> dict[int, int]:
+    """Histogram of (request_count -> camper_count).
+
+    Excludes campers with zero requests — they're the silent majority and
+    aren't useful signal. The interesting tail is single-request campers
+    (the stuck-core cohort from the S2 sweep)."""
+    result: dict[int, int] = {}
+    for reqs in requests_by_person.values():
+        count = len(reqs)
+        if count == 0:
+            continue
+        result[count] = result.get(count, 0) + 1
+    return result
+
+
 def _build_stats_dict(
     solver: Any,
     status: Any,  # `cp_model.CpSolverStatus` enum at runtime; cast to int for JSON
@@ -120,6 +199,9 @@ def _build_stats_dict(
     num_bunks: int,
     num_requests: int,
     satisfied_count: int,
+    *,
+    soft_constraint_violations: dict[str, Any] | None = None,
+    requests_by_person: dict[int, list[Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the full stats dict captured per solver run.
 
@@ -179,6 +261,11 @@ def _build_stats_dict(
         "model_num_variables": len(model_proto.variables),
         "model_num_constraints": len(model_proto.constraints),
         "constraint_type_breakdown": _count_constraint_types(model_proto),
+        # Tier 1 observability (Stream 2, issue #1380)
+        "num_reified_linear": _count_reified_linear_constraints(model_proto),
+        "max_linear_coefficient": _max_linear_coefficient(model_proto),
+        "soft_constraints_by_module": _count_soft_constraints_by_module(soft_constraint_violations or {}),
+        "request_density_histogram": _build_request_density_histogram(requests_by_person or {}),
     }
 
 
@@ -365,6 +452,11 @@ class DirectBunkingSolver:
         total_requests = 0
         impossible_count = 0
         affected_campers = set()
+        impossible_by_reason = {
+            "target_not_in_solver": 0,
+            "cross_session": 0,
+            "malformed": 0,
+        }
 
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in self.person_idx_map:
@@ -383,6 +475,7 @@ class DirectBunkingSolver:
                             # Requested person not in solver at all
                             self.impossible_requests[person_cm_id].append(request)
                             impossible_count += 1
+                            impossible_by_reason["target_not_in_solver"] += 1
                             affected_campers.add(person_cm_id)
                         elif (
                             request.request_type == RequestType.BUNK_WITH.value
@@ -394,6 +487,7 @@ class DirectBunkingSolver:
                             # (not_bunk_with across sessions is trivially satisfied.)
                             self.impossible_requests[person_cm_id].append(request)
                             impossible_count += 1
+                            impossible_by_reason["cross_session"] += 1
                             affected_campers.add(person_cm_id)
                         else:
                             self.possible_requests[person_cm_id].append(request)
@@ -401,6 +495,7 @@ class DirectBunkingSolver:
                         # No requested person specified - treat as impossible
                         self.impossible_requests[person_cm_id].append(request)
                         impossible_count += 1
+                        impossible_by_reason["malformed"] += 1
                 else:
                     # Other request types (age_preference, etc.) are always possible
                     self.possible_requests[person_cm_id].append(request)
@@ -430,11 +525,12 @@ class DirectBunkingSolver:
                         )
 
         # Store summary for later use
-        self.request_validation_summary = {
+        self.request_validation_summary: dict[str, Any] = {
             "total_requests": total_requests,
             "possible_requests": total_requests - impossible_count,
             "impossible_requests": impossible_count,
             "affected_campers": len(affected_campers),
+            "impossible_by_reason": impossible_by_reason,
         }
 
     def check_feasibility(self) -> None:
@@ -805,6 +901,13 @@ class DirectBunkingSolver:
             "model_num_variables": None,
             "model_num_constraints": None,
             "constraint_type_breakdown": {},
+            # Tier 1 observability (Stream 2, issue #1380) — single-bunk
+            # path has no CP-SAT model, so reified/big-M are 0. Histogram
+            # and soft-by-module use the actual data we have.
+            "num_reified_linear": 0,
+            "max_linear_coefficient": 0,
+            "soft_constraints_by_module": _count_soft_constraints_by_module(self.soft_constraint_violations),
+            "request_density_histogram": _build_request_density_histogram(self.input.requests_by_person),
             "single_bunk_session": True,
         }
 
@@ -1000,6 +1103,8 @@ class DirectBunkingSolver:
             num_bunks=len(self.bunks),
             num_requests=len(self.input.requests),
             satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
+            soft_constraint_violations=self.soft_constraint_violations,
+            requests_by_person=self.input.requests_by_person,
         )
         stats["request_validation"] = self.request_validation_summary
 

@@ -29,7 +29,7 @@ def check_feasibility(
     person_idx_map: dict[int, int],
     possible_requests: dict[int, list[DirectBunkRequest]],
     impossible_requests: dict[int, list[DirectBunkRequest]],
-    request_validation_summary: dict[str, int],
+    request_validation_summary: dict[str, Any],
 ) -> None:
     """Perform pre-solve feasibility checks and log warnings.
 
