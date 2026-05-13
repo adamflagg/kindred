@@ -45,9 +45,13 @@ def test_shorten_session_name_taste() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("Taste of Camp") == "Taste"
+    # 4-digit year suffixes must not be mistaken for cohort numbers.
+    assert _shorten_session_name("Taste of Camp 2025") == "Taste"
     # Split cohorts must be distinguishable on solver-debug source labels.
     assert _shorten_session_name("Taste of Camp 1") == "Taste 1"
     assert _shorten_session_name("Taste of Camp 2") == "Taste 2"
+    # Two-digit cohorts supported in case the camp scales beyond 9.
+    assert _shorten_session_name("Taste of Camp 10") == "Taste 10"
 
 
 def test_shorten_session_name_ag() -> None:
