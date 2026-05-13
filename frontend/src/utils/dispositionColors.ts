@@ -32,6 +32,21 @@ export const PENDING_REASONS = new Set([
   'self_referential',
 ])
 
+/**
+ * Declined disposition reasons emitted by the pipeline rules engine
+ * (`bunking/sync/bunk_request_processor/disposition/disposition_rules.py`) or
+ * by Phase C target-decline (`orchestrator/target_decline.py`).
+ *
+ * Manual UI declines (RequestReviewPanel, AllCamperRequestsModal) intentionally
+ * write `status: 'declined'` with **no** `disposition_reason`. The pipeline has
+ * no opinion to record on a staff-initiated decline, and overloading the field
+ * with a `staff_manual`-style sentinel would either lose the prior pipeline
+ * reason (overwrite) or only partially populate (only-when-empty), neither of
+ * which yields an accurate "staff-touched" signal. If that signal is ever
+ * needed, add a dedicated `reviewed_by`/`reviewed_at` field instead. Empty
+ * `disposition_reason` on a declined row is the correct shape for manual UI
+ * declines (issue #1368, closed 2026-05-13).
+ */
 export const DECLINED_REASONS = new Set([
   'session_mismatch',
   'target_not_attending',

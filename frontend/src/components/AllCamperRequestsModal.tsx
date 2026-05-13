@@ -366,6 +366,8 @@ export function AllCamperRequestsModal({
           anchorRect={confirmPopover.anchorRect}
           action={confirmPopover.action}
           onConfirm={() => {
+            // Manual decline writes `status: 'declined'` only — `disposition_reason`
+            // is intentionally left blank (see DECLINED_REASONS in dispositionColors.ts, #1368).
             updateRequestMutation.mutate({
               id: confirmPopover.requestId,
               updates:
