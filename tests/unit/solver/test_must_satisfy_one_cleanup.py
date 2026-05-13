@@ -25,7 +25,6 @@ import inspect
 import re
 from pathlib import Path
 
-
 # Schema -----------------------------------------------------------------------
 
 

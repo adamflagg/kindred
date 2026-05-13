@@ -36,6 +36,13 @@ migrate(
   (app) => {
     // Down: re-create the three rows with the original seeded values from
     // 1500000011_config.js so a rollback restores the pre-cleanup state.
+    //
+    // Metadata field names mirror the seed migration's metadata-builder
+    // (data_type, min_value/max_value, source, default_value,
+    // business_category, display_order, component_type/component_config)
+    // so the admin GUI — which reads metadata.business_category from
+    // frontend/src/components/admin/ConfigTab.tsx — recognizes the
+    // restored rows after rollback.
     const configCollection = app.findCollectionByNameOrId("config")
     const seeds = [
       {
@@ -43,12 +50,18 @@ migrate(
         value: 1,
         description: "Whether every camper must have at least one request satisfied",
         metadata: {
+          data_type: "integer",
+          source: "default_config",
+          default_value: 1,
+          min_value: 0,
+          max_value: 1,
           friendly_name: "Require One Request Satisfied",
-          section: "core-constraints",
           tooltip: "Whether every camper must have at least one bunk request satisfied",
-          type: "int",
-          min: 0,
-          max: 1,
+          section: "core-constraints",
+          display_order: 1,
+          business_category: "solver",
+          component_type: "toggle",
+          component_config: { onLabel: "Enabled", offLabel: "Disabled" },
         },
       },
       {
@@ -56,12 +69,18 @@ migrate(
         value: 1,
         description: "Fall back to age preference if no other requests",
         metadata: {
+          data_type: "integer",
+          source: "default_config",
+          default_value: 1,
+          min_value: 0,
+          max_value: 1,
           friendly_name: "Use Age Preference as Fallback",
-          section: "core-constraints",
           tooltip: "If no specific requests, count age preference as satisfying the requirement",
-          type: "int",
-          min: 0,
-          max: 1,
+          section: "core-constraints",
+          display_order: 2,
+          business_category: "solver",
+          component_type: "toggle",
+          component_config: {},
         },
       },
       {
@@ -69,12 +88,18 @@ migrate(
         value: 1,
         description: "Ignore requests for people not in the session (prevents solver failure)",
         metadata: {
+          data_type: "integer",
+          source: "default_config",
+          default_value: 1,
+          min_value: 0,
+          max_value: 1,
           friendly_name: "Ignore Out-of-Session Requests",
-          section: "core-constraints",
           tooltip: "Ignore requests for campers not attending the same session",
-          type: "int",
-          min: 0,
-          max: 1,
+          section: "core-constraints",
+          display_order: 3,
+          business_category: "solver",
+          component_type: "toggle",
+          component_config: {},
         },
       },
     ]
