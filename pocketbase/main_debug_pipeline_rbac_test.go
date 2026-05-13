@@ -49,11 +49,11 @@ func TestDebugPipelineRBACMigrationUsesBunkingManageRule(t *testing.T) {
 		t.Errorf("migration %s must call app.save() to persist rule changes", path)
 	}
 
-	if !strings.Contains(body, "migrate((app)") || strings.Count(body, "migrate((app)") < 1 {
+	if !strings.Contains(body, "migrate((app)") {
 		t.Errorf("migration %s must define an up function via migrate((app) => ...)", path)
 	}
 
-	if !strings.Contains(body, "}, (app)") && !strings.Contains(body, "}, (app) =>") {
+	if !strings.Contains(body, "}, (app)") {
 		t.Errorf("migration %s must define a down function", path)
 	}
 }
