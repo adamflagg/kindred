@@ -581,6 +581,143 @@ INFEASIBLE.
 
 ---
 
+## Stream 6 — Pre-Check Impossibility Detection Framework
+
+**Status:** Framework + initial predicates shipping alongside Stage 4 hard
+MSO in #1391. Substreams below extend the registry as additional hard
+constraints land or surface gaps are identified.
+
+### Motivation
+
+Stream 1 made unmet MP requests infeasible rather than soft-degradable.
+Stream 5 (IIS Localization) tells us which campers cause it after the
+fact. But the conflict surfaced in Taste 1 — reciprocal `bunk_with`
+across a 2-grade gap — was knowable *before* the solver ran. The
+`_validate_requests` impossibility classifier in `direct_solver.py`
+didn't check grade compatibility; neither did the user-facing
+`/solver/pre-validate` endpoint at `api/routers/solver.py`.
+
+Worse, the two paths had drifted: `pre_validate_solver` does its own
+hand-rolled impossibility logic that misses `cross_session`,
+`pair_no_shared_bunk` (gender), and `age_pref_no_eligible_grade` —
+all checks that *do* exist in `direct_solver._validate_requests`.
+Staff could click "Pre-Check" on the bunking board, see "all clear",
+then run the solver and hit INFEASIBLE.
+
+### Mechanism
+
+A single `bunking/solver/impossibility.py` module owns classification.
+Each hard constraint module registers a `HardConstraintImpossibility`
+predicate exposing up to three optional layers:
+
+- `check_request(req, ctx)` — request-local (malformed, missing target)
+- `check_pair(req, ctx)` — pair-local (gender, grade gap, session boundary)
+- `check_cluster(component_cms, ctx)` — cluster-local (over-spread chain,
+  oversized connected component)
+
+`validate_impossibility(input_data, config) → ImpossibilityReport` runs
+all registered predicates and returns a structured report. Both
+`pre_validate_solver` and `DirectBunkingSolver._validate_requests` call
+this shared function; legacy hand-rolled paths in both are deleted.
+
+A registry discipline test (`tests/unit/solver/impossibility/test_registry.py`)
+asserts every constraint module marked `hard=True` has a matching
+predicate registered. Adding a new hard constraint without one fails CI.
+
+### Predicates in #1391
+
+| Predicate | Layer | Status |
+|---|---|---|
+| `SessionBoundaryImpossibility` | pair | Relocated from `pre_validate_solver` |
+| `GenderImpossibility` | pair | Relocated from `_validate_requests` |
+| `MalformedRequestImpossibility` | request | Relocated from `_validate_requests` |
+| `AgePreferenceImpossibility` | request | Relocated from `_validate_requests` |
+| `GradeCompatibilityImpossibility` | pair + cluster | **NEW** — fixes Taste 1 reciprocal `bunk_with` across grades |
+| `BunkCapacityImpossibility` | cluster | **NEW** — reciprocal `bunk_with` chains > max bunk capacity |
+
+`POST /api/solver/pre-validate` response gains a structured
+`impossibility_report` field replacing the legacy
+`statistics.unsatisfiable_requests`. `PreValidationResultsModal` reads
+the new shape: friendly prose for staff (default), reason-coded
+detail tables for admins (`BUNKING_DEBUG` permission). A chip on
+`SolverDebugPage.SweepPanel` opens the same modal for debug use.
+
+### Why this is its own stream
+
+Stream 5 is *post-failure* root-cause attribution within a single
+constraint module. Stream 6 is *pre-solve* structural rejection of
+requests that can never satisfy ANY hard constraint. Different solve
+states, different surfaces, complementary. Stream 5 fires when the
+solver returns INFEASIBLE despite passing pre-check; Stream 6 catches
+the bulk of cases before the solver runs at all.
+
+### Code refs
+
+- `bunking/solver/impossibility.py` — new shared module
+- `bunking/solver/constraints/grade_spread.py` + `grade_adjacency.py` —
+  contribute to `GradeCompatibilityImpossibility`
+- `bunking/solver/direct_solver.py:_validate_requests` — gutted to delegate
+- `api/routers/solver.py:pre_validate_solver` — gutted to delegate
+- `frontend/src/components/PreValidationResultsModal.tsx` — extended renderer
+- `frontend/src/components/PreValidateRequestsButton.tsx` — existing entry
+- `frontend/src/pages/summer/SolverDebugPage/SweepPanel.tsx` — new debug entry
+
+### Risks
+
+1. **API shape change** — `statistics.unsatisfiable_requests` removed in
+   the same PR. Modal updated together. No external consumers documented.
+2. **Drift between predicates and constraint modules** — mitigated by
+   `test_registry.py`; a `hard=True` constraint without a predicate fails CI.
+3. **Predicate over-eager flagging** silently drops a request from both
+   objective and MSO. Each predicate ships with negative tests (passes on
+   valid cases).
+
+### Deferred substreams
+
+**Stream 6a — `level_progression` impossibility predicate.** If a
+`bunk_with` requestee is locked by level progression to a bunk the
+requester cannot enter (also by progression), the request is impossible.
+Requires mapping level rules to per-camper allowed-bunk sets. Code ref:
+`bunking/solver/constraints/level_progression.py`. Effort: medium.
+
+**Stream 6b — `group_locks` impossibility predicate.** A `bunk_with` into
+a full locked group (no room) is impossible. A `not_bunk_with` between
+two campers already locked together is also impossible. Code ref:
+`bunking/solver/constraints/group_locks.py`. Effort: small.
+
+**Stream 6c — Per-bunk grade range predicates.** Today's
+`GradeCompatibilityImpossibility` uses the global `max_grade_range`. If
+per-bunk grade ranges become hard constraints (some bunks naturally hold
+narrower bands), the predicate needs to additionally verify *some* bunk's
+per-bunk range accepts both pair members. Blocked on per-bunk grade range
+becoming a hard constraint. Effort: medium.
+
+**Stream 6d — Cohort census (demand > supply).** Pre-solve O(N) pass that
+detects (gender, age-band) cohorts where MP demand exceeds bunk supply
+(e.g., 30 g8-F campers all with MP `clean(grade=8)` but only 2 g8-F
+bunks of capacity 12). Produces a new impossibility category
+`cohort_overcommit` (cluster-shape finding). Effort: medium.
+
+**Stream 6e — "Open request" navigational link (staff UX).** Each
+impossibility row in the staff modal links to the request in
+`RequestReviewPanel` filtered to that request. Strictly navigational;
+staff decides any action. Effort: tiny. Risk: navigation breaks if the
+request review filter API changes.
+
+**Stream 6f — Solver-probe-based fallback for unclassified requests.**
+For the residual subset of requests not classified by any static
+predicate, run a CP-SAT probe ("force this request, drop all others,
+check feasibility") as insurance against drift. ~0.1s per probe; only
+runs on the residual 5-10%. Effort: medium. Mitigated today by
+`test_registry.py`; consider only if drift becomes a real issue.
+
+### GitHub issues
+
+Framework + initial predicates ship in #1391. Substreams 6a–6f to be
+filed as separate issues if/when prioritized.
+
+---
+
 ## Suggested order
 
 | # | Stream | Why this slot | Effort | Dependency | Status |
@@ -667,3 +804,19 @@ diffs are clearer.
   the minimal correction set of campers whose hard MP constraints
   can't be jointly satisfied. Output goes to logs and the
   `parent_paramount_iis` field on `solver_runs.stats`.
+- **2026-05-13** — Stream 6 (Pre-Check Impossibility Detection
+  Framework) scoped and bundling into #1391. IIS on Taste 1 returned
+  a 2-camper MCS: a reciprocal `bunk_with` across a 2-grade gap (g3 ↔
+  g5). Each alone is satisfiable, the pair isn't. Singleton isolation
+  missed because removing either still leaves the other's MP forcing
+  co-placement. The pair-feasibility gate (`_pair_has_shared_bunk`)
+  only checks session + gender, not grade compatibility — exactly the
+  drift Stream 6 fixes. New `bunking/solver/impossibility.py` module
+  with per-constraint predicate registry; both `pre_validate_solver`
+  and `DirectBunkingSolver._validate_requests` delegate to it.
+  `GradeCompatibilityImpossibility` (pair + cluster) catches
+  that case pre-solve. API response `impossibility_report` replaces
+  legacy `statistics.unsatisfiable_requests`. `PreValidationResultsModal`
+  extended with staff-friendly prose vs admin-detail views. Substreams
+  6a–6f (level_progression, group_locks, per-bunk grade range, cohort
+  census, "open request" link, solver-probe fallback) deferred.
