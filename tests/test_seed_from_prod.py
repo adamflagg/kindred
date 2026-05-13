@@ -474,13 +474,17 @@ class TestDryRun:
 class TestSchemaMismatch:
     """Test handling when prod and dev have different sets of data tables."""
 
-    def test_extra_prod_table_skipped_with_warning(
+    def test_extra_prod_table_fails_by_default(
         self,
         tmp_path: Path,
         seed_module: types.ModuleType,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tables in prod but not dev should be skipped (logged as warning)."""
+        """Default (strict) behavior: prod-only data tables abort the seed.
+
+        Silently skipping a prod table drops a whole collection of rows from
+        the dev DB, which masks bugs like #1338 where a section silently
+        renders empty. Fail fast so the drift is visible (#1339 ask #2).
+        """
         dev_path = str(tmp_path / "data.db")
         prod_path = str(tmp_path / "data-prod.db")
         _create_dev_db(dev_path)
@@ -493,7 +497,29 @@ class TestSchemaMismatch:
         conn.commit()
         conn.close()
 
-        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+        with pytest.raises(SystemExit):
+            seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+
+    def test_extra_prod_table_skipped_with_warning_when_allow_skip(
+        self,
+        tmp_path: Path,
+        seed_module: types.ModuleType,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """allow_skip=True restores the legacy warn-and-continue behavior."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+
+        # Add an extra table to prod that dev doesn't have
+        conn = sqlite3.connect(prod_path)
+        conn.execute("CREATE TABLE legacy_table (id TEXT PRIMARY KEY, data TEXT)")
+        conn.execute("INSERT INTO legacy_table VALUES ('l1', 'old data')")
+        conn.commit()
+        conn.close()
+
+        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
 
         # Should still succeed — other tables should be copied
         assert result["tables_copied"]["persons"] == 3
@@ -503,13 +529,16 @@ class TestSchemaMismatch:
         captured = capsys.readouterr()
         assert "legacy_table" in captured.out
 
-    def test_extra_dev_table_skipped(
+    def test_extra_dev_table_fails_by_default(
         self,
         tmp_path: Path,
         seed_module: types.ModuleType,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Tables in dev but not prod should be skipped (left empty)."""
+        """Default (strict) behavior also fails on dev-only data tables.
+
+        A new collection added to dev that prod doesn't have yet leaves dev
+        out of parity. Same hard-error treatment as prod-only tables.
+        """
         dev_path = str(tmp_path / "data.db")
         prod_path = str(tmp_path / "data-prod.db")
         _create_dev_db(dev_path)
@@ -521,7 +550,28 @@ class TestSchemaMismatch:
         conn.commit()
         conn.close()
 
-        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+        with pytest.raises(SystemExit):
+            seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+
+    def test_extra_dev_table_skipped_when_allow_skip(
+        self,
+        tmp_path: Path,
+        seed_module: types.ModuleType,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """allow_skip=True permits dev-only tables (left empty in dev)."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+
+        # Add an extra table to dev that prod doesn't have
+        conn = sqlite3.connect(dev_path)
+        conn.execute("CREATE TABLE new_feature (id TEXT PRIMARY KEY, data TEXT)")
+        conn.commit()
+        conn.close()
+
+        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
 
         # Should still succeed
         assert result["tables_copied"]["persons"] == 3
@@ -533,7 +583,7 @@ class TestSchemaMismatch:
     def test_matching_tables_still_copied_despite_mismatches(
         self, tmp_path: Path, seed_module: types.ModuleType
     ) -> None:
-        """Even with mismatched tables, the common tables should be copied."""
+        """With allow_skip=True, common tables copy even when extras exist on both sides."""
         dev_path = str(tmp_path / "data.db")
         prod_path = str(tmp_path / "data-prod.db")
         _create_dev_db(dev_path)
@@ -550,7 +600,7 @@ class TestSchemaMismatch:
         conn.commit()
         conn.close()
 
-        seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+        seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
 
         # Common tables should still be copied
         conn = sqlite3.connect(dev_path)

@@ -91,6 +91,7 @@ def seed_from_prod(
     dev_db: str,
     prod_db: str,
     dry_run: bool = False,
+    allow_skip: bool = False,
 ) -> dict[str, object]:
     """Inject prod data into a clean dev database.
 
@@ -98,6 +99,11 @@ def seed_from_prod(
         dev_db: Path to the clean dev data.db (target).
         prod_db: Path to the prod data-prod.db (source).
         dry_run: If True, report what would change without modifying.
+        allow_skip: If True, fall back to warn-and-continue when prod has
+            tables dev doesn't (or vice versa). Default False fails fast —
+            dropping a whole table's worth of rows is the silent-empty
+            symptom that masked #1338, and a hard error makes the drift
+            visible (#1339 ask #2).
 
     Returns:
         Summary dict with table names and row counts.
@@ -130,10 +136,19 @@ def seed_from_prod(
     prod_only = sorted(prod_tables - dev_tables)
     dev_only = sorted(dev_tables - prod_tables)
 
-    if prod_only:
-        print(f"WARNING: Skipping {len(prod_only)} tables in prod but not dev: {', '.join(prod_only)}")
-    if dev_only:
-        print(f"WARNING: Skipping {len(dev_only)} tables in dev but not prod: {', '.join(dev_only)}")
+    if prod_only or dev_only:
+        if prod_only:
+            print(f"WARNING: Skipping {len(prod_only)} tables in prod but not dev: {', '.join(prod_only)}")
+        if dev_only:
+            print(f"WARNING: Skipping {len(dev_only)} tables in dev but not prod: {', '.join(dev_only)}")
+        if not allow_skip:
+            print(
+                "\nERROR: schema drift detected between dev and prod. Dropping a "
+                "whole table's worth of rows silently is the failure mode #1338 "
+                "fixed at the query level; refusing to perpetuate it at the seed "
+                "level. Re-run with --allow-skip if the drift is intentional."
+            )
+            sys.exit(1)
 
     summary: dict[str, object] = {}
 
@@ -241,6 +256,11 @@ def main() -> int:
         action="store_true",
         help="Report what would change without modifying",
     )
+    parser.add_argument(
+        "--allow-skip",
+        action="store_true",
+        help="Continue (with warning) when dev/prod schemas drift instead of failing",
+    )
     args = parser.parse_args()
 
     # Auto-detect project root
@@ -254,6 +274,7 @@ def main() -> int:
         dev_db=dev_db,
         prod_db=prod_db,
         dry_run=args.dry_run,
+        allow_skip=args.allow_skip,
     )
     return 0
 

@@ -12,7 +12,7 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-import { extractSortKey, getBunkType } from './BunkSocialGraphModal'
+import { extractBunkCmIdsFromPlans, extractSortKey, getBunkType } from './BunkSocialGraphModal'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
 // Mirrors the useMemo body in BunkSocialGraphModal so we can assert the
@@ -124,6 +124,42 @@ describe('extractSortKey', () => {
 
   it('falls back to primary 999 for unrecognised patterns', () => {
     expect(extractSortKey('Unknown').primary).toBe(999)
+  })
+})
+
+// ─── extractBunkCmIdsFromPlans ───────────────────────────────────────────────
+// Regression guard for #1339: bunk_plans schema has no flat bunk_cm_id column;
+// the bunk's CM ID is at expand.bunk.cm_id. Previously an inline interface
+// claimed a flat field, returning [] for every real bunk_plans record and
+// silently hiding the bunk navigation arrows in the social graph modal.
+
+describe('extractBunkCmIdsFromPlans', () => {
+  it('reads cm_id from the expanded bunk relation', () => {
+    const bunkPlans = [{ expand: { bunk: { cm_id: 101 } } }, { expand: { bunk: { cm_id: 102 } } }]
+    expect(extractBunkCmIdsFromPlans(bunkPlans)).toEqual([101, 102])
+  })
+
+  it('deduplicates repeated cm_ids', () => {
+    const bunkPlans = [
+      { expand: { bunk: { cm_id: 101 } } },
+      { expand: { bunk: { cm_id: 101 } } },
+      { expand: { bunk: { cm_id: 102 } } },
+    ]
+    expect(extractBunkCmIdsFromPlans(bunkPlans).sort()).toEqual([101, 102])
+  })
+
+  it('skips records missing the expand entirely (e.g. no expand requested)', () => {
+    const bunkPlans = [{}, { expand: { bunk: { cm_id: 101 } } }]
+    expect(extractBunkCmIdsFromPlans(bunkPlans)).toEqual([101])
+  })
+
+  it('skips records where expand.bunk lacks cm_id', () => {
+    const bunkPlans = [{ expand: { bunk: {} } }, { expand: { bunk: { cm_id: 102 } } }]
+    expect(extractBunkCmIdsFromPlans(bunkPlans)).toEqual([102])
+  })
+
+  it('returns [] for an empty input', () => {
+    expect(extractBunkCmIdsFromPlans([])).toEqual([])
   })
 })
 
