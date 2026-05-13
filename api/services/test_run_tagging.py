@@ -85,7 +85,7 @@ async def test_lookup_session_short_name_numbered() -> None:
 
     pb = _mock_pb_returning("Session 2 (Grades 6-8)")
     result = await _lookup_session_short_name(pb, session_cm_id=1235406, year=2026)
-    assert result == "S2"
+    assert result == "2"
 
 
 @pytest.mark.asyncio
@@ -94,12 +94,12 @@ async def test_lookup_session_short_name_quest() -> None:
 
     pb = _mock_pb_returning("Quest Session 1")
     result = await _lookup_session_short_name(pb, session_cm_id=1235410, year=2026)
-    assert result == "SQuest"
+    assert result == "Quest"
 
 
 @pytest.mark.asyncio
 async def test_lookup_session_short_name_fallback_on_lookup_failure() -> None:
-    """When PB lookup raises, return S{cm_id} so the run still records."""
+    """When PB lookup raises, return the raw cm_id so the run still records."""
     from api.services.run_tagging import _lookup_session_short_name
 
     collection = MagicMock()
@@ -107,7 +107,7 @@ async def test_lookup_session_short_name_fallback_on_lookup_failure() -> None:
     pb = MagicMock()
     pb.collection = MagicMock(return_value=collection)
     result = await _lookup_session_short_name(pb, session_cm_id=999, year=2026)
-    assert result == "S999"
+    assert result == "999"
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ async def test_lookup_session_short_name_fallback_on_lookup_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_build_run_details_production_short_label() -> None:
-    """build_run_details should produce 'S2 · Production' format."""
+    """build_run_details should produce '2 · CM' format."""
     from api.services.run_tagging import build_run_details
 
     pb = _mock_pb_returning("Session 2 (Grades 6-8)")
@@ -137,7 +137,7 @@ async def test_build_run_details_production_short_label() -> None:
                 sweep_label=None,
             )
 
-    assert details["source_label"] == "S2 · Production"
+    assert details["source_label"] == "2 · CM"
     assert details["source_kind"] == "production"
     assert details["git_sha"] == "abc1234"
     assert details["session_attendee_count"] == 100
@@ -162,7 +162,7 @@ async def test_build_run_details_scenario_short_label() -> None:
                 sweep_label=None,
             )
 
-    assert details["source_label"] == 'S2 · scenario "what-if-strict-grades"'
+    assert details["source_label"] == "2 · Scen: what-if-strict-grades"
     assert details["source_kind"] == "scenario"
 
 
@@ -185,4 +185,35 @@ async def test_build_run_details_scenario_no_name_falls_back_to_id() -> None:
                 sweep_label=None,
             )
 
-    assert details["source_label"] == 'S2 · scenario "scen_xyz"'
+    assert details["source_label"] == "2 · Scen: scen_xyz"
+
+
+@pytest.mark.asyncio
+async def test_build_run_details_scenario_long_name_truncates() -> None:
+    """Scenario names longer than the display budget are ellipsized."""
+    from api.services.run_tagging import build_run_details
+
+    long_name = "what-if-strict-grades-and-very-long-suffix"  # 42 chars
+    pb = _mock_pb_returning("Session 2 (Grades 6-8)")
+    pb.collection.return_value.get_full_list = MagicMock(return_value=[])
+    with patch("api.services.run_tagging.get_git_sha", return_value="abc"):
+        with patch("api.services.run_tagging.snapshot_solver_config", return_value={}):
+            details = await build_run_details(
+                pb=pb,
+                session_cm_id=1235406,
+                year=2026,
+                scenario_id="scen_xyz",
+                scenario_name=long_name,
+                session_attendee_count=50,
+                sweep_id=None,
+                sweep_label=None,
+            )
+
+    # Label format: "{short} · Scen: {truncated}". Body must end with the
+    # ellipsis marker and the total displayed scenario name must not exceed
+    # the documented budget.
+    label = details["source_label"]
+    assert label.startswith("2 · Scen: ")
+    displayed = label[len("2 · Scen: ") :]
+    assert displayed.endswith("…")
+    assert len(displayed) <= 24

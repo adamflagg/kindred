@@ -25,7 +25,7 @@ describe('SweepPanel', () => {
     )
     expect(screen.getAllByRole('option', { name: /Session 1/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('option', { name: /Session 2/i }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('option', { name: /Production/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /^CM$/ })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /what-if-strict-grades/i })).toBeInTheDocument()
   })
 

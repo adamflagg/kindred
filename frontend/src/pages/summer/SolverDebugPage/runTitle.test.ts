@@ -11,7 +11,7 @@ const base: SolverRun = {
   created: '2026-05-08T10:14:00Z',
   stats: { status: 'FEASIBLE' },
   details: {
-    source_label: 'S2 · Production',
+    source_label: '2 · CM',
     sweep_label: 'baseline',
   },
 }
@@ -19,7 +19,7 @@ const base: SolverRun = {
 describe('buildRunTitle', () => {
   it('joins sweep_label · source_label · time when all three present', () => {
     const title = buildRunTitle(base)
-    expect(title).toMatch(/^baseline · S2 · Production · /)
+    expect(title).toMatch(/^baseline · 2 · CM · /)
     expect(title).toMatch(/\d{1,2}:\d{2}/)
   })
 
@@ -29,7 +29,7 @@ describe('buildRunTitle', () => {
     const run: SolverRun = { ...base, details: detailsNoSweep }
     const title = buildRunTitle(run)
     expect(title).not.toMatch(/baseline/)
-    expect(title.startsWith('S2 · Production · ')).toBe(true)
+    expect(title.startsWith('2 · CM · ')).toBe(true)
   })
 
   it('falls back to "Solver run" when source_label is missing', () => {
@@ -53,13 +53,13 @@ describe('buildRunTitle', () => {
     const run: SolverRun = { ...base, details: { ...base.details, sweep_label: '   ' } }
     const title = buildRunTitle(run)
     expect(title).not.toMatch(/^\s/)
-    expect(title.startsWith('S2 · Production · ')).toBe(true)
+    expect(title.startsWith('2 · CM · ')).toBe(true)
   })
 
   it('omits the timestamp segment when created is unparseable', () => {
     const run: SolverRun = { ...base, created: 'not-a-date' }
     const title = buildRunTitle(run)
-    expect(title).toBe('baseline · S2 · Production')
+    expect(title).toBe('baseline · 2 · CM')
   })
 
   it('omits the timestamp segment when created is missing entirely', () => {
@@ -67,6 +67,6 @@ describe('buildRunTitle', () => {
     void _drop
     const run = rest as SolverRun
     const title = buildRunTitle(run)
-    expect(title).toBe('baseline · S2 · Production')
+    expect(title).toBe('baseline · 2 · CM')
   })
 })

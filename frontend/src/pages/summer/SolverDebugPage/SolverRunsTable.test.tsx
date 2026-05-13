@@ -24,7 +24,7 @@ const r1: SolverRun = {
   },
   details: {
     git_sha: '8c9d2e7',
-    source_label: 'Session 2 · Production',
+    source_label: '2 · CM',
     source_kind: 'production',
     sweep_id: 'sw_1',
     sweep_label: 'post-cleanup',

@@ -221,7 +221,7 @@ export function SweepPanel({
                 onChange={(e) => setPickedSourceValue(e.target.value)}
               >
                 <optgroup label="CampMinder">
-                  <option value="production">Production</option>
+                  <option value="production">CM</option>
                 </optgroup>
                 {sessionScenarios.length > 0 ? (
                   <optgroup label="Scenarios">

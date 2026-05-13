@@ -24,7 +24,7 @@ const run: SolverRun = {
   },
   details: {
     git_sha: '8c9d2e7',
-    source_label: 'Session 2 · Production',
+    source_label: '2 · CM',
     sweep_label: 'post-cleanup',
     config_snapshot: { 'constraint.grade_spread.max': '2' },
   },
@@ -135,7 +135,7 @@ describe('DrillDownDrawer', () => {
       render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
       const heading = screen.getByRole('heading', { level: 3 })
       expect(heading.textContent).toMatch(/post-cleanup/)
-      expect(heading.textContent).toMatch(/Session 2 · Production/)
+      expect(heading.textContent).toMatch(/2 · CM/)
       // hour:minute (12-hour) — locale-dependent; just verify it parsed a date
       expect(heading.textContent).toMatch(/\d{1,2}:\d{2}/)
     })
@@ -147,7 +147,7 @@ describe('DrillDownDrawer', () => {
       render(<DrillDownDrawer run={noSweep} onClose={vi.fn()} />)
       const heading = screen.getByRole('heading', { level: 3 })
       expect(heading.textContent).not.toMatch(/post-cleanup/)
-      expect(heading.textContent).toMatch(/Session 2 · Production/)
+      expect(heading.textContent).toMatch(/2 · CM/)
       expect(heading.textContent).toMatch(/\d{1,2}:\d{2}/)
     })
 

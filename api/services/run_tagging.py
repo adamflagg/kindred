@@ -66,9 +66,9 @@ def _shorten_session_name(session_name: str) -> str:
 async def _lookup_session_short_name(pb: Any, session_cm_id: int, year: int) -> str:
     """Look up a session's friendly name from PocketBase and shorten it.
 
-    Falls back to ``S{cm_id}`` (e.g. ``"S1235406"``) when the lookup fails so
-    the solver run still records — a cosmetic source-label divergence is
-    preferable to a failed run.
+    Falls back to the raw ``{cm_id}`` (e.g. ``"1235406"``) when the lookup
+    fails so the solver run still records — a cosmetic source-label
+    divergence is preferable to a failed run.
     """
     try:
         record = await asyncio.to_thread(
@@ -77,14 +77,26 @@ async def _lookup_session_short_name(pb: Any, session_cm_id: int, year: int) -> 
         )
     except Exception as e:  # cosmetic field, never crash a run
         logger.warning(
-            "Session name lookup failed for cm_id=%s year=%s: %s — falling back to S%s",
+            "Session name lookup failed for cm_id=%s year=%s: %s — falling back to %s",
             session_cm_id,
             year,
             e,
             session_cm_id,
         )
-        return f"S{session_cm_id}"
-    return f"S{_shorten_session_name(record.name)}"
+        return f"{session_cm_id}"
+    return _shorten_session_name(record.name)
+
+
+# Truncation budget for scenario display names in source_label. Keeps the
+# composed label readable in the solver-debug Source column without
+# tooltips. The ``…`` is one character, so 24 includes it.
+_SCENARIO_NAME_MAX = 24
+
+
+def _truncate_scenario_name(name: str) -> str:
+    if len(name) <= _SCENARIO_NAME_MAX:
+        return name
+    return name[: _SCENARIO_NAME_MAX - 1] + "…"
 
 
 def _compose_source_label(
@@ -96,9 +108,9 @@ def _compose_source_label(
     scenario rename/deletion. Pure — no I/O — so it's safe to call from the
     failure-path fallback before/without PocketBase access."""
     if scenario_id is None:
-        return f"{session_label} · Production", "production"
-    display = scenario_name or scenario_id
-    return f'{session_label} · scenario "{display}"', "scenario"
+        return f"{session_label} · CM", "production"
+    display = _truncate_scenario_name(scenario_name or scenario_id)
+    return f"{session_label} · Scen: {display}", "scenario"
 
 
 def compose_minimal_run_details(
@@ -145,15 +157,11 @@ async def build_run_details(
     """Return the dict written to ``solver_runs.details`` for one run.
 
     Takes session_cm_id + year (instead of pre-formatted session_label) so it
-    can look up the friendly short name from PB and compose ``S2 · Production``.
+    can look up the friendly short name from PB and compose ``2 · CM``.
     """
     config_snapshot = await snapshot_solver_config(pb)
     short = await _lookup_session_short_name(pb, session_cm_id, year)
-    if scenario_id is None:
-        source_label, source_kind = f"{short} · Production", "production"
-    else:
-        display = scenario_name or scenario_id
-        source_label, source_kind = f'{short} · scenario "{display}"', "scenario"
+    source_label, source_kind = _compose_source_label(short, scenario_id, scenario_name)
 
     return {
         "git_sha": get_git_sha(),

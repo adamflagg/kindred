@@ -51,7 +51,7 @@ const fullRun: SolverRun = {
   },
   details: {
     git_sha: 'a85c6acfb7e77c59e13b6dd625cc673c6645e2dd',
-    source_label: 'S2 · Production',
+    source_label: '2 · CM',
     sweep_label: 'post 1364-287k MSO penalty',
     config_snapshot: {
       'constraint.grade_ratio.max_percentage': '67',
@@ -65,7 +65,7 @@ describe('buildRunSummary', () => {
     const out = buildRunSummary(fullRun)
     expect(out.run_id).toBe('run_abc')
     expect(out.context).toEqual({
-      source: 'S2 · Production',
+      source: '2 · CM',
       status: 'FEASIBLE',
       git_sha: 'a85c6acfb7e77c59e13b6dd625cc673c6645e2dd',
       sweep_label: 'post 1364-287k MSO penalty',

@@ -137,7 +137,7 @@ export function SolverFiltersBar({
         }}
       >
         <option value="">All sources</option>
-        <option value="production">Production only</option>
+        <option value="production">CM only</option>
         <option value="scenario">Scenarios only</option>
       </select>
       <select
