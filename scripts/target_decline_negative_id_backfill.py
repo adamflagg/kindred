@@ -64,6 +64,19 @@ def main() -> int:
     if not args.db_path.is_file():
         print(f"Error: {args.db_path} is not a file", file=sys.stderr)
         return 1
+    # Refuse to touch the DB if a non-empty -wal sidecar exists — PocketBase
+    # may still be running, or crashed mid-write. Operator must stop PB first
+    # so SQLite can flush WAL frames into the main file before we read/write.
+    wal_path = args.db_path.with_suffix(args.db_path.suffix + "-wal")
+    if wal_path.exists() and wal_path.stat().st_size > 0:
+        print(
+            f"Error: {wal_path} is non-empty — PocketBase may still be active.\n"
+            f"Stop the container first, then checkpoint:\n"
+            f"  sqlite3 {args.db_path} 'PRAGMA wal_checkpoint(TRUNCATE);'\n"
+            f"Then re-run this script.",
+            file=sys.stderr,
+        )
+        return 1
     result = backfill(args.db_path)
     print(f"Scanned:  {result['scanned']} (negative-id rows mis-declined as target_not_attending)")
     print(f"Updated:  {result['updated']} (reset to status=pending, disposition_reason=needs_review)")
