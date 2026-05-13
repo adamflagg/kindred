@@ -23,8 +23,8 @@ Define hard and soft constraints for cabin assignments:
 - **Grade Ratio Limit** (`constraint.grade_ratio.max_percentage`): Max percentage of cabin from single grade
 - **Grade Ratio Penalty** (`constraint.grade_ratio.penalty`): Penalty weight for violations
 
-#### Request Satisfaction
-- **Satisfaction Penalty** (`constraint.must_satisfy_one.penalty`): Penalty for leaving a camper unsatisfied (default: 100,000)
+#### Request Satisfaction (Parent-Paramount, Hard)
+Every camper with at least one possible Material-Parent (MP) request must have one honored. This is enforced as a hard CP-SAT constraint (#1379) — not tunable. The prior soft `constraint.must_satisfy_one.penalty` knob was removed in Stage 4.
 
 #### Level Progression
 - **No Regression** (`constraint.level_progression.no_regression`): Prevent moving to lower level bunks

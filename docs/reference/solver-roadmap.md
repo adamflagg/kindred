@@ -48,8 +48,12 @@ penalty, 600s budget):
 
 ## Stream 1 — Stage 4: Hard Must-Satisfy-One Constraint
 
-**Status:** Tabled pending #1158 (predicate consolidation, merged 2026-05).
-Architecturally unblocked.
+**Status:** Shipped in #1391 (2026-05-13). The motivation, "why hard works,"
+safety gate, and risks below remain accurate. The "Surprising side-effect:
+model simplification" section was wrong in its model-size math — see the
+inline note in that section for the corrected version. Follow-ups #1395,
+#1396, #1397, #1398 capture the remaining work surfaced during
+implementation.
 
 ### Motivation
 
@@ -74,10 +78,11 @@ property of CP-SAT's feasible region. The solver cannot produce *any*
 solution that violates it; the LP relaxation prunes friend-X-elsewhere
 branches at every node. There is no "trade-off" to lose locally.
 
-### Surprising side-effect: model simplification
+### Model simplification — original hypothesis vs. shipped reality
 
-Current soft MSO (`bunking/solver/constraints/must_satisfy.py:126-135`)
-per MP-having camper:
+**Original hypothesis (incorrect as written).** The soft MSO at
+`bunking/solver/constraints/must_satisfy.py:126-135` (pre-rename) looked
+like this per MP-having camper:
 
 ```python
 violation = ctx.model.NewBoolVar(...)                                # +1 BoolVar
@@ -86,19 +91,38 @@ ctx.model.Add(sum(all_sat_vars) >= 1).OnlyEnforceIf(violation.Not()) # +1 reifie
 ctx.soft_constraint_violations[...] = (violation, penalty)            # +1 objective term
 ```
 
-Hard MSO collapses to:
+The roadmap predicted collapsing to:
 
 ```python
 ctx.model.Add(sum(all_sat_vars) >= 1)                                # +1 plain linear
 ```
 
-S2 has 164 MP-having campers. Hard MSO directly removes:
+…and removing 164 BoolVars / 328 reified linears / 164 objective terms
+from S2.
 
-- −164 BoolVars (5,561 → ~5,397)
-- −164 linear constraints (21,922 → ~21,758)
-- −164 objective terms (objective function shorter)
-- And *reified → plain* constraint type upgrade — CP-SAT's propagation
-  doesn't have to maintain boolean implication for these.
+> **Reality (#1391):** the existing `all_sat_vars` produced by
+> `add_bunk_request_satisfaction_vars` use **one-way `OnlyEnforceIf`
+> implications** (`bunk_requests.py:75-117`). The solver can set
+> `sat_var = 1` freely without forcing actual co-placement. A hard
+> `sum(all_sat_vars) >= 1` over them would be vacuously satisfiable.
+> The pre-Stage-4 soft constraint summed over these falsifiable vars
+> and the objective rewarded them — meaning the 287,600 penalty was
+> almost certainly operationally inert (the 95.73% MP coverage came
+> from cluster constraints emergently placing friends, not the
+> penalty). See #1396 for the investigation issue.
+>
+> **What shipped** in #1391: hard constraint uses a bidirectional
+> per-request sat var via `ctx.person_bunk_assignment` (matches the
+> encoding `add_objective` uses at `direct_solver.py:663-714`) for
+> bunk_with / not_bunk_with, plus the existing per-(request, bunk)
+> `person_in_clean_bunk` forcing indicators exposed from
+> `add_age_preference_satisfaction_vars` for age_preference. One
+> bidirectional sat var + two reified linears per MP bunk request;
+> zero new vars for age_preference. Net S2 model effect: roughly
+> neutral vs. the soft baseline (−164 violation BoolVars, +~250
+> MP-specific sat vars, +~500 reified linears, +164 plain linears,
+> −164 objective terms). #1395 will eliminate the ~250 duplicate sat
+> vars by unifying with the objective's set.
 
 ### Safety gate
 
@@ -122,12 +146,16 @@ logged. The 4 current `impossible_requests` (synthetic IDs from
 unresolvable names) are spread across kids who ALSO have viable MP
 alternatives, so the constraint still applies to those kids.
 
-### Code refs
+### Code refs (post-#1391)
 
-- `bunking/solver/constraints/must_satisfy.py:126-135` — current soft modeling
+- `bunking/solver/constraints/parent_paramount.py` — hard MP constraint (renamed from `must_satisfy.py`)
+- `bunking/solver/constraints/bunk_requests.py:75-117` — one-way soft sat var encoding (see #1395)
+- `bunking/solver/direct_solver.py:643-714` — bidirectional objective-side sat var encoding (template for #1391's hard path)
 - `bunking/solver/direct_solver.py:355-438` — `_validate_requests`, impossibility classification
+- `bunking/solver/direct_solver.py:1215-` — `_check_must_satisfy_one_violations` (post-solve diagnostic, ERROR severity under hard MSO)
 - `bunking/solver/feasibility.py:193-205` — `unsatisfied_no_possible` computation
-- `bunking/solver/constraints/base.py:51` — `ConstraintContext.impossible_requests`
+- `bunking/solver/constraints/base.py` — `SolverContext` including `mp_set_entirely_impossible`
+- `bunking/satisfaction/bucket.py` — `is_material_parent_request` (source-field bucket classifier)
 - Camp policy source: `wife-feedback-2026-04-scoreboard.md` Stage 4 sketch (local doc)
 
 ### Risks (small, in decreasing order)
@@ -152,7 +180,14 @@ alternatives, so the constraint still applies to those kids.
 
 ### GitHub issue
 
-To be filed alongside this doc.
+Tracking: #1379 (closed by #1391 on 2026-05-13).
+
+### Follow-ups surfaced during #1391 implementation
+
+- **#1395** — `refactor(solver): make add_bunk_request_satisfaction_vars bidirectional + unify sat vars with objective`. Eliminates the "free money" objective reward (one-way soft sat vars are falsifiable) and the ~250 duplicate BoolVars between `add_objective` and `parent_paramount`.
+- **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
+- **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
+- **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
 
 ---
 
@@ -270,7 +305,7 @@ to eliminate junk) yields:
 | `person_in_bunk[p, b]` — one per (person, bunk) | 193 × 17 = 3,281 | `direct_solver.py:_create_assignment_variables` |
 | `both_in_bunk[req, b]` — one per BUNK_WITH request per bunk | 311 × 17 = 5,287 | `constraints/bunk_requests.py:add_bunk_request_satisfaction_vars` |
 | `req_satisfied[r]` — one per request | 504 | `constraints/bunk_requests.py`, `age_preference.py` |
-| `must_satisfy_violation[p]` — one per MP camper | 164 | `constraints/must_satisfy.py` |
+| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391, replaced by ~250 bidirectional `parent_paramount_req_*_satisfied` sat vars; see #1395 for unification) |
 | Constraint-internal indicators (grade_ratio, age_spread, level_progression, grade_adjacency) | ~500 | various |
 | **Total before presolve** | **~9,750** | |
 | **Post-presolve (reported)** | **5,561** | |
@@ -438,12 +473,12 @@ To be filed alongside this doc.
 
 ## Suggested order
 
-| # | Stream | Why this slot | Effort | Dependency |
-|---|---|---|---|---|
-| 1 | **Stream 2: Metrics expansion (Tier 1 + Tier 2)** | Foundation for all subsequent measurement. Read-only, low risk. Establishes baselines. | ~120–180 LOC | None |
-| 2 | **Stream 1: Stage 4 hard MSO** | Camp policy fix. Model simplification (−164 vars, −164 reified) visible in new dashboard. | ~150 LOC | Stream 2 (measurement) |
-| 3a | **Stream 4: Mutual-boost** | Independent, can parallel with 3b. Layers cleanly on Stage 4 baseline. | ~80–120 LOC | Stream 1 (baseline) |
-| 3b | **Stream 3: Variable-count attack surface** | Compound model simplification. Bigger blast radius but lower urgency. | ~250–400 LOC | Stream 2 (measurement) |
+| # | Stream | Why this slot | Effort | Dependency | Status |
+|---|---|---|---|---|---|
+| 1 | **Stream 2: Metrics expansion (Tier 1 + Tier 2)** | Foundation for all subsequent measurement. Read-only, low risk. Establishes baselines. | ~120–180 LOC | None | **SHIPPED** (#1385) |
+| 2 | **Stream 1: Stage 4 hard MSO** | Camp policy fix. Model size roughly neutral vs soft baseline (corrected from original −164 estimate). | ~900 LOC | Stream 2 (measurement) | **SHIPPED** (#1391) |
+| 3a | **Stream 4: Mutual-boost** | Independent, can parallel with 3b. Layers cleanly on Stage 4 baseline. | ~80–120 LOC | Stream 1 (baseline) | Pending |
+| 3b | **Stream 3: Variable-count attack surface** | Compound model simplification. Bigger blast radius but lower urgency. Also see #1395 for the sat-var unification that ought to land before this. | ~250–400 LOC | Stream 2 (measurement), #1395 (recommended) | Pending |
 
 ### Why metrics first
 
@@ -482,5 +517,15 @@ diffs are clearer.
 
 ## Update log
 
-- **2026-05-13** — Doc created (this commit). All four streams
-  documented; GitHub issues to be filed in companion commits.
+- **2026-05-13** — Doc created. All four streams documented; GitHub
+  issues filed in companion commits.
+- **2026-05-13** — Stream 2 (metrics) shipped in #1385.
+- **2026-05-13** — Stream 1 (Stage 4 hard MSO) shipped in #1391.
+  Implementation surfaced that the soft sat vars used one-way
+  `OnlyEnforceIf` implications, so the roadmap's "−164 BoolVars / −164
+  reified" simplification math was wrong as written. The corrected
+  math (model approximately neutral vs soft baseline) is in the Stream
+  1 "Model simplification" section above. Four follow-up issues
+  filed: #1395 (sat var unification), #1396 (penalty-driven
+  investigation), #1397 (`solution.py` cleanup), #1398 (golden
+  alignment test).
