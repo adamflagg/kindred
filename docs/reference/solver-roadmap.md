@@ -140,6 +140,16 @@ request as impossible when any of the following holds:
   the prior gate and the hard MP constraint then forced impossible
   co-placement). `not_bunk_with` with no shared bunk is trivially
   satisfied and remains `possible`.
+- `age_pref_no_eligible_grade` — `age_preference` at the same-gender
+  grade bound in the wrong direction. Per camp staff policy: if a
+  camper is the oldest grade of their gender in the session and
+  prefers older (or youngest and prefers younger), the preference is
+  moot — there are no peers to be older/younger than them. Marking
+  impossible upstream is what allows the hard MP constraint to bind
+  cleanly for everyone else. Bounds are derived from the actual
+  same-gender camper pool in the session (scan-the-pool fallback;
+  the follow-up issue to tie this to admin-GUI-configured min/max
+  grades will swap the source without changing the call site).
 
 **Defensive pattern when adding the hard constraint:**
 
@@ -553,3 +563,13 @@ diffs are clearer.
   `parent_paramount` toggle to `feasibility.py`'s analyzer
   `constraint_types` list — without it the analyzer mis-diagnoses
   "gender" as the cause when hard MP is the real culprit.
+- **2026-05-13** — Second Stage 4 follow-up in #1391: Taste 1 still
+  INFEASIBLE because MP `age_preference` requests at the same-gender
+  grade bound (e.g. grade-6 boy prefers older in a max-grade-6-boys
+  session) were treated as "possible" by `_validate_requests` and
+  forced the hard MP constraint to fire when no satisfying bunk
+  composition exists. Camp policy: at-bound preferences in the wrong
+  direction are moot ("too bad, impossible"). Added
+  `age_pref_no_eligible_grade` reason and `_session_grade_bounds_for_gender`
+  helper. Bounds derived from the same-gender camper pool today; a
+  follow-up issue tracks tying this to admin-GUI grade configuration.

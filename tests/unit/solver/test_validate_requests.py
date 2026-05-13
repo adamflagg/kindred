@@ -23,13 +23,13 @@ _FICTIONAL_NAMES = [
 ]
 
 
-def _make_person(cm_id: int, session: int, *, gender: str = "F") -> DirectPerson:
+def _make_person(cm_id: int, session: int, *, gender: str = "F", grade: int = 6) -> DirectPerson:
     first, last = _FICTIONAL_NAMES[cm_id % len(_FICTIONAL_NAMES)]
     return DirectPerson(
         campminder_person_id=cm_id,
         first_name=first,
         last_name=last,
-        grade=6,
+        grade=grade,
         birthdate="2014-03-15",
         gender=gender,
         session_cm_id=session,
@@ -170,11 +170,17 @@ class TestValidateRequestsCrossSession:
         assert len(solver.impossible_requests[1001]) == 1
         assert solver.impossible_requests[1001][0].id == "r2"
 
-    def test_age_preference_always_possible(self, mock_config):
-        """age_preference requests are always possible regardless of session."""
+    def test_age_preference_in_bounds_is_possible(self, mock_config):
+        """age_preference requests where the requester is not at the same-gender
+        grade bound (in the wrong direction) remain possible. See
+        TestValidateRequestsAgePrefNoEligibleGrade for the at-bound case
+        (which lands in impossible_requests per camp policy)."""
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100)],
+                persons=[
+                    _make_person(1001, 100, gender="F", grade=4),
+                    _make_person(1002, 100, gender="F", grade=6),  # older same-gender peer
+                ],
                 requests=[
                     DirectBunkRequest(
                         id="r1",
@@ -295,3 +301,150 @@ class TestValidateRequestsPairNoSharedBunk:
 
         assert len(solver.possible_requests[1001]) == 1
         assert len(solver.impossible_requests[1001]) == 0
+
+
+def _age_pref_request(req_id: str, requester: int, session: int, *, target: str) -> DirectBunkRequest:
+    return DirectBunkRequest(
+        id=req_id,
+        requester_person_cm_id=requester,
+        request_type="age_preference",
+        age_preference_target=target,
+        session_cm_id=session,
+        year=2026,
+        status="resolved",
+    )
+
+
+class TestValidateRequestsAgePrefNoEligibleGrade:
+    """age_preference at the same-gender grade bound (in the wrong direction) is impossible.
+
+    Camp policy per staff: if a camper prefers older kids but they're the oldest
+    grade in the session for their gender, "too bad, it's impossible." Same for
+    youngest-prefers-younger. Surfacing these in the impossibility breakdown
+    keeps them visible to staff via mp_set_entirely_impossible.
+
+    The bound is computed from the session's actual same-gender camper pool
+    (AG cabins don't enter — person.gender is M or F; AG is a bunk attribute).
+    A follow-up issue tracks tying this to admin-configured min/max grades.
+    """
+
+    def test_older_at_max_grade_is_impossible(self, mock_config):
+        """M grade 6 prefers older; session has only grade ≤6 boys → impossible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="M", grade=6),
+                    _make_person(1002, 100, gender="M", grade=5),
+                    _make_person(1003, 100, gender="M", grade=4),
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                bunks=[_make_bunk(2001, 100, gender="M")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+        assert solver.request_validation_summary["impossible_by_reason"]["age_pref_no_eligible_grade"] == 1
+
+    def test_younger_at_min_grade_is_impossible(self, mock_config):
+        """F grade 2 prefers younger; session has only grade ≥2 girls → impossible."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="F", grade=2),
+                    _make_person(1002, 100, gender="F", grade=3),
+                    _make_person(1003, 100, gender="F", grade=4),
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="younger")],
+                bunks=[_make_bunk(2001, 100, gender="F")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+
+    def test_older_with_older_same_gender_peer_is_possible(self, mock_config):
+        """M grade 6 prefers older; session HAS a grade-7 boy → possible (in bounds)."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="M", grade=6),
+                    _make_person(1002, 100, gender="M", grade=7),
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                bunks=[_make_bunk(2001, 100, gender="M")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_opposite_preference_at_bound_remains_possible(self, mock_config):
+        """M grade 6 prefers YOUNGER while at max grade — fine, younger boys exist."""
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="M", grade=6),
+                    _make_person(1002, 100, gender="M", grade=5),
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="younger")],
+                bunks=[_make_bunk(2001, 100, gender="M")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 1
+        assert len(solver.impossible_requests[1001]) == 0
+
+    def test_older_grade_in_other_gender_does_not_count(self, mock_config):
+        """M grade 6 prefers older; older girls exist but no older boys → impossible.
+
+        Per camp policy (and the cross-gender gate landed earlier), older
+        kids of the OTHER gender don't satisfy 'older' for a single-gender
+        bunk — and AG isn't a person attribute. Same-gender pool only.
+        """
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="M", grade=6),
+                    _make_person(1002, 100, gender="M", grade=5),
+                    _make_person(1003, 100, gender="F", grade=8),  # older but wrong gender
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                bunks=[
+                    _make_bunk(2001, 100, gender="M"),
+                    _make_bunk(2002, 100, gender="F"),
+                ],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1
+
+    def test_no_same_gender_peers_marks_impossible(self, mock_config):
+        """Degenerate: lone-gender camper in session → no same-gender peers → impossible.
+
+        If you're the only boy in a session, there are no older OR younger
+        boys to bunk with. Either direction is moot.
+        """
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[
+                    _make_person(1001, 100, gender="M", grade=4),
+                    _make_person(1002, 100, gender="F", grade=4),
+                ],
+                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                bunks=[
+                    _make_bunk(2001, 100, gender="M"),
+                    _make_bunk(2002, 100, gender="F"),
+                ],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert len(solver.possible_requests[1001]) == 0
+        assert len(solver.impossible_requests[1001]) == 1

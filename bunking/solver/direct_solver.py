@@ -370,6 +370,31 @@ class DirectBunkingSolver:
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
         )
 
+    def _session_grade_bounds_for_gender(self, session_cm_id: int, gender: str) -> tuple[int, int] | None:
+        """Return (min_grade, max_grade) among same-gender campers in the session.
+
+        AG cabins don't enter — gender is the person attribute (M or F);
+        AG is a bunk attribute. Returns None if no same-gender campers exist
+        in the session (defensive; shouldn't happen for a real request).
+
+        Used by _validate_requests to gate age_preference requests at grade
+        bounds where camp policy considers them moot (e.g. oldest-grade
+        camper prefers older → no older peers exist → impossible). The
+        lone-gender case is naturally caught: grades=[my_grade], min==max,
+        so any preference resolves at-bound.
+
+        A follow-up issue tracks switching this to admin-GUI-configured
+        min/max grade bounds; this scan-the-pool fallback is the interim.
+        """
+        grades = [
+            p.grade
+            for p in self.input.persons
+            if p.session_cm_id == session_cm_id and p.gender == gender and p.grade is not None
+        ]
+        if not grades:
+            return None
+        return min(grades), max(grades)
+
     def _pair_has_shared_bunk(self, person1_idx: int, person2_idx: int) -> bool:
         """Return True if the two persons can co-occupy at least one bunk.
 
@@ -461,6 +486,7 @@ class DirectBunkingSolver:
             "cross_session": 0,
             "malformed": 0,
             "pair_no_shared_bunk": 0,
+            "age_pref_no_eligible_grade": 0,
         }
 
         for person_cm_id, requests in self.input.requests_by_person.items():
@@ -515,8 +541,40 @@ class DirectBunkingSolver:
                         self.impossible_requests[person_cm_id].append(request)
                         impossible_count += 1
                         impossible_by_reason["malformed"] += 1
+                elif request.request_type == RequestType.AGE_PREFERENCE.value:
+                    # age_preference at the same-gender grade bound (in the wrong
+                    # direction) is impossible per camp policy: if you're the
+                    # oldest grade and prefer older, "too bad" — there are no
+                    # older peers. Same for youngest-prefers-younger. Without
+                    # this gate, a hard MP constraint (Stage 4) for an at-bound
+                    # camper has no satisfiable assignment → INFEASIBLE.
+                    #
+                    # Scan-the-pool fallback: bounds are derived from the
+                    # session's same-gender camper pool. A follow-up issue
+                    # will switch this to admin-GUI-configured min/max grades.
+                    requester = person_by_cm_id[person_cm_id]
+                    target = request.age_preference_target
+                    impossible = False
+                    if requester.gender and requester.grade is not None and target in ("older", "younger"):
+                        bounds = self._session_grade_bounds_for_gender(requester.session_cm_id, requester.gender)
+                        if bounds is None:
+                            impossible = True
+                        else:
+                            min_g, max_g = bounds
+                            if (target == "older" and requester.grade >= max_g) or (
+                                target == "younger" and requester.grade <= min_g
+                            ):
+                                impossible = True
+
+                    if impossible:
+                        self.impossible_requests[person_cm_id].append(request)
+                        impossible_count += 1
+                        impossible_by_reason["age_pref_no_eligible_grade"] += 1
+                        affected_campers.add(person_cm_id)
+                    else:
+                        self.possible_requests[person_cm_id].append(request)
                 else:
-                    # Other request types (age_preference, etc.) are always possible
+                    # Other request types are always possible
                     self.possible_requests[person_cm_id].append(request)
 
         # Log validation results
