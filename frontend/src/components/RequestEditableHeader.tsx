@@ -25,7 +25,6 @@ export function RequestEditableHeader({
   onViewCamper,
   isCurrent,
 }: RequestEditableHeaderProps) {
-  const disabled = request.request_locked
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <div onClick={(e) => e.stopPropagation()}>
@@ -34,7 +33,6 @@ export function RequestEditableHeader({
           onChange={(newType) =>
             onUpdate(computeTypeUpdate(newType as BunkRequestsResponse['request_type']))
           }
-          disabled={disabled}
         />
       </div>
       <span className="text-muted-foreground">→</span>
@@ -49,7 +47,6 @@ export function RequestEditableHeader({
           requestedPersonName={request.requested_person_name}
           personMap={personMap}
           sessionName={sessionName}
-          disabled={disabled}
           onChange={(updates) => onUpdate(computeTargetUpdate(updates))}
           onViewCamper={onViewCamper}
         />

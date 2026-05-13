@@ -310,57 +310,5 @@ class TestCrossRunDeduplicationStatistics:
         assert result.statistics["database_duplicates"] == 1
 
 
-class TestLockedRequestHandling:
-    """Test handling of locked requests in cross-run deduplication.
-
-    Locked requests (request_locked=True) indicate staff has validated/edited
-    the request. These need special handling:
-    - If source changes, we shouldn't auto-delete the locked request
-    - Should flag for manual review instead
-    """
-
-    @pytest.fixture
-    def mock_request_repo(self):
-        """Create a mock request repository"""
-        return Mock()
-
-    @pytest.fixture
-    def deduplicator(self, mock_request_repo):
-        """Create a Deduplicator with mocked dependencies"""
-        return Deduplicator(mock_request_repo)
-
-    def test_database_match_includes_locked_status(self, deduplicator, mock_request_repo):
-        """Test that database match metadata includes locked status.
-
-        The orchestrator needs to know if the existing request is locked
-        to decide whether to merge or flag for review.
-        """
-        existing = Mock()
-        existing.id = "existing_locked"
-        existing.request_locked = True
-        mock_request_repo.find_existing.return_value = existing
-
-        new_request = BunkRequest(
-            requester_cm_id=12345,
-            requested_cm_id=67890,
-            request_type=RequestType.BUNK_WITH,
-            session_cm_id=1000002,
-            priority=3,
-            confidence_score=0.95,
-            source_field="bunking_notes",
-            csv_position=0,
-            year=2025,
-            status=RequestStatus.RESOLVED,
-            is_placeholder=False,
-            metadata={},
-        )
-
-        result = deduplicator.deduplicate_batch([new_request], check_database=True)
-
-        kept = result.kept_requests[0]
-        # Should include locked status for orchestrator decision
-        assert kept.metadata.get("database_match_locked") is True
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

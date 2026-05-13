@@ -34,7 +34,6 @@ class TestPartialInvalidationSingleSource:
         request_type: RequestType = RequestType.BUNK_WITH,
         source_field: str = "share_bunk_with",
         pb_id: str = "br_123",
-        request_locked: bool = False,
     ) -> BunkRequest:
         """Helper to create a BunkRequest for testing."""
         request = BunkRequest(
@@ -141,10 +140,8 @@ class TestPartialInvalidationMultiSource:
         # This request has MULTIPLE sources (merged request)
         mock_source_link_repo.count_sources_for_request.return_value = 3
 
-        # Mock the request to check if it's locked
         mock_request = Mock()
         mock_request.id = "br_merged_456"
-        mock_request.request_locked = False  # NOT locked
         mock_request.source_fields = ["share_bunk_with", "bunking_notes", "internal_notes"]
         mock_request_repo.get_by_id.return_value = mock_request
 
@@ -181,25 +178,24 @@ class TestPartialInvalidationMultiSource:
         assert result.deleted_requests == []
         assert "br_merged_456" in result.unlinked_requests
 
-    def test_multi_source_locked_flags_for_review(self) -> None:
-        """Test that locked multi-source requests are flagged for review.
+    def test_multi_source_unlinks_regardless_of_lock_state(self) -> None:
+        """Multi-source rows unlink the changed source unconditionally.
 
-        Locked requests indicate staff validation. When a source changes,
-        we shouldn't auto-modify - instead, flag for manual review.
+        Regression lock for issue #1373: the formerly-conditional lock branch
+        in _handle_multi_source is gone; unlink runs every time.
         """
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
 
         original_request_id = "orig_123"
 
-        mock_source_link_repo.get_requests_for_source.return_value = ["br_locked_789"]
+        mock_source_link_repo.get_requests_for_source.return_value = ["br_456"]
         mock_source_link_repo.count_sources_for_request.return_value = 2
+        mock_source_link_repo.get_source_field_for_link.return_value = "field_a"
 
-        # Mock a LOCKED request
         mock_request = Mock()
-        mock_request.id = "br_locked_789"
-        mock_request.request_locked = True  # LOCKED
-        mock_request.metadata = {}
+        mock_request.id = "br_456"
+        mock_request.source_fields = ["field_a", "field_b"]
         mock_request_repo.get_by_id.return_value = mock_request
 
         from bunking.sync.bunk_request_processor.processing.partial_invalidation import (
@@ -213,19 +209,13 @@ class TestPartialInvalidationMultiSource:
 
         result = handler.handle_source_change(original_request_id)
 
-        # Should NOT delete or unlink
-        mock_request_repo.delete.assert_not_called()
-        mock_source_link_repo.remove_source_link.assert_not_called()
-
-        # Should flag for manual review
-        mock_request_repo.flag_for_review.assert_called_once_with(
-            "br_locked_789",
-            reason="source_changed_while_locked",
-            changed_original_id=original_request_id,
+        # Unlink ran, flag_for_review did NOT
+        mock_source_link_repo.remove_source_link.assert_called_once_with(
+            bunk_request_id="br_456",
+            original_request_id=original_request_id,
         )
-
-        # Result should indicate flagged
-        assert result.flagged_for_review == ["br_locked_789"]
+        mock_request_repo.flag_for_review.assert_not_called()
+        assert "br_456" in result.unlinked_requests
 
 
 class TestPartialInvalidationMultipleRequests:
@@ -260,7 +250,6 @@ class TestPartialInvalidationMultipleRequests:
             if request_id == "br_multi_2":
                 mock_req = Mock()
                 mock_req.id = request_id
-                mock_req.request_locked = False
                 mock_req.source_fields = ["field_a", "field_b"]
                 return mock_req
             return None
@@ -310,7 +299,6 @@ class TestPartialInvalidationStatistics:
         # Should have statistics attributes
         assert hasattr(result, "deleted_requests")
         assert hasattr(result, "unlinked_requests")
-        assert hasattr(result, "flagged_for_review")
         assert hasattr(result, "total_affected")
 
 

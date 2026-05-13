@@ -370,8 +370,8 @@ export function AllCamperRequestsModal({
               id: confirmPopover.requestId,
               updates:
                 confirmPopover.action === 'approve'
-                  ? { status: 'resolved', request_locked: true }
-                  : { status: 'declined', request_locked: false },
+                  ? { status: 'resolved' }
+                  : { status: 'declined' },
             })
           }}
           onCancel={handleConfirmCancel}

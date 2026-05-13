@@ -14,7 +14,6 @@ import {
   ChevronUp,
   Search,
   AlertCircle,
-  Shield,
   Plus,
   GitMerge,
   Users,
@@ -580,7 +579,6 @@ export default function RequestReviewPanel({
       const req = requests.find((r: BunkRequestsResponse) => r.id === id)
       if (!req) return
       const priorStatus = req.status
-      const priorLocked = req.request_locked
 
       const requesterPerson = personMap.get(req.requester_id)
       const requesterName = requesterPerson
@@ -595,9 +593,7 @@ export default function RequestReviewPanel({
               id,
               label: `Reverted ${labelVerb} of ${requesterName}`,
               inverse: async () => {
-                await pb
-                  .collection('bunk_requests')
-                  .update(id, { status: priorStatus, request_locked: priorLocked })
+                await pb.collection('bunk_requests').update(id, { status: priorStatus })
                 invalidateRequestQueries(queryClient)
               },
             })
@@ -611,14 +607,14 @@ export default function RequestReviewPanel({
   const handleApprove = (id: string) =>
     handleAction({
       id,
-      updates: { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true },
+      updates: { status: 'resolved' as BunkRequestsStatusOptions },
       labelVerb: 'approval',
     })
 
   const handleReject = (id: string) =>
     handleAction({
       id,
-      updates: { status: 'declined' as BunkRequestsStatusOptions, request_locked: false },
+      updates: { status: 'declined' as BunkRequestsStatusOptions },
       labelVerb: 'decline',
     })
 
@@ -629,11 +625,11 @@ export default function RequestReviewPanel({
       const priors = ids
         .map((id) => requests.find((r: BunkRequestsResponse) => r.id === id))
         .filter((r): r is BunkRequestsResponse => Boolean(r))
-        .map((r) => ({ id: r.id, status: r.status, request_locked: r.request_locked }))
+        .map((r) => ({ id: r.id, status: r.status }))
       const updates: Partial<BunkRequestsResponse> =
         action === 'approve'
-          ? { status: 'resolved' as BunkRequestsStatusOptions, request_locked: true }
-          : { status: 'declined' as BunkRequestsStatusOptions, request_locked: false }
+          ? { status: 'resolved' as BunkRequestsStatusOptions }
+          : { status: 'declined' as BunkRequestsStatusOptions }
       const labelVerb = action === 'approve' ? 'approval' : 'decline'
       bulkUpdateMutation.mutate(
         { ids, updates },
@@ -646,9 +642,7 @@ export default function RequestReviewPanel({
               inverse: async () => {
                 await Promise.all(
                   priors.map((p) =>
-                    pb
-                      .collection('bunk_requests')
-                      .update(p.id, { status: p.status, request_locked: p.request_locked })
+                    pb.collection('bunk_requests').update(p.id, { status: p.status })
                   )
                 )
                 invalidateRequestQueries(queryClient)
@@ -848,16 +842,6 @@ export default function RequestReviewPanel({
   const handleSelectCamperId = useCallback((cmId: string) => {
     setSelectedCamperId(cmId)
   }, [])
-
-  const handleUnlockRow = useCallback(
-    (id: string) => {
-      updateRequestMutation.mutate({
-        id,
-        updates: { request_locked: false },
-      })
-    },
-    [updateRequestMutation]
-  )
 
   const handlePriorityChangeRow = useCallback(
     (id: string, priority: number) => {
@@ -1191,7 +1175,6 @@ export default function RequestReviewPanel({
                           onToggleSelection={toggleRequestSelection}
                           onSelectCamper={handleSelectCamperId}
                           onValidatedUpdate={handleValidatedUpdate}
-                          onUnlock={handleUnlockRow}
                           onSplit={handleSplitRow}
                           onConfirmAction={openConfirmPopover}
                         />
@@ -1297,7 +1280,6 @@ export default function RequestReviewPanel({
                           onSelectCamper={handleSelectCamperId}
                           onValidatedUpdate={handleValidatedUpdate}
                           onPriorityChange={handlePriorityChangeRow}
-                          onUnlock={handleUnlockRow}
                           onSplit={handleSplitRow}
                           onConfirmAction={openConfirmPopover}
                         />
@@ -1469,16 +1451,6 @@ export default function RequestReviewPanel({
                                     Created: {new Date(request.created).toLocaleDateString()}
                                   </span>
                                 </div>
-
-                                {/* Protection status - show when applicable */}
-                                {request.request_locked && request.status === 'resolved' && (
-                                  <div className="flex items-center gap-4 text-xs">
-                                    <span className="text-primary flex items-center gap-1.5 font-medium">
-                                      <Shield className="h-3 w-3" />
-                                      Protected due to manual approval
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                               <div className="max-w-xl">
                                 <CamperRequestSummary

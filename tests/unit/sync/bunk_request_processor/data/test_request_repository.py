@@ -310,6 +310,37 @@ class TestRequestRepository:
         assert "match_type" not in deserialized
         assert len(deserialized["alternate_matches"]) == 2
 
+    def test_update_for_merge_does_not_touch_status_target_or_type(self, repository, mock_pb_client):
+        """update_for_merge writes only additive fields, never status/target/type.
+
+        Regression lock for the invariant that request_locked was supposedly
+        protecting — but which the merge path already enforces at a lower
+        level. Per issue #1373: with the lock gone, this guarantee is what
+        keeps staff approvals safe from sync overwrites.
+        """
+        _, mock_collection = mock_pb_client
+
+        repository.update_for_merge(
+            record_id="rec_123",
+            source_fields=["field_a", "field_b"],
+            confidence_score=0.95,
+            metadata={"merged": True},
+        )
+
+        mock_collection.update.assert_called_once()
+        call_args = mock_collection.update.call_args
+        record_id_arg = call_args[0][0]
+        payload = call_args[0][1]
+
+        assert record_id_arg == "rec_123"
+        # Only additive fields allowed
+        assert set(payload.keys()) == {"source_fields", "confidence_score", "metadata"}
+        # Never touched by merge
+        assert "status" not in payload
+        assert "requestee_id" not in payload
+        assert "request_type" not in payload
+        assert "disposition_reason" not in payload
+
 
 class TestClearAllForYear:
     """Test the clear_all_for_year functionality (test/reset mode).

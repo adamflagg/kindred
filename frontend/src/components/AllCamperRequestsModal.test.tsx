@@ -322,7 +322,7 @@ describe('AllCamperRequestsModal inline actions', () => {
     expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
   })
 
-  it('confirming Approve calls pb.update with status=resolved and request_locked=true', async () => {
+  it('confirming Approve calls pb.update with status=resolved (no request_locked)', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -331,12 +331,11 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'resolved',
-        request_locked: true,
       })
     )
   })
 
-  it('confirming Decline calls pb.update with status=declined and request_locked=false', async () => {
+  it('confirming Decline calls pb.update with status=declined (no request_locked)', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -345,7 +344,6 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'declined',
-        request_locked: false,
       })
     )
   })
@@ -470,7 +468,6 @@ describe('AllCamperRequestsModal — target picker', () => {
     priority: 1,
     confidence_score: 0.5,
     is_reciprocal: false,
-    request_locked: false,
     created: '2025-01-01',
     updated: '2025-01-01',
   }
@@ -534,11 +531,11 @@ describe('AllCamperRequestsModal — target picker', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Modal target/type pickers must mirror row-level behavior: visible for ANY
-  // status (resolved/declined/pending), disabled only by request_locked.
+  // Modal target/type pickers must mirror row-level behavior: visible and
+  // editable for ANY status (resolved/declined/pending).
   // ---------------------------------------------------------------------------
 
-  it('renders EditableRequestTarget (disabled) for a locked resolved request', async () => {
+  it('renders EditableRequestTarget (enabled) for a resolved request', async () => {
     const resolvedRequest = {
       id: 'req-resolved-1',
       request_type: 'bunk_with',
@@ -551,7 +548,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 1.0,
       is_reciprocal: false,
-      request_locked: true,
       created: '2025-01-01',
       updated: '2025-01-01',
     }
@@ -561,13 +557,12 @@ describe('AllCamperRequestsModal — target picker', () => {
 
     renderModal({ requesterCmId: 100, year: 2025 })
 
-    // Picker button shows the resolved name (no "(unresolved)" suffix) and is disabled.
     const pickerButton = await screen.findByRole('button', { name: /^Olivia Chen$/i })
     expect(pickerButton).toBeInTheDocument()
-    expect(pickerButton).toBeDisabled()
+    expect(pickerButton).not.toBeDisabled()
   })
 
-  it('renders EditableRequestTarget (enabled) for a declined unlocked request', async () => {
+  it('renders EditableRequestTarget (enabled) for a declined request', async () => {
     const declinedRequest = {
       id: 'req-declined-1',
       request_type: 'bunk_with',
@@ -580,7 +575,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 0.6,
       is_reciprocal: false,
-      request_locked: false,
       created: '2025-01-01',
       updated: '2025-01-01',
     }
@@ -608,7 +602,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 1.0,
       is_reciprocal: false,
-      request_locked: false,
       created: '2025-01-01',
       updated: '2025-01-01',
     }

@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import clsx from 'clsx'
-import { CheckCircle, CheckCheck, XCircle, Shield, Scissors } from 'lucide-react'
+import { CheckCircle, CheckCheck, XCircle, Scissors } from 'lucide-react'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
@@ -29,7 +29,6 @@ export interface RequestRowDesktopProps {
   onSelectCamper: (cmId: string) => void
   onValidatedUpdate: (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => void
   onPriorityChange: (id: string, priority: number) => void
-  onUnlock: (id: string) => void
   onSplit: (request: BunkRequestsResponse) => void
   onConfirmAction: (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -96,7 +95,6 @@ function RequestRowDesktop({
   onSelectCamper,
   onValidatedUpdate,
   onPriorityChange,
-  onUnlock,
   onSplit,
   onConfirmAction,
 }: RequestRowDesktopProps) {
@@ -141,10 +139,6 @@ function RequestRowDesktop({
     },
     [onSelectCamper]
   )
-
-  const handleUnlock = useCallback(() => {
-    onUnlock(request.id)
-  }, [onUnlock, request.id])
 
   const handleSplit = useCallback(() => {
     onSplit(request)
@@ -203,7 +197,6 @@ function RequestRowDesktop({
           year={year}
           requesterCmId={request.requester_id}
           onChange={handleTargetChange}
-          disabled={request.request_locked}
           originalText={request.original_text}
           requestedPersonName={request.requested_person_name}
           parseNotes={request.parse_notes}
@@ -218,11 +211,7 @@ function RequestRowDesktop({
         )}
       </div>
       <div className="flex items-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
-        <EditableRequestType
-          value={request.request_type}
-          onChange={handleTypeChange}
-          disabled={request.request_locked}
-        />
+        <EditableRequestType value={request.request_type} onChange={handleTypeChange} />
       </div>
       <div
         className="flex items-center justify-center px-4 py-3"
@@ -258,15 +247,6 @@ function RequestRowDesktop({
       </div>
       <div className="flex items-center justify-end px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex min-w-[100px] items-center justify-end gap-1">
-          {request.status === 'resolved' && request.request_locked && (
-            <button
-              onClick={handleUnlock}
-              className="hover:bg-primary/10 text-primary rounded-lg p-1.5 opacity-80 transition-colors hover:opacity-100"
-              title="Click to unprotect and allow editing"
-            >
-              <Shield className="h-4 w-4" />
-            </button>
-          )}
           {hasMultipleSources && (
             <button
               onClick={handleSplit}
