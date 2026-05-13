@@ -310,7 +310,7 @@ class TestRequestRepository:
         assert "match_type" not in deserialized
         assert len(deserialized["alternate_matches"]) == 2
 
-    def test_update_for_merge_does_not_touch_status_target_or_type(self, repository, mock_pb_client) -> None:
+    def test_update_for_merge_does_not_touch_status_target_or_type(self, repository, mock_pb_client):
         """update_for_merge writes only additive fields, never status/target/type.
 
         Regression lock for the invariant that request_locked was supposedly
