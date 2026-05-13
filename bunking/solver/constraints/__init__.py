@@ -5,7 +5,7 @@ Each module contains constraint logic that can be added to the CP-SAT model.
 """
 
 from .age_grade_flow import add_age_grade_flow_objective
-from .age_preference import add_age_preference_penalties, add_age_preference_satisfaction_vars
+from .age_preference import add_age_preference_satisfaction_vars
 from .base import ConstraintBuilder, ObjectiveBuilder, SolverContext
 from .bunk_requests import add_bunk_request_satisfaction_vars
 from .cabin_capacity import add_cabin_capacity_constraints
@@ -21,7 +21,6 @@ __all__ = [
     "ObjectiveBuilder",
     "SolverContext",
     "add_age_grade_flow_objective",
-    "add_age_preference_penalties",
     "add_age_preference_satisfaction_vars",
     "add_bunk_request_satisfaction_vars",
     "add_cabin_capacity_constraints",

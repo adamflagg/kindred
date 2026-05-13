@@ -60,18 +60,9 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         logger.info("Must-satisfy-one constraints DISABLED via debug settings")
         return
 
-    # Get configuration values
-    enabled = ctx.config.get_constraint("must_satisfy_one", "enabled", default=1)
-    fallback_to_age = ctx.config.get_constraint("must_satisfy_one", "fallback_to_age", default=1)
-    if not enabled:
-        return
-
     logger.info("=== Must Satisfy One Request Constraints ===")
     logger.info(f"Total campers in solver: {len(ctx.person_ids)}")
     logger.info(f"Campers with requests: {len(ctx.input.requests_by_person)}")
-
-    # Get configuration for handling impossible requests
-    ignore_impossible = ctx.config.get_bool("constraint.must_satisfy_one.ignore_impossible_requests", default=True)
 
     # Step 1: Filter and categorize requests per person
     bunk_requests_by_person: dict[int, list[DirectBunkRequest]] = {}
@@ -81,14 +72,14 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         if person_cm_id not in ctx.person_idx_map:
             continue
 
-        # Use validated requests if configured to ignore impossible ones
-        if ignore_impossible and person_cm_id in ctx.possible_requests:
+        # Use validated (possible-only) requests when available
+        if person_cm_id in ctx.possible_requests:
             requests_to_use = ctx.possible_requests[person_cm_id]
         else:
             requests_to_use = requests
 
         # Skip if no possible requests
-        if ignore_impossible and len(requests_to_use) == 0:
+        if len(requests_to_use) == 0:
             if len(ctx.impossible_requests.get(person_cm_id, [])) > 0:
                 logger.debug(f"Skipping must-satisfy-one for {person_cm_id} - all requests are impossible")
             continue
@@ -104,14 +95,12 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     # Step 2: Get satisfaction variables from specialized modules
     bunk_sat_vars = add_bunk_request_satisfaction_vars(ctx, bunk_requests_by_person)
 
-    # Only get age preference vars for campers with NO bunk requests (or if fallback enabled)
-    age_only_requests: dict[int, list[DirectBunkRequest]] = {}
-    if fallback_to_age:
-        age_only_requests = {
-            person_cm_id: age_reqs
-            for person_cm_id, age_reqs in age_requests_by_person.items()
-            if person_cm_id not in bunk_requests_by_person
-        }
+    # Age preference vars only for campers with NO bunk requests
+    age_only_requests: dict[int, list[DirectBunkRequest]] = {
+        person_cm_id: age_reqs
+        for person_cm_id, age_reqs in age_requests_by_person.items()
+        if person_cm_id not in bunk_requests_by_person
+    }
 
     age_sat_vars, _ = add_age_preference_satisfaction_vars(ctx, age_only_requests)
 
@@ -150,16 +139,15 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     logger.debug(f"Must-satisfy-one soft constraints added for {constraints_added} campers")
     logger.debug(f"Campers without requests: {len(campers_without_requests)}")
 
-    if ignore_impossible:
-        skipped_count = sum(
-            1
-            for person_cm_id in ctx.person_ids
-            if person_cm_id in ctx.possible_requests
-            and len(ctx.possible_requests[person_cm_id]) == 0
-            and len(ctx.impossible_requests.get(person_cm_id, [])) > 0
-        )
-        if skipped_count > 0:
-            logger.debug(f"Campers with only impossible requests: {skipped_count}")
+    skipped_count = sum(
+        1
+        for person_cm_id in ctx.person_ids
+        if person_cm_id in ctx.possible_requests
+        and len(ctx.possible_requests[person_cm_id]) == 0
+        and len(ctx.impossible_requests.get(person_cm_id, [])) > 0
+    )
+    if skipped_count > 0:
+        logger.debug(f"Campers with only impossible requests: {skipped_count}")
 
 
 def _filter_and_categorize_requests(

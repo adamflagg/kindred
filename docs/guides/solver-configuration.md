@@ -24,10 +24,7 @@ Define hard and soft constraints for cabin assignments:
 - **Grade Ratio Penalty** (`constraint.grade_ratio.penalty`): Penalty weight for violations
 
 #### Request Satisfaction
-- **Must Satisfy One** (`constraint.must_satisfy_one.enabled`): Require at least one request satisfied per camper
 - **Satisfaction Penalty** (`constraint.must_satisfy_one.penalty`): Penalty for leaving a camper unsatisfied (default: 100,000)
-- **Fallback to Age** (`constraint.must_satisfy_one.fallback_to_age`): Count age preference as satisfying requirement
-- **Ignore Impossible** (`constraint.must_satisfy_one.ignore_impossible_requests`): Skip requests for out-of-session campers
 
 #### Level Progression
 - **No Regression** (`constraint.level_progression.no_regression`): Prevent moving to lower level bunks

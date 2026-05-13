@@ -16,7 +16,7 @@ are determined by the solver at solve time, not when created.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ortools.sat.python import cp_model
 
@@ -87,81 +87,6 @@ def add_age_preference_satisfaction_vars(
             satisfaction_vars[person_cm_id] = person_sat_vars
 
     return satisfaction_vars, bunk_has_grade
-
-
-def add_age_preference_penalties(
-    ctx: SolverContext,
-    objective_terms: list[Any],
-    requests_by_person: dict[int, list[DirectBunkRequest]],
-    bunk_has_grade: dict[tuple[int, int], cp_model.IntVar],
-) -> None:
-    """Add soft penalties for age preference violations.
-
-    For each camper with an age preference:
-    - If "older" and bunk has younger grades: penalty
-    - If "younger" and bunk has older grades: penalty
-
-    This provides a graduated incentive even when the preference can't be
-    fully satisfied (e.g., when the camper is the youngest/oldest grade).
-
-    Args:
-        ctx: Solver context
-        objective_terms: List to append penalty terms to (negative values)
-        requests_by_person: Dict mapping person_cm_id to their age_preference requests
-        bunk_has_grade: Pre-computed grade presence variables
-    """
-    penalty = ctx.config.get_int("constraint.age_preference.penalty", default=500)
-    if penalty == 0:
-        return
-
-    # Get unique grades present in the solver
-    all_grades = set()
-    for person_cm_id in ctx.person_ids:
-        person = ctx.person_by_cm_id[person_cm_id]
-        all_grades.add(person.grade)
-
-    for person_cm_id, requests in requests_by_person.items():
-        if person_cm_id not in ctx.person_idx_map:
-            continue
-
-        person_idx = ctx.person_idx_map[person_cm_id]
-        person = ctx.person_by_cm_id[person_cm_id]
-        person_grade = person.grade
-
-        for request in requests:
-            if request.request_type != RequestType.AGE_PREFERENCE.value:
-                continue
-
-            preference = request.age_preference_target
-            if not preference or preference not in ("older", "younger"):
-                continue
-
-            # Determine violating grades
-            if preference == "older":
-                # "older" = avoid younger grades (< person's grade)
-                bad_grades = [g for g in all_grades if g < person_grade]
-            else:  # younger
-                # "younger" = avoid older grades (> person's grade)
-                bad_grades = [g for g in all_grades if g > person_grade]
-
-            if not bad_grades:
-                # No violating grades possible - preference always satisfied
-                continue
-
-            # Add penalty for each bunk × bad_grade where camper could be placed
-            for bunk_idx in range(len(ctx.bunks)):
-                for bad_grade in bad_grades:
-                    if (bunk_idx, bad_grade) not in bunk_has_grade:
-                        continue
-
-                    # Create violation indicator: camper in bunk AND bunk has bad grade
-                    violation = ctx.model.NewBoolVar(f"age_pref_violation_{person_cm_id}_{bunk_idx}_{bad_grade}")
-                    ctx.model.AddBoolAnd(
-                        [ctx.assignments[(person_idx, bunk_idx)], bunk_has_grade[(bunk_idx, bad_grade)]]
-                    ).OnlyEnforceIf(violation)
-
-                    # Penalty is negative (reduces objective)
-                    objective_terms.append(-penalty * violation)
 
 
 def _build_bunk_has_grade_vars(ctx: SolverContext) -> dict[tuple[int, int], cp_model.IntVar]:

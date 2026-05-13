@@ -89,30 +89,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Must Satisfy One
     # =========================================================================
-    "constraint.must_satisfy_one.enabled": ConfigKey(
-        key="constraint.must_satisfy_one.enabled",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Enable must-satisfy-one request constraint (1=enabled)",
-        min_value=0,
-        max_value=1,
-    ),
-    "constraint.must_satisfy_one.fallback_to_age": ConfigKey(
-        key="constraint.must_satisfy_one.fallback_to_age",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Fall back to age-based matching if no requests (1=enabled)",
-        min_value=0,
-        max_value=1,
-    ),
-    "constraint.must_satisfy_one.ignore_impossible_requests": ConfigKey(
-        key="constraint.must_satisfy_one.ignore_impossible_requests",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Ignore requests that cannot be satisfied (1=enabled)",
-        min_value=0,
-        max_value=1,
-    ),
     "constraint.must_satisfy_one.penalty": ConfigKey(
         key="constraint.must_satisfy_one.penalty",
         config_type=ConfigType.INT,
