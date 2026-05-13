@@ -2249,8 +2249,7 @@ class RequestOrchestrator:
 
         Handles both new requests and cross-run merge scenarios:
         - New requests: Create record and primary source link
-        - Database match (unlocked): Merge into existing, add source link
-        - Database match (locked): Create new, flag for manual review
+        - Database match: Merge into existing, add source link
 
         Args:
             validated_requests: List of validated BunkRequest objects

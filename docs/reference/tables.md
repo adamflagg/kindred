@@ -466,7 +466,6 @@ Parsed and resolved bunk requests (output of Python processor).
 | `merged_into` | relation | Self-reference for merged requests |
 | `age_preference_target` | text | For age_preference type |
 | `is_active` | bool | Request is active |
-| `request_locked` | bool | Protected from sync overwrites |
 
 **Unique**: `(requester_id, requestee_id, request_type, year, session_id, source_field)`
 

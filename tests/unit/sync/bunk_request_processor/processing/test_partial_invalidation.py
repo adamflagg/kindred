@@ -181,9 +181,8 @@ class TestPartialInvalidationMultiSource:
     def test_multi_source_unlinks_regardless_of_lock_state(self) -> None:
         """Multi-source rows unlink the changed source unconditionally.
 
-        TDD anchor for issue #1373: with request_locked removed, the lock
-        branch in _handle_multi_source goes away and unlink runs every time.
-        Today this fails because lock=True routes to flag_for_review.
+        Regression lock for issue #1373: the formerly-conditional lock branch
+        in _handle_multi_source is gone; unlink runs every time.
         """
         mock_request_repo = Mock()
         mock_source_link_repo = Mock()
@@ -194,10 +193,8 @@ class TestPartialInvalidationMultiSource:
         mock_source_link_repo.count_sources_for_request.return_value = 2
         mock_source_link_repo.get_source_field_for_link.return_value = "field_a"
 
-        # Locked row — currently routed to flag_for_review, post-refactor routes to unlink
         mock_request = Mock()
         mock_request.id = "br_456"
-        mock_request.request_locked = True
         mock_request.source_fields = ["field_a", "field_b"]
         mock_request_repo.get_by_id.return_value = mock_request
 

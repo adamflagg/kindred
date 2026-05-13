@@ -2,8 +2,7 @@
 
 Handles the case when an original_bunk_request's content changes (hash differs):
 - For single-source requests: Delete the bunk_request entirely
-- For multi-source unlocked requests: Remove source link, update source_fields, keep request
-- For multi-source locked requests: Flag for manual review (don't auto-modify)
+- For multi-source requests: Remove source link, update source_fields, keep request
 """
 
 from __future__ import annotations
