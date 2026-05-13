@@ -28,7 +28,7 @@ const runA: SolverRun = {
   },
   details: {
     git_sha: 'aaa1111',
-    source_label: 'S2 · Production',
+    source_label: '2 · CM',
     sweep_label: 'baseline',
   },
 }
@@ -57,7 +57,7 @@ const runB: SolverRun = {
   },
   details: {
     git_sha: 'bbb2222',
-    source_label: 'S2 · Production',
+    source_label: '2 · CM',
     sweep_label: 'after-tuning',
   },
 }
