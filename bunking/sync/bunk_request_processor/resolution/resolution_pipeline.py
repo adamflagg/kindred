@@ -297,6 +297,10 @@ class ResolutionPipeline:
             # Try each strategy with the pre-loaded data
             best_result = ResolutionResult()
             all_results = []  # Track all strategy results for debugging
+            # Per-request strategy attempt log for debug trace observability.
+            # Each entry: strategy name, derived sub_method, confidence, candidate count,
+            # and resolved/ambiguous flags. Attached to best_result.metadata at end.
+            strategy_attempts: list[dict[str, Any]] = []
 
             for strategy in self.strategies:
                 try:
@@ -330,6 +334,24 @@ class ResolutionPipeline:
                     )
                     all_results.append((strategy.name, result))
 
+                    # Derive sub_method from strategy metadata. Strategies already record
+                    # match_type for resolved paths and ambiguity_reason for ambiguous paths;
+                    # an explicit sub_method (set by some paths) wins over both.
+                    meta = result.metadata or {}
+                    sub_method = meta.get("sub_method") or meta.get("match_type") or meta.get("ambiguity_reason")
+                    strategy_attempts.append(
+                        {
+                            "strategy": strategy.name,
+                            "sub_method": sub_method,
+                            "confidence": result.confidence,
+                            "candidate_count": (
+                                len(result.candidates) if result.candidates else (1 if result.person else 0)
+                            ),
+                            "resolved": result.is_resolved,
+                            "ambiguous": result.is_ambiguous,
+                        }
+                    )
+
                     # If we got a definitive match with high confidence, use it
                     if result.is_resolved and result.confidence >= max(0.8, self.minimum_confidence):
                         best_result = result
@@ -347,7 +369,26 @@ class ResolutionPipeline:
                 except Exception as e:
                     # Log error but continue with other strategies
                     logger.error(f"Error in {strategy.name} strategy: {e}")
+                    strategy_attempts.append(
+                        {
+                            "strategy": strategy.name,
+                            "sub_method": None,
+                            "confidence": 0.0,
+                            "candidate_count": 0,
+                            "resolved": False,
+                            "ambiguous": False,
+                            "error": str(e),
+                        }
+                    )
                     continue
+
+            # Attach the per-request attempt log to the winning result so downstream
+            # trace recorders can surface it on debug_pipeline_traces.phase2_resolution.
+            # Copy the list so per-request mutations can't leak into a shared/cached
+            # ResolutionResult if a strategy ever returns one.
+            if best_result.metadata is None:
+                best_result.metadata = {}
+            best_result.metadata["pipeline_strategies_tried"] = list(strategy_attempts)
 
             # Log final decision
             logger.debug(

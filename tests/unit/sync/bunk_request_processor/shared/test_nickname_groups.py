@@ -128,3 +128,30 @@ class TestExistingBehaviorPreserved:
         variations = find_nickname_variations("Mike")
         lower_vars = [v.lower() for v in variations]
         assert "mike" not in lower_vars
+
+
+class TestDeterminismAndOrdering:
+    """Variations must be deterministic and alphabetically sorted across calls.
+
+    Underlying nickname groups are set-derived; without explicit sorting, iteration
+    order varies across Python invocations. The fuzzy_match fallback iterates this
+    list and a non-deterministic order produces inconsistent resolutions.
+    """
+
+    def test_find_nickname_variations_is_deterministic(self):
+        results = [find_nickname_variations("Katherine") for _ in range(10)]
+        first = results[0]
+        for i, r in enumerate(results[1:], start=2):
+            assert r == first, f"call #{i} returned {r!r}, expected {first!r}"
+
+    def test_find_nickname_variations_is_sorted(self):
+        variations = find_nickname_variations("Katherine")
+        assert variations == sorted(variations), f"not sorted: {variations}"
+
+    def test_find_nickname_variations_is_sorted_josephine(self):
+        variations = find_nickname_variations("Josephine")
+        assert variations == sorted(variations), f"not sorted: {variations}"
+
+    def test_find_nickname_variations_returns_empty_for_unknown_name(self):
+        variations = find_nickname_variations("Xqyzzyzzy")
+        assert variations == []

@@ -277,21 +277,31 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         matches = self._filter_self_references(matches, requester_cm_id)
 
         if not matches:
-            # Try first name only with nickname variations
+            # Single-name fallback: merge matches across the ORIGINAL first name and
+            # nickname variants, deduped by cm_id. The original is tried first so a
+            # literal-name match isn't shadowed by a variant match (e.g., "Katherine"
+            # finding only Kate Chen because year-filtering narrowed the variant pool).
+            # Without the merge, year filtering plus first-match-wins could resolve
+            # the wrong person silently (see PR for cascade analysis).
             name_parts = name.strip().split()
             if len(name_parts) == 1:
                 first_only = name_parts[0]
-                variations = find_nickname_variations(first_only)
-                for variant in variations:
+                search_terms = [first_only, *find_nickname_variations(first_only)]
+                seen_cm_ids: set[int] = set()
+                merged: list[Person] = []
+                for variant in search_terms:
                     if candidates:
                         var_matches = [c for c in candidates if c.first_name.lower() == variant.lower()]
                     else:
                         var_matches = self.person_repo.find_by_first_name(variant, year=year)
                     var_matches = self._filter_self_references(var_matches, requester_cm_id)
-                    if var_matches:
-                        matches = var_matches
-                        match_type = "first_name_nickname"
-                        break
+                    for p in var_matches:
+                        if p.cm_id not in seen_cm_ids:
+                            seen_cm_ids.add(p.cm_id)
+                            merged.append(p)
+                if merged:
+                    matches = merged
+                    match_type = "first_name_merged"
 
         if not matches:
             return ResolutionResult(confidence=0.0, method=self.name)
@@ -304,18 +314,24 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": match_type},
+                metadata={"match_type": match_type, "sub_method": match_type},
             )
         else:
             # Try session disambiguation
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
+                if result.metadata is None:
+                    result.metadata = {}
+                result.metadata["sub_method"] = match_type
                 return result
 
             # Try relationship disambiguation
             if self.relationship_analyzer and session_cm_id:
                 result = self._pick_best_by_relationships(matches, requester_cm_id, session_cm_id)
                 if result.is_resolved:
+                    if result.metadata is None:
+                        result.metadata = {}
+                    result.metadata["sub_method"] = match_type
                     return result
 
             return ResolutionResult(
@@ -325,6 +341,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 metadata={
                     "ambiguity_reason": "multiple_normalized_matches",
                     "match_count": len(matches),
+                    "sub_method": match_type,
                 },
             )
 
