@@ -15,18 +15,20 @@ Non-MP = source_field == "bunking_notes" (STAFF bucket, explicit but not MP).
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Make the solver conftest helpers importable.
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "unit" / "bunking" / "solver"))
-
 from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunkRequest
+from bunking.solver.constraints.base import SolverContext
 
-# Re-use helpers from the solver constraint conftest.
-from conftest import build_solver_context, create_bunk, create_person, is_infeasible, is_optimal_or_feasible
+# Helpers from tests/unit/bunking/solver/conftest.py — pytest auto-discovers
+# the parent conftest.py for tests in tests/unit/bunking/solver/constraints/.
+from tests.unit.bunking.solver.conftest import (
+    build_solver_context,
+    create_bunk,
+    create_person,
+    is_infeasible,
+    is_optimal_or_feasible,
+)
 
 
 def _mp_request(
@@ -69,7 +71,7 @@ def _non_mp_request(
     )
 
 
-def _force_apart(ctx, requester_cm_id: int, requested_cm_id: int) -> None:
+def _force_apart(ctx: SolverContext, requester_cm_id: int, requested_cm_id: int) -> None:
     """Pin requester and requested to *different* bunks.
 
     We do this by forcing them each to a specific distinct bunk index, making

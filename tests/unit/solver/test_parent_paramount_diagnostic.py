@@ -513,7 +513,7 @@ class TestMustSatisfyDiagnosticSplit:
         assert sev == "info"
 
 
-def _make_material_parent_unmet_solver(mock_config) -> tuple[DirectBunkingSolver, list]:
+def _make_material_parent_unmet_solver() -> tuple[DirectBunkingSolver, list[DirectBunkAssignment]]:
     """Shared fixture: one camper with a possible material-parent request left unsatisfied.
 
     Camper 1001 (session 100) wants to bunk with 1002 (session 100) — same session
@@ -544,7 +544,7 @@ class TestHardMSODiagnostic:
         After calling _check_must_satisfy_one_violations with one unmet MP camper,
         at least one caplog record must contain 'parent_paramount_unbound'.
         """
-        solver, assignments = _make_material_parent_unmet_solver(mock_config)
+        solver, assignments = _make_material_parent_unmet_solver()
 
         with caplog.at_level(logging.ERROR):
             solver._check_must_satisfy_one_violations(assignments)
@@ -555,7 +555,7 @@ class TestHardMSODiagnostic:
 
     def test_material_parent_unmet_sets_stats_counter(self, mock_config):
         """request_validation_summary['mp_constraint_bug_signal'] equals the unmet MP count."""
-        solver, assignments = _make_material_parent_unmet_solver(mock_config)
+        solver, assignments = _make_material_parent_unmet_solver()
 
         solver._check_must_satisfy_one_violations(assignments)
 
@@ -563,7 +563,7 @@ class TestHardMSODiagnostic:
 
     def test_material_parent_unmet_does_not_raise(self, mock_config):
         """_check_must_satisfy_one_violations must complete without raising even when MP unmet > 0."""
-        solver, assignments = _make_material_parent_unmet_solver(mock_config)
+        solver, assignments = _make_material_parent_unmet_solver()
 
         # If this raises, the test fails — that is the assertion.
         solver._check_must_satisfy_one_violations(assignments)
