@@ -20,6 +20,7 @@ from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
+from bunking.satisfaction.bucket import is_material_parent_request
 
 
 class ImpossibilityReason(NamedTuple):
@@ -102,7 +103,7 @@ def register(predicate: HardConstraintImpossibility) -> None:
 
 def _camper_dict(person: DirectPerson) -> dict[str, Any]:
     return {
-        "cm_id": person.cm_id,
+        "cm_id": person.campminder_person_id,
         "name": f"{person.first_name} {person.last_name}".strip(),
         "grade": person.grade,
         "gender": person.gender,
@@ -115,14 +116,14 @@ def _record_item(
     reason: ImpossibilityReason,
     ctx: ImpossibilityContext,
 ) -> None:
-    requester = ctx.person_by_cm_id.get(req.requester_id)
-    requestee = ctx.person_by_cm_id.get(req.requestee_id) if req.requestee_id else None
+    requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
+    requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id) if req.requested_person_cm_id else None
     item = ImpossibleItem(
         request_id=req.id,
         reason_code=reason.code,
         reason_message=reason.message,
         request_type=req.request_type,
-        requester=_camper_dict(requester) if requester else {"cm_id": req.requester_id},
+        requester=_camper_dict(requester) if requester else {"cm_id": req.requester_person_cm_id},
         requestee=_camper_dict(requestee) if requestee else None,
         detail=reason.detail,
     )
@@ -149,11 +150,11 @@ def _record_cluster(
 
 
 def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> ImpossibilityContext:
-    person_by_cm_id = {p.cm_id: p for p in input_data.persons}
-    person_session = {p.cm_id: getattr(p, "session_cm_id", 0) for p in input_data.persons}
+    person_by_cm_id = {p.campminder_person_id: p for p in input_data.persons}
+    person_session = {p.campminder_person_id: p.session_cm_id for p in input_data.persons}
     bunks_by_session: dict[int, list[DirectBunk]] = defaultdict(list)
     for bunk in input_data.bunks:
-        bunks_by_session[getattr(bunk, "session_cm_id", 0)].append(bunk)
+        bunks_by_session[bunk.session_cm_id].append(bunk)
     return ImpossibilityContext(
         input=input_data,
         config=config,
@@ -178,20 +179,19 @@ def _compute_bunk_with_components(input_data: DirectSolverInput, ctx: Impossibil
         if ra != rb:
             parent[ra] = rb
 
-    from bunking.satisfaction.bucket import is_material_parent_request
-
     for req in input_data.requests:
         if req.request_type != "bunk_with":
             continue
         if not is_material_parent_request(req):
             continue
-        if req.requester_id not in ctx.person_by_cm_id:
+        if req.requester_person_cm_id not in ctx.person_by_cm_id:
             continue
-        if not req.requestee_id or req.requestee_id not in ctx.person_by_cm_id:
+        requestee = req.requested_person_cm_id
+        if not requestee or requestee not in ctx.person_by_cm_id:
             continue
-        parent.setdefault(req.requester_id, req.requester_id)
-        parent.setdefault(req.requestee_id, req.requestee_id)
-        union(req.requester_id, req.requestee_id)
+        parent.setdefault(req.requester_person_cm_id, req.requester_person_cm_id)
+        parent.setdefault(requestee, requestee)
+        union(req.requester_person_cm_id, requestee)
 
     groups: dict[int, set[int]] = defaultdict(set)
     for cm in parent:
