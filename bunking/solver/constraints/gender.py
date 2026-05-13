@@ -95,3 +95,55 @@ def _log_gender_statistics(ctx: SolverContext) -> None:
         ctx.constraint_logger.log_feasibility_warning(
             f"Insufficient female capacity: {female_count} females, {female_capacity + mixed_capacity} spots"
         )
+
+
+# ---------------------------------------------------------------------------
+# Impossibility predicate: pair_no_shared_bunk (gender axis)
+# ---------------------------------------------------------------------------
+
+from bunking.models_v2 import DirectBunkRequest  # noqa: E402
+from bunking.solver.impossibility import (  # noqa: E402
+    HardConstraintImpossibility,
+    ImpossibilityContext,
+    ImpossibilityReason,
+    register,
+)
+
+
+class GenderImpossibility(HardConstraintImpossibility):
+    name = "gender"
+
+    def check_pair(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        if req.request_type != "bunk_with":
+            return None
+        if not req.requested_person_cm_id:
+            return None
+        requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
+        requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id)
+        if requester is None or requestee is None:
+            return None
+        session = ctx.person_session.get(req.requester_person_cm_id)
+        if session is None or session != ctx.person_session.get(req.requested_person_cm_id):
+            return None  # cross-session is handled by SessionBoundaryImpossibility
+        bunks = ctx.bunks_by_session.get(session, [])
+        for bunk in bunks:
+            if bunk.gender in ("Mixed", "AG"):
+                return None
+            if bunk.gender == requester.gender == requestee.gender:
+                return None
+        return ImpossibilityReason(
+            code="pair_no_shared_bunk",
+            message=(
+                f"{requester.first_name} ({requester.gender}) and "
+                f"{requestee.first_name} ({requestee.gender}) cannot share any cabin "
+                f"in session {session}."
+            ),
+            detail={
+                "requester_gender": requester.gender,
+                "requestee_gender": requestee.gender,
+                "session": session,
+            },
+        )
+
+
+register(GenderImpossibility())

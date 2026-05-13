@@ -254,4 +254,7 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
 # validate_impossibility is called. Order is not significant.
 
 # Trigger predicate registration via import side-effects.
-from bunking.solver.constraints import session_boundary as _session_boundary_module  # noqa: E402, F401
+from bunking.solver.constraints import (  # noqa: E402, F401
+    gender as _gender_module,
+    session_boundary as _session_boundary_module,
+)
