@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { buildRunSummary } from './buildRunSummary'
 import { DrillDownDrawer } from './DrillDownDrawer'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
@@ -58,7 +59,34 @@ describe('DrillDownDrawer', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     const labelledById = dialog.getAttribute('aria-labelledby')
     expect(labelledById).toBeTruthy()
-    expect(document.getElementById(labelledById!)).toHaveTextContent(/run run_abc/i)
+    expect(document.getElementById(labelledById!)).toHaveTextContent(/post-cleanup/i)
+  })
+
+  describe('header title', () => {
+    it('uses sweep_label · source_label · time when sweep_label is set', () => {
+      render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+      const heading = screen.getByRole('heading', { level: 3 })
+      expect(heading.textContent).toMatch(/post-cleanup/)
+      expect(heading.textContent).toMatch(/Session 2 · Production/)
+      // hour:minute (12-hour) — locale-dependent; just verify it parsed a date
+      expect(heading.textContent).toMatch(/\d{1,2}:\d{2}/)
+    })
+
+    it('falls back to source_label · time when sweep_label is missing', () => {
+      const { sweep_label: _drop, ...detailsNoSweep } = run.details ?? {}
+      void _drop
+      const noSweep: SolverRun = { ...run, details: detailsNoSweep }
+      render(<DrillDownDrawer run={noSweep} onClose={vi.fn()} />)
+      const heading = screen.getByRole('heading', { level: 3 })
+      expect(heading.textContent).not.toMatch(/post-cleanup/)
+      expect(heading.textContent).toMatch(/Session 2 · Production/)
+      expect(heading.textContent).toMatch(/\d{1,2}:\d{2}/)
+    })
+
+    it('shows run_id as small secondary text below the title', () => {
+      render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+      expect(screen.getByText('run_abc')).toBeInTheDocument()
+    })
   })
 
   it('closes when Escape is pressed', () => {
@@ -66,6 +94,50 @@ describe('DrillDownDrawer', () => {
     render(<DrillDownDrawer run={run} onClose={onClose} />)
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  describe('Copy JSON button', () => {
+    let writeText: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      })
+    })
+
+    it('renders a Copy JSON button in the header', () => {
+      render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument()
+    })
+
+    it('writes the pretty-printed run summary to the clipboard on click', async () => {
+      render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+      fireEvent.click(screen.getByRole('button', { name: /copy json/i }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+      const expected = JSON.stringify(buildRunSummary(run), null, 2)
+      expect(writeText).toHaveBeenCalledWith(expected)
+    })
+
+    it('shows "Copied!" feedback after a successful copy, then reverts after a delay', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+        fireEvent.click(screen.getByRole('button', { name: /copy json/i }))
+        await waitFor(() =>
+          expect(screen.getByRole('button', { name: /copied/i })).toBeInTheDocument()
+        )
+        act(() => {
+          vi.advanceTimersByTime(2000)
+        })
+        await waitFor(() =>
+          expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument()
+        )
+      } finally {
+        vi.useRealTimers()
+      }
+    })
   })
 
   it('does not refocus the close button when only onClose reference changes', () => {

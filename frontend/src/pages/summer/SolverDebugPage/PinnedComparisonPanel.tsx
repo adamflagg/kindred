@@ -1,5 +1,9 @@
-import React from 'react'
+import { Check, Copy, X } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
 
+import { copyText } from '../../../utils/copyText'
+
+import { buildComparisonSummary } from './buildComparisonSummary'
 import {
   COMPARABLE_METRICS,
   formatMetric,
@@ -132,7 +136,7 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
 
   return (
     <div className="shadow-lodge border-forest-200 rounded-xl border-2 bg-white">
-      <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
+      <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-xl border-b border-gray-100 bg-white/95 px-5 py-3 backdrop-blur">
         <span className="text-forest-700 text-sm font-semibold">📌 Comparing 2 pinned runs</span>
         {drift ? (
           <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
@@ -140,9 +144,18 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
             apples-to-apples
           </span>
         ) : null}
-        <button onClick={onClear} className="ml-auto text-xs text-gray-400 hover:text-gray-600">
-          clear pins
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <CopyComparisonJsonButton runA={runA} runB={runB} />
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear pins"
+            className="inline-flex items-center gap-1 rounded border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+            Clear pins
+          </button>
+        </div>
       </div>
       <table className="w-full text-sm" style={{ fontVariantNumeric: 'tabular-nums' }}>
         <thead className="bg-gray-50 text-xs tracking-wide text-gray-500 uppercase">
@@ -206,5 +219,46 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+function CopyComparisonJsonButton({ runA, runB }: { runA: SolverRun; runB: SolverRun }) {
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const onClick = async () => {
+    const payload = JSON.stringify(buildComparisonSummary(runA, runB), null, 2)
+    const ok = await copyText(payload)
+    if (!ok) return
+    setCopied(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={copied ? 'Copied!' : 'Copy JSON'}
+      className="inline-flex items-center gap-1 rounded border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900"
+    >
+      {copied ? (
+        <>
+          <Check className="h-3.5 w-3.5 text-green-600" aria-hidden />
+          Copied!
+        </>
+      ) : (
+        <>
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+          Copy JSON
+        </>
+      )}
+    </button>
   )
 }

@@ -1,10 +1,13 @@
-import { X } from 'lucide-react'
-import { useEffect, useId, useRef } from 'react'
+import { Check, Copy, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { REPO_URL } from '../../../constants/repo'
+import { copyText } from '../../../utils/copyText'
 
+import { buildRunSummary } from './buildRunSummary'
 import { formatMetric, METRIC_REGISTRY_BY_GROUP, type MetricGroup } from './metricRegistry'
 import { pickStat } from './pickStat'
+import { buildRunTitle } from './runTitle'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
@@ -73,20 +76,26 @@ export function DrillDownDrawer({ run, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="fixed top-0 right-0 bottom-0 z-40 w-[600px] overflow-y-auto border-l border-gray-200 bg-white shadow-2xl"
+        className="fixed top-16 right-0 bottom-0 z-40 w-[600px] overflow-y-auto border-l border-gray-200 bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-gray-100 p-4">
-          <h3 id={titleId} className="text-forest-700 font-semibold">
-            Run {run.run_id}
-          </h3>
-          <button
-            ref={closeBtnRef}
-            onClick={onClose}
-            aria-label="Close"
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="min-w-0 flex-1">
+            <h3 id={titleId} className="text-forest-700 truncate font-sans text-sm font-semibold">
+              {buildRunTitle(run)}
+            </h3>
+            <div className="font-mono text-[11px] text-gray-400">{run.run_id}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <CopyJsonButton run={run} />
+            <button
+              ref={closeBtnRef}
+              onClick={onClose}
+              aria-label="Close"
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-5 p-5">
@@ -180,6 +189,47 @@ export function DrillDownDrawer({ run, onClose }: Props) {
         </div>
       </aside>
     </>
+  )
+}
+
+function CopyJsonButton({ run }: { run: SolverRun }) {
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
+  const onClick = async () => {
+    const payload = JSON.stringify(buildRunSummary(run), null, 2)
+    const ok = await copyText(payload)
+    if (!ok) return
+    setCopied(true)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={copied ? 'Copied!' : 'Copy JSON'}
+      className="inline-flex items-center gap-1 rounded border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800"
+    >
+      {copied ? (
+        <>
+          <Check className="h-3.5 w-3.5 text-green-600" aria-hidden />
+          Copied!
+        </>
+      ) : (
+        <>
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+          Copy JSON
+        </>
+      )}
+    </button>
   )
 }
 
