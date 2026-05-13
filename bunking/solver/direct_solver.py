@@ -1314,6 +1314,9 @@ class DirectBunkingSolver:
         self.request_validation_summary["unsatisfied_no_possible"] = len(no_possible)
         self.request_validation_summary["unsatisfied_material_parent_unmet"] = len(material_parent_unmet)
         self.request_validation_summary["unsatisfied_other_unmet"] = len(other_unmet)
+        # Hard MSO bug signal: non-zero means the hard constraint failed to bind.
+        # Dashboard and alerting latch onto this key specifically.
+        self.request_validation_summary["mp_constraint_bug_signal"] = len(material_parent_unmet)
 
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet
@@ -1351,10 +1354,21 @@ class DirectBunkingSolver:
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_material_parent_unmet",
                     f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
-                    severity="warning",
+                    severity="error",
                 )
             if len(material_parent_unmet) > 10:
                 logger.info(f"... and {len(material_parent_unmet) - 10} more")
+            if material_parent_unmet:
+                logger.error(
+                    "parent_paramount_unbound: %d MP-having campers ended with no MP request satisfied under hard MSO",
+                    len(material_parent_unmet),
+                    extra={
+                        "parent_paramount": {
+                            "unmet_cm_ids": material_parent_unmet,
+                            "bug": "parent_paramount_unbound",
+                        }
+                    },
+                )
 
         if other_unmet:
             logger.info(
