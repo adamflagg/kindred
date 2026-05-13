@@ -897,8 +897,6 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 
 ### P0: Critical
 
-**Phase 3 dict/dataclass mismatch.** `BatchProcessor._process_batch_with_retry()` passes a dict to the disambiguation path where a dataclass with `.request_text` is expected. All Phase 3 AI disambiguation fails with `'dict' object has no attribute 'request_text'`. 14/14 cases crashed in v3.11. Phase 3 was working in v3.9 (March 25) — likely a regression from PR #786.
-
 **PB Go-side timeout shorter than API processing time.** The Go sync caller (`process_requests.go`) uses a 35-minute timeout. The v3.11 full-force run took ~2.3 hours. PocketBase logs `context deadline exceeded` and thinks the run failed, but the FastAPI API continues processing as an orphan and completes successfully. Data is written but the Go caller doesn't know.
 
 ### P1: High
@@ -908,8 +906,6 @@ The Pipeline Debug page (`/summer/debug/pipeline`) provides:
 **Confidence threshold `> 0.9` should be `>= 0.9`.** `confidence_scorer.py:198` uses strictly greater than. ExactMatchStrategy returns 0.90 for no-session-info and parent-surname matches. These get classified as "partial" (name_score=0.7) instead of "exact" (name_score=1.0), producing confidence 0.6975 instead of 0.9075. **39 exact matches stuck pending** in v3.11, plus 8 reciprocal-boosted at 0.7975 (still below 0.85 threshold).
 
 **PocketBase 400 on large IN clause.** Bulk person lookup with ~240 IDs exceeds PocketBase's URL/filter length limit. Need to chunk bulk lookups into smaller batches.
-
-**Parent surname index always empty.** `Built parent surname index with 0 unique surnames` logged in v3.11. The entire parent surname fallback resolution path in ExactMatchStrategy is dead code — `_try_parent_surname_match()` can never match anyone. Likely a cache initialization bug where parent data isn't loaded.
 
 **OBR processed flag doesn't distinguish success vs error.** When AI fails for an OBR (timeout, 500), the OBR is still marked `processed` with a timestamp — indistinguishable from a successful parse. On re-run without `force=true`, these are skipped as "already processed." PR #794 mitigates this by retrying transient failures (so fewer OBRs silently fail), but does not change the processed-flag logic. Need either: a separate `processed_error` state, or don't set `processed` timestamp when AI returns zero results due to transient failure.
 
