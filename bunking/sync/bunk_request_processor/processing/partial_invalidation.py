@@ -26,21 +26,19 @@ class InvalidationResult:
 
     deleted_requests: list[str] = field(default_factory=list)
     unlinked_requests: list[str] = field(default_factory=list)
-    flagged_for_review: list[str] = field(default_factory=list)
 
     @property
     def total_affected(self) -> int:
         """Total number of requests affected by this invalidation."""
-        return len(self.deleted_requests) + len(self.unlinked_requests) + len(self.flagged_for_review)
+        return len(self.deleted_requests) + len(self.unlinked_requests)
 
 
 class PartialInvalidationHandler:
     """Handles partial invalidation when source content changes.
 
     When an original_bunk_request's content_hash changes, we need to handle
-    all bunk_requests that were derived from it. The behavior depends on:
-    1. How many sources the request has (single vs multi-source)
-    2. Whether the request is locked (staff-validated)
+    all bunk_requests that were derived from it. Behavior depends on how
+    many sources the request has (single → delete; multi → unlink one source).
     """
 
     def __init__(
@@ -121,53 +119,22 @@ class PartialInvalidationHandler:
     ) -> None:
         """Handle a multi-source request when one source changes.
 
-        For multi-source requests:
-        - If locked: flag for manual review (don't auto-modify)
-        - If unlocked: remove the source link and update source_fields
+        Always unlinks the changed source from the merged request — the
+        request survives because it still has other contributing sources.
+        Per issue #1373 the former locked-flag-for-review branch was removed.
 
         Args:
             bunk_request_id: ID of the merged request
             original_request_id: ID of the changed source
             result: InvalidationResult to update
         """
-        # Get the request to check if it's locked
         request = self.request_repository.get_by_id(bunk_request_id)
 
         if request is None:
             logger.warning(f"Could not find request {bunk_request_id} for invalidation")
             return
 
-        if getattr(request, "request_locked", False):
-            # Locked request: flag for review instead of modifying
-            self._flag_locked_request(bunk_request_id, original_request_id, result)
-        else:
-            # Unlocked request: unlink the changed source
-            self._unlink_source(bunk_request_id, original_request_id, request, result)
-
-    def _flag_locked_request(
-        self,
-        bunk_request_id: str,
-        original_request_id: str,
-        result: InvalidationResult,
-    ) -> None:
-        """Flag a locked request for manual review.
-
-        Locked requests indicate staff validation, so we shouldn't
-        auto-modify them. Instead, flag for manual review.
-
-        Args:
-            bunk_request_id: ID of the locked request
-            original_request_id: ID of the changed source
-            result: InvalidationResult to update
-        """
-        self.request_repository.flag_for_review(
-            bunk_request_id,
-            reason="source_changed_while_locked",
-            changed_original_id=original_request_id,
-        )
-
-        result.flagged_for_review.append(bunk_request_id)
-        logger.info(f"Flagged locked request {bunk_request_id} for review due to source change")
+        self._unlink_source(bunk_request_id, original_request_id, request, result)
 
     def _unlink_source(
         self,
