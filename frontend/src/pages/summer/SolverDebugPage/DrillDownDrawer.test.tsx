@@ -74,7 +74,7 @@ describe('DrillDownDrawer', () => {
 
     it('renders soft constraints by module as chips', () => {
       render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
-      expect(screen.getByText(/Soft constraints by module/i)).toBeInTheDocument()
+      expect(screen.getByText(/Soft constraint terms by module/i)).toBeInTheDocument()
       expect(screen.getByText(/must_satisfy: 83/)).toBeInTheDocument()
       expect(screen.getByText(/grade_ratio: 420/)).toBeInTheDocument()
       expect(screen.getByText(/age_spread: 17/)).toBeInTheDocument()
@@ -113,7 +113,7 @@ describe('DrillDownDrawer', () => {
         },
       }
       render(<DrillDownDrawer run={emptyRun} onClose={vi.fn()} />)
-      expect(screen.queryByText(/Soft constraints by module/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Soft constraint terms by module/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/Request density/i)).not.toBeInTheDocument()
       // 0/0/0 breakdown is still meaningful when validation ran — hide only
       // when all three reasons are zero.

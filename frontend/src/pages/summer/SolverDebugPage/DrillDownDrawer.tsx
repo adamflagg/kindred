@@ -179,7 +179,7 @@ export function DrillDownDrawer({ run, onClose }: Props) {
           {s.soft_constraints_by_module && Object.keys(s.soft_constraints_by_module).length > 0 ? (
             <div>
               <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
-                Soft constraints by module
+                Soft constraint terms by module
               </div>
               <div className="flex flex-wrap gap-2 text-sm">
                 {Object.entries(s.soft_constraints_by_module).map(([mod, count]) => (
