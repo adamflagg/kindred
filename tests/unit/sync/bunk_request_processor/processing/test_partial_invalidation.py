@@ -227,6 +227,48 @@ class TestPartialInvalidationMultiSource:
         # Result should indicate flagged
         assert result.flagged_for_review == ["br_locked_789"]
 
+    def test_multi_source_unlinks_regardless_of_lock_state(self) -> None:
+        """Multi-source rows unlink the changed source unconditionally.
+
+        TDD anchor for issue #1373: with request_locked removed, the lock
+        branch in _handle_multi_source goes away and unlink runs every time.
+        Today this fails because lock=True routes to flag_for_review.
+        """
+        mock_request_repo = Mock()
+        mock_source_link_repo = Mock()
+
+        original_request_id = "orig_123"
+
+        mock_source_link_repo.get_requests_for_source.return_value = ["br_456"]
+        mock_source_link_repo.count_sources_for_request.return_value = 2
+        mock_source_link_repo.get_source_field_for_link.return_value = "field_a"
+
+        # Locked row — currently routed to flag_for_review, post-refactor routes to unlink
+        mock_request = Mock()
+        mock_request.id = "br_456"
+        mock_request.request_locked = True
+        mock_request.source_fields = ["field_a", "field_b"]
+        mock_request_repo.get_by_id.return_value = mock_request
+
+        from bunking.sync.bunk_request_processor.processing.partial_invalidation import (
+            PartialInvalidationHandler,
+        )
+
+        handler = PartialInvalidationHandler(
+            request_repository=mock_request_repo,
+            source_link_repository=mock_source_link_repo,
+        )
+
+        result = handler.handle_source_change(original_request_id)
+
+        # Unlink ran, flag_for_review did NOT
+        mock_source_link_repo.remove_source_link.assert_called_once_with(
+            bunk_request_id="br_456",
+            original_request_id=original_request_id,
+        )
+        mock_request_repo.flag_for_review.assert_not_called()
+        assert "br_456" in result.unlinked_requests
+
 
 class TestPartialInvalidationMultipleRequests:
     """Test partial invalidation when one source links to multiple requests."""

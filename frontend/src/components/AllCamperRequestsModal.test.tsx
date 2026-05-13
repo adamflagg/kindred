@@ -322,7 +322,7 @@ describe('AllCamperRequestsModal inline actions', () => {
     expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
   })
 
-  it('confirming Approve calls pb.update with status=resolved and request_locked=true', async () => {
+  it('confirming Approve calls pb.update with status=resolved (no request_locked)', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -331,12 +331,11 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'resolved',
-        request_locked: true,
       })
     )
   })
 
-  it('confirming Decline calls pb.update with status=declined and request_locked=false', async () => {
+  it('confirming Decline calls pb.update with status=declined (no request_locked)', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -345,7 +344,6 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'declined',
-        request_locked: false,
       })
     )
   })
