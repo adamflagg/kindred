@@ -252,14 +252,6 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
 # Import-time side-effect: each constraint module's predicate registers itself
 # when imported. We import below to ensure all predicates are loaded when
 # validate_impossibility is called. Order is not significant.
-# NOTE: these imports may FAIL right now because the constraint modules don't
-# yet have the predicate classes — that's expected. Comment them out for now;
-# they'll be uncommented as predicates are added in Tasks 4-10.
-# from bunking.solver.constraints import (  # noqa: E402, F401
-#     age_preference as _age_preference_module,
-#     bunk_requests as _bunk_requests_module,
-#     cabin_capacity as _cabin_capacity_module,
-#     gender as _gender_module,
-#     grade_spread as _grade_spread_module,
-#     session_boundary as _session_boundary_module,
-# )
+
+# Trigger predicate registration via import side-effects.
+from bunking.solver.constraints import session_boundary as _session_boundary_module  # noqa: E402, F401
