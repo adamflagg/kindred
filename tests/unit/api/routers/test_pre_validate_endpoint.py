@@ -47,9 +47,9 @@ class _FakeReport:
 
     total_impossible: int = 0
     affected_campers: int = 0
-    by_reason: dict = field(default_factory=dict)
-    flat: list = field(default_factory=list)
-    clusters: list = field(default_factory=list)
+    by_reason: dict[str, object] = field(default_factory=dict)
+    flat: list[object] = field(default_factory=list)
+    clusters: list[object] = field(default_factory=list)
 
 
 def _make_session_ctx(session_cm_id: int = 1000001, year: int = 2026) -> MagicMock:
