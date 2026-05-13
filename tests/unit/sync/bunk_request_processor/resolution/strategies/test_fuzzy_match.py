@@ -653,17 +653,17 @@ class TestNormalizedSearchMergeFallback:
 
         person_repo.find_by_first_name.side_effect = first_name_search
 
-        attendee_sessions = {100: 1001}
+        attendee_sessions = {100: 1000001}
         for k in other_katherines:
-            attendee_sessions[k.cm_id] = 2001
-        attendee_sessions[200] = 3001  # Kate — different session
+            attendee_sessions[k.cm_id] = 1000002
+        attendee_sessions[200] = 1000003  # Kate — different session
         for k in kits:
-            attendee_sessions[k.cm_id] = 2001
+            attendee_sessions[k.cm_id] = 1000002
         attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {
             cm_id: attendee_sessions.get(cm_id) for cm_id in cm_ids
         }
 
-        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
 
         assert result.is_resolved, (
             f"expected resolved; got is_resolved={result.is_resolved}, candidates={len(result.candidates or [])}"
@@ -685,18 +685,23 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_first_name.side_effect = lambda name, year=None: (
             [requester, other] if name.lower() == "katherine" else []
         )
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
-        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
-        if result.is_resolved:
-            assert result.person.cm_id != 999, "requester was not filtered from candidates"
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
+        assert result.is_resolved, (
+            f"expected resolved match on non-requester Katherine; "
+            f"got is_resolved={result.is_resolved}, candidates={len(result.candidates or [])}"
+        )
+        assert result.person.cm_id == 100, (
+            f"requester (cm_id=999) was not filtered out; got cm_id={result.person.cm_id}"
+        )
 
     def test_merge_falls_through_to_variants_when_original_empty(self, strategy, mock_repositories):
         """When the original first name finds 0 matches, variants must still be tried."""
         person_repo, attendee_repo = mock_repositories
         kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
         person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
-        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
         assert result.is_resolved, "variants must still be tried when original returns empty"
         assert result.person.cm_id == 200
 
@@ -711,8 +716,8 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_first_name.side_effect = lambda name, year=None: (
             katherines if name.lower() == "katherine" else []
         )
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
-        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
         assert not result.is_resolved
         assert len(result.candidates or []) == 2
 

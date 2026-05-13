@@ -51,10 +51,10 @@ def fuzzy_only_pipeline():
 
     attendee_repo.get_by_person_and_year.return_value = None
     attendee_repo.bulk_get_sessions_for_persons.return_value = {
-        100: 1001,
-        101: 2001,
-        200: 3001,
-        999: 1001,
+        100: 1000001,
+        101: 1000002,
+        200: 1000003,
+        999: 1000001,
     }
 
     pipeline = ResolutionPipeline(person_repository=person_repo, attendee_repository=attendee_repo)
@@ -65,7 +65,7 @@ def fuzzy_only_pipeline():
 def test_batch_resolve_records_pipeline_strategies_tried(fuzzy_only_pipeline):
     """After batch_resolve, the winning result's metadata['pipeline_strategies_tried']
     is a non-empty list with strategy + sub_method + confidence + flags."""
-    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1001, 2026)])
+    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1000001, 2026)])
     assert len(results) == 1
     result = results[0]
 
@@ -82,7 +82,7 @@ def test_batch_resolve_records_pipeline_strategies_tried(fuzzy_only_pipeline):
 
 def test_pipeline_strategies_tried_records_sub_method_from_match_type(fuzzy_only_pipeline):
     """sub_method is derived from the strategy's existing match_type metadata."""
-    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1001, 2026)])
+    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1000001, 2026)])
     result = results[0]
 
     strategies = result.metadata.get("pipeline_strategies_tried", [])
@@ -99,7 +99,7 @@ def test_pipeline_strategies_tried_records_sub_method_from_match_type(fuzzy_only
 
 def test_winning_entry_in_strategies_tried_matches_final_result(fuzzy_only_pipeline):
     """The resolved entry's strategy and confidence match the final result."""
-    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1001, 2026)])
+    results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1000001, 2026)])
     result = results[0]
     assert result.is_resolved
 
@@ -112,7 +112,7 @@ def test_winning_entry_in_strategies_tried_matches_final_result(fuzzy_only_pipel
 
 def test_strategies_tried_records_unresolved_attempt_when_no_match(fuzzy_only_pipeline):
     """Even when the strategy returns 0.0/no-match, the attempt is recorded."""
-    results = fuzzy_only_pipeline.batch_resolve([("Xqyzzyzzy", 999, 1001, 2026)])
+    results = fuzzy_only_pipeline.batch_resolve([("Xqyzzyzzy", 999, 1000001, 2026)])
     result = results[0]
     strategies = (result.metadata or {}).get("pipeline_strategies_tried")
     assert strategies, "expected the no-match attempt to still appear in the list"

@@ -384,9 +384,11 @@ class ResolutionPipeline:
 
             # Attach the per-request attempt log to the winning result so downstream
             # trace recorders can surface it on debug_pipeline_traces.phase2_resolution.
+            # Copy the list so per-request mutations can't leak into a shared/cached
+            # ResolutionResult if a strategy ever returns one.
             if best_result.metadata is None:
                 best_result.metadata = {}
-            best_result.metadata["pipeline_strategies_tried"] = strategy_attempts
+            best_result.metadata["pipeline_strategies_tried"] = list(strategy_attempts)
 
             # Log final decision
             logger.debug(
