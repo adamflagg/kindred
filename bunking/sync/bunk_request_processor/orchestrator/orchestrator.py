@@ -1189,7 +1189,6 @@ class RequestOrchestrator:
             return {"dry_run": dry_run, "phase": "validation"}
 
         # Initialize temporal name cache before Phase 2
-
         logger.info("=== Initializing Temporal Name Cache ===")
         self.temporal_name_cache.initialize()  # Sync - PocketBase SDK is synchronous
         cache_stats = self.temporal_name_cache.get_stats()
