@@ -1178,32 +1178,36 @@ export default function CamperDetailsPanel({
         {/* Staff Notes — combines internal_bunk_notes + bunking_notes_notes,
             expanded by default. Each present text renders as its own stacked
             blockquote inside the same section. */}
-        {(originalBunkData?.internal_bunk_notes?.trim() ||
-          originalBunkData?.bunking_notes_notes?.trim()) && (
-          <section>
-            <SectionHeader
-              title="Staff Notes"
-              icon={MessageSquareQuote}
-              isExpanded={expandedSections.staffNotes}
-              onToggle={() => toggleSection('staffNotes')}
-              accentColor="amber"
-            />
-            {expandedSections.staffNotes && (
-              <div className="mt-2 space-y-2 pl-1">
-                {originalBunkData?.internal_bunk_notes?.trim() && (
-                  <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
-                    {originalBunkData.internal_bunk_notes}
-                  </blockquote>
-                )}
-                {originalBunkData?.bunking_notes_notes?.trim() && (
-                  <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
-                    {originalBunkData.bunking_notes_notes}
-                  </blockquote>
-                )}
-              </div>
-            )}
-          </section>
-        )}
+        {(() => {
+          const hasInternalNotes = (originalBunkData?.internal_bunk_notes?.trim() ?? '') !== ''
+          const hasBunkingNotes = (originalBunkData?.bunking_notes_notes?.trim() ?? '') !== ''
+          if (!hasInternalNotes && !hasBunkingNotes) return null
+          return (
+            <section>
+              <SectionHeader
+                title="Staff Notes"
+                icon={MessageSquareQuote}
+                isExpanded={expandedSections.staffNotes}
+                onToggle={() => toggleSection('staffNotes')}
+                accentColor="amber"
+              />
+              {expandedSections.staffNotes && (
+                <div className="mt-2 space-y-2 pl-1">
+                  {hasInternalNotes && (
+                    <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
+                      {originalBunkData?.internal_bunk_notes}
+                    </blockquote>
+                  )}
+                  {hasBunkingNotes && (
+                    <blockquote className="text-foreground rounded-r-lg border-l-2 border-amber-300 bg-amber-50/60 px-3 py-2 text-sm whitespace-pre-wrap italic dark:border-amber-500/60 dark:bg-amber-900/20">
+                      {originalBunkData?.bunking_notes_notes}
+                    </blockquote>
+                  )}
+                </div>
+              )}
+            </section>
+          )
+        })()}
       </div>
     </div>
   )

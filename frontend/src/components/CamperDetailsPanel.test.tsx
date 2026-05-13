@@ -1186,7 +1186,7 @@ describe('CamperDetailsPanel', () => {
       }
     }
 
-    function setupOriginalBunkRecords(records: ReturnType<typeof originalBunkRecord>[]) {
+    function setupOriginalBunkRecords(records: Array<ReturnType<typeof originalBunkRecord>>) {
       mockGetFullListPersons.mockResolvedValue([EMMA])
       mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
       mockGetFullListBunkAssignments.mockResolvedValue([])
@@ -1252,7 +1252,7 @@ describe('CamperDetailsPanel', () => {
       }
     }
 
-    function setupOriginalBunkRecords(records: ReturnType<typeof originalBunkRecord>[]) {
+    function setupOriginalBunkRecords(records: Array<ReturnType<typeof originalBunkRecord>>) {
       mockGetFullListPersons.mockResolvedValue([EMMA])
       mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
       mockGetFullListBunkAssignments.mockResolvedValue([])
