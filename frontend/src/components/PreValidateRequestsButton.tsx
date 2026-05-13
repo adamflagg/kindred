@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { solverService } from '../services/solver'
+import type { ImpossibilityReport } from '../services/solver'
 import PreValidationResultsModal from './PreValidationResultsModal'
 
 interface PreValidateRequestsButtonProps {
@@ -21,13 +22,8 @@ interface ValidationResult {
     total_requests: number
     campers_with_requests: number
     campers_without_requests: number
-    unsatisfiable_requests: Array<{
-      requester: string
-      request_type: string
-      requested_cm_id: string
-      reason: string
-    }>
   }
+  impossibility_report: ImpossibilityReport
 }
 
 export default function PreValidateRequestsButton({
