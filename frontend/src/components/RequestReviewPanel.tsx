@@ -611,6 +611,9 @@ export default function RequestReviewPanel({
       labelVerb: 'approval',
     })
 
+  // Manual decline writes `status: 'declined'` only — `disposition_reason` is
+  // intentionally left blank. See DECLINED_REASONS in dispositionColors.ts for
+  // the full rationale (#1368).
   const handleReject = (id: string) =>
     handleAction({
       id,
@@ -626,6 +629,8 @@ export default function RequestReviewPanel({
         .map((id) => requests.find((r: BunkRequestsResponse) => r.id === id))
         .filter((r): r is BunkRequestsResponse => Boolean(r))
         .map((r) => ({ id: r.id, status: r.status }))
+      // Bulk decline writes `status: 'declined'` only — `disposition_reason`
+      // is intentionally left blank (see DECLINED_REASONS in dispositionColors.ts, #1368).
       const updates: Partial<BunkRequestsResponse> =
         action === 'approve'
           ? { status: 'resolved' as BunkRequestsStatusOptions }
