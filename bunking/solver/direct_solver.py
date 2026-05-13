@@ -472,150 +472,103 @@ class DirectBunkingSolver:
         return valid_bunks
 
     def _validate_requests(self) -> None:
-        """Validate requests and categorize as possible or impossible.
+        """Classify requests as possible or impossible via the shared module.
 
-        Impossible cases:
-        - Requested person is not in the solver at all
-        - bunk_with targeting a person in a different session (session boundaries
-          prevent sharing a bunk). not_bunk_with across sessions is still possible
-          since separation is guaranteed by session boundaries.
-        - bunk_with or not_bunk_with request with no requested_person_cm_id
-          (malformed request)
+        Delegates to bunking.solver.impossibility.validate_impossibility,
+        which both this solver and api.routers.solver.pre_validate_solver
+        share. Populates self.possible_requests, self.impossible_requests,
+        and self.request_validation_summary from the structured report.
+
+        Fallback: any bunk_with/not_bunk_with request whose target is not
+        present in self.person_idx_map (i.e., the target person was not
+        supplied in the input at all) is classified as impossible under the
+        "target_not_in_solver" reason code. The shared predicates cannot
+        catch this case because they only see persons present in the input;
+        the solver-level person_idx_map is the authoritative membership set.
         """
-        person_by_cm_id = self.input.person_by_cm_id
-        total_requests = 0
-        impossible_count = 0
-        affected_campers = set()
-        impossible_by_reason = {
+        from bunking.solver.impossibility import validate_impossibility
+
+        # Initialize per-camper dicts (existing API surface)
+        for person_cm_id in self.input.requests_by_person:
+            self.possible_requests[person_cm_id] = []
+            self.impossible_requests[person_cm_id] = []
+
+        report = validate_impossibility(self.input, self.config)
+        impossible_request_ids: set[str] = {item.request_id for item in report.flat}
+
+        # Tally requests not caught by predicates but whose target is absent
+        # from person_idx_map — these must be classified impossible here.
+        target_not_in_solver_extra: set[str] = set()
+        for person_cm_id, requests in self.input.requests_by_person.items():
+            if person_cm_id not in self.person_idx_map:
+                continue
+            for request in requests:
+                if request.id in impossible_request_ids:
+                    continue
+                if request.request_type in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
+                    if request.requested_person_cm_id and request.requested_person_cm_id not in self.person_idx_map:
+                        target_not_in_solver_extra.add(request.id)
+
+        for person_cm_id, requests in self.input.requests_by_person.items():
+            if person_cm_id not in self.person_idx_map:
+                continue
+            for request in requests:
+                if request.id in impossible_request_ids or request.id in target_not_in_solver_extra:
+                    self.impossible_requests[person_cm_id].append(request)
+                else:
+                    self.possible_requests[person_cm_id].append(request)
+
+        # Pre-initialize the canonical reason codes so keys are always present
+        # (callers expect zero-valued keys even when no impossibilities exist).
+        impossible_by_reason: dict[str, int] = {
             "target_not_in_solver": 0,
             "cross_session": 0,
             "malformed": 0,
             "pair_no_shared_bunk": 0,
             "age_pref_no_eligible_grade": 0,
         }
+        for item in report.flat:
+            impossible_by_reason[item.reason_code] = impossible_by_reason.get(item.reason_code, 0) + 1
+        impossible_by_reason["target_not_in_solver"] += len(target_not_in_solver_extra)
 
-        for person_cm_id, requests in self.input.requests_by_person.items():
-            if person_cm_id not in self.person_idx_map:
-                continue  # Skip if person not in session
-
-            self.possible_requests[person_cm_id] = []
-            self.impossible_requests[person_cm_id] = []
-
-            for request in requests:
-                total_requests += 1
-
-                # Check if this is a request that references another person
-                if request.request_type in [RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value]:
-                    if request.requested_person_cm_id:
-                        if request.requested_person_cm_id not in self.person_idx_map:
-                            # Requested person not in solver at all
-                            self.impossible_requests[person_cm_id].append(request)
-                            impossible_count += 1
-                            impossible_by_reason["target_not_in_solver"] += 1
-                            affected_campers.add(person_cm_id)
-                        elif (
-                            request.request_type == RequestType.BUNK_WITH.value
-                            and person_by_cm_id[person_cm_id].session_cm_id
-                            != person_by_cm_id[request.requested_person_cm_id].session_cm_id
-                        ):
-                            # bunk_with across sessions is impossible — session
-                            # boundary constraints prevent sharing a bunk.
-                            # (not_bunk_with across sessions is trivially satisfied.)
-                            self.impossible_requests[person_cm_id].append(request)
-                            impossible_count += 1
-                            impossible_by_reason["cross_session"] += 1
-                            affected_campers.add(person_cm_id)
-                        elif request.request_type == RequestType.BUNK_WITH.value and not self._pair_has_shared_bunk(
-                            self.person_idx_map[person_cm_id],
-                            self.person_idx_map[request.requested_person_cm_id],
-                        ):
-                            # bunk_with where no bunk is gender-compatible for both
-                            # campers is impossible. Without this gate, a hard MP
-                            # constraint (Stage 4) would force co-placement that
-                            # gender constraints forbid → INFEASIBLE.
-                            # (not_bunk_with is trivially satisfied when no shared
-                            # bunk exists, so we keep it possible.)
-                            self.impossible_requests[person_cm_id].append(request)
-                            impossible_count += 1
-                            impossible_by_reason["pair_no_shared_bunk"] += 1
-                            affected_campers.add(person_cm_id)
-                        else:
-                            self.possible_requests[person_cm_id].append(request)
-                    else:
-                        # No requested person specified - treat as impossible
-                        self.impossible_requests[person_cm_id].append(request)
-                        impossible_count += 1
-                        impossible_by_reason["malformed"] += 1
-                elif request.request_type == RequestType.AGE_PREFERENCE.value:
-                    # age_preference at the same-gender grade bound (in the wrong
-                    # direction) is impossible per camp policy: if you're the
-                    # oldest grade and prefer older, "too bad" — there are no
-                    # older peers. Same for youngest-prefers-younger. Without
-                    # this gate, a hard MP constraint (Stage 4) for an at-bound
-                    # camper has no satisfiable assignment → INFEASIBLE.
-                    #
-                    # Scan-the-pool fallback: bounds are derived from the
-                    # session's same-gender camper pool. A follow-up issue
-                    # will switch this to admin-GUI-configured min/max grades.
-                    requester = person_by_cm_id[person_cm_id]
-                    target = request.age_preference_target
-                    impossible = False
-                    if requester.gender and requester.grade is not None and target in ("older", "younger"):
-                        bounds = self._session_grade_bounds_for_gender(requester.session_cm_id, requester.gender)
-                        if bounds is None:
-                            impossible = True
-                        else:
-                            min_g, max_g = bounds
-                            if (target == "older" and requester.grade >= max_g) or (
-                                target == "younger" and requester.grade <= min_g
-                            ):
-                                impossible = True
-
-                    if impossible:
-                        self.impossible_requests[person_cm_id].append(request)
-                        impossible_count += 1
-                        impossible_by_reason["age_pref_no_eligible_grade"] += 1
-                        affected_campers.add(person_cm_id)
-                    else:
-                        self.possible_requests[person_cm_id].append(request)
-                else:
-                    # Other request types are always possible
-                    self.possible_requests[person_cm_id].append(request)
-
-        # Log validation results — break out the per-reason count instead of a
-        # static enumeration so new reasons (e.g. pair_no_shared_bunk,
-        # age_pref_no_eligible_grade) show up without further log edits.
-        if impossible_count > 0:
-            reason_summary = ", ".join(f"{k}={v}" for k, v in impossible_by_reason.items() if v > 0)
-            logger.warning(
-                f"Request validation: {impossible_count} of {total_requests} requests are infeasible ({reason_summary})"
-            )
-            logger.warning(f"Affected campers: {len(affected_campers)}")
-
-            # Log details for debugging
-            if self.debug_mode:
-                logger.debug("Impossible requests by camper:")
-                for person_cm_id in list(affected_campers)[:10]:  # Show first 10
-                    person = person_by_cm_id[person_cm_id]
-                    impossible_reqs = self.impossible_requests[person_cm_id]
-                    for req in impossible_reqs:
-                        if req.requested_person_cm_id and req.requested_person_cm_id in self.person_idx_map:
-                            reason = "different session"
-                        else:
-                            reason = "not in solver"
-                        logger.debug(
-                            f"  - {person.name}: {req.request_type} request for "
-                            f"ID {req.requested_person_cm_id} ({reason})"
-                        )
-
-        # Store summary for later use
+        total_requests = sum(
+            len(reqs)
+            for person_cm_id, reqs in self.input.requests_by_person.items()
+            if person_cm_id in self.person_idx_map
+        )
+        total_impossible = report.total_impossible + len(target_not_in_solver_extra)
         self.request_validation_summary: dict[str, Any] = {
             "total_requests": total_requests,
-            "possible_requests": total_requests - impossible_count,
-            "impossible_requests": impossible_count,
-            "affected_campers": len(affected_campers),
+            "possible_requests": total_requests - total_impossible,
+            "impossible_requests": total_impossible,
             "impossible_by_reason": impossible_by_reason,
+            "affected_campers": report.affected_campers
+            + len(
+                {
+                    request.requester_person_cm_id
+                    for person_cm_id, requests in self.input.requests_by_person.items()
+                    if person_cm_id in self.person_idx_map
+                    for request in requests
+                    if request.id in target_not_in_solver_extra
+                }
+            ),
+            "clusters": [
+                {
+                    "reason_code": c.reason_code,
+                    "size": len(c.cm_ids),
+                    "cm_ids": c.cm_ids,
+                    "detail": c.detail,
+                }
+                for c in report.clusters
+            ],
         }
+
+        if total_impossible > 0:
+            reason_summary = " ".join(f"{k}={v}" for k, v in impossible_by_reason.items() if v > 0)
+            logger.warning(
+                f"Request validation: {total_impossible} of {total_requests} requests are infeasible ({reason_summary})"
+            )
+            logger.warning(f"Affected campers: {self.request_validation_summary['affected_campers']}")
 
     def check_feasibility(self) -> None:
         """Perform pre-solve feasibility checks and log warnings."""
