@@ -64,7 +64,7 @@ class BunkCapacityImpossibility(HardConstraintImpossibility):
     def check_cluster(self, component_cms: set[int], ctx: ImpossibilityContext) -> ImpossibilityReason | None:
         if len(component_cms) < 2:
             return None
-        sessions = {ctx.person_session.get(cm) for cm in component_cms if ctx.person_session.get(cm) is not None}
+        sessions: set[int] = {s for cm in component_cms if (s := ctx.person_session.get(cm)) is not None}
         if len(sessions) != 1:
             return None  # mixed sessions; session_boundary catches the bad pairs
         session = next(iter(sessions))
