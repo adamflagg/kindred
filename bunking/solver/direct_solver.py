@@ -577,11 +577,13 @@ class DirectBunkingSolver:
                     # Other request types are always possible
                     self.possible_requests[person_cm_id].append(request)
 
-        # Log validation results
+        # Log validation results — break out the per-reason count instead of a
+        # static enumeration so new reasons (e.g. pair_no_shared_bunk,
+        # age_pref_no_eligible_grade) show up without further log edits.
         if impossible_count > 0:
+            reason_summary = ", ".join(f"{k}={v}" for k, v in impossible_by_reason.items() if v > 0)
             logger.warning(
-                f"Request validation: {impossible_count} of {total_requests} requests "
-                f"are infeasible (person not in solver, in a different session, or missing target)"
+                f"Request validation: {impossible_count} of {total_requests} requests are infeasible ({reason_summary})"
             )
             logger.warning(f"Affected campers: {len(affected_campers)}")
 
