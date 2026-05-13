@@ -232,3 +232,84 @@ def _create_age_preference_satisfaction_var(
             forcing_indicators.append(person_in_clean_bunk)
 
     return sat_var, forcing_indicators
+
+
+# ---------------------------------------------------------------------------
+# Impossibility predicate
+# ---------------------------------------------------------------------------
+
+from bunking.models_v2 import DirectBunkRequest  # noqa: E402
+from bunking.solver.impossibility import (  # noqa: E402
+    HardConstraintImpossibility,
+    ImpossibilityContext,
+    ImpossibilityReason,
+    register,
+)
+
+
+class AgePreferenceImpossibility(HardConstraintImpossibility):
+    name = "age_preference"
+
+    def check_request(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        if req.request_type != "age_preference":
+            return None
+        requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
+        if requester is None:
+            return None
+        target = req.age_preference_target
+        if target not in ("older", "younger"):
+            return None
+        session = ctx.person_session.get(req.requester_person_cm_id)
+        if session is None:
+            return None
+        same_gender_peers = [
+            p
+            for p in ctx.input.persons
+            if p.gender == requester.gender
+            and ctx.person_session.get(p.campminder_person_id) == session
+            and p.campminder_person_id != requester.campminder_person_id
+        ]
+        if not same_gender_peers:
+            return ImpossibilityReason(
+                code="age_pref_no_eligible_grade",
+                message=(
+                    f"No same-gender peers in session {session} to satisfy "
+                    f"'{target}' age preference for grade {requester.grade}."
+                ),
+                detail={
+                    "direction": target,
+                    "requester_grade": requester.grade,
+                    "session": session,
+                },
+            )
+        grades = [p.grade for p in same_gender_peers]
+        if target == "older" and max(grades) <= requester.grade:
+            return ImpossibilityReason(
+                code="age_pref_no_eligible_grade",
+                message=(
+                    f"Camper is at grade {requester.grade}; no older same-gender "
+                    f"peer exists in session {session} (pool max: {max(grades)})."
+                ),
+                detail={
+                    "direction": "older",
+                    "requester_grade": requester.grade,
+                    "pool_max_grade": max(grades),
+                },
+            )
+        if target == "younger" and min(grades) >= requester.grade:
+            return ImpossibilityReason(
+                code="age_pref_no_eligible_grade",
+                message=(
+                    f"Camper is at grade {requester.grade}; no younger same-gender "
+                    f"peer exists in session {session} (pool min: {min(grades)})."
+                ),
+                detail={
+                    "direction": "younger",
+                    "requester_grade": requester.grade,
+                    "pool_min_grade": min(grades),
+                },
+            )
+        return None
+
+
+register(AgePreferenceImpossibility())

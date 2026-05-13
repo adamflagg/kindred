@@ -255,6 +255,7 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
 
 # Trigger predicate registration via import side-effects.
 from bunking.solver.constraints import (  # noqa: E402, F401
+    age_preference as _age_preference_module,
     bunk_requests as _bunk_requests_module,
     gender as _gender_module,
     session_boundary as _session_boundary_module,
