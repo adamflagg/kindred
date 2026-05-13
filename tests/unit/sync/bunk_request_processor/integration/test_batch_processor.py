@@ -264,13 +264,14 @@ class TestEstimateTokens:
         assert tokens > 0
 
     def test_estimate_tokens_includes_context(self):
-        """Token estimation includes context dict."""
+        """Token estimation includes context's requester_name."""
         mock_provider = Mock()
         processor = BatchProcessor(ai_provider=mock_provider)
 
         request = Mock()
         request.request_text = "short"
-        context = {"key1": "value1", "key2": "value2"}
+        context = Mock(spec=["requester_name"])
+        context.requester_name = "Some Requester Name"
         item = (request, context)
 
         tokens = processor._estimate_tokens(item)
