@@ -118,7 +118,15 @@ func (c *GitHubClient) CreateIssue(params *IssueParams) error {
 }
 
 // UploadScreenshot uploads an image to the repo's attachments/ directory.
-// Returns the raw download URL for embedding in the issue body.
+// Returns a stable URL for embedding in the issue body.
+//
+// For private repos, GitHub's contents API returns a download_url with an
+// ephemeral ?token= query that expires within ~30 min — embedding that URL
+// silently breaks every screenshot once the token dies. We instead derive a
+// stable URL from html_url: https://github.com/{owner}/{repo}/raw/{branch}/{path}.
+// When a logged-in collaborator's browser hits this URL, GitHub redirects to a
+// freshly-minted raw.githubusercontent.com URL bound to their session, so the
+// embedded image renders indefinitely.
 func (c *GitHubClient) UploadScreenshot(data []byte, filename, timestamp string) (string, error) {
 	// Sanitize timestamp for filename: replace colons
 	safeTimestamp := strings.ReplaceAll(timestamp, ":", "-")
@@ -147,14 +155,19 @@ func (c *GitHubClient) UploadScreenshot(data []byte, filename, timestamp string)
 
 	var result struct {
 		Content struct {
-			DownloadURL string `json:"download_url"`
+			HTMLURL string `json:"html_url"`
 		} `json:"content"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("decoding response: %w", err)
 	}
 
-	return result.Content.DownloadURL, nil
+	if result.Content.HTMLURL == "" {
+		return "", fmt.Errorf("GitHub response missing html_url")
+	}
+
+	// html_url is .../blob/{branch}/{path}; raw form is .../raw/{branch}/{path}.
+	return strings.Replace(result.Content.HTMLURL, "/blob/", "/raw/", 1), nil
 }
 
 // categoryDisplayNames maps slug values to human-readable labels.

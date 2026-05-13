@@ -2,6 +2,7 @@ package feedback
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -239,8 +240,18 @@ func TestUploadScreenshot(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		resp := `{"content": {"download_url": ` +
-			`"https://raw.githubusercontent.com/org/repo/main/attachments/test.png"}}`
+		// Real GitHub response for a PRIVATE repo: download_url carries an
+		// ephemeral ?token=... that expires in ~30 min. html_url is the
+		// stable blob URL — the code must derive the embeddable raw URL
+		// from html_url, never from download_url.
+		ephemeralDL := "https://raw.githubusercontent.com/org/feedback/main/" +
+			"attachments/2026-03-11T10-30-00Z-screenshot.png?token=EPHEMERAL_TOKEN_XYZ"
+		stableHTML := "https://github.com/org/feedback/blob/main/" +
+			"attachments/2026-03-11T10-30-00Z-screenshot.png"
+		resp := fmt.Sprintf(
+			`{"content": {"download_url": %q, "html_url": %q}}`,
+			ephemeralDL, stableHTML,
+		)
 		_, _ = w.Write([]byte(resp))
 	}))
 	defer server.Close()
@@ -255,8 +266,16 @@ func TestUploadScreenshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UploadScreenshot() error = %v", err)
 	}
-	if url != "https://raw.githubusercontent.com/org/repo/main/attachments/test.png" {
-		t.Errorf("url = %q, want raw URL", url)
+
+	wantURL := "https://github.com/org/feedback/raw/main/attachments/2026-03-11T10-30-00Z-screenshot.png"
+	if url != wantURL {
+		t.Errorf("url = %q, want %q (stable github.com/raw URL, not ephemeral download_url)", url, wantURL)
+	}
+	if strings.Contains(url, "?token=") {
+		t.Errorf("url must not contain ephemeral ?token= query: %q", url)
+	}
+	if strings.Contains(url, "/blob/") {
+		t.Errorf("url must use /raw/ not /blob/: %q", url)
 	}
 }
 
@@ -282,7 +301,8 @@ func TestUploadScreenshotWithSanitizedFilename(t *testing.T) {
 		receivedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		resp := `{"content": {"download_url": "https://example.com/test.png"}}`
+		resp := `{"content": {"html_url": "https://github.com/org/feedback/` +
+			`blob/main/attachments/2026-03-11T10-30-00Z-evil.png"}}`
 		_, _ = w.Write([]byte(resp))
 	}))
 	defer server.Close()
