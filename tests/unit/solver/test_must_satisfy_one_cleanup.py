@@ -8,7 +8,9 @@ actively wrong:
   - ``constraint.must_satisfy_one.ignore_impossible_requests`` (off-path
     injects guaranteed false soft-violations)
 
-KEPT: ``constraint.must_satisfy_one.penalty`` (the lone tunable).
+Stage 4 (#1379) extension: ``constraint.must_satisfy_one.penalty`` is also
+removed — the soft constraint was replaced by a hard CP-SAT constraint
+over Material-Parent requests only, so the penalty knob is dead config.
 
 Also deletes the ``add_age_preference_penalties`` function (~75 LOC, zero
 callers since initial commit, reads phantom config key
@@ -40,11 +42,12 @@ def test_schema_drops_enabled_fallback_ignore_impossible() -> None:
         assert key not in CONFIG_SCHEMA, f"{key} must be removed from CONFIG_SCHEMA"
 
 
-def test_schema_keeps_penalty() -> None:
+def test_schema_drops_penalty() -> None:
     from bunking.config.schema import CONFIG_SCHEMA
 
-    assert "constraint.must_satisfy_one.penalty" in CONFIG_SCHEMA, (
-        "constraint.must_satisfy_one.penalty must remain — it is the lone tunable knob"
+    assert "constraint.must_satisfy_one.penalty" not in CONFIG_SCHEMA, (
+        "constraint.must_satisfy_one.penalty must NOT be in CONFIG_SCHEMA — "
+        "removed in Stage 4 (#1379) when soft MSO became hard MP constraint"
     )
 
 
