@@ -92,6 +92,24 @@ class TestComputeTargetDeclineActions:
         )
         assert actions == []
 
+    def test_skips_rows_with_unresolved_placeholder_id(self) -> None:
+        """Unresolved-name rows carry a negative MD5-hash requestee_id
+        (see orchestrator.generate_unresolved_person_id). These are NOT real
+        cm_ids and must never be declined as 'target_not_attending' — the
+        target was never resolved to a real person, so no enrollment claim
+        was ever made. Staff must review them via normal PENDING flow."""
+        bunk_requests: list[dict[str, Any]] = [
+            # Misspelling: parent typed "Riley Sam" but no such person; hash placeholder
+            {"id": "br1", "requestee_id": -383633306, "session_id": 100, "status": "pending"},
+            # Group reference: "the twins from last summer" — no individual identity
+            {"id": "br2", "requestee_id": -645220167, "session_id": 100, "status": "pending"},
+        ]
+        actions = compute_target_decline_actions(
+            bunk_requests=bunk_requests,
+            active_sessions_by_cm_id={},
+        )
+        assert actions == []
+
     def test_multi_session_enrolled_keeps_brs_in_any_active_session(self) -> None:
         """Requestee Olivia Chen (1001) is enrolled in BOTH session 100 and 200
         (e.g. signed up for two different camp sessions in the same year).

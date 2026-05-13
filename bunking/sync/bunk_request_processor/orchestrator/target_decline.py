@@ -56,14 +56,16 @@ def compute_target_decline_actions(
     Returns:
         One `TargetDeclineAction` per BR that should flip to declined.
         Already-declined rows are skipped. Rows with no `requestee_id`
-        (placeholders, age preferences) are skipped.
+        (placeholders, age preferences) or with a negative-hash placeholder
+        `requestee_id` (unresolved-name rows from orchestrator.generate_unresolved_person_id)
+        are skipped — those are not real cm_ids and never carried an enrollment claim.
     """
     actions: list[TargetDeclineAction] = []
     for br in bunk_requests:
         if br.get("status") == "declined":
             continue
         requestee = br.get("requestee_id")
-        if not requestee:
+        if not requestee or requestee < 0:
             continue
         active_sessions = active_sessions_by_cm_id.get(requestee)
         if not active_sessions:
