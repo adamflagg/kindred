@@ -610,6 +610,124 @@ class TestSchemaMismatch:
 
 
 # ---------------------------------------------------------------------------
+# Tests: Column-level schema drift (within shared tables)
+# ---------------------------------------------------------------------------
+
+
+class TestColumnDrift:
+    """Schema drift inside a shared table — prod has a column dev doesn't (or vice versa).
+
+    This is the failure mode that caused #1339 in practice: PR #1384 dropped a
+    column from dev's schema, but prod hadn't been redeployed, so the column
+    survived in the prod DB copy. The old bulk `INSERT ... SELECT *` crashed
+    with a column-count mismatch; the rollback left dev's state frozen at
+    whatever the previous successful seed left, and the user couldn't tell
+    the seed had failed.
+    """
+
+    def _add_column_to_prod(self, prod_path: str, table: str, column: str) -> None:
+        conn = sqlite3.connect(prod_path)
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT DEFAULT ''")
+        conn.commit()
+        conn.close()
+
+    def test_column_drift_fails_by_default(self, tmp_path: Path, seed_module: types.ModuleType) -> None:
+        """Default (strict) behavior: prod having an extra column on a shared table fails."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+
+        # Simulate post-#1384 state: prod still has a column dev's migrations dropped.
+        self._add_column_to_prod(prod_path, "persons", "legacy_field")
+
+        with pytest.raises(SystemExit):
+            seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+
+    def test_column_drift_error_message_names_table_and_column(
+        self,
+        tmp_path: Path,
+        seed_module: types.ModuleType,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The strict failure message should name the drifted table and column."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+        self._add_column_to_prod(prod_path, "persons", "legacy_field")
+
+        with pytest.raises(SystemExit):
+            seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+
+        captured = capsys.readouterr()
+        assert "persons" in captured.out
+        assert "legacy_field" in captured.out
+
+    def test_column_drift_with_allow_skip_copies_intersection(
+        self, tmp_path: Path, seed_module: types.ModuleType
+    ) -> None:
+        """With allow_skip=True, the drifted column is dropped from the copy.
+
+        Intersection-copy means: ignore the column that exists only in prod
+        (or only in dev). The remaining shared columns are copied normally.
+        """
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+        self._add_column_to_prod(prod_path, "persons", "legacy_field")
+
+        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
+
+        # persons should still get its 3 prod rows
+        assert result["tables_copied"]["persons"] == 3
+
+        # The drifted column should be listed in the per-table drift summary
+        column_drift = result.get("column_drift", {})
+        assert "persons" in column_drift
+        assert "legacy_field" in column_drift["persons"]["prod_only"]
+
+    def test_column_drift_with_allow_skip_actually_copies_data(
+        self, tmp_path: Path, seed_module: types.ModuleType
+    ) -> None:
+        """Intersection-copy must produce dev rows with the shared-column data."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+        self._add_column_to_prod(prod_path, "persons", "legacy_field")
+
+        seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
+
+        # Verify dev persons rows were actually copied with shared-column data
+        conn = sqlite3.connect(dev_path)
+        rows = conn.execute("SELECT cm_id, first_name FROM persons ORDER BY cm_id").fetchall()
+        conn.close()
+        assert rows == [("CM001", "Emma"), ("CM002", "Liam"), ("CM003", "Olivia")]
+
+    def test_column_drift_dev_only_column_also_handled(self, tmp_path: Path, seed_module: types.ModuleType) -> None:
+        """Symmetric case: dev has a column prod doesn't. Strict still fails; allow_skip copies intersection."""
+        dev_path = str(tmp_path / "data.db")
+        prod_path = str(tmp_path / "data-prod.db")
+        _create_dev_db(dev_path)
+        _create_prod_db(prod_path)
+
+        # Dev migrations added a new column prod hasn't deployed yet
+        conn = sqlite3.connect(dev_path)
+        conn.execute("ALTER TABLE persons ADD COLUMN new_field TEXT DEFAULT ''")
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(SystemExit):
+            seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path)
+
+        result = seed_module.seed_from_prod(dev_db=dev_path, prod_db=prod_path, allow_skip=True)
+        assert result["tables_copied"]["persons"] == 3
+        assert "new_field" in result["column_drift"]["persons"]["dev_only"]
+
+
+# ---------------------------------------------------------------------------
 # Tests: Missing file errors
 # ---------------------------------------------------------------------------
 

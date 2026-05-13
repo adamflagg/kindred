@@ -38,6 +38,36 @@ def _get_data_tables(conn: sqlite3.Connection) -> set[str]:
     return tables
 
 
+def _get_columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    """Return the column names for a table, in declaration order."""
+    return [row[1] for row in conn.execute(f"PRAGMA table_info([{table}])").fetchall()]
+
+
+def _detect_column_drift(dev_db: str, prod_db: str, common: list[str]) -> dict[str, dict[str, list[str]]]:
+    """Return per-table drift between dev and prod for the given shared tables.
+
+    Result shape: {table: {"dev_only": [...], "prod_only": [...]}}.
+    Empty for tables whose column sets match.
+    """
+    drift: dict[str, dict[str, list[str]]] = {}
+    dev_conn = sqlite3.connect(dev_db)
+    prod_conn = sqlite3.connect(prod_db)
+    try:
+        for table in common:
+            dev_cols = set(_get_columns(dev_conn, table))
+            prod_cols = set(_get_columns(prod_conn, table))
+            if dev_cols == prod_cols:
+                continue
+            drift[table] = {
+                "dev_only": sorted(dev_cols - prod_cols),
+                "prod_only": sorted(prod_cols - dev_cols),
+            }
+    finally:
+        dev_conn.close()
+        prod_conn.close()
+    return drift
+
+
 def _ensure_owned_by_current_user(db_path: str) -> None:
     """Chown the db (and -wal/-shm siblings) to the current user via sudo if needed.
 
@@ -136,17 +166,32 @@ def seed_from_prod(
     prod_only = sorted(prod_tables - dev_tables)
     dev_only = sorted(dev_tables - prod_tables)
 
-    if prod_only or dev_only:
+    # Detect column-level drift inside shared tables (e.g. a column dropped
+    # by a migration that landed in dev but not yet deployed to prod). The
+    # old bulk INSERT ... SELECT * would crash on the column-count mismatch
+    # and leave dev frozen at the last successful seed.
+    column_drift = _detect_column_drift(dev_db, prod_db, common)
+
+    if prod_only or dev_only or column_drift:
         if prod_only:
             print(f"WARNING: Skipping {len(prod_only)} tables in prod but not dev: {', '.join(prod_only)}")
         if dev_only:
             print(f"WARNING: Skipping {len(dev_only)} tables in dev but not prod: {', '.join(dev_only)}")
+        for table, cols in column_drift.items():
+            if cols["prod_only"]:
+                print(
+                    f"WARNING: column drift on {table} — prod has columns dev doesn't: {', '.join(cols['prod_only'])}"
+                )
+            if cols["dev_only"]:
+                print(f"WARNING: column drift on {table} — dev has columns prod doesn't: {', '.join(cols['dev_only'])}")
         if not allow_skip:
             print(
                 "\nERROR: schema drift detected between dev and prod. Dropping a "
-                "whole table's worth of rows silently is the failure mode #1338 "
-                "fixed at the query level; refusing to perpetuate it at the seed "
-                "level. Re-run with --allow-skip if the drift is intentional."
+                "whole table's (or column's) worth of rows silently is the failure "
+                "mode #1338 fixed at the query level; refusing to perpetuate it at "
+                "the seed level. Re-run with --allow-skip if the drift is "
+                "intentional (intersection columns will be copied; drifted columns "
+                "skipped)."
             )
             sys.exit(1)
 
@@ -166,6 +211,8 @@ def seed_from_prod(
             summary["skipped_prod_only"] = prod_only
         if dev_only:
             summary["skipped_dev_only"] = dev_only
+        if column_drift:
+            summary["column_drift"] = column_drift
 
         print("DRY RUN — no changes made")
         _print_summary(summary, dry_run=True)
@@ -182,10 +229,24 @@ def seed_from_prod(
         # ATTACH prod database
         cur.execute("ATTACH DATABASE ? AS prod", (prod_db,))
 
+        # Precompute the intersection column list per table — copying via an
+        # explicit list (instead of SELECT *) silently drops any drifted
+        # columns rather than crashing the whole INSERT on a count mismatch.
+        prod_conn_cols = sqlite3.connect(prod_db)
+        try:
+            shared_cols: dict[str, list[str]] = {}
+            for table in common:
+                dev_cols = set(_get_columns(conn, table))
+                prod_cols = set(_get_columns(prod_conn_cols, table))
+                shared_cols[table] = sorted(dev_cols & prod_cols)
+        finally:
+            prod_conn_cols.close()
+
         tables_copied = {}
         for table in common:
+            col_list = ", ".join(f"[{c}]" for c in shared_cols[table])
             cur.execute(f"DELETE FROM main.[{table}]")
-            cur.execute(f"INSERT INTO main.[{table}] SELECT * FROM prod.[{table}]")
+            cur.execute(f"INSERT INTO main.[{table}] ({col_list}) SELECT {col_list} FROM prod.[{table}]")
             count = cur.execute(f"SELECT COUNT(*) FROM main.[{table}]").fetchone()[0]
             tables_copied[table] = count
 
@@ -204,6 +265,8 @@ def seed_from_prod(
         summary["skipped_prod_only"] = prod_only
     if dev_only:
         summary["skipped_dev_only"] = dev_only
+    if column_drift:
+        summary["column_drift"] = column_drift
 
     _print_summary(summary)
     return summary
