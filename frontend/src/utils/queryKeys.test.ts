@@ -1,10 +1,11 @@
 /**
  * Contract tests for `queryKeys.ts` factories.
  *
- * - Pins the split between `originalBunkRequestsByPersonId` and
- *   `originalBunkRequestsByRequesterCmId` — two callers wrote to the same
- *   factory but produced different shapes from different filters, causing a
- *   cache collision. The factories MUST produce non-colliding keys.
+ * - Pins the `originalBunkRequestsByRequesterCmId` factory shape. A sibling
+ *   `originalBunkRequestsByPersonId` factory previously existed for a
+ *   `person_id =` filter that doesn't exist on `original_bunk_requests`; PR
+ *   #1338 removed the only caller and the audit (#1339) removed the dead
+ *   factory itself.
  * - Pins the `year` argument on `camperHistory` so filtering by year does
  *   not reuse a cache slot keyed only by personId.
  */
@@ -12,23 +13,8 @@
 import { describe, it, expect } from 'vitest'
 import { queryKeys } from './queryKeys'
 
-describe('queryKeys.originalBunkRequestsByPersonId vs originalBunkRequestsByRequesterCmId', () => {
-  it('produces distinct cache keys for the two callers', () => {
-    // Same numeric id, same year — different shapes (different filter columns)
-    // must not collide in the cache.
-    const personIdKey = queryKeys.originalBunkRequestsByPersonId(12345, 2025)
-    const cmIdKey = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
-    expect(personIdKey).not.toEqual(cmIdKey)
-  })
-
-  it('originalBunkRequestsByPersonId key includes a person-id discriminator', () => {
-    const key = queryKeys.originalBunkRequestsByPersonId(12345, 2025)
-    expect(key[0]).toBe('original-bunk-requests-by-person-id')
-    expect(key).toContain(12345)
-    expect(key).toContain(2025)
-  })
-
-  it('originalBunkRequestsByRequesterCmId key includes a requester-cm-id discriminator', () => {
+describe('queryKeys.originalBunkRequestsByRequesterCmId', () => {
+  it('key includes a requester-cm-id discriminator', () => {
     const key = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
     expect(key[0]).toBe('original-bunk-requests-by-requester-cm-id')
     expect(key).toContain(12345)
@@ -36,8 +22,8 @@ describe('queryKeys.originalBunkRequestsByPersonId vs originalBunkRequestsByRequ
   })
 
   it('handles undefined ids without colliding with the populated case', () => {
-    const populated = queryKeys.originalBunkRequestsByPersonId(12345, 2025)
-    const empty = queryKeys.originalBunkRequestsByPersonId(undefined, 2025)
+    const populated = queryKeys.originalBunkRequestsByRequesterCmId(12345, 2025)
+    const empty = queryKeys.originalBunkRequestsByRequesterCmId(undefined, 2025)
     expect(populated).not.toEqual(empty)
   })
 })

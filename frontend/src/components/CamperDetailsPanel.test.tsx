@@ -150,13 +150,21 @@ const LIAM = mockPerson({
   household_id: 0,
 })
 
-/** Emma's declined bunk-with request targeting Liam Garcia (different session) */
+/**
+ * Emma's resolved-with-decline-disposition bunk-with request targeting Liam
+ * Garcia (different session).
+ *
+ * Production query at CamperDetailsPanel.tsx:422 filters `status = "resolved"`
+ * — declined-disposition rows reach the panel by being `status='resolved'` with
+ * a `disposition_reason` set, not by `status='declined'`. Fixture matches the
+ * shape that can actually surface in prod (#1341).
+ */
 const DECLINED_REQUEST: Record<string, unknown> = {
   id: 'req-declined-1',
   requester_id: 100,
   requestee_id: 201,
   request_type: 'bunk_with',
-  status: 'declined',
+  status: 'resolved',
   priority: 1,
   requested_person_name: 'Liam Garcia',
   disposition_reason: 'session_mismatch',
@@ -1013,15 +1021,20 @@ describe('CamperDetailsPanel', () => {
       })
     })
 
-    it('renders the human-readable decline reason for a declined request in embedded mode', async () => {
+    it('does not render the disposition reason for a resolved-disposition row in embedded mode', async () => {
+      // BunkRequestRow.tsx skips disposition_reason rendering for status='resolved'
+      // rows on purpose ("the reason isn't user-meaningful here"). The
+      // production query at CamperDetailsPanel.tsx:422 only delivers
+      // status='resolved' rows, so the decline reason never surfaces in the
+      // sidebar. Asserting the absence pins that contract — a regression that
+      // re-introduced the line would change user-visible behavior.
       setupDeclinedRequestMocks()
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
 
-      // formatReason('session_mismatch') === 'Different sessions'
-      await waitFor(() => {
-        expect(screen.getByText(/·\s*Different sessions$/)).toBeInTheDocument()
-      })
+      // Wait for the row to render, then assert the disposition reason is absent.
+      await screen.findByText('Liam Garcia')
+      expect(screen.queryByText(/Different sessions/)).not.toBeInTheDocument()
     })
 
     it('does not show "Unknown" as the target name for a declined request in embedded mode', async () => {
