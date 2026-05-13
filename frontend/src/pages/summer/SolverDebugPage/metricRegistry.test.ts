@@ -45,6 +45,9 @@ describe('METRIC_REGISTRY', () => {
         'num_linear',
         'num_bool_and',
         'num_lin_max',
+        // Tier 1 observability (Stream 2, issue #1380)
+        'num_reified_linear',
+        'max_linear_coefficient',
         // new PR1 keys
         'mp_request_rate',
         'mp_camper_rate',

@@ -168,6 +168,27 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     parent: 'model_num_constraints',
     highlight: { mode: 'on-delta' },
   },
+  num_reified_linear: {
+    key: 'num_reified_linear',
+    label: 'reified linear',
+    description:
+      'Linear constraints with an enforcement literal (indicator-style). Direct measure of model complexity — fewer = simpler relaxation.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+    parent: 'num_linear',
+    highlight: { mode: 'on-delta' },
+  },
+  max_linear_coefficient: {
+    key: 'max_linear_coefficient',
+    label: 'max linear coef',
+    description:
+      'Largest absolute coefficient across all linear constraints. Values >100K signal big-M modeling and weak LP relaxation.',
+    interpretation: 'lower-better',
+    format: 'integer',
+    group: 'model',
+    highlight: { mode: 'on-delta' },
+  },
   mp_request_rate: {
     key: 'mp_request_rate',
     label: 'Optimized (MP req)',
@@ -447,6 +468,8 @@ export const COMPARABLE_METRICS: readonly string[] = [
   'num_bool_and',
   'num_bool_or',
   'num_lin_max',
+  'num_reified_linear',
+  'max_linear_coefficient',
   // size (PR1)
   'total_persons',
   'total_bunks',

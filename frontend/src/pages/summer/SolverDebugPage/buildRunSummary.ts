@@ -37,6 +37,9 @@ export interface RunSummary {
   model?: Record<string, string | number>
   solution_strategy?: string
   constraint_type_breakdown?: Record<string, number>
+  soft_constraints_by_module?: Record<string, number>
+  request_density_histogram?: Record<string, number>
+  impossible_request_breakdown?: Record<string, number>
   config_snapshot?: Record<string, string>
 }
 
@@ -83,6 +86,19 @@ export function buildRunSummary(run: SolverRun): RunSummary {
   if (stats.solution_info) summary.solution_strategy = stats.solution_info
   if (stats.constraint_type_breakdown) {
     summary.constraint_type_breakdown = stats.constraint_type_breakdown
+  }
+  if (
+    stats.soft_constraints_by_module &&
+    Object.keys(stats.soft_constraints_by_module).length > 0
+  ) {
+    summary.soft_constraints_by_module = stats.soft_constraints_by_module
+  }
+  if (stats.request_density_histogram && Object.keys(stats.request_density_histogram).length > 0) {
+    summary.request_density_histogram = stats.request_density_histogram
+  }
+  const breakdown = stats.request_validation?.impossible_by_reason
+  if (breakdown && Object.values(breakdown).some((n) => n > 0)) {
+    summary.impossible_request_breakdown = breakdown
   }
   if (details.config_snapshot) summary.config_snapshot = details.config_snapshot
 
