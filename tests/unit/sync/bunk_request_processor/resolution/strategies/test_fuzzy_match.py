@@ -600,5 +600,122 @@ class TestFuzzyMatchDefaultOverrideMechanism:
         assert result == pytest.approx(0.80)
 
 
+class TestNormalizedSearchMergeFallback:
+    """Component 2: _try_normalized_search single-name fallback merges matches
+    across the original first name and nickname variants instead of breaking on
+    the first matching variant.
+
+    Bug pattern: searching "Katherine" with no full-name candidates falls into
+    the variant loop. Original behavior: iterates `find_nickname_variations`
+    only (skipping the original) and breaks on the first variant with any
+    match. If year-filtering narrows that variant to one wrong-session person,
+    the resolver silently picks that wrong person.
+
+    Fix: merge matches across [original, *variants], dedup by cm_id, then let
+    `_disambiguate_with_session` pick the unique same-session candidate.
+    """
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.find_by_name.return_value = []
+        return FuzzyMatchStrategy(person_repository=person_repo, attendee_repository=attendee_repo)
+
+    def test_merge_original_with_variants_session_disambiguates_winner(self, strategy, mock_repositories):
+        """Pool has 1 same-session Katherine, 8 other-session Katherines, 1 Kate (variant),
+        3 Kits (variant). Merge produces 13 candidates; session disambiguation picks the
+        unique same-session Katherine at session_match base (0.85)."""
+        person_repo, attendee_repo = mock_repositories
+        same_session_katherine = Person(cm_id=100, first_name="Katherine", last_name="Smith")
+        other_katherines = [Person(cm_id=100 + i, first_name="Katherine", last_name=f"Other{i}") for i in range(1, 9)]
+        kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
+        kits = [Person(cm_id=300 + i, first_name="Kit", last_name=f"K{i}") for i in range(3)]
+
+        def first_name_search(name, year=None):
+            n = name.lower()
+            if n == "katherine":
+                return [same_session_katherine, *other_katherines]
+            if n == "kate":
+                return [kate]
+            if n == "kit":
+                return kits
+            return []
+
+        person_repo.find_by_first_name.side_effect = first_name_search
+
+        attendee_sessions = {100: 1001}
+        for k in other_katherines:
+            attendee_sessions[k.cm_id] = 2001
+        attendee_sessions[200] = 3001  # Kate — different session
+        for k in kits:
+            attendee_sessions[k.cm_id] = 2001
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {
+            cm_id: attendee_sessions.get(cm_id) for cm_id in cm_ids
+        }
+
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+
+        assert result.is_resolved, (
+            f"expected resolved; got is_resolved={result.is_resolved}, candidates={len(result.candidates or [])}"
+        )
+        assert result.person.cm_id == 100, (
+            f"expected Katherine Smith (cm_id=100); got cm_id={result.person.cm_id} "
+            f"(name={result.person.first_name} {result.person.last_name})"
+        )
+        assert result.confidence == 0.85
+        assert result.metadata.get("sub_method") == "first_name_merged", (
+            f"expected sub_method='first_name_merged'; got {result.metadata.get('sub_method')!r}"
+        )
+
+    def test_merge_filters_self_reference(self, strategy, mock_repositories):
+        """The requester is filtered out of merged matches even if they share the searched name."""
+        person_repo, attendee_repo = mock_repositories
+        requester = Person(cm_id=999, first_name="Katherine", last_name="Requester")
+        other = Person(cm_id=100, first_name="Katherine", last_name="Smith")
+        person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [requester, other] if name.lower() == "katherine" else []
+        )
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        if result.is_resolved:
+            assert result.person.cm_id != 999, "requester was not filtered from candidates"
+
+    def test_merge_falls_through_to_variants_when_original_empty(self, strategy, mock_repositories):
+        """When the original first name finds 0 matches, variants must still be tried."""
+        person_repo, attendee_repo = mock_repositories
+        kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
+        person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        assert result.is_resolved, "variants must still be tried when original returns empty"
+        assert result.person.cm_id == 200
+
+    def test_merge_two_same_session_candidates_returns_ambiguous(self, strategy, mock_repositories):
+        """Two same-session Katherines: disambiguation can't pick a unique winner, returns
+        ambiguous at 0.5 for staff review. Documented behavior of _disambiguate_with_session."""
+        person_repo, attendee_repo = mock_repositories
+        katherines = [
+            Person(cm_id=100, first_name="Katherine", last_name="Smith"),
+            Person(cm_id=101, first_name="Katherine", last_name="Jones"),
+        ]
+        person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            katherines if name.lower() == "katherine" else []
+        )
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
+        assert not result.is_resolved
+        assert len(result.candidates or []) == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
