@@ -1,5 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { getMetric } from './metricRegistry'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
@@ -37,6 +37,43 @@ describe('PinnedComparisonPanel', () => {
   it('renders nothing when fewer than 2 pinned', () => {
     const { container } = render(<PinnedComparisonPanel runA={a} runB={null} onClear={vi.fn()} />)
     expect(container.firstChild).toBeNull()
+  })
+
+  it('renders a prominent "Clear pins" button that fires onClear', () => {
+    const onClear = vi.fn()
+    render(<PinnedComparisonPanel runA={a} runB={b} onClear={onClear} />)
+    const btn = screen.getByRole('button', { name: /clear pins/i })
+    expect(btn).toBeInTheDocument()
+    fireEvent.click(btn)
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+
+  describe('Copy JSON button', () => {
+    let writeText: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      writeText = vi.fn().mockResolvedValue(undefined)
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      })
+    })
+
+    it('renders a Copy JSON button in the header', () => {
+      render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /copy json/i })).toBeInTheDocument()
+    })
+
+    it('writes a comparison summary to the clipboard on click', async () => {
+      render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
+      fireEvent.click(screen.getByRole('button', { name: /copy json/i }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
+      const payload = JSON.parse(writeText.mock.calls[0]?.[0] ?? '{}')
+      expect(payload.kind).toBe('solver_run_comparison')
+      expect(payload.run_a.run_id).toBe(a.run_id)
+      expect(payload.run_b.run_id).toBe(b.run_id)
+      expect(payload.deltas).toBeDefined()
+    })
   })
 
   it('renders metric rows with deltas when both pinned', () => {

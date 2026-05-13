@@ -324,14 +324,14 @@ export function SolverRunsTable({
                     <button
                       aria-label={slot ? `Pin slot ${slot}` : `Pin run ${run.run_id}`}
                       onClick={() => onTogglePin(run.id)}
-                      className="text-xs"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-gray-100"
                     >
                       {slot === 'A' ? (
-                        <span className="inline-block h-2 w-2 rounded-full bg-blue-600" />
+                        <span className="inline-block h-3 w-3 rounded-full bg-blue-600" />
                       ) : slot === 'B' ? (
-                        <span className="inline-block h-2 w-2 rounded-full bg-orange-700" />
+                        <span className="inline-block h-3 w-3 rounded-full bg-orange-700" />
                       ) : (
-                        <span className="text-gray-300">○</span>
+                        <span className="inline-block h-3 w-3 rounded-full border-2 border-gray-300" />
                       )}
                     </button>
                   </td>
