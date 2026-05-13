@@ -9,10 +9,10 @@ import {
   Heart,
   Zap,
   Sparkles,
-  ArrowRight,
   UserMinus,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -27,14 +27,6 @@ interface ValidationStatistics {
   total_requests: number
   campers_with_requests: number
   campers_without_requests: number
-  unsatisfiable_requests: Array<{
-    requester: string
-    requester_name?: string
-    request_type: string
-    requested_cm_id: string
-    requested_name?: string
-    reason: string
-  }>
   capacity_breakdown?: {
     boys: CapacityBreakdownItem
     girls: CapacityBreakdownItem
@@ -50,6 +42,7 @@ interface PreValidationResultsModalProps {
     errors: string[]
     warnings: string[]
     statistics: ValidationStatistics
+    impossibility_report: ImpossibilityReport
   }
   sessionId: string
 }
@@ -150,22 +143,47 @@ function getNonCapacityErrors(errors: string[]): string[] {
     .map((e) => e.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper'))
 }
 
-// Translate technical reasons into friendly labels
-function friendlyReason(reason: string): string {
-  const lowerReason = reason.toLowerCase()
-  if (lowerReason.includes('not in session') || lowerReason.includes('not enrolled')) {
-    return 'Not enrolled'
-  }
-  if (lowerReason.includes('gender') || lowerReason.includes('different area')) {
-    return 'Different area'
-  }
-  if (lowerReason.includes('age') || lowerReason.includes('spread')) {
-    return 'Age/grade gap'
-  }
-  if (lowerReason.includes('conflict')) {
-    return 'Conflict'
-  }
-  return reason.length > 20 ? reason.slice(0, 17) + '...' : reason
+// Friendly labels for impossibility reason codes (staff view)
+const FRIENDLY_REASON_LABELS: Record<string, string> = {
+  grade_compatibility: 'Grade range too wide',
+  cluster_grade_compatibility: 'Group spans too many grades',
+  cross_session: 'Different sessions',
+  pair_no_shared_bunk: "Can't share a cabin (no compatible cabin available)",
+  age_pref_no_eligible_grade: 'No matching age group available',
+  cluster_capacity: 'Group too large for one cabin',
+  malformed: 'Incomplete request',
+  target_not_in_session: 'Requested camper not in this session',
+}
+
+function friendlyReasonLabel(code: string): string {
+  return FRIENDLY_REASON_LABELS[code] || code
+}
+
+function ordinalGrade(grade: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = grade % 100
+  return `${grade}${s[(v - 20) % 10] || s[v] || s[0]} grade`
+}
+
+// Impossibility items renderer — used only here, not exported
+function ImpossibilityItems({ items }: { items: ImpossibilityReportItem[] }) {
+  return (
+    <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
+      {items.map((item) => (
+        <div key={item.request_id} className="text-sm">
+          <div className="font-medium">
+            {item.requester.name} · {ordinalGrade(item.requester.grade)}
+          </div>
+          {item.requestee && (
+            <div className="text-stone-600">
+              wants to bunk with <strong>{item.requestee.name}</strong> ·{' '}
+              {ordinalGrade(item.requestee.grade)}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // Capacity issue card component
@@ -231,7 +249,7 @@ export default function PreValidationResultsModal({
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
 
-  const { valid, errors, warnings, statistics } = results
+  const { valid, errors, warnings, statistics, impossibility_report } = results
 
   // Parse structured data from error messages
   const capacityIssues = useMemo(() => parseCapacityIssues(errors), [errors])
@@ -398,8 +416,48 @@ export default function PreValidationResultsModal({
         </div>
       )}
 
+      {/* Impossibility Report — staff view (always visible) */}
+      <div className="space-y-3 px-5 py-4">
+        {impossibility_report.total_impossible === 0 &&
+        impossibility_report.clusters.length === 0 ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+            <CheckCircle2 className="mr-2 inline-block h-5 w-5" />
+            No impossible requests found for this scenario.
+          </div>
+        ) : (
+          <>
+            {Object.entries(impossibility_report.by_reason).map(([code, items]) => (
+              <details
+                key={code}
+                open
+                className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+              >
+                <summary className="flex cursor-pointer items-center justify-between font-semibold text-amber-900">
+                  <span>{friendlyReasonLabel(code)}</span>
+                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
+                    {items.length}
+                  </span>
+                </summary>
+                <ImpossibilityItems items={items} />
+              </details>
+            ))}
+
+            {impossibility_report.clusters.map((cluster, idx) => (
+              <div key={idx} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="font-semibold text-amber-900">
+                  {friendlyReasonLabel(cluster.reason_code)}
+                </div>
+                <div className="mt-1 text-sm text-stone-700">{cluster.reason_message}</div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
       {/* Collapsible Details */}
-      {(statistics.unsatisfiable_requests.length > 0 || hasIssues) && (
+      {(impossibility_report.total_impossible > 0 ||
+        impossibility_report.clusters.length > 0 ||
+        hasIssues) && (
         <div className="border-border/50 border-t">
           <button
             onClick={() => setShowDetails(!showDetails)}
@@ -530,36 +588,39 @@ export default function PreValidationResultsModal({
                 </div>
               </div>
 
-              {/* Unsatisfiable requests detail - compact table */}
-              {statistics.unsatisfiable_requests.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                    Unfulfillable Requests
-                  </p>
-                  <div className="border-border/50 max-h-32 overflow-y-auto rounded-lg border">
-                    <table className="w-full text-xs">
-                      <tbody className="divide-border/30 divide-y">
-                        {statistics.unsatisfiable_requests.map((req, index) => (
-                          <tr key={index} className="hover:bg-muted/30">
-                            <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requester_name ?? 'Unknown'}
-                            </td>
-                            <td className="text-muted-foreground px-1 py-1.5 text-center">
-                              <ArrowRight className="inline h-3 w-3" />
-                            </td>
-                            <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requested_name ?? 'Unknown'}
-                            </td>
-                            <td className="px-2 py-1.5 text-right">
-                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
-                                {friendlyReason(req.reason)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+              {/* Impossibility report — staff view */}
+              {impossibility_report.total_impossible === 0 &&
+              impossibility_report.clusters.length === 0 ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+                  <CheckCircle2 className="mr-2 inline-block h-5 w-5" />
+                  No impossible requests found for this scenario.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {Object.entries(impossibility_report.by_reason).map(([code, items]) => (
+                    <details
+                      key={code}
+                      open
+                      className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+                    >
+                      <summary className="flex cursor-pointer items-center justify-between font-semibold text-amber-900">
+                        <span>{friendlyReasonLabel(code)}</span>
+                        <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
+                          {items.length}
+                        </span>
+                      </summary>
+                      <ImpossibilityItems items={items} />
+                    </details>
+                  ))}
+
+                  {impossibility_report.clusters.map((cluster, idx) => (
+                    <div key={idx} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                      <div className="font-semibold text-amber-900">
+                        {friendlyReasonLabel(cluster.reason_code)}
+                      </div>
+                      <div className="mt-1 text-sm text-stone-700">{cluster.reason_message}</div>
+                    </div>
+                  ))}
                 </div>
               )}
 
