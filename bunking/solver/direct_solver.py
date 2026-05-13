@@ -19,7 +19,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
-from bunking.satisfaction.bucket import RequestBucket, classify_request
+from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -267,29 +267,6 @@ def _build_stats_dict(
         "soft_constraints_by_module": _count_soft_constraints_by_module(soft_constraint_violations or {}),
         "request_density_histogram": _build_request_density_histogram(requests_by_person or {}),
     }
-
-
-def _is_material_parent(request: DirectBunkRequest) -> bool:
-    """True iff a request's source_field classifies as MATERIAL_PARENT.
-
-    Defensive: missing or unknown source_field returns False. Used by the
-    post-solve diagnostic to bucket unsatisfied campers — surfacing as a
-    diagnostic miscount is preferable to crashing the solver run on a
-    data-hygiene edge case. Unknown values are logged so a new source_field
-    added to the schema before the bucket map is updated leaves a trace.
-    """
-    sf = request.source_field
-    if not sf:
-        return False
-    try:
-        return classify_request(sf) == RequestBucket.MATERIAL_PARENT
-    except ValueError:
-        logger.debug(
-            "_is_material_parent: unknown source_field %r on request %s — treating as non-material",
-            sf,
-            request.id,
-        )
-        return False
 
 
 class DirectBunkingSolver:
@@ -1305,7 +1282,7 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            resolved_mp = [r for r in resolved_requests if _is_material_parent(r)]
+            resolved_mp = [r for r in resolved_requests if is_material_parent_request(r)]
             mp_requests_total += len(resolved_mp)
             satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
             mp_requests_satisfied += len(satisfied_mp)
@@ -1327,12 +1304,7 @@ class DirectBunkingSolver:
                 continue
 
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            # TODO(stage-4-retire): when the parent-paramount Stage 4 reweighting
-            # lands, retire `_is_material_parent()` (a legacy wrapper around
-            # `classify_request()` from bunking.satisfaction.bucket) and the
-            # Stage-4-era `staff_*` / `immaterial_*` metric mirrors that read
-            # from this same diagnostic.
-            if any(_is_material_parent(r) for r in resolved_possible):
+            if any(is_material_parent_request(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)

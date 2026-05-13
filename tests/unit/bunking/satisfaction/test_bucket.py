@@ -41,3 +41,57 @@ class TestCountedBuckets:
 
     def test_is_frozenset(self) -> None:
         assert isinstance(COUNTED_BUCKETS, frozenset)
+
+
+class TestIsMaterialParentRequest:
+    """Tests for is_material_parent_request helper."""
+
+    def _req(self, source_field: str | None):
+        """Create a mock request with the given source_field."""
+        from unittest.mock import Mock
+
+        r = Mock()
+        r.source_field = source_field
+        r.id = "rec123abc"
+        return r
+
+    def test_bunk_with_is_material_parent(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("bunk_with")) is True
+
+    def test_socialize_with_is_not_material_parent(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("socialize_with")) is False
+
+    def test_not_bunk_with_is_not_material_parent(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("not_bunk_with")) is False
+
+    def test_bunking_notes_is_not_material_parent(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("bunking_notes")) is False
+
+    def test_internal_notes_is_not_material_parent(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("internal_notes")) is False
+
+    def test_empty_source_field_returns_false(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req("")) is False
+
+    def test_none_source_field_returns_false(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        assert is_material_parent_request(self._req(None)) is False
+
+    def test_unknown_source_field_returns_false(self):
+        from bunking.satisfaction.bucket import is_material_parent_request
+
+        # Defensive: don't crash on data-hygiene regressions.
+        assert is_material_parent_request(self._req("nonsense_value")) is False
