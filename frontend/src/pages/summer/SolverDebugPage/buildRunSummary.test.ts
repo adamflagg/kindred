@@ -137,6 +137,59 @@ describe('buildRunSummary', () => {
     ])
   })
 
+  describe('Tier 1 observability dict fields (issue #1380)', () => {
+    const withTier1: SolverRun = {
+      ...fullRun,
+      stats: {
+        ...fullRun.stats,
+        soft_constraints_by_module: { must_satisfy: 167, grade_ratio: 96 },
+        request_density_histogram: { '1': 38, '2': 58 },
+        request_validation: {
+          ...(fullRun.stats?.request_validation ?? {}),
+          impossible_by_reason: { target_not_in_solver: 2, cross_session: 1, malformed: 0 },
+        },
+      },
+    }
+
+    it('includes soft_constraints_by_module when non-empty', () => {
+      const out = buildRunSummary(withTier1)
+      expect(out.soft_constraints_by_module).toEqual({ must_satisfy: 167, grade_ratio: 96 })
+    })
+
+    it('includes request_density_histogram when non-empty', () => {
+      const out = buildRunSummary(withTier1)
+      expect(out.request_density_histogram).toEqual({ '1': 38, '2': 58 })
+    })
+
+    it('includes impossible_request_breakdown when any reason > 0', () => {
+      const out = buildRunSummary(withTier1)
+      expect(out.impossible_request_breakdown).toEqual({
+        target_not_in_solver: 2,
+        cross_session: 1,
+        malformed: 0,
+      })
+    })
+
+    it('omits dict fields when empty or all zero', () => {
+      const empty: SolverRun = {
+        ...fullRun,
+        stats: {
+          ...fullRun.stats,
+          soft_constraints_by_module: {},
+          request_density_histogram: {},
+          request_validation: {
+            ...(fullRun.stats?.request_validation ?? {}),
+            impossible_by_reason: { target_not_in_solver: 0, cross_session: 0, malformed: 0 },
+          },
+        },
+      }
+      const out = buildRunSummary(empty)
+      expect(out.soft_constraints_by_module).toBeUndefined()
+      expect(out.request_density_histogram).toBeUndefined()
+      expect(out.impossible_request_breakdown).toBeUndefined()
+    })
+  })
+
   it('includes solution_strategy when solution_info is set, omits otherwise', () => {
     const out = buildRunSummary(fullRun)
     expect(out.solution_strategy).toBe(
