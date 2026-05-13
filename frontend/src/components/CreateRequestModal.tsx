@@ -74,7 +74,6 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         source_field: 'manual', // Required field - identifies this as a staff-created request
         original_text: `Manually created ${requestType} request`,
         parse_notes: notes || 'Created through admin interface',
-        request_locked: true, // Auto-lock manual requests
         is_active: true, // Manually created requests are active
       }
 
