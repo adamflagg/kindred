@@ -309,3 +309,129 @@ def find_infeasibility_cause(
     # If still infeasible with each individual constraint disabled, try combinations
     logger.info("No single constraint removal fixed it. The issue may be a combination.")
     return "Infeasibility caused by multiple interacting constraints"
+
+
+def localize_hard_mso_infeasibility(
+    input_data: DirectSolverInput,
+    config: ConfigLoader,
+    time_limit_seconds: int = 5,
+    max_candidates: int = 200,
+) -> dict[str, Any]:
+    """Locate which subset of MP-hard-constrained campers is jointly infeasible.
+
+    Called by ``solver_runner.py`` after ``find_infeasibility_cause`` identifies
+    ``parent_paramount`` as the cause. Two-pass strategy:
+
+    1. **Singleton isolation** — for each candidate camper, solve with their
+       hard MP constraint skipped. Collect any cm whose alone-removal restores
+       feasibility (an "MCS singleton"). If non-empty, return.
+    2. **Deletion filter** — if no singleton works, start with all candidates
+       skipped (feasible by construction) and add them back one at a time.
+       Each cm whose re-addition flips the model to INFEASIBLE is part of the
+       minimal correction set. Returns a minimal MCS in O(N) solves.
+
+    Cost: ~time_limit_seconds × N solves where N = MP-hard-constrained cms.
+    Each solve usually returns INFEASIBLE in presolve (<0.1s), so 95
+    candidates ≈ 10s total. Capped by ``max_candidates`` to prevent runaway
+    cost on pathologically large sessions.
+
+    Returns:
+        {
+          "approach": "singleton" | "deletion_filter" | "skipped",
+          "candidate_count": N,
+          "singleton_critical_cms": [cm_ids that alone restore feasibility],
+          "minimal_correction_set": [cm_ids in a minimal MCS],
+          "notes": str,
+        }
+    """
+    from bunking.satisfaction.bucket import is_material_parent_request
+    from bunking.solver import DirectBunkingSolver
+
+    logger.info("=== Localizing parent_paramount infeasibility ===")
+
+    # Probe pass: build candidate cms (MP-hard-constrained, excluding
+    # mp_set_entirely_impossible).
+    probe = DirectBunkingSolver(input_data, config, {})
+    probe.check_feasibility()
+    excluded = set(probe.mp_set_entirely_impossible)
+    candidate_cms = [
+        cm
+        for cm, possible in probe.possible_requests.items()
+        if cm not in excluded and any(is_material_parent_request(r) for r in possible)
+    ]
+
+    logger.info(f"  Candidate MP-hard-constrained cms: {len(candidate_cms)}")
+
+    if not candidate_cms:
+        return {
+            "approach": "skipped",
+            "candidate_count": 0,
+            "singleton_critical_cms": [],
+            "minimal_correction_set": [],
+            "notes": "No MP-hard-constrained campers; nothing to localize.",
+        }
+
+    if len(candidate_cms) > max_candidates:
+        return {
+            "approach": "skipped",
+            "candidate_count": len(candidate_cms),
+            "singleton_critical_cms": [],
+            "minimal_correction_set": [],
+            "notes": f"Candidate set ({len(candidate_cms)}) exceeds max_candidates ({max_candidates}); skipping localization to keep diagnostic cost bounded.",
+        }
+
+    def _is_feasible(skip: set[int]) -> bool:
+        s = DirectBunkingSolver(input_data, config, {}, mp_skip_cms=skip)
+        s.check_feasibility()
+        s.add_constraints()
+        s.add_objective()
+        cp = cp_model.CpSolver()
+        cp.parameters.max_time_in_seconds = time_limit_seconds
+        cp.parameters.num_search_workers = 1  # diagnostic — keep fast
+        st = cp.Solve(s.model)
+        return st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    # Step 1: singleton isolation
+    logger.info("  Pass 1: singleton isolation...")
+    singleton_critical = [cm for cm in candidate_cms if _is_feasible({cm})]
+
+    if singleton_critical:
+        logger.info(f"  Singleton-critical cms (each alone restores feasibility): {singleton_critical}")
+        return {
+            "approach": "singleton",
+            "candidate_count": len(candidate_cms),
+            "singleton_critical_cms": sorted(singleton_critical),
+            "minimal_correction_set": sorted(singleton_critical),
+            "notes": "Each listed camper alone restores feasibility when their hard MP constraint is removed.",
+        }
+
+    # Step 2: deletion filter
+    logger.info("  No singleton works; running deletion filter for minimal correction set...")
+    skip: set[int] = set(candidate_cms)  # full removal = feasible
+    if not _is_feasible(skip):
+        # Sanity check: full removal should be feasible by definition (no hard MSO).
+        # If not, the infeasibility lives in a non-parent_paramount constraint after all.
+        return {
+            "approach": "deletion_filter",
+            "candidate_count": len(candidate_cms),
+            "singleton_critical_cms": [],
+            "minimal_correction_set": [],
+            "notes": "Removing ALL hard MP constraints did not restore feasibility — cause is not parent_paramount alone.",
+        }
+
+    minimal_mcs: list[int] = []
+    for cm in candidate_cms:
+        trial = skip - {cm}  # try re-enforcing this cm's constraint
+        if _is_feasible(trial):
+            skip = trial  # cm is not required in MCS
+        else:
+            minimal_mcs.append(cm)  # cm must stay in MCS
+            # skip unchanged
+    logger.info(f"  Minimal correction set ({len(minimal_mcs)} cms): {minimal_mcs}")
+    return {
+        "approach": "deletion_filter",
+        "candidate_count": len(candidate_cms),
+        "singleton_critical_cms": [],
+        "minimal_correction_set": sorted(minimal_mcs),
+        "notes": "Removing the hard MP constraints for these campers (collectively) restores feasibility. Conflict is multi-camper; no single one suffices.",
+    }

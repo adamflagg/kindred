@@ -103,10 +103,18 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     # with age-preference forcing indicators. Add the hard constraint.
     constraints_added = 0
     campers_without_requests: list[int] = []
+    skipped_for_iis_probe = 0
 
     for person_cm_id in ctx.person_ids:
         if person_cm_id not in ctx.input.requests_by_person:
             campers_without_requests.append(person_cm_id)
+            continue
+
+        # IIS-localization probe: when the infeasibility analyzer is bisecting,
+        # it temporarily skips the hard constraint for specific cms to find a
+        # minimal infeasible subset. The constraint is otherwise unchanged.
+        if person_cm_id in ctx.mp_skip_cms:
+            skipped_for_iis_probe += 1
             continue
 
         forcing_vars: list[cp_model.IntVar] = []
@@ -141,10 +149,11 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             extra={"parent_paramount": {"skipped_cm_ids": ctx.mp_set_entirely_impossible}},
         )
 
+    skip_suffix = f", iis_probe_skipped={skipped_for_iis_probe}" if skipped_for_iis_probe else ""
     logger.info(
         f"Parent-paramount hard constraints: added={constraints_added}, "
         f"all_mp_impossible={len(ctx.mp_set_entirely_impossible)}, "
-        f"no_requests={len(campers_without_requests)}"
+        f"no_requests={len(campers_without_requests)}{skip_suffix}"
     )
 
 

@@ -497,6 +497,90 @@ To be filed alongside this doc.
 
 ---
 
+## Stream 5 — Infeasibility Localization for Hard Constraints
+
+**Status:** Shipped in #1391 as a debug-mode diagnostic on the failure
+path.
+
+### Motivation
+
+Stream 1 (Stage 4 hard MSO) introduced a class of failure the prior
+Stream 2 metrics can't diagnose: **INFEASIBLE returns where the cause is
+a subset of the hard MP constraints that can't be jointly satisfied.**
+Tier 1/2 metrics target *feasible-but-suboptimal* solves (best-bound
+trajectory, LP gap, pre-solve compression). On INFEASIBLE the solver
+exits in presolve and those metrics yield no signal.
+
+The existing `find_infeasibility_cause` in `feasibility.py` does
+constraint-type-level isolation — it identifies which constraint
+*module* causes infeasibility (e.g. "parent_paramount" vs "gender").
+That's not granular enough when parent_paramount has 95 individual
+constraints and we need to know *which campers* are unsatisfiable.
+
+### Mechanism
+
+After `find_infeasibility_cause` identifies `parent_paramount` as the
+cause, `localize_hard_mso_infeasibility` runs a two-pass IIS search:
+
+1. **Singleton isolation** — for each MP-hard-constrained camper, solve
+   with that camper's hard constraint skipped. Any camper whose alone-
+   removal restores feasibility is reported as singleton-critical.
+2. **Deletion filter** — if no singleton works, start with all hard MP
+   constraints skipped (feasible by construction) and re-enforce them
+   one at a time. Each camper whose re-addition flips feasibility →
+   infeasibility is part of the minimal correction set.
+
+The result is recorded in the in-memory `solver_runs[run_id]` under
+`parent_paramount_iis` and logged at ERROR level. The `stats` JSON
+column on the `solver_runs` PB record carries it forward to the
+debug dashboard.
+
+Cost: ~`time_limit_seconds × N` solves where N is the
+MP-hard-constrained camper count. Each solve typically returns
+INFEASIBLE in presolve (<0.1s), so 95 candidates ≈ 10s. Bounded by
+`max_candidates=200` to keep pathological sessions from runaway cost.
+
+### Why this is its own stream
+
+Tier 1/2 (Stream 2) are *model-shape* and *feasible-solve-progress*
+metrics. Stream 5 is *post-failure root-cause-localization*. Same
+"observability" umbrella, but different solve states and different
+implementation surface. Keeping them as separate streams avoids
+stuffing the Stream 2 doc with diagnostics that only ever fire on
+INFEASIBLE.
+
+### Code refs
+
+- `bunking/solver/feasibility.py:localize_hard_mso_infeasibility`
+- `bunking/solver/constraints/parent_paramount.py` — honors
+  `ctx.mp_skip_cms` for the IIS probe
+- `bunking/solver/constraints/base.py:SolverContext.mp_skip_cms`
+- `api/services/solver_runner.py` — invokes localization after
+  `find_infeasibility_cause` flags parent_paramount
+
+### Risks
+
+1. ~10s extra wall time on INFEASIBLE runs. Acceptable since INFEASIBLE
+   already returns a fast 0.1s solve + 1–2s analyzer. Localization only
+   fires when the analyzer specifically blames `parent_paramount`.
+2. Deletion filter finds *a* minimal MCS, not *the* minimum MCS — if
+   the IIS structure has multiple minimal sets, order of iteration
+   determines which one we report. Acceptable for staff-facing
+   diagnostics; not for formal model verification.
+
+### Out of scope
+
+- CP-SAT assumptions API (`model.AddAssumption` +
+  `solver.SufficientAssumptionsForInfeasibility`). Native IIS support
+  but requires rewriting parent_paramount's constraint emission to be
+  per-camper-toggleable via assumptions. Deferred unless localization
+  performance becomes a bottleneck.
+- Auto-soft-fallback. The localizer tells us *which* campers can't be
+  honored; the architectural decision of whether to gracefully
+  degrade those to soft MSO is a separate question.
+
+---
+
 ## Suggested order
 
 | # | Stream | Why this slot | Effort | Dependency | Status |
@@ -573,3 +657,13 @@ diffs are clearer.
   `age_pref_no_eligible_grade` reason and `_session_grade_bounds_for_gender`
   helper. Bounds derived from the same-gender camper pool today; a
   follow-up issue tracks tying this to admin-GUI grade configuration.
+- **2026-05-13** — Stream 5 (Infeasibility Localization) shipped in
+  #1391. Taste 1 INFEASIBLE persisted past both gate-widening fixes
+  (only knocked 3 of 98 candidates into `mp_set_entirely_impossible`).
+  Tier 1/2 metrics aren't the right tool for INFEASIBLE diagnostics —
+  they target FEASIBLE-but-suboptimal solves. Added an IIS-style
+  localization pass that fires on `parent_paramount`-caused
+  infeasibility: singleton isolation then deletion filter, reporting
+  the minimal correction set of campers whose hard MP constraints
+  can't be jointly satisfied. Output goes to logs and the
+  `parent_paramount_iis` field on `solver_runs.stats`.

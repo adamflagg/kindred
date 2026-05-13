@@ -223,8 +223,23 @@ async def run_solver_task_v2(
             try:
                 cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
                 logger.error(f"Infeasibility analysis result: {cause}")
+                solver_runs[run_id]["infeasibility_cause"] = cause
+
+                # If parent_paramount is the cause, localize the conflict to
+                # specific campers (Stream 5 — see docs/reference/solver-roadmap.md).
+                if isinstance(cause, str) and "parent_paramount" in cause:
+                    from bunking.solver.feasibility import localize_hard_mso_infeasibility
+
+                    iis = await asyncio.to_thread(
+                        localize_hard_mso_infeasibility,
+                        solver_input,
+                        config_service,
+                        5,  # time_limit_seconds per probe
+                    )
+                    logger.error(f"Hard-MSO IIS localization: {iis}")
+                    solver_runs[run_id]["parent_paramount_iis"] = iis
             except Exception as e:
-                logger.error(f"Failed to run infeasibility analysis: {e}")
+                logger.error(f"Failed to run infeasibility analysis: {e}", exc_info=True)
 
             raise ValueError("Solver failed to find a solution")
 

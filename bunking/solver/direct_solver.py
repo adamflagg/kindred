@@ -277,11 +277,15 @@ class DirectBunkingSolver:
         input_data: DirectSolverInput,
         config_service: ConfigLoader,
         debug_constraints: dict[str, bool] | None = None,
+        mp_skip_cms: set[int] | None = None,
     ):
         self.input = input_data
         self.config = config_service
         self.model = cp_model.CpModel()
         self.debug_constraints = debug_constraints or {}  # Dict of constraint names to disable
+        # IIS-localization probe: campers whose hard MP constraint should be
+        # skipped this run. Used only by the infeasibility analyzer.
+        self.mp_skip_cms: set[int] = set(mp_skip_cms or ())
 
         # Debug mode from SOLVER_LOG_LEVEL env var (consolidates solver.debug.enabled and log_level)
         solver_log_level = os.getenv("SOLVER_LOG_LEVEL", "INFO").upper()
@@ -368,6 +372,7 @@ class DirectBunkingSolver:
             soft_constraint_violations=self.soft_constraint_violations,
             soft_constraint_bonuses=self.soft_constraint_bonuses,
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
+            mp_skip_cms=self.mp_skip_cms,
         )
 
     def _session_grade_bounds_for_gender(self, session_cm_id: int, gender: str) -> tuple[int, int] | None:

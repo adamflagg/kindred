@@ -75,6 +75,13 @@ class SolverContext:
     # solver_runs.stats for SolverDebug visibility.
     mp_set_entirely_impossible: list[int] = field(default_factory=list)
 
+    # IIS-localization probe: when the infeasibility analyzer is bisecting the
+    # parent_paramount constraint set, it builds a context with this populated
+    # to skip the hard MP constraint for a specific subset of campers. Empty
+    # by default; production solver runs never set it. See
+    # `localize_hard_mso_infeasibility` in feasibility.py.
+    mp_skip_cms: set[int] = field(default_factory=set)
+
     def is_constraint_disabled(self, constraint_name: str) -> bool:
         """Check if a constraint is disabled in debug mode."""
         return self.debug_constraints.get(constraint_name, False)
