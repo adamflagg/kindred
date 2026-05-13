@@ -12,7 +12,12 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-import { extractBunkCmIdsFromPlans, extractSortKey, getBunkType } from './BunkSocialGraphModal'
+import {
+  buildBunksFilter,
+  extractBunkCmIdsFromPlans,
+  extractSortKey,
+  getBunkType,
+} from './BunkSocialGraphModal'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
 // Mirrors the useMemo body in BunkSocialGraphModal so we can assert the
@@ -160,6 +165,34 @@ describe('extractBunkCmIdsFromPlans', () => {
 
   it('returns [] for an empty input', () => {
     expect(extractBunkCmIdsFromPlans([])).toEqual([])
+  })
+})
+
+// ─── buildBunksFilter ────────────────────────────────────────────────────────
+// Regression guard for #1339 follow-up: the bunks table stores one row per
+// (cm_id, year). An unscoped `cm_id = X` filter returns N years of rows per
+// logical bunk, leaving allBunks/sessionBunks with adjacent duplicate-cm_id
+// entries. Navigation then silently no-ops when wrap lands on a same-cm_id-
+// different-year row (the "right arrow not rotating" symptom).
+
+describe('buildBunksFilter', () => {
+  it('always includes a year clause', () => {
+    const filter = buildBunksFilter([4267, 4268], 2026)
+    expect(filter).toContain('year = 2026')
+  })
+
+  it('joins cm_id clauses with disjunction inside a parenthesised group', () => {
+    const filter = buildBunksFilter([1, 2, 3], 2026)
+    expect(filter).toBe('(cm_id = 1 || cm_id = 2 || cm_id = 3) && year = 2026')
+  })
+
+  it('handles a single cm_id', () => {
+    const filter = buildBunksFilter([42], 2025)
+    expect(filter).toBe('(cm_id = 42) && year = 2025')
+  })
+
+  it('returns empty string for an empty cm_id list', () => {
+    expect(buildBunksFilter([], 2026)).toBe('')
   })
 })
 

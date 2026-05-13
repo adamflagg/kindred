@@ -119,6 +119,24 @@ export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
 }
 
 /**
+ * Build a PocketBase filter for fetching bunks by cm_id within a specific year.
+ *
+ * The bunks table stores one row per (cm_id, year) for history retention.
+ * Omitting the year clause returns ~N years of duplicate rows per logical
+ * bunk, which seeds the navigation list with adjacent same-cm_id entries
+ * and silently no-ops next/prev (#1339 audit follow-up).
+ *
+ * Returns an empty string for an empty cm_id list — callers should short-
+ * circuit before invoking.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const buildBunksFilter = (cmIds: number[], year: number): string => {
+  if (cmIds.length === 0) return ''
+  const clause = cmIds.map((id) => `cm_id = ${id}`).join(' || ')
+  return `(${clause}) && year = ${year}`
+}
+
+/**
  * Extract bunk cm_ids from a list of expanded bunk_plans records.
  *
  * `bunk_plans` schema (per `pocketbase/pb_migrations/1500000017_bunk_plans.js`)
@@ -229,7 +247,7 @@ export default function BunkSocialGraphModal({
       const bunkCmIds = extractBunkCmIdsFromPlans(bunkPlans)
       if (bunkCmIds.length === 0) return []
 
-      const bunkFilter = bunkCmIds.map((id) => `cm_id = ${id}`).join(' || ')
+      const bunkFilter = buildBunksFilter(bunkCmIds, year)
       const bunks = await pb.collection<Bunk>('bunks').getFullList({ filter: bunkFilter })
 
       // Sort bunks by name
