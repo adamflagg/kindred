@@ -162,7 +162,7 @@ async def test_build_run_details_scenario_short_label() -> None:
                 sweep_label=None,
             )
 
-    assert details["source_label"] == "2 · Scen: what-if-strict-grades"
+    assert details["source_label"] == "2 · what-if-strict-grades"
     assert details["source_kind"] == "scenario"
 
 
@@ -185,7 +185,7 @@ async def test_build_run_details_scenario_no_name_falls_back_to_id() -> None:
                 sweep_label=None,
             )
 
-    assert details["source_label"] == "2 · Scen: scen_xyz"
+    assert details["source_label"] == "2 · scen_xyz"
 
 
 @pytest.mark.asyncio
@@ -209,11 +209,11 @@ async def test_build_run_details_scenario_long_name_truncates() -> None:
                 sweep_label=None,
             )
 
-    # Label format: "{short} · Scen: {truncated}". Body must end with the
+    # Label format: "{short} · {truncated_name}". Body must end with the
     # ellipsis marker and the total displayed scenario name must not exceed
     # the documented budget.
     label = details["source_label"]
-    assert label.startswith("2 · Scen: ")
-    displayed = label[len("2 · Scen: ") :]
+    assert label.startswith("2 · ")
+    displayed = label[len("2 · ") :]
     assert displayed.endswith("…")
     assert len(displayed) <= 24

@@ -110,7 +110,7 @@ def _compose_source_label(
     if scenario_id is None:
         return f"{session_label} · CM", "production"
     display = _truncate_scenario_name(scenario_name or scenario_id)
-    return f"{session_label} · Scen: {display}", "scenario"
+    return f"{session_label} · {display}", "scenario"
 
 
 def compose_minimal_run_details(
