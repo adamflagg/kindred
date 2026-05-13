@@ -67,7 +67,6 @@ class TestOrchestratorMergeOnSave:
                 "has_database_duplicate": True,
                 "database_duplicate_id": "existing_pb_id_123",
                 "database_match_action": "merge",
-                "database_match_locked": False,
             },
         )
 
@@ -118,7 +117,6 @@ class TestOrchestratorMergeOnSave:
                 "has_database_duplicate": True,
                 "database_duplicate_id": "existing_pb_id_123",
                 "database_match_action": "merge",
-                "database_match_locked": False,
                 "original_request_id": "orig_req_456",  # The new source
             },
         )
@@ -167,7 +165,6 @@ class TestOrchestratorMergeOnSave:
                 "has_database_duplicate": True,
                 "database_duplicate_id": "existing_pb_id_123",
                 "database_match_action": "merge",
-                "database_match_locked": False,
             },
         )
 
@@ -276,53 +273,6 @@ class TestOrchestratorMergeOnSave:
             source_field="bunk_with",
         )
 
-    def test_locked_request_skips_auto_merge(self) -> None:
-        """Test that locked existing requests skip auto-merge.
-
-        When database_match_locked=True, we should NOT auto-merge.
-        Instead, create a new request and flag for manual review.
-        """
-        request = self._create_request(
-            source_field="bunking_notes",
-            metadata={
-                "has_database_duplicate": True,
-                "database_duplicate_id": "existing_locked_123",
-                "database_match_action": "merge",
-                "database_match_locked": True,  # Locked!
-                "original_request_id": "orig_req_456",
-            },
-        )
-
-        mock_request_repo = Mock()
-        mock_request_repo.create.return_value = True
-        mock_source_link_repo = Mock()
-
-        from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
-            RequestOrchestrator,
-        )
-
-        with patch.object(RequestOrchestrator, "__init__", lambda self: None):
-            orchestrator = RequestOrchestrator()
-            orchestrator.request_repository = mock_request_repo
-            orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
-
-            def set_id_on_create(req):
-                req.id = "new_pb_id_888"
-                return True
-
-            mock_request_repo.create.side_effect = set_id_on_create
-
-            saved = orchestrator._save_bunk_requests([request])
-
-        # Should create new, not merge (locked requests need manual review)
-        mock_request_repo.create.assert_called_once()
-        mock_request_repo.update_for_merge.assert_not_called()
-
-        # The saved request should be flagged for manual review
-        assert len(saved) == 1
-        assert saved[0].metadata.get("requires_manual_merge_review") is True
-
     def test_merge_preserves_higher_confidence(self) -> None:
         """Test that merge keeps the higher confidence score."""
         request = self._create_request(
@@ -332,7 +282,6 @@ class TestOrchestratorMergeOnSave:
                 "has_database_duplicate": True,
                 "database_duplicate_id": "existing_pb_id_123",
                 "database_match_action": "merge",
-                "database_match_locked": False,
             },
         )
 
@@ -374,7 +323,6 @@ class TestOrchestratorMergeOnSave:
                 "has_database_duplicate": True,
                 "database_duplicate_id": "existing_pb_id_123",
                 "database_match_action": "merge",
-                "database_match_locked": False,
             },
         )
 
