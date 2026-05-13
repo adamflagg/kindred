@@ -138,7 +138,11 @@ class OpenAIProvider(AIProvider):
             if self.debug and isinstance(parsed_response, AIParseResponse):
                 target_names = [r.target_name for r in parsed_response.requests]
                 request_types = [r.request_type for r in parsed_response.requests]
-                logger.debug(f"[AI-PARSE] Output: targets={target_names} request_types={request_types}")
+                age_directions = [r.age_direction for r in parsed_response.requests]
+                logger.debug(
+                    f"[AI-PARSE] Output: targets={target_names} request_types={request_types} "
+                    f"age_directions={age_directions}"
+                )
                 if reasoning_summary:
                     logger.debug(f"[AI-PARSE] Reasoning: {reasoning_summary}")
 
@@ -428,16 +432,25 @@ class OpenAIProvider(AIProvider):
                 supersedes_reason=supersedes_reason,
             )
 
-            # Handle age preference
-            if request_type == RequestType.AGE_PREFERENCE and parsed_request.target_name:
-                age_pref_map = {
+            # Handle age preference via structured age_direction field (#1401).
+            if request_type == RequestType.AGE_PREFERENCE:
+                if ai_req.target_name:
+                    # Drift: AI emitted old-shape target_name on age_preference. Salvage as
+                    # undirected — never silently re-map back to AgePreference, that masks
+                    # the bug class age_direction was introduced to eliminate.
+                    logger.error(
+                        "AI drift: target_name=%r on age_preference request — clearing and "
+                        "treating as undirected. AI must use age_direction field instead.",
+                        ai_req.target_name,
+                    )
+                    parsed_request.target_name = None
+                direction_map = {
                     "older": AgePreference.OLDER,
                     "younger": AgePreference.YOUNGER,
                 }
-                parsed_request.age_preference = age_pref_map.get(
-                    parsed_request.target_name.lower()
-                )  # "unclear" maps to None for manual review
-                parsed_request.target_name = None
+                parsed_request.age_preference = (
+                    direction_map.get(ai_req.age_direction) if ai_req.age_direction else None
+                )
 
             v2_requests.append(parsed_request)
 

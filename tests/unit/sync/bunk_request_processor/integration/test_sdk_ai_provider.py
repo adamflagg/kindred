@@ -894,3 +894,99 @@ class TestOpenAIProviderDisambiguateMetadata:
         assert meta.get("no_match") is True, "no_match must be written to metadata"
         assert meta.get("no_match_reason") == "No candidate shares name with target"
         assert meta.get("ranked_selections") is None
+
+
+class TestOpenAIProviderAgeDirectionConversion:
+    """#1401: provider reads ai_req.age_direction directly (no target_name overload).
+
+    Drift case — target_name set on an age_preference — is logged as ERROR and
+    salvaged as an undirected preference (age_preference=None, target_name=None),
+    NOT silently re-mapped back to AgePreference like the old age_pref_map block did.
+    """
+
+    @pytest.fixture
+    def context(self):
+        return AIRequestContext(
+            requester_name="Test User",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "share_bunk_with",
+                "csv_source_field": "share_bunk_with",
+            },
+        )
+
+    def _build_response(self, **kwargs):
+        return AIParseResponse(requests=[AIBunkRequestItem(request_type="age_preference", **kwargs)])
+
+    def test_direction_older_produces_age_preference_older(self, context):
+        from bunking.sync.bunk_request_processor.core.models import AgePreference
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        ai_response = self._build_response(age_direction="older")
+        result = provider._convert_parse_response(ai_response, "wants older cabinmates", context)
+
+        assert len(result.requests) == 1
+        parsed = result.requests[0]
+        assert parsed.request_type == RequestType.AGE_PREFERENCE
+        assert parsed.age_preference == AgePreference.OLDER
+        assert parsed.target_name is None
+
+    def test_direction_younger_produces_age_preference_younger(self, context):
+        from bunking.sync.bunk_request_processor.core.models import AgePreference
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        ai_response = self._build_response(age_direction="younger")
+        result = provider._convert_parse_response(ai_response, "wants younger cabinmates", context)
+
+        parsed = result.requests[0]
+        assert parsed.age_preference == AgePreference.YOUNGER
+        assert parsed.target_name is None
+
+    def test_direction_none_produces_age_preference_none(self, context):
+        """Undirected age preference — staff must review downstream via _age_preference_rules."""
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        ai_response = self._build_response(age_direction=None)
+        result = provider._convert_parse_response(ai_response, "wants age-appropriate cabin", context)
+
+        parsed = result.requests[0]
+        assert parsed.request_type == RequestType.AGE_PREFERENCE
+        assert parsed.age_preference is None
+        assert parsed.target_name is None
+
+    def test_drift_target_name_on_age_pref_logs_error_and_salvages(self, context, caplog):
+        """Old-shape drift: AI emits target_name="older" on age_preference.
+
+        Provider must log ERROR and salvage as undirected (NOT re-map back to AgePreference.OLDER
+        as the old age_pref_map block did). This is the regression-prevention guard.
+        """
+        import logging
+
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        ai_response = self._build_response(target_name="older", age_direction=None)
+
+        with caplog.at_level(logging.ERROR):
+            result = provider._convert_parse_response(ai_response, "older please", context)
+
+        parsed = result.requests[0]
+        assert parsed.age_preference is None, "drift target_name must NOT be silently re-mapped to AgePreference"
+        assert parsed.target_name is None, "drift target_name must be cleared during salvage"
+        assert any("age_direction" in r.message or "drift" in r.message.lower() for r in caplog.records), (
+            "drift must be logged at ERROR level"
+        )
