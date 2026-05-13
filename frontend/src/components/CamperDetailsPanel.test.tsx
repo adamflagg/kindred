@@ -1165,39 +1165,42 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  // Shared fixtures for the multi-field source-data sections below
+  // (Do NOT Share Bunk With + Staff Notes). The pre-existing Bunk Request
+  // Form describe has its own narrower helper and is intentionally untouched.
+  /** Build a minimal original_bunk_requests record with a custom field. */
+  function originalBunkRecord(
+    id: string,
+    field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
+    content: string
+  ) {
+    return {
+      id,
+      field,
+      content,
+      requester: 'pb-emma',
+      year: 2025,
+      created: '2025-01-01T00:00:00Z',
+      updated: '2025-05-01T00:00:00Z',
+      collectionId: 'original_bunk_requests',
+      collectionName: 'original_bunk_requests',
+      expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
+    }
+  }
+
+  function setupOriginalBunkRecords(records: Array<ReturnType<typeof originalBunkRecord>>) {
+    mockGetFullListPersons.mockResolvedValue([EMMA])
+    mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+    mockGetFullListBunkAssignments.mockResolvedValue([])
+    mockGetFullListBunkRequests.mockResolvedValue([])
+    mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+    mockGetListOriginalBunkRequests.mockResolvedValue({
+      items: records,
+      totalItems: records.length,
+    })
+  }
+
   describe('Do NOT Share Bunk With section (parent-sourced quick-ref)', () => {
-    /** Build a minimal original_bunk_requests record with a custom field. */
-    function originalBunkRecord(
-      id: string,
-      field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
-      content: string
-    ) {
-      return {
-        id,
-        field,
-        content,
-        requester: 'pb-emma',
-        year: 2025,
-        created: '2025-01-01T00:00:00Z',
-        updated: '2025-05-01T00:00:00Z',
-        collectionId: 'original_bunk_requests',
-        collectionName: 'original_bunk_requests',
-        expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
-      }
-    }
-
-    function setupOriginalBunkRecords(records: Array<ReturnType<typeof originalBunkRecord>>) {
-      mockGetFullListPersons.mockResolvedValue([EMMA])
-      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
-      mockGetFullListBunkAssignments.mockResolvedValue([])
-      mockGetFullListBunkRequests.mockResolvedValue([])
-      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
-      mockGetListOriginalBunkRequests.mockResolvedValue({
-        items: records,
-        totalItems: records.length,
-      })
-    }
-
     it('renders the "Do NOT Share Bunk With" section header when negative text exists', async () => {
       setupOriginalBunkRecords([originalBunkRecord('obr-1', 'not_bunk_with', 'Liam Garcia')])
 
@@ -1233,37 +1236,6 @@ describe('CamperDetailsPanel', () => {
   })
 
   describe('Staff Notes section (combines internal + bunking notes)', () => {
-    function originalBunkRecord(
-      id: string,
-      field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
-      content: string
-    ) {
-      return {
-        id,
-        field,
-        content,
-        requester: 'pb-emma',
-        year: 2025,
-        created: '2025-01-01T00:00:00Z',
-        updated: '2025-05-01T00:00:00Z',
-        collectionId: 'original_bunk_requests',
-        collectionName: 'original_bunk_requests',
-        expand: { requester: { first_name: 'Emma', last_name: 'Johnson' } },
-      }
-    }
-
-    function setupOriginalBunkRecords(records: Array<ReturnType<typeof originalBunkRecord>>) {
-      mockGetFullListPersons.mockResolvedValue([EMMA])
-      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
-      mockGetFullListBunkAssignments.mockResolvedValue([])
-      mockGetFullListBunkRequests.mockResolvedValue([])
-      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
-      mockGetListOriginalBunkRequests.mockResolvedValue({
-        items: records,
-        totalItems: records.length,
-      })
-    }
-
     it('renders Staff Notes with only internal notes when bunking notes is empty', async () => {
       setupOriginalBunkRecords([
         originalBunkRecord('obr-1', 'internal_notes', 'Watch for homesickness'),
