@@ -45,6 +45,9 @@ def test_shorten_session_name_taste() -> None:
     from api.services.run_tagging import _shorten_session_name
 
     assert _shorten_session_name("Taste of Camp") == "Taste"
+    # Split cohorts must be distinguishable on solver-debug source labels.
+    assert _shorten_session_name("Taste of Camp 1") == "Taste 1"
+    assert _shorten_session_name("Taste of Camp 2") == "Taste 2"
 
 
 def test_shorten_session_name_ag() -> None:

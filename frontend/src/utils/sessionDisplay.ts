@@ -257,6 +257,13 @@ export function getSessionShorthand(sessionName: string, sessionType?: string): 
 
   // Handle Taste of Camp
   if (sessionName.toLowerCase().includes('taste')) {
+    // When the camp runs two cohorts ("Taste of Camp 1" / "Taste of Camp 2"),
+    // preserve the trailing index so labels are distinguishable.
+    // Single-digit guard avoids interpreting year suffixes as cohort numbers.
+    const cohortMatch = sessionName.match(/\s(\d)\s*$/)
+    if (cohortMatch) {
+      return `Taste ${cohortMatch[1]}`
+    }
     return 'Taste'
   }
 

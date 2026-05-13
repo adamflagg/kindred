@@ -38,6 +38,12 @@ def _shorten_session_name(session_name: str) -> str:
     if "quest" in lower:
         return "Quest"
     if "taste" in lower:
+        # When the camp runs two cohorts ("Taste of Camp 1" / "Taste of Camp 2"),
+        # preserve the trailing index so solver-debug source labels are distinguishable.
+        # Single-digit guard avoids interpreting year suffixes as cohort numbers.
+        m = re.search(r"\s(\d)\s*$", session_name)
+        if m:
+            return f"Taste {m.group(1)}"
         return "Taste"
     m = re.search(r"Session\s*(\d+[a-z]?)", session_name, re.IGNORECASE)
     if m:

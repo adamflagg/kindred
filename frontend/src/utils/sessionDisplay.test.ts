@@ -255,7 +255,11 @@ describe('sessionDisplay utilities', () => {
 
     it('should return "Taste" for Taste of Camp sessions', () => {
       expect(getSessionShorthand('Taste of Camp')).toBe('Taste')
+      // Year suffixes must not be mistaken for cohort numbers.
       expect(getSessionShorthand('Taste of Camp 2025', 'taste')).toBe('Taste')
+      // Split cohorts must be distinguishable on solver-debug source labels.
+      expect(getSessionShorthand('Taste of Camp 1')).toBe('Taste 1')
+      expect(getSessionShorthand('Taste of Camp 2')).toBe('Taste 2')
     })
 
     it('should extract session number from "Session N" format', () => {
