@@ -257,6 +257,7 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
 from bunking.solver.constraints import (  # noqa: E402, F401
     age_preference as _age_preference_module,
     bunk_requests as _bunk_requests_module,
+    cabin_capacity as _cabin_capacity_module,
     gender as _gender_module,
     grade_spread as _grade_spread_module,
     session_boundary as _session_boundary_module,
