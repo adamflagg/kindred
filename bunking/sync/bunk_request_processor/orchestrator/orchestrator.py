@@ -2264,12 +2264,7 @@ class RequestOrchestrator:
             try:
                 # Check if this request should be merged with an existing DB record
                 if bunk_request.metadata.get("database_match_action") == "merge":
-                    if bunk_request.metadata.get("database_match_locked"):
-                        # Locked request - create new and flag for manual review
-                        saved = self._save_new_request_for_locked_merge(bunk_request)
-                    else:
-                        # Unlocked - perform auto-merge
-                        saved = self._merge_into_existing(bunk_request)
+                    saved = self._merge_into_existing(bunk_request)
                 else:
                     # No database match - create new request with source link
                     saved = self._save_new_request_with_source_link(bunk_request)
@@ -2380,24 +2375,6 @@ class RequestOrchestrator:
         )
 
         return True
-
-    def _save_new_request_for_locked_merge(self, request: BunkRequest) -> bool:
-        """Create a new request when merge target is locked.
-
-        Locked requests need manual review, so we create a separate record
-        and flag it for staff attention.
-
-        Args:
-            request: BunkRequest that would have merged with a locked record
-
-        Returns:
-            True if creation succeeded
-        """
-        # Flag for manual review
-        request.metadata["requires_manual_merge_review"] = True
-        request.metadata["locked_duplicate_id"] = request.metadata.get("database_duplicate_id")
-
-        return self._save_new_request_with_source_link(request)
 
     def _apply_validation_pipeline(
         self, requests: list[BunkRequest]
