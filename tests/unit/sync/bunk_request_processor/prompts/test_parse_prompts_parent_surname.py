@@ -10,9 +10,7 @@ from __future__ import annotations
 from collections.abc import Generator
 
 import pytest
-
 from bunking.sync.bunk_request_processor.prompts.loader import clear_cache, load_prompt
-
 
 PROMPTS_WITH_PARENT_RULE = ["parse_bunk_with", "parse_bunking_notes", "parse_internal_notes"]
 

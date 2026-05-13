@@ -685,7 +685,7 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_first_name.side_effect = lambda name, year=None: (
             [requester, other] if name.lower() == "katherine" else []
         )
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
         if result.is_resolved:
             assert result.person.cm_id != 999, "requester was not filtered from candidates"
@@ -695,7 +695,7 @@ class TestNormalizedSearchMergeFallback:
         person_repo, attendee_repo = mock_repositories
         kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
         person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
         assert result.is_resolved, "variants must still be tried when original returns empty"
         assert result.person.cm_id == 200
@@ -711,7 +711,7 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_first_name.side_effect = lambda name, year=None: (
             katherines if name.lower() == "katherine" else []
         )
-        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: {cm_id: 1001 for cm_id in cm_ids}
+        attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1001, year=2026)
         assert not result.is_resolved
         assert len(result.candidates or []) == 2
