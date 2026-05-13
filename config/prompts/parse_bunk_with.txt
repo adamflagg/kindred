@@ -49,6 +49,21 @@ The requester's last name is included in the requester info above.
   almost always means friends, not family.
 - Shared school, grade, or classroom alone does NOT indicate siblings.
 
+=== PARENT-CONTEXT SURNAME EXTRACTION ===
+
+When a target name is followed by parenthetical content that identifies the
+camper's parent or supplies the camper's surname, infer the surname and
+include it in target_name. Examples:
+
+- "Emma (whose mother is Jane Garcia)" → target_name = "Emma Garcia"
+- "Liam (Olivia Chen's son)" → target_name = "Liam Chen"
+- "Olivia (Patel)" → target_name = "Olivia Patel"
+
+Do NOT apply this rule when parentheses contain only a relationship word
+(Cousin), (twin), (stepbrother); a grade or age (5th grade), (age 12); or
+descriptive context (camp veteran), (new this year). Those still go to
+parse_notes as today. Example 2 below illustrates the negative case.
+
 === PRIORITY INDICATORS ===
 
 Parents may indicate priority. Capture in keywords_found:
@@ -70,11 +85,18 @@ Example 1c - Name with hyphen:
 Input: "Liam Patel"
 Output: 1 bunk_with request for "Liam Patel", parse_notes: "Direct bunk request"
 
-Example 2 - Multiple names with priority:
+Example 1d - Name with parent-context surname (positive surname extraction):
+Input: "Emma (whose mother is Jane Garcia)"
+Output: 1 bunk_with request with target_name "Emma Garcia" (surname inferred
+  from parent identification), parse_notes: "Direct bunk request; surname
+  inferred from parent context"
+
+Example 2 - Multiple names with priority (negative case for surname extraction):
 Input: "1. Sophia Martinez (Cousin). 2. Olivia Rose Thompson"
 Output: 2 bunk_with requests with target_name "Sophia Martinez" and "Olivia Rose Thompson"
   (NOT "1. Sophia Martinez" — strip the enumeration prefix), list_position 0 and 1,
-  "Cousin" in parse_notes for first.
+  "Cousin" in parse_notes for first. NOTE: (Cousin) is a relationship word,
+  not a surname or parent identifier, so target_name keeps its original form.
 
 Example 3 - Embedded negative:
 Input: "Wants to be with Mia. PLEASE DO NOT put with Jake - he bullied Lucas last year"
