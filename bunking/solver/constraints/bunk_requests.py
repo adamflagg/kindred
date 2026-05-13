@@ -168,3 +168,30 @@ def _create_not_bunk_with_satisfaction_var(
     ctx.model.AddBoolOr(different_bunks_vars).OnlyEnforceIf(sat_var)
 
     return sat_var
+
+
+from bunking.models_v2 import DirectBunkRequest  # noqa: E402
+from bunking.solver.impossibility import (  # noqa: E402
+    HardConstraintImpossibility,
+    ImpossibilityContext,
+    ImpossibilityReason,
+    register,
+)
+
+
+class MalformedRequestImpossibility(HardConstraintImpossibility):
+    name = "malformed"
+
+    def check_request(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        if req.request_type not in ("bunk_with", "not_bunk_with"):
+            return None
+        if not req.requested_person_cm_id:
+            return ImpossibilityReason(
+                code="malformed",
+                message=f"{req.request_type} request is missing requestee_id.",
+                detail={"request_type": req.request_type},
+            )
+        return None
+
+
+register(MalformedRequestImpossibility())
