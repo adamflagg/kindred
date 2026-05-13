@@ -203,6 +203,88 @@ class TestFullPipelineTracing:
         mock_trace_collector.record_phase2.assert_called()
 
     @pytest.mark.asyncio
+    async def test_phase2_trace_records_pipeline_strategies_tried(self, mock_orchestrator, mock_trace_collector):
+        """record_phase2() should propagate the pipeline_strategies_tried breadcrumb list
+        from ResolutionResult.metadata onto the Phase2IntentTrace it builds."""
+        # Re-arm the phase2 service so the resolution result carries the
+        # batch_resolve-style pipeline_strategies_tried metadata that orchestrator
+        # should read into the trace.
+        from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
+
+        mock_person = MagicMock()
+        mock_person.cm_id = 67890
+        mock_person.full_name = "Olivia Chen"
+        attempts = [
+            {
+                "strategy": "fuzzy_match",
+                "sub_method": "first_name_merged",
+                "confidence": 0.85,
+                "candidate_count": 1,
+                "resolved": True,
+                "ambiguous": False,
+            },
+        ]
+        resolution_result = ResolutionResult(
+            person=mock_person,
+            confidence=0.85,
+            method="fuzzy_match",
+            metadata={"pipeline_strategies_tried": attempts, "match_type": "first_name_merged"},
+        )
+
+        # Re-arm phase2_service / historical_verification_service to return the
+        # metadata-bearing result.
+        from bunking.sync.bunk_request_processor.core.models import (
+            ParsedRequest,
+            ParseRequest,
+            ParseResult,
+            RequestType,
+        )
+        from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+        parsed_req = ParsedRequest(
+            raw_text="Olivia Chen",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Olivia Chen",
+            age_preference=None,
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            confidence=0.95,
+            csv_position=1,
+            metadata={},
+        )
+        row_data = _make_raw_request()
+        parse_request = ParseRequest(
+            request_text="Olivia Chen",
+            field_name=SourceField.BUNK_REQUEST_FORM,
+            requester_cm_id=12345,
+            requester_name="Emma Johnson",
+            requester_grade="5",
+            session_cm_id=1000001,
+            session_name="Session 1",
+            year=2025,
+            row_data=row_data,
+        )
+        parse_result = ParseResult(
+            parsed_requests=[parsed_req],
+            is_valid=True,
+            parse_request=parse_request,
+        )
+        mock_orchestrator.phase1_service.batch_parse = AsyncMock(return_value=[parse_result])
+        mock_orchestrator.phase2_service.batch_resolve = AsyncMock(return_value=[(parse_result, [resolution_result])])
+        mock_orchestrator.historical_verification_service.verify = AsyncMock(
+            return_value=[(parse_result, [resolution_result])]
+        )
+
+        raw_requests = [_make_raw_request()]
+        await mock_orchestrator.process_requests(raw_requests=raw_requests, clear_existing=False)
+
+        mock_trace_collector.record_phase2.assert_called()
+        call_kwargs = mock_trace_collector.record_phase2.call_args.kwargs
+        intent_trace = call_kwargs["intent_trace"]
+        assert intent_trace.pipeline_strategies_tried == attempts, (
+            f"expected pipeline_strategies_tried={attempts!r}, got {intent_trace.pipeline_strategies_tried!r}"
+        )
+
+    @pytest.mark.asyncio
     async def test_historical_trace_called(self, mock_orchestrator, mock_trace_collector):
         """record_historical() should be called after historical verification."""
         raw_requests = [_make_raw_request()]
