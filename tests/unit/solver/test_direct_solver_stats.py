@@ -652,6 +652,73 @@ class TestSingleBunkRequestValidation:
         assert rv["all_campers_satisfied"] == 1
 
 
+class TestParentParamountStats:
+    """Stage 4 (#1379) hard MP constraint exposes two new keys on
+    ``request_validation`` for the SolverDebug dashboard:
+
+    - ``mp_set_entirely_impossible_count``: how many campers had MP requests
+      where every one was structurally impossible (cross-session,
+      unresolved name, etc.) — the hard constraint was not added for them.
+    - ``mp_set_entirely_impossible_cm_ids``: the cm_id list for the same
+      cohort.
+
+    Both must be present (even when zero) so the dashboard can render the
+    field without a missing-key fallback.
+    """
+
+    def _make_input(
+        self,
+        num_persons: int = 3,
+    ) -> DirectSolverInput:
+        # Single bunk — uses the fast-path solver (no grade_ratio / etc. config
+        # reads) so a plain MagicMock() config_service works, matching the
+        # pattern used by TestSingleBunkSatisfiedRequestsCentralization.
+        bunk = DirectBunk(
+            id="bunk-a",
+            campminder_id=9001,
+            name="G-1",
+            capacity=12,
+            gender="F",
+            session_cm_id=500,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="F",
+                session_cm_id=500,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+
+    def test_stats_includes_mp_set_entirely_impossible_count_zero_when_clean(self) -> None:
+        """When no camper has an all-impossible MP set, the count is 0 and
+        cm_ids is an empty list (still present, not missing)."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats["request_validation"]
+        assert rv["mp_set_entirely_impossible_count"] == 0
+        assert rv["mp_set_entirely_impossible_cm_ids"] == []
+
+    def test_stats_includes_mp_set_entirely_impossible_when_populated(self) -> None:
+        """When parent_paramount marks a camper as all-MP-impossible, the
+        count and cm_ids fields reflect the cohort exactly. Populates the
+        field directly on self (the constraint module would do this during
+        the build pass; tests bypass that pass)."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        solver.mp_set_entirely_impossible.extend([1000, 1001])
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats["request_validation"]
+        assert rv["mp_set_entirely_impossible_count"] == 2
+        assert sorted(rv["mp_set_entirely_impossible_cm_ids"]) == [1000, 1001]
+
+
 class TestSingleBunkSatisfiedRequestsCentralization:
     """Single-bunk path must use shared `calculate_satisfied_requests` so it:
 

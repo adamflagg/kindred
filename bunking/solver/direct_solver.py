@@ -322,6 +322,9 @@ class DirectBunkingSolver:
         self.soft_constraint_violations: dict[str, tuple[cp_model.IntVar, int]] = {}
         # Track soft constraint bonuses (rewards for good configurations)
         self.soft_constraint_bonuses: dict[str, tuple[cp_model.IntVar, int]] = {}
+        # Track campers whose entire MP request set was impossible — populated by
+        # parent_paramount's hard constraint pass; surfaced post-solve into stats.
+        self.mp_set_entirely_impossible: list[int] = []
 
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
@@ -364,6 +367,7 @@ class DirectBunkingSolver:
             debug_constraints=self.debug_constraints,
             soft_constraint_violations=self.soft_constraint_violations,
             soft_constraint_bonuses=self.soft_constraint_bonuses,
+            mp_set_entirely_impossible=self.mp_set_entirely_impossible,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
@@ -1317,6 +1321,11 @@ class DirectBunkingSolver:
         # Hard MSO bug signal: non-zero means the hard constraint failed to bind.
         # Dashboard and alerting latch onto this key specifically.
         self.request_validation_summary["mp_constraint_bug_signal"] = len(material_parent_unmet)
+        # Campers whose entire MP set was structurally impossible — the hard
+        # constraint was not added for them. Populated by parent_paramount
+        # during constraint build; surfaced here for dashboard visibility.
+        self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
+        self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
 
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet
