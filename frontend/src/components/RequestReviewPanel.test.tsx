@@ -1249,7 +1249,7 @@ describe('RequestReviewPanel', () => {
    * asserting on a literal object shape.
    */
   describe('Approve / Reject mutation payloads (#918)', () => {
-    it('approve button fires update with status=resolved and request_locked=true', async () => {
+    it('approve button fires update with status=resolved (no request_locked)', async () => {
       const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-approve-1',
         requester_id: 100,
@@ -1260,7 +1260,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.9,
         priority: 1,
-        request_locked: false,
       })
 
       // Wait for at least one row-level Approve button to appear
@@ -1282,11 +1281,10 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-approve-1', {
         status: 'resolved',
-        request_locked: true,
       })
     }, 10000)
 
-    it('reject button fires update with status=declined and request_locked=false', async () => {
+    it('reject button fires update with status=declined (no request_locked)', async () => {
       const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-reject-1',
         requester_id: 200,
@@ -1297,7 +1295,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.5,
         priority: 1,
-        request_locked: false,
       })
 
       const rejectButton = await findButtonByTitle('Reject')
@@ -1316,7 +1313,6 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-reject-1', {
         status: 'declined',
-        request_locked: false,
       })
     }, 10000)
   })
@@ -1365,7 +1361,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.7,
         priority: 1,
-        request_locked: false,
       })
 
       await expandRowById('req-collapse-approve-1')
@@ -1394,7 +1389,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.4,
         priority: 1,
-        request_locked: false,
       })
 
       await expandRowById('req-collapse-decline-1')
@@ -1428,7 +1422,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.8,
         priority: 1,
-        request_locked: false,
       }
       const rowB: Partial<BunkRequestsResponse> = {
         id: 'req-unrelated-b',
@@ -1440,7 +1433,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.6,
         priority: 2,
-        request_locked: false,
       }
 
       pb.collection.mockImplementation((name: string) => {
@@ -1542,7 +1534,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.75,
         priority: 1,
-        request_locked: false,
       })
 
       updateSpy.mockResolvedValue({})
@@ -1576,7 +1567,6 @@ describe('RequestReviewPanel', () => {
           // inverse mutation: PATCH back to pending
           expect(updateSpy).toHaveBeenCalledWith('req-undo-2', {
             status: 'pending',
-            request_locked: false,
           })
         },
         { timeout: 3000 }
@@ -1608,7 +1598,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.85,
         priority: 1,
-        request_locked: false,
       })
 
       // Approve succeeds; first undo attempt fails; second attempt succeeds.
@@ -1688,7 +1677,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'bunk_with',
         confidence_score: 0.9,
         priority: 1,
-        request_locked: false,
       } as BunkRequestsResponse
 
       const { pb } = (await import('../lib/pocketbase')) as unknown as {
@@ -1802,7 +1790,6 @@ describe('RequestReviewPanel', () => {
           request_type: 'bunk_with',
           confidence_score: 0.8,
           priority: 1,
-          request_locked: false,
         } as BunkRequestsResponse,
         {
           id: 'bulk-rec-2',
@@ -1814,7 +1801,6 @@ describe('RequestReviewPanel', () => {
           request_type: 'bunk_with',
           confidence_score: 0.7,
           priority: 1,
-          request_locked: false,
         } as BunkRequestsResponse,
       ]
 
@@ -1936,7 +1922,6 @@ describe('RequestReviewPanel', () => {
         request_type: 'not_bunk_with',
         confidence_score: 0.6,
         priority: 2,
-        request_locked: false,
       })
 
       updateSpy.mockResolvedValue({})
@@ -1949,7 +1934,6 @@ describe('RequestReviewPanel', () => {
       await waitFor(() => {
         expect(updateSpy).toHaveBeenCalledWith('req-undo-3', {
           status: 'declined',
-          request_locked: false,
         })
       })
 
@@ -1965,7 +1949,7 @@ describe('RequestReviewPanel', () => {
 
       await user.click(undoBtn)
 
-      // Inverse: restore to pending (prior state was pending, request_locked false)
+      // Inverse: restore to pending (prior state was pending)
       await waitFor(
         () => {
           const calls = updateSpy.mock.calls

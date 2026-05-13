@@ -16,7 +16,6 @@ const baseRequest: Partial<BunkRequestsResponse> = {
   session_id: 1000001,
   year: 2025,
   is_reciprocal: false,
-  request_locked: false,
   confidence_score: 0.5,
   priority: 1,
   created: '2025-01-01',
@@ -139,14 +138,6 @@ describe('RequestEditableHeader rendering', () => {
       }
     )
     expect(screen.getByRole('button', { name: /Prefers older/i })).toBeInTheDocument()
-  })
-
-  it('disables both pickers when request_locked is true', () => {
-    renderHeader({}, { request_locked: true })
-    const typeButton = screen.getByRole('button', { name: /^Bunk With$/i })
-    const targetButton = screen.getByRole('button', { name: /Olivia Chen/i })
-    expect(typeButton).toBeDisabled()
-    expect(targetButton).toBeDisabled()
   })
 
   it('emits onUpdate with computeTypeUpdate output when type changes', () => {

@@ -468,7 +468,6 @@ describe('AllCamperRequestsModal — target picker', () => {
     priority: 1,
     confidence_score: 0.5,
     is_reciprocal: false,
-    request_locked: false,
     created: '2025-01-01',
     updated: '2025-01-01',
   }
@@ -532,11 +531,11 @@ describe('AllCamperRequestsModal — target picker', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Modal target/type pickers must mirror row-level behavior: visible for ANY
-  // status (resolved/declined/pending), disabled only by request_locked.
+  // Modal target/type pickers must mirror row-level behavior: visible and
+  // editable for ANY status (resolved/declined/pending).
   // ---------------------------------------------------------------------------
 
-  it('renders EditableRequestTarget (disabled) for a locked resolved request', async () => {
+  it('renders EditableRequestTarget (enabled) for a resolved request', async () => {
     const resolvedRequest = {
       id: 'req-resolved-1',
       request_type: 'bunk_with',
@@ -549,7 +548,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 1.0,
       is_reciprocal: false,
-      request_locked: true,
       created: '2025-01-01',
       updated: '2025-01-01',
     }
@@ -559,13 +557,12 @@ describe('AllCamperRequestsModal — target picker', () => {
 
     renderModal({ requesterCmId: 100, year: 2025 })
 
-    // Picker button shows the resolved name (no "(unresolved)" suffix) and is disabled.
     const pickerButton = await screen.findByRole('button', { name: /^Olivia Chen$/i })
     expect(pickerButton).toBeInTheDocument()
-    expect(pickerButton).toBeDisabled()
+    expect(pickerButton).not.toBeDisabled()
   })
 
-  it('renders EditableRequestTarget (enabled) for a declined unlocked request', async () => {
+  it('renders EditableRequestTarget (enabled) for a declined request', async () => {
     const declinedRequest = {
       id: 'req-declined-1',
       request_type: 'bunk_with',
@@ -578,7 +575,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 0.6,
       is_reciprocal: false,
-      request_locked: false,
       created: '2025-01-01',
       updated: '2025-01-01',
     }
@@ -606,7 +602,6 @@ describe('AllCamperRequestsModal — target picker', () => {
       priority: 1,
       confidence_score: 1.0,
       is_reciprocal: false,
-      request_locked: false,
       created: '2025-01-01',
       updated: '2025-01-01',
     }
