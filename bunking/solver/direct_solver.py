@@ -38,7 +38,7 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints, add_grade_spread_soft_constraint
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
-from .constraints.must_satisfy import add_must_satisfy_one_request_constraints
+from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger

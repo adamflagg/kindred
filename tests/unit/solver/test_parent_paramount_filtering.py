@@ -25,7 +25,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_bunk_with_source_field_is_explicit(self):
         """A request with source_field=SourceField.BUNK_REQUEST_FORM IS included as bunk request."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.BUNK_REQUEST_FORM, "bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -35,7 +35,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_not_bunk_with_source_field_is_explicit(self):
         """A request with source_field=SourceField.STAFF_NOT_BUNK_WITH IS included as bunk request."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.STAFF_NOT_BUNK_WITH, "not_bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -45,7 +45,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_bunking_notes_source_field_is_explicit(self):
         """A request with source_field=SourceField.BUNKING_NOTES IS included."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.BUNKING_NOTES, "bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -54,7 +54,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_internal_notes_source_field_is_explicit(self):
         """A request with source_field=SourceField.INTERNAL_NOTES IS included."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.INTERNAL_NOTES, "bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -63,7 +63,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_socialize_with_source_field_is_excluded(self):
         """A request with source_field=SourceField.SOCIALIZE_WITH is EXCLUDED."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.SOCIALIZE_WITH, "bunk_with")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -73,7 +73,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_age_preference_from_explicit_field_is_included(self):
         """An age_preference request from an explicit source field IS included in age_requests."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.BUNK_REQUEST_FORM, "age_preference")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])
@@ -83,7 +83,7 @@ class TestExplicitSourceFieldFiltering:
 
     def test_age_preference_from_socialize_excluded(self):
         """An age_preference from socialize_with is excluded entirely."""
-        from bunking.solver.constraints.must_satisfy import _filter_and_categorize_requests
+        from bunking.solver.constraints.parent_paramount import _filter_and_categorize_requests
 
         request = _make_request(SourceField.SOCIALIZE_WITH, "age_preference")
         bunk_reqs, age_reqs = _filter_and_categorize_requests([request])

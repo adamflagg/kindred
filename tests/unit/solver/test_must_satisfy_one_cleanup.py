@@ -52,7 +52,7 @@ def test_schema_keeps_penalty() -> None:
 
 
 def _must_satisfy_source() -> str:
-    import bunking.solver.constraints.must_satisfy as mod
+    import bunking.solver.constraints.parent_paramount as mod
 
     return inspect.getsource(mod)
 
