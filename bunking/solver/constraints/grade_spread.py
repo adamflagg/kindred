@@ -187,8 +187,6 @@ class GradeCompatibilityImpossibility(HardConstraintImpossibility):
 
     Pair: if |a.grade - b.grade| > (max_range - 1), the pair cannot
     co-occupy ANY bunk satisfying grade_spread + grade_adjacency.
-
-    Cluster: added in Task 9.
     """
 
     name = "grade_compatibility"
@@ -225,33 +223,6 @@ class GradeCompatibilityImpossibility(HardConstraintImpossibility):
                 "max_gap_allowed": max_gap,
                 "requester_grade": requester.grade,
                 "requestee_grade": requestee.grade,
-            },
-        )
-
-    def check_cluster(self, component_cms: set[int], ctx: ImpossibilityContext) -> ImpossibilityReason | None:
-        if len(component_cms) < 2:
-            return None
-        grades = [ctx.person_by_cm_id[cm].grade for cm in component_cms if cm in ctx.person_by_cm_id]
-        if not grades:
-            return None
-        gmin, gmax = min(grades), max(grades)
-        max_gap = self._max_gap(ctx)
-        rng = gmax - gmin
-        if rng <= max_gap:
-            return None
-        return ImpossibilityReason(
-            code="cluster_grade_compatibility",
-            message=(
-                f"A group of {len(component_cms)} campers linked by bunk_with "
-                f"spans grades {gmin}-{gmax} (range {rng}); cabins can only "
-                f"span {max_gap + 1} consecutive grade(s)."
-            ),
-            detail={
-                "grade_min": gmin,
-                "grade_max": gmax,
-                "range": rng,
-                "max_range_allowed": max_gap,
-                "size": len(component_cms),
             },
         )
 
