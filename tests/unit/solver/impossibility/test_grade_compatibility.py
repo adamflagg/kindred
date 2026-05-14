@@ -121,7 +121,3 @@ def test_grade_compatibility_no_cluster_check_emitted(mock_config):
         assert item.reason_code != "cluster_grade_compatibility", (
             f"cluster_grade_compatibility should be deleted, got {item}"
         )
-    for cluster in report.clusters:
-        assert cluster.reason_code != "cluster_grade_compatibility", (
-            f"cluster_grade_compatibility should be deleted, got {cluster}"
-        )

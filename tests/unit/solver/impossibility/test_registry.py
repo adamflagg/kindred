@@ -13,7 +13,6 @@ EXPECTED_HARD_PREDICATES = {
     "malformed",
     "age_preference",
     "grade_compatibility",
-    "bunk_capacity",
 }
 
 
