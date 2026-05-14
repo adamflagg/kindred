@@ -292,3 +292,31 @@ class TestParentParamountPartialImpossible:
         assert 100 not in ctx.mp_set_entirely_impossible, (
             "Camper with at least one possible MP request must NOT appear in mp_set_entirely_impossible"
         )
+
+
+class TestParentParamountSharesSatVarMap:
+    def test_mp_bunk_requests_registered_in_shared_map(self):
+        """parent_paramount must register MP bunk-request sat vars in the
+        shared ctx.request_satisfied_vars map (so add_objective can reuse
+        them instead of building duplicates)."""
+        camper1 = create_person(cm_id=100, first_name="Emma", last_name="Johnson", gender="F", grade=5)
+        camper2 = create_person(cm_id=200, first_name="Liam", last_name="Garcia", gender="F", grade=5)
+        bunk1 = create_bunk(cm_id=2001, name="G-1", gender="F", capacity=12)
+        bunk2 = create_bunk(cm_id=2002, name="G-2", gender="F", capacity=12)
+
+        req = _mp_request("r1", requester_cm_id=100, requested_cm_id=200)
+
+        ctx = build_solver_context(
+            persons=[camper1, camper2],
+            bunks=[bunk1, bunk2],
+            requests=[req],
+        )
+
+        from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
+
+        add_must_satisfy_one_request_constraints(ctx)
+
+        assert "r1" in ctx.request_satisfied_vars, (
+            "parent_paramount must build MP bunk-request sat vars through the "
+            "shared get_or_create_request_sat_var builder"
+        )
