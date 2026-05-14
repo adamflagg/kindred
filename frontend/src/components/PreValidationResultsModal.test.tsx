@@ -220,7 +220,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     )
 
     expect(screen.getByText(/Olivia Chen/)).toBeInTheDocument()
-    expect(screen.getByText(/no compatible cabin in this session/)).toBeInTheDocument()
+    expect(screen.getByText(/can't bunk cross-gender outside of AG/)).toBeInTheDocument()
   })
 
   it('renders each reason block as a <details> element with open attribute by default', () => {

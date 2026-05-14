@@ -148,7 +148,7 @@ function getNonCapacityErrors(errors: string[]): string[] {
 const FRIENDLY_REASON_LABELS: Record<string, string> = {
   grade_compatibility: 'Grade range too wide',
   cross_session: 'Different sessions',
-  pair_no_shared_bunk: "Can't share a cabin (no compatible cabin available)",
+  pair_no_shared_bunk: "Can't share a cabin",
   age_pref_no_eligible_grade: 'No matching age group available',
   malformed: 'Incomplete request',
 }
@@ -193,8 +193,8 @@ function renderSubtext(
     case 'pair_no_shared_bunk':
       return r ? (
         <div className="text-xs text-stone-600">
-          wants to bunk with <strong>{r.name}</strong> ({r.gender}) — no compatible cabin in this
-          session
+          wants to bunk with <strong>{r.name}</strong> ({r.gender}) — can't bunk cross-gender
+          outside of AG
         </div>
       ) : null
 
