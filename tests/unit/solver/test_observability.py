@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from bunking.models_v2 import DirectBunkRequest
 from bunking.solver.observability import (
     _build_impossible_by_reason_by_bucket,
@@ -54,13 +56,13 @@ class TestRequestDensityHistogramByBucket:
         result = _build_request_density_histogram_by_bucket({1001: [_req("r1", 1001, "bunk_with")], 1002: []})
         assert result == {"material_parent": {1: 1}, "immaterial_parent": {}, "staff": {}}
 
-    def test_unknown_source_field_is_dropped_and_logged(self, caplog) -> None:
+    def test_unknown_source_field_is_dropped_and_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.DEBUG):
             result = _build_request_density_histogram_by_bucket({1001: [_req("r1", 1001, "garbage_field")]})
         assert result == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
         assert any("garbage_field" in r.message for r in caplog.records)
 
-    def test_missing_source_field_is_dropped(self, caplog) -> None:
+    def test_missing_source_field_is_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.DEBUG):
             result = _build_request_density_histogram_by_bucket({1001: [_req("r1", 1001, None)]})
         assert result == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
@@ -107,7 +109,7 @@ class TestImpossibleByReasonByBucket:
             "staff": {},
         }
 
-    def test_unknown_source_field_is_dropped_and_logged(self, caplog) -> None:
+    def test_unknown_source_field_is_dropped_and_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.DEBUG):
             result = _build_impossible_by_reason_by_bucket([(_req("r1", 1001, "garbage_field"), "malformed")])
         assert result == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
