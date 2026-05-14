@@ -7,6 +7,7 @@ import {
 import { pickStat } from './pickStat'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
+import type { RequestBucket } from '../../../types/satisfaction'
 
 const GROUP_ORDER: MetricGroup[] = [
   'outcome_requests',
@@ -38,8 +39,8 @@ export interface RunSummary {
   solution_strategy?: string
   constraint_type_breakdown?: Record<string, number>
   soft_constraints_by_module?: Record<string, number>
-  request_density_histogram?: Record<string, number>
-  impossible_request_breakdown?: Record<string, number>
+  request_density_histogram_by_bucket?: Record<RequestBucket, Record<string, number>>
+  impossible_request_breakdown?: Record<RequestBucket, Record<string, number>>
   config_snapshot?: Record<string, string>
 }
 
@@ -54,6 +55,11 @@ function metricValue(key: string, raw: number | null | undefined): string | numb
   const fmt = getMetric(key).format
   if (fmt === 'percent' || fmt === 'duration') return formatMetric(key, raw)
   return raw
+}
+
+/** True if any bucket in a per-bucket dict has at least one entry. */
+export function hasNonEmptyBuckets(d: Record<string, Record<string, number>>): boolean {
+  return Object.values(d).some((inner) => Object.keys(inner).length > 0)
 }
 
 export function buildRunSummary(run: SolverRun): RunSummary {
@@ -93,11 +99,14 @@ export function buildRunSummary(run: SolverRun): RunSummary {
   ) {
     summary.soft_constraints_by_module = stats.soft_constraints_by_module
   }
-  if (stats.request_density_histogram && Object.keys(stats.request_density_histogram).length > 0) {
-    summary.request_density_histogram = stats.request_density_histogram
+  if (
+    stats.request_density_histogram_by_bucket &&
+    hasNonEmptyBuckets(stats.request_density_histogram_by_bucket)
+  ) {
+    summary.request_density_histogram_by_bucket = stats.request_density_histogram_by_bucket
   }
   const breakdown = stats.request_validation?.impossible_by_reason
-  if (breakdown && Object.values(breakdown).some((n) => n > 0)) {
+  if (breakdown && hasNonEmptyBuckets(breakdown)) {
     summary.impossible_request_breakdown = breakdown
   }
   if (details.config_snapshot) summary.config_snapshot = details.config_snapshot

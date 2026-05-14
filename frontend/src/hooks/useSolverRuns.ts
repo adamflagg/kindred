@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 
 import { pb } from '../lib/pocketbase'
 import { queryKeys, type SolverRunsFilters } from '../utils/queryKeys'
+import type { RequestBucket } from '../types/satisfaction'
 
 export interface SolverRunStats {
   status?: string
@@ -23,11 +24,11 @@ export interface SolverRunStats {
   model_num_variables?: number
   model_num_constraints?: number
   constraint_type_breakdown?: Record<string, number>
-  // Tier 1 observability (Stream 2, issue #1380)
+  // Tier 1 observability (Stream 2, issue #1388)
   num_reified_linear?: number
   max_linear_coefficient?: number
   soft_constraints_by_module?: Record<string, number>
-  request_density_histogram?: Record<string, number>
+  request_density_histogram_by_bucket?: Record<RequestBucket, Record<string, number>>
   objective_value?: number | null
   total_requests?: number | null
   total_persons?: number | null
@@ -49,8 +50,8 @@ export interface SolverRunStats {
     mp_campers_satisfied?: number
     all_campers_total?: number
     all_campers_satisfied?: number
-    // Tier 1 observability (Stream 2, issue #1380)
-    impossible_by_reason?: Record<string, number>
+    // Tier 1 observability (Stream 2, issue #1388)
+    impossible_by_reason?: Record<RequestBucket, Record<string, number>>
   }
 }
 
