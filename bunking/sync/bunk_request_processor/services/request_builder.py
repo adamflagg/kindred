@@ -247,9 +247,11 @@ class RequestBuilder:
         # No person ID cases
         if person_cm_id is None:
             if parsed_req.request_type == RequestType.AGE_PREFERENCE:
+                # Mirror disposition_rules._age_preference_rules — staff need
+                # `undirected_preference` reason to surface these for review (#1406).
                 if parsed_req.age_preference is not None:
                     return RequestStatus.RESOLVED, "directional_preference"
-                return RequestStatus.PENDING, ""
+                return RequestStatus.PENDING, "undirected_preference"
             return RequestStatus.PENDING, ""
 
         # Negative ID means unresolved name
