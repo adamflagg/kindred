@@ -1851,6 +1851,28 @@ func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 	}
 }
 
+// TestJobMeta_IncludesOrphanReconciler asserts the orphan reconciler is
+// registered in syncJobMeta so the phase API (?phase=transform) and the sync
+// dashboard surface it like every other sync job. Its predecessor
+// reconcile_request_lifecycle is registered there; orphan_reconciler must be too.
+func TestJobMeta_IncludesOrphanReconciler(t *testing.T) {
+	if got := GetPhaseForJob("orphan_reconciler"); got != PhaseTransform {
+		t.Errorf("GetPhaseForJob(\"orphan_reconciler\") = %q, want %q", got, PhaseTransform)
+	}
+
+	jobs := GetJobsForPhase(PhaseTransform)
+	found := false
+	for _, j := range jobs {
+		if j == "orphan_reconciler" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("orphan_reconciler missing from GetJobsForPhase(PhaseTransform): %v", jobs)
+	}
+}
+
 // TestJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
 func TestJobMeta_ProcessPhaseJobs(t *testing.T) {
 	expectedProcessJobs := []string{

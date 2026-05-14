@@ -332,3 +332,61 @@ func TestOrphanReconciler_Idempotent(t *testing.T) {
 		t.Errorf("not idempotent — second run changed state: bunk=%q", got.GetString("bunk"))
 	}
 }
+
+// TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal verifies that a failure
+// querying production bunk_assignments is recorded in Stats.Errors — so
+// WasSuccessful() reports false — but does NOT abort the run: the draft sweep
+// that already succeeded must still stand.
+func TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupOrphanCollections(t, app)
+
+	// Drop bunk_assignments so the production-audit query fails. The draft
+	// sweep (bunk_assignments_draft) is unaffected.
+	prodCol, err := app.FindCollectionByNameOrId("bunk_assignments")
+	if err != nil {
+		t.Fatalf("find bunk_assignments: %v", err)
+	}
+	if err = app.Delete(prodCol); err != nil {
+		t.Fatalf("delete bunk_assignments: %v", err)
+	}
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	goneBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	// Only keptBunk has a plan for the session — the draft below is stranded.
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": keptBunk.Id, "session": sess.Id, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+	draft := saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": person.Id, "session": sess.Id,
+		"bunk": goneBunk.Id, "year": 2026,
+	})
+
+	svc := NewOrphanReconcilerSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync must not return an error on a prod-query failure: %v", err)
+	}
+
+	// The draft sweep still ran despite the prod-query failure.
+	got, err := app.FindRecordById("bunk_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if got.GetString("bunk") != "" {
+		t.Errorf("stranded draft bunk should be cleared, got %q", got.GetString("bunk"))
+	}
+
+	// ...but the prod-query failure is recorded and surfaced.
+	if svc.Stats.Errors == 0 {
+		t.Error("Stats.Errors should be > 0 after a production-query failure")
+	}
+	if svc.WasSuccessful() {
+		t.Error("WasSuccessful() should be false when Stats.Errors > 0")
+	}
+}

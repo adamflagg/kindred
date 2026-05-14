@@ -90,6 +90,7 @@ var syncJobMeta = []JobMeta{
 	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
 	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
 	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
+	{"orphan_reconciler", PhaseTransform, "Auto-unassign scenario drafts stranded by bunk-plan changes"},
 
 	// Process phase - CSV + AI
 	{"reconcile_request_lifecycle", PhaseProcess, "Mark moved-requester OBRs for reprocessing"},
@@ -448,12 +449,15 @@ func GetWeeklySyncJobs() []string {
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
 // Runs in order: bunks (fetch latest bunk list), bunk_plans (update plans),
-// then bunk_assignments (update assignments).
+// bunk_assignments (update assignments), then orphan_reconciler — the bunk_plans
+// rewrite is exactly what strands scenario drafts, so they must be swept in the
+// same run rather than left until the next daily sync.
 func GetRefreshBunkingJobs() []string {
 	return []string{
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
+		"orphan_reconciler",
 	}
 }
 

@@ -218,6 +218,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		"year", year,
 		"stranded_drafts", len(strandedDrafts),
 		"drafts_swept", stats.Updated,
+		"errors", stats.Errors,
 	)
 	return nil
 }
