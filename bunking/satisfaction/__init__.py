@@ -3,6 +3,7 @@
 Public API:
 - RequestBucket, COUNTED_BUCKETS, classify_request — bucket policy
 - is_request_satisfied — per-request predicate
+- satisfied_request_ids_by_person — batch predicate over a finished assignment set
 - camper_satisfaction — per-camper aggregator (pure)
 - session_satisfaction — top-level entry (fetches PB data)
 - bucket_status — single-bucket 3-state classification helper
@@ -29,6 +30,7 @@ from bunking.satisfaction.bucket import (
     is_material_parent_request,
 )
 from bunking.satisfaction.predicate import is_request_satisfied
+from bunking.satisfaction.batch import satisfied_request_ids_by_person
 
 __all__ = [
     "COUNTED_BUCKETS",
@@ -44,5 +46,6 @@ __all__ = [
     "classify_request",
     "is_material_parent_request",
     "is_request_satisfied",
+    "satisfied_request_ids_by_person",
     "session_satisfaction",
 ]
