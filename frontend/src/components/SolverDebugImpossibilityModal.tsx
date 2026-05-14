@@ -30,7 +30,7 @@ function compactDetail(detail: Record<string, unknown> | null | undefined): stri
     .join(', ')
 }
 
-type SortColumn = 'reason' | 'name'
+type SortColumn = 'reason' | 'name' | 'type'
 type SortDir = 'asc' | 'desc'
 
 interface Props {
@@ -55,8 +55,18 @@ export default function SolverDebugImpossibilityModal({
   const sorted = useMemo(() => {
     const arr = [...report.flat]
     arr.sort((a, b) => {
-      const av: string | number = sortCol === 'reason' ? a.reason_code : a.requester.name
-      const bv: string | number = sortCol === 'reason' ? b.reason_code : b.requester.name
+      const get = (item: ImpossibilityReportItem): string | number => {
+        switch (sortCol) {
+          case 'reason':
+            return item.reason_code
+          case 'name':
+            return item.requester.name
+          case 'type':
+            return item.request_type
+        }
+      }
+      const av = get(a)
+      const bv = get(b)
       if (av < bv) return sortDir === 'asc' ? -1 : 1
       if (av > bv) return sortDir === 'asc' ? 1 : -1
       return 0
@@ -89,7 +99,7 @@ export default function SolverDebugImpossibilityModal({
           {report.total_impossible} impossible requests · {report.affected_campers} campers affected
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="mr-12 flex items-center gap-2">
         <button
           type="button"
           onClick={handleCopyJson}
@@ -132,8 +142,11 @@ export default function SolverDebugImpossibilityModal({
                 <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                   Camper B
                 </th>
-                <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
-                  Type
+                <th
+                  onClick={() => handleSort('type')}
+                  className="cursor-pointer border-b border-stone-300 px-2 py-1 text-left font-semibold hover:bg-stone-200"
+                >
+                  Type{arrow('type')}
                 </th>
                 <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                   Detail
