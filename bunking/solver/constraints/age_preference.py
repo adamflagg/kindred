@@ -262,12 +262,19 @@ class AgePreferenceImpossibility(HardConstraintImpossibility):
         session = ctx.person_session.get(req.requester_person_cm_id)
         if session is None:
             return None
+        # grade=0 is the "unknown grade" sentinel set by data_fetcher when the
+        # source record has no grade. Refuse to call impossible on either side
+        # without real grades — defer to the solver rather than emit a spurious
+        # 'no younger peer' that fires because 0 < every real grade.
+        if requester.grade <= 0:
+            return None
         same_gender_peers = [
             p
             for p in ctx.input.persons
             if p.gender == requester.gender
             and ctx.person_session.get(p.campminder_person_id) == session
             and p.campminder_person_id != requester.campminder_person_id
+            and p.grade > 0
         ]
         if not same_gender_peers:
             return ImpossibilityReason(

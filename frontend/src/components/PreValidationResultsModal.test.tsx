@@ -86,7 +86,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     expect(screen.getByText(/heads up/i)).toBeInTheDocument()
   })
 
-  it('renders "Prefers older bunkmates — already in the oldest grade" subtext for age_pref_no_eligible_grade older case', () => {
+  it('renders "Wants older — already at top grade" subtext for age_pref_no_eligible_grade older case', () => {
     const results = {
       valid: false,
       errors: [],
@@ -127,8 +127,8 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       />
     )
 
-    expect(screen.getByText(/Prefers older bunkmates/)).toBeInTheDocument()
-    expect(screen.getByText(/already in the oldest grade in their session/)).toBeInTheDocument()
+    expect(screen.getByText(/Wants older/)).toBeInTheDocument()
+    expect(screen.getByText(/already at oldest grade/)).toBeInTheDocument()
   })
 
   it('renders cross_session subtext with sessionLookup-resolved session name', () => {
@@ -156,14 +156,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
               request_type: 'bunk_with',
               requester: { name: 'Aubrey Engler', cm_id: 10, grade: 4, gender: 'F' },
               requestee: { name: 'Judith Klein', cm_id: 11, grade: 4, gender: 'F' },
-              detail: { requester_session: 1378702, requestee_session: 1378704 },
+              detail: { requester_session: 1000001, requestee_session: 1000002 },
             },
           ],
         },
         flat: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
-    const sessionLookup = (cm: number) => (cm === 1378704 ? 'Pioneer Period' : 'Taste of Camp')
+    const sessionLookup = (cm: number) => (cm === 1000002 ? 'Pioneer Period' : 'Taste of Camp')
 
     render(
       <PreValidationResultsModal
@@ -176,6 +176,103 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
 
     expect(screen.getByText(/Pioneer Period/)).toBeInTheDocument()
     expect(screen.getByText(/Judith Klein/)).toBeInTheDocument()
+  })
+
+  it('cross-gender pair shows requester gender on top line and requestee grade in subtext', () => {
+    const results = {
+      valid: false,
+      errors: [],
+      warnings: [],
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
+      impossibility_report: {
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: {
+          pair_no_shared_bunk: [
+            {
+              request_id: 'br_cg',
+              reason_code: 'pair_no_shared_bunk',
+              reason_message: 'cross gender',
+              request_type: 'bunk_with',
+              requester: { name: 'Samuel Johnson', cm_id: 40, grade: 5, gender: 'M' },
+              requestee: { name: 'Emma Johnson', cm_id: 41, grade: 7, gender: 'F' },
+              detail: { requester_gender: 'M', requestee_gender: 'F', session: 1000001 },
+            },
+          ],
+        },
+        flat: [],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={() => undefined}
+      />
+    )
+
+    // Top line shows requester's gender — used to be only name + grade.
+    expect(screen.getByText(/Samuel Johnson \(M\) · 5th/)).toBeInTheDocument()
+    // Subtext surfaces requestee gender (in parens, right next to name) and
+    // grade (short "Xth" form) — staff scan name → gender → grade left-to-right.
+    expect(screen.getByText(/Emma Johnson \(F\)/)).toBeInTheDocument()
+  })
+
+  it('renders not_bunk_with subtext with negative wording (not "wants to bunk with")', () => {
+    const results = {
+      valid: false,
+      errors: [],
+      warnings: [],
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
+      impossibility_report: {
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: {
+          grade_compatibility: [
+            {
+              request_id: 'br_nb',
+              reason_code: 'grade_compatibility',
+              reason_message: 'gap too wide',
+              request_type: 'not_bunk_with',
+              requester: { name: 'Emma Johnson', cm_id: 30, grade: 5, gender: 'F' },
+              requestee: { name: 'Olivia Chen', cm_id: 31, grade: 8, gender: 'F' },
+              detail: {},
+            },
+          ],
+        },
+        flat: [],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={() => undefined}
+      />
+    )
+
+    // Verb must reflect the negative request type — never the positive "bunk with".
+    expect(screen.queryByText(/\bbunk with\b(?! )/i)).not.toBeInTheDocument()
+    // Should mention Olivia and use language that fits a "don't bunk with" request.
+    expect(screen.getByText(/Olivia Chen/)).toBeInTheDocument()
+    expect(screen.getByText(/don['’]t bunk with/i)).toBeInTheDocument()
   })
 
   it('renders pair_no_shared_bunk subtext with no compatible cabin context', () => {
@@ -203,7 +300,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
               request_type: 'bunk_with',
               requester: { name: 'Samuel Johnson', cm_id: 20, grade: 5, gender: 'M' },
               requestee: { name: 'Olivia Chen', cm_id: 21, grade: 5, gender: 'F' },
-              detail: { requester_gender: 'M', requestee_gender: 'F', session: 1378702 },
+              detail: { requester_gender: 'M', requestee_gender: 'F', session: 1000001 },
             },
           ],
         },
@@ -220,7 +317,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     )
 
     expect(screen.getByText(/Olivia Chen/)).toBeInTheDocument()
-    expect(screen.getByText(/can't bunk cross-gender outside of AG/)).toBeInTheDocument()
+    expect(screen.getByText(/not AG session/)).toBeInTheDocument()
   })
 
   it('renders each reason block as a <details> element with open attribute by default', () => {

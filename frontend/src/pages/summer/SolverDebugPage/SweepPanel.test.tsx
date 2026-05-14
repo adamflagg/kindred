@@ -416,6 +416,37 @@ describe('SweepPanel — pre-check chip', () => {
     // Panel should still be expanded
     expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
   })
+
+  it('renders a loading chip when preCheckIsLoading and no count yet', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckIsLoading
+      />
+    )
+    const chip = screen.getByLabelText(/pre-check/i)
+    expect(chip).toHaveTextContent(/checking|loading/i)
+    expect(chip).toBeDisabled()
+  })
+
+  it('renders an error chip when preCheckIsError is true', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckIsError
+      />
+    )
+    const chip = screen.getByLabelText(/pre-check/i)
+    expect(chip).toHaveTextContent(/failed|error/i)
+  })
 })
 
 describe('SweepPanel collapse (#mockup-parity)', () => {

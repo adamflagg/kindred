@@ -214,6 +214,28 @@ class TestValidateRequestsCrossSession:
         assert solver.request_validation_summary["impossible_requests"] == 1
         assert solver.request_validation_summary["affected_campers"] == 1
 
+    def test_affected_campers_dedupes_flat_against_target_not_in_solver(self, mock_config):
+        """A camper with BOTH a predicate-caught impossible request and a
+        target-not-in-solver request must be counted ONCE, not twice."""
+        # Person 1001 has two impossible requests:
+        #   r1: bunk_with cross-session 1002 → caught by predicate (report.flat)
+        #   r2: bunk_with 9999 (not in person_idx_map) → target_not_in_solver_extra
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 100), _make_person(1002, 200)],
+                requests=[
+                    _make_request("r1", 1001, 1002, 100, request_type="bunk_with"),
+                    _make_request("r2", 1001, 9999, 100, request_type="bunk_with"),
+                ],
+                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        assert solver.request_validation_summary["impossible_requests"] == 2
+        # Both requests come from camper 1001 — affected count is 1, not 2.
+        assert solver.request_validation_summary["affected_campers"] == 1
+
 
 class TestValidateRequestsPairNoSharedBunk:
     """bunk_with between campers with no shared eligible bunk is impossible.

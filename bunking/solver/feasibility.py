@@ -380,7 +380,10 @@ def localize_hard_mso_infeasibility(
             "notes": f"Candidate set ({len(candidate_cms)}) exceeds max_candidates ({max_candidates}); skipping localization to keep diagnostic cost bounded.",
         }
 
+    unknown_hit = False  # set by _is_feasible when any probe returns UNKNOWN
+
     def _is_feasible(skip: set[int]) -> bool:
+        nonlocal unknown_hit
         s = DirectBunkingSolver(input_data, config, {}, mp_skip_cms=skip)
         s.check_feasibility()
         s.add_constraints()
@@ -389,11 +392,27 @@ def localize_hard_mso_infeasibility(
         cp.parameters.max_time_in_seconds = time_limit_seconds
         cp.parameters.num_search_workers = 1  # diagnostic — keep fast
         st = cp.Solve(s.model)
+        if st == cp_model.UNKNOWN:
+            # Time-limit / non-conclusive probe — distinguish from a real INFEASIBLE.
+            # Caller bails out below so we don't accuse a camper of being critical
+            # just because their probe ran out of time.
+            unknown_hit = True
+            logger.warning(f"  Probe returned UNKNOWN (skip={sorted(skip)[:5]}{'…' if len(skip) > 5 else ''})")
+            return False
         return st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
     # Step 1: singleton isolation
     logger.info("  Pass 1: singleton isolation...")
     singleton_critical = [cm for cm in candidate_cms if _is_feasible({cm})]
+    if unknown_hit:
+        logger.warning("  Aborting localization — at least one probe was inconclusive (UNKNOWN)")
+        return {
+            "approach": "skipped",
+            "candidate_count": len(candidate_cms),
+            "singleton_critical_cms": [],
+            "minimal_correction_set": [],
+            "notes": "Localization aborted: at least one solver probe returned UNKNOWN (likely timeout). Increase time_limit_seconds or reduce candidate set.",
+        }
 
     if singleton_critical:
         logger.info(f"  Singleton-critical cms (each alone restores feasibility): {singleton_critical}")

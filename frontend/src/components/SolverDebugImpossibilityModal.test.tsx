@@ -40,7 +40,7 @@ describe('SolverDebugImpossibilityModal — C1: single flat table (no tabs)', ()
         isOpen
         onClose={() => {}}
         report={stubReport}
-        sessionCmId={1378702}
+        sessionCmId={1000001}
         year={2026}
       />
     )
@@ -50,6 +50,48 @@ describe('SolverDebugImpossibilityModal — C1: single flat table (no tabs)', ()
 
     // Table present
     expect(screen.getByRole('table')).toBeInTheDocument()
+  })
+})
+
+// Sortable column headers must be keyboard-operable and expose aria-sort
+describe('SolverDebugImpossibilityModal — sortable header a11y', () => {
+  it('sortable header is focusable and toggles sort on Enter', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+
+    const reasonHeader = screen.getByRole('columnheader', { name: /reason/i })
+    expect(reasonHeader).toHaveAttribute('aria-sort')
+    const button = screen.getByRole('button', { name: /sort by reason/i })
+    expect(button).toHaveAttribute('tabindex', '0')
+
+    const initialSort = reasonHeader.getAttribute('aria-sort')
+    fireEvent.keyDown(button, { key: 'Enter' })
+    expect(reasonHeader.getAttribute('aria-sort')).not.toBe(initialSort)
+  })
+
+  it('sortable header toggles sort on Space', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+
+    const reasonHeader = screen.getByRole('columnheader', { name: /reason/i })
+    const button = screen.getByRole('button', { name: /sort by reason/i })
+    const initial = reasonHeader.getAttribute('aria-sort')
+    fireEvent.keyDown(button, { key: ' ' })
+    expect(reasonHeader.getAttribute('aria-sort')).not.toBe(initial)
   })
 })
 
@@ -68,7 +110,7 @@ describe('SolverDebugImpossibilityModal — C2: Copy JSON button', () => {
         isOpen
         onClose={() => {}}
         report={stubReport}
-        sessionCmId={1378702}
+        sessionCmId={1000001}
         year={2026}
       />
     )

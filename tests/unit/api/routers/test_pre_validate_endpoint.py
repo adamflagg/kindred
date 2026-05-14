@@ -2,7 +2,7 @@
 
 After the Stream 6 refactor, the endpoint must:
   - Include a top-level ``impossibility_report`` field with keys:
-    total_impossible, affected_campers, by_reason, flat, clusters
+    total_impossible, affected_campers, by_reason, flat
   - Remove ``statistics.unsatisfiable_requests``
   - Preserve valid / errors / warnings / statistics / session_breakdown /
     related_sessions in the response
@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bunking.auth_middleware import AuthUser, get_current_user
-from bunking.models_v2 import DirectSolverInput
+from bunking.models_v2 import DirectBunk, DirectSolverInput
 
 
 def _admin_user() -> AuthUser:
@@ -200,3 +200,43 @@ def test_prevalidate_response_no_clusters_key(client: TestClient) -> None:
     assert "clusters" not in body["impossibility_report"], (
         f"clusters key should be removed, got {list(body['impossibility_report'].keys())}"
     )
+
+
+def test_capacity_breakdown_uses_actual_bunk_capacities(client: TestClient) -> None:
+    """Segmented (boys/girls/AG) capacity must sum each bunk's actual capacity,
+    not multiply bunk count by DEFAULT_BUNK_CAPACITY.
+
+    Regression guard: real bunks vary in size, so a count*default approximation
+    produces false 'over capacity' errors when bunks happen to be smaller (or
+    misses real overflow when bunks are larger) than the default."""
+    bunks = [
+        # Boys: 2 bunks summing to 8+10 = 18 beds (not 2 * DEFAULT_BUNK_CAPACITY=24)
+        DirectBunk(id="b1", campminder_id=1, name="Cabin A", capacity=8, gender="M", session_cm_id=1000001),
+        DirectBunk(id="b2", campminder_id=2, name="Cabin B", capacity=10, gender="M", session_cm_id=1000001),
+        # Girls: 1 bunk with 14 beds (not 1 * 12 = 12)
+        DirectBunk(id="b3", campminder_id=3, name="Cabin C", capacity=14, gender="F", session_cm_id=1000001),
+        # AG/Mixed: 1 bunk with 6 beds (not 1 * 12 = 12)
+        DirectBunk(id="b4", campminder_id=4, name="Cabin D", capacity=6, gender="Mixed", session_cm_id=1000001),
+    ]
+    solver_input = DirectSolverInput(persons=[], requests=[], bunks=bunks)
+
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        mock_build_ctx.return_value = _make_session_ctx()
+        mock_fetch.return_value = ([], [], [], [], [])
+        mock_prepare.return_value = solver_input
+        mock_validate.return_value = _FakeReport()
+        mock_config.get_instance.return_value = MagicMock()
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    breakdown = resp.json()["statistics"]["capacity_breakdown"]
+    assert breakdown["boys"]["beds"] == 18, breakdown
+    assert breakdown["girls"]["beds"] == 14, breakdown
+    assert breakdown["ag"]["beds"] == 6, breakdown

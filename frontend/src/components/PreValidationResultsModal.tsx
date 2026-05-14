@@ -158,9 +158,15 @@ function friendlyReasonLabel(code: string): string {
 }
 
 function ordinalGrade(grade: number): string {
+  // Short form (e.g. "5th") — staff scan name + grade + gender inline; the
+  // trailing "grade" word adds noise without helping comprehension.
   const s = ['th', 'st', 'nd', 'rd']
   const v = grade % 100
-  return `${grade}${s[(v - 20) % 10] || s[v] || s[0]} grade`
+  return `${grade}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
+
+function requestVerb(requestType: string): string {
+  return requestType === 'not_bunk_with' ? "don't bunk with" : 'bunk with'
 }
 
 function renderSubtext(
@@ -168,11 +174,16 @@ function renderSubtext(
   sessionLookup: (cm_id: number) => string | undefined
 ) {
   const r = item.requestee
+  const verb = requestVerb(item.request_type)
   switch (item.reason_code) {
     case 'grade_compatibility':
       return r ? (
         <div className="text-xs text-stone-600">
-          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)}
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)}
         </div>
       ) : null
 
@@ -184,8 +195,11 @@ function renderSubtext(
         (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
       return (
         <div className="text-xs text-stone-600">
-          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)} · in{' '}
-          <strong>{sessionName}</strong> session
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)} · in <strong>{sessionName}</strong> session
         </div>
       )
     }
@@ -193,8 +207,11 @@ function renderSubtext(
     case 'pair_no_shared_bunk':
       return r ? (
         <div className="text-xs text-stone-600">
-          wants to bunk with <strong>{r.name}</strong> ({r.gender}) — can't bunk cross-gender
-          outside of AG
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)} — not AG session
         </div>
       ) : null
 
@@ -203,22 +220,21 @@ function renderSubtext(
       if (dir === 'older' && item.detail?.['pool_max_grade'] !== undefined) {
         return (
           <div className="text-xs text-stone-600">
-            <strong>Prefers older bunkmates</strong> — already in the oldest grade in their session
+            <strong>Wants older</strong> — already at oldest grade
           </div>
         )
       }
       if (dir === 'younger' && item.detail?.['pool_min_grade'] !== undefined) {
         return (
           <div className="text-xs text-stone-600">
-            <strong>Prefers younger bunkmates</strong> — already in the youngest grade in their
-            session
+            <strong>Wants younger</strong> — already at youngest grade
           </div>
         )
       }
       if (dir) {
         return (
           <div className="text-xs text-stone-600">
-            <strong>Prefers {dir} bunkmates</strong> — no same-gender campers in their session
+            <strong>Wants {dir}</strong> — no same-gender peers
           </div>
         )
       }
@@ -235,7 +251,11 @@ function renderSubtext(
     default:
       return r ? (
         <div className="text-xs text-stone-600">
-          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)}
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)}
         </div>
       ) : null
   }
@@ -251,9 +271,13 @@ function ImpossibilityItems({
   return (
     <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
       {items.map((item) => (
-        <div key={item.request_id} className="text-sm">
+        // Composite key — a request can appear in multiple by_reason buckets
+        // after the multi-reason fix; this component receives one bucket's
+        // items so request_id is unique here, but include reason_code for
+        // safety when callers later flatten.
+        <div key={`${item.request_id}-${item.reason_code}`} className="text-sm">
           <div className="font-medium">
-            {item.requester.name} · {ordinalGrade(item.requester.grade)}
+            {item.requester.name} ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
           </div>
           {renderSubtext(item, sessionLookup)}
         </div>
@@ -404,7 +428,7 @@ export default function PreValidationResultsModal({
       onClose={onClose}
       header={headerContent}
       footer={footerContent}
-      size="lg"
+      size="md"
       noPadding
       scrollable
     >

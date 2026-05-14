@@ -132,12 +132,22 @@ def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> Impos
 
 
 def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) -> ImpossibilityReport:
-    """Run all registered predicates. Returns structured report."""
+    """Run all registered predicates. Returns structured report.
+
+    Multi-reason recording in Layer 2: a single ``bunk_with`` / ``not_bunk_with``
+    request that violates multiple per-pair predicates (e.g. cross-gender AND
+    grade-distant) is recorded in EVERY matching ``by_reason`` bucket. This
+    means staff see all the reasons a request is impossible, not just the one
+    whose predicate registered first. Per-bucket counts (``len(by_reason[code])``)
+    reflect how many requests cite that reason; ``total_impossible`` and
+    ``affected_campers`` dedupe at the request and camper level respectively.
+    """
     ctx = _build_context(input_data, config)
     report = ImpossibilityReport()
     seen: set[str] = set()
 
-    # Layer 1: per-request
+    # Layer 1: per-request — predicates here check non-overlapping request
+    # shapes (malformed vs age_preference), so first-match-wins is correct.
     for req in input_data.requests:
         if req.id in seen:
             continue
@@ -148,30 +158,44 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
                 seen.add(req.id)
                 break
 
-    # Layer 2: per-pair
+    # Layer 2: per-pair — multi-reason. Each predicate that matches gets to
+    # record the request in its bucket so staff see all overlapping blockers.
     for req in input_data.requests:
         if req.id in seen:
             continue
         if req.request_type not in ("bunk_with", "not_bunk_with"):
             continue
+        matched = False
         for predicate in HARD_CONSTRAINT_REGISTRY:
             reason = predicate.check_pair(req, ctx)
             if reason is not None:
                 _record_item(report, req, reason, ctx)
-                seen.add(req.id)
-                break
+                matched = True
+        if matched:
+            seen.add(req.id)
 
-    report.total_impossible = len(report.flat)
+    # Dedupe at the request-id level — a request appearing in N buckets is
+    # ONE impossible request, not N. Same for the affected-campers headline.
+    report.total_impossible = len({item.request_id for item in report.flat})
     report.affected_campers = len({item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id")})
     return report
 
 
 # ---- Predicate registrations (populated by individual constraint modules) ----
 # Import-time side-effect: each constraint module's predicate registers itself
-# when imported. We import below to ensure all predicates are loaded when
-# validate_impossibility is called. Order is not significant.
+# when imported. Importing via importlib (rather than ``from … import x``) keeps
+# the names out of the module namespace so ruff's unused-import fixer can't
+# strip them. Critically, this guarantees every predicate is loaded when
+# validate_impossibility is called from any entry point (e.g. the pre-validate
+# endpoint, which does not load the full DirectBunkingSolver import graph).
+# Order is not significant.
+import importlib as _importlib  # noqa: E402
 
-# Trigger predicate registration via import side-effects.
-from bunking.solver.constraints import (  # noqa: E402, F401
-    age_preference as _age_preference_module,
-)
+for _module_name in (
+    "age_preference",
+    "bunk_requests",
+    "gender",
+    "grade_spread",
+    "session_boundary",
+):
+    _importlib.import_module(f"bunking.solver.constraints.{_module_name}")

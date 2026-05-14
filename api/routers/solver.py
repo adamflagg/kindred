@@ -29,7 +29,6 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
-from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from bunking.solver.impossibility import validate_impossibility
 
 from ..constants.collections import (
@@ -437,13 +436,9 @@ async def pre_validate_solver(
             elif person.gender == "F":
                 girls_campers += 1
 
-        boys_bunks = sum(1 for b in solver_input.bunks if b.gender == "M")
-        girls_bunks = sum(1 for b in solver_input.bunks if b.gender == "F")
-        ag_bunks = sum(1 for b in solver_input.bunks if b.gender in ("Mixed", "AG"))
-
-        boys_capacity = boys_bunks * DEFAULT_BUNK_CAPACITY
-        girls_capacity = girls_bunks * DEFAULT_BUNK_CAPACITY
-        ag_capacity = ag_bunks * DEFAULT_BUNK_CAPACITY
+        boys_capacity = sum(b.capacity for b in solver_input.bunks if b.gender == "M")
+        girls_capacity = sum(b.capacity for b in solver_input.bunks if b.gender == "F")
+        ag_capacity = sum(b.capacity for b in solver_input.bunks if b.gender in ("Mixed", "AG"))
 
         capacity_breakdown = {
             "boys": {"campers": boys_campers, "beds": boys_capacity, "sufficient": boys_campers <= boys_capacity},

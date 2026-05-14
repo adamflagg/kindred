@@ -44,6 +44,8 @@ export interface SweepPanelProps {
   onCancelSweep: (sweepId: string) => void
   inFlightSweep: InFlightSweep | null
   preCheckImpossibilityCount?: number
+  preCheckIsLoading?: boolean
+  preCheckIsError?: boolean
   onOpenPreCheck?: () => void
   onSessionChange?: (sessionCmId: number) => void
 }
@@ -66,6 +68,8 @@ export function SweepPanel({
   onCancelSweep,
   inFlightSweep,
   preCheckImpossibilityCount,
+  preCheckIsLoading,
+  preCheckIsError,
   onOpenPreCheck,
   onSessionChange,
 }: SweepPanelProps) {
@@ -151,7 +155,28 @@ export function SweepPanel({
           <Zap className="h-4 w-4 text-amber-500" />
           Run benchmark sweep
         </h3>
-        {typeof preCheckImpossibilityCount === 'number' && (
+        {preCheckIsLoading && typeof preCheckImpossibilityCount !== 'number' ? (
+          <button
+            type="button"
+            disabled
+            className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-500"
+            aria-label="Pre-check"
+          >
+            … Pre-check · checking
+          </button>
+        ) : preCheckIsError && typeof preCheckImpossibilityCount !== 'number' ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenPreCheck?.()
+            }}
+            className="rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+            aria-label="Pre-check"
+          >
+            ⚠ Pre-check · failed
+          </button>
+        ) : typeof preCheckImpossibilityCount === 'number' ? (
           <button
             type="button"
             onClick={(e) => {
@@ -169,7 +194,7 @@ export function SweepPanel({
               ? `⚠ Pre-check · ${preCheckImpossibilityCount} issues`
               : '✓ Pre-check · no issues'}
           </button>
-        )}
+        ) : null}
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}

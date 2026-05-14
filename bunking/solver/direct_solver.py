@@ -537,21 +537,22 @@ class DirectBunkingSolver:
             if person_cm_id in self.person_idx_map
         )
         total_impossible = report.total_impossible + len(target_not_in_solver_extra)
+        # Build the union of cm_ids — a camper with one predicate-caught request
+        # AND one target-not-in-solver request must be counted ONCE.
+        flat_cmids: set[int] = {item.requester["cm_id"] for item in report.flat if item.requester.get("cm_id")}
+        extra_cmids: set[int] = {
+            request.requester_person_cm_id
+            for person_cm_id, requests in self.input.requests_by_person.items()
+            if person_cm_id in self.person_idx_map
+            for request in requests
+            if request.id in target_not_in_solver_extra
+        }
         self.request_validation_summary: dict[str, Any] = {
             "total_requests": total_requests,
             "possible_requests": total_requests - total_impossible,
             "impossible_requests": total_impossible,
             "impossible_by_reason": impossible_by_reason,
-            "affected_campers": report.affected_campers
-            + len(
-                {
-                    request.requester_person_cm_id
-                    for person_cm_id, requests in self.input.requests_by_person.items()
-                    if person_cm_id in self.person_idx_map
-                    for request in requests
-                    if request.id in target_not_in_solver_extra
-                }
-            ),
+            "affected_campers": len(flat_cmids | extra_cmids),
         }
 
         if total_impossible > 0:

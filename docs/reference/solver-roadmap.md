@@ -52,7 +52,7 @@ penalty, 600s budget):
 safety gate, and risks below remain accurate. The "Surprising side-effect:
 model simplification" section was wrong in its model-size math — see the
 inline note in that section for the corrected version. Follow-ups #1395,
-#1396, #1397, #1398 capture the remaining work surfaced during
+\#1396, \#1397, \#1398 capture the remaining work surfaced during
 implementation.
 
 ### Motivation

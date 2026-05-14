@@ -13,7 +13,7 @@ import { useSessionList } from '../../../hooks/useSessionList'
 import { useSolverRuns } from '../../../hooks/useSolverRuns'
 import { solverService } from '../../../services/solver'
 import { downloadJson } from '../../../utils/jsonExport'
-import type { SolverRunsFilters } from '../../../utils/queryKeys'
+import { queryKeys, type SolverRunsFilters } from '../../../utils/queryKeys'
 
 import { DrillDownDrawer } from './DrillDownDrawer'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
@@ -48,7 +48,7 @@ export default function SolverDebugPage() {
   const [preCheckModalOpen, setPreCheckModalOpen] = useState(false)
 
   const preCheckQuery = useQuery({
-    queryKey: ['preCheck', selectedSessionCmId, year],
+    queryKey: queryKeys.preCheck(selectedSessionCmId, year),
     queryFn: async () => {
       if (!selectedSessionCmId) return null
       return solverService.preValidateRequests(selectedSessionCmId, year, fetchWithAuth)
@@ -268,6 +268,8 @@ export default function SolverDebugPage() {
         onRunSweep={handleRunSweep}
         onCancelSweep={(id) => cancelSweep.mutate(id)}
         inFlightSweep={inFlightSweep}
+        preCheckIsLoading={preCheckQuery.isLoading}
+        preCheckIsError={preCheckQuery.isError}
         {...(typeof preCheckQuery.data?.impossibility_report.total_impossible === 'number'
           ? {
               preCheckImpossibilityCount: preCheckQuery.data.impossibility_report.total_impossible,

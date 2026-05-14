@@ -14,11 +14,6 @@ function reasonChipStyle(code: string) {
   return REASON_CHIP_STYLES[code] ?? { bg: '#f5f5f4', text: '#57534e' }
 }
 
-function shortenReqId(id: string): string {
-  if (id.length <= 11) return id
-  return `${id.slice(0, 8)}…`
-}
-
 function compactPerson(p: { name: string; cm_id: number; grade: number; gender: string }): string {
   return `${p.name} (${p.cm_id}/g${p.grade}/${p.gender})`
 }
@@ -39,6 +34,48 @@ interface Props {
   report: ImpossibilityReport
   sessionCmId: number | null
   year: number
+}
+
+function SortableHeader({
+  column,
+  label,
+  sortCol,
+  sortDir,
+  onSort,
+  arrow,
+}: {
+  column: SortColumn
+  label: string
+  sortCol: SortColumn
+  sortDir: SortDir
+  onSort: (col: SortColumn) => void
+  arrow: (col: SortColumn) => string
+}) {
+  const ariaSort: 'ascending' | 'descending' | 'none' =
+    sortCol === column ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
+  return (
+    <th
+      aria-sort={ariaSort}
+      className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
+    >
+      <span
+        role="button"
+        tabIndex={0}
+        aria-label={`Sort by ${label.toLowerCase()}`}
+        onClick={() => onSort(column)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onSort(column)
+          }
+        }}
+        className="-mx-2 -my-1 inline-block w-full cursor-pointer px-2 py-1 hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
+      >
+        {label}
+        {arrow(column)}
+      </span>
+    </th>
+  )
 }
 
 export default function SolverDebugImpossibilityModal({
@@ -124,30 +161,33 @@ export default function SolverDebugImpossibilityModal({
           <table className="w-full border-collapse text-xs">
             <thead className="bg-stone-100">
               <tr>
-                <th
-                  onClick={() => handleSort('reason')}
-                  className="cursor-pointer border-b border-stone-300 px-2 py-1 text-left font-semibold hover:bg-stone-200"
-                >
-                  Reason{arrow('reason')}
-                </th>
-                <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
-                  req_id
-                </th>
-                <th
-                  onClick={() => handleSort('name')}
-                  className="cursor-pointer border-b border-stone-300 px-2 py-1 text-left font-semibold hover:bg-stone-200"
-                >
-                  Camper A{arrow('name')}
-                </th>
+                <SortableHeader
+                  column="reason"
+                  label="Reason"
+                  sortCol={sortCol}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  arrow={arrow}
+                />
+                <SortableHeader
+                  column="name"
+                  label="Camper A"
+                  sortCol={sortCol}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  arrow={arrow}
+                />
                 <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                   Camper B
                 </th>
-                <th
-                  onClick={() => handleSort('type')}
-                  className="cursor-pointer border-b border-stone-300 px-2 py-1 text-left font-semibold hover:bg-stone-200"
-                >
-                  Type{arrow('type')}
-                </th>
+                <SortableHeader
+                  column="type"
+                  label="Type"
+                  sortCol={sortCol}
+                  sortDir={sortDir}
+                  onSort={handleSort}
+                  arrow={arrow}
+                />
                 <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
                   Detail
                 </th>
@@ -156,8 +196,14 @@ export default function SolverDebugImpossibilityModal({
             <tbody>
               {sorted.map((item: ImpossibilityReportItem) => {
                 const chip = reasonChipStyle(item.reason_code)
+                // Composite key — multi-reason recording in validate_impossibility
+                // can produce multiple flat items per request_id (one per matching
+                // predicate). request_id + reason_code is unique per item.
                 return (
-                  <tr key={item.request_id} className="border-b border-stone-200">
+                  <tr
+                    key={`${item.request_id}-${item.reason_code}`}
+                    className="border-b border-stone-200"
+                  >
                     <td className="px-2 py-1">
                       <span
                         className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
@@ -166,7 +212,6 @@ export default function SolverDebugImpossibilityModal({
                         {item.reason_code}
                       </span>
                     </td>
-                    <td className="px-2 py-1 text-stone-500">{shortenReqId(item.request_id)}</td>
                     <td className="px-2 py-1">{compactPerson(item.requester)}</td>
                     <td className="px-2 py-1">
                       {item.requestee ? compactPerson(item.requestee) : '—'}
