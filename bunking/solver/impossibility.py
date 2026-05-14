@@ -42,6 +42,10 @@ class ImpossibilityContext:
     person_by_cm_id: dict[int, DirectPerson]
     person_session: dict[int, int]
     bunks_by_session: dict[int, list[DirectBunk]]
+    # The solver roster: every person cm_id present in the input. Equals
+    # person_by_cm_id.keys(); kept as an explicit set so membership-test intent
+    # ("is this requestee in the solver?") reads clearly in predicates.
+    roster_cm_ids: frozenset[int]
 
 
 @dataclass
@@ -133,6 +137,7 @@ def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> Impos
         person_by_cm_id=person_by_cm_id,
         person_session=person_session,
         bunks_by_session=dict(bunks_by_session),
+        roster_cm_ids=frozenset(person_by_cm_id),
     )
 
 
