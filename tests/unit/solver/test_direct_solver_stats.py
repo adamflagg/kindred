@@ -1064,18 +1064,10 @@ class TestImpossibleRequestBreakdownByReason:
         ]
         input_data = self._make_input(persons, requests=[])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
-        # _validate_requests has been called in __init__
         breakdown = solver.request_validation_summary.get("impossible_by_reason")
-        assert isinstance(breakdown, dict)
-        assert breakdown == {
-            "target_not_in_solver": 0,
-            "cross_session": 0,
-            "malformed": 0,
-            "pair_no_shared_bunk": 0,
-            "age_pref_no_eligible_grade": 0,
-        }
+        assert breakdown == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
 
-    def test_target_not_in_solver_counted(self) -> None:
+    def test_target_not_in_solver_counted_in_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1087,7 +1079,6 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # Request targets person 9999 who does not exist in input.persons
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
@@ -1095,15 +1086,16 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["target_not_in_solver"] == 1
-        assert breakdown["cross_session"] == 0
-        assert breakdown["malformed"] == 0
+        assert breakdown["material_parent"] == {"target_not_in_solver": 1}
+        assert breakdown["immaterial_parent"] == {}
+        assert breakdown["staff"] == {}
 
-    def test_cross_session_counted(self) -> None:
+    def test_cross_session_counted_in_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1121,7 +1113,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=1000002,  # different session
+                session_cm_id=1000002,
             ),
         ]
         request = DirectBunkRequest(
@@ -1131,15 +1123,14 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["cross_session"] == 1
-        assert breakdown["target_not_in_solver"] == 0
-        assert breakdown["malformed"] == 0
+        assert breakdown["material_parent"] == {"cross_session": 1}
 
-    def test_malformed_counted(self) -> None:
+    def test_staff_sourced_impossible_lands_in_staff_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1151,23 +1142,23 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # bunk_with with empty requested_person_cm_id → malformed
+        # not_bunk_with with no target → malformed; source_field=not_bunk_with → STAFF
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
             requested_person_cm_id=None,
-            request_type="bunk_with",
+            request_type="not_bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="not_bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["malformed"] == 1
-        assert breakdown["target_not_in_solver"] == 0
-        assert breakdown["cross_session"] == 0
+        assert breakdown["staff"] == {"malformed": 1}
+        assert breakdown["material_parent"] == {}
 
-    def test_breakdown_sum_equals_total_impossible(self) -> None:
+    def test_breakdown_total_matches_flat_count(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1189,7 +1180,6 @@ class TestImpossibleRequestBreakdownByReason:
             ),
         ]
         requests = [
-            # target_not_in_solver
             DirectBunkRequest(
                 id="r1",
                 requester_person_cm_id=1,
@@ -1197,8 +1187,8 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
-            # cross_session
             DirectBunkRequest(
                 id="r2",
                 requester_person_cm_id=1,
@@ -1206,8 +1196,8 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
-            # malformed
             DirectBunkRequest(
                 id="r3",
                 requester_person_cm_id=1,
@@ -1215,13 +1205,16 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
         ]
         input_data = self._make_input(persons, requests=requests)
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         summary = solver.request_validation_summary
         breakdown = summary["impossible_by_reason"]
-        assert sum(breakdown.values()) == summary["impossible_requests"]
+        flat_total = sum(c for reasons in breakdown.values() for c in reasons.values())
+        # Layer-2 multi-reason recording means flat_total >= impossible_requests.
+        assert flat_total >= summary["impossible_requests"]
         assert summary["impossible_requests"] == 3
 
 

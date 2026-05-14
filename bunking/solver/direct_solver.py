@@ -43,6 +43,7 @@ from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .observability import (
+    _build_impossible_by_reason_by_bucket,
     _build_request_density_histogram_by_bucket,
     _build_stats_dict,
     _count_constraint_types,
@@ -274,18 +275,15 @@ class DirectBunkingSolver:
                 else:
                     self.possible_requests[person_cm_id].append(request)
 
-        # Pre-initialize the canonical reason codes so keys are always present
-        # (callers expect zero-valued keys even when no impossibilities exist).
-        impossible_by_reason: dict[str, int] = {
-            "target_not_in_solver": 0,
-            "cross_session": 0,
-            "malformed": 0,
-            "pair_no_shared_bunk": 0,
-            "age_pref_no_eligible_grade": 0,
-        }
-        for item in report.flat:
-            impossible_by_reason[item.reason_code] = impossible_by_reason.get(item.reason_code, 0) + 1
-        impossible_by_reason["target_not_in_solver"] += len(target_not_in_solver_extra)
+        # Resolve report items back to request objects — ImpossibleItem carries
+        # request_id + reason_code but not source_field, and the per-bucket
+        # helper needs the request to classify its bucket.
+        request_by_id = {r.id: r for r in self.input.requests}
+        impossible_pairs: list[tuple[DirectBunkRequest, str]] = [
+            (request_by_id[item.request_id], item.reason_code) for item in report.flat
+        ]
+        impossible_pairs.extend((request_by_id[rid], "target_not_in_solver") for rid in target_not_in_solver_extra)
+        impossible_by_reason = _build_impossible_by_reason_by_bucket(impossible_pairs)
 
         total_requests = sum(
             len(reqs)
@@ -312,7 +310,11 @@ class DirectBunkingSolver:
         }
 
         if total_impossible > 0:
-            reason_summary = " ".join(f"{k}={v}" for k, v in impossible_by_reason.items() if v > 0)
+            reason_summary = " ".join(
+                f"{bucket}.{reason}={count}"
+                for bucket, reasons in impossible_by_reason.items()
+                for reason, count in reasons.items()
+            )
             logger.warning(
                 f"Request validation: {total_impossible} of {total_requests} requests are infeasible ({reason_summary})"
             )
