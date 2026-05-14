@@ -20,7 +20,9 @@ TASK: Extract structured bunk requests from this text.
    target_name = person's name
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
-   target_name = "older", "younger", or "unclear"
+   Leave target_name null.
+   Set age_direction to "older" or "younger" for a clear direction.
+   Leave age_direction null if the preference is undirected (e.g. "age-appropriate cabin").
    Use this when text says "prefers older kids" or "wants younger bunkmates" without naming anyone
 
 === TEMPORAL CONFLICTS (CRITICAL!) ===
@@ -91,7 +93,8 @@ Examples:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name or age value ("older", "younger", "unclear")
+- target_name: Person's name for bunk_with/not_bunk_with; null for age_preference requests.
+- age_direction: age_preference requests only — "older", "younger", or null (undirected).
 - confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
 - temporal_info: null OR {{date_mentioned, is_superseded, supersedes_reason}}
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
