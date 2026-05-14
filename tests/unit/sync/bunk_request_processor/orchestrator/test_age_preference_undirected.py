@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
+    AgePreference,
     ParsedRequest,
     RequestStatus,
     RequestType,
@@ -126,3 +127,59 @@ class TestUndirectedAgePreferenceE2E:
         )
         assert req.requested_name is None, "requested_name must be cleared for age_preference"
         assert req.requested_cm_id is None, "undirected age_preference has no target person"
+
+
+class TestDirectionalAgePreferenceE2E:
+    """e2e characterization: a *directional* age_preference (age_preference=OLDER/YOUNGER)
+    with no target person must resolve to (RESOLVED, "directional_preference").
+
+    Locks the directional half of `disposition_rules._age_preference_rules` so the
+    #1411 refactor (routing AGE_PREFERENCE through `determine_disposition` instead of
+    duplicating the literals in `RequestBuilder.determine_request_status`) cannot
+    silently change behavior.
+    """
+
+    @pytest.mark.asyncio
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.ProviderFactory")
+    @patch("bunking.sync.bunk_request_processor.orchestrator.orchestrator.SocialGraph")
+    async def test_directional_age_preference_resolves_with_directional_preference_reason(
+        self, mock_social_graph, mock_factory
+    ):
+        mock_factory.return_value.create_provider.return_value = Mock()
+        mock_social_graph_instance = Mock()
+        mock_social_graph_instance.initialize = AsyncMock()
+        mock_social_graph.return_value = mock_social_graph_instance
+
+        pb = _create_mock_pocketbase()
+        orchestrator = RequestOrchestrator(pb=pb, year=2025)
+
+        parsed_req = ParsedRequest(
+            raw_text="wants to bunk with older campers",
+            request_type=RequestType.AGE_PREFERENCE,
+            target_name=None,
+            age_preference=AgePreference.OLDER,
+            source_field="bunk_with",
+            confidence=0.85,
+            csv_position=1,
+            metadata={},
+        )
+
+        resolution_info = {
+            "requester_cm_id": 11111,
+            "requester_name": "Test Requester",
+            "session_cm_id": 1000002,
+            "person_cm_id": None,
+            "person_name": None,
+            "confidence": 0.0,
+            "resolution_method": "age_preference",
+        }
+
+        created_requests, _ = await orchestrator._create_bunk_requests([(parsed_req, resolution_info)])
+
+        assert len(created_requests) == 1, "expected one BunkRequest"
+        req = created_requests[0]
+        assert req.status == RequestStatus.RESOLVED, f"directional age_preference must RESOLVE, got {req.status}"
+        assert req.disposition_reason == "directional_preference", (
+            f"disposition_reason must be 'directional_preference', got {req.disposition_reason!r}"
+        )
+        assert req.requested_cm_id is None, "directional age_preference has no target person"
