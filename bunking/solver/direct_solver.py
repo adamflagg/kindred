@@ -249,8 +249,8 @@ class DirectBunkingSolver:
         impossible_request_ids: set[str] = {item.request_id for item in report.flat}
 
         # Camper-level rollup of entirely-impossible MP sets — single source of
-        # truth (computed in validate_impossibility). parent_paramount reads this
-        # instead of re-deriving during constraint build.
+        # truth (computed in validate_impossibility). parent_paramount no longer
+        # re-derives this during constraint build; it consumes this list directly.
         self.mp_set_entirely_impossible.extend(entry["cm_id"] for entry in report.mp_campers_entirely_impossible)
 
         for person_cm_id, requests in self.input.requests_by_person.items():

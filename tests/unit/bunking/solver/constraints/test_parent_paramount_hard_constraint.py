@@ -168,8 +168,9 @@ class TestParentParamountSkipsAllImpossibleMP:
         """Camper has MP requests in input.requests_by_person but NONE are in
         ctx.possible_requests (all classified impossible).
 
-        No hard constraint should be added; ctx.mp_set_entirely_impossible
-        should contain the camper's cm_id.
+        No hard constraint should be added. ctx.mp_set_entirely_impossible is
+        pre-populated by _validate_requests (single source of truth); parent_paramount
+        must NOT re-derive it — it just consumes the pre-populated list unchanged.
         """
         camper1 = create_person(cm_id=100, first_name="Ava", last_name="Martinez", gender="F", grade=5)
         camper2 = create_person(cm_id=200, first_name="Ethan", last_name="Brown", gender="F", grade=5)
@@ -188,6 +189,10 @@ class TestParentParamountSkipsAllImpossibleMP:
         ctx.possible_requests[100] = []
         ctx.impossible_requests[100] = [req]
 
+        # Simulate _validate_requests having already recorded camper 100 as
+        # entirely-impossible (Task 4 made _validate_requests the single source of truth).
+        ctx.mp_set_entirely_impossible.append(100)
+
         from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
 
         add_must_satisfy_one_request_constraints(ctx)
@@ -201,7 +206,8 @@ class TestParentParamountSkipsAllImpossibleMP:
         assert is_optimal_or_feasible(status), "No hard constraint should be added when all MP requests are impossible"
 
         assert 100 in ctx.mp_set_entirely_impossible, (
-            "Camper whose entire MP set is impossible must be recorded in mp_set_entirely_impossible"
+            "Camper pre-seeded as entirely-impossible must still be in mp_set_entirely_impossible "
+            "(parent_paramount must not clear or modify the list)"
         )
 
 
@@ -292,3 +298,29 @@ class TestParentParamountPartialImpossible:
         assert 100 not in ctx.mp_set_entirely_impossible, (
             "Camper with at least one possible MP request must NOT appear in mp_set_entirely_impossible"
         )
+
+
+def test_parent_paramount_does_not_rederive_entirely_impossible_set():
+    """mp_set_entirely_impossible is pre-populated by _validate_requests now.
+    parent_paramount must NOT append to it again (which would double-count)."""
+    p1 = create_person(cm_id=1, first_name="Emma", last_name="Johnson", gender="F", grade=5)
+    p2 = create_person(cm_id=2, first_name="Liam", last_name="Garcia", gender="F", grade=5)
+    bunks = [create_bunk(cm_id=10, name="G-1", gender="F")]
+    # Camper 1 has one MP request; we simulate it being impossible by clearing
+    # possible_requests for camper 1 after construction.
+    mp_req = _mp_request("r1", requester_cm_id=1, requested_cm_id=2)
+    ctx = build_solver_context(persons=[p1, p2], bunks=bunks, requests=[mp_req])
+    ctx.possible_requests = {}  # camper 1's MP request is impossible
+
+    # Simulate _validate_requests having already recorded camper 1.
+    ctx.mp_set_entirely_impossible.append(1)
+
+    from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
+
+    add_must_satisfy_one_request_constraints(ctx)
+
+    # parent_paramount must leave the pre-populated list untouched — exactly [1].
+    assert ctx.mp_set_entirely_impossible == [1], (
+        "parent_paramount must not re-append camper 1 — mp_set_entirely_impossible should remain [1], "
+        f"got {ctx.mp_set_entirely_impossible}"
+    )
