@@ -29,6 +29,16 @@ export interface SolverRunStats {
   max_linear_coefficient?: number
   soft_constraints_by_module?: Record<string, number>
   request_density_histogram_by_bucket?: Record<RequestBucket, Record<string, number>>
+  // Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
+  objective_trajectory?: Array<{ t: number; objective: number; bound: number }>
+  bound_trajectory?: Array<{ t: number; bound: number }>
+  bound_trajectory_truncated?: boolean
+  lp_root_gap?: number | null
+  presolve_compression_ratio?: number | null
+  presolve_booleans_pre?: number
+  objective_plateau_time?: number | null
+  bound_gain_after_plateau?: number | null
+  time_to_first_solution?: number | null
   objective_value?: number | null
   total_requests?: number | null
   total_persons?: number | null

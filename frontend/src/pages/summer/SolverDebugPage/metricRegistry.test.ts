@@ -73,6 +73,13 @@ describe('METRIC_REGISTRY', () => {
         'assignments_changed',
         'new_assignments',
         'objective_value',
+        // Tier 2 plateau metrics (Stream 2, Phase 2)
+        'lp_root_gap',
+        'presolve_compression_ratio',
+        'presolve_booleans_pre',
+        'objective_plateau_time',
+        'time_to_first_solution',
+        'bound_gain_after_plateau',
       ].sort()
     )
   })
@@ -216,5 +223,35 @@ describe('MetricGroup type accepts outcome_requests/outcome_campers/size/churn',
 
   it('assignments_changed is in churn group', () => {
     expect(getMetric('assignments_changed').group).toBe('churn')
+  })
+})
+
+describe('Tier 2 plateau metrics (Stream 2, Phase 2)', () => {
+  it('registers the six new scalars with valid groups', () => {
+    expect(getMetric('lp_root_gap').group).toBe('quality')
+    expect(getMetric('presolve_compression_ratio').group).toBe('model')
+    expect(getMetric('presolve_booleans_pre').group).toBe('model')
+    expect(getMetric('presolve_booleans_pre').parent).toBe('num_booleans')
+    expect(getMetric('objective_plateau_time').group).toBe('timing')
+    expect(getMetric('time_to_first_solution').group).toBe('timing')
+    expect(getMetric('bound_gain_after_plateau').group).toBe('quality')
+    // format / interpretation spot-checks — the fields most likely to be silently wrong
+    expect(getMetric('presolve_compression_ratio').format).toBe('percent')
+    expect(getMetric('presolve_compression_ratio').interpretation).toBe('lower-better')
+    expect(getMetric('lp_root_gap').format).toBe('percent')
+    expect(getMetric('objective_plateau_time').format).toBe('duration')
+  })
+
+  it('surfaces the comparable Tier 2 scalars in COMPARABLE_METRICS', () => {
+    for (const k of [
+      'lp_root_gap',
+      'presolve_compression_ratio',
+      'presolve_booleans_pre',
+      'objective_plateau_time',
+      'time_to_first_solution',
+      'bound_gain_after_plateau',
+    ]) {
+      expect(COMPARABLE_METRICS).toContain(k)
+    }
   })
 })

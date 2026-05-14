@@ -400,6 +400,61 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     format: 'integer',
     group: 'quality',
   },
+  // Tier 2 plateau metrics (Stream 2, Phase 2)
+  lp_root_gap: {
+    key: 'lp_root_gap',
+    label: 'LP root gap',
+    description:
+      'Relative gap between the root LP relaxation bound and the final objective. Relaxation quality, independent of the time budget — high = the LP is loose.',
+    interpretation: 'lower-better',
+    format: 'percent',
+    group: 'quality',
+  },
+  objective_plateau_time: {
+    key: 'objective_plateau_time',
+    label: 'Plateau onset',
+    description:
+      'Seconds elapsed at the last objective improvement. Low vs. the time budget = the solver stopped finding better solutions early (a plateau).',
+    interpretation: 'context',
+    format: 'duration',
+    group: 'timing',
+  },
+  time_to_first_solution: {
+    key: 'time_to_first_solution',
+    label: 'Time to 1st solution',
+    description:
+      'Seconds until the first feasible solution. Long = the model was hard to even make feasible.',
+    interpretation: 'lower-better',
+    format: 'duration',
+    group: 'timing',
+  },
+  bound_gain_after_plateau: {
+    key: 'bound_gain_after_plateau',
+    label: 'Bound gain post-plateau',
+    description:
+      'Absolute movement of the best bound after the last solution. ~0 = fully stuck; large = the solver kept tightening the bound while the objective was flat.',
+    interpretation: 'context',
+    format: 'integer',
+    group: 'quality',
+  },
+  presolve_compression_ratio: {
+    key: 'presolve_compression_ratio',
+    label: 'Presolve compression',
+    description:
+      'Post-presolve Booleans ÷ pre-presolve Booleans. Lower = presolve eliminated more redundant variables; a value near 1.0 means little compression occurred.',
+    interpretation: 'lower-better',
+    format: 'percent',
+    group: 'model',
+  },
+  presolve_booleans_pre: {
+    key: 'presolve_booleans_pre',
+    label: 'Booleans (pre-presolve)',
+    description: 'Boolean variables in the model as built, before CP-SAT presolve compressed it.',
+    interpretation: 'context',
+    format: 'integer',
+    group: 'model',
+    parent: 'num_booleans',
+  },
 }
 
 /** Group metrics by their `group` field, preserving insertion order from METRIC_REGISTRY. */
@@ -470,6 +525,13 @@ export const COMPARABLE_METRICS: readonly string[] = [
   'num_lin_max',
   'num_reified_linear',
   'max_linear_coefficient',
+  // Tier 2 plateau metrics (Stream 2, Phase 2)
+  'lp_root_gap',
+  'bound_gain_after_plateau',
+  'objective_plateau_time',
+  'time_to_first_solution',
+  'presolve_compression_ratio',
+  'presolve_booleans_pre',
   // size (PR1)
   'total_persons',
   'total_bunks',
