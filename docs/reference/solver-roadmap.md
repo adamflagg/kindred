@@ -100,16 +100,20 @@ ctx.model.Add(sum(all_sat_vars) >= 1)                                # +1 plain 
 …and removing 164 BoolVars / 328 reified linears / 164 objective terms
 from S2.
 
-> **Reality (#1391):** the existing `all_sat_vars` produced by
-> `add_bunk_request_satisfaction_vars` use **one-way `OnlyEnforceIf`
-> implications** (`bunk_requests.py:75-117`). The solver can set
-> `sat_var = 1` freely without forcing actual co-placement. A hard
-> `sum(all_sat_vars) >= 1` over them would be vacuously satisfiable.
-> The pre-Stage-4 soft constraint summed over these falsifiable vars
-> and the objective rewarded them — meaning the 287,600 penalty was
-> almost certainly operationally inert (the 95.73% MP coverage came
-> from cluster constraints emergently placing friends, not the
-> penalty). See #1396 for the investigation issue.
+> **Reality (#1391):** the `all_sat_vars` produced by the pre-#1391
+> `add_bunk_request_satisfaction_vars` used **one-way `OnlyEnforceIf`
+> implications**. The solver could set `sat_var = 1` freely without
+> forcing actual co-placement. A hard `sum(all_sat_vars) >= 1` over them
+> would be vacuously satisfiable. The now-deleted soft `must_satisfy.py`
+> summed over these falsifiable vars — meaning the 287,600 penalty was
+> almost certainly operationally inert (the 95.73% MP coverage came from
+> cluster constraints emergently placing friends, not the penalty).
+> **Correction (#1395):** the objective itself was *never* falsifiable —
+> `add_objective` has always built its own bidirectional `req_satisfied_*`
+> vars and never consumed `add_bunk_request_satisfaction_vars`. That helper
+> was orphaned when #1391 deleted `must_satisfy.py` and is removed in #1395,
+> which unifies the objective's and parent_paramount's sat vars into one
+> shared `request_satisfied_vars` map. See #1396 for the investigation issue.
 >
 > **What shipped** in #1391: hard constraint uses a bidirectional
 > per-request sat var via `ctx.person_bunk_assignment` (matches the
@@ -175,7 +179,7 @@ extend `_pair_has_shared_bunk` rather than adding a new reason.
 ### Code refs (post-#1391)
 
 - `bunking/solver/constraints/parent_paramount.py` — hard MP constraint (renamed from `must_satisfy.py`)
-- `bunking/solver/constraints/bunk_requests.py:75-117` — one-way soft sat var encoding (see #1395)
+- `bunking/solver/constraints/bunk_requests.py` — `get_or_create_request_sat_var`, the canonical bidirectional sat-var builder (post-#1395; replaced the orphaned one-way `add_bunk_request_satisfaction_vars`)
 - `bunking/solver/direct_solver.py:643-714` — bidirectional objective-side sat var encoding (template for #1391's hard path)
 - `bunking/solver/direct_solver.py:355-438` — `_validate_requests`, impossibility classification
 - `bunking/solver/direct_solver.py:1215-` — `_check_must_satisfy_one_violations` (post-solve diagnostic, ERROR severity under hard MSO)
@@ -210,7 +214,7 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 
 ### Follow-ups surfaced during #1391 implementation
 
-- **#1395** — `refactor(solver): make add_bunk_request_satisfaction_vars bidirectional + unify sat vars with objective`. Eliminates the "free money" objective reward (one-way soft sat vars are falsifiable) and the ~250 duplicate BoolVars between `add_objective` and `parent_paramount`.
+- **#1395** — `refactor(solver): unify bunk-request sat vars + remove the orphaned one-way helper`. Behaviour-neutral cleanup: deleted the orphaned one-way `add_bunk_request_satisfaction_vars` (dead since #1391 removed `must_satisfy.py`), added the canonical bidirectional `get_or_create_request_sat_var`, and unified `add_objective` + `parent_paramount` onto one shared `request_satisfied_vars` map (~250 fewer duplicate BoolVars on S2). The "free money" framing was stale — the objective was never falsifiable; see the Stream 1 "Reality (#1391)" correction above.
 - **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
 - **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
 - **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
@@ -330,9 +334,9 @@ to eliminate junk) yields:
 | Source | Pre-presolve count | Code ref |
 |---|---|---|
 | `person_in_bunk[p, b]` — one per (person, bunk) | 193 × 17 = 3,281 | `direct_solver.py:_create_assignment_variables` |
-| `both_in_bunk[req, b]` — one per BUNK_WITH request per bunk | 311 × 17 = 5,287 | `constraints/bunk_requests.py:add_bunk_request_satisfaction_vars` |
+| ~~`both_in_bunk[req, b]` — one per BUNK_WITH request per bunk~~ | ~~311 × 17 = 5,287~~ | ~~`constraints/bunk_requests.py:add_bunk_request_satisfaction_vars`~~ — pre-#1391 only; the helper was orphaned when #1391 deleted `must_satisfy.py` and removed entirely in #1395. No `both_in_bunk` vars exist in the live model. |
 | `req_satisfied[r]` — one per request | 504 | `constraints/bunk_requests.py`, `age_preference.py` |
-| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391, replaced by ~250 bidirectional `parent_paramount_req_*_satisfied` sat vars; see #1395 for unification) |
+| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391; the ~250 bidirectional MP sat vars it was replaced by were unified with the objective's set into one shared `request_satisfied_vars` map in #1395) |
 | Constraint-internal indicators (grade_ratio, age_spread, level_progression, grade_adjacency) | ~500 | various |
 | **Total before presolve** | **~9,750** | |
 | **Post-presolve (reported)** | **5,561** | |
@@ -342,7 +346,7 @@ to eliminate junk) yields:
 | # | Lever | Estimated savings | Risk | Effort |
 |---|---|---|---|---|
 | 3a | **Sparse `person_in_bunk` — gender filter at model-build time** | −~1,640 BoolVars for S2 (50% of 3,281) | Low — `person_idx_map` already gender-aware upstream | Modest PR |
-| 3b | **Sparse `both_in_bunk` — eligibility intersect** (skip bunks where requester OR requestee is gender/grade-ineligible) | −~1,500–2,500 BoolVars | Low | Modest PR |
+| ~~3b~~ | ~~**Sparse `both_in_bunk` — eligibility intersect**~~ — **moot:** `both_in_bunk` was orphaned by #1391 and removed by #1395. The live sat-var encoding is `person_bunk_assignment`-based (one BoolVar per request, no per-bunk fan-out). | — | — | — |
 | 3c | **Hard MSO** (Stream 1) | −164 BoolVars | Already covered by Stream 1 | — |
 | 3d | **Pre-solve fixed-assignment pass** for 1-bunk-eligible campers (e.g., AG-only, grade-locked) | −17 BoolVars per such camper | Low | Small PR |
 | 3e | **Drop `req_satisfied` for already-impossible requests** | −~4 per session (small) | None | Tiny |
@@ -821,3 +825,12 @@ diffs are clearer.
   extended with staff-friendly prose vs admin-detail views. Substreams
   6a–6f (level_progression, group_locks, per-bunk grade range, cohort
   census, "open request" link, solver-probe fallback) deferred.
+- **2026-05-14** — #1395 shipped: bunk-request sat-var unification. Deleted
+  the orphaned one-way `add_bunk_request_satisfaction_vars` (dead since
+  #1391 removed `must_satisfy.py`), added the canonical bidirectional
+  `get_or_create_request_sat_var`, and unified `add_objective` +
+  `parent_paramount` onto one shared `request_satisfied_vars` map.
+  Behaviour-neutral (both prior encodings were already honest bidirectional
+  comparisons); the win is ~250 fewer duplicate BoolVars on S2. Corrected
+  the Stream 1 "Reality" note (the objective was never falsifiable) and the
+  Stream 3 table / lever 3b (`both_in_bunk` no longer exists in the live model).
