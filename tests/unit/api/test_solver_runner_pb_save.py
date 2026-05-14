@@ -768,11 +768,11 @@ class TestFailedRunPersistsDetails:
 
     @pytest.mark.asyncio
     async def test_failure_path_uses_short_session_label(self, mock_solver_input):
-        """Failure-path source_label must use the short `S{cm_id}` shape so failed
+        """Failure-path source_label must use the short `{cm_id}` shape so failed
         sweep children align visually with successful siblings in the impact-analysis
-        UI. Successful runs produce labels like "S2 · Production" via build_run_details
+        UI. Successful runs produce labels like "2 · CM" via build_run_details
         → _lookup_session_short_name; the failure path runs before PocketBase auth and
-        can't fetch the session name, so it falls back to the same `S{cm_id}` form that
+        can't fetch the session name, so it falls back to the same `{cm_id}` form that
         _lookup_session_short_name emits on lookup failure.
         """
         patches, mock_runs = self._setup_for_failure()
@@ -814,6 +814,6 @@ class TestFailedRunPersistsDetails:
         import json
 
         details = json.loads(pb_data["details"])
-        assert details["source_label"] == "S1000001 · Production", (
-            f"Failure-path label must be short (S<cm_id>) to align with successful siblings; got {details['source_label']!r}"
+        assert details["source_label"] == "1000001 · CM", (
+            f"Failure-path label must be short (<cm_id>) to align with successful siblings; got {details['source_label']!r}"
         )

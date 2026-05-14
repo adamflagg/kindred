@@ -411,14 +411,6 @@ export const queryKeys = {
     ['person-for-siblings', camperId, year] as const,
   camperSiblingsPanel: (householdId: number | undefined, camperId: string, year: number) =>
     ['camper-siblings-panel', householdId, camperId, year] as const,
-  // Two callers query `original_bunk_requests` with different filter columns
-  // and shape the result differently — a single shared cache key would cause
-  // a collision. Split into two distinct factories.
-  //
-  // Filter: `person_id = {cmId}`. Returns first row as raw OriginalBunkData
-  // (used by CamperDetailsPanel). Caller must gate with `enabled: !!cmId`.
-  originalBunkRequestsByPersonId: (cmId: number | undefined, year: number) =>
-    ['original-bunk-requests-by-person-id', cmId, year] as const,
   // Filter: `requester.cm_id = {cmId}`. Returns denormalized
   // OriginalBunkData[] (used by useOriginalBunkData). Caller must gate
   // with `enabled: !!cmId`.

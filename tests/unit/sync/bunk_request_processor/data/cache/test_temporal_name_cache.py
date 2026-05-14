@@ -364,3 +364,292 @@ class TestTemporalNameCache:
         # Non-existent person
         result = cache.get_person(99999)
         assert result is None
+
+    def test_parent_surname_index_populated_when_parent_names_present(self):
+        """Regression for #1393: when Persons have populated parent_names JSON,
+        the surname index must build a non-empty entry per unique surname.
+
+        Pre-fix, every Person had parent_names=null because the Go sync read
+        non-existent fields from CampMinder's Relatives array. The index built
+        with 0 unique surnames every run, silently neutering parent-surname
+        recovery in the bunk request resolution pipeline.
+        """
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        # Two campers, each with one parent whose surname differs from the
+        # camper's own — that mismatch is what the surname index exists to
+        # recover.
+        emma = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [
+                    {"first": "Sarah", "last": "Johnson", "relationship": "Guardian", "is_primary": False},
+                    {"first": "David", "last": "Garcia", "relationship": "Guardian", "is_primary": False},
+                ]
+            ),
+        )
+        liam = Person(
+            cm_id=1002,
+            first_name="Liam",
+            last_name="Garcia",
+            preferred_name=None,
+            birth_date=datetime(2012, 9, 1),
+            grade=8,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [
+                    {"first": "Olivia", "last": "Chen", "relationship": "Guardian", "is_primary": False},
+                    {"first": "Samuel", "last": "Garcia", "relationship": "Guardian", "is_primary": False},
+                ]
+            ),
+        )
+
+        for person in (emma, liam):
+            cache._person_cache[person.cm_id] = person
+            cache._attendees_with_sessions[person.cm_id] = {
+                "session_cm_id": 1,
+                "session_name": "Session 1",
+                "parent_session_id": 1,
+                "parent_session_name": "Session 1",
+            }
+
+        cache._build_parent_surname_index()
+
+        # Three distinct surnames across both campers: Johnson, Garcia, Chen.
+        # (Garcia is shared between Emma's dad and Liam's dad.)
+        assert len(cache._parent_surname_index) == 3, (
+            f"expected 3 surname keys, got {len(cache._parent_surname_index)}: "
+            f"{sorted(cache._parent_surname_index.keys())}"
+        )
+
+        # Cross-surname recovery: searching "Emma Garcia" must find Emma Johnson
+        # (her dad has surname Garcia) — this is the whole point of the index.
+        results = cache.find_by_parent_surname("Emma", "Garcia")
+        # Both campers share "Garcia" in the index (Emma via dad, Liam via dad
+        # and his own last_name), but first-name filtering narrows to Emma.
+        assert len(results) == 1
+        assert results[0].cm_id == 1001
+
+        # Searching "Liam Chen" must find Liam Garcia (his mom is Chen).
+        results = cache.find_by_parent_surname("Liam", "Chen")
+        assert len(results) == 1
+        assert results[0].cm_id == 1002
+
+    def test_parent_surname_index_empty_when_parent_names_null(self):
+        """When Persons have parent_names=None (the pre-#1393 state), the
+        surname index builds with zero entries. Locks the contract: the index
+        is a pure function of parent_names input, no other side channels."""
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        person = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=None,
+        )
+        cache._person_cache[1001] = person
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+
+        cache._build_parent_surname_index()
+        assert cache._parent_surname_index == {}
+
+    def test_find_by_parent_surname_returns_empty_for_unknown_surname(self):
+        """Negative case: lookup for a surname not in any parent_names returns
+        []. Locks the contract that absence is silent, not exceptional."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        emma = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "Sarah", "last": "Johnson", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1001] = emma
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # Surname not in any indexed parent_names
+        assert cache.find_by_parent_surname("Emma", "Patel") == []
+
+    def test_find_by_parent_surname_returns_empty_for_first_name_mismatch(self):
+        """Negative case: surname matches the index but first name doesn't.
+        The surname index is a candidate set; first-name filter narrows it."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        emma = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "David", "last": "Garcia", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1001] = emma
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # "Garcia" is in the index (Emma's dad), but no camper named "Liam" has
+        # a Garcia parent.
+        assert cache.find_by_parent_surname("Liam", "Garcia") == []
+
+    def test_find_by_parent_surname_matches_via_preferred_name(self):
+        """Preferred name should match alongside first_name. Otherwise campers
+        who go by a nickname (Liam → Bo) would be invisible to surname lookups
+        even when the surname matches."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        liam = Person(
+            cm_id=1002,
+            first_name="Liam",
+            last_name="Garcia",
+            preferred_name="Bo",
+            birth_date=datetime(2012, 9, 1),
+            grade=8,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps(
+                [{"first": "Olivia", "last": "Chen", "relationship": "Guardian", "is_primary": False}]
+            ),
+        )
+        cache._person_cache[1002] = liam
+        cache._attendees_with_sessions[1002] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+        cache._build_parent_surname_index()
+
+        # Request submitted using preferred name "Bo" + mom's surname "Chen"
+        results = cache.find_by_parent_surname("Bo", "Chen")
+        assert len(results) == 1
+        assert results[0].cm_id == 1002
+
+    def test_parent_surname_index_empty_when_parent_names_is_empty_array(self):
+        """Empty JSON array `[]` is distinct from `None` but yields the same
+        empty-index result. Locks the contract that the index is a function of
+        actual parent records, not of the JSON wrapper."""
+        import json
+
+        from bunking.sync.bunk_request_processor.core.models import Person
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        cache = TemporalNameCache(pb, year=2026)
+
+        person = Person(
+            cm_id=1001,
+            first_name="Emma",
+            last_name="Johnson",
+            preferred_name=None,
+            birth_date=datetime(2013, 6, 1),
+            grade=7,
+            school=None,
+            city=None,
+            state=None,
+            session_cm_id=None,
+            parent_names=json.dumps([]),
+        )
+        cache._person_cache[1001] = person
+        cache._attendees_with_sessions[1001] = {
+            "session_cm_id": 1,
+            "session_name": "Session 1",
+            "parent_session_id": 1,
+            "parent_session_name": "Session 1",
+        }
+
+        cache._build_parent_surname_index()
+        assert cache._parent_surname_index == {}
+        assert cache.find_by_parent_surname("Emma", "Johnson") == []

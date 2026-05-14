@@ -27,21 +27,39 @@ This field may contain:
    Keywords: "not with", "separate from", "away from"
 
 3. "age_preference" - Age/grade preference
+   Leave target_name null.
+   Set age_direction to "older" or "younger" for a clear direction.
+   Leave age_direction null when the preference is undirected.
    Keywords: "bunk older", "same age/younger", "bunk with 5th/6th"
+
+=== PARENT-CONTEXT SURNAME EXTRACTION ===
+
+When a target name is followed by parenthetical content that identifies the
+camper's parent or supplies the camper's surname, infer the surname and
+include it in target_name. Examples:
+
+- "Emma (whose mother is Jane Garcia)" → target_name = "Emma Garcia"
+- "Liam (Olivia Chen's son)" → target_name = "Liam Chen"
+- "Olivia (Patel)" → target_name = "Olivia Patel"
+
+Do NOT apply this rule when parentheses contain only a relationship word
+(Cousin), (twin), (stepbrother); a grade or age (5th grade), (age 12); or
+descriptive context (camp veteran), (new this year). Those still go to
+parse_notes as today.
 
 === STAFF SHORTHAND PATTERNS ===
 
 Example 1 - Age shorthand:
 Input: "same age/younger"
-Output: 1 age_preference "younger"
+Output: 1 age_preference request with age_direction="younger"
 
 Example 2 - Simple age directive:
 Input: "Bunk older"
-Output: 1 age_preference "older"
+Output: 1 age_preference request with age_direction="older"
 
 Example 3 - Grade range:
 Input: "Bunk with 5th/6th"
-Output: 1 age_preference "younger" (relative to camper's grade context)
+Output: 1 age_preference request with age_direction="younger" (relative to camper's grade context)
 
 Example 4 - CO reference with friend:
 Input: "CO noted friends with Riley Brooks"
@@ -73,7 +91,11 @@ Output: 1 bunk_with "Noah Garcia", parse_notes: "prior bunkmate 2024"
 
 Example 11 - Multiple notes concatenated:
 Input: "Bunk older. CO noted friends with Emma."
-Output: 2 requests - age_preference "older", bunk_with "Emma"
+Output: 2 requests - age_preference (age_direction="older"), bunk_with "Emma"
+
+Example 12 - Undirected age preference:
+Input: "Age-wise, no direction noted"
+Output: 1 age_preference request with age_direction=null — undirected; staff review.
 
 === INVALID EXTRACTIONS ===
 
@@ -96,7 +118,8 @@ Staff shorthand can be ambiguous. Use confidence scoring:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name or age value
+- target_name: Person's name for bunk_with/not_bunk_with; null for age_preference requests.
+- age_direction: age_preference requests only — "older", "younger", or null (undirected).
 - confidence: 0.0-1.0 (lower for abbreviated/unclear content)
 - keywords_found: Priority words like "must", "first choice"
 

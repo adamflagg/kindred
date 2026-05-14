@@ -39,6 +39,7 @@ import CamperDetailsPanel from './CamperDetailsPanel'
 import { pb } from '../lib/pocketbase'
 import { queryKeys } from '../utils/queryKeys'
 import type { Bunk, Session } from '../types/app-types'
+import type { BunkPlansResponse, BunksResponse } from '../types/pocketbase-types'
 
 // Register extensions
 cytoscape.use(fcose)
@@ -117,6 +118,46 @@ export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
   return 'B'
 }
 
+/**
+ * Build a PocketBase filter for fetching bunks by cm_id within a specific year.
+ *
+ * The bunks table stores one row per (cm_id, year) for history retention.
+ * Omitting the year clause returns ~N years of duplicate rows per logical
+ * bunk, which seeds the navigation list with adjacent same-cm_id entries
+ * and silently no-ops next/prev (#1339 audit follow-up).
+ *
+ * Returns an empty string for an empty cm_id list — callers should short-
+ * circuit before invoking.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const buildBunksFilter = (cmIds: number[], year: number): string => {
+  if (cmIds.length === 0) return ''
+  const clause = cmIds.map((id) => `cm_id = ${id}`).join(' || ')
+  return `(${clause}) && year = ${year}`
+}
+
+/**
+ * Extract bunk cm_ids from a list of expanded bunk_plans records.
+ *
+ * `bunk_plans` schema (per `pocketbase/pb_migrations/1500000017_bunk_plans.js`)
+ * has no flat `bunk_cm_id` column — the bunk reference is the `bunk` relation
+ * field, and the bunk's CM ID is reached via `expand.bunk.cm_id` when the
+ * caller requests `expand: 'bunk'`. A previous inline interface assumed a
+ * flat `bunk_cm_id` field which doesn't exist; the resulting always-empty
+ * array silently hid prev/next navigation in the bunk social graph modal
+ * (#1339 audit).
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export const extractBunkCmIdsFromPlans = (
+  bunkPlans: Array<{ expand?: { bunk?: { cm_id?: number } } }>
+): number[] => [
+  ...new Set(
+    bunkPlans
+      .map((bp) => bp.expand?.bunk?.cm_id)
+      .filter((id): id is number => typeof id === 'number')
+  ),
+]
+
 // eslint-disable-next-line react-refresh/only-export-components
 export const extractSortKey = (name: string): { primary: number; secondary: string } => {
   if (name.includes('Alph')) return { primary: -2, secondary: name }
@@ -194,29 +235,19 @@ export default function BunkSocialGraphModal({
 
       // Get bunk plans for this session using relation expansion
       const filter = `session.cm_id = ${session.cm_id} && year = ${year}`
-      const bunkPlans = await pb.collection('bunk_plans').getFullList({
-        filter,
-        expand: 'bunk',
-      })
+      const bunkPlans = await pb
+        .collection('bunk_plans')
+        .getFullList<BunkPlansResponse<{ bunk: BunksResponse }>>({
+          filter,
+          expand: 'bunk',
+        })
 
       if (bunkPlans.length === 0) return []
 
-      // Get unique bunk CampMinder IDs
-      interface BunkPlanRecord {
-        bunk_cm_id?: number
-      }
-      const bunkCmIds = [
-        ...new Set(
-          bunkPlans
-            .map((bp) => (bp as BunkPlanRecord).bunk_cm_id)
-            .filter((id): id is number => id !== undefined)
-        ),
-      ]
-
-      // Batch fetch bunks
+      const bunkCmIds = extractBunkCmIdsFromPlans(bunkPlans)
       if (bunkCmIds.length === 0) return []
 
-      const bunkFilter = bunkCmIds.map((id) => `cm_id = ${id}`).join(' || ')
+      const bunkFilter = buildBunksFilter(bunkCmIds, year)
       const bunks = await pb.collection<Bunk>('bunks').getFullList({ filter: bunkFilter })
 
       // Sort bunks by name

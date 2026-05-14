@@ -701,53 +701,27 @@ func (s *PersonsSync) transformPersonToPB(
 		}
 	}
 
-	// Extract parent/guardian names from Relatives array
-	// Used for name resolution when bunk requests reference parents' last names
-	if relatives, ok := cmPerson["Relatives"].([]any); ok {
-		parents := make([]map[string]any, 0)
-		for _, rel := range relatives {
-			relMap, ok := rel.(map[string]any)
-			if !ok {
-				continue
-			}
-			// Only include guardians (parents, legal guardians, etc.)
-			isGuardian, _ := relMap["IsGuardian"].(bool)
-			if !isGuardian {
-				continue
-			}
-
-			parentData := make(map[string]any)
-
-			// Extract name
-			if nameData, ok := relMap["Name"].(map[string]any); ok {
-				firstName := s.getString(nameData, "First", "")
-				lastName := s.getString(nameData, "Last", "")
-				if firstName != "" || lastName != "" {
-					parentData["first"] = s.fixAllCapsName(firstName)
-					parentData["last"] = s.fixAllCapsName(lastName)
-				}
-			}
-
-			// Extract relationship type (Mother, Father, Guardian, etc.)
-			if relType := s.getString(relMap, "RelationshipType", ""); relType != "" {
-				parentData["relationship"] = relType
-			}
-
-			// Extract primary flag
-			isPrimary, _ := relMap["IsPrimary"].(bool)
-			parentData["is_primary"] = isPrimary
-
-			// Only add if we have name data
-			if _, hasFirst := parentData["first"]; hasFirst {
-				parents = append(parents, parentData)
-			}
+	// Extract parent/guardian names by parsing the household's MailingTitle
+	// (e.g. "Sarah Johnson and David Garcia"). The Relatives array carries only
+	// guardian IDs — no names — so a salutation parse is the only name source
+	// available without a follow-up GetPersons call. See #1393.
+	//
+	// Always set parent_names (to "" on failure) so the upsert path clears any
+	// stale value from a prior sync when the source MailingTitle changes to
+	// something unparseable — the PB update loop skips fields not present in
+	// pbData, so an unset key would freeze old data indefinitely.
+	mailing, alternate := extractHouseholdSalutations(cmPerson)
+	parents := s.parseHouseholdSalutation(mailing, alternate)
+	if len(parents) > 0 {
+		if parentsJSON, err := json.Marshal(parents); err == nil {
+			pbData["parent_names"] = string(parentsJSON)
+		} else {
+			pbData["parent_names"] = ""
+			s.missingDataStats["missing_parent_names"]++
 		}
-
-		if len(parents) > 0 {
-			if parentsJSON, err := json.Marshal(parents); err == nil {
-				pbData["parent_names"] = string(parentsJSON)
-			}
-		}
+	} else {
+		pbData["parent_names"] = ""
+		s.missingDataStats["missing_parent_names"]++
 	}
 
 	// Set camper status based on whether this person came from attendees
@@ -805,6 +779,220 @@ func (s *PersonsSync) isAllUppercase(name string) bool {
 		}
 	}
 	return hasLetter // Must have at least one letter
+}
+
+// honorificsRe matches a leading honorific with or without trailing period and
+// either followed by whitespace or end-of-string ("Mr.", "Mr. Smith", "Dr").
+var honorificsRe = regexp.MustCompile(`(?i)^(mr|mrs|ms|miss|dr|rev|rabbi|father|sister|br|sr|prof)\.?(\s+|$)`)
+
+// hasLetterRe checks that a string contains at least one ASCII alphabetic
+// character — used to reject garbage like "???" or "..." that would otherwise
+// slip through as a surname.
+var hasLetterRe = regexp.MustCompile(`[A-Za-z]`)
+
+// suffixesRe matches a trailing generational suffix (Jr/Sr/II/III/IV) with
+// optional period and surrounding whitespace.
+var suffixesRe = regexp.MustCompile(`(?i)\s+(jr|sr|ii|iii|iv)\.?$`)
+
+// conjunctionRe splits on " and " or " & " (case-insensitive, whitespace-bounded).
+var conjunctionRe = regexp.MustCompile(`(?i)\s+(?:and|&)\s+`)
+
+// extractHouseholdSalutations pulls the primary childhood household's
+// MailingTitle and AlternateMailingTitle from a CampMinder Person payload.
+// Returns empty strings if the nested structure is missing.
+func extractHouseholdSalutations(cmPerson map[string]any) (mailing, alternate string) {
+	households, ok := cmPerson["Households"].(map[string]any)
+	if !ok {
+		return "", ""
+	}
+	pch, ok := households["PrimaryChildhoodHousehold"].(map[string]any)
+	if !ok {
+		return "", ""
+	}
+	mailing, _ = pch["MailingTitle"].(string)
+	alternate, _ = pch["AlternateMailingTitle"].(string)
+	return mailing, alternate
+}
+
+// parseHouseholdSalutation extracts parent records (first/last name pairs) from
+// a household's MailingTitle string. Falls back to alternate when the primary
+// is empty or doesn't yield any parents.
+//
+// Patterns handled:
+//   - "Sarah Johnson and David Garcia"  → 2 parents, distinct surnames
+//   - "Sarah and David Johnson"         → 2 parents, shared surname inferred
+//   - "Mr. David Johnson"               → 1 parent, honorific stripped
+//   - "Mr. and Mrs. Johnson"            → 2 parents, surname-only
+//   - "Mr. Johnson and Mrs. Garcia"     → 2 parents, surname-only, distinct
+//
+// Output shape matches what Python's Person.parents consumer expects
+// (bunking/sync/bunk_request_processor/core/models.py): each entry has
+// first/last/relationship/is_primary keys. is_primary is left false since the
+// salutation order is not reliably the same as Relatives[].IsPrimary.
+func (s *PersonsSync) parseHouseholdSalutation(mailing, alternate string) []map[string]any {
+	if parents := s.tryParseSalutation(mailing); len(parents) > 0 {
+		return parents
+	}
+	return s.tryParseSalutation(alternate)
+}
+
+func (s *PersonsSync) tryParseSalutation(raw string) []map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	parts := conjunctionRe.Split(raw, 2)
+	var out []map[string]any
+	switch len(parts) {
+	case 1:
+		// Single parent: "Mr. David Johnson"
+		if p := parseSingleParent(parts[0]); p != nil {
+			out = []map[string]any{p}
+		}
+	case 2:
+		left := strings.TrimSpace(parts[0])
+		right := strings.TrimSpace(parts[1])
+		out = parseJointSalutation(left, right)
+	}
+
+	// Reject the whole parse if any surname lacks alphabetic content
+	// (catches "???", "...", and similar garbage).
+	for _, p := range out {
+		if last, _ := p["last"].(string); !hasLetterRe.MatchString(last) {
+			return nil
+		}
+	}
+	return out
+}
+
+// parseSingleParent parses one half of a salutation into a parent record.
+// A bare single token without an explicit honorific prefix is rejected
+// (e.g. "Smith" alone is ambiguous and likely not a parent salutation), but
+// "Mr. Smith" yields {last: "Smith"} because the honorific anchors intent.
+func parseSingleParent(raw string) map[string]any {
+	stripped, hadHonorific := stripHonorificDetect(raw)
+	cleaned := stripSuffix(stripped)
+	tokens := strings.Fields(cleaned)
+
+	switch len(tokens) {
+	case 0:
+		return nil
+	case 1:
+		// Single token — only treat as a surname if we saw an honorific.
+		if !hadHonorific {
+			return nil
+		}
+		return parent("", titleCase(tokens[0]), false)
+	default:
+		// 2+ tokens → first = everything but last, last = last token.
+		first := titleCase(strings.Join(tokens[:len(tokens)-1], " "))
+		last := titleCase(tokens[len(tokens)-1])
+		return parent(first, last, false)
+	}
+}
+
+// parseJointSalutation handles two parents separated by " and "/" & ".
+// Infers a shared surname when one side is a single first name.
+func parseJointSalutation(left, right string) []map[string]any {
+	leftStripped, leftHadHonorific := stripHonorificDetect(left)
+	rightStripped, _ := stripHonorificDetect(right)
+	leftStripped = stripSuffix(leftStripped)
+	rightStripped = stripSuffix(rightStripped)
+	leftTokens := strings.Fields(leftStripped)
+	rightTokens := strings.Fields(rightStripped)
+
+	// Left strips to nothing (honorific-only): right side carries the shared
+	// surname for both parents. Covers:
+	//   "Mr. and Mrs. Garcia"        → both parents surname-only
+	//   "Mr. and Mrs. David Garcia"  → left surname-only, right has first name
+	if len(leftTokens) == 0 && len(rightTokens) >= 1 {
+		sharedLast := titleCase(rightTokens[len(rightTokens)-1])
+		rightFirst := ""
+		if len(rightTokens) >= 2 {
+			rightFirst = titleCase(strings.Join(rightTokens[:len(rightTokens)-1], " "))
+		}
+		return []map[string]any{
+			parent("", sharedLast, false),
+			parent(rightFirst, sharedLast, false),
+		}
+	}
+
+	// "Sarah and David Johnson" — left is one first name (no honorific
+	// stripped), right has first+last. Borrow the right's surname for the
+	// left parent. The leftHadHonorific guard prevents misfiring on
+	// "Mr. Garcia and Mrs. Sarah Johnson" where left's single token is
+	// actually a surname.
+	if len(leftTokens) == 1 && len(rightTokens) >= 2 && !leftHadHonorific {
+		sharedLast := titleCase(rightTokens[len(rightTokens)-1])
+		rightFirst := titleCase(strings.Join(rightTokens[:len(rightTokens)-1], " "))
+		return []map[string]any{
+			parent(titleCase(leftTokens[0]), sharedLast, false),
+			parent(rightFirst, sharedLast, false),
+		}
+	}
+
+	// Both sides have at least one token — parse each side independently.
+	var out []map[string]any
+	if p := parseSingleParent(left); p != nil {
+		out = append(out, p)
+	}
+	if p := parseSingleParent(right); p != nil {
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parent(first, last string, isPrimary bool) map[string]any {
+	return map[string]any{
+		"first":        first,
+		"last":         last,
+		"relationship": "Guardian",
+		"is_primary":   isPrimary,
+	}
+}
+
+// stripHonorificDetect returns the input with any leading honorific removed
+// and a boolean indicating whether the strip actually happened. Callers use
+// the flag to decide whether a single-token remainder is meaningful.
+func stripHonorificDetect(s string) (string, bool) {
+	replaced := honorificsRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(replaced), replaced != s
+}
+
+func stripSuffix(s string) string {
+	return strings.TrimSpace(suffixesRe.ReplaceAllString(s, ""))
+}
+
+// titleCase normalizes ALL CAPS tokens to Title Case without touching
+// legitimately mixed-case names (McDonald, O'Brien, etc.).
+func titleCase(s string) string {
+	if s == "" || !isAllUpper(s) {
+		return s
+	}
+	words := strings.Fields(strings.ToLower(s))
+	for i, w := range words {
+		if w != "" {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func isAllUpper(s string) bool {
+	hasLetter := false
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' {
+			return false
+		}
+		if r >= 'A' && r <= 'Z' {
+			hasLetter = true
+		}
+	}
+	return hasLetter
 }
 
 // fixAllCapsName converts ALL CAPS names to Title Case, preserving mixed-case names
@@ -886,6 +1074,7 @@ func (s *PersonsSync) printDataQualitySummary() {
 		"missingNames", s.missingDataStats["missing_name"],
 		"missingAges", s.missingDataStats["missing_age"],
 		"missingGrades", s.missingDataStats["missing_grade"],
+		"missingParentNames", s.missingDataStats["missing_parent_names"],
 	)
 }
 

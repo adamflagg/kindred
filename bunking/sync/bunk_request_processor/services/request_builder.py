@@ -237,23 +237,25 @@ class RequestBuilder:
         """Determine the status and disposition reason for a bunk request.
 
         Returns:
-            Tuple of (status, disposition_reason). Unresolved names return (PENDING, "").
+            Tuple of (status, disposition_reason). AGE_PREFERENCE routes through
+            disposition rules regardless of resolution — direction alone determines
+            status (#1406). Unresolved names (other request types) return (PENDING, "").
             Resolved matches go through disposition rules (business gates + quality).
         """
         from ..disposition.disposition_rules import determine_disposition
 
+        age_direction = parsed_req.age_preference.value if parsed_req.age_preference else None
+
+        # AGE_PREFERENCE is resolution-independent: disposition_rules._age_preference_rules
+        # routes by direction alone. Delegate to avoid duplicating the literals (#1411).
+        if parsed_req.request_type == RequestType.AGE_PREFERENCE:
+            disposition = determine_disposition(parsed_req.request_type, age_direction=age_direction)
+            return disposition.status, disposition.reason
+
         person_cm_id = resolution_info.get("person_cm_id")
 
-        # No person ID cases
-        if person_cm_id is None:
-            if parsed_req.request_type == RequestType.AGE_PREFERENCE:
-                if parsed_req.age_preference is not None:
-                    return RequestStatus.RESOLVED, "directional_preference"
-                return RequestStatus.PENDING, ""
-            return RequestStatus.PENDING, ""
-
-        # Negative ID means unresolved name
-        if person_cm_id < 0:
+        # Unresolved: no person ID, or negative hash-based ID for an unmatched name.
+        if person_cm_id is None or person_cm_id < 0:
             return RequestStatus.PENDING, ""
 
         # Resolved match — apply disposition rules
@@ -269,7 +271,7 @@ class RequestBuilder:
             target_has_bunking_session=conflict_type != "target_not_enrolled",
             target_waitlisted=resolution_info.get("target_waitlisted", False),
             session_match=conflict_type not in ("session_mismatch", "cross_session_satisfied"),
-            age_direction=parsed_req.age_preference.value if parsed_req.age_preference else None,
+            age_direction=age_direction,
             auto_resolve_threshold=self.auto_resolve_threshold,
         )
 

@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -1543,5 +1544,254 @@ func TestPhoneNumbersRemoved(t *testing.T) {
 	// phone_numbers field should not exist in the output
 	if _, exists := pbData["phone_numbers"]; exists {
 		t.Errorf("phone_numbers field should not be populated, got %v", pbData["phone_numbers"])
+	}
+}
+
+func TestParseHouseholdSalutation(t *testing.T) {
+	s := &PersonsSync{}
+
+	type want struct {
+		first string
+		last  string
+	}
+
+	tests := []struct {
+		name      string
+		mailing   string
+		alternate string
+		want      []want
+	}{
+		{
+			name:    "joint different surnames",
+			mailing: "Sarah Johnson and David Garcia",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Garcia"}},
+		},
+		{
+			name:    "joint shared surname (single first on left)",
+			mailing: "Sarah and David Johnson",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Johnson"}},
+		},
+		{
+			name:    "single with honorific",
+			mailing: "Mr. David Johnson",
+			want:    []want{{"David", "Johnson"}},
+		},
+		{
+			name:    "honorific joint shared surname",
+			mailing: "Mr. and Mrs. Johnson",
+			want:    []want{{"", "Johnson"}, {"", "Johnson"}},
+		},
+		{
+			// Regression: previously this fell through to per-side parsing,
+			// left stripped to "" → nil, right parsed alone as "David Garcia",
+			// yielding only 1 parent. Should yield 2 sharing the surname,
+			// with the right parent's first name preserved.
+			name:    "honorific joint with first name on right",
+			mailing: "Mr. and Mrs. David Garcia",
+			want:    []want{{"", "Garcia"}, {"David", "Garcia"}},
+		},
+		{
+			name:    "honorific joint different surnames",
+			mailing: "Mr. Johnson and Mrs. Garcia",
+			want:    []want{{"", "Johnson"}, {"", "Garcia"}},
+		},
+		{
+			name:    "honorific surname only on left, full name on right",
+			mailing: "Mr. Johnson and Mrs. Sarah Garcia",
+			want:    []want{{"", "Johnson"}, {"Sarah", "Garcia"}},
+		},
+		{
+			name:    "ampersand separator",
+			mailing: "Sarah Johnson & David Garcia",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Garcia"}},
+		},
+		{
+			name:    "suffix stripped",
+			mailing: "Mr. David Johnson Jr.",
+			want:    []want{{"David", "Johnson"}},
+		},
+		{
+			name:    "honorific without period",
+			mailing: "Dr Sarah Johnson",
+			want:    []want{{"Sarah", "Johnson"}},
+		},
+		{
+			name:    "honorifics on both sides full names",
+			mailing: "Mr. Sarah Johnson and Mrs. David Garcia",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Garcia"}},
+		},
+		{
+			name:      "fallback to alternate when mailing empty",
+			mailing:   "",
+			alternate: "Mr. Johnson",
+			want:      []want{{"", "Johnson"}},
+		},
+		{
+			name:      "fallback to alternate when mailing unparseable",
+			mailing:   "???",
+			alternate: "Mr. David Johnson",
+			want:      []want{{"David", "Johnson"}},
+		},
+		{
+			name: "both empty returns nil",
+			want: nil,
+		},
+		{
+			name:    "all caps normalized",
+			mailing: "SARAH JOHNSON AND DAVID GARCIA",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Garcia"}},
+		},
+		{
+			name:    "single token unparseable",
+			mailing: "Johnson",
+			want:    nil,
+		},
+		{
+			name:    "whitespace trimmed",
+			mailing: "  Sarah Johnson and David Garcia  ",
+			want:    []want{{"Sarah", "Johnson"}, {"David", "Garcia"}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := s.parseHouseholdSalutation(tc.mailing, tc.alternate)
+
+			if len(got) != len(tc.want) {
+				t.Fatalf("parents len = %d, want %d (got=%+v)", len(got), len(tc.want), got)
+			}
+
+			for i, w := range tc.want {
+				gFirst, _ := got[i]["first"].(string)
+				gLast, _ := got[i]["last"].(string)
+				if gFirst != w.first {
+					t.Errorf("parent[%d].first = %q, want %q", i, gFirst, w.first)
+				}
+				if gLast != w.last {
+					t.Errorf("parent[%d].last = %q, want %q", i, gLast, w.last)
+				}
+			}
+		})
+	}
+}
+
+// TestTransformPersonToPB_ParentNamesFromMailingTitle verifies that parent_names
+// JSON is populated from Households.PrimaryChildhoodHousehold.MailingTitle.
+// Pre-fix, the code at persons.go:706-751 read non-existent Name fields from the
+// Relatives array (which only carries IDs) and produced parent_names=null for
+// every record — see #1393.
+func TestTransformPersonToPB_ParentNamesFromMailingTitle(t *testing.T) {
+	s := &PersonsSync{missingDataStats: make(map[string]int)}
+
+	personData := map[string]any{
+		"ID": float64(12345),
+		"Name": map[string]any{
+			"First": "Emma",
+			"Last":  "Johnson",
+		},
+		// transformPersonToPB short-circuits to nil without CamperDetails.
+		"CamperDetails": map[string]any{"CampGradeID": float64(7)},
+		"Households": map[string]any{
+			"PrimaryChildhoodHousehold": map[string]any{
+				"MailingTitle": "Sarah Johnson and David Garcia",
+			},
+		},
+	}
+
+	pbData, err := s.transformPersonToPB(personData, 2026, true)
+	if err != nil {
+		t.Fatalf("transformPersonToPB returned error: %v", err)
+	}
+
+	raw, ok := pbData["parent_names"].(string)
+	if !ok || raw == "" {
+		t.Fatalf("parent_names should be a populated JSON string, got %v (%T)",
+			pbData["parent_names"], pbData["parent_names"])
+	}
+
+	// Spot-check both surnames appear in the JSON. Full structural validation is
+	// covered by TestParseHouseholdSalutation; here we just confirm wiring.
+	for _, surname := range []string{"Johnson", "Garcia"} {
+		if !contains(raw, surname) {
+			t.Errorf("parent_names JSON missing surname %q: %s", surname, raw)
+		}
+	}
+}
+
+func contains(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
+}
+
+// TestTransformPersonToPB_ParentNamesClearedOnParseFail verifies that when the
+// salutation parser yields nothing, parent_names is explicitly set to "" in
+// pbData so a row's previously-good value gets cleared during update. Without
+// this, the upsert path skips the field (only fields present in pbData are
+// compared/written), and stale guardian data persists indefinitely.
+func TestTransformPersonToPB_ParentNamesClearedOnParseFail(t *testing.T) {
+	cases := []struct {
+		name        string
+		households  any
+		wantCleared bool
+		wantStat    bool
+	}{
+		{
+			name: "unparseable mailing title",
+			households: map[string]any{
+				"PrimaryChildhoodHousehold": map[string]any{"MailingTitle": "???"},
+			},
+			wantCleared: true,
+			wantStat:    true,
+		},
+		{
+			name: "empty mailing and alternate",
+			households: map[string]any{
+				"PrimaryChildhoodHousehold": map[string]any{
+					"MailingTitle":          "",
+					"AlternateMailingTitle": "",
+				},
+			},
+			wantCleared: true,
+			wantStat:    true,
+		},
+		{
+			name:        "missing households block entirely",
+			households:  nil,
+			wantCleared: true,
+			wantStat:    true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &PersonsSync{missingDataStats: make(map[string]int)}
+			personData := map[string]any{
+				"ID":            float64(12345),
+				"Name":          map[string]any{"First": "Emma", "Last": "Johnson"},
+				"CamperDetails": map[string]any{"CampGradeID": float64(7)},
+			}
+			if tc.households != nil {
+				personData["Households"] = tc.households
+			}
+
+			pbData, err := s.transformPersonToPB(personData, 2026, true)
+			if err != nil {
+				t.Fatalf("transformPersonToPB returned error: %v", err)
+			}
+
+			val, exists := pbData["parent_names"]
+			if !exists {
+				t.Fatalf("parent_names key absent from pbData; expected explicit clear (empty string)")
+			}
+			if tc.wantCleared {
+				if val != "" {
+					t.Errorf("parent_names = %v (%T), want \"\"", val, val)
+				}
+			}
+			if tc.wantStat {
+				if got := s.missingDataStats["missing_parent_names"]; got != 1 {
+					t.Errorf("missingDataStats[missing_parent_names] = %d, want 1", got)
+				}
+			}
+		})
 	}
 }

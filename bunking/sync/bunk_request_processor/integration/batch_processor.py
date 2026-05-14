@@ -419,10 +419,8 @@ class BatchProcessor:
             elif hasattr(item[0], "target_name"):
                 text_parts.append(item[0].target_name or "")
 
-            # Second element (context)
-            if isinstance(item[1], dict):
-                text_parts.append(json.dumps(item[1]))
-            elif hasattr(item[1], "requester_name"):
+            # Second element (AIRequestContext)
+            if hasattr(item[1], "requester_name"):
                 text_parts.append(item[1].requester_name)
 
             text = " ".join(text_parts)

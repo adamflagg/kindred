@@ -13,7 +13,7 @@ const makeRun = (statsOverride: Record<string, any> = {}, id = 'a'): SolverRun =
   status: 'success',
   created: '2026-05-07T16:42:00Z',
   stats: statsOverride,
-  details: { git_sha: id === 'a' ? '4a2b1f3' : '8c9d2e7', source_label: 'S2 · Production' },
+  details: { git_sha: id === 'a' ? '4a2b1f3' : '8c9d2e7', source_label: '2 · CM' },
 })
 
 const a: SolverRun = {
@@ -22,7 +22,7 @@ const a: SolverRun = {
   status: 'success',
   created: '2026-05-07T16:42:00Z',
   stats: { walltime_seconds: 45.2, optimality_gap: 0.023, num_branches: 8421 },
-  details: { git_sha: '4a2b1f3', source_label: 'S2 · Production' },
+  details: { git_sha: '4a2b1f3', source_label: '2 · CM' },
 }
 const b: SolverRun = {
   id: 'b',
@@ -30,7 +30,7 @@ const b: SolverRun = {
   status: 'success',
   created: '2026-05-08T10:14:00Z',
   stats: { walltime_seconds: 23.1, optimality_gap: 0, num_branches: 3210 },
-  details: { git_sha: '8c9d2e7', source_label: 'S2 · Production' },
+  details: { git_sha: '8c9d2e7', source_label: '2 · CM' },
 }
 
 describe('PinnedComparisonPanel', () => {

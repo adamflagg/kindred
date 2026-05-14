@@ -215,7 +215,7 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
     # 4. Check nicknames library (broadest coverage, lowest priority)
     _add(_get_library_variations(name_lower))
 
-    return variations
+    return sorted(variations)
 
 
 def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None) -> bool:
