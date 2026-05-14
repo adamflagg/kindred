@@ -200,29 +200,3 @@ def test_prevalidate_response_no_clusters_key(client: TestClient) -> None:
     assert "clusters" not in body["impossibility_report"], (
         f"clusters key should be removed, got {list(body['impossibility_report'].keys())}"
     )
-
-
-def test_affected_campers_warning_generated(client: TestClient) -> None:
-    """When affected_campers > 0, a warning must appear in ``warnings``."""
-    with (
-        patch("api.routers.solver.pb", _mock_pb()),
-        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
-        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
-        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
-        patch("api.routers.solver.validate_impossibility") as mock_validate,
-        patch("api.routers.solver.ConfigLoader") as mock_config,
-    ):
-        _apply_standard_mocks(
-            mock_build_ctx,
-            mock_fetch,
-            mock_prepare,
-            mock_validate,
-            mock_config,
-            report=_FakeReport(total_impossible=3, affected_campers=3),
-        )
-        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
-
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert len(body["warnings"]) > 0, "expected at least one warning for affected_campers > 0"
-    assert any("3" in w for w in body["warnings"]), "warning should mention the affected camper count"

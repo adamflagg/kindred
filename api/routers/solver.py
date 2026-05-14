@@ -476,12 +476,6 @@ async def pre_validate_solver(
         if total_campers == 0:
             errors.append("Session has no campers.")
 
-        if report.affected_campers > 0:
-            warnings.append(
-                f"{report.affected_campers} camper(s) have one or more requests "
-                "that cannot be honored. See impossibility_report for details."
-            )
-
         # --- Session breakdown (fetch session names for UI display) ---
         attendees_by_session: defaultdict[int, int] = defaultdict(int)
         for attendee in attendees_data:
