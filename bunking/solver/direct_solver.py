@@ -6,6 +6,7 @@ No transformation needed.
 from __future__ import annotations
 
 import os
+import time
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
@@ -726,8 +727,11 @@ class DirectBunkingSolver:
         solver.parameters.cp_model_presolve = True  # Enable preprocessing
         solver.parameters.search_branching = cp_model.FIXED_SEARCH  # Try different search strategies
 
-        # Add callback for progress tracking
-        callback = SolverProgressCallback(self.constraint_logger, self.debug_mode)
+        # Add callback for progress tracking. Both capture surfaces (this and
+        # BestBoundCallback, wired below) share one monotonic origin so their
+        # trajectories are directly comparable.
+        start_monotonic = time.monotonic()
+        callback = SolverProgressCallback(self.constraint_logger, start_monotonic, self.debug_mode)
 
         # Log solver start
         self.constraint_logger.log_progress(f"Starting solver with {time_limit_seconds}s time limit...")
