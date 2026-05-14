@@ -3,8 +3,8 @@ Shared impossibility detection for hard solver constraints.
 
 Each hard-constraint module registers a HardConstraintImpossibility
 predicate via HARD_CONSTRAINT_REGISTRY. ``validate_impossibility``
-runs all registered predicates in three layers (request, pair,
-cluster) and returns a structured ``ImpossibilityReport``.
+runs all registered predicates in two layers (request, pair)
+and returns a structured ``ImpossibilityReport``.
 
 Both ``api.routers.solver.pre_validate_solver`` and
 ``DirectBunkingSolver._validate_requests`` delegate here. The registry
@@ -15,12 +15,11 @@ asserts every hard-constraint module has a matching predicate.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
-from bunking.satisfaction.bucket import is_material_parent_request
 
 
 class ImpossibilityReason(NamedTuple):
@@ -38,7 +37,6 @@ class ImpossibilityContext:
     person_by_cm_id: dict[int, DirectPerson]
     person_session: dict[int, int]
     bunks_by_session: dict[int, list[DirectBunk]]
-    bunk_with_components: list[set[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -53,21 +51,11 @@ class ImpossibleItem:
 
 
 @dataclass
-class ImpossibleCluster:
-    reason_code: str
-    reason_message: str
-    cm_ids: list[int]
-    campers: list[dict[str, Any]]
-    detail: dict[str, Any]
-
-
-@dataclass
 class ImpossibilityReport:
     total_impossible: int = 0
     affected_campers: int = 0
     by_reason: dict[str, list[ImpossibleItem]] = field(default_factory=dict)
     flat: list[ImpossibleItem] = field(default_factory=list)
-    clusters: list[ImpossibleCluster] = field(default_factory=list)
 
 
 class HardConstraintImpossibility:
@@ -83,9 +71,6 @@ class HardConstraintImpossibility:
         return None
 
     def check_pair(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
-        return None
-
-    def check_cluster(self, component_cms: set[int], ctx: ImpossibilityContext) -> ImpossibilityReason | None:
         return None
 
 
@@ -131,24 +116,6 @@ def _record_item(
     report.by_reason.setdefault(reason.code, []).append(item)
 
 
-def _record_cluster(
-    report: ImpossibilityReport,
-    component: set[int],
-    reason: ImpossibilityReason,
-    ctx: ImpossibilityContext,
-) -> None:
-    campers = [_camper_dict(ctx.person_by_cm_id[cm]) for cm in sorted(component) if cm in ctx.person_by_cm_id]
-    report.clusters.append(
-        ImpossibleCluster(
-            reason_code=reason.code,
-            reason_message=reason.message,
-            cm_ids=sorted(component),
-            campers=campers,
-            detail=reason.detail,
-        )
-    )
-
-
 def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> ImpossibilityContext:
     person_by_cm_id = {p.campminder_person_id: p for p in input_data.persons}
     person_session = {p.campminder_person_id: p.session_cm_id for p in input_data.persons}
@@ -162,41 +129,6 @@ def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> Impos
         person_session=person_session,
         bunks_by_session=dict(bunks_by_session),
     )
-
-
-def _compute_bunk_with_components(input_data: DirectSolverInput, ctx: ImpossibilityContext) -> list[set[int]]:
-    """Union-find over MP bunk_with edges. Returns list of components >= 2."""
-    parent: dict[int, int] = {}
-
-    def find(x: int) -> int:
-        while parent.get(x, x) != x:
-            parent[x] = parent.get(parent.get(x, x), parent.get(x, x))
-            x = parent[x]
-        return x
-
-    def union(a: int, b: int) -> None:
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
-
-    for req in input_data.requests:
-        if req.request_type != "bunk_with":
-            continue
-        if not is_material_parent_request(req):
-            continue
-        if req.requester_person_cm_id not in ctx.person_by_cm_id:
-            continue
-        requestee = req.requested_person_cm_id
-        if not requestee or requestee not in ctx.person_by_cm_id:
-            continue
-        parent.setdefault(req.requester_person_cm_id, req.requester_person_cm_id)
-        parent.setdefault(requestee, requestee)
-        union(req.requester_person_cm_id, requestee)
-
-    groups: dict[int, set[int]] = defaultdict(set)
-    for cm in parent:
-        groups[find(cm)].add(cm)
-    return [g for g in groups.values() if len(g) >= 2]
 
 
 def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) -> ImpossibilityReport:
@@ -228,20 +160,6 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
                 _record_item(report, req, reason, ctx)
                 seen.add(req.id)
                 break
-
-    # Layer 3: cluster (only when any predicate overrides check_cluster)
-    has_cluster_impls = any(
-        type(p).check_cluster is not HardConstraintImpossibility.check_cluster for p in HARD_CONSTRAINT_REGISTRY
-    )
-    if has_cluster_impls:
-        components = _compute_bunk_with_components(input_data, ctx)
-        ctx_components = replace(ctx, bunk_with_components=components)
-        for component in components:
-            for predicate in HARD_CONSTRAINT_REGISTRY:
-                reason = predicate.check_cluster(component, ctx_components)
-                if reason is not None:
-                    _record_cluster(report, component, reason, ctx_components)
-                    break
 
     report.total_impossible = len(report.flat)
     report.affected_campers = len({item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id")})
