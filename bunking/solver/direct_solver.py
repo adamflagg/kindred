@@ -6,6 +6,7 @@ No transformation needed.
 from __future__ import annotations
 
 import os
+import time
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
@@ -24,7 +25,7 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
 
-from .callbacks import SolverProgressCallback
+from .callbacks import BestBoundCallback, SolverProgressCallback
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
@@ -669,6 +670,19 @@ class DirectBunkingSolver:
             "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
                 self.input.requests_by_person
             ),
+            # Tier 2 observability (Stream 2, Phase 2) — single-bunk path has
+            # no CP-SAT solve, so trajectories are empty and derived scalars
+            # are None. Keys present so frontend rendering is uniform.
+            "objective_trajectory": [],
+            "bound_trajectory": [],
+            "bound_trajectory_truncated": False,
+            "objective_trajectory_truncated": False,
+            "lp_root_gap": None,
+            "presolve_compression_ratio": None,
+            "presolve_booleans_pre": 0,
+            "objective_plateau_time": None,
+            "bound_gain_after_plateau": None,
+            "time_to_first_solution": None,
             "single_bunk_session": True,
         }
 
@@ -726,8 +740,19 @@ class DirectBunkingSolver:
         solver.parameters.cp_model_presolve = True  # Enable preprocessing
         solver.parameters.search_branching = cp_model.FIXED_SEARCH  # Try different search strategies
 
-        # Add callback for progress tracking
-        callback = SolverProgressCallback(self.constraint_logger, self.debug_mode)
+        # Add callback for progress tracking. Both capture surfaces (this and
+        # BestBoundCallback, wired below) share one monotonic origin so their
+        # trajectories are directly comparable.
+        start_monotonic = time.monotonic()
+        callback = SolverProgressCallback(self.constraint_logger, start_monotonic, self.debug_mode)
+
+        # Best-bound capture surface — fires on every bound improvement,
+        # independent of solutions, so it samples through the plateau when
+        # `callback` goes quiet. hasattr guard: a pre-9.15 ortools local env
+        # degrades to an empty bound_trajectory instead of crashing.
+        bound_cb = BestBoundCallback(start_monotonic)
+        if hasattr(solver, "best_bound_callback"):
+            solver.best_bound_callback = bound_cb
 
         # Log solver start
         self.constraint_logger.log_progress(f"Starting solver with {time_limit_seconds}s time limit...")
@@ -866,6 +891,10 @@ class DirectBunkingSolver:
             satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
             soft_constraint_violations=self.soft_constraint_violations,
             requests_by_person=self.input.requests_by_person,
+            objective_trajectory=callback.objective_trajectory,
+            bound_trajectory=bound_cb.bound_trajectory,
+            bound_trajectory_truncated=bound_cb.truncated,
+            objective_trajectory_truncated=callback.truncated,
         )
         stats["request_validation"] = self.request_validation_summary
 

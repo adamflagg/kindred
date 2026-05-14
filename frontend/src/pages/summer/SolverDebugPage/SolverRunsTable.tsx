@@ -290,6 +290,47 @@ export function SolverRunsTable({
                 Objective
               </th>
             )}
+            {/* Tier 2 plateau metrics (Stream 2, Phase 2) */}
+            {showCol('lp_root_gap') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('lp_root_gap').description}
+              >
+                LP root gap
+              </th>
+            )}
+            {showCol('bound_gain_after_plateau') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('bound_gain_after_plateau').description}
+              >
+                Bound gain
+              </th>
+            )}
+            {showCol('objective_plateau_time') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('objective_plateau_time').description}
+              >
+                Plateau onset
+              </th>
+            )}
+            {showCol('time_to_first_solution') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('time_to_first_solution').description}
+              >
+                Time to 1st
+              </th>
+            )}
+            {showCol('presolve_compression_ratio') && (
+              <th
+                className="px-3 py-2.5 text-right font-medium"
+                title={getMetric('presolve_compression_ratio').description}
+              >
+                Presolve compression
+              </th>
+            )}
             {showCol('sha') && <th className="px-3 py-2.5 text-left font-medium">SHA</th>}
             {showCol('sweep') && <th className="px-3 py-2.5 text-left font-medium">Sweep</th>}
           </tr>
@@ -548,6 +589,59 @@ export function SolverRunsTable({
                       title={getMetric('objective_value').description}
                     >
                       {formatMetric('objective_value', pickStat(run.stats, 'objective_value'))}
+                    </td>
+                  )}
+                  {/* Tier 2 plateau metrics (Stream 2, Phase 2) */}
+                  {showCol('lp_root_gap') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('lp_root_gap').description}
+                    >
+                      {formatMetric('lp_root_gap', pickStat(run.stats, 'lp_root_gap'))}
+                    </td>
+                  )}
+                  {showCol('bound_gain_after_plateau') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('bound_gain_after_plateau').description}
+                    >
+                      {formatMetric(
+                        'bound_gain_after_plateau',
+                        pickStat(run.stats, 'bound_gain_after_plateau')
+                      )}
+                    </td>
+                  )}
+                  {showCol('objective_plateau_time') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('objective_plateau_time').description}
+                    >
+                      {formatMetric(
+                        'objective_plateau_time',
+                        pickStat(run.stats, 'objective_plateau_time')
+                      )}
+                    </td>
+                  )}
+                  {showCol('time_to_first_solution') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('time_to_first_solution').description}
+                    >
+                      {formatMetric(
+                        'time_to_first_solution',
+                        pickStat(run.stats, 'time_to_first_solution')
+                      )}
+                    </td>
+                  )}
+                  {showCol('presolve_compression_ratio') && (
+                    <td
+                      className="px-3 py-2 text-right"
+                      title={getMetric('presolve_compression_ratio').description}
+                    >
+                      {formatMetric(
+                        'presolve_compression_ratio',
+                        pickStat(run.stats, 'presolve_compression_ratio')
+                      )}
                     </td>
                   )}
                   {showCol('sha') && (

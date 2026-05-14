@@ -38,6 +38,14 @@ export const ALL_COLUMNS = [
   { key: 'new_assignments', label: 'New', group: 'Churn' },
   // PR1: quality additions
   { key: 'objective_value', label: 'Objective', group: 'Quality' },
+  // Tier 2 plateau metrics (Stream 2, Phase 2)
+  { key: 'lp_root_gap', label: 'LP root gap', group: 'Quality' },
+  { key: 'bound_gain_after_plateau', label: 'Bound gain', group: 'Quality' },
+  { key: 'objective_plateau_time', label: 'Plateau onset', group: 'Timing' },
+  { key: 'time_to_first_solution', label: 'Time to 1st', group: 'Timing' },
+  { key: 'presolve_compression_ratio', label: 'Presolve compression', group: 'Model' },
+  // presolve_booleans_pre is intentionally not a column — it renders as a drill-down
+  // sub-row under num_booleans (see its `parent` in metricRegistry.ts).
 ] as const
 
 export const DEFAULT_VISIBLE_COLUMNS: string[] = [
