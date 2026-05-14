@@ -7,6 +7,7 @@ metric helpers have a focused home as the dashboard grows.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from ortools.sat.python import cp_model
@@ -191,6 +192,38 @@ def _build_request_density_histogram_by_bucket(
             per_bucket[bucket.value] = per_bucket.get(bucket.value, 0) + 1
         for bucket_key, count in per_bucket.items():
             result[bucket_key][count] = result[bucket_key].get(count, 0) + 1
+    return result
+
+
+def _build_impossible_by_reason_by_bucket(
+    impossible_by_request: Iterable[tuple[DirectBunkRequest, str]],
+) -> dict[str, dict[str, int]]:
+    """Bucket-outer breakdown of impossible requests by reason code.
+
+    Takes (request, reason_code) pairs. A request may appear multiple times
+    with different reason codes — impossibility.validate_impossibility's Layer 2
+    records a request under every matching per-pair predicate — and each pair is
+    counted independently (matches the non-deduped flat-count behaviour). All
+    three RequestBucket keys are always present; empty buckets are {}. Requests
+    with a missing or unknown source_field are dropped with a DEBUG log.
+    """
+    result: dict[str, dict[str, int]] = {
+        RequestBucket.MATERIAL_PARENT.value: {},
+        RequestBucket.IMMATERIAL_PARENT.value: {},
+        RequestBucket.STAFF.value: {},
+    }
+    for req, reason_code in impossible_by_request:
+        sf = req.source_field
+        if not sf:
+            logger.debug("impossible-by-reason: request %s has no source_field — skipping", req.id)
+            continue
+        try:
+            bucket = classify_request(sf)
+        except ValueError:
+            logger.debug("impossible-by-reason: unknown source_field %r on request %s — skipping", sf, req.id)
+            continue
+        reasons = result[bucket.value]
+        reasons[reason_code] = reasons.get(reason_code, 0) + 1
     return result
 
 
