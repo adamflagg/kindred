@@ -30,6 +30,9 @@ This field may contain ANY request type:
    Keywords: "not with", "separate from", "avoid", "neg request", "don't bunk with"
 
 3. "age_preference" - Age/grade recommendations
+   Leave target_name null.
+   Set age_direction to "older" or "younger" for a clear direction.
+   Leave age_direction null when the preference is undirected.
    Keywords: "bunk older", "same age/younger", "would do better with younger kids"
 
 === NARRATIVE EXTRACTION RULES ===
@@ -67,7 +70,7 @@ parse_notes as today.
 
 Example 1 - Age preference from old note:
 Input: "2019 - Bunk with younger kids (emotionally immature)"
-Output: 1 age_preference "younger", parse_notes: "Staff note from 2019 - emotional maturity concern"
+Output: 1 age_preference request with age_direction="younger", parse_notes: "Staff note from 2019 - emotional maturity concern"
 
 Example 2 - Negative with context:
 Input: "Neg request: Sofia Petrov. They are still friends. Maya has a harder time making new friends when with Sofia"
@@ -75,7 +78,7 @@ Output: 1 not_bunk_with "Sofia Petrov", parse_notes: "friendship dynamics - hard
 
 Example 3 - Staff recommendation for separation:
 Input: "Counselors recommend he NOT be bunked with Lucas Wright or Ben Goldstein and would greatly benefit from being bunked with a younger and different group"
-Output: 3 requests - 2 not_bunk_with (Lucas Wright, Ben Goldstein), 1 age_preference "younger"
+Output: 3 requests - 2 not_bunk_with (Lucas Wright, Ben Goldstein), 1 age_preference (age_direction="younger")
 
 Example 4 - Multi-year progression:
 Input: "'25 bunking - continue to bunk separately from Ava Collins. See '24 notes."
@@ -98,6 +101,10 @@ Output: 2 requests:
 Example 8 - Unit placement (not bunk request):
 Input: "Same unit as twin Lily Thompson if possible"
 Output: 0 requests (unit placement, not cabin assignment - note in parse_notes if helpful)
+
+Example 9 - Undirected age preference:
+Input: "Age-wise, no strong direction — just somewhere age-appropriate"
+Output: 1 age_preference request with age_direction=null — undirected; staff will review.
 
 === TEMPORAL CONFLICTS (CRITICAL!) ===
 
@@ -126,7 +133,8 @@ DO NOT extract:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name or age value
+- target_name: Person's name for bunk_with/not_bunk_with; null for age_preference requests.
+- age_direction: age_preference requests only — "older", "younger", or null (undirected).
 - confidence: 0.0-1.0 (lower for old notes, inferred requests)
 - keywords_found: Priority words like "must", "recommend", "counselors noted"
 
