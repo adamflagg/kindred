@@ -43,3 +43,29 @@ def test_validate_impossibility_matches_solver_classification(mock_config):
     assert "r2" in standalone_ids
     # r3 is feasible (consecutive grades)
     assert "r3" not in standalone_ids
+
+
+def test_target_not_in_solver_no_drift(mock_config):
+    """A bunk_with to a requestee absent from the roster must be classified
+    impossible identically by the standalone validator and the solver.
+
+    Before target_not_in_solver was a predicate this drifted: the solver's
+    hand-rolled fallback caught it but validate_impossibility (and therefore
+    the /solver/pre-validate endpoint) did not.
+    """
+    p1 = make_person(1, session=1000001, gender="F", grade=5)
+    bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
+    # r_ghost targets cm_id 777, who is NOT in the persons list.
+    requests = [make_request("r_ghost", requester=1, requestee=777, session=1000001)]
+    input_data = make_input([p1], bunks, requests)
+
+    standalone_report = validate_impossibility(input_data, mock_config)
+    standalone_ids = {item.request_id for item in standalone_report.flat}
+
+    solver = DirectBunkingSolver(input_data, mock_config)
+    solver_ids: set[str] = set()
+    for reqs in solver.impossible_requests.values():
+        solver_ids.update(r.id for r in reqs)
+
+    assert "r_ghost" in standalone_ids, "validate_impossibility missed target_not_in_solver"
+    assert standalone_ids == solver_ids, f"Drift. Standalone: {standalone_ids}. Solver: {solver_ids}."

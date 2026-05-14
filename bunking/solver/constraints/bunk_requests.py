@@ -195,3 +195,26 @@ class MalformedRequestImpossibility(HardConstraintImpossibility):
 
 
 register(MalformedRequestImpossibility())
+
+
+class TargetNotInSolverImpossibility(HardConstraintImpossibility):
+    name = "target_not_in_solver"
+
+    def check_request(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        if req.request_type not in ("bunk_with", "not_bunk_with"):
+            return None
+        if not req.requested_person_cm_id:
+            return None  # malformed — MalformedRequestImpossibility owns this
+        if req.requested_person_cm_id in ctx.roster_cm_ids:
+            return None
+        return ImpossibilityReason(
+            code="target_not_in_solver",
+            message=(
+                f"Requested camper (cm_id {req.requested_person_cm_id}) is not "
+                f"enrolled in this session's solver roster."
+            ),
+            detail={"requested_person_cm_id": req.requested_person_cm_id},
+        )
+
+
+register(TargetNotInSolverImpossibility())
