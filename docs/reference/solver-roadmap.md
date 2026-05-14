@@ -32,18 +32,20 @@ only) once individual streams are picked up.
 | Stream 5 — IIS infeasibility localization | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
 | Stream 6 — pre-check impossibility framework | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
 | Sat-var unification | #1395 | #1427 | ✅ shipped 2026-05-14 |
-| Stream 6 substream — entirely-impossible MP campers in pre-check + "Acceptable" denominator fix | #1428 | #1429 | 🔵 in review |
-| **Stream 2 Tier 2 — plateau-diagnostic metrics** | **unfiled — file first** | — | ⬜ **Phase 2 (next)** |
+| Stream 6 substream — entirely-impossible MP campers in pre-check + "Acceptable" denominator fix | #1428 | #1429 | ✅ shipped 2026-05-14 |
+| **Stream 2 Tier 2 — plateau-diagnostic metrics** | none (spec in-doc) | — | 🔵 **Phase 2 — in progress** |
 | Stream 4 — mutual-request boost | #1382 | — | ⬜ Phase 3 |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
 | Golden sat-var ↔ predicate alignment test | #1398 | — | ⬜ do now (drift defense for #1427) |
 | Retire `solution.calculate_satisfied_requests` | #1397 | — | ⬜ pairs with #1398 |
 | Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
-| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ after #1429 merges |
+| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ unblocked (#1429 merged) |
 | Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
-All work-item PRs use `Closes #N` in the body so the issue auto-closes on merge.
+Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
+where a tracking issue exists. Phase 2 (Tier 2 metrics) is being implemented
+without an issue — its full spec lives in the Stream 2 section below.
 
 ### Phases
 
@@ -52,14 +54,14 @@ bucket split (#1385 / #1425), IIS localization & impossibility framework
 (#1391), sat-var unification (#1427). The S2 model is roughly half its
 pre-#1391 size; MP coverage is 100% of solver-actionable campers.
 
-**Phase 1 — Pre-check honesty (IN REVIEW — #1428 / PR #1429).**
+**Phase 1 — Pre-check honesty (DONE — #1428 / PR #1429, shipped 2026-05-14).**
 `target_not_in_solver` promoted to a registered predicate (closes the last
 pre-validate ↔ solver drift), `mp_campers_entirely_impossible` derived
 rollup as single source of truth, camper-level surfacing in the pre-validate
 modal, and the "Acceptable" metric denominator fixed to exclude
 structurally-impossible campers.
 
-**Phase 2 — Tier 2 metrics (NEXT — the unblock).** Scoped to three
+**Phase 2 — Tier 2 metrics (IN PROGRESS).** Scoped to three
 plateau-diagnostic metrics only: **best-bound trajectory, LP root gap,
 presolve compression ratio.** *Not* the full Tier 2 list — per-sub-solver
 wall time / symmetry flag / domain-size distribution defer until a specific
@@ -68,9 +70,12 @@ num_branches / num_conflicts turned out to be noise). Rationale: the
 remaining solver problem is the **plateau** — `objective_value` flattens by
 ~60 s and only the *bound* moves after; Tier 1 cannot distinguish
 "converging slowly" from "stuck", best-bound trajectory can. Phase 2
-hard-unblocks Phase 4 and makes Phase 3 measurable. **Needs an issue filed
-first** — Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on
-Tier 1 alone.
+hard-unblocks Phase 4 and makes Phase 3 measurable. **No tracking issue** —
+the three-metric spec is fully captured in the Stream 2 section below, so
+the implementation PR carries it directly rather than re-deriving from a
+filed issue. (Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on
+Tier 1 alone; the remaining Tier 2/Tier 3 metrics stay tracked in the
+Stream 2 tables and are picked up only when a specific question demands them.)
 
 **Phase 3 — Mutual-request boost (the build — Stream 4 / #1382).** Highest-
 leverage plateau intervention: reshapes the objective toward reciprocated
@@ -303,12 +308,14 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 ## Stream 2 — Solver Debug Metrics Expansion (Tier 1 + Tier 2)
 
 **Status:** Tier 1 **shipped** — #1380 / PR #1385 (core metrics) and #1388 /
-PR #1425 (per-`RequestBucket` split). Tier 2 is **not yet filed** — it was
-orphaned when #1380 ("Tier 1 + Tier 2") closed on Tier 1 alone. Phase 2 (see
-"Status & phased sequencing" above) files a fresh Tier 2 issue scoped to the
-three plateau-diagnostic metrics: best-bound trajectory, LP root gap,
-presolve compression ratio. The rest of the Tier 2 / Tier 3 lists below
-defer until a specific question demands them.
+PR #1425 (per-`RequestBucket` split). Tier 2 — **Phase 2, in progress** (see
+"Status & phased sequencing" above). Scoped to three plateau-diagnostic
+metrics: best-bound trajectory, LP root gap, presolve compression ratio.
+Implemented **without a tracking issue** — Tier 2 was orphaned when #1380
+("Tier 1 + Tier 2") closed on Tier 1 alone, and the three-metric spec is
+fully captured here, so the PR carries it directly. The rest of the Tier 2
+table and the Tier 3 list below stay tracked here and defer until a specific
+question demands them.
 
 ### Motivation
 
@@ -386,8 +393,11 @@ variable-count savings are attributable.
 
 ### GitHub issue
 
-Tier 1: #1380 (closed by #1385) + #1388 (closed by #1425). Tier 2: unfiled —
-see Phase 2 in "Status & phased sequencing" above.
+Tier 1: #1380 (closed by #1385) + #1388 (closed by #1425). Tier 2: no tracking
+issue — implemented as Phase 2 directly from the spec above (see Phase 2 in
+"Status & phased sequencing"). The deferred Tier 2/Tier 3 metrics remain
+tracked in the tables above; file issues if/when a specific question
+prioritizes them.
 
 ---
 
@@ -935,3 +945,10 @@ Superseded by **"Status & phased sequencing"** near the top of this doc
   issue map) and retired the stale "Suggested order" table. Reconciled the
   Stream 2/3/4 "GitHub issue" lines with filed issue numbers. Flagged Tier 2
   as unfiled (orphaned when #1380 closed on Tier 1 alone).
+- **2026-05-14** — #1429 merged (closes #1428): Phase 1 (pre-check honesty)
+  complete — Stream 6g shipped, #1426 (`direct_solver` impossibility audit)
+  now unblocked. Phase 2 (Tier 2 plateau metrics) started **without a
+  tracking issue** — the three-metric spec (best-bound trajectory, LP root
+  gap, presolve compression ratio) is fully captured in the Stream 2 section,
+  so the PR carries it directly. The remaining Tier 2/Tier 3 metrics stay
+  tracked in the Stream 2 tables. Worktree: `tier2-plateau-metrics`.
