@@ -12,7 +12,8 @@ from unittest.mock import MagicMock
 from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
-from bunking.solver.direct_solver import DirectBunkingSolver, _compute_optimality_gap, _count_constraint_types
+from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.observability import _compute_optimality_gap, _count_constraint_types
 
 
 class TestCountConstraintTypes:
@@ -57,7 +58,7 @@ class TestStatsDictIsJsonSerializable:
         import json
         from unittest.mock import MagicMock
 
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         solver = MagicMock()
         solver.StatusName.return_value = "OPTIMAL"
@@ -157,7 +158,7 @@ class TestBuildStatsDict:
         return proto
 
     def test_includes_existing_back_compat_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -181,7 +182,7 @@ class TestBuildStatsDict:
         assert stats["satisfied_request_count"] == 235
 
     def test_includes_new_timing_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -201,7 +202,7 @@ class TestBuildStatsDict:
         assert stats["num_workers"] == 8
 
     def test_includes_new_quality_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -221,7 +222,7 @@ class TestBuildStatsDict:
         assert stats["solution_info"] == "feasibility_jump_search worker 3"
 
     def test_includes_new_search_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -240,7 +241,7 @@ class TestBuildStatsDict:
         assert stats["num_integer_variables"] == 433
 
     def test_includes_new_model_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -268,7 +269,7 @@ class TestBuildStatsDict:
         """
         from unittest.mock import MagicMock
 
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         solver = MagicMock(
             spec=[
@@ -326,7 +327,7 @@ class TestBuildStatsDictWithRealSolver:
     """
 
     def test_real_solve_populates_cp_sat_internals(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -872,13 +873,13 @@ class TestCountReifiedLinearConstraints:
     """
 
     def test_empty_model_returns_zero(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         assert _count_reified_linear_constraints(model.Proto()) == 0
 
     def test_plain_linear_not_counted(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -886,7 +887,7 @@ class TestCountReifiedLinearConstraints:
         assert _count_reified_linear_constraints(model.Proto()) == 0
 
     def test_counts_reified_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -915,12 +916,12 @@ class TestCountSoftConstraintsByModule:
     """
 
     def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         assert _count_soft_constraints_by_module({}) == {}
 
     def test_groups_keys_by_known_prefix(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         # Values don't matter — function only inspects keys
         violations: dict[str, object] = {
@@ -942,7 +943,7 @@ class TestCountSoftConstraintsByModule:
         }
 
     def test_unknown_prefix_lands_in_other(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         violations: dict[str, object] = {
             "some_future_constraint_42": object(),
@@ -959,13 +960,13 @@ class TestMaxLinearCoefficient:
     LP relaxation can't tighten."""
 
     def test_empty_model_returns_zero(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         assert _max_linear_coefficient(model.Proto()) == 0
 
     def test_finds_max_across_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 1000, "x")
@@ -976,7 +977,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 1000
 
     def test_negative_coefficient_uses_absolute_value(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 100, "x")
@@ -985,7 +986,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 50_000
 
     def test_includes_reified_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 100, "x")
@@ -994,7 +995,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 250_000
 
     def test_ignores_non_linear_constraint_types(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         a = model.NewBoolVar("a")
@@ -1010,12 +1011,12 @@ class TestRequestDensityHistogram:
     single-request kids (the typical S2 finding)."""
 
     def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
+        from bunking.solver.observability import _build_request_density_histogram
 
         assert _build_request_density_histogram({}) == {}
 
     def test_groups_campers_by_request_count(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
+        from bunking.solver.observability import _build_request_density_histogram
 
         # 1 camper with 3 requests, 2 with 1, 1 with 5
         requests_by_person: dict[int, list[object]] = {
@@ -1028,7 +1029,7 @@ class TestRequestDensityHistogram:
         assert result == {3: 1, 1: 2, 5: 1}
 
     def test_skips_zero_request_campers(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
+        from bunking.solver.observability import _build_request_density_histogram
 
         requests_by_person: dict[int, list[object]] = {
             1001: [object()],
@@ -1283,7 +1284,7 @@ class TestTier1MetricsInStatsDict:
         return solver
 
     def test_emits_new_tier1_keys(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
