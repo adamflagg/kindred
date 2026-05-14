@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildRunSummary } from './buildRunSummary'
+import { buildRunSummary, hasNonEmptyBuckets } from './buildRunSummary'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
 
@@ -207,6 +207,46 @@ describe('buildRunSummary', () => {
       expect(out.soft_constraints_by_module).toBeUndefined()
       expect(out.request_density_histogram_by_bucket).toBeUndefined()
       expect(out.impossible_request_breakdown).toBeUndefined()
+    })
+
+    it('serializes Tier 1 dict fields after constraint_type_breakdown, before config_snapshot', () => {
+      const out = buildRunSummary(withTier1)
+      expect(Object.keys(out)).toEqual([
+        'run_id',
+        'context',
+        'outcome_requests',
+        'outcome_campers',
+        'size',
+        'timing',
+        'quality',
+        'churn',
+        'search',
+        'model',
+        'solution_strategy',
+        'constraint_type_breakdown',
+        'soft_constraints_by_module',
+        'request_density_histogram_by_bucket',
+        'impossible_request_breakdown',
+        'config_snapshot',
+      ])
+    })
+  })
+
+  describe('hasNonEmptyBuckets', () => {
+    it('returns false when every bucket is empty', () => {
+      expect(hasNonEmptyBuckets({ material_parent: {}, immaterial_parent: {}, staff: {} })).toBe(
+        false
+      )
+    })
+
+    it('returns true when at least one bucket has an entry', () => {
+      expect(
+        hasNonEmptyBuckets({ material_parent: {}, immaterial_parent: { '1': 8 }, staff: {} })
+      ).toBe(true)
+    })
+
+    it('returns false for an empty dict', () => {
+      expect(hasNonEmptyBuckets({})).toBe(false)
     })
   })
 
