@@ -16,6 +16,84 @@ only) once individual streams are picked up.
 
 ---
 
+## Status & phased sequencing
+
+> Supersedes the original "Suggested order" section. The Stream sections
+> below are the detailed *what / why / how* reference; this section is the
+> dependency-ordered *when*, with issue numbers. Updated 2026-05-14.
+
+### Work item → issue → status
+
+| Work item | Issue | PR | Status |
+|---|---|---|---|
+| Stream 1 — Stage 4 hard MSO | #1379 | #1391 | ✅ shipped 2026-05-14 |
+| Stream 2 Tier 1 — debug metrics | #1380 | #1385 | ✅ shipped 2026-05-13 |
+| Stream 2 Tier 1 — per-`RequestBucket` split | #1388 | #1425 | ✅ shipped 2026-05-14 |
+| Stream 5 — IIS infeasibility localization | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
+| Stream 6 — pre-check impossibility framework | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
+| Sat-var unification | #1395 | #1427 | ✅ shipped 2026-05-14 |
+| Stream 6 substream — entirely-impossible MP campers in pre-check + "Acceptable" denominator fix | #1428 | #1429 | 🔵 in review |
+| **Stream 2 Tier 2 — plateau-diagnostic metrics** | **unfiled — file first** | — | ⬜ **Phase 2 (next)** |
+| Stream 4 — mutual-request boost | #1382 | — | ⬜ Phase 3 |
+| Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
+| Golden sat-var ↔ predicate alignment test | #1398 | — | ⬜ do now (drift defense for #1427) |
+| Retire `solution.calculate_satisfied_requests` | #1397 | — | ⬜ pairs with #1398 |
+| Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
+| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ after #1429 merges |
+| Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
+| Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
+
+All work-item PRs use `Closes #N` in the body so the issue auto-closes on merge.
+
+### Phases
+
+**Phase 0 — Foundation (DONE).** Stage 4 hard MSO (#1391), Tier 1 metrics +
+bucket split (#1385 / #1425), IIS localization & impossibility framework
+(#1391), sat-var unification (#1427). The S2 model is roughly half its
+pre-#1391 size; MP coverage is 100% of solver-actionable campers.
+
+**Phase 1 — Pre-check honesty (IN REVIEW — #1428 / PR #1429).**
+`target_not_in_solver` promoted to a registered predicate (closes the last
+pre-validate ↔ solver drift), `mp_campers_entirely_impossible` derived
+rollup as single source of truth, camper-level surfacing in the pre-validate
+modal, and the "Acceptable" metric denominator fixed to exclude
+structurally-impossible campers.
+
+**Phase 2 — Tier 2 metrics (NEXT — the unblock).** Scoped to three
+plateau-diagnostic metrics only: **best-bound trajectory, LP root gap,
+presolve compression ratio.** *Not* the full Tier 2 list — per-sub-solver
+wall time / symmetry flag / domain-size distribution defer until a specific
+question demands them (the dropped PR3 badges are the cautionary tale:
+num_branches / num_conflicts turned out to be noise). Rationale: the
+remaining solver problem is the **plateau** — `objective_value` flattens by
+~60 s and only the *bound* moves after; Tier 1 cannot distinguish
+"converging slowly" from "stuck", best-bound trajectory can. Phase 2
+hard-unblocks Phase 4 and makes Phase 3 measurable. **Needs an issue filed
+first** — Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on
+Tier 1 alone.
+
+**Phase 3 — Mutual-request boost (the build — Stream 4 / #1382).** Highest-
+leverage plateau intervention: reshapes the objective toward reciprocated
+pairs so that when Stage 4's hard constraint binds, it preferentially honors
+mutual requests. Well-scoped (~80–120 LOC). Soft-gated on Phase 2 — without
+best-bound trajectory you can't tell whether it broke the plateau or just
+shuffled local optima.
+
+**Phase 4 — Compound & consolidate.** Stream 3 variable-count attack
+(#1381), **re-scoped first**: #1391 + #1427 already removed `both_in_bunk`
+(the old lever 3b) and the duplicate MP sat vars, so the blast radius is far
+smaller than the original estimate — lever 3a (sparse `person_in_bunk`
+gender filter) is the main remaining win, and Phase 2's compression-ratio
+metric tells you exactly what is left to cut. Plus the Group 55 tail
+(#1396, #1397) and Stream 6 substreams (#1426 audit, then 6a–6f).
+
+**Parallel / immediate (not gated):** #1398 golden alignment test — do it
+now while #1427 is fresh; it is the drift defense for the sat-var encoding
+that just changed, and #1397 pairs with it. #1424 (`grade_spread.max_spread`
+schematize) is a small standalone cleanup that can land anytime.
+
+---
+
 ## Investigation context (one paragraph)
 
 After PR #1364 shipped (`refactor(solver)`: dropped 3 dead `must_satisfy_one`
@@ -100,16 +178,20 @@ ctx.model.Add(sum(all_sat_vars) >= 1)                                # +1 plain 
 …and removing 164 BoolVars / 328 reified linears / 164 objective terms
 from S2.
 
-> **Reality (#1391):** the existing `all_sat_vars` produced by
-> `add_bunk_request_satisfaction_vars` use **one-way `OnlyEnforceIf`
-> implications** (`bunk_requests.py:75-117`). The solver can set
-> `sat_var = 1` freely without forcing actual co-placement. A hard
-> `sum(all_sat_vars) >= 1` over them would be vacuously satisfiable.
-> The pre-Stage-4 soft constraint summed over these falsifiable vars
-> and the objective rewarded them — meaning the 287,600 penalty was
-> almost certainly operationally inert (the 95.73% MP coverage came
-> from cluster constraints emergently placing friends, not the
-> penalty). See #1396 for the investigation issue.
+> **Reality (#1391):** the `all_sat_vars` produced by the pre-#1391
+> `add_bunk_request_satisfaction_vars` used **one-way `OnlyEnforceIf`
+> implications**. The solver could set `sat_var = 1` freely without
+> forcing actual co-placement. A hard `sum(all_sat_vars) >= 1` over them
+> would be vacuously satisfiable. The now-deleted soft `must_satisfy.py`
+> summed over these falsifiable vars — meaning the 287,600 penalty was
+> almost certainly operationally inert (the 95.73% MP coverage came from
+> cluster constraints emergently placing friends, not the penalty).
+> **Correction (#1395):** the objective itself was *never* falsifiable —
+> `add_objective` has always built its own bidirectional `req_satisfied_*`
+> vars and never consumed `add_bunk_request_satisfaction_vars`. That helper
+> was orphaned when #1391 deleted `must_satisfy.py` and is removed in #1395,
+> which unifies the objective's and parent_paramount's sat vars into one
+> shared `request_satisfied_vars` map. See #1396 for the investigation issue.
 >
 > **What shipped** in #1391: hard constraint uses a bidirectional
 > per-request sat var via `ctx.person_bunk_assignment` (matches the
@@ -175,7 +257,7 @@ extend `_pair_has_shared_bunk` rather than adding a new reason.
 ### Code refs (post-#1391)
 
 - `bunking/solver/constraints/parent_paramount.py` — hard MP constraint (renamed from `must_satisfy.py`)
-- `bunking/solver/constraints/bunk_requests.py:75-117` — one-way soft sat var encoding (see #1395)
+- `bunking/solver/constraints/bunk_requests.py` — `get_or_create_request_sat_var`, the canonical bidirectional sat-var builder (post-#1395; replaced the orphaned one-way `add_bunk_request_satisfaction_vars`)
 - `bunking/solver/direct_solver.py:643-714` — bidirectional objective-side sat var encoding (template for #1391's hard path)
 - `bunking/solver/direct_solver.py:355-438` — `_validate_requests`, impossibility classification
 - `bunking/solver/direct_solver.py:1215-` — `_check_must_satisfy_one_violations` (post-solve diagnostic, ERROR severity under hard MSO)
@@ -210,7 +292,7 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 
 ### Follow-ups surfaced during #1391 implementation
 
-- **#1395** — `refactor(solver): make add_bunk_request_satisfaction_vars bidirectional + unify sat vars with objective`. Eliminates the "free money" objective reward (one-way soft sat vars are falsifiable) and the ~250 duplicate BoolVars between `add_objective` and `parent_paramount`.
+- **#1395** — `refactor(solver): unify bunk-request sat vars + remove the orphaned one-way helper`. Behaviour-neutral cleanup: deleted the orphaned one-way `add_bunk_request_satisfaction_vars` (dead since #1391 removed `must_satisfy.py`), added the canonical bidirectional `get_or_create_request_sat_var`, and unified `add_objective` + `parent_paramount` onto one shared `request_satisfied_vars` map (~250 fewer duplicate BoolVars on S2). The "free money" framing was stale — the objective was never falsifiable; see the Stream 1 "Reality (#1391)" correction above.
 - **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
 - **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
 - **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
@@ -220,8 +302,13 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 
 ## Stream 2 — Solver Debug Metrics Expansion (Tier 1 + Tier 2)
 
-**Status:** Newly proposed. Replaces the prior "PR3 status badges"
-proposal, which was lower-leverage.
+**Status:** Tier 1 **shipped** — #1380 / PR #1385 (core metrics) and #1388 /
+PR #1425 (per-`RequestBucket` split). Tier 2 is **not yet filed** — it was
+orphaned when #1380 ("Tier 1 + Tier 2") closed on Tier 1 alone. Phase 2 (see
+"Status & phased sequencing" above) files a fresh Tier 2 issue scoped to the
+three plateau-diagnostic metrics: best-bound trajectory, LP root gap,
+presolve compression ratio. The rest of the Tier 2 / Tier 3 lists below
+defer until a specific question demands them.
 
 ### Motivation
 
@@ -299,7 +386,8 @@ variable-count savings are attributable.
 
 ### GitHub issue
 
-To be filed alongside this doc.
+Tier 1: #1380 (closed by #1385) + #1388 (closed by #1425). Tier 2: unfiled —
+see Phase 2 in "Status & phased sequencing" above.
 
 ---
 
@@ -330,9 +418,9 @@ to eliminate junk) yields:
 | Source | Pre-presolve count | Code ref |
 |---|---|---|
 | `person_in_bunk[p, b]` — one per (person, bunk) | 193 × 17 = 3,281 | `direct_solver.py:_create_assignment_variables` |
-| `both_in_bunk[req, b]` — one per BUNK_WITH request per bunk | 311 × 17 = 5,287 | `constraints/bunk_requests.py:add_bunk_request_satisfaction_vars` |
+| ~~`both_in_bunk[req, b]` — one per BUNK_WITH request per bunk~~ | ~~311 × 17 = 5,287~~ | ~~`constraints/bunk_requests.py:add_bunk_request_satisfaction_vars`~~ — pre-#1391 only; the helper was orphaned when #1391 deleted `must_satisfy.py` and removed entirely in #1395. No `both_in_bunk` vars exist in the live model. |
 | `req_satisfied[r]` — one per request | 504 | `constraints/bunk_requests.py`, `age_preference.py` |
-| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391, replaced by ~250 bidirectional `parent_paramount_req_*_satisfied` sat vars; see #1395 for unification) |
+| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391; the ~250 bidirectional MP sat vars it was replaced by were unified with the objective's set into one shared `request_satisfied_vars` map in #1395) |
 | Constraint-internal indicators (grade_ratio, age_spread, level_progression, grade_adjacency) | ~500 | various |
 | **Total before presolve** | **~9,750** | |
 | **Post-presolve (reported)** | **5,561** | |
@@ -342,7 +430,7 @@ to eliminate junk) yields:
 | # | Lever | Estimated savings | Risk | Effort |
 |---|---|---|---|---|
 | 3a | **Sparse `person_in_bunk` — gender filter at model-build time** | −~1,640 BoolVars for S2 (50% of 3,281) | Low — `person_idx_map` already gender-aware upstream | Modest PR |
-| 3b | **Sparse `both_in_bunk` — eligibility intersect** (skip bunks where requester OR requestee is gender/grade-ineligible) | −~1,500–2,500 BoolVars | Low | Modest PR |
+| ~~3b~~ | ~~**Sparse `both_in_bunk` — eligibility intersect**~~ — **moot:** `both_in_bunk` was orphaned by #1391 and removed by #1395. The live sat-var encoding is `person_bunk_assignment`-based (one BoolVar per request, no per-bunk fan-out). | — | — | — |
 | 3c | **Hard MSO** (Stream 1) | −164 BoolVars | Already covered by Stream 1 | — |
 | 3d | **Pre-solve fixed-assignment pass** for 1-bunk-eligible campers (e.g., AG-only, grade-locked) | −17 BoolVars per such camper | Low | Small PR |
 | 3e | **Drop `req_satisfied` for already-impossible requests** | −~4 per session (small) | None | Tiny |
@@ -393,7 +481,11 @@ pre-presolve redundancy.
 
 ### GitHub issue
 
-To be filed alongside this doc.
+#1381. **Re-scope before starting** — #1391 + #1427 already eliminated
+`both_in_bunk` (the old lever 3b) and the duplicate MP sat vars; lever 3a
+(sparse `person_in_bunk`) is the main remaining win. Gated on Phase 2's
+presolve-compression-ratio metric. See Phase 4 in "Status & phased
+sequencing" above.
 
 ---
 
@@ -494,7 +586,7 @@ Add `objective.mutual_request_boost = 2.0` to admin GUI. Defaults to
 
 ### GitHub issue
 
-To be filed alongside this doc.
+#1382. This is Phase 3 — the next *build* after Tier 2 (Phase 2) lands.
 
 ---
 
@@ -635,6 +727,7 @@ predicate registered. Adding a new hard constraint without one fails CI.
 | `AgePreferenceImpossibility` | request | Relocated from `_validate_requests` |
 | `GradeCompatibilityImpossibility` | pair + cluster | **NEW** — fixes Taste 1 reciprocal `bunk_with` across grades |
 | `BunkCapacityImpossibility` | cluster | **NEW** — reciprocal `bunk_with` chains > max bunk capacity |
+| `TargetNotInSolverImpossibility` | request | **Added #1429** — promoted from a hand-rolled `_validate_requests` fallback; closes the last pre-validate ↔ solver drift |
 
 `POST /api/solver/pre-validate` response gains a structured
 `impossibility_report` field replacing the legacy
@@ -712,40 +805,41 @@ check feasibility") as insurance against drift. ~0.1s per probe; only
 runs on the residual 5-10%. Effort: medium. Mitigated today by
 `test_registry.py`; consider only if drift becomes a real issue.
 
+**Stream 6g — entirely-impossible MP camper pre-check visibility (shipped).**
+Promoted `target_not_in_solver` from a hand-rolled `_validate_requests` fallback
+to a registered `TargetNotInSolverImpossibility` predicate (closing the
+pre-validate ↔ `_validate_requests` drift). Added a derived
+`ImpossibilityReport.mp_campers_entirely_impossible` field computed in
+`validate_impossibility` — single source of truth; `parent_paramount` and
+`_validate_requests` consume it instead of re-deriving. Surfaced in the
+`/solver/pre-validate` response and both impossibility modals as a camper-level
+"will get zero parent requests honored" section. Also fixed the `mp_camper_rate`
+("Acceptable") denominator to count only campers with ≥1 *possible* MP request,
+and fixed a latent bug where `feasibility.py` read `mp_set_entirely_impossible`
+before it was populated. Audit follow-up: #1426.
+
 ### GitHub issues
 
-Framework + initial predicates ship in #1391. Substreams 6a–6f to be
-filed as separate issues if/when prioritized.
+Framework + initial predicates shipped in #1391. Stream 6g (above) shipped
+in #1429 (closes #1428); #1426 tracks the audit follow-up. Substreams 6a–6f
+remain unfiled; file as separate issues if/when prioritized.
 
 ---
 
 ## Suggested order
 
-| # | Stream | Why this slot | Effort | Dependency | Status |
-|---|---|---|---|---|---|
-| 1 | **Stream 2: Metrics expansion (Tier 1 + Tier 2)** | Foundation for all subsequent measurement. Read-only, low risk. Establishes baselines. | ~120–180 LOC | None | **SHIPPED** (#1385) |
-| 2 | **Stream 1: Stage 4 hard MSO** | Camp policy fix. Model size roughly neutral vs soft baseline (corrected from original −164 estimate). | ~900 LOC | Stream 2 (measurement) | **SHIPPED** (#1391) |
-| 3a | **Stream 4: Mutual-boost** | Independent, can parallel with 3b. Layers cleanly on Stage 4 baseline. | ~80–120 LOC | Stream 1 (baseline) | Pending |
-| 3b | **Stream 3: Variable-count attack surface** | Compound model simplification. Bigger blast radius but lower urgency. Also see #1395 for the sat-var unification that ought to land before this. | ~250–400 LOC | Stream 2 (measurement), #1395 (recommended) | Pending |
+Superseded by **"Status & phased sequencing"** near the top of this doc
+(Phases 0–4 with issue numbers). The original rationale, preserved:
 
-### Why metrics first
-
-Streams 1, 3, 4 all produce changes worth measuring. Without Stream 2,
-their wins are invisible or hard to attribute. The cost of doing
-Stream 2 first is one PR's worth of delay on Stream 1; the benefit is
-every subsequent PR has built-in before/after observability.
-
-### Why Stage 4 before mutual-boost
-
-Stage 4 enforces coverage; mutual-boost steers which request gets
-coverage. The "which" question is more meaningful when coverage is
-already guaranteed.
-
-### Why variable-attack last
-
-Largest LOC, touches foundational modeling, biggest review surface.
-Best to land after Stage 4 establishes the cleaner baseline so
-diffs are clearer.
+- **Metrics first** — Streams 1/3/4 all produce changes worth measuring;
+  without observability their wins are invisible or unattributable. (Held:
+  Tier 1 shipped before Stage 4; Tier 2 now gates Phase 4.)
+- **Stage 4 before mutual-boost** — Stage 4 enforces coverage, mutual-boost
+  steers *which* request gets it; the "which" question is only meaningful
+  once coverage is guaranteed. (Held: Phase 3 follows Phase 0.)
+- **Variable-attack last** — largest LOC, touches foundational modeling.
+  (Held + sharpened: #1391 + #1427 already ate most of its blast radius —
+  re-scope in Phase 4.)
 
 ---
 
@@ -821,3 +915,23 @@ diffs are clearer.
   extended with staff-friendly prose vs admin-detail views. Substreams
   6a–6f (level_progression, group_locks, per-bunk grade range, cohort
   census, "open request" link, solver-probe fallback) deferred.
+- **2026-05-14** — #1395 shipped: bunk-request sat-var unification. Deleted
+  the orphaned one-way `add_bunk_request_satisfaction_vars` (dead since
+  #1391 removed `must_satisfy.py`), added the canonical bidirectional
+  `get_or_create_request_sat_var`, and unified `add_objective` +
+  `parent_paramount` onto one shared `request_satisfied_vars` map.
+  Behaviour-neutral (both prior encodings were already honest bidirectional
+  comparisons); the win is ~250 fewer duplicate BoolVars on S2. Corrected
+  the Stream 1 "Reality" note (the objective was never falsifiable) and the
+  Stream 3 table / lever 3b (`both_in_bunk` no longer exists in the live model).
+- **2026-05-14** — #1388 shipped (PR #1425): Tier 1 solver stats split by
+  `RequestBucket` (MP / IMP / staff) — per-bucket `request_density_histogram`
+  and `impossible_by_reason`.
+- **2026-05-14** — Stream 6g shipped: `target_not_in_solver` promoted to a
+  registered predicate; `mp_campers_entirely_impossible` rollup added to
+  `ImpossibilityReport`; `mp_camper_rate` denominator corrected. Filed #1426 to
+  audit `direct_solver` for other hand-rolled impossibility logic.
+- **2026-05-14** — Added "Status & phased sequencing" section (Phases 0–4 +
+  issue map) and retired the stale "Suggested order" table. Reconciled the
+  Stream 2/3/4 "GitHub issue" lines with filed issue numbers. Flagged Tier 2
+  as unfiled (orphaned when #1380 closed on Tier 1 alone).

@@ -16,6 +16,7 @@ EXPECTED_HARD_PREDICATES = {
     "malformed",
     "age_preference",
     "grade_compatibility",
+    "target_not_in_solver",
 }
 
 

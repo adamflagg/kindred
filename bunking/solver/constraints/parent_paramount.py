@@ -14,11 +14,10 @@ constraint.
 Mechanism:
   * For each MP-having camper, build (or borrow) one forcing indicator per MP
     request and add ``model.Add(sum(forcing_indicators) >= 1)``.
-  * For bunk_with / not_bunk_with requests we build a bidirectional
-    ``person_bunk_assignment``-based sat var per request (matches the encoding
-    add_objective uses at direct_solver.py:663-714). One BoolVar + two reified
-    linears per request — much smaller than the per-bunk indicator helpers
-    use under the hood.
+  * For bunk_with / not_bunk_with requests we borrow the shared sat var from
+    ``get_or_create_request_sat_var`` (bunk_requests.py) — one honest
+    bidirectional ``person_bunk_assignment``-based BoolVar per request,
+    memoized in ``ctx.request_satisfied_vars`` and shared with add_objective.
   * For age_preference requests we read the per-(request, bunk) forcing
     indicators returned by ``add_age_preference_satisfaction_vars`` (the
     helper's internal ``person_in_clean_bunk`` / ``person_in_bunk`` BoolVars).
@@ -39,6 +38,7 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .age_preference import add_age_preference_satisfaction_vars
 from .base import SolverContext
+from .bunk_requests import get_or_create_request_sat_var
 
 if TYPE_CHECKING:
     from ortools.sat.python import cp_model
@@ -61,8 +61,9 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     separation, or clean-bunk depending on request type).
 
     Campers with no MP requests at all are skipped silently. Campers whose
-    every MP request is impossible (excluded from possible_requests but
-    present in the input) are recorded in ctx.mp_set_entirely_impossible.
+    every MP request is impossible are already recorded in
+    ctx.mp_set_entirely_impossible by _validate_requests; parent_paramount
+    reads this list for logging but does not modify it.
     """
     logger.info("=== Parent Paramount (Hard MP Must-Satisfy-One) Constraints ===")
     if ctx.is_constraint_disabled("parent_paramount"):
@@ -120,7 +121,7 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         forcing_vars: list[cp_model.IntVar] = []
 
         for r in mp_bunk_requests_by_person.get(person_cm_id, []):
-            sat_var = _build_bunk_request_forcing_var(ctx, r)
+            sat_var = get_or_create_request_sat_var(ctx, r)
             if sat_var is not None:
                 forcing_vars.append(sat_var)
 
@@ -134,13 +135,11 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             constraints_added += 1
             continue
 
-        # No forcing vars — did this camper have any MP requests at all?
-        all_requests = ctx.input.requests_by_person.get(person_cm_id, [])
-        if any(is_material_parent_request(r) for r in all_requests):
-            # Had MP requests but all were either impossible or malformed
-            ctx.mp_set_entirely_impossible.append(person_cm_id)
-            logger.debug(f"Camper {person_cm_id}: all MP requests impossible — no hard constraint added")
-        # else: no MP requests at all — silently skip
+        # No forcing vars built. Entirely-impossible MP campers are already
+        # recorded in ctx.mp_set_entirely_impossible by _validate_requests
+        # (single source of truth: validate_impossibility) — nothing to derive
+        # here. Campers with no MP requests at all also land here harmlessly.
+        logger.debug(f"Camper {person_cm_id}: no forcing vars built — no hard constraint added")
 
     # Step 4: end-of-build logging
     if ctx.mp_set_entirely_impossible:
@@ -155,55 +154,3 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         f"all_mp_impossible={len(ctx.mp_set_entirely_impossible)}, "
         f"no_requests={len(campers_without_requests)}{skip_suffix}"
     )
-
-
-def _build_bunk_request_forcing_var(
-    ctx: SolverContext,
-    request: DirectBunkRequest,
-) -> cp_model.IntVar | None:
-    """Build a bidirectional sat var for a bunk_with / not_bunk_with request.
-
-    Uses ``ctx.person_bunk_assignment`` (the integer-bunk-index variables) so
-    the sat var is honestly tied to placement: ``sat_var = 1`` iff the
-    requested co-placement (or separation) actually holds.
-
-    Mirrors the encoding ``add_objective`` uses at direct_solver.py:663-714
-    but creates a separate BoolVar (unification with the objective's vars is
-    a follow-up — see PR body).
-
-    Returns None for malformed requests (e.g., target not in person_idx_map),
-    which shouldn't happen because ctx.possible_requests is the input.
-    """
-    requester_cm_id = request.requester_person_cm_id
-    target_cm_id = request.requested_person_cm_id
-
-    if target_cm_id is None or target_cm_id not in ctx.person_idx_map:
-        return None
-    if requester_cm_id not in ctx.person_idx_map:
-        return None
-
-    requester_idx = ctx.person_idx_map[requester_cm_id]
-    target_idx = ctx.person_idx_map[target_cm_id]
-
-    sat_var = ctx.model.NewBoolVar(f"parent_paramount_req_{request.id}_satisfied")
-
-    if request.request_type == RequestType.BUNK_WITH.value:
-        # sat_var == 1 ⇔ requester and target are in the same bunk
-        ctx.model.Add(
-            ctx.person_bunk_assignment[requester_idx] == ctx.person_bunk_assignment[target_idx]
-        ).OnlyEnforceIf(sat_var)
-        ctx.model.Add(
-            ctx.person_bunk_assignment[requester_idx] != ctx.person_bunk_assignment[target_idx]
-        ).OnlyEnforceIf(sat_var.Not())
-    elif request.request_type == RequestType.NOT_BUNK_WITH.value:
-        # sat_var == 1 ⇔ requester and target are in DIFFERENT bunks
-        ctx.model.Add(
-            ctx.person_bunk_assignment[requester_idx] != ctx.person_bunk_assignment[target_idx]
-        ).OnlyEnforceIf(sat_var)
-        ctx.model.Add(
-            ctx.person_bunk_assignment[requester_idx] == ctx.person_bunk_assignment[target_idx]
-        ).OnlyEnforceIf(sat_var.Not())
-    else:
-        return None  # Unsupported request type for this helper
-
-    return sat_var
