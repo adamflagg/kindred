@@ -214,6 +214,7 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 - **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
 - **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
 - **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
+- **#1424** — `refactor(solver): schematize constraint.grade_spread.max_spread`. The key is read in 4 sites but absent from `CONFIG_SCHEMA`; each read leans on a `default=` to swallow the `UnknownKeyError`. Either schematize it or replace with a named constant.
 
 ---
 
