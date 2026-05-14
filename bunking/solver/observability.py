@@ -82,6 +82,77 @@ def _compute_optimality_gap(objective: float | None, best_bound: float | None) -
     return abs(objective - best_bound) / max(abs(objective), 1.0)
 
 
+def _count_presolve_compression(model_proto: Any, solver: Any) -> dict[str, Any]:
+    """Pre-presolve vs post-presolve boolean-variable counts.
+
+    Pre = model-proto variables whose domain is exactly ``[0, 1]`` (the
+    booleans the model was *built* with). Post = ``solver.NumBooleans()``
+    (booleans the SAT core actually works on, after presolve). ``ratio`` =
+    post / pre — lower means presolve eliminated more redundancy, which is
+    the Stream 3 (variable-count attack) target signal. ``ratio`` is
+    ``None`` when the model has no booleans (avoids div-by-zero).
+    """
+    booleans_pre = sum(1 for v in model_proto.variables if list(v.domain) == [0, 1])
+    booleans_post = solver.NumBooleans()
+    ratio = (booleans_post / booleans_pre) if booleans_pre > 0 else None
+    return {"presolve_compression_ratio": ratio, "presolve_booleans_pre": booleans_pre}
+
+
+def _lp_root_gap(bound_trajectory: list[dict[str, float]], objective: float | None) -> float | None:
+    """Relative gap between the root LP bound and the final objective.
+
+    The first ``best_bound_callback`` value (``bound_trajectory[0]``) is the
+    earliest proven bound — CP-SAT computes it after presolve + the root LP
+    relaxation, before B&B opens any nodes — so it is a good proxy for the
+    root LP bound. The gap against the final objective is the relaxation's
+    quality, independent of the time budget. ``None`` if the trajectory is
+    empty (no bound was ever reported).
+
+    The "first point ≈ root LP bound" approximation relies on a
+    callback-ordering assumption — that the caller wires ``BestBoundCallback``
+    before ``Solve()`` and it fires once at the root before branching — which
+    this function cannot itself verify; it is not a model-level guarantee.
+    """
+    if not bound_trajectory:
+        return None
+    return _compute_optimality_gap(objective, bound_trajectory[0]["bound"])
+
+
+def _derive_plateau_scalars(
+    objective_trajectory: list[dict[str, float]],
+    bound_trajectory: list[dict[str, float]],
+) -> dict[str, float | None]:
+    """Comparable scalars distilled from the raw trajectories.
+
+    - ``objective_plateau_time``: ``t`` of the last objective improvement.
+      Low vs. the time budget = the solver stopped finding better solutions
+      early.
+    - ``bound_gain_after_plateau``: absolute bound movement *after* the last
+      solution. ~0 = fully stuck; large = the solver kept working the bound
+      even though the objective was flat. Absolute value so it is correct
+      regardless of min/max objective sense (the bound is monotonic).
+    - ``time_to_first_solution``: ``t`` of the first solution. Long = the
+      model was hard to even make feasible.
+
+    All ``None`` when ``objective_trajectory`` is empty (INFEASIBLE / no
+    solution / single-bunk path).
+    """
+    if not objective_trajectory:
+        return {
+            "objective_plateau_time": None,
+            "bound_gain_after_plateau": None,
+            "time_to_first_solution": None,
+        }
+    first = objective_trajectory[0]
+    last = objective_trajectory[-1]
+    final_bound = bound_trajectory[-1]["bound"] if bound_trajectory else last["bound"]
+    return {
+        "objective_plateau_time": last["t"],
+        "bound_gain_after_plateau": abs(final_bound - last["bound"]),
+        "time_to_first_solution": first["t"],
+    }
+
+
 def _is_linear_constraint(c: Any) -> bool:
     """True if the constraint proto is a linear constraint.
 

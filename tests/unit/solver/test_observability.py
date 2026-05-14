@@ -6,13 +6,18 @@ Implementation must conform to these tests, not the other way around.
 from __future__ import annotations
 
 import logging
+from unittest.mock import MagicMock
 
 import pytest
+from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunkRequest
 from bunking.solver.observability import (
     _build_impossible_by_reason_by_bucket,
     _build_request_density_histogram_by_bucket,
+    _count_presolve_compression,
+    _derive_plateau_scalars,
+    _lp_root_gap,
 )
 
 
@@ -116,3 +121,73 @@ class TestImpossibleByReasonByBucket:
             result = _build_impossible_by_reason_by_bucket([(_req("r1", 1001, "garbage_field"), "malformed")])
         assert result == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
         assert any("garbage_field" in r.message for r in caplog.records)
+
+
+class TestCountPresolveCompression:
+    def test_counts_booleans_pre_and_ratio(self) -> None:
+        model = cp_model.CpModel()
+        model.NewBoolVar("a")
+        model.NewBoolVar("b")
+        model.NewBoolVar("c")
+        model.NewIntVar(0, 10, "x")
+        solver = MagicMock()
+        solver.NumBooleans.return_value = 2
+        result = _count_presolve_compression(model.Proto(), solver)
+        assert result == {"presolve_compression_ratio": 2 / 3, "presolve_booleans_pre": 3}
+
+    def test_zero_pre_booleans_yields_none_ratio(self) -> None:
+        model = cp_model.CpModel()
+        model.NewIntVar(0, 10, "x")
+        solver = MagicMock()
+        solver.NumBooleans.return_value = 0
+        result = _count_presolve_compression(model.Proto(), solver)
+        assert result == {"presolve_compression_ratio": None, "presolve_booleans_pre": 0}
+
+
+class TestLpRootGap:
+    def test_uses_first_bound_point_vs_objective(self) -> None:
+        # _compute_optimality_gap(100, 120) = |100-120| / max(100,1) = 0.2
+        assert _lp_root_gap([{"t": 0.1, "bound": 120.0}, {"t": 5.0, "bound": 105.0}], 100.0) == 0.2
+
+    def test_empty_trajectory_returns_none(self) -> None:
+        assert _lp_root_gap([], 100.0) is None
+
+    def test_none_objective_returns_none(self) -> None:
+        assert _lp_root_gap([{"t": 0.0, "bound": 50.0}], None) is None
+
+
+class TestDerivePlateauScalars:
+    def test_normal_trajectories(self) -> None:
+        obj = [
+            {"t": 1.0, "objective": 500.0, "bound": 900.0},
+            {"t": 5.0, "objective": 600.0, "bound": 850.0},
+        ]
+        bnd = [{"t": 0.5, "bound": 1000.0}, {"t": 60.0, "bound": 700.0}]
+        assert _derive_plateau_scalars(obj, bnd) == {
+            "objective_plateau_time": 5.0,
+            "bound_gain_after_plateau": 150.0,  # abs(700 - 850)
+            "time_to_first_solution": 1.0,
+        }
+
+    def test_empty_objective_trajectory_all_none(self) -> None:
+        assert _derive_plateau_scalars([], []) == {
+            "objective_plateau_time": None,
+            "bound_gain_after_plateau": None,
+            "time_to_first_solution": None,
+        }
+
+    def test_single_solution_point(self) -> None:
+        obj = [{"t": 3.0, "objective": 500.0, "bound": 900.0}]
+        assert _derive_plateau_scalars(obj, []) == {
+            "objective_plateau_time": 3.0,
+            "bound_gain_after_plateau": 0.0,  # abs(900 - 900), bound_traj empty -> fallback
+            "time_to_first_solution": 3.0,
+        }
+
+    def test_bound_trajectory_empty_falls_back_to_solution_bound(self) -> None:
+        obj = [
+            {"t": 1.0, "objective": 500.0, "bound": 900.0},
+            {"t": 5.0, "objective": 600.0, "bound": 850.0},
+        ]
+        # final_bound falls back to last solution's bound (850) -> abs(850 - 850) = 0
+        assert _derive_plateau_scalars(obj, [])["bound_gain_after_plateau"] == 0.0
