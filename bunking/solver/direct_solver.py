@@ -1065,6 +1065,11 @@ class DirectBunkingSolver:
         all_campers_total = 0
         all_campers_satisfied = 0
 
+        # "Acceptable" (mp_camper_rate) denominator must exclude campers whose
+        # entire MP set is structurally impossible — they can never be satisfied,
+        # so counting them understates the solver-actionable rate.
+        impossible_request_ids: set[str] = {item.request_id for item in self.impossibility_report.flat}
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
@@ -1081,9 +1086,13 @@ class DirectBunkingSolver:
             mp_requests_total += len(resolved_mp)
             satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
             mp_requests_satisfied += len(satisfied_mp)
-            if resolved_mp:
+            # Camper-level "Acceptable" rate: denominator = campers with >=1
+            # POSSIBLE MP request; numerator gated to the same possible subset so
+            # mp_campers_satisfied is always <= mp_campers_total (no >100%).
+            resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
+            if resolved_possible_mp:
                 mp_campers_total += 1
-                if satisfied_mp:
+                if any(r.id in satisfied_ids_for_person for r in resolved_possible_mp):
                     mp_campers_satisfied += 1
             all_campers_total += 1
             if any(r.id in satisfied_ids_for_person for r in resolved_requests):
@@ -1113,8 +1122,9 @@ class DirectBunkingSolver:
         # Dashboard and alerting latch onto this key specifically.
         self.request_validation_summary["mp_constraint_bug_signal"] = len(material_parent_unmet)
         # Campers whose entire MP set was structurally impossible — the hard
-        # constraint was not added for them. Populated by parent_paramount
-        # during constraint build; surfaced here for dashboard visibility.
+        # constraint was not added for them. Populated by `_validate_requests`
+        # from the impossibility report (single source of truth); `parent_paramount`
+        # no longer re-derives it. Surfaced here for dashboard visibility.
         self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
         self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
 

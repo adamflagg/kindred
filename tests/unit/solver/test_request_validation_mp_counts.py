@@ -205,3 +205,30 @@ class TestMPAndAllCamperCounts:
         assert s["mp_campers_total"] == 0
         assert s["all_campers_total"] == 0
         assert s["all_campers_satisfied"] == 0
+
+
+def test_entirely_impossible_mp_camper_excluded_from_mp_campers_total() -> None:
+    """mp_campers_total counts only campers with >=1 POSSIBLE MP request.
+
+    Camper 1's single MP request targets a non-roster cm_id (entirely
+    impossible). Camper 2 has a satisfiable MP request. With camper 1
+    correctly excluded, mp_campers_total == 1 and mp_campers_satisfied == 1
+    -> the 'Acceptable' rate is 100%, not 50%.
+    """
+    p1 = _person(1, session_cm_id=500)
+    p2 = _person(2, session_cm_id=500)
+    p3 = _person(3, session_cm_id=500)
+    bunks = [_bunk(10, capacity=10, session_cm_id=500)]
+    requests = [
+        # Camper 1: only MP request targets cm_id 999 (not in persons) -> impossible.
+        _req("r1", requester_id=1, target_id=999, source_field="bunk_with"),
+        # Camper 2: MP request to camper 3, satisfiable.
+        _req("r2", requester_id=2, target_id=3, source_field="bunk_with"),
+    ]
+    # Put everyone in the one bunk so r2 is satisfied.
+    assignments = {1: 10, 2: 10, 3: 10}
+
+    summary = _run_post_solve_with_fixed_assignments([p1, p2, p3], bunks, requests, assignments)
+
+    assert summary["mp_campers_total"] == 1
+    assert summary["mp_campers_satisfied"] == 1
