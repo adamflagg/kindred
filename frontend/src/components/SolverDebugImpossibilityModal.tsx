@@ -153,6 +153,35 @@ export default function SolverDebugImpossibilityModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} header={headerContent} size="xl" scrollable noPadding>
       <div className="px-5 py-4 font-mono">
+        {report.mp_campers_entirely_impossible &&
+          report.mp_campers_entirely_impossible.length > 0 && (
+            <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-3">
+              <div className="text-xs font-bold text-red-900">
+                {`${report.mp_campers_entirely_impossible.length} entirely-impossible MP campers — zero parent requests honorable`}
+              </div>
+              <div className="mt-2 space-y-1">
+                {report.mp_campers_entirely_impossible.map((c) => (
+                  <div key={c.cm_id} className="flex items-center gap-2 text-xs">
+                    <span className="text-stone-700">
+                      {c.name} ({c.cm_id}/g{c.grade}/{c.gender})
+                    </span>
+                    {c.reason_codes.map((code) => {
+                      const chip = reasonChipStyle(code)
+                      return (
+                        <span
+                          key={code}
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{ background: chip.bg, color: chip.text }}
+                        >
+                          {code}
+                        </span>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         {empty ? (
           <div className="rounded-md bg-green-50 p-3 text-xs text-green-800">
             // impossibility_report empty — no issues detected

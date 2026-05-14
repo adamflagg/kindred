@@ -95,6 +95,40 @@ describe('SolverDebugImpossibilityModal — sortable header a11y', () => {
   })
 })
 
+describe('SolverDebugImpossibilityModal — entirely-impossible MP campers', () => {
+  it('renders a compact camper-level block with reason chips', () => {
+    const report = {
+      total_impossible: 1,
+      affected_campers: 1,
+      by_reason: {},
+      flat: [],
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          reason_codes: ['target_not_in_solver'],
+        },
+      ],
+    } as unknown as import('../services/solver').ImpossibilityReport
+
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={report}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+
+    expect(screen.getByText(/entirely-impossible MP campers/i)).toBeInTheDocument()
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText('target_not_in_solver')).toBeInTheDocument()
+  })
+})
+
 // C2 — new desired behavior: Copy JSON button writes pretty-printed JSON to clipboard
 describe('SolverDebugImpossibilityModal — C2: Copy JSON button', () => {
   it('Copy JSON button writes JSON.stringify(report, null, 2) to clipboard', () => {
