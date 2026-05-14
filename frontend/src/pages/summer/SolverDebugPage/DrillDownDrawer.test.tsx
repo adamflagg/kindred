@@ -250,6 +250,43 @@ describe('DrillDownDrawer', () => {
   })
 })
 
+describe('Tier 2 plateau-diagnostic metrics', () => {
+  it('renders the best-bound trajectory section when trajectory data is present', () => {
+    const trajectoryRun: SolverRun = {
+      ...run,
+      stats: {
+        status: 'FEASIBLE',
+        objective_trajectory: [
+          { t: 1, objective: 100, bound: 200 },
+          { t: 5, objective: 150, bound: 180 },
+        ],
+        bound_trajectory: [
+          { t: 0.5, bound: 250 },
+          { t: 5, bound: 180 },
+        ],
+      },
+    }
+    render(<DrillDownDrawer run={trajectoryRun} onClose={vi.fn()} />)
+    expect(screen.getByText(/best-bound trajectory/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: /best-bound and objective trajectory/i })
+    ).toBeInTheDocument()
+  })
+
+  it('hides the best-bound trajectory section when no trajectory data is present', () => {
+    const noTrajectoryRun: SolverRun = {
+      ...run,
+      stats: {
+        status: 'FEASIBLE',
+        objective_trajectory: [],
+        bound_trajectory: [],
+      },
+    }
+    render(<DrillDownDrawer run={noTrajectoryRun} onClose={vi.fn()} />)
+    expect(screen.queryByText(/best-bound trajectory/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('Registry-driven group rendering (PR1)', () => {
   it('renders Outcome (requests) and Outcome (campers) section headers when run has both', () => {
     const outcomeRun: SolverRun = {

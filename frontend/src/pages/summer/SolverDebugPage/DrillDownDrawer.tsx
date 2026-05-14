@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { REPO_URL } from '../../../constants/repo'
 import { copyText } from '../../../utils/copyText'
 
+import { BoundTrajectoryChart } from './BoundTrajectoryChart'
 import { buildRunSummary, hasNonEmptyBuckets } from './buildRunSummary'
 import { formatMetric, METRIC_REGISTRY_BY_GROUP, type MetricGroup } from './metricRegistry'
 import { pickStat } from './pickStat'
@@ -161,6 +162,19 @@ export function DrillDownDrawer({ run, onClose }: Props) {
               >
                 {s.solution_info}
               </div>
+            </div>
+          ) : null}
+
+          {s.objective_trajectory?.length || s.bound_trajectory?.length ? (
+            <div className="mt-4">
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Best-bound trajectory
+                {s.bound_trajectory_truncated ? ' (truncated)' : ''}
+              </div>
+              <BoundTrajectoryChart
+                objectiveTrajectory={s.objective_trajectory ?? []}
+                boundTrajectory={s.bound_trajectory ?? []}
+              />
             </div>
           ) : null}
 
