@@ -5,14 +5,18 @@ Implementation must conform to these tests, not the other way around.
 
 from __future__ import annotations
 
+import time
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import pytest
+from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput
+from bunking.solver.callbacks import BestBoundCallback, SolverProgressCallback
 from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.logging import ConstraintLogger
 
 
 class _PenaltyStubLoader:
@@ -134,3 +138,45 @@ def test_multibunk_solve_populates_tier2_stats(mock_config: MagicMock) -> None:
     # presolve compression is computed from a real model
     assert stats["presolve_booleans_pre"] > 0
     assert isinstance(stats["presolve_compression_ratio"], float)
+
+
+def test_capture_surfaces_share_clock_and_bound() -> None:
+    """The two capture surfaces must not drift.
+
+    Both read the same CP-SAT best bound, and CP-SAT (single-worker) invokes
+    callbacks serially — so every objective-trajectory point's `bound` must
+    equal the most-recent bound-trajectory `bound` at-or-before its `t`. A
+    failure here means a clock-origin split, a sign flip, or one surface
+    recording the wrong value.
+    """
+    model = cp_model.CpModel()
+    n = 40
+    xs = [model.NewIntVar(0, 100, f"x{i}") for i in range(n)]
+    model.Add(sum(xs) <= 600)
+    model.Maximize(sum((i + 1) * xs[i] for i in range(n)))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_search_workers = 1  # serialized callbacks, no race
+    solver.parameters.max_time_in_seconds = 3.0
+
+    start = time.monotonic()
+    sol_cb = SolverProgressCallback(MagicMock(spec=ConstraintLogger), start)
+    bound_cb = BestBoundCallback(start)
+    solver.best_bound_callback = bound_cb
+    solver.Solve(model, sol_cb)
+
+    obj_traj = sol_cb.objective_trajectory
+    bnd_traj = bound_cb.bound_trajectory
+
+    assert obj_traj, "expected >=1 solution callback"
+    assert bnd_traj, "expected >=1 best-bound callback"
+
+    # t monotonic non-decreasing within each surface
+    assert [p["t"] for p in obj_traj] == sorted(p["t"] for p in obj_traj)
+    assert [p["t"] for p in bnd_traj] == sorted(p["t"] for p in bnd_traj)
+
+    # Drift invariant: each solution's bound == last bound-traj bound at-or-before its t
+    for p in obj_traj:
+        prior = [e for e in bnd_traj if e["t"] <= p["t"]]  # O(n*m), fine for test-scale data
+        assert prior, f"no bound point at-or-before solution t={p['t']}"
+        assert prior[-1]["bound"] == p["bound"]
