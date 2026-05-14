@@ -90,6 +90,7 @@ var syncJobMeta = []JobMeta{
 	{"staff_vehicle_info", PhaseTransform, "Extract staff vehicle info from custom values"},
 	{"normalize_geographic", PhaseTransform, "Normalize geographic data (cities, schools, congregations)"},
 	{"enrollment_snapshots", PhaseTransform, "Capture daily enrollment counts per session"},
+	{"orphan_reconciler", PhaseTransform, "Auto-unassign scenario drafts stranded by bunk-plan changes"},
 
 	// Process phase - CSV + AI
 	{"reconcile_request_lifecycle", PhaseProcess, "Mark moved-requester OBRs for reprocessing"},
@@ -168,7 +169,7 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 		"financial_aid_applications", "household_demographics",
 		"camper_dietary", "camper_transportation", "quest_registrations",
 		"staff_applications", "staff_vehicle_info", "normalize_geographic",
-		"enrollment_snapshots")
+		"enrollment_snapshots", "orphan_reconciler")
 
 	return jobs
 }
@@ -448,12 +449,15 @@ func GetWeeklySyncJobs() []string {
 
 // GetRefreshBunkingJobs returns the services needed for a full bunking refresh.
 // Runs in order: bunks (fetch latest bunk list), bunk_plans (update plans),
-// then bunk_assignments (update assignments).
+// bunk_assignments (update assignments), then orphan_reconciler — the bunk_plans
+// rewrite is exactly what strands scenario drafts, so they must be swept in the
+// same run rather than left until the next daily sync.
 func GetRefreshBunkingJobs() []string {
 	return []string{
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
+		"orphan_reconciler",
 	}
 }
 
@@ -685,17 +689,12 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 	return len(records) == 0
 }
 
-// RunDailySync runs all base data syncs in the correct order
-func (o *Orchestrator) RunDailySync(ctx context.Context) error {
-	// Check if global tables are empty - if so, run weekly sync first
-	// This ensures fresh DB setups have required global definitions before daily sync
-	if o.checkGlobalTablesEmpty() {
-		slog.Info("Global tables empty - running weekly sync first")
-		if err := o.RunWeeklySync(ctx); err != nil {
-			slog.Error("Weekly sync failed, continuing with daily", "error", err)
-		}
-	}
-
+// getDailySyncJobs returns the ordered list of jobs the daily sync runs,
+// respecting inter-job dependencies. orphan_reconciler is always appended last:
+// it must run after bunk_plans is final so it can sweep scenario drafts left
+// stranded by bunk-plan reorganizations (#1416, #1417). Extracted from
+// RunDailySync so the ordering can be asserted in tests.
+func getDailySyncJobs() []string {
 	// Define sync order (respecting dependencies)
 	// Note: person_tag_defs, custom_field_defs, and divisions run in weekly sync
 	// since they're global definitions that rarely change
@@ -743,6 +742,26 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	if google.IsEnabled() {
 		orderedJobs = append(orderedJobs, "multi_workbook_export")
 	}
+
+	// Orphan reconciliation runs last — after bunk_plans is final, it sweeps
+	// scenario drafts left stranded by bunk-plan reorganizations (#1416, #1417).
+	orderedJobs = append(orderedJobs, "orphan_reconciler")
+
+	return orderedJobs
+}
+
+// RunDailySync runs all base data syncs in the correct order
+func (o *Orchestrator) RunDailySync(ctx context.Context) error {
+	// Check if global tables are empty - if so, run weekly sync first
+	// This ensures fresh DB setups have required global definitions before daily sync
+	if o.checkGlobalTablesEmpty() {
+		slog.Info("Global tables empty - running weekly sync first")
+		if err := o.RunWeeklySync(ctx); err != nil {
+			slog.Error("Weekly sync failed, continuing with daily", "error", err)
+		}
+	}
+
+	orderedJobs := getDailySyncJobs()
 
 	// Set daily sync flag and queue
 	o.mu.Lock()
@@ -1264,6 +1283,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		enrollmentSnapshotsSync.Year = opts.Year
 		o.RegisterService("enrollment_snapshots", enrollmentSnapshotsSync)
 
+		// Orphan reconciler: sweeps scenario drafts stranded by bunk-plan changes.
+		// Year-scoped so a historical sync reconciles the correct year's drafts.
+		orphanReconcilerSync := NewOrphanReconcilerSync(o.app)
+		orphanReconcilerSync.Year = opts.Year
+		o.RegisterService("orphan_reconciler", orphanReconcilerSync)
+
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
 		personCustomValuesSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
@@ -1738,6 +1763,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
 	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(o.app))
+	o.RegisterService("orphan_reconciler", NewOrphanReconcilerSync(o.app))
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	processor := NewRequestProcessor(o.app)

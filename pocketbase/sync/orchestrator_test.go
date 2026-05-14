@@ -777,6 +777,35 @@ func TestWeeklySyncIncludesDivisions(t *testing.T) {
 	}
 }
 
+// TestGetDailySyncJobsOrphanReconcilerOrdering asserts the daily sync runs
+// orphan_reconciler last and strictly after bunk_plans. The reconciler's gating
+// logic depends on bunk_plans being final before it sweeps stranded drafts, so
+// a regression that drops it or moves it earlier must fail this test.
+func TestGetDailySyncJobsOrphanReconcilerOrdering(t *testing.T) {
+	jobs := getDailySyncJobs()
+
+	pos := make(map[string]int, len(jobs))
+	for i, j := range jobs {
+		pos[j] = i
+	}
+
+	orphanPos, ok := pos["orphan_reconciler"]
+	if !ok {
+		t.Fatalf("orphan_reconciler missing from daily sync jobs: %v", jobs)
+	}
+	if orphanPos != len(jobs)-1 {
+		t.Errorf("orphan_reconciler must run last — got position %d of %d: %v", orphanPos, len(jobs), jobs)
+	}
+
+	bunkPlansPos, ok := pos["bunk_plans"]
+	if !ok {
+		t.Fatalf("bunk_plans missing from daily sync jobs: %v", jobs)
+	}
+	if orphanPos <= bunkPlansPos {
+		t.Errorf("orphan_reconciler (pos %d) must run after bunk_plans (pos %d)", orphanPos, bunkPlansPos)
+	}
+}
+
 // TestDailySyncExcludesDivisions verifies divisions is NOT in daily sync
 func TestDailySyncExcludesDivisions(t *testing.T) {
 	// Daily sync jobs that would be in orderedJobs (excluding divisions)
@@ -1822,6 +1851,28 @@ func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 	}
 }
 
+// TestJobMeta_IncludesOrphanReconciler asserts the orphan reconciler is
+// registered in syncJobMeta so the phase API (?phase=transform) and the sync
+// dashboard surface it like every other sync job. Its predecessor
+// reconcile_request_lifecycle is registered there; orphan_reconciler must be too.
+func TestJobMeta_IncludesOrphanReconciler(t *testing.T) {
+	if got := GetPhaseForJob("orphan_reconciler"); got != PhaseTransform {
+		t.Errorf("GetPhaseForJob(\"orphan_reconciler\") = %q, want %q", got, PhaseTransform)
+	}
+
+	jobs := GetJobsForPhase(PhaseTransform)
+	found := false
+	for _, j := range jobs {
+		if j == "orphan_reconciler" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("orphan_reconciler missing from GetJobsForPhase(PhaseTransform): %v", jobs)
+	}
+}
+
 // TestJobMeta_ProcessPhaseJobs tests that CSV/AI jobs are in process phase
 func TestJobMeta_ProcessPhaseJobs(t *testing.T) {
 	expectedProcessJobs := []string{
@@ -2341,7 +2392,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"financial_aid_applications", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
-			"enrollment_snapshots",
+			"enrollment_snapshots", "orphan_reconciler",
 		}
 
 		if len(jobs) != len(expectedOrder) {

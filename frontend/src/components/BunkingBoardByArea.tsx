@@ -31,6 +31,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
+import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -216,7 +217,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Get unassigned campers
   // React Compiler will optimize this computation
   const getUnassignedCampers = () => {
-    const unassigned = campers.filter((c) => !c.assigned_bunk)
+    const unassigned = getEffectivelyUnassignedCampers(campers, bunks)
 
     // If showing all areas, return all unassigned campers
     if (selectedArea === 'all') {
