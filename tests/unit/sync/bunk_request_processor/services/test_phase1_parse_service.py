@@ -468,3 +468,115 @@ class TestPhase1FailureTracking:
         service.reset_stats()
 
         assert service.get_stats()["first_failure_reason"] is None
+
+
+class TestAgeDirectionPhase1Conversion:
+    """#1401 regression guard at the Phase 1 conversion boundary.
+
+    Exercises OpenAIProvider._convert_parse_response with prose-realistic AI responses
+    to lock down the contract: AI's age_direction maps directly to ParsedRequest.age_preference,
+    target_name on age_preference is salvaged (not silently re-mapped), and undirected
+    requests pass through as age_preference=None for downstream PENDING handling.
+
+    Sibling of TestOpenAIProviderAgeDirectionConversion in test_sdk_ai_provider.py —
+    placed at this layer so accidental refactors that route around the provider's
+    handling still get caught.
+    """
+
+    def _convert_single(self, ai_response):
+        """Helper: run a single-request AIParseResponse through OpenAIProvider._convert_parse_response."""
+        from unittest.mock import patch
+
+        from bunking.sync.bunk_request_processor.integration.ai_service import (
+            AIRequestContext,
+        )
+        from bunking.sync.bunk_request_processor.integration.openai_provider import (
+            OpenAIProvider,
+        )
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        context = AIRequestContext(
+            requester_name="Test User",
+            requester_cm_id=12345,
+            session_cm_id=1000002,
+            year=2025,
+            additional_context={
+                "parse_only": True,
+                "field_type": "share_bunk_with",
+                "csv_source_field": "share_bunk_with",
+            },
+        )
+        result = provider._convert_parse_response(ai_response, "input text", context)
+        assert len(result.requests) == 1, "helper assumes single-request response"
+        return result.requests[0]
+
+    def test_older_prose_maps_to_age_preference_older(self):
+        from bunking.sync.bunk_request_processor.core.models import AgePreference
+        from bunking.sync.bunk_request_processor.integration.ai_schemas import (
+            AIBunkRequestItem,
+            AIParseResponse,
+        )
+
+        ai_response = AIParseResponse(
+            requests=[AIBunkRequestItem(request_type="age_preference", age_direction="older")]
+        )
+        parsed = self._convert_single(ai_response)
+        assert parsed.request_type == RequestType.AGE_PREFERENCE
+        assert parsed.age_preference == AgePreference.OLDER
+        assert parsed.target_name is None
+
+    def test_younger_prose_maps_to_age_preference_younger(self):
+        from bunking.sync.bunk_request_processor.core.models import AgePreference
+        from bunking.sync.bunk_request_processor.integration.ai_schemas import (
+            AIBunkRequestItem,
+            AIParseResponse,
+        )
+
+        ai_response = AIParseResponse(
+            requests=[AIBunkRequestItem(request_type="age_preference", age_direction="younger")]
+        )
+        parsed = self._convert_single(ai_response)
+        assert parsed.request_type == RequestType.AGE_PREFERENCE
+        assert parsed.age_preference == AgePreference.YOUNGER
+        assert parsed.target_name is None
+
+    def test_undirected_prose_maps_to_age_preference_none(self):
+        from bunking.sync.bunk_request_processor.integration.ai_schemas import (
+            AIBunkRequestItem,
+            AIParseResponse,
+        )
+
+        ai_response = AIParseResponse(requests=[AIBunkRequestItem(request_type="age_preference", age_direction=None)])
+        parsed = self._convert_single(ai_response)
+        assert parsed.request_type == RequestType.AGE_PREFERENCE
+        assert parsed.age_preference is None
+        assert parsed.target_name is None
+
+    def test_drift_target_name_on_age_pref_does_not_silently_remap(self):
+        """Critical regression: AI emits old-shape target_name='older' on age_preference.
+
+        Must NOT be silently re-mapped to AgePreference.OLDER (the old age_pref_map
+        behavior). Salvaged as undirected so staff catch the AI drift downstream.
+        """
+        from bunking.sync.bunk_request_processor.integration.ai_schemas import (
+            AIBunkRequestItem,
+            AIParseResponse,
+        )
+
+        ai_response = AIParseResponse(
+            requests=[
+                AIBunkRequestItem(
+                    request_type="age_preference",
+                    target_name="older",
+                    age_direction=None,
+                )
+            ]
+        )
+        parsed = self._convert_single(ai_response)
+        assert parsed.age_preference is None, (
+            "drift target_name must not be re-mapped to AgePreference — this was the "
+            "bug class age_direction was introduced to eliminate"
+        )
+        assert parsed.target_name is None
