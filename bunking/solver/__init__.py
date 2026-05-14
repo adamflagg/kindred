@@ -18,7 +18,6 @@ from .solution import (
     analyze_level_progressions,
     analyze_solution,
     calculate_field_level_stats,
-    calculate_satisfied_requests,
     get_bunk_name,
 )
 
@@ -31,6 +30,5 @@ __all__ = [
     "analyze_level_progressions",
     "analyze_solution",
     "calculate_field_level_stats",
-    "calculate_satisfied_requests",
     "get_bunk_name",
 ]

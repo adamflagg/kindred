@@ -79,7 +79,7 @@ def _run_post_solve_with_fixed_assignments(
     keeps the test fast and deterministic.
 
     Internally `_check_must_satisfy_one_violations` builds person_to_bunk
-    and calls `calculate_satisfied_requests` itself, so we only need to
+    and calls `satisfied_request_ids_by_person` itself, so we only need to
     hand it the assignment list.
     """
     input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)

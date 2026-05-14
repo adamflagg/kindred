@@ -743,7 +743,7 @@ class TestParentParamountStats:
 
 
 class TestSingleBunkSatisfiedRequestsCentralization:
-    """Single-bunk path must use shared `calculate_satisfied_requests` so it:
+    """Single-bunk path must use shared `satisfied_request_ids_by_person` so it:
 
     1. Stores real PocketBase request IDs (not synthetic 'bunk_with:<id>'
        strings) — the frontend looks them up by ID.
@@ -779,7 +779,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
 
     def test_single_bunk_satisfied_uses_real_request_ids(self) -> None:
         """`satisfied_requests[person_cm_id]` values must be real PB record IDs,
-        matching what the multi-bunk path emits via `calculate_satisfied_requests`."""
+        matching what the multi-bunk path emits via `satisfied_request_ids_by_person`."""
         req = DirectBunkRequest(
             id="pb_req_abc123",
             requester_person_cm_id=1000,

@@ -20,6 +20,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
+from bunking.satisfaction.batch import satisfied_request_ids_by_person
 from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
@@ -51,7 +52,7 @@ from .observability import (
     _count_constraint_types,
     _count_soft_constraints_by_module,
 )
-from .solution import analyze_solution, calculate_satisfied_requests
+from .solution import analyze_solution
 
 if TYPE_CHECKING:
     from bunking.solver.impossibility import ImpossibilityReport
@@ -619,7 +620,7 @@ class DirectBunkingSolver:
         # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
         # and so all request types — NOT_BUNK_WITH, AGE_PREFERENCE, etc. —
         # are evaluated, not just BUNK_WITH.
-        satisfied_requests = calculate_satisfied_requests(
+        satisfied_requests = satisfied_request_ids_by_person(
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
 
@@ -834,7 +835,7 @@ class DirectBunkingSolver:
                     break
 
         # Calculate satisfied requests
-        satisfied_requests = calculate_satisfied_requests(
+        satisfied_requests = satisfied_request_ids_by_person(
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
 
@@ -1058,7 +1059,7 @@ class DirectBunkingSolver:
         structured solver-log JSON carries the breakdown.
         """
         person_to_bunk = {a.person_cm_id: a.bunk_cm_id for a in assignments}
-        all_satisfied = calculate_satisfied_requests(
+        all_satisfied = satisfied_request_ids_by_person(
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
 

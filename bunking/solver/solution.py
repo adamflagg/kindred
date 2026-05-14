@@ -12,75 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
-from bunking.utils.age_preference import is_age_preference_satisfied
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest
-
-
-def calculate_satisfied_requests(
-    assignments: list[DirectBunkAssignment],
-    requests_by_person: dict[int, list[DirectBunkRequest]],
-    person_by_cm_id: dict[int, Any],
-) -> dict[int, list[str]]:
-    """Calculate which requests were satisfied by the given assignments.
-
-    Args:
-        assignments: List of bunk assignments (person_cm_id -> bunk_cm_id)
-        requests_by_person: Dict mapping person CM ID to their requests
-        person_by_cm_id: Dict mapping person CM ID to person object
-
-    Returns:
-        Dict mapping person CM ID to list of satisfied request IDs
-    """
-    # Build assignment lookup
-    person_to_bunk = {a.person_cm_id: a.bunk_cm_id for a in assignments}
-
-    satisfied: dict[int, list[str]] = defaultdict(list)
-
-    for person_cm_id, requests in requests_by_person.items():
-        if person_cm_id not in person_to_bunk:
-            continue
-
-        person_bunk = person_to_bunk[person_cm_id]
-
-        for request in requests:
-            if request.request_type == RequestType.BUNK_WITH.value:
-                if (
-                    request.requested_person_cm_id
-                    and request.requested_person_cm_id in person_to_bunk
-                    and person_to_bunk[request.requested_person_cm_id] == person_bunk
-                ):
-                    satisfied[person_cm_id].append(request.id)
-
-            elif request.request_type == RequestType.NOT_BUNK_WITH.value:
-                if (
-                    request.requested_person_cm_id
-                    and request.requested_person_cm_id in person_to_bunk
-                    and person_to_bunk[request.requested_person_cm_id] != person_bunk
-                ):
-                    satisfied[person_cm_id].append(request.id)
-
-            elif request.request_type == RequestType.AGE_PREFERENCE.value:
-                # Check if they have bunkmates matching their preference
-                person = person_by_cm_id.get(person_cm_id)
-                preference = request.age_preference_target
-
-                if preference and person and person.grade is not None:
-                    # Collect grades of all bunkmates (excluding the requester)
-                    bunkmate_grades = []
-                    for pid, bunk_id in person_to_bunk.items():
-                        if bunk_id == person_bunk and pid != person_cm_id:
-                            bunkmate = person_by_cm_id.get(pid)
-                            if bunkmate and bunkmate.grade is not None:
-                                bunkmate_grades.append(bunkmate.grade)
-
-                    # Use shared utility for consistent satisfaction logic
-                    is_satisfied, _ = is_age_preference_satisfied(person.grade, bunkmate_grades, preference)
-                    if is_satisfied:
-                        satisfied[person_cm_id].append(request.id)
-
-    return dict(satisfied)
 
 
 def calculate_field_level_stats(
