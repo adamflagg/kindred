@@ -349,6 +349,22 @@ describe('SweepPanel — pre-check chip', () => {
     expect(chip).toHaveTextContent('3')
   })
 
+  it('exposes the impossibility count in the chip accessible name', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={3}
+      />
+    )
+    // Accessible name must reflect the dynamic status, not a static "Pre-check"
+    // that hides the issue count from screen readers.
+    expect(screen.getByRole('button', { name: /pre-check.*3.*issue/i })).toBeInTheDocument()
+  })
+
   it('renders chip in "no issues" state when count is 0', () => {
     render(
       <SweepPanel
@@ -428,7 +444,7 @@ describe('SweepPanel — pre-check chip', () => {
         preCheckIsLoading
       />
     )
-    const chip = screen.getByLabelText(/pre-check/i)
+    const chip = screen.getByRole('button', { name: /pre-check/i })
     expect(chip).toHaveTextContent(/checking|loading/i)
     expect(chip).toBeDisabled()
   })
@@ -444,7 +460,7 @@ describe('SweepPanel — pre-check chip', () => {
         preCheckIsError
       />
     )
-    const chip = screen.getByLabelText(/pre-check/i)
+    const chip = screen.getByRole('button', { name: /pre-check/i })
     expect(chip).toHaveTextContent(/failed|error/i)
   })
 })

@@ -377,7 +377,7 @@ class TestSingleBunkPathStats:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -387,7 +387,7 @@ class TestSingleBunkPathStats:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -492,7 +492,7 @@ class TestSingleBunkStatsKeyParity:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -502,7 +502,7 @@ class TestSingleBunkStatsKeyParity:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -571,7 +571,7 @@ class TestSingleBunkRequestValidation:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -581,7 +581,7 @@ class TestSingleBunkRequestValidation:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -633,7 +633,7 @@ class TestSingleBunkRequestValidation:
                 source_field="bunk_with",
                 status="resolved",
                 priority=4,
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             )
         ]
@@ -679,7 +679,7 @@ class TestParentParamountStats:
             name="G-1",
             capacity=12,
             gender="F",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -689,7 +689,7 @@ class TestParentParamountStats:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -738,7 +738,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -748,7 +748,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -762,7 +762,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -781,7 +781,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -805,7 +805,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="not_bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -1059,7 +1059,7 @@ class TestImpossibleRequestBreakdownByReason:
                     name="A",
                     capacity=10,
                     gender="Mixed",
-                    session_cm_id=500,
+                    session_cm_id=1000001,
                 ),
                 DirectBunk(
                     id="bunk-2",
@@ -1067,7 +1067,7 @@ class TestImpossibleRequestBreakdownByReason:
                     name="B",
                     capacity=10,
                     gender="Mixed",
-                    session_cm_id=501,
+                    session_cm_id=1000002,
                 ),
             ]
         return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
@@ -1081,7 +1081,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         input_data = self._make_input(persons, requests=[])
@@ -1106,7 +1106,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         # Request targets person 9999 who does not exist in input.persons
@@ -1115,7 +1115,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=9999,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1134,7 +1134,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
             DirectPerson(
                 campminder_person_id=2,
@@ -1143,7 +1143,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=501,  # different session
+                session_cm_id=1000002,  # different session
             ),
         ]
         request = DirectBunkRequest(
@@ -1151,7 +1151,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=2,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1170,7 +1170,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         # bunk_with with empty requested_person_cm_id → malformed
@@ -1179,7 +1179,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=None,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1198,7 +1198,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
             DirectPerson(
                 campminder_person_id=2,
@@ -1207,7 +1207,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=501,
+                session_cm_id=1000002,
             ),
         ]
         requests = [
@@ -1217,7 +1217,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=9999,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
             # cross_session
@@ -1226,7 +1226,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=2,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
             # malformed
@@ -1235,7 +1235,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=None,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
         ]

@@ -9,7 +9,6 @@ import {
   Heart,
   Zap,
   Sparkles,
-  UserMinus,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
@@ -96,8 +95,7 @@ function parseCapacityIssues(errors: string[]): ParsedCapacityIssue[] {
 
 // Parse warnings into structured data
 interface ParsedWarning {
-  type: 'conflict' | 'unsatisfiable' | 'other'
-  count?: number
+  type: 'conflict' | 'other'
   names?: { requester: string; requested: string }
   message: string
 }
@@ -113,19 +111,6 @@ function parseWarnings(warnings: string[]): ParsedWarning[] {
           requester: conflictMatch[1].replace(/\s*\(\d+\)$/, ''),
           requested: conflictMatch[2].replace(/\s*\(\d+\)$/, ''),
         },
-        message: warning,
-      }
-    }
-
-    // Unsatisfiable/unfulfillable requests - multiple formats
-    // "1 camper has requests that may not be fulfilled"
-    // "5 campers have requests that may not be fulfilled"
-    // "X camper(s) have only unsatisfiable requests"
-    const unsatMatch = warning.match(/(\d+) campers? ha(?:ve|s)(?: only unsatisfiable)? requests/i)
-    if (unsatMatch?.[1]) {
-      return {
-        type: 'unsatisfiable' as const,
-        count: parseInt(unsatMatch[1], 10),
         message: warning,
       }
     }
@@ -325,23 +310,6 @@ function ConflictCard({ names }: { names: { requester: string; requested: string
   )
 }
 
-// Unsatisfiable count badge
-function UnsatisfiableBadge({ count }: { count: number }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 p-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
-        <UserMinus className="h-4 w-4 text-amber-600" />
-      </div>
-      <div>
-        <span className="text-foreground font-medium">{count} unfulfillable</span>
-        <div className="text-muted-foreground text-xs">
-          request{count !== 1 ? 's' : ''} can't be met
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function PreValidationResultsModal({
   isOpen,
   onClose,
@@ -368,7 +336,6 @@ export default function PreValidationResultsModal({
 
   // Group warnings by type for cleaner display
   const conflictWarnings = parsedWarnings.filter((w) => w.type === 'conflict')
-  const unsatisfiableWarning = parsedWarnings.find((w) => w.type === 'unsatisfiable')
   const otherWarnings = parsedWarnings.filter((w) => w.type === 'other')
 
   const summaryClass = 'cursor-pointer list-none [&::-webkit-details-marker]:hidden'
@@ -483,9 +450,6 @@ export default function PreValidationResultsModal({
               ))}
             </div>
           )}
-
-          {/* Unsatisfiable requests badge */}
-          {unsatisfiableWarning && <UnsatisfiableBadge count={unsatisfiableWarning.count ?? 1} />}
 
           {/* Conflict warnings - compact cards */}
           {conflictWarnings.length > 0 && (

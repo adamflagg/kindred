@@ -56,9 +56,9 @@ class TestLocalizeHardMSOInfeasibility:
     def test_returns_skipped_when_no_mp_candidates(self, mock_config):
         """If no campers have possible MP, the localizer returns a 'skipped' result."""
         si = DirectSolverInput(
-            persons=[_person(1001, 100), _person(1002, 100)],
+            persons=[_person(1001, 1000001), _person(1002, 1000001)],
             requests=[],  # No requests at all
-            bunks=[_bunk(2001, 100)],
+            bunks=[_bunk(2001, 1000001)],
         )
 
         result = localize_hard_mso_infeasibility(si, ConfigLoader.get_instance(), time_limit_seconds=2)
@@ -72,9 +72,9 @@ class TestLocalizeHardMSOInfeasibility:
         """Bound on diagnostic cost: huge candidate sets are skipped."""
         # We can simulate this with a tiny session and max_candidates=0
         si = DirectSolverInput(
-            persons=[_person(1001, 100), _person(1002, 100)],
-            requests=[_bunk_with_mp("r1", 1001, 1002, 100)],
-            bunks=[_bunk(2001, 100)],
+            persons=[_person(1001, 1000001), _person(1002, 1000001)],
+            requests=[_bunk_with_mp("r1", 1001, 1002, 1000001)],
+            bunks=[_bunk(2001, 1000001)],
         )
 
         result = localize_hard_mso_infeasibility(
@@ -92,9 +92,9 @@ class TestLocalizeHardMSOInfeasibility:
         is already covered via the Taste 1 sweep end-to-end.
         """
         si = DirectSolverInput(
-            persons=[_person(1001, 100), _person(1002, 100)],
+            persons=[_person(1001, 1000001), _person(1002, 1000001)],
             requests=[],
-            bunks=[_bunk(2001, 100)],
+            bunks=[_bunk(2001, 1000001)],
         )
 
         result = localize_hard_mso_infeasibility(si, ConfigLoader.get_instance(), time_limit_seconds=2)
@@ -109,13 +109,13 @@ class TestLocalizeHardMSOInfeasibility:
 def _three_candidate_input() -> DirectSolverInput:
     """3 MP-hard-constrained requesters (1001, 1002, 1003 → 1004) → exactly 3 candidates."""
     return DirectSolverInput(
-        persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100), _person(1004, 100)],
+        persons=[_person(1001, 1000001), _person(1002, 1000001), _person(1003, 1000001), _person(1004, 1000001)],
         requests=[
-            _bunk_with_mp("r1", 1001, 1004, 100),
-            _bunk_with_mp("r2", 1002, 1004, 100),
-            _bunk_with_mp("r3", 1003, 1004, 100),
+            _bunk_with_mp("r1", 1001, 1004, 1000001),
+            _bunk_with_mp("r2", 1002, 1004, 1000001),
+            _bunk_with_mp("r3", 1003, 1004, 1000001),
         ],
-        bunks=[_bunk(2001, 100)],
+        bunks=[_bunk(2001, 1000001)],
     )
 
 
@@ -197,13 +197,13 @@ class TestLocalizeDeterministicOrdering:
 
         # Requests deliberately out of CM order: requester 1003 first, then 1001, 1002.
         si = DirectSolverInput(
-            persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100), _person(1004, 100)],
+            persons=[_person(1001, 1000001), _person(1002, 1000001), _person(1003, 1000001), _person(1004, 1000001)],
             requests=[
-                _bunk_with_mp("r3", 1003, 1004, 100),
-                _bunk_with_mp("r1", 1001, 1004, 100),
-                _bunk_with_mp("r2", 1002, 1004, 100),
+                _bunk_with_mp("r3", 1003, 1004, 1000001),
+                _bunk_with_mp("r1", 1001, 1004, 1000001),
+                _bunk_with_mp("r2", 1002, 1004, 1000001),
             ],
-            bunks=[_bunk(2001, 100)],
+            bunks=[_bunk(2001, 1000001)],
         )
 
         localize_hard_mso_infeasibility(si, ConfigLoader.get_instance(), time_limit_seconds=2)

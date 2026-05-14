@@ -73,9 +73,9 @@ class TestValidateRequestsCrossSession:
         """bunk_with targeting a camper in the same session is possible."""
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 100)],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
-                bunks=[_make_bunk(2001, 100)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000001)],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 1000001)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -91,9 +91,9 @@ class TestValidateRequestsCrossSession:
         """
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 200)],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
-                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000002)],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 1000001), _make_bunk(2002, 1000002)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -109,9 +109,9 @@ class TestValidateRequestsCrossSession:
         """
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 200)],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
-                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000002)],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="not_bunk_with")],
+                bunks=[_make_bunk(2001, 1000001), _make_bunk(2002, 1000002)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -123,9 +123,9 @@ class TestValidateRequestsCrossSession:
         """not_bunk_with targeting a camper in the same session is possible."""
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 100)],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
-                bunks=[_make_bunk(2001, 100)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000001)],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="not_bunk_with")],
+                bunks=[_make_bunk(2001, 1000001)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -137,9 +137,9 @@ class TestValidateRequestsCrossSession:
         """bunk_with targeting someone not in the solver at all (existing behavior)."""
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100)],
-                requests=[_make_request("r1", 1001, 9999, 100, request_type="bunk_with")],
-                bunks=[_make_bunk(2001, 100)],
+                persons=[_make_person(1001, 1000001)],
+                requests=[_make_request("r1", 1001, 9999, 1000001, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 1000001)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -152,15 +152,15 @@ class TestValidateRequestsCrossSession:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100),
-                    _make_person(1002, 100),  # same session
-                    _make_person(1003, 200),  # different session
+                    _make_person(1001, 1000001),
+                    _make_person(1002, 1000001),  # same session
+                    _make_person(1003, 1000002),  # different session
                 ],
                 requests=[
-                    _make_request("r1", 1001, 1002, 100, request_type="bunk_with"),
-                    _make_request("r2", 1001, 1003, 100, request_type="bunk_with"),
+                    _make_request("r1", 1001, 1002, 1000001, request_type="bunk_with"),
+                    _make_request("r2", 1001, 1003, 1000001, request_type="bunk_with"),
                 ],
-                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+                bunks=[_make_bunk(2001, 1000001), _make_bunk(2002, 1000002)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -178,8 +178,8 @@ class TestValidateRequestsCrossSession:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F", grade=4),
-                    _make_person(1002, 100, gender="F", grade=6),  # older same-gender peer
+                    _make_person(1001, 1000001, gender="F", grade=4),
+                    _make_person(1002, 1000001, gender="F", grade=6),  # older same-gender peer
                 ],
                 requests=[
                     DirectBunkRequest(
@@ -187,12 +187,12 @@ class TestValidateRequestsCrossSession:
                         requester_person_cm_id=1001,
                         request_type="age_preference",
                         age_preference_target="older",
-                        session_cm_id=100,
+                        session_cm_id=1000001,
                         year=2026,
                         status="resolved",
                     ),
                 ],
-                bunks=[_make_bunk(2001, 100)],
+                bunks=[_make_bunk(2001, 1000001)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -204,9 +204,9 @@ class TestValidateRequestsCrossSession:
         """request_validation_summary should count cross-session requests as impossible."""
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 200)],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
-                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000002)],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 1000001), _make_bunk(2002, 1000002)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -222,12 +222,12 @@ class TestValidateRequestsCrossSession:
         #   r2: bunk_with 9999 (not in person_idx_map) → target_not_in_solver_extra
         solver = DirectBunkingSolver(
             DirectSolverInput(
-                persons=[_make_person(1001, 100), _make_person(1002, 200)],
+                persons=[_make_person(1001, 1000001), _make_person(1002, 1000002)],
                 requests=[
-                    _make_request("r1", 1001, 1002, 100, request_type="bunk_with"),
-                    _make_request("r2", 1001, 9999, 100, request_type="bunk_with"),
+                    _make_request("r1", 1001, 1002, 1000001, request_type="bunk_with"),
+                    _make_request("r2", 1001, 9999, 1000001, request_type="bunk_with"),
                 ],
-                bunks=[_make_bunk(2001, 100), _make_bunk(2002, 200)],
+                bunks=[_make_bunk(2001, 1000001), _make_bunk(2002, 1000002)],
             ),
             ConfigLoader.get_instance(),
         )
@@ -251,13 +251,13 @@ class TestValidateRequestsPairNoSharedBunk:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F"),
-                    _make_person(1002, 100, gender="M"),
+                    _make_person(1001, 1000001, gender="F"),
+                    _make_person(1002, 1000001, gender="M"),
                 ],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
                 bunks=[
-                    _make_bunk(2001, 100, gender="F"),
-                    _make_bunk(2002, 100, gender="M"),
+                    _make_bunk(2001, 1000001, gender="F"),
+                    _make_bunk(2002, 1000001, gender="M"),
                 ],
             ),
             ConfigLoader.get_instance(),
@@ -272,13 +272,13 @@ class TestValidateRequestsPairNoSharedBunk:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F"),
-                    _make_person(1002, 100, gender="M"),
+                    _make_person(1001, 1000001, gender="F"),
+                    _make_person(1002, 1000001, gender="M"),
                 ],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="not_bunk_with")],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="not_bunk_with")],
                 bunks=[
-                    _make_bunk(2001, 100, gender="F"),
-                    _make_bunk(2002, 100, gender="M"),
+                    _make_bunk(2001, 1000001, gender="F"),
+                    _make_bunk(2002, 1000001, gender="M"),
                 ],
             ),
             ConfigLoader.get_instance(),
@@ -292,11 +292,11 @@ class TestValidateRequestsPairNoSharedBunk:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F"),
-                    _make_person(1002, 100, gender="M"),
+                    _make_person(1001, 1000001, gender="F"),
+                    _make_person(1002, 1000001, gender="M"),
                 ],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
-                bunks=[_make_bunk(2001, 100, gender="AG")],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
+                bunks=[_make_bunk(2001, 1000001, gender="AG")],
             ),
             ConfigLoader.get_instance(),
         )
@@ -309,13 +309,13 @@ class TestValidateRequestsPairNoSharedBunk:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F"),
-                    _make_person(1002, 100, gender="F"),
+                    _make_person(1001, 1000001, gender="F"),
+                    _make_person(1002, 1000001, gender="F"),
                 ],
-                requests=[_make_request("r1", 1001, 1002, 100, request_type="bunk_with")],
+                requests=[_make_request("r1", 1001, 1002, 1000001, request_type="bunk_with")],
                 bunks=[
-                    _make_bunk(2001, 100, gender="F"),
-                    _make_bunk(2002, 100, gender="M"),
+                    _make_bunk(2001, 1000001, gender="F"),
+                    _make_bunk(2002, 1000001, gender="M"),
                 ],
             ),
             ConfigLoader.get_instance(),
@@ -355,12 +355,12 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="M", grade=6),
-                    _make_person(1002, 100, gender="M", grade=5),
-                    _make_person(1003, 100, gender="M", grade=4),
+                    _make_person(1001, 1000001, gender="M", grade=6),
+                    _make_person(1002, 1000001, gender="M", grade=5),
+                    _make_person(1003, 1000001, gender="M", grade=4),
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="older")],
-                bunks=[_make_bunk(2001, 100, gender="M")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="older")],
+                bunks=[_make_bunk(2001, 1000001, gender="M")],
             ),
             ConfigLoader.get_instance(),
         )
@@ -374,12 +374,12 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="F", grade=2),
-                    _make_person(1002, 100, gender="F", grade=3),
-                    _make_person(1003, 100, gender="F", grade=4),
+                    _make_person(1001, 1000001, gender="F", grade=2),
+                    _make_person(1002, 1000001, gender="F", grade=3),
+                    _make_person(1003, 1000001, gender="F", grade=4),
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="younger")],
-                bunks=[_make_bunk(2001, 100, gender="F")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="younger")],
+                bunks=[_make_bunk(2001, 1000001, gender="F")],
             ),
             ConfigLoader.get_instance(),
         )
@@ -392,11 +392,11 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="M", grade=6),
-                    _make_person(1002, 100, gender="M", grade=7),
+                    _make_person(1001, 1000001, gender="M", grade=6),
+                    _make_person(1002, 1000001, gender="M", grade=7),
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="older")],
-                bunks=[_make_bunk(2001, 100, gender="M")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="older")],
+                bunks=[_make_bunk(2001, 1000001, gender="M")],
             ),
             ConfigLoader.get_instance(),
         )
@@ -409,11 +409,11 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="M", grade=6),
-                    _make_person(1002, 100, gender="M", grade=5),
+                    _make_person(1001, 1000001, gender="M", grade=6),
+                    _make_person(1002, 1000001, gender="M", grade=5),
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="younger")],
-                bunks=[_make_bunk(2001, 100, gender="M")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="younger")],
+                bunks=[_make_bunk(2001, 1000001, gender="M")],
             ),
             ConfigLoader.get_instance(),
         )
@@ -431,14 +431,14 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="M", grade=6),
-                    _make_person(1002, 100, gender="M", grade=5),
-                    _make_person(1003, 100, gender="F", grade=8),  # older but wrong gender
+                    _make_person(1001, 1000001, gender="M", grade=6),
+                    _make_person(1002, 1000001, gender="M", grade=5),
+                    _make_person(1003, 1000001, gender="F", grade=8),  # older but wrong gender
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="older")],
                 bunks=[
-                    _make_bunk(2001, 100, gender="M"),
-                    _make_bunk(2002, 100, gender="F"),
+                    _make_bunk(2001, 1000001, gender="M"),
+                    _make_bunk(2002, 1000001, gender="F"),
                 ],
             ),
             ConfigLoader.get_instance(),
@@ -456,13 +456,13 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[
-                    _make_person(1001, 100, gender="M", grade=4),
-                    _make_person(1002, 100, gender="F", grade=4),
+                    _make_person(1001, 1000001, gender="M", grade=4),
+                    _make_person(1002, 1000001, gender="F", grade=4),
                 ],
-                requests=[_age_pref_request("r1", 1001, 100, target="older")],
+                requests=[_age_pref_request("r1", 1001, 1000001, target="older")],
                 bunks=[
-                    _make_bunk(2001, 100, gender="M"),
-                    _make_bunk(2002, 100, gender="F"),
+                    _make_bunk(2001, 1000001, gender="M"),
+                    _make_bunk(2002, 1000001, gender="F"),
                 ],
             ),
             ConfigLoader.get_instance(),
@@ -482,9 +482,9 @@ class TestImpossibilityReportReuse:
     @staticmethod
     def _input() -> DirectSolverInput:
         return DirectSolverInput(
-            persons=[_make_person(1001, 100), _make_person(1002, 100)],
-            requests=[_make_request("r1", 1001, 1002, 100)],
-            bunks=[_make_bunk(2001, 100)],
+            persons=[_make_person(1001, 1000001), _make_person(1002, 1000001)],
+            requests=[_make_request("r1", 1001, 1002, 1000001)],
+            bunks=[_make_bunk(2001, 1000001)],
         )
 
     def test_no_report_runs_validate_impossibility(self, mock_config, monkeypatch):

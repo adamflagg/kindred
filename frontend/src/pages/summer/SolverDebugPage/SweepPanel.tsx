@@ -160,7 +160,6 @@ export function SweepPanel({
             type="button"
             disabled
             className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-500"
-            aria-label="Pre-check"
           >
             … Pre-check · checking
           </button>
@@ -172,7 +171,6 @@ export function SweepPanel({
               onOpenPreCheck?.()
             }}
             className="rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
-            aria-label="Pre-check"
           >
             ⚠ Pre-check · failed
           </button>
@@ -188,7 +186,6 @@ export function SweepPanel({
                 ? 'rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200'
                 : 'rounded-full border border-green-300 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 hover:bg-green-100'
             }
-            aria-label="Pre-check"
           >
             {preCheckImpossibilityCount > 0
               ? `⚠ Pre-check · ${preCheckImpossibilityCount} issues`

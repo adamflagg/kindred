@@ -122,6 +122,11 @@ class GenderImpossibility(HardConstraintImpossibility):
         requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id)
         if requester is None or requestee is None:
             return None
+        if not requester.gender or not requestee.gender:
+            # Unknown-gender campers fit any bunk: ``add_gender_constraints``
+            # only constrains campers with a known gender, so a missing gender
+            # never makes a pair impossible.
+            return None
         session = ctx.person_session.get(req.requester_person_cm_id)
         if session is None or session != ctx.person_session.get(req.requested_person_cm_id):
             return None  # cross-session is handled by SessionBoundaryImpossibility

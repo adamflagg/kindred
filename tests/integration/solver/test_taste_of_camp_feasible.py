@@ -92,17 +92,17 @@ def _build_scenario():
     gap = 2 > max_gap_allowed(1) → grade_compatibility predicate fires for both.
     """
     persons = (
-        [make_person(i, session=100, gender="F", grade=3) for i in range(1, 9)]
-        + [make_person(i, session=100, gender="F", grade=4) for i in range(9, 17)]
-        + [make_person(i, session=100, gender="F", grade=5) for i in range(17, 25)]
+        [make_person(i, session=1000001, gender="F", grade=3) for i in range(1, 9)]
+        + [make_person(i, session=1000001, gender="F", grade=4) for i in range(9, 17)]
+        + [make_person(i, session=1000001, gender="F", grade=5) for i in range(17, 25)]
     )
-    persons.append(make_person(101, session=100, gender="F", grade=3))
-    persons.append(make_person(102, session=100, gender="F", grade=5))
+    persons.append(make_person(101, session=1000001, gender="F", grade=3))
+    persons.append(make_person(102, session=1000001, gender="F", grade=5))
 
     bunks = [
-        make_bunk(1001, session=100, gender="F", capacity=10),
-        make_bunk(1002, session=100, gender="F", capacity=10),
-        make_bunk(1003, session=100, gender="F", capacity=10),
+        make_bunk(1001, session=1000001, gender="F", capacity=10),
+        make_bunk(1002, session=1000001, gender="F", capacity=10),
+        make_bunk(1003, session=1000001, gender="F", capacity=10),
     ]
 
     requests = [
@@ -113,7 +113,7 @@ def _build_scenario():
             request_type="bunk_with",
             source_field="bunk_with",
             priority=4,
-            session=100,
+            session=1000001,
         ),
         make_request(
             "r_b_a",
@@ -122,7 +122,7 @@ def _build_scenario():
             request_type="bunk_with",
             source_field="bunk_with",
             priority=4,
-            session=100,
+            session=1000001,
         ),
     ]
     return make_input(persons, bunks, requests)

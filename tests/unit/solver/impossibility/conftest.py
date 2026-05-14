@@ -35,7 +35,7 @@ def make_person(
     cm_id: int,
     *,
     session: int = 1000,
-    gender: str = "F",
+    gender: str | None = "F",
     grade: int = 6,
     birthdate: str = DEFAULT_BIRTHDATE,
 ) -> DirectPerson:

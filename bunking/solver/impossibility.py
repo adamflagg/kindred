@@ -1,15 +1,20 @@
 """
 Shared impossibility detection for hard solver constraints.
 
-Each hard-constraint module registers a HardConstraintImpossibility
-predicate via HARD_CONSTRAINT_REGISTRY. ``validate_impossibility``
-runs all registered predicates in two layers (request, pair)
-and returns a structured ``ImpossibilityReport``.
+Each per-request or per-pair hard-constraint module registers a
+HardConstraintImpossibility predicate via HARD_CONSTRAINT_REGISTRY.
+``validate_impossibility`` runs all registered predicates in two layers
+(request, pair) and returns a structured ``ImpossibilityReport``.
+
+The meta ``parent_paramount`` must-satisfy-one constraint registers no
+predicate of its own — its impossibility (every MP request for a camper
+is impossible) is derived from the per-request predicates above.
 
 Both ``api.routers.solver.pre_validate_solver`` and
 ``DirectBunkingSolver._validate_requests`` delegate here. The registry
 discipline test (``tests/unit/solver/impossibility/test_registry.py``)
-asserts every hard-constraint module has a matching predicate.
+asserts every per-request/per-pair hard-constraint module has a matching
+predicate.
 """
 
 from __future__ import annotations

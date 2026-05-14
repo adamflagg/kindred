@@ -14,18 +14,18 @@ def test_validate_impossibility_matches_solver_classification(mock_config):
 
     Lynchpin test for the single-source-of-truth claim.
     """
-    p1 = make_person(1, session=100, gender="F", grade=3)
-    p2 = make_person(2, session=100, gender="F", grade=5)  # grade gap -> impossible
-    p3 = make_person(3, session=100, gender="F", grade=4)
-    p4 = make_person(4, session=200, gender="F", grade=4)  # different session
+    p1 = make_person(1, session=1000001, gender="F", grade=3)
+    p2 = make_person(2, session=1000001, gender="F", grade=5)  # grade gap -> impossible
+    p3 = make_person(3, session=1000001, gender="F", grade=4)
+    p4 = make_person(4, session=1000002, gender="F", grade=4)  # different session
     bunks = [
-        make_bunk(10, session=100, gender="F", capacity=12),
-        make_bunk(11, session=200, gender="F", capacity=12),
+        make_bunk(10, session=1000001, gender="F", capacity=12),
+        make_bunk(11, session=1000002, gender="F", capacity=12),
     ]
     requests = [
-        make_request("r1", requester=1, requestee=2, session=100),  # grade_compatibility
-        make_request("r2", requester=3, requestee=4, session=100),  # cross_session
-        make_request("r3", requester=1, requestee=3, session=100),  # consecutive, OK
+        make_request("r1", requester=1, requestee=2, session=1000001),  # grade_compatibility
+        make_request("r2", requester=3, requestee=4, session=1000001),  # cross_session
+        make_request("r3", requester=1, requestee=3, session=1000001),  # consecutive, OK
     ]
     input_data = make_input([p1, p2, p3, p4], bunks, requests)
 
