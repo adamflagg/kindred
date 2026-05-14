@@ -61,20 +61,11 @@ export interface ImpossibilityReportItem {
   detail: Record<string, unknown>
 }
 
-export interface ImpossibilityCluster {
-  reason_code: string
-  reason_message: string
-  cm_ids: number[]
-  campers: Array<{ cm_id: number; name: string; grade: number; gender: string }>
-  detail: Record<string, unknown>
-}
-
 export interface ImpossibilityReport {
   total_impossible: number
   affected_campers: number
   by_reason: Record<string, ImpossibilityReportItem[]>
   flat: ImpossibilityReportItem[]
-  clusters: ImpossibilityCluster[]
 }
 
 interface ValidationResult {
