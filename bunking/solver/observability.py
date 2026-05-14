@@ -12,6 +12,8 @@ from typing import Any
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.models_v2 import DirectBunkRequest
+from bunking.satisfaction.bucket import RequestBucket, classify_request
 
 logger = get_logger(__name__)
 
@@ -155,6 +157,40 @@ def _build_request_density_histogram(
         if count == 0:
             continue
         result[count] = result.get(count, 0) + 1
+    return result
+
+
+def _build_request_density_histogram_by_bucket(
+    requests_by_person: dict[int, list[DirectBunkRequest]],
+) -> dict[str, dict[int, int]]:
+    """Per-bucket histogram of (request_count -> camper_count).
+
+    For each (camper, bucket) pair where the camper has >= 1 request of that
+    bucket, increments result[bucket][N] where N is the camper's request count
+    in that bucket. All three RequestBucket keys are always present; empty
+    buckets are {}. Requests with a missing or unknown source_field are dropped
+    with a DEBUG log (matches is_material_parent_request's defensive pattern).
+    """
+    result: dict[str, dict[int, int]] = {
+        RequestBucket.MATERIAL_PARENT.value: {},
+        RequestBucket.IMMATERIAL_PARENT.value: {},
+        RequestBucket.STAFF.value: {},
+    }
+    for reqs in requests_by_person.values():
+        per_bucket: dict[str, int] = {}
+        for req in reqs:
+            sf = req.source_field
+            if not sf:
+                logger.debug("density histogram: request %s has no source_field — skipping", req.id)
+                continue
+            try:
+                bucket = classify_request(sf)
+            except ValueError:
+                logger.debug("density histogram: unknown source_field %r on request %s — skipping", sf, req.id)
+                continue
+            per_bucket[bucket.value] = per_bucket.get(bucket.value, 0) + 1
+        for bucket_key, count in per_bucket.items():
+            result[bucket_key][count] = result[bucket_key].get(count, 0) + 1
     return result
 
 
