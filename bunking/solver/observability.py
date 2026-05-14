@@ -144,23 +144,6 @@ def _max_linear_coefficient(proto: Any) -> int:
     return max_coef
 
 
-def _build_request_density_histogram(
-    requests_by_person: dict[int, list[Any]],
-) -> dict[int, int]:
-    """Histogram of (request_count -> camper_count).
-
-    Excludes campers with zero requests — they're the silent majority and
-    aren't useful signal. The interesting tail is single-request campers
-    (the stuck-core cohort from the S2 sweep)."""
-    result: dict[int, int] = {}
-    for reqs in requests_by_person.values():
-        count = len(reqs)
-        if count == 0:
-            continue
-        result[count] = result.get(count, 0) + 1
-    return result
-
-
 def _build_request_density_histogram_by_bucket(
     requests_by_person: dict[int, list[DirectBunkRequest]],
 ) -> dict[str, dict[int, int]]:
@@ -239,7 +222,7 @@ def _build_stats_dict(
     satisfied_count: int,
     *,
     soft_constraint_violations: dict[str, Any] | None = None,
-    requests_by_person: dict[int, list[Any]] | None = None,
+    requests_by_person: dict[int, list[DirectBunkRequest]] | None = None,
 ) -> dict[str, Any]:
     """Build the full stats dict captured per solver run.
 
@@ -303,5 +286,5 @@ def _build_stats_dict(
         "num_reified_linear": _count_reified_linear_constraints(model_proto),
         "max_linear_coefficient": _max_linear_coefficient(model_proto),
         "soft_constraints_by_module": _count_soft_constraints_by_module(soft_constraint_violations or {}),
-        "request_density_histogram": _build_request_density_histogram(requests_by_person or {}),
+        "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(requests_by_person or {}),
     }

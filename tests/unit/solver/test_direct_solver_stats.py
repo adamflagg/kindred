@@ -16,6 +16,17 @@ from bunking.solver.direct_solver import DirectBunkingSolver
 from bunking.solver.observability import _compute_optimality_gap, _count_constraint_types
 
 
+def _make_req(req_id: str, requester: int, source_field: str) -> DirectBunkRequest:
+    return DirectBunkRequest(
+        id=req_id,
+        requester_person_cm_id=requester,
+        request_type="bunk_with",
+        session_cm_id=1000001,
+        year=2026,
+        source_field=source_field,
+    )
+
+
 class TestCountConstraintTypes:
     def test_empty_model_returns_empty_dict(self) -> None:
         model = cp_model.CpModel()
@@ -472,7 +483,7 @@ _BUILD_STATS_DICT_KEYS = frozenset(
         "num_reified_linear",
         "max_linear_coefficient",
         "soft_constraints_by_module",
-        "request_density_histogram",
+        "request_density_histogram_by_bucket",
     }
 )
 
@@ -1005,40 +1016,6 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 0
 
 
-class TestRequestDensityHistogram:
-    """Per-camper request count histogram. Maps (request_count -> camper_count)
-    so the dashboard can show whether the stuck-core is dominated by
-    single-request kids (the typical S2 finding)."""
-
-    def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.observability import _build_request_density_histogram
-
-        assert _build_request_density_histogram({}) == {}
-
-    def test_groups_campers_by_request_count(self) -> None:
-        from bunking.solver.observability import _build_request_density_histogram
-
-        # 1 camper with 3 requests, 2 with 1, 1 with 5
-        requests_by_person: dict[int, list[object]] = {
-            1001: [object(), object(), object()],
-            1002: [object()],
-            1003: [object()],
-            1004: [object(), object(), object(), object(), object()],
-        }
-        result = _build_request_density_histogram(requests_by_person)
-        assert result == {3: 1, 1: 2, 5: 1}
-
-    def test_skips_zero_request_campers(self) -> None:
-        from bunking.solver.observability import _build_request_density_histogram
-
-        requests_by_person: dict[int, list[object]] = {
-            1001: [object()],
-            1002: [],  # zero-request campers excluded
-        }
-        result = _build_request_density_histogram(requests_by_person)
-        assert result == {1: 1}
-
-
 class TestImpossibleRequestBreakdownByReason:
     """`_validate_requests` already classifies impossible requests into three
     cases internally (target_not_in_solver / cross_session / malformed). The
@@ -1260,7 +1237,7 @@ class TestTier1MetricsInStatsDict:
     - `num_reified_linear`: int
     - `max_linear_coefficient`: int
     - `soft_constraints_by_module`: dict[str, int]
-    - `request_density_histogram`: dict[int, int]
+    - `request_density_histogram_by_bucket`: dict[str, dict[int, int]]
     - request_validation.impossible_by_reason: dict[str, int]  (via existing field)
     """
 
@@ -1297,9 +1274,9 @@ class TestTier1MetricsInStatsDict:
             "must_satisfy_2": object(),
             "grade_ratio_0_grade_5": object(),
         }
-        requests_by_person: dict[int, list[object]] = {
-            1: [object()],
-            2: [object(), object()],
+        requests_by_person: dict[int, list[DirectBunkRequest]] = {
+            1: [_make_req("r1", 1, "bunk_with")],
+            2: [_make_req("r2", 2, "bunk_with"), _make_req("r3", 2, "bunk_with")],
         }
         stats = _build_stats_dict(
             solver=solver,
@@ -1321,4 +1298,8 @@ class TestTier1MetricsInStatsDict:
             "must_satisfy": 2,
             "grade_ratio": 1,
         }
-        assert stats["request_density_histogram"] == {1: 1, 2: 1}
+        assert stats["request_density_histogram_by_bucket"] == {
+            "material_parent": {1: 1, 2: 1},
+            "immaterial_parent": {},
+            "staff": {},
+        }

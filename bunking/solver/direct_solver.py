@@ -43,7 +43,7 @@ from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .observability import (
-    _build_request_density_histogram,
+    _build_request_density_histogram_by_bucket,
     _build_stats_dict,
     _count_constraint_types,
     _count_soft_constraints_by_module,
@@ -692,7 +692,9 @@ class DirectBunkingSolver:
             "num_reified_linear": 0,
             "max_linear_coefficient": 0,
             "soft_constraints_by_module": _count_soft_constraints_by_module(self.soft_constraint_violations),
-            "request_density_histogram": _build_request_density_histogram(self.input.requests_by_person),
+            "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
+                self.input.requests_by_person
+            ),
             "single_bunk_session": True,
         }
 
