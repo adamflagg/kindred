@@ -33,6 +33,7 @@ export interface SolverRunStats {
   objective_trajectory?: Array<{ t: number; objective: number; bound: number }>
   bound_trajectory?: Array<{ t: number; bound: number }>
   bound_trajectory_truncated?: boolean
+  objective_trajectory_truncated?: boolean
   lp_root_gap?: number | null
   presolve_compression_ratio?: number | null
   presolve_booleans_pre?: number

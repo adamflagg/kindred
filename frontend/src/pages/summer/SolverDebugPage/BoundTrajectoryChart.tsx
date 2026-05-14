@@ -58,6 +58,14 @@ export function BoundTrajectoryChart({ objectiveTrajectory, boundTrajectory }: P
         {objPts.length > 0 ? (
           <polyline points={objLine} fill="none" stroke="#2563eb" strokeWidth={1.5} />
         ) : null}
+        {/* Dot markers per sample — a 1-point series has no polyline segment,
+            so without these a single-solution solve renders a blank chart. */}
+        {bndPts.map((p, i) => (
+          <circle key={`bnd-${i}-${p.t}`} cx={x(p.t)} cy={y(p.bound)} r={2} fill="#dc2626" />
+        ))}
+        {objPts.map((p, i) => (
+          <circle key={`obj-${i}-${p.t}`} cx={x(p.t)} cy={y(p.objective)} r={2} fill="#2563eb" />
+        ))}
       </svg>
       <div className="mt-1 flex gap-4 text-xs text-gray-500">
         <span>

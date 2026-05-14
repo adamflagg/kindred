@@ -676,6 +676,7 @@ class DirectBunkingSolver:
             "objective_trajectory": [],
             "bound_trajectory": [],
             "bound_trajectory_truncated": False,
+            "objective_trajectory_truncated": False,
             "lp_root_gap": None,
             "presolve_compression_ratio": None,
             "presolve_booleans_pre": 0,
@@ -893,6 +894,7 @@ class DirectBunkingSolver:
             objective_trajectory=callback.objective_trajectory,
             bound_trajectory=bound_cb.bound_trajectory,
             bound_trajectory_truncated=bound_cb.truncated,
+            objective_trajectory_truncated=callback.truncated,
         )
         stats["request_validation"] = self.request_validation_summary
 

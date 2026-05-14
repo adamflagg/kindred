@@ -440,3 +440,105 @@ describe('SolverRunsTable in-flight chip (#1260)', () => {
     expect(screen.getByText('OPTIMAL')).toBeInTheDocument()
   })
 })
+
+describe('Tier 2 plateau columns (Stream 2, Phase 2)', () => {
+  const TIER2_COLUMNS = [
+    'lp_root_gap',
+    'bound_gain_after_plateau',
+    'objective_plateau_time',
+    'time_to_first_solution',
+    'presolve_compression_ratio',
+  ]
+
+  const tier2Run: SolverRun = {
+    ...r1,
+    stats: {
+      ...(r1.stats ?? {}),
+      lp_root_gap: 0.25,
+      bound_gain_after_plateau: 150,
+      objective_plateau_time: 12.3,
+      time_to_first_solution: 2.5,
+      presolve_compression_ratio: 0.6,
+    },
+  }
+
+  it('renders all five Tier 2 column headers when toggled on', () => {
+    render(
+      <SolverRunsTable
+        runs={[tier2Run]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, ...TIER2_COLUMNS]}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('columnheader', { name: /LP root gap/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Bound gain/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Plateau onset/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Time to 1st/i })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /Presolve compression/i })).toBeInTheDocument()
+  })
+
+  it('renders Tier 2 metric values formatted per the registry', () => {
+    render(
+      <SolverRunsTable
+        runs={[tier2Run]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, ...TIER2_COLUMNS]}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('25.00%')).toBeInTheDocument() // lp_root_gap (percent)
+    expect(screen.getByText('150')).toBeInTheDocument() // bound_gain_after_plateau (integer)
+    expect(screen.getByText('12.3s')).toBeInTheDocument() // objective_plateau_time (duration)
+    expect(screen.getByText('2.5s')).toBeInTheDocument() // time_to_first_solution (duration)
+    expect(screen.getByText('60.00%')).toBeInTheDocument() // presolve_compression_ratio (percent)
+  })
+
+  it('renders em-dash for a Tier 2 column when stats lack the key', () => {
+    render(
+      <SolverRunsTable
+        runs={[r1]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, 'lp_root_gap']}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    const header = screen.getByRole('columnheader', { name: /LP root gap/i })
+    const colIndex = Array.from(header.parentElement!.children).indexOf(header)
+    const row = screen.getByText(/OPTIMAL/i).closest('tr')
+    expect(row!.children[colIndex]!.textContent).toBe('—')
+  })
+
+  it('keeps the SHA-divider colSpan aligned with the rendered column count', () => {
+    // Regression: the 5 keys were added to ALL_COLUMNS without <th>/<td> in the
+    // table, so colSpan (= 2 + visibleColumns.length) overshot the cells that
+    // actually rendered, skewing the divider row.
+    const newer: SolverRun = {
+      ...tier2Run,
+      id: 'newer',
+      created: '2026-05-08T11:00:00Z',
+      details: { ...(r1.details ?? {}), git_sha: 'aaaa111' },
+    }
+    const older: SolverRun = {
+      ...tier2Run,
+      id: 'older',
+      created: '2026-05-08T09:00:00Z',
+      details: { ...(r1.details ?? {}), git_sha: 'bbbb222' },
+    }
+    render(
+      <SolverRunsTable
+        runs={[newer, older]}
+        visibleColumns={[...DEFAULT_VISIBLE_COLUMNS, ...TIER2_COLUMNS]}
+        pinnedRunIds={[]}
+        onTogglePin={vi.fn()}
+        onRowClick={vi.fn()}
+      />
+    )
+    const headerCells = document.querySelectorAll('thead th')
+    const dividerCell = document.querySelector('[data-sha-divider] td')!
+    expect(Number(dividerCell.getAttribute('colspan'))).toBe(headerCells.length)
+  })
+})

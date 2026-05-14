@@ -175,8 +175,21 @@ def test_capture_surfaces_share_clock_and_bound() -> None:
     assert [p["t"] for p in obj_traj] == sorted(p["t"] for p in obj_traj)
     assert [p["t"] for p in bnd_traj] == sorted(p["t"] for p in bnd_traj)
 
-    # Drift invariant: each solution's bound == last bound-traj bound at-or-before its t
+    # Drift invariant: each solution's bound is consistent with the best-bound
+    # trajectory. Normally it equals the most-recent bound-traj entry at-or-
+    # before the solution's t. But when a bound improvement is coincident with
+    # this solution, BestBoundCallback may timestamp it microseconds *after*
+    # SolverProgressCallback (the two callbacks read time.monotonic()
+    # independently, and OR-Tools does not specify their relative firing order),
+    # so also accept a bound-traj entry within _EPS after the solution's t. A
+    # genuine drift bug — sign flip, clock-origin split, wrong value — still
+    # produces a bound that matches neither bracketing entry.
+    _EPS = 0.05
     for p in obj_traj:
-        prior = [e for e in bnd_traj if e["t"] <= p["t"]]  # O(n*m), fine for test-scale data
-        assert prior, f"no bound point at-or-before solution t={p['t']}"
-        assert prior[-1]["bound"] == p["bound"]
+        at_or_before = [e for e in bnd_traj if e["t"] <= p["t"]]  # O(n*m), fine for test-scale data
+        assert at_or_before, f"no bound point at-or-before solution t={p['t']}"
+        within_eps = [e for e in bnd_traj if e["t"] <= p["t"] + _EPS]
+        allowed = {at_or_before[-1]["bound"], within_eps[-1]["bound"]}
+        assert p["bound"] in allowed, (
+            f"solution bound {p['bound']} at t={p['t']} drifted from bound trajectory {allowed}"
+        )

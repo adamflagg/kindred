@@ -50,4 +50,23 @@ describe('BoundTrajectoryChart', () => {
     )
     expect(container.querySelectorAll('polyline')).toHaveLength(1)
   })
+
+  it('renders a visible marker for a single-point objective trajectory', () => {
+    // A 1-point polyline draws no segment; without a dot marker a solve that
+    // found exactly one solution would render a blank chart.
+    const { container } = render(
+      <BoundTrajectoryChart
+        objectiveTrajectory={[{ t: 3, objective: 100, bound: 200 }]}
+        boundTrajectory={[]}
+      />
+    )
+    expect(container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders a visible marker for a single-point bound trajectory', () => {
+    const { container } = render(
+      <BoundTrajectoryChart objectiveTrajectory={[]} boundTrajectory={[{ t: 3, bound: 200 }]} />
+    )
+    expect(container.querySelectorAll('circle').length).toBeGreaterThanOrEqual(1)
+  })
 })

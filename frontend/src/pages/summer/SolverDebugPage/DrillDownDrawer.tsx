@@ -169,7 +169,9 @@ export function DrillDownDrawer({ run, onClose }: Props) {
             <div className="mt-4">
               <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
                 Best-bound trajectory
-                {s.bound_trajectory_truncated ? ' (truncated)' : ''}
+                {s.bound_trajectory_truncated || s.objective_trajectory_truncated
+                  ? ' (truncated)'
+                  : ''}
               </div>
               <BoundTrajectoryChart
                 objectiveTrajectory={s.objective_trajectory ?? []}

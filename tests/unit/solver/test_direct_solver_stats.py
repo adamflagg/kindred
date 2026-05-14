@@ -488,6 +488,7 @@ _BUILD_STATS_DICT_KEYS = frozenset(
         "objective_trajectory",
         "bound_trajectory",
         "bound_trajectory_truncated",
+        "objective_trajectory_truncated",
         "lp_root_gap",
         "presolve_compression_ratio",
         "presolve_booleans_pre",
@@ -1363,11 +1364,13 @@ class TestTier2MetricsInStatsDict:
             objective_trajectory=obj_traj,
             bound_trajectory=bnd_traj,
             bound_trajectory_truncated=False,
+            objective_trajectory_truncated=True,
         )
 
         assert stats["objective_trajectory"] == obj_traj
         assert stats["bound_trajectory"] == bnd_traj
         assert stats["bound_trajectory_truncated"] is False
+        assert stats["objective_trajectory_truncated"] is True
         # _compute_optimality_gap(600, 1000) = |600-1000| / max(600,1) = 0.666...
         assert stats["lp_root_gap"] == abs(600.0 - 1000.0) / 600.0
         assert stats["presolve_compression_ratio"] == 2 / 3
@@ -1397,6 +1400,7 @@ class TestTier2MetricsInStatsDict:
         assert stats["objective_trajectory"] == []
         assert stats["bound_trajectory"] == []
         assert stats["bound_trajectory_truncated"] is False
+        assert stats["objective_trajectory_truncated"] is False
         assert stats["lp_root_gap"] is None
         assert stats["presolve_compression_ratio"] is None
         assert stats["presolve_booleans_pre"] == 0

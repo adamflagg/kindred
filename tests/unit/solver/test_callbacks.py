@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 from ortools.sat.python import cp_model
 
-from bunking.solver.callbacks import _MAX_BOUND_POINTS, BestBoundCallback, SolverProgressCallback
+from bunking.solver.callbacks import _MAX_TRAJECTORY_POINTS, BestBoundCallback, SolverProgressCallback
 from bunking.solver.logging import ConstraintLogger
 
 
@@ -28,9 +28,9 @@ class TestBestBoundCallback:
 
     def test_caps_at_max_points_and_sets_truncated(self) -> None:
         cb = BestBoundCallback(time.monotonic())
-        for i in range(_MAX_BOUND_POINTS + 50):
+        for i in range(_MAX_TRAJECTORY_POINTS + 50):
             cb(float(i))
-        assert len(cb.bound_trajectory) == _MAX_BOUND_POINTS
+        assert len(cb.bound_trajectory) == _MAX_TRAJECTORY_POINTS
         assert cb.truncated is True
 
 
@@ -53,3 +53,21 @@ class TestSolverProgressCallbackTrajectory:
             assert p["t"] >= 0.0
         ts = [p["t"] for p in cb.objective_trajectory]
         assert ts == sorted(ts)
+
+    def test_caps_objective_trajectory_and_sets_truncated(self) -> None:
+        """objective_trajectory is capped in lockstep with the bound surface."""
+
+        class _StubProgressCallback(SolverProgressCallback):
+            # on_solution_callback reads these off the CP-SAT base class; stub
+            # them so the cap can be exercised without a live 2000-solution solve.
+            def ObjectiveValue(self) -> float:  # noqa: N802 — matches OR-Tools API
+                return 1.0
+
+            def BestObjectiveBound(self) -> float:  # noqa: N802 — matches OR-Tools API
+                return 0.0
+
+        cb = _StubProgressCallback(MagicMock(spec=ConstraintLogger), time.monotonic())
+        for _ in range(_MAX_TRAJECTORY_POINTS + 50):
+            cb.on_solution_callback()
+        assert len(cb.objective_trajectory) == _MAX_TRAJECTORY_POINTS
+        assert cb.truncated is True

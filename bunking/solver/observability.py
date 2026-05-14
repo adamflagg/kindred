@@ -297,6 +297,7 @@ def _build_stats_dict(
     objective_trajectory: list[dict[str, float]] | None = None,
     bound_trajectory: list[dict[str, float]] | None = None,
     bound_trajectory_truncated: bool = False,
+    objective_trajectory_truncated: bool = False,
 ) -> dict[str, Any]:
     """Build the full stats dict captured per solver run.
 
@@ -368,6 +369,7 @@ def _build_stats_dict(
         "objective_trajectory": objective_trajectory,
         "bound_trajectory": bound_trajectory,
         "bound_trajectory_truncated": bound_trajectory_truncated,
+        "objective_trajectory_truncated": objective_trajectory_truncated,
         "lp_root_gap": _lp_root_gap(bound_trajectory, objective),
         **_count_presolve_compression(model_proto, solver),
         **_derive_plateau_scalars(objective_trajectory, bound_trajectory),

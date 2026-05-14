@@ -14,13 +14,14 @@ from .logging import ConstraintLogger
 
 logger = get_logger(__name__)
 
-# Safety cap on the best-bound trajectory length. The callback fires on
-# discrete bound *improvements* (realistically tens-to-low-hundreds over a
-# 600 s solve), but a pathological model could fire it far more often — cap
-# rather than let `solver_runs.stats` bloat. NOT a lossy throttle: points are
-# only dropped once the cap is hit, so the drift invariant (see the Tier 2
-# spec) holds for every point actually recorded.
-_MAX_BOUND_POINTS = 2000
+# Safety cap on trajectory length, shared by both capture surfaces
+# (objective and best-bound). The callbacks fire on discrete *improvements*
+# (realistically tens-to-low-hundreds over a 600 s solve), but a pathological
+# model could fire either one far more often — cap rather than let
+# `solver_runs.stats` bloat. NOT a lossy throttle: points are only dropped
+# once the cap is hit, so the drift invariant (see the Tier 2 spec) holds for
+# every point actually recorded.
+_MAX_TRAJECTORY_POINTS = 2000
 
 
 class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore[misc]
@@ -39,6 +40,7 @@ class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore
         self.solution_count = 0
         self.start_monotonic = start_monotonic
         self.objective_trajectory: list[dict[str, float]] = []
+        self.truncated = False
 
     def on_solution_callback(self) -> None:
         """Called when a new solution is found."""
@@ -46,7 +48,12 @@ class SolverProgressCallback(cp_model.CpSolverSolutionCallback):  # type: ignore
         elapsed = time.monotonic() - self.start_monotonic
         objective = self.ObjectiveValue()
         bound = self.BestObjectiveBound()
-        self.objective_trajectory.append({"t": elapsed, "objective": objective, "bound": bound})
+        # Cap the trajectory in lockstep with BestBoundCallback so neither
+        # surface can bloat `solver_runs.stats`. Logging below is unaffected.
+        if len(self.objective_trajectory) >= _MAX_TRAJECTORY_POINTS:
+            self.truncated = True
+        else:
+            self.objective_trajectory.append({"t": elapsed, "objective": objective, "bound": bound})
 
         message = f"Solution #{self.solution_count} found after {elapsed:.1f}s - Objective: {objective}"
         self.constraint_logger.log_progress(message)
@@ -73,7 +80,7 @@ class BestBoundCallback:
         self.truncated = False
 
     def __call__(self, bound: float) -> None:
-        if len(self.bound_trajectory) >= _MAX_BOUND_POINTS:
+        if len(self.bound_trajectory) >= _MAX_TRAJECTORY_POINTS:
             self.truncated = True
             return
         self.bound_trajectory.append({"t": time.monotonic() - self.start_monotonic, "bound": bound})
