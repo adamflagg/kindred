@@ -182,4 +182,5 @@ class TestDirectionalAgePreferenceE2E:
         assert req.disposition_reason == "directional_preference", (
             f"disposition_reason must be 'directional_preference', got {req.disposition_reason!r}"
         )
+        assert req.requested_name is None, "requested_name must be cleared for age_preference"
         assert req.requested_cm_id is None, "directional age_preference has no target person"
