@@ -124,8 +124,15 @@ describe('SolverDebugImpossibilityModal — entirely-impossible MP campers', () 
     )
 
     expect(screen.getByText(/entirely-impossible MP campers/i)).toBeInTheDocument()
+    // Copy reads "honored" — "honorable" is ungrammatical here.
+    expect(screen.getByText(/zero parent requests honored/i)).toBeInTheDocument()
+    expect(screen.queryByText(/honorable/i)).not.toBeInTheDocument()
     expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(screen.getByText('target_not_in_solver')).toBeInTheDocument()
+    const chip = screen.getByText('target_not_in_solver')
+    expect(chip).toBeInTheDocument()
+    // target_not_in_solver has an explicit (red-tier) chip style, not the
+    // neutral gray fallback.
+    expect(chip).toHaveStyle({ background: '#fee2e2' })
   })
 })
 

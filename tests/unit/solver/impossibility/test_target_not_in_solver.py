@@ -1,4 +1,4 @@
-"""TargetNotInSolverImpossibility: bunk_with/not_bunk_with to a non-roster requestee."""
+"""TargetNotInSolverImpossibility: bunk_with to a non-roster requestee."""
 
 from __future__ import annotations
 
@@ -36,15 +36,20 @@ def test_bunk_with_to_non_roster_target_is_impossible(mock_config):
     assert reason.detail["requested_person_cm_id"] == 999
 
 
-def test_not_bunk_with_to_non_roster_target_is_impossible(mock_config):
+def test_not_bunk_with_to_non_roster_target_is_not_impossible(mock_config):
+    """A not_bunk_with whose requestee is absent from the roster is trivially
+    satisfied — the two campers can never share a bunk — so this predicate must
+    NOT flag it. Mirrors the satisfaction logic in bunking/satisfaction/
+    predicate.py ("requestee unassigned — no conflict possible") and the
+    bunk_with-only guard in the gender/grade_spread/session_boundary predicates.
+    Only a bunk_with to a non-roster target is genuinely impossible.
+    """
     p1 = make_person(1, session=100)
     req = make_request("r1", requester=1, requestee=999, request_type="not_bunk_with", session=100)
     input_data = make_input([p1], [make_bunk(10, session=100)], [req])
     ctx = _build_context(input_data, mock_config)
 
-    reason = PREDICATE.check_request(req, ctx)
-    assert reason is not None
-    assert reason.code == "target_not_in_solver"
+    assert PREDICATE.check_request(req, ctx) is None
 
 
 def test_bunk_with_to_in_roster_target_is_not_impossible(mock_config):

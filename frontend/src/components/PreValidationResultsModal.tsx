@@ -140,6 +140,7 @@ const FRIENDLY_REASON_LABELS: Record<string, string> = {
   pair_no_shared_bunk: "Can't share a cabin",
   age_pref_no_eligible_grade: 'No matching age group available',
   malformed: 'Incomplete request',
+  target_not_in_solver: 'Friend not enrolled',
 }
 
 function friendlyReasonLabel(code: string): string {
@@ -269,6 +270,15 @@ function renderSubtext(
       return (
         <div className="text-xs text-stone-600">
           <strong>Incomplete request</strong> — form is missing who they want to bunk with
+        </div>
+      )
+
+    case 'target_not_in_solver':
+      // requestee is null here — the named friend isn't on the roster, so we
+      // have no person record to render. Give staff the actionable line.
+      return (
+        <div className="text-xs text-stone-600">
+          Requested friend isn&rsquo;t enrolled in this session
         </div>
       )
 

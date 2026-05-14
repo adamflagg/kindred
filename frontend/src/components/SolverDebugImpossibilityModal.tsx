@@ -8,6 +8,7 @@ const REASON_CHIP_STYLES: Record<string, { bg: string; text: string }> = {
   malformed: { bg: '#fef3c7', text: '#92400e' },
   cross_session: { bg: '#fee2e2', text: '#991b1b' },
   pair_no_shared_bunk: { bg: '#fee2e2', text: '#991b1b' },
+  target_not_in_solver: { bg: '#fee2e2', text: '#991b1b' },
 }
 
 function reasonChipStyle(code: string) {
@@ -157,7 +158,7 @@ export default function SolverDebugImpossibilityModal({
           report.mp_campers_entirely_impossible.length > 0 && (
             <div className="mb-4 rounded-md border border-red-300 bg-red-50 p-3">
               <div className="text-xs font-bold text-red-900">
-                {`${report.mp_campers_entirely_impossible.length} entirely-impossible MP campers — zero parent requests honorable`}
+                {`${report.mp_campers_entirely_impossible.length} entirely-impossible MP campers — zero parent requests honored`}
               </div>
               <div className="mt-2 space-y-1">
                 {report.mp_campers_entirely_impossible.map((c) => (

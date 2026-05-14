@@ -201,7 +201,12 @@ class TargetNotInSolverImpossibility(HardConstraintImpossibility):
     name = "target_not_in_solver"
 
     def check_request(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
-        if req.request_type not in ("bunk_with", "not_bunk_with"):
+        # bunk_with only — a not_bunk_with whose target is absent from the
+        # roster is trivially satisfied (they can never share a bunk), not
+        # impossible. Mirrors the satisfaction logic in bunking/satisfaction/
+        # predicate.py and the bunk_with-only guard in the gender/grade_spread/
+        # session_boundary predicates.
+        if req.request_type != "bunk_with":
             return None
         if not req.requested_person_cm_id:
             return None  # malformed — MalformedRequestImpossibility owns this

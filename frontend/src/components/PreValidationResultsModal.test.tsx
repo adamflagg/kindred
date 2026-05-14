@@ -413,6 +413,46 @@ describe('PreValidationResultsModal — staff-only view', () => {
     expect(screen.getByText(/Riley Raines/)).toBeInTheDocument()
   })
 
+  it('renders friendly label + subtext for target_not_in_solver (requestee is null)', () => {
+    const results = {
+      ...baseResults,
+      impossibility_report: {
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: {
+          target_not_in_solver: [
+            {
+              request_id: 'br_ghost',
+              reason_code: 'target_not_in_solver',
+              reason_message: 'requested camper not enrolled',
+              request_type: 'bunk_with',
+              requester: { name: 'Emma Johnson', cm_id: 30, grade: 5, gender: 'F' },
+              requestee: null,
+              detail: { requested_person_cm_id: 99999 },
+            },
+          ],
+        },
+        flat: [],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+
+    // Section header uses the friendly label, never the raw snake_case code.
+    expect(screen.queryByText('target_not_in_solver')).not.toBeInTheDocument()
+    expect(screen.getByText(/friend not enrolled/i)).toBeInTheDocument()
+    // Subtext explains the situation even though requestee is null — staff get
+    // an actionable line instead of a bare requester name.
+    expect(screen.getByText(/isn['’]t enrolled in this session/i)).toBeInTheDocument()
+  })
+
   it('does not render cluster_grade_compatibility reason code (clusters removed)', () => {
     // clusters field is no longer part of ImpossibilityReport; this verifies
     // the modal renders cleanly with no cluster-related output
