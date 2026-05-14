@@ -198,7 +198,7 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
     # constraint. Pure derived property of `flat` — single source of truth for
     # both parent_paramount and the pre-validate endpoint. Local import keeps
     # the satisfaction package off impossibility.py's import-time graph.
-    from bunking.satisfaction.bucket import is_material_parent_request  # noqa: PLC0415
+    from bunking.satisfaction.bucket import is_material_parent_request
 
     impossible_ids = {item.request_id for item in report.flat}
     reasons_by_request: dict[str, set[str]] = defaultdict(set)
