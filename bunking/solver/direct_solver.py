@@ -25,7 +25,7 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
 
-from .callbacks import SolverProgressCallback
+from .callbacks import BestBoundCallback, SolverProgressCallback
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
@@ -745,6 +745,14 @@ class DirectBunkingSolver:
         start_monotonic = time.monotonic()
         callback = SolverProgressCallback(self.constraint_logger, start_monotonic, self.debug_mode)
 
+        # Best-bound capture surface — fires on every bound improvement,
+        # independent of solutions, so it samples through the plateau when
+        # `callback` goes quiet. hasattr guard: a pre-9.15 ortools local env
+        # degrades to an empty bound_trajectory instead of crashing.
+        bound_cb = BestBoundCallback(start_monotonic)
+        if hasattr(solver, "best_bound_callback"):
+            solver.best_bound_callback = bound_cb
+
         # Log solver start
         self.constraint_logger.log_progress(f"Starting solver with {time_limit_seconds}s time limit...")
         logger.debug(
@@ -882,6 +890,9 @@ class DirectBunkingSolver:
             satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
             soft_constraint_violations=self.soft_constraint_violations,
             requests_by_person=self.input.requests_by_person,
+            objective_trajectory=callback.objective_trajectory,
+            bound_trajectory=bound_cb.bound_trajectory,
+            bound_trajectory_truncated=bound_cb.truncated,
         )
         stats["request_validation"] = self.request_validation_summary
 
