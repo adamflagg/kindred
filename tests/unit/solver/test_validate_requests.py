@@ -470,3 +470,63 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
 
         assert len(solver.possible_requests[1001]) == 0
         assert len(solver.impossible_requests[1001]) == 1
+
+
+class TestImpossibilityReportReuse:
+    """DirectBunkingSolver accepts a precomputed ImpossibilityReport so the
+    diagnostic probe loops (find_infeasibility_cause, localize_hard_mso_
+    infeasibility) build many solvers without re-running the full
+    request×predicate scan on every construction.
+    """
+
+    @staticmethod
+    def _input() -> DirectSolverInput:
+        return DirectSolverInput(
+            persons=[_make_person(1001, 100), _make_person(1002, 100)],
+            requests=[_make_request("r1", 1001, 1002, 100)],
+            bunks=[_make_bunk(2001, 100)],
+        )
+
+    def test_no_report_runs_validate_impossibility(self, mock_config, monkeypatch):
+        """Default path: validate_impossibility runs once and the report is stored."""
+        from bunking.solver import impossibility
+
+        calls = {"n": 0}
+        real = impossibility.validate_impossibility
+
+        def counting(*args, **kwargs):
+            calls["n"] += 1
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(impossibility, "validate_impossibility", counting)
+
+        solver = DirectBunkingSolver(self._input(), ConfigLoader.get_instance())
+
+        assert calls["n"] == 1
+        assert solver.impossibility_report is not None
+
+    def test_precomputed_report_skips_validate_impossibility(self, mock_config, monkeypatch):
+        """Passing impossibility_report reuses it — validate_impossibility is not re-run,
+        and request classification is identical to the from-scratch path."""
+        from bunking.solver import impossibility
+
+        base = DirectBunkingSolver(self._input(), ConfigLoader.get_instance())
+        report = base.impossibility_report
+
+        calls = {"n": 0}
+        real = impossibility.validate_impossibility
+
+        def counting(*args, **kwargs):
+            calls["n"] += 1
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(impossibility, "validate_impossibility", counting)
+
+        reused = DirectBunkingSolver(self._input(), ConfigLoader.get_instance(), impossibility_report=report)
+
+        assert calls["n"] == 0
+        assert reused.impossibility_report is report
+        # Classification still happens — possible/impossible dicts populated identically.
+        assert {k: [r.id for r in v] for k, v in reused.possible_requests.items()} == {
+            k: [r.id for r in v] for k, v in base.possible_requests.items()
+        }

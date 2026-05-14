@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ortools.sat.python import cp_model
 
@@ -43,6 +43,9 @@ from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .solution import analyze_solution, calculate_satisfied_requests
+
+if TYPE_CHECKING:
+    from bunking.solver.impossibility import ImpossibilityReport
 
 logger = get_logger(__name__)
 
@@ -278,6 +281,7 @@ class DirectBunkingSolver:
         config_service: ConfigLoader,
         debug_constraints: dict[str, bool] | None = None,
         mp_skip_cms: set[int] | None = None,
+        impossibility_report: ImpossibilityReport | None = None,
     ):
         self.input = input_data
         self.config = config_service
@@ -286,6 +290,11 @@ class DirectBunkingSolver:
         # IIS-localization probe: campers whose hard MP constraint should be
         # skipped this run. Used only by the infeasibility analyzer.
         self.mp_skip_cms: set[int] = set(mp_skip_cms or ())
+        # Precomputed impossibility report. When supplied (by the diagnostic
+        # probe loops, which build many solvers over identical request data),
+        # _validate_requests reuses it instead of re-running the full
+        # request×predicate scan. None → compute it from scratch.
+        self._impossibility_report_override = impossibility_report
 
         # Debug mode from SOLVER_LOG_LEVEL env var (consolidates solver.debug.enabled and log_level)
         solver_log_level = os.getenv("SOLVER_LOG_LEVEL", "INFO").upper()
@@ -336,6 +345,9 @@ class DirectBunkingSolver:
         # Validate requests and categorize as possible/impossible
         self.possible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of possible requests
         self.impossible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of impossible requests
+        # Set by _validate_requests; surfaced so diagnostic probe loops can
+        # reuse it across solver constructions (see _impossibility_report_override).
+        self.impossibility_report: ImpossibilityReport
         self._validate_requests()
 
     def _build_solver_context(self) -> SolverContext:
@@ -374,54 +386,6 @@ class DirectBunkingSolver:
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
             mp_skip_cms=self.mp_skip_cms,
         )
-
-    def _session_grade_bounds_for_gender(self, session_cm_id: int, gender: str) -> tuple[int, int] | None:
-        """Return (min_grade, max_grade) among same-gender campers in the session.
-
-        AG cabins don't enter — gender is the person attribute (M or F);
-        AG is a bunk attribute. Returns None if no same-gender campers exist
-        in the session (defensive; shouldn't happen for a real request).
-
-        Used by _validate_requests to gate age_preference requests at grade
-        bounds where camp policy considers them moot (e.g. oldest-grade
-        camper prefers older → no older peers exist → impossible). The
-        lone-gender case is naturally caught: grades=[my_grade], min==max,
-        so any preference resolves at-bound.
-
-        A follow-up issue tracks switching this to admin-GUI-configured
-        min/max grade bounds; this scan-the-pool fallback is the interim.
-        """
-        grades = [
-            p.grade
-            for p in self.input.persons
-            if p.session_cm_id == session_cm_id and p.gender == gender and p.grade is not None
-        ]
-        if not grades:
-            return None
-        return min(grades), max(grades)
-
-    def _pair_has_shared_bunk(self, person1_idx: int, person2_idx: int) -> bool:
-        """Return True if the two persons can co-occupy at least one bunk.
-
-        Checks session compatibility and gender compatibility. Short-circuits
-        on first match. Used by _validate_requests to reject bunk_with requests
-        that no placement could ever satisfy (e.g. cross-gender with no AG bunk).
-        """
-        person1 = self.input.person_by_cm_id[self.person_ids[person1_idx]]
-        person2 = self.input.person_by_cm_id[self.person_ids[person2_idx]]
-
-        if person1.session_cm_id != person2.session_cm_id:
-            return False
-
-        for bunk in self.bunks:
-            if bunk.session_cm_id != person1.session_cm_id:
-                continue
-            if bunk.gender in ("Mixed", "AG"):
-                return True
-            if bunk.gender and person1.gender == bunk.gender and person2.gender == bunk.gender:
-                return True
-
-        return False
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
         """Get list of bunk indices where both campers can be validly assigned.
@@ -493,7 +457,15 @@ class DirectBunkingSolver:
             self.possible_requests[person_cm_id] = []
             self.impossible_requests[person_cm_id] = []
 
-        report = validate_impossibility(self.input, self.config)
+        # Reuse a precomputed report when the diagnostic probe loops supplied
+        # one — the request data is identical across probes, so re-running the
+        # full predicate scan per solver construction is wasted work.
+        report = (
+            self._impossibility_report_override
+            if self._impossibility_report_override is not None
+            else validate_impossibility(self.input, self.config)
+        )
+        self.impossibility_report = report
         impossible_request_ids: set[str] = {item.request_id for item in report.flat}
 
         # Tally requests not caught by predicates but whose target is absent

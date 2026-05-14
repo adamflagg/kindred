@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
+from bunking.solver import feasibility
 from bunking.solver.feasibility import localize_hard_mso_infeasibility
 
 
@@ -103,3 +104,109 @@ class TestLocalizeHardMSOInfeasibility:
         assert result["approach"] in ("singleton", "deletion_filter", "skipped")
         assert isinstance(result["singleton_critical_cms"], list)
         assert isinstance(result["minimal_correction_set"], list)
+
+
+def _three_candidate_input() -> DirectSolverInput:
+    """3 MP-hard-constrained requesters (1001, 1002, 1003 → 1004) → exactly 3 candidates."""
+    return DirectSolverInput(
+        persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100), _person(1004, 100)],
+        requests=[
+            _bunk_with_mp("r1", 1001, 1004, 100),
+            _bunk_with_mp("r2", 1002, 1004, 100),
+            _bunk_with_mp("r3", 1003, 1004, 100),
+        ],
+        bunks=[_bunk(2001, 100)],
+    )
+
+
+class TestLocalizeUnknownProbeHandling:
+    """A CP-SAT probe that returns UNKNOWN (e.g. hit the time limit) is
+    inconclusive and MUST abort localization with approach='skipped' — never
+    be silently treated as INFEASIBLE. Treating UNKNOWN as infeasible produces
+    false 'cause is not parent_paramount' verdicts and spurious
+    minimal_correction_set results.
+
+    Pre-fix, only the singleton pass checked for UNKNOWN; the deletion-filter
+    flow did not. These guard the deletion-filter probe sites.
+    """
+
+    def test_singleton_probe_unknown_returns_skipped(self, mock_config, monkeypatch):
+        """An UNKNOWN during the singleton pass aborts with approach='skipped'."""
+        monkeypatch.setattr(feasibility, "_probe_mp_feasibility", lambda *_args, **_kwargs: None)
+
+        result = localize_hard_mso_infeasibility(
+            _three_candidate_input(), ConfigLoader.get_instance(), time_limit_seconds=2
+        )
+
+        assert result["approach"] == "skipped"
+        assert "UNKNOWN" in result["notes"]
+
+    def test_deletion_filter_full_removal_unknown_returns_skipped(self, mock_config, monkeypatch):
+        """An UNKNOWN on the full-removal probe aborts — not a false
+        'cause is not parent_paramount' verdict."""
+
+        def fake(input_data, config, time_limit_seconds, skip, impossibility_report=None):
+            # Singletons (len 1) are non-critical; full removal (len 3) is inconclusive.
+            return False if len(skip) == 1 else None
+
+        monkeypatch.setattr(feasibility, "_probe_mp_feasibility", fake)
+
+        result = localize_hard_mso_infeasibility(
+            _three_candidate_input(), ConfigLoader.get_instance(), time_limit_seconds=2
+        )
+
+        assert result["approach"] == "skipped"
+        assert "UNKNOWN" in result["notes"]
+
+    def test_deletion_filter_trial_unknown_returns_skipped(self, mock_config, monkeypatch):
+        """An UNKNOWN on a deletion-filter trial probe aborts — not a false
+        minimal_correction_set."""
+
+        def fake(input_data, config, time_limit_seconds, skip, impossibility_report=None):
+            n = len(skip)
+            if n == 1:
+                return False  # no singleton is critical
+            if n == 3:
+                return True  # full removal restores feasibility → enter the loop
+            return None  # a deletion-filter trial (len 2) is inconclusive
+
+        monkeypatch.setattr(feasibility, "_probe_mp_feasibility", fake)
+
+        result = localize_hard_mso_infeasibility(
+            _three_candidate_input(), ConfigLoader.get_instance(), time_limit_seconds=2
+        )
+
+        assert result["approach"] == "skipped"
+        assert result["minimal_correction_set"] == []
+        assert "UNKNOWN" in result["notes"]
+
+
+class TestLocalizeDeterministicOrdering:
+    """candidate_cms must be sorted so the deletion-filter walk — and the
+    minimal_correction_set it produces — is reproducible regardless of the
+    upstream request/dict insertion order."""
+
+    def test_candidates_probed_in_sorted_order(self, mock_config, monkeypatch):
+        probed: list[set[int]] = []
+
+        def fake(input_data, config, time_limit_seconds, skip, impossibility_report=None):
+            probed.append(set(skip))
+            return len(skip) != 1  # singletons infeasible; larger skip sets feasible
+
+        monkeypatch.setattr(feasibility, "_probe_mp_feasibility", fake)
+
+        # Requests deliberately out of CM order: requester 1003 first, then 1001, 1002.
+        si = DirectSolverInput(
+            persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100), _person(1004, 100)],
+            requests=[
+                _bunk_with_mp("r3", 1003, 1004, 100),
+                _bunk_with_mp("r1", 1001, 1004, 100),
+                _bunk_with_mp("r2", 1002, 1004, 100),
+            ],
+            bunks=[_bunk(2001, 100)],
+        )
+
+        localize_hard_mso_infeasibility(si, ConfigLoader.get_instance(), time_limit_seconds=2)
+
+        # Singleton pass = first len(candidates) probes, in ascending CM order.
+        assert probed[:3] == [{1001}, {1002}, {1003}]

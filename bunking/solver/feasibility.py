@@ -16,6 +16,7 @@ from bunking.logging_config import get_logger
 if TYPE_CHECKING:
     from bunking.config import ConfigLoader
     from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectSolverInput
+    from bunking.solver.impossibility import ImpossibilityReport
     from bunking.solver.logging import ConstraintLogger
 
 logger = get_logger(__name__)
@@ -255,11 +256,12 @@ def find_infeasibility_cause(
 
     logger.info("=== Starting Infeasibility Analysis ===")
 
-    # List of constraints to test
+    # List of constraints to test. Each name must have a matching
+    # is_constraint_disabled() check in its constraint module, or the probe
+    # is a no-op solve that can never isolate a cause.
     constraint_types = [
         "session_boundary",
-        "must_satisfy_one",
-        "parent_paramount",
+        "parent_paramount",  # supersedes the former must_satisfy_one probe
         "grade_spread",
         "gender",
         "level_progression",
@@ -271,6 +273,9 @@ def find_infeasibility_cause(
     # First, try with all constraints
     logger.info("Testing with all constraints enabled...")
     solver = DirectBunkingSolver(input_data, config, {})
+    # Reuse this report across every probe solver below — the request set is
+    # identical, so re-running validate_impossibility per probe is wasted work.
+    base_impossibility_report = solver.impossibility_report
     solver.check_feasibility()
     solver.add_constraints()
     solver.add_objective()
@@ -290,7 +295,9 @@ def find_infeasibility_cause(
         logger.info(f"Testing with {constraint} DISABLED...")
 
         debug_constraints = {constraint: True}  # True means disabled
-        solver = DirectBunkingSolver(input_data, config, debug_constraints)
+        solver = DirectBunkingSolver(
+            input_data, config, debug_constraints, impossibility_report=base_impossibility_report
+        )
         solver.check_feasibility()
         solver.add_constraints()
         solver.add_objective()
@@ -309,6 +316,43 @@ def find_infeasibility_cause(
     # If still infeasible with each individual constraint disabled, try combinations
     logger.info("No single constraint removal fixed it. The issue may be a combination.")
     return "Infeasibility caused by multiple interacting constraints"
+
+
+def _probe_mp_feasibility(
+    input_data: DirectSolverInput,
+    config: ConfigLoader,
+    time_limit_seconds: int,
+    skip: set[int],
+    impossibility_report: ImpossibilityReport | None = None,
+) -> bool | None:
+    """Solve with the hard MP constraints for the ``skip`` campers lifted.
+
+    Tri-state result:
+      * ``True``  — feasible with those constraints skipped
+      * ``False`` — provably infeasible
+      * ``None``  — inconclusive (CP-SAT returned UNKNOWN, e.g. hit the time
+        limit). Callers MUST treat ``None`` as "cannot conclude" and abort;
+        collapsing it into infeasible corrupts the localization verdict
+        (false ``minimal_correction_set`` / "not parent_paramount" results).
+
+    ``impossibility_report`` is threaded into ``DirectBunkingSolver`` so the
+    request×predicate scan runs once for the whole localization, not once per
+    probe.
+    """
+    from bunking.solver import DirectBunkingSolver
+
+    s = DirectBunkingSolver(input_data, config, {}, mp_skip_cms=skip, impossibility_report=impossibility_report)
+    s.check_feasibility()
+    s.add_constraints()
+    s.add_objective()
+    cp = cp_model.CpSolver()
+    cp.parameters.max_time_in_seconds = time_limit_seconds
+    cp.parameters.num_search_workers = 1  # diagnostic — keep fast
+    st = cp.Solve(s.model)
+    if st == cp_model.UNKNOWN:
+        logger.warning(f"  Probe returned UNKNOWN (skip={sorted(skip)[:5]}{'…' if len(skip) > 5 else ''})")
+        return None
+    return st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
 def localize_hard_mso_infeasibility(
@@ -350,15 +394,20 @@ def localize_hard_mso_infeasibility(
     logger.info("=== Localizing parent_paramount infeasibility ===")
 
     # Probe pass: build candidate cms (MP-hard-constrained, excluding
-    # mp_set_entirely_impossible).
+    # mp_set_entirely_impossible). Sorted so the deletion-filter walk below —
+    # and the minimal_correction_set it produces — is reproducible run to run,
+    # independent of upstream dict/request insertion order.
     probe = DirectBunkingSolver(input_data, config, {})
     probe.check_feasibility()
+    # Reuse this report across every probe solver — the request set is
+    # identical, so re-running validate_impossibility per probe is wasted work.
+    impossibility_report = probe.impossibility_report
     excluded = set(probe.mp_set_entirely_impossible)
-    candidate_cms = [
+    candidate_cms = sorted(
         cm
         for cm, possible in probe.possible_requests.items()
         if cm not in excluded and any(is_material_parent_request(r) for r in possible)
-    ]
+    )
 
     logger.info(f"  Candidate MP-hard-constrained cms: {len(candidate_cms)}")
 
@@ -380,32 +429,8 @@ def localize_hard_mso_infeasibility(
             "notes": f"Candidate set ({len(candidate_cms)}) exceeds max_candidates ({max_candidates}); skipping localization to keep diagnostic cost bounded.",
         }
 
-    unknown_hit = False  # set by _is_feasible when any probe returns UNKNOWN
-
-    def _is_feasible(skip: set[int]) -> bool:
-        nonlocal unknown_hit
-        s = DirectBunkingSolver(input_data, config, {}, mp_skip_cms=skip)
-        s.check_feasibility()
-        s.add_constraints()
-        s.add_objective()
-        cp = cp_model.CpSolver()
-        cp.parameters.max_time_in_seconds = time_limit_seconds
-        cp.parameters.num_search_workers = 1  # diagnostic — keep fast
-        st = cp.Solve(s.model)
-        if st == cp_model.UNKNOWN:
-            # Time-limit / non-conclusive probe — distinguish from a real INFEASIBLE.
-            # Caller bails out below so we don't accuse a camper of being critical
-            # just because their probe ran out of time.
-            unknown_hit = True
-            logger.warning(f"  Probe returned UNKNOWN (skip={sorted(skip)[:5]}{'…' if len(skip) > 5 else ''})")
-            return False
-        return st in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-
-    # Step 1: singleton isolation
-    logger.info("  Pass 1: singleton isolation...")
-    singleton_critical = [cm for cm in candidate_cms if _is_feasible({cm})]
-    if unknown_hit:
-        logger.warning("  Aborting localization — at least one probe was inconclusive (UNKNOWN)")
+    def _skipped_unknown() -> dict[str, Any]:
+        """Result returned when any probe is inconclusive (CP-SAT UNKNOWN)."""
         return {
             "approach": "skipped",
             "candidate_count": len(candidate_cms),
@@ -413,6 +438,21 @@ def localize_hard_mso_infeasibility(
             "minimal_correction_set": [],
             "notes": "Localization aborted: at least one solver probe returned UNKNOWN (likely timeout). Increase time_limit_seconds or reduce candidate set.",
         }
+
+    def _is_feasible(skip: set[int]) -> bool | None:
+        """Tri-state probe — True feasible, False infeasible, None inconclusive."""
+        return _probe_mp_feasibility(input_data, config, time_limit_seconds, skip, impossibility_report)
+
+    # Step 1: singleton isolation
+    logger.info("  Pass 1: singleton isolation...")
+    singleton_critical: list[int] = []
+    for cm in candidate_cms:
+        result = _is_feasible({cm})
+        if result is None:
+            logger.warning("  Aborting localization — a singleton probe was inconclusive (UNKNOWN)")
+            return _skipped_unknown()
+        if result:
+            singleton_critical.append(cm)
 
     if singleton_critical:
         logger.info(f"  Singleton-critical cms (each alone restores feasibility): {singleton_critical}")
@@ -427,7 +467,11 @@ def localize_hard_mso_infeasibility(
     # Step 2: deletion filter
     logger.info("  No singleton works; running deletion filter for minimal correction set...")
     skip: set[int] = set(candidate_cms)  # full removal = feasible
-    if not _is_feasible(skip):
+    full_removal = _is_feasible(skip)
+    if full_removal is None:
+        logger.warning("  Aborting localization — the full-removal probe was inconclusive (UNKNOWN)")
+        return _skipped_unknown()
+    if not full_removal:
         # Sanity check: full removal should be feasible by definition (no hard MSO).
         # If not, the infeasibility lives in a non-parent_paramount constraint after all.
         return {
@@ -441,7 +485,11 @@ def localize_hard_mso_infeasibility(
     minimal_mcs: list[int] = []
     for cm in candidate_cms:
         trial = skip - {cm}  # try re-enforcing this cm's constraint
-        if _is_feasible(trial):
+        result = _is_feasible(trial)
+        if result is None:
+            logger.warning("  Aborting localization — a deletion-filter probe was inconclusive (UNKNOWN)")
+            return _skipped_unknown()
+        if result:
             skip = trial  # cm is not required in MCS
         else:
             minimal_mcs.append(cm)  # cm must stay in MCS
