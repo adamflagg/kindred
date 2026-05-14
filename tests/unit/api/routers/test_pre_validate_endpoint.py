@@ -50,6 +50,7 @@ class _FakeReport:
     by_reason: dict[str, object] = field(default_factory=dict)
     flat: list[object] = field(default_factory=list)
     clusters: list[object] = field(default_factory=list)
+    mp_campers_entirely_impossible: list[dict[str, object]] = field(default_factory=list)
 
 
 def _make_session_ctx(session_cm_id: int = 1000001, year: int = 2026) -> MagicMock:
@@ -240,3 +241,43 @@ def test_capacity_breakdown_uses_actual_bunk_capacities(client: TestClient) -> N
     assert breakdown["boys"]["beds"] == 18, breakdown
     assert breakdown["girls"]["beds"] == 14, breakdown
     assert breakdown["ag"]["beds"] == 6, breakdown
+
+
+def test_response_includes_mp_campers_entirely_impossible(client: TestClient) -> None:
+    """The /solver/pre-validate response surfaces the camper-level MP rollup."""
+    fake_report = _FakeReport(
+        total_impossible=1,
+        affected_campers=1,
+        mp_campers_entirely_impossible=[
+            {
+                "cm_id": 1,
+                "name": "Emma Johnson",
+                "grade": 5,
+                "gender": "F",
+                "reason_codes": ["target_not_in_solver"],
+            },
+        ],
+    )
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        _apply_standard_mocks(mock_build_ctx, mock_fetch, mock_prepare, mock_validate, mock_config, report=fake_report)
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    ir = resp.json()["impossibility_report"]
+    assert "mp_campers_entirely_impossible" in ir
+    assert ir["mp_campers_entirely_impossible"] == [
+        {
+            "cm_id": 1,
+            "name": "Emma Johnson",
+            "grade": 5,
+            "gender": "F",
+            "reason_codes": ["target_not_in_solver"],
+        },
+    ]
