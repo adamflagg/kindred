@@ -391,7 +391,10 @@ export function createGraphElements(
   // even though it's not a layout constraint.
   const parentNodes: ParentNodeElement[] = Object.keys(bunkGroups).map((bunkIdStr) => {
     const bunkId = parseInt(bunkIdStr, 10)
-    const bunkName = bunksData?.[bunkId] ?? `Bunk ${bunkId}`
+    // Fallback when the bunk has no name in bunksData — i.e. it has no
+    // bunk_plan for this session (a stranded assignment, #1417). Never render
+    // the raw CampMinder cm_id.
+    const bunkName = bunksData?.[bunkId] ?? 'Removed cabin'
     return {
       data: {
         id: `bunk-${bunkId}`,

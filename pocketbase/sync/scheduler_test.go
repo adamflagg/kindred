@@ -204,9 +204,11 @@ func TestCustomValuesSyncRunsSequentially(t *testing.T) {
 func TestGetRefreshBunkingJobs(t *testing.T) {
 	jobs := GetRefreshBunkingJobs()
 
-	expected := []string{"bunks", "bunk_plans", "bunk_assignments"}
+	// orphan_reconciler runs last: refresh-bunking rewrites bunk_plans, which is
+	// exactly what strands scenario drafts — they must be swept in the same run.
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "orphan_reconciler"}
 	if len(jobs) != len(expected) {
-		t.Fatalf("expected %d jobs, got %d", len(expected), len(jobs))
+		t.Fatalf("expected %d jobs, got %d: %v", len(expected), len(jobs), jobs)
 	}
 
 	for i, job := range expected {
@@ -216,9 +218,10 @@ func TestGetRefreshBunkingJobs(t *testing.T) {
 	}
 }
 
-// TestRefreshBunkingRunsAllThreeServices verifies that refresh-bunking triggers
-// bunks, bunk_plans, and bunk_assignments in sequence (not just bunk_assignments)
-func TestRefreshBunkingRunsAllThreeServices(t *testing.T) {
+// TestRefreshBunkingRunsAllServices verifies that refresh-bunking triggers
+// bunks, bunk_plans, bunk_assignments, and orphan_reconciler in sequence
+// (not just bunk_assignments)
+func TestRefreshBunkingRunsAllServices(t *testing.T) {
 	s := NewScheduler(nil)
 
 	// Track which services were called and in what order
@@ -253,7 +256,7 @@ func TestRefreshBunkingRunsAllThreeServices(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	expected := []string{"bunks", "bunk_plans", "bunk_assignments"}
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "orphan_reconciler"}
 	if len(callOrder) != len(expected) {
 		t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
 	}
@@ -266,7 +269,7 @@ func TestRefreshBunkingRunsAllThreeServices(t *testing.T) {
 }
 
 // TestRefreshBunkingRegistersRequiredServices verifies that TriggerSync for
-// refresh-bunking registers mock services for all three bunking sync jobs
+// refresh-bunking requires every bunking sync job to be registered
 func TestRefreshBunkingRegistersRequiredServices(t *testing.T) {
 	s := NewScheduler(nil)
 

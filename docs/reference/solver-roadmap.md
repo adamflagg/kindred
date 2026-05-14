@@ -36,11 +36,13 @@ only) once individual streams are picked up.
 | **Stream 2 Tier 2 — plateau-diagnostic metrics** | none (spec in-doc) | #1436 | 🔵 **Phase 2 — in review** |
 | Stream 4 — mutual-request boost | #1382 | — | ⬜ Phase 3 |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
-| Golden sat-var ↔ predicate alignment test | #1398 | — | ⬜ do now (drift defense for #1427) |
+| Golden sat-var ↔ predicate alignment test | #1398 | #1434 | 🔵 in review (Option 2 — bunk_with/not_bunk_with only) |
 | Retire `solution.calculate_satisfied_requests` | #1397 | — | ⬜ pairs with #1398 |
 | Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
 | Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ unblocked (#1429 merged) |
 | Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
+| Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | — | ⬜ cleanup (sibling of #1424) |
+| age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | — | ⬜ cleanup; prereq for #1398 age_preference coverage |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
 Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
@@ -945,6 +947,18 @@ Superseded by **"Status & phased sequencing"** near the top of this doc
   issue map) and retired the stale "Suggested order" table. Reconciled the
   Stream 2/3/4 "GitHub issue" lines with filed issue numbers. Flagged Tier 2
   as unfiled (orphaned when #1380 closed on Tier 1 alone).
+- **2026-05-14** — #1398 in review (PR #1434): golden sat-var ↔ predicate
+  alignment test. Scoped to Option 2 — asserts agreement for every entry in
+  `request_satisfied_vars` (the shared bidirectional `bunk_with`/`not_bunk_with`
+  sat var, i.e. the complete output of `get_or_create_request_sat_var` and the
+  surface #1427 changed). `age_preference` is out of scope: digging into #1398
+  found its solve-time `sat_var` is one-way encoded *and* discarded by its only
+  caller — no faithful var to align against. Two dead-code findings filed:
+  #1432 (`negative_requests.hard_constraint_threshold` unschematized + the
+  `not_bunk_with` hard branch unreachable since real priorities are 1–4) and
+  #1433 (age_preference `sat_var` built-but-discarded; non-MP age_preference
+  unmodeled by the solver — confirm intent). #1433 is the prerequisite for ever
+  extending #1398's alignment test to `age_preference`.
 - **2026-05-14** — #1429 merged (closes #1428): Phase 1 (pre-check honesty)
   complete — Stream 6g shipped, #1426 (`direct_solver` impossibility audit)
   now unblocked. Phase 2 (Tier 2 plateau metrics) started **without a
