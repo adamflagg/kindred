@@ -96,6 +96,8 @@ describe('DrillDownDrawer', () => {
       expect(screen.getAllByText('staff').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText(/1× requests: 142/)).toBeInTheDocument()
       expect(screen.getByText(/1× requests: 12/)).toBeInTheDocument()
+      // empty bucket (staff in density / immaterial_parent in impossibles) renders an em-dash row
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
     })
 
     it('renders impossible request breakdown per bucket', () => {
@@ -104,6 +106,8 @@ describe('DrillDownDrawer', () => {
       expect(screen.getByText(/target_not_in_solver: 2/)).toBeInTheDocument()
       expect(screen.getByText(/cross_session: 1/)).toBeInTheDocument()
       expect(screen.getByText(/malformed: 1/)).toBeInTheDocument()
+      // empty bucket (staff in density / immaterial_parent in impossibles) renders an em-dash row
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
     })
 
     it('hides empty dict-shaped sections', () => {
