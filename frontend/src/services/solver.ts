@@ -61,11 +61,20 @@ export interface ImpossibilityReportItem {
   detail: Record<string, unknown>
 }
 
+export interface EntirelyImpossibleMpCamper {
+  cm_id: number
+  name: string
+  grade: number
+  gender: string
+  reason_codes: string[]
+}
+
 export interface ImpossibilityReport {
   total_impossible: number
   affected_campers: number
   by_reason: Record<string, ImpossibilityReportItem[]>
   flat: ImpossibilityReportItem[]
+  mp_campers_entirely_impossible?: EntirelyImpossibleMpCamper[]
 }
 
 interface ValidationResult {

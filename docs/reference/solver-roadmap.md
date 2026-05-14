@@ -716,10 +716,24 @@ check feasibility") as insurance against drift. ~0.1s per probe; only
 runs on the residual 5-10%. Effort: medium. Mitigated today by
 `test_registry.py`; consider only if drift becomes a real issue.
 
+**Stream 6g — entirely-impossible MP camper pre-check visibility (shipped).**
+Promoted `target_not_in_solver` from a hand-rolled `_validate_requests` fallback
+to a registered `TargetNotInSolverImpossibility` predicate (closing the
+pre-validate ↔ `_validate_requests` drift). Added a derived
+`ImpossibilityReport.mp_campers_entirely_impossible` field computed in
+`validate_impossibility` — single source of truth; `parent_paramount` and
+`_validate_requests` consume it instead of re-deriving. Surfaced in the
+`/solver/pre-validate` response and both impossibility modals as a camper-level
+"will get zero parent requests honored" section. Also fixed the `mp_camper_rate`
+("Acceptable") denominator to count only campers with ≥1 *possible* MP request,
+and fixed a latent bug where `feasibility.py` read `mp_set_entirely_impossible`
+before it was populated. Audit follow-up: #1426.
+
 ### GitHub issues
 
 Framework + initial predicates ship in #1391. Substreams 6a–6f to be
-filed as separate issues if/when prioritized.
+filed as separate issues if/when prioritized. Stream 6g shipped in a
+follow-up PR; audit follow-up tracked in #1426.
 
 ---
 
@@ -834,3 +848,7 @@ diffs are clearer.
   comparisons); the win is ~250 fewer duplicate BoolVars on S2. Corrected
   the Stream 1 "Reality" note (the objective was never falsifiable) and the
   Stream 3 table / lever 3b (`both_in_bunk` no longer exists in the live model).
+- **2026-05-14** — Stream 6g shipped: `target_not_in_solver` promoted to a
+  registered predicate; `mp_campers_entirely_impossible` rollup added to
+  `ImpossibilityReport`; `mp_camper_rate` denominator corrected. Filed #1426 to
+  audit `direct_solver` for other hand-rolled impossibility logic.

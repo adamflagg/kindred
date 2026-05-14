@@ -11,7 +11,11 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
-import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
+import type {
+  ImpossibilityReport,
+  ImpossibilityReportItem,
+  EntirelyImpossibleMpCamper,
+} from '../services/solver'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -136,10 +140,46 @@ const FRIENDLY_REASON_LABELS: Record<string, string> = {
   pair_no_shared_bunk: "Can't share a cabin",
   age_pref_no_eligible_grade: 'No matching age group available',
   malformed: 'Incomplete request',
+  target_not_in_solver: 'Friend not enrolled',
 }
 
 function friendlyReasonLabel(code: string): string {
   return FRIENDLY_REASON_LABELS[code] || code
+}
+
+// Camper-level action hint: target_not_in_solver means the named friend isn't
+// enrolled (confirm enrollment); any other reason means the request itself is
+// the problem (fix parent input).
+function camperActionHints(reasonCodes: string[]): string {
+  const hints = new Set<string>()
+  for (const code of reasonCodes) {
+    hints.add(code === 'target_not_in_solver' ? 'confirm enrollment' : 'fix parent input')
+  }
+  return Array.from(hints).join(' / ')
+}
+
+function EntirelyImpossibleMpSection({ campers }: { campers: EntirelyImpossibleMpCamper[] }) {
+  if (campers.length === 0) return null
+  return (
+    <details open className="rounded-lg border border-red-200 bg-red-50 p-3">
+      <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-red-900 [&::-webkit-details-marker]:hidden">
+        <span>{campers.length} camper(s) will get zero parent requests honored</span>
+        <span className="rounded-full bg-red-400 px-2 py-0.5 text-xs font-bold text-white">
+          {campers.length}
+        </span>
+      </summary>
+      <div className="mt-2 space-y-2 border-t border-red-200 pt-2">
+        {campers.map((c) => (
+          <div key={c.cm_id} className="text-sm">
+            <div className="font-medium">
+              {c.name} ({c.gender}) · {ordinalGrade(c.grade)}
+            </div>
+            <div className="text-xs text-stone-600">{camperActionHints(c.reason_codes)}</div>
+          </div>
+        ))}
+      </div>
+    </details>
+  )
 }
 
 function ordinalGrade(grade: number): string {
@@ -230,6 +270,15 @@ function renderSubtext(
       return (
         <div className="text-xs text-stone-600">
           <strong>Incomplete request</strong> — form is missing who they want to bunk with
+        </div>
+      )
+
+    case 'target_not_in_solver':
+      // requestee is null here — the named friend isn't on the roster, so we
+      // have no person record to render. Give staff the actionable line.
+      return (
+        <div className="text-xs text-stone-600">
+          Requested friend isn&rsquo;t enrolled in this session
         </div>
       )
 
@@ -493,6 +542,9 @@ export default function PreValidationResultsModal({
 
       {/* Impossibility Report — staff view */}
       <div className="space-y-3 px-5 py-4">
+        <EntirelyImpossibleMpSection
+          campers={impossibility_report.mp_campers_entirely_impossible ?? []}
+        />
         {impossibility_report.total_impossible === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
             <CheckCircle2 className="mr-2 inline-block h-5 w-5" />

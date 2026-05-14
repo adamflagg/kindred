@@ -42,6 +42,10 @@ class ImpossibilityContext:
     person_by_cm_id: dict[int, DirectPerson]
     person_session: dict[int, int]
     bunks_by_session: dict[int, list[DirectBunk]]
+    # The solver roster: every person cm_id present in the input. Equals
+    # person_by_cm_id.keys(); kept as an explicit set so membership-test intent
+    # ("is this requestee in the solver?") reads clearly in predicates.
+    roster_cm_ids: frozenset[int]
 
 
 @dataclass
@@ -61,6 +65,10 @@ class ImpossibilityReport:
     affected_campers: int = 0
     by_reason: dict[str, list[ImpossibleItem]] = field(default_factory=dict)
     flat: list[ImpossibleItem] = field(default_factory=list)
+    # Camper-level rollup: roster campers whose ENTIRE Material-Parent request
+    # set is impossible. Each entry: {cm_id, name, grade, gender, reason_codes}.
+    # Derived from `flat` — see validate_impossibility.
+    mp_campers_entirely_impossible: list[dict[str, Any]] = field(default_factory=list)
 
 
 class HardConstraintImpossibility:
@@ -133,6 +141,7 @@ def _build_context(input_data: DirectSolverInput, config: ConfigLoader) -> Impos
         person_by_cm_id=person_by_cm_id,
         person_session=person_session,
         bunks_by_session=dict(bunks_by_session),
+        roster_cm_ids=frozenset(person_by_cm_id),
     )
 
 
@@ -183,6 +192,35 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
     # ONE impossible request, not N. Same for the affected-campers headline.
     report.total_impossible = len({item.request_id for item in report.flat})
     report.affected_campers = len({item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id")})
+
+    # Camper-level rollup: a roster camper whose ENTIRE Material-Parent request
+    # set is impossible gets zero parent requests honored under the hard MP
+    # constraint. Pure derived property of `flat` — single source of truth for
+    # both parent_paramount and the pre-validate endpoint. Local import keeps
+    # the satisfaction package off impossibility.py's import-time graph.
+    from bunking.satisfaction.bucket import is_material_parent_request
+
+    impossible_ids = {item.request_id for item in report.flat}
+    reasons_by_request: dict[str, set[str]] = defaultdict(set)
+    for item in report.flat:
+        reasons_by_request[item.request_id].add(item.reason_code)
+
+    for cm_id, requests in input_data.requests_by_person.items():
+        person = ctx.person_by_cm_id.get(cm_id)
+        if person is None:
+            continue  # requester not in the roster — out of scope
+        mp_requests = [r for r in requests if is_material_parent_request(r)]
+        if not mp_requests:
+            continue
+        if not all(r.id in impossible_ids for r in mp_requests):
+            continue  # >=1 possible MP request — solver-actionable, not "entirely impossible"
+        reason_codes: set[str] = set()
+        for r in mp_requests:
+            reason_codes |= reasons_by_request.get(r.id, set())
+        entry = _camper_dict(person)
+        entry["reason_codes"] = sorted(reason_codes)
+        report.mp_campers_entirely_impossible.append(entry)
+
     return report
 
 

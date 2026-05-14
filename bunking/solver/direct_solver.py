@@ -230,17 +230,12 @@ class DirectBunkingSolver:
     def _validate_requests(self) -> None:
         """Classify requests as possible or impossible via the shared module.
 
-        Delegates to bunking.solver.impossibility.validate_impossibility,
-        which both this solver and api.routers.solver.pre_validate_solver
-        share. Populates self.possible_requests, self.impossible_requests,
-        and self.request_validation_summary from the structured report.
-
-        Fallback: any bunk_with/not_bunk_with request whose target is not
-        present in self.person_idx_map (i.e., the target person was not
-        supplied in the input at all) is classified as impossible under the
-        "target_not_in_solver" reason code. The shared predicates cannot
-        catch this case because they only see persons present in the input;
-        the solver-level person_idx_map is the authoritative membership set.
+        Delegates entirely to bunking.solver.impossibility.validate_impossibility,
+        which both this solver and api.routers.solver.pre_validate_solver share —
+        there is no longer any hand-rolled fallback, so the two paths cannot
+        drift. Populates self.possible_requests, self.impossible_requests,
+        self.mp_set_entirely_impossible, and self.request_validation_summary
+        from the structured report.
         """
         from bunking.solver.impossibility import validate_impossibility
 
@@ -260,24 +255,16 @@ class DirectBunkingSolver:
         self.impossibility_report = report
         impossible_request_ids: set[str] = {item.request_id for item in report.flat}
 
-        # Tally requests not caught by predicates but whose target is absent
-        # from person_idx_map — these must be classified impossible here.
-        target_not_in_solver_extra: set[str] = set()
-        for person_cm_id, requests in self.input.requests_by_person.items():
-            if person_cm_id not in self.person_idx_map:
-                continue
-            for request in requests:
-                if request.id in impossible_request_ids:
-                    continue
-                if request.request_type in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
-                    if request.requested_person_cm_id and request.requested_person_cm_id not in self.person_idx_map:
-                        target_not_in_solver_extra.add(request.id)
+        # Camper-level rollup of entirely-impossible MP sets — single source of
+        # truth (computed in validate_impossibility). parent_paramount no longer
+        # re-derives this during constraint build; it consumes this list directly.
+        self.mp_set_entirely_impossible.extend(entry["cm_id"] for entry in report.mp_campers_entirely_impossible)
 
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in self.person_idx_map:
                 continue
             for request in requests:
-                if request.id in impossible_request_ids or request.id in target_not_in_solver_extra:
+                if request.id in impossible_request_ids:
                     self.impossible_requests[person_cm_id].append(request)
                 else:
                     self.possible_requests[person_cm_id].append(request)
@@ -289,7 +276,6 @@ class DirectBunkingSolver:
         impossible_pairs: list[tuple[DirectBunkRequest, str]] = [
             (request_by_id[item.request_id], item.reason_code) for item in report.flat
         ]
-        impossible_pairs.extend((request_by_id[rid], "target_not_in_solver") for rid in target_not_in_solver_extra)
         # NB: impossible_by_reason (bucketed) drops requests with unknown source_field,
         # while total_impossible never does — the two are intentionally independent counts.
         impossible_by_reason = _build_impossible_by_reason_by_bucket(impossible_pairs)
@@ -299,26 +285,15 @@ class DirectBunkingSolver:
             for person_cm_id, reqs in self.input.requests_by_person.items()
             if person_cm_id in self.person_idx_map
         )
-        total_impossible = report.total_impossible + len(target_not_in_solver_extra)
-        # Build the union of cm_ids — a camper with one predicate-caught request
-        # AND one target-not-in-solver request must be counted ONCE.
-        flat_cmids: set[int] = {item.requester["cm_id"] for item in report.flat if item.requester.get("cm_id")}
-        extra_cmids: set[int] = {
-            request.requester_person_cm_id
-            for person_cm_id, requests in self.input.requests_by_person.items()
-            if person_cm_id in self.person_idx_map
-            for request in requests
-            if request.id in target_not_in_solver_extra
-        }
         self.request_validation_summary: dict[str, Any] = {
             "total_requests": total_requests,
-            "possible_requests": total_requests - total_impossible,
-            "impossible_requests": total_impossible,
+            "possible_requests": total_requests - report.total_impossible,
+            "impossible_requests": report.total_impossible,
             "impossible_by_reason": impossible_by_reason,
-            "affected_campers": len(flat_cmids | extra_cmids),
+            "affected_campers": report.affected_campers,
         }
 
-        if total_impossible > 0:
+        if report.total_impossible > 0:
             reason_summary = (
                 " ".join(
                     f"{bucket}.{reason}={count}"
@@ -330,7 +305,8 @@ class DirectBunkingSolver:
                 or "unclassified — impossible requests have missing/unknown source_field"
             )
             logger.warning(
-                f"Request validation: {total_impossible} of {total_requests} requests are infeasible ({reason_summary})"
+                f"Request validation: {report.total_impossible} of {total_requests} "
+                f"requests are infeasible ({reason_summary})"
             )
             logger.warning(f"Affected campers: {self.request_validation_summary['affected_campers']}")
 
@@ -1078,6 +1054,11 @@ class DirectBunkingSolver:
         all_campers_total = 0
         all_campers_satisfied = 0
 
+        # "Acceptable" (mp_camper_rate) denominator must exclude campers whose
+        # entire MP set is structurally impossible — they can never be satisfied,
+        # so counting them understates the solver-actionable rate.
+        impossible_request_ids: set[str] = {item.request_id for item in self.impossibility_report.flat}
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
@@ -1094,9 +1075,13 @@ class DirectBunkingSolver:
             mp_requests_total += len(resolved_mp)
             satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
             mp_requests_satisfied += len(satisfied_mp)
-            if resolved_mp:
+            # Camper-level "Acceptable" rate: denominator = campers with >=1
+            # POSSIBLE MP request; numerator gated to the same possible subset so
+            # mp_campers_satisfied is always <= mp_campers_total (no >100%).
+            resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
+            if resolved_possible_mp:
                 mp_campers_total += 1
-                if satisfied_mp:
+                if any(r.id in satisfied_ids_for_person for r in resolved_possible_mp):
                     mp_campers_satisfied += 1
             all_campers_total += 1
             if any(r.id in satisfied_ids_for_person for r in resolved_requests):
@@ -1126,8 +1111,9 @@ class DirectBunkingSolver:
         # Dashboard and alerting latch onto this key specifically.
         self.request_validation_summary["mp_constraint_bug_signal"] = len(material_parent_unmet)
         # Campers whose entire MP set was structurally impossible — the hard
-        # constraint was not added for them. Populated by parent_paramount
-        # during constraint build; surfaced here for dashboard visibility.
+        # constraint was not added for them. Populated by `_validate_requests`
+        # from the impossibility report (single source of truth); `parent_paramount`
+        # no longer re-derives it. Surfaced here for dashboard visibility.
         self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
         self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
 

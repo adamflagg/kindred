@@ -61,8 +61,9 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     separation, or clean-bunk depending on request type).
 
     Campers with no MP requests at all are skipped silently. Campers whose
-    every MP request is impossible (excluded from possible_requests but
-    present in the input) are recorded in ctx.mp_set_entirely_impossible.
+    every MP request is impossible are already recorded in
+    ctx.mp_set_entirely_impossible by _validate_requests; parent_paramount
+    reads this list for logging but does not modify it.
     """
     logger.info("=== Parent Paramount (Hard MP Must-Satisfy-One) Constraints ===")
     if ctx.is_constraint_disabled("parent_paramount"):
@@ -134,13 +135,11 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             constraints_added += 1
             continue
 
-        # No forcing vars — did this camper have any MP requests at all?
-        all_requests = ctx.input.requests_by_person.get(person_cm_id, [])
-        if any(is_material_parent_request(r) for r in all_requests):
-            # Had MP requests but all were either impossible or malformed
-            ctx.mp_set_entirely_impossible.append(person_cm_id)
-            logger.debug(f"Camper {person_cm_id}: all MP requests impossible — no hard constraint added")
-        # else: no MP requests at all — silently skip
+        # No forcing vars built. Entirely-impossible MP campers are already
+        # recorded in ctx.mp_set_entirely_impossible by _validate_requests
+        # (single source of truth: validate_impossibility) — nothing to derive
+        # here. Campers with no MP requests at all also land here harmlessly.
+        logger.debug(f"Camper {person_cm_id}: no forcing vars built — no hard constraint added")
 
     # Step 4: end-of-build logging
     if ctx.mp_set_entirely_impossible:

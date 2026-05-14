@@ -109,3 +109,31 @@ class MalformedRequestImpossibility(HardConstraintImpossibility):
 
 
 register(MalformedRequestImpossibility())
+
+
+class TargetNotInSolverImpossibility(HardConstraintImpossibility):
+    name = "target_not_in_solver"
+
+    def check_request(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        # bunk_with only — a not_bunk_with whose target is absent from the
+        # roster is trivially satisfied (they can never share a bunk), not
+        # impossible. Mirrors the satisfaction logic in bunking/satisfaction/
+        # predicate.py and the bunk_with-only guard in the gender/grade_spread/
+        # session_boundary predicates.
+        if req.request_type != "bunk_with":
+            return None
+        if not req.requested_person_cm_id:
+            return None  # malformed — MalformedRequestImpossibility owns this
+        if req.requested_person_cm_id in ctx.roster_cm_ids:
+            return None
+        return ImpossibilityReason(
+            code="target_not_in_solver",
+            message=(
+                f"Requested camper (cm_id {req.requested_person_cm_id}) is not "
+                f"enrolled in this session's solver roster."
+            ),
+            detail={"requested_person_cm_id": req.requested_person_cm_id},
+        )
+
+
+register(TargetNotInSolverImpossibility())
