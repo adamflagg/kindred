@@ -33,7 +33,7 @@ only) once individual streams are picked up.
 | Stream 6 — pre-check impossibility framework | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
 | Sat-var unification | #1395 | #1427 | ✅ shipped 2026-05-14 |
 | Stream 6 substream — entirely-impossible MP campers in pre-check + "Acceptable" denominator fix | #1428 | #1429 | ✅ shipped 2026-05-14 |
-| **Stream 2 Tier 2 — plateau-diagnostic metrics** | none (spec in-doc) | — | 🔵 **Phase 2 — in progress** |
+| **Stream 2 Tier 2 — plateau-diagnostic metrics** | none (spec in-doc) | #1436 | 🔵 **Phase 2 — in review** |
 | Stream 4 — mutual-request boost | #1382 | — | ⬜ Phase 3 |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
 | Golden sat-var ↔ predicate alignment test | #1398 | — | ⬜ do now (drift defense for #1427) |
@@ -61,7 +61,7 @@ rollup as single source of truth, camper-level surfacing in the pre-validate
 modal, and the "Acceptable" metric denominator fixed to exclude
 structurally-impossible campers.
 
-**Phase 2 — Tier 2 metrics (IN PROGRESS).** Scoped to three
+**Phase 2 — Tier 2 metrics (IN REVIEW — PR #1436).** Scoped to three
 plateau-diagnostic metrics only: **best-bound trajectory, LP root gap,
 presolve compression ratio.** *Not* the full Tier 2 list — per-sub-solver
 wall time / symmetry flag / domain-size distribution defer until a specific
@@ -308,7 +308,7 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 ## Stream 2 — Solver Debug Metrics Expansion (Tier 1 + Tier 2)
 
 **Status:** Tier 1 **shipped** — #1380 / PR #1385 (core metrics) and #1388 /
-PR #1425 (per-`RequestBucket` split). Tier 2 — **Phase 2, in progress** (see
+PR #1425 (per-`RequestBucket` split). Tier 2 — **Phase 2, in review (PR #1436)** (see
 "Status & phased sequencing" above). Scoped to three plateau-diagnostic
 metrics: best-bound trajectory, LP root gap, presolve compression ratio.
 Implemented **without a tracking issue** — Tier 2 was orphaned when #1380
