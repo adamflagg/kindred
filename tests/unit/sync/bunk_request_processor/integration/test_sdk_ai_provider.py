@@ -56,19 +56,6 @@ class TestAISchemas:
         )
         assert response.requests[0].request_type == "not_bunk_with"
 
-    def test_parse_response_valid_age_preference(self):
-        """Valid age_preference request parses correctly."""
-        response = AIParseResponse(
-            requests=[
-                AIBunkRequestItem(
-                    request_type="age_preference",
-                    target_name="older",
-                    source_type="parent",
-                )
-            ]
-        )
-        assert response.requests[0].request_type == "age_preference"
-
     def test_parse_response_invalid_request_type_rejected(self):
         """Invalid request_type is rejected by Pydantic."""
         from pydantic import ValidationError
@@ -979,14 +966,42 @@ class TestOpenAIProviderAgeDirectionConversion:
         with patch("openai.AsyncOpenAI"):
             provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
 
-        ai_response = self._build_response(target_name="older", age_direction=None)
+        # Use a value that resembles a camper name so we can verify it's NOT logged.
+        ai_response = self._build_response(target_name="Emma Garcia", age_direction=None)
 
         with caplog.at_level(logging.ERROR):
-            result = provider._convert_parse_response(ai_response, "older please", context)
+            result = provider._convert_parse_response(ai_response, "drift case", context)
 
         parsed = result.requests[0]
         assert parsed.age_preference is None, "drift target_name must NOT be silently re-mapped to AgePreference"
         assert parsed.target_name is None, "drift target_name must be cleared during salvage"
-        assert any("age_direction" in r.message or "drift" in r.message.lower() for r in caplog.records), (
-            "drift must be logged at ERROR level"
+        assert any("drift" in r.message.lower() for r in caplog.records), "drift must be logged at ERROR level"
+        for record in caplog.records:
+            assert "Emma Garcia" not in record.getMessage(), (
+                "drift log must NOT include raw target_name value — could be PII (camper name)"
+            )
+
+    def test_drift_compound_target_name_and_age_direction_treats_as_undirected(self, context, caplog):
+        """Compound drift: AI emits BOTH target_name AND age_direction on age_preference.
+
+        Spec says drift → undirected. The log message claims that, so the code must too —
+        applying age_direction while clearing target_name would be a silent contradiction.
+        """
+        import logging
+
+        from bunking.sync.bunk_request_processor.integration.openai_provider import OpenAIProvider
+
+        with patch("openai.AsyncOpenAI"):
+            provider = OpenAIProvider(api_key="test-key", model="gpt-5-nano")
+
+        ai_response = self._build_response(target_name="older", age_direction="younger")
+
+        with caplog.at_level(logging.ERROR):
+            result = provider._convert_parse_response(ai_response, "compound drift", context)
+
+        parsed = result.requests[0]
+        assert parsed.age_preference is None, (
+            "compound drift must clear age_direction too — the log claims undirected, the code must match"
         )
+        assert parsed.target_name is None
+        assert any("drift" in r.message.lower() for r in caplog.records)

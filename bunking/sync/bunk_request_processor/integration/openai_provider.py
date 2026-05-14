@@ -437,20 +437,24 @@ class OpenAIProvider(AIProvider):
                 if ai_req.target_name:
                     # Drift: AI emitted old-shape target_name on age_preference. Salvage as
                     # undirected — never silently re-map back to AgePreference, that masks
-                    # the bug class age_direction was introduced to eliminate.
+                    # the bug class age_direction was introduced to eliminate. Don't log
+                    # the raw value (could be a camper name if the AI is confused).
                     logger.error(
-                        "AI drift: target_name=%r on age_preference request — clearing and "
-                        "treating as undirected. AI must use age_direction field instead.",
-                        ai_req.target_name,
+                        "AI drift: target_name set on age_preference request "
+                        "(has_age_direction=%s) — clearing both and treating as undirected. "
+                        "AI must use age_direction field instead.",
+                        ai_req.age_direction is not None,
                     )
                     parsed_request.target_name = None
-                direction_map = {
-                    "older": AgePreference.OLDER,
-                    "younger": AgePreference.YOUNGER,
-                }
-                parsed_request.age_preference = (
-                    direction_map.get(ai_req.age_direction) if ai_req.age_direction else None
-                )
+                    parsed_request.age_preference = None
+                else:
+                    direction_map = {
+                        "older": AgePreference.OLDER,
+                        "younger": AgePreference.YOUNGER,
+                    }
+                    parsed_request.age_preference = (
+                        direction_map.get(ai_req.age_direction) if ai_req.age_direction else None
+                    )
 
             v2_requests.append(parsed_request)
 

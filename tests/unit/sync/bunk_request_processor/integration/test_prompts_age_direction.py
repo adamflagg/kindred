@@ -27,11 +27,11 @@ AGE_PREF_PROMPTS = [
 ]
 
 OLD_SHAPE_PATTERNS = [
-    re.compile(r'target_name\s*=\s*"older"'),
-    re.compile(r'target_name\s*=\s*"younger"'),
-    re.compile(r'target_name\s*=\s*"unclear"'),
-    re.compile(r'age_preference\s+"older"'),
-    re.compile(r'age_preference\s+"younger"'),
+    re.compile(r"target_name\s*[:=]?\s*['\"]older['\"]", re.IGNORECASE),
+    re.compile(r"target_name\s*[:=]?\s*['\"]younger['\"]", re.IGNORECASE),
+    re.compile(r"target_name\s*[:=]?\s*['\"]unclear['\"]", re.IGNORECASE),
+    re.compile(r"age_preference\s*[:=]?\s*['\"]older['\"]", re.IGNORECASE),
+    re.compile(r"age_preference\s*[:=]?\s*['\"]younger['\"]", re.IGNORECASE),
 ]
 
 
