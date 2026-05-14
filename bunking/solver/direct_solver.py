@@ -670,6 +670,18 @@ class DirectBunkingSolver:
             "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
                 self.input.requests_by_person
             ),
+            # Tier 2 observability (Stream 2, Phase 2) — single-bunk path has
+            # no CP-SAT solve, so trajectories are empty and derived scalars
+            # are None. Keys present so frontend rendering is uniform.
+            "objective_trajectory": [],
+            "bound_trajectory": [],
+            "bound_trajectory_truncated": False,
+            "lp_root_gap": None,
+            "presolve_compression_ratio": None,
+            "presolve_booleans_pre": 0,
+            "objective_plateau_time": None,
+            "bound_gain_after_plateau": None,
+            "time_to_first_solution": None,
             "single_bunk_session": True,
         }
 

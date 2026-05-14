@@ -294,6 +294,9 @@ def _build_stats_dict(
     *,
     soft_constraint_violations: dict[str, Any] | None = None,
     requests_by_person: dict[int, list[DirectBunkRequest]] | None = None,
+    objective_trajectory: list[dict[str, float]] | None = None,
+    bound_trajectory: list[dict[str, float]] | None = None,
+    bound_trajectory_truncated: bool = False,
 ) -> dict[str, Any]:
     """Build the full stats dict captured per solver run.
 
@@ -318,6 +321,9 @@ def _build_stats_dict(
     num_integers = response_proto.num_integers
     has_solution = int(status) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     num_solutions_found = (1 + len(response_proto.additional_solutions)) if has_solution else 0
+
+    objective_trajectory = objective_trajectory or []
+    bound_trajectory = bound_trajectory or []
 
     return {
         # Existing back-compat fields
@@ -358,4 +364,11 @@ def _build_stats_dict(
         "max_linear_coefficient": _max_linear_coefficient(model_proto),
         "soft_constraints_by_module": _count_soft_constraints_by_module(soft_constraint_violations or {}),
         "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(requests_by_person or {}),
+        # Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
+        "objective_trajectory": objective_trajectory,
+        "bound_trajectory": bound_trajectory,
+        "bound_trajectory_truncated": bound_trajectory_truncated,
+        "lp_root_gap": _lp_root_gap(bound_trajectory, objective),
+        **_count_presolve_compression(model_proto, solver),
+        **_derive_plateau_scalars(objective_trajectory, bound_trajectory),
     }

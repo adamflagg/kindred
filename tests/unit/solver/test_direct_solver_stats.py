@@ -484,6 +484,16 @@ _BUILD_STATS_DICT_KEYS = frozenset(
         "max_linear_coefficient",
         "soft_constraints_by_module",
         "request_density_histogram_by_bucket",
+        # Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
+        "objective_trajectory",
+        "bound_trajectory",
+        "bound_trajectory_truncated",
+        "lp_root_gap",
+        "presolve_compression_ratio",
+        "presolve_booleans_pre",
+        "objective_plateau_time",
+        "bound_gain_after_plateau",
+        "time_to_first_solution",
     }
 )
 
@@ -1296,3 +1306,100 @@ class TestTier1MetricsInStatsDict:
             "immaterial_parent": {},
             "staff": {},
         }
+
+
+class TestTier2MetricsInStatsDict:
+    """The 9 Tier 2 keys (Stream 2 Phase 2) must land in `solver_runs.stats`.
+
+    `_build_stats_dict` accepts `objective_trajectory`, `bound_trajectory`,
+    `bound_trajectory_truncated`; emits the trajectories raw plus `lp_root_gap`,
+    `presolve_compression_ratio`, `presolve_booleans_pre`, and the three
+    derived plateau scalars.
+    """
+
+    def _base_mock_solver(self) -> MagicMock:
+        solver = MagicMock()
+        solver.StatusName.return_value = "FEASIBLE"
+        solver.ObjectiveValue.return_value = 600.0
+        solver.WallTime.return_value = 60.0
+        solver.UserTime.return_value = 60.0
+        solver.BestObjectiveBound.return_value = 700.0
+        solver.NumBranches.return_value = 0
+        solver.NumConflicts.return_value = 0
+        solver.NumBooleans.return_value = 2
+        solver.ResponseProto.return_value = MagicMock(
+            gap_integral=None,
+            deterministic_time=0.0,
+            num_integers=0,
+            additional_solutions=[],
+            solution_info="",
+        )
+        return solver
+
+    def test_emits_tier2_keys_with_populated_trajectories(self) -> None:
+        from bunking.solver.observability import _build_stats_dict
+
+        model = cp_model.CpModel()
+        model.NewBoolVar("a")
+        model.NewBoolVar("b")
+        model.NewBoolVar("c")  # 3 pre-presolve booleans
+
+        obj_traj = [
+            {"t": 1.0, "objective": 500.0, "bound": 900.0},
+            {"t": 5.0, "objective": 600.0, "bound": 850.0},
+        ]
+        bnd_traj = [{"t": 0.5, "bound": 1000.0}, {"t": 60.0, "bound": 700.0}]
+
+        stats = _build_stats_dict(
+            solver=self._base_mock_solver(),
+            status=2,
+            model_proto=model.Proto(),
+            time_limit_seconds=600,
+            num_workers=8,
+            num_persons=2,
+            num_bunks=2,
+            num_requests=3,
+            satisfied_count=2,
+            objective_trajectory=obj_traj,
+            bound_trajectory=bnd_traj,
+            bound_trajectory_truncated=False,
+        )
+
+        assert stats["objective_trajectory"] == obj_traj
+        assert stats["bound_trajectory"] == bnd_traj
+        assert stats["bound_trajectory_truncated"] is False
+        # _compute_optimality_gap(600, 1000) = |600-1000| / max(600,1) = 0.666...
+        assert stats["lp_root_gap"] == abs(600.0 - 1000.0) / 600.0
+        assert stats["presolve_compression_ratio"] == 2 / 3
+        assert stats["presolve_booleans_pre"] == 3
+        assert stats["objective_plateau_time"] == 5.0
+        assert stats["bound_gain_after_plateau"] == 150.0  # abs(700 - 850)
+        assert stats["time_to_first_solution"] == 1.0
+
+    def test_emits_tier2_keys_with_empty_trajectories(self) -> None:
+        from bunking.solver.observability import _build_stats_dict
+
+        model = cp_model.CpModel()
+        model.NewIntVar(0, 10, "x")  # no booleans
+
+        stats = _build_stats_dict(
+            solver=self._base_mock_solver(),
+            status=2,
+            model_proto=model.Proto(),
+            time_limit_seconds=600,
+            num_workers=8,
+            num_persons=1,
+            num_bunks=1,
+            num_requests=1,
+            satisfied_count=1,
+        )
+
+        assert stats["objective_trajectory"] == []
+        assert stats["bound_trajectory"] == []
+        assert stats["bound_trajectory_truncated"] is False
+        assert stats["lp_root_gap"] is None
+        assert stats["presolve_compression_ratio"] is None
+        assert stats["presolve_booleans_pre"] == 0
+        assert stats["objective_plateau_time"] is None
+        assert stats["bound_gain_after_plateau"] is None
+        assert stats["time_to_first_solution"] is None
