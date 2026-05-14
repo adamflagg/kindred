@@ -178,6 +178,31 @@ def test_standard_fields_preserved(client: TestClient) -> None:
         assert key in stats, f"missing statistics.{key}"
 
 
+def test_prevalidate_response_no_clusters_key(client: TestClient) -> None:
+    """impossibility_report should not contain a clusters field after Stage 4 cleanup.
+
+    This test is intentionally RED until Task A7 removes the clusters serializer
+    from api/routers/solver.py and bunking/solver/direct_solver.py.
+    """
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        _apply_standard_mocks(mock_build_ctx, mock_fetch, mock_prepare, mock_validate, mock_config)
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "impossibility_report" in body
+    assert "clusters" not in body["impossibility_report"], (
+        f"clusters key should be removed, got {list(body['impossibility_report'].keys())}"
+    )
+
+
 def test_affected_campers_warning_generated(client: TestClient) -> None:
     """When affected_campers > 0, a warning must appear in ``warnings``."""
     with (
