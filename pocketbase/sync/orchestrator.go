@@ -168,7 +168,7 @@ func GetDefaultUnifiedSyncJobs(includeCustomValues bool) []string {
 		"financial_aid_applications", "household_demographics",
 		"camper_dietary", "camper_transportation", "quest_registrations",
 		"staff_applications", "staff_vehicle_info", "normalize_geographic",
-		"enrollment_snapshots")
+		"enrollment_snapshots", "orphan_reconciler")
 
 	return jobs
 }
@@ -744,6 +744,10 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 		orderedJobs = append(orderedJobs, "multi_workbook_export")
 	}
 
+	// Orphan reconciliation runs last — after bunk_plans is final, it sweeps
+	// scenario drafts left stranded by bunk-plan reorganizations (#1416, #1417).
+	orderedJobs = append(orderedJobs, "orphan_reconciler")
+
 	// Set daily sync flag and queue
 	o.mu.Lock()
 	o.dailySyncRunning = true
@@ -1264,6 +1268,12 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		enrollmentSnapshotsSync.Year = opts.Year
 		o.RegisterService("enrollment_snapshots", enrollmentSnapshotsSync)
 
+		// Orphan reconciler: sweeps scenario drafts stranded by bunk-plan changes.
+		// Year-scoped so a historical sync reconciles the correct year's drafts.
+		orphanReconcilerSync := NewOrphanReconcilerSync(o.app)
+		orphanReconcilerSync.Year = opts.Year
+		o.RegisterService("orphan_reconciler", orphanReconcilerSync)
+
 		// Custom value services for historical sync support
 		// These use GetSeasonID() to determine the year, so they need year-specific client
 		personCustomValuesSync := NewPersonCustomFieldValuesSync(o.app, yearClient)
@@ -1738,6 +1748,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	o.RegisterService("bunk_plans", NewBunkPlansSync(o.app, client))
 	o.RegisterService("bunk_assignments", NewBunkAssignmentsSync(o.app, client))
 	o.RegisterService("reconcile_request_lifecycle", NewReconcileLifecycleSync(o.app))
+	o.RegisterService("orphan_reconciler", NewOrphanReconcilerSync(o.app))
 	o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, client))
 	// Register the request processor (no CampMinder client needed)
 	processor := NewRequestProcessor(o.app)
