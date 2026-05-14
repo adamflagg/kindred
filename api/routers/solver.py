@@ -25,21 +25,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
+from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
-from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+from bunking.solver.impossibility import validate_impossibility
 
 from ..constants.collections import (
     ATTENDEES,
-    BUNK_PLANS,
-    BUNK_REQUESTS,
     BUNKS,
     CAMP_SESSIONS,
-    PERSONS,
     SOLVER_RUNS,
 )
-from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import graph_cache, pb, solver_runs
 from ..schemas import (
     ClearAssignmentsRequest,
@@ -48,6 +45,7 @@ from ..schemas import (
     SolverResponse,
 )
 from ..schemas.solver import SweepRequest, SweepResponse
+from ..services.data_fetcher import fetch_session_data_v2, prepare_direct_solver_input
 from ..services.session_context import build_session_context
 from ..services.solver_runner import resolve_session_relation, run_solver_task_v2
 from ..services.sweep_input_snapshot import snapshot_session_input
@@ -368,256 +366,90 @@ async def get_solver_run(
 async def pre_validate_solver(
     request: SolverRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
 ) -> dict[str, Any]:
-    """Pre-validate solver request to check for unsatisfiable constraints.
+    """Pre-validate solver request via shared impossibility module.
 
-    Returns detailed information about:
-    - Campers with requests for people not in the session
-    - Conflicting requests
-    - Other issues that would prevent the solver from finding a solution
+    Delegates to validate_impossibility() — the same function
+    DirectBunkingSolver._validate_requests uses — so the two paths
+    cannot drift from each other.
+
+    Response shape change vs. the old endpoint:
+      - statistics.unsatisfiable_requests is REMOVED
+      - New top-level impossibility_report field replaces it with structured
+        per-reason groupings and cluster detail.
     """
-    try:
-        # Build session context from request (validates session exists for year)
-        ctx = await build_session_context(request.session_cm_id, request.year, pb)
+    from dataclasses import asdict
 
-        # Load all data needed for validation
+    try:
+        ctx = await build_session_context(request.session_cm_id, request.year, pb)
         logger.info(f"Pre-validating solver request for session {ctx.session_cm_id} year {ctx.year}")
 
-        # Use pre-built filters from SessionContext
-        session_relation_filter = ctx.session_relation_filter
-        session_id_filter = ctx.session_id_filter
-
-        # Get all active, enrolled attendees for all related sessions
-        attendees = await asyncio.to_thread(
-            pb.collection(ATTENDEES).get_full_list,
-            query_params={
-                "filter": f"({session_relation_filter}) && year = {ctx.year} && {ACTIVE_ENROLLED_FILTER}",
-                "expand": "session",
-            },
+        # Load session data using the SAME path the solver runner uses.
+        # This guarantees the impossibility check sees identical data to what the
+        # solver will see at run time (same filters, same expands).
+        attendees_data, bunks_data, requests_data, assignments_data, bunk_plans_data = await fetch_session_data_v2(
+            request.session_cm_id, request.year, pb
+        )
+        solver_input = prepare_direct_solver_input(
+            attendees_data,
+            bunks_data,
+            requests_data,
+            assignments_data,
+            bunk_plans_data,
         )
 
-        # Create person lookup (using person_id field)
-        person_cm_ids = {getattr(a, "person_id", None) for a in attendees if getattr(a, "person_id", None)}
+        config_service = ConfigLoader.get_instance()
 
-        # Build mapping of person_cm_id → session_type for gender counting
-        # This allows us to exclude AG session enrollees from boys/girls counts
-        person_session_type: dict[int, str] = {}
-        for attendee in attendees:
-            person_id = getattr(attendee, "person_id", None)
-            session = get_session_from_expand(attendee)
-            if person_id and session:
-                session_type: str = str(getattr(session, "type", None) or getattr(session, "session_type", "main"))
-                person_session_type[person_id] = session_type
+        # --- Impossibility detection (delegates to shared predicate registry) ---
+        report = validate_impossibility(solver_input, config_service)
 
-        # Count attendees by session for breakdown
-        attendees_by_session: defaultdict[int, int] = defaultdict(int)
-        for attendee in attendees:
-            session = get_session_from_expand(attendee)
-            if session and hasattr(session, "cm_id"):
-                attendees_by_session[session.cm_id] += 1
-
-        # Fetch persons to get names (with year filter for data integrity)
-        persons_dict: dict[int, Any] = {}
-        if person_cm_ids:
-            batch_size = 50
-            for i in range(0, len(person_cm_ids), batch_size):
-                batch_ids = list(person_cm_ids)[i : i + batch_size]
-                filter_str = " || ".join([f"cm_id = {cm_id}" for cm_id in batch_ids])
-                batch_persons = await asyncio.to_thread(
-                    pb.collection(PERSONS).get_full_list,
-                    query_params={"filter": f"({filter_str}) && year = {ctx.year}"},
-                )
-                for person in batch_persons:
-                    persons_dict[getattr(person, "cm_id", 0)] = person
-
-        # Get all bunk requests for related sessions
-        requests = await asyncio.to_thread(
-            pb.collection(BUNK_REQUESTS).get_full_list,
-            query_params={
-                "filter": f'({session_id_filter}) && year = {ctx.year} && status = "resolved"',
-                "sort": "-priority",
-            },
-        )
-
-        # Validation results
-        errors = []
-        warnings = []
-
-        # Group requests by person
+        # --- Statistics ---
+        total_capacity = sum(b.capacity for b in solver_input.bunks)
+        total_requests = len(solver_input.requests)
         requests_by_person: dict[int, list[Any]] = {}
-        for req in requests:
-            person_cm_id = getattr(req, "requester_id", None)
-            if person_cm_id is None:
-                continue
-            if person_cm_id not in requests_by_person:
-                requests_by_person[person_cm_id] = []
-            requests_by_person[person_cm_id].append(req)
+        for req in solver_input.requests:
+            pid = req.requester_person_cm_id
+            if pid not in requests_by_person:
+                requests_by_person[pid] = []
+            requests_by_person[pid].append(req)
 
-        # Check each person's requests
-        campers_with_only_unsatisfiable = []
-
-        for person_cm_id, person_requests in requests_by_person.items():
-            if person_cm_id not in person_cm_ids:
-                continue
-
-            satisfiable_requests = []
-
-            for req in person_requests:
-                req_type = getattr(req, "request_type", "")
-                if req_type in ["bunk_with", "not_bunk_with"]:
-                    requestee = getattr(req, "requestee_id", None)
-                    if requestee and requestee not in person_cm_ids:
-                        continue
-                    else:
-                        satisfiable_requests.append(req)
-                else:
-                    satisfiable_requests.append(req)
-
-            if len(person_requests) > 0 and len(satisfiable_requests) == 0:
-                camper_name = f"Camper {person_cm_id}"
-                if person_cm_id in persons_dict:
-                    p = persons_dict[person_cm_id]
-                    camper_name = f"{getattr(p, 'first_name', '')} {getattr(p, 'last_name', '')}"
-
-                campers_with_only_unsatisfiable.append(
-                    {"cm_id": person_cm_id, "name": camper_name, "unsatisfiable_count": len(person_requests)}
-                )
-
-        # Check for campers with only unsatisfiable requests (advisory only)
-        # The optimizer uses soft constraints with penalties, so it won't fail - just note the issue
-        if campers_with_only_unsatisfiable:
-            count = len(campers_with_only_unsatisfiable)
-            if count == 1:
-                warnings.append("1 camper has requests that may not be fulfilled. The optimizer will do its best.")
-            else:
-                warnings.append(
-                    f"{count} campers have requests that may not be fulfilled. The optimizer will do its best."
-                )
-
-        # Check for conflicting requests
-        for person_cm_id, person_requests in requests_by_person.items():
-            if person_cm_id not in person_cm_ids:
-                continue
-
-            bunk_with = set()
-            not_bunk_with = set()
-
-            for req in person_requests:
-                requestee = getattr(req, "requestee_id", None)
-                req_type = getattr(req, "request_type", "")
-                if req_type == "bunk_with" and requestee:
-                    if requestee in person_cm_ids:
-                        bunk_with.add(requestee)
-                elif req_type == "not_bunk_with" and requestee:
-                    if requestee in person_cm_ids:
-                        not_bunk_with.add(requestee)
-
-            conflicts = bunk_with.intersection(not_bunk_with)
-            if conflicts:
-                requester_name = f"Camper {person_cm_id}"
-                if person_cm_id in persons_dict:
-                    p = persons_dict[person_cm_id]
-                    requester_name = f"{getattr(p, 'first_name', '')} {getattr(p, 'last_name', '')} ({person_cm_id})"
-
-                for conflict_id in conflicts:
-                    conflict_name = f"camper {conflict_id}"
-                    if conflict_id in persons_dict:
-                        cp = persons_dict[conflict_id]
-                        conflict_name = (
-                            f"{getattr(cp, 'first_name', '')} {getattr(cp, 'last_name', '')} ({conflict_id})"
-                        )
-
-                    warnings.append(
-                        f"{requester_name} has conflicting requests for {conflict_name} "
-                        f"(both 'bunk with' and 'not bunk with')"
-                    )
-
-        # Statistics
-        total_campers = len(person_cm_ids)
-        total_requests = len(requests)
+        total_campers = len(solver_input.persons)
         campers_with_requests = len(requests_by_person)
         campers_without_requests = total_campers - campers_with_requests
 
-        # Get bunk plans for all related sessions (expand bunk to get gender)
-        logger.info(f"Pre-validate: Fetching bunk plans with filter: ({session_relation_filter}) && year = {ctx.year}")
-        bunk_plans = await asyncio.to_thread(
-            pb.collection(BUNK_PLANS).get_full_list,
-            query_params={
-                "filter": f"({session_relation_filter}) && year = {ctx.year}",
-                "expand": "bunk",
-            },
-        )
-        logger.info(f"Pre-validate: Found {len(bunk_plans)} bunk plans")
+        # --- Gender-segmented capacity (preserved from old endpoint) ---
+        # Determine AG session IDs via the attendees_data expand — same
+        # source fetch_session_data_v2 used to build solver_input.persons.
+        ag_session_ids: set[int] = set()
+        for attendee in attendees_data:
+            session = get_session_from_expand(attendee)
+            if session and getattr(session, "session_type", "") == "ag":
+                ag_session_ids.add(session.cm_id)
 
-        # Calculate capacity: bunk_plans count × DEFAULT_BUNK_CAPACITY.
-        # Hardcoded constant (Phase 2 cabin-capacity cleanup); previously read
-        # from `constraint.cabin_capacity.standard`.
-        total_capacity = len(bunk_plans) * DEFAULT_BUNK_CAPACITY
-
-        # Gender-segmented capacity analysis (Boys/Girls/AG)
-        # Count campers by gender, EXCLUDING AG session enrollees from boys/girls
-        # AG campers go in AG bunks only, so they shouldn't count against boy/girl capacity
         boys_campers = 0
         girls_campers = 0
         ag_campers = 0
-
-        for person_cm_id_val in person_cm_ids:
-            if person_cm_id_val is None:
-                continue
-            person_record = persons_dict.get(int(person_cm_id_val))
-            if not person_record:
-                continue
-            gender = getattr(person_record, "gender", None)
-            session_type = person_session_type.get(int(person_cm_id_val), "main")
-
-            # AG session enrollees are counted separately - they go in AG bunks only
-            if session_type == "ag":
+        for person in solver_input.persons:
+            if person.session_cm_id in ag_session_ids:
                 ag_campers += 1
-            elif gender == "M":
+            elif person.gender == "M":
                 boys_campers += 1
-            elif gender == "F":
+            elif person.gender == "F":
                 girls_campers += 1
 
-        # Count bunks by gender
-        boys_bunks = 0
-        girls_bunks = 0
-        ag_bunks = 0
+        boys_capacity = sum(b.capacity for b in solver_input.bunks if b.gender == "M")
+        girls_capacity = sum(b.capacity for b in solver_input.bunks if b.gender == "F")
+        ag_capacity = sum(b.capacity for b in solver_input.bunks if b.gender in ("Mixed", "AG"))
 
-        for bp in bunk_plans:
-            expand = getattr(bp, "expand", {}) or {}
-            bunk_data = expand.get("bunk") if isinstance(expand, dict) else getattr(expand, "bunk", None)
-            if bunk_data:
-                bunk_gender = getattr(bunk_data, "gender", None)
-                if bunk_gender == "M":
-                    boys_bunks += 1
-                elif bunk_gender == "F":
-                    girls_bunks += 1
-                elif bunk_gender in ("Mixed", "AG"):
-                    ag_bunks += 1
-
-        boys_capacity = boys_bunks * DEFAULT_BUNK_CAPACITY
-        girls_capacity = girls_bunks * DEFAULT_BUNK_CAPACITY
-        ag_capacity = ag_bunks * DEFAULT_BUNK_CAPACITY
-
-        # Build capacity breakdown (Boys, Girls, and AG)
         capacity_breakdown = {
-            "boys": {
-                "campers": boys_campers,
-                "beds": boys_capacity,
-                "sufficient": boys_campers <= boys_capacity,
-            },
-            "girls": {
-                "campers": girls_campers,
-                "beds": girls_capacity,
-                "sufficient": girls_campers <= girls_capacity,
-            },
-            "ag": {
-                "campers": ag_campers,
-                "beds": ag_capacity,
-                "sufficient": ag_campers <= ag_capacity,
-            },
+            "boys": {"campers": boys_campers, "beds": boys_capacity, "sufficient": boys_campers <= boys_capacity},
+            "girls": {"campers": girls_campers, "beds": girls_capacity, "sufficient": girls_campers <= girls_capacity},
+            "ag": {"campers": ag_campers, "beds": ag_capacity, "sufficient": ag_campers <= ag_capacity},
         }
 
-        # Capacity check with gender breakdown
+        # --- Errors / warnings ---
+        errors: list[str] = []
+        warnings: list[str] = []
+
         capacity_issues = []
         if boys_campers > boys_capacity:
             over = boys_campers - boys_capacity
@@ -632,46 +464,63 @@ async def pre_validate_solver(
         if capacity_issues:
             errors.append("Gender capacity issues: " + "; ".join(capacity_issues))
         elif total_campers > total_capacity:
-            # Fallback to total capacity error if gender breakdown doesn't explain it
             errors.append(f"Insufficient capacity: {total_campers} campers but only {total_capacity} beds available")
 
-        # Get session names for better reporting (filter by year to avoid cross-year contamination)
+        if len(solver_input.bunks) == 0:
+            errors.append("Session has no bunks configured.")
+        if total_campers == 0:
+            errors.append("Session has no campers.")
+
+        if report.affected_campers > 0:
+            warnings.append(f"{report.affected_campers} camper(s) have one or more requests that cannot be honored.")
+
+        # --- Session breakdown (fetch session names for UI display) ---
+        attendees_by_session: defaultdict[int, int] = defaultdict(int)
+        for attendee in attendees_data:
+            session = get_session_from_expand(attendee)
+            if session and hasattr(session, "cm_id"):
+                attendees_by_session[session.cm_id] += 1
+
         session_names: dict[int, str] = {}
-        all_sessions = await asyncio.to_thread(
-            pb.collection(CAMP_SESSIONS).get_full_list,
-            query_params={
-                "filter": f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
-            },
-        )
-        for s in all_sessions:
-            session_names[getattr(s, "cm_id", 0)] = getattr(s, "name", "")
-
-        # Build session breakdown
-        session_breakdown = []
-        for sid, count in attendees_by_session.items():
-            session_breakdown.append(
-                {
-                    "session_cm_id": sid,
-                    "session_name": session_names.get(sid, f"Session {sid}"),
-                    "attendee_count": count,
-                }
+        if ctx.related_session_ids:
+            all_sessions = await asyncio.to_thread(
+                pb.collection(CAMP_SESSIONS).get_full_list,
+                query_params={
+                    "filter": (
+                        f"({' || '.join([f'cm_id = {sid}' for sid in ctx.related_session_ids])}) && year = {ctx.year}"
+                    )
+                },
             )
+            for s in all_sessions:
+                session_names[getattr(s, "cm_id", 0)] = getattr(s, "name", "")
 
-        valid = len(errors) == 0
+        session_breakdown = [
+            {
+                "session_cm_id": sid,
+                "session_name": session_names.get(sid, f"Session {sid}"),
+                "attendee_count": count,
+            }
+            for sid, count in attendees_by_session.items()
+        ]
 
         return {
-            "valid": valid,
+            "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings,
             "statistics": {
                 "total_campers": total_campers,
-                "total_bunks": len(bunk_plans),
+                "total_bunks": len(solver_input.bunks),
                 "total_capacity": total_capacity,
                 "total_requests": total_requests,
                 "campers_with_requests": campers_with_requests,
                 "campers_without_requests": campers_without_requests,
-                "unsatisfiable_requests": [],
                 "capacity_breakdown": capacity_breakdown,
+            },
+            "impossibility_report": {
+                "total_impossible": report.total_impossible,
+                "affected_campers": report.affected_campers,
+                "by_reason": {code: [asdict(item) for item in items] for code, items in report.by_reason.items()},
+                "flat": [asdict(item) for item in report.flat],
             },
             "session_breakdown": session_breakdown,
             "related_sessions": ctx.related_session_ids,

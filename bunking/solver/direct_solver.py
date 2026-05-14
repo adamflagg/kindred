@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ortools.sat.python import cp_model
 
@@ -19,7 +19,7 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
-from bunking.satisfaction.bucket import RequestBucket, classify_request
+from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -38,11 +38,14 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints, add_grade_spread_soft_constraint
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
-from .constraints.must_satisfy import add_must_satisfy_one_request_constraints
+from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .solution import analyze_solution, calculate_satisfied_requests
+
+if TYPE_CHECKING:
+    from bunking.solver.impossibility import ImpossibilityReport
 
 logger = get_logger(__name__)
 
@@ -269,29 +272,6 @@ def _build_stats_dict(
     }
 
 
-def _is_material_parent(request: DirectBunkRequest) -> bool:
-    """True iff a request's source_field classifies as MATERIAL_PARENT.
-
-    Defensive: missing or unknown source_field returns False. Used by the
-    post-solve diagnostic to bucket unsatisfied campers — surfacing as a
-    diagnostic miscount is preferable to crashing the solver run on a
-    data-hygiene edge case. Unknown values are logged so a new source_field
-    added to the schema before the bucket map is updated leaves a trace.
-    """
-    sf = request.source_field
-    if not sf:
-        return False
-    try:
-        return classify_request(sf) == RequestBucket.MATERIAL_PARENT
-    except ValueError:
-        logger.debug(
-            "_is_material_parent: unknown source_field %r on request %s — treating as non-material",
-            sf,
-            request.id,
-        )
-        return False
-
-
 class DirectBunkingSolver:
     """Solver that works directly with bunk_requests table data."""
 
@@ -300,11 +280,21 @@ class DirectBunkingSolver:
         input_data: DirectSolverInput,
         config_service: ConfigLoader,
         debug_constraints: dict[str, bool] | None = None,
+        mp_skip_cms: set[int] | None = None,
+        impossibility_report: ImpossibilityReport | None = None,
     ):
         self.input = input_data
         self.config = config_service
         self.model = cp_model.CpModel()
         self.debug_constraints = debug_constraints or {}  # Dict of constraint names to disable
+        # IIS-localization probe: campers whose hard MP constraint should be
+        # skipped this run. Used only by the infeasibility analyzer.
+        self.mp_skip_cms: set[int] = set(mp_skip_cms or ())
+        # Precomputed impossibility report. When supplied (by the diagnostic
+        # probe loops, which build many solvers over identical request data),
+        # _validate_requests reuses it instead of re-running the full
+        # request×predicate scan. None → compute it from scratch.
+        self._impossibility_report_override = impossibility_report
 
         # Debug mode from SOLVER_LOG_LEVEL env var (consolidates solver.debug.enabled and log_level)
         solver_log_level = os.getenv("SOLVER_LOG_LEVEL", "INFO").upper()
@@ -345,6 +335,9 @@ class DirectBunkingSolver:
         self.soft_constraint_violations: dict[str, tuple[cp_model.IntVar, int]] = {}
         # Track soft constraint bonuses (rewards for good configurations)
         self.soft_constraint_bonuses: dict[str, tuple[cp_model.IntVar, int]] = {}
+        # Track campers whose entire MP request set was impossible — populated by
+        # parent_paramount's hard constraint pass; surfaced post-solve into stats.
+        self.mp_set_entirely_impossible: list[int] = []
 
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
@@ -352,6 +345,9 @@ class DirectBunkingSolver:
         # Validate requests and categorize as possible/impossible
         self.possible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of possible requests
         self.impossible_requests: dict[int, list[DirectBunkRequest]] = {}  # person_cm_id -> list of impossible requests
+        # Set by _validate_requests; surfaced so diagnostic probe loops can
+        # reuse it across solver constructions (see _impossibility_report_override).
+        self.impossibility_report: ImpossibilityReport
         self._validate_requests()
 
     def _build_solver_context(self) -> SolverContext:
@@ -387,6 +383,8 @@ class DirectBunkingSolver:
             debug_constraints=self.debug_constraints,
             soft_constraint_violations=self.soft_constraint_violations,
             soft_constraint_bonuses=self.soft_constraint_bonuses,
+            mp_set_entirely_impossible=self.mp_set_entirely_impossible,
+            mp_skip_cms=self.mp_skip_cms,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
@@ -438,100 +436,103 @@ class DirectBunkingSolver:
         return valid_bunks
 
     def _validate_requests(self) -> None:
-        """Validate requests and categorize as possible or impossible.
+        """Classify requests as possible or impossible via the shared module.
 
-        Impossible cases:
-        - Requested person is not in the solver at all
-        - bunk_with targeting a person in a different session (session boundaries
-          prevent sharing a bunk). not_bunk_with across sessions is still possible
-          since separation is guaranteed by session boundaries.
-        - bunk_with or not_bunk_with request with no requested_person_cm_id
-          (malformed request)
+        Delegates to bunking.solver.impossibility.validate_impossibility,
+        which both this solver and api.routers.solver.pre_validate_solver
+        share. Populates self.possible_requests, self.impossible_requests,
+        and self.request_validation_summary from the structured report.
+
+        Fallback: any bunk_with/not_bunk_with request whose target is not
+        present in self.person_idx_map (i.e., the target person was not
+        supplied in the input at all) is classified as impossible under the
+        "target_not_in_solver" reason code. The shared predicates cannot
+        catch this case because they only see persons present in the input;
+        the solver-level person_idx_map is the authoritative membership set.
         """
-        person_by_cm_id = self.input.person_by_cm_id
-        total_requests = 0
-        impossible_count = 0
-        affected_campers = set()
-        impossible_by_reason = {
-            "target_not_in_solver": 0,
-            "cross_session": 0,
-            "malformed": 0,
-        }
+        from bunking.solver.impossibility import validate_impossibility
 
-        for person_cm_id, requests in self.input.requests_by_person.items():
-            if person_cm_id not in self.person_idx_map:
-                continue  # Skip if person not in session
-
+        # Initialize per-camper dicts (existing API surface)
+        for person_cm_id in self.input.requests_by_person:
             self.possible_requests[person_cm_id] = []
             self.impossible_requests[person_cm_id] = []
 
-            for request in requests:
-                total_requests += 1
+        # Reuse a precomputed report when the diagnostic probe loops supplied
+        # one — the request data is identical across probes, so re-running the
+        # full predicate scan per solver construction is wasted work.
+        report = (
+            self._impossibility_report_override
+            if self._impossibility_report_override is not None
+            else validate_impossibility(self.input, self.config)
+        )
+        self.impossibility_report = report
+        impossible_request_ids: set[str] = {item.request_id for item in report.flat}
 
-                # Check if this is a request that references another person
-                if request.request_type in [RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value]:
-                    if request.requested_person_cm_id:
-                        if request.requested_person_cm_id not in self.person_idx_map:
-                            # Requested person not in solver at all
-                            self.impossible_requests[person_cm_id].append(request)
-                            impossible_count += 1
-                            impossible_by_reason["target_not_in_solver"] += 1
-                            affected_campers.add(person_cm_id)
-                        elif (
-                            request.request_type == RequestType.BUNK_WITH.value
-                            and person_by_cm_id[person_cm_id].session_cm_id
-                            != person_by_cm_id[request.requested_person_cm_id].session_cm_id
-                        ):
-                            # bunk_with across sessions is impossible — session
-                            # boundary constraints prevent sharing a bunk.
-                            # (not_bunk_with across sessions is trivially satisfied.)
-                            self.impossible_requests[person_cm_id].append(request)
-                            impossible_count += 1
-                            impossible_by_reason["cross_session"] += 1
-                            affected_campers.add(person_cm_id)
-                        else:
-                            self.possible_requests[person_cm_id].append(request)
-                    else:
-                        # No requested person specified - treat as impossible
-                        self.impossible_requests[person_cm_id].append(request)
-                        impossible_count += 1
-                        impossible_by_reason["malformed"] += 1
+        # Tally requests not caught by predicates but whose target is absent
+        # from person_idx_map — these must be classified impossible here.
+        target_not_in_solver_extra: set[str] = set()
+        for person_cm_id, requests in self.input.requests_by_person.items():
+            if person_cm_id not in self.person_idx_map:
+                continue
+            for request in requests:
+                if request.id in impossible_request_ids:
+                    continue
+                if request.request_type in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
+                    if request.requested_person_cm_id and request.requested_person_cm_id not in self.person_idx_map:
+                        target_not_in_solver_extra.add(request.id)
+
+        for person_cm_id, requests in self.input.requests_by_person.items():
+            if person_cm_id not in self.person_idx_map:
+                continue
+            for request in requests:
+                if request.id in impossible_request_ids or request.id in target_not_in_solver_extra:
+                    self.impossible_requests[person_cm_id].append(request)
                 else:
-                    # Other request types (age_preference, etc.) are always possible
                     self.possible_requests[person_cm_id].append(request)
 
-        # Log validation results
-        if impossible_count > 0:
-            logger.warning(
-                f"Request validation: {impossible_count} of {total_requests} requests "
-                f"are infeasible (person not in solver, in a different session, or missing target)"
-            )
-            logger.warning(f"Affected campers: {len(affected_campers)}")
+        # Pre-initialize the canonical reason codes so keys are always present
+        # (callers expect zero-valued keys even when no impossibilities exist).
+        impossible_by_reason: dict[str, int] = {
+            "target_not_in_solver": 0,
+            "cross_session": 0,
+            "malformed": 0,
+            "pair_no_shared_bunk": 0,
+            "age_pref_no_eligible_grade": 0,
+        }
+        for item in report.flat:
+            impossible_by_reason[item.reason_code] = impossible_by_reason.get(item.reason_code, 0) + 1
+        impossible_by_reason["target_not_in_solver"] += len(target_not_in_solver_extra)
 
-            # Log details for debugging
-            if self.debug_mode:
-                logger.debug("Impossible requests by camper:")
-                for person_cm_id in list(affected_campers)[:10]:  # Show first 10
-                    person = person_by_cm_id[person_cm_id]
-                    impossible_reqs = self.impossible_requests[person_cm_id]
-                    for req in impossible_reqs:
-                        if req.requested_person_cm_id and req.requested_person_cm_id in self.person_idx_map:
-                            reason = "different session"
-                        else:
-                            reason = "not in solver"
-                        logger.debug(
-                            f"  - {person.name}: {req.request_type} request for "
-                            f"ID {req.requested_person_cm_id} ({reason})"
-                        )
-
-        # Store summary for later use
+        total_requests = sum(
+            len(reqs)
+            for person_cm_id, reqs in self.input.requests_by_person.items()
+            if person_cm_id in self.person_idx_map
+        )
+        total_impossible = report.total_impossible + len(target_not_in_solver_extra)
+        # Build the union of cm_ids — a camper with one predicate-caught request
+        # AND one target-not-in-solver request must be counted ONCE.
+        flat_cmids: set[int] = {item.requester["cm_id"] for item in report.flat if item.requester.get("cm_id")}
+        extra_cmids: set[int] = {
+            request.requester_person_cm_id
+            for person_cm_id, requests in self.input.requests_by_person.items()
+            if person_cm_id in self.person_idx_map
+            for request in requests
+            if request.id in target_not_in_solver_extra
+        }
         self.request_validation_summary: dict[str, Any] = {
             "total_requests": total_requests,
-            "possible_requests": total_requests - impossible_count,
-            "impossible_requests": impossible_count,
-            "affected_campers": len(affected_campers),
+            "possible_requests": total_requests - total_impossible,
+            "impossible_requests": total_impossible,
             "impossible_by_reason": impossible_by_reason,
+            "affected_campers": len(flat_cmids | extra_cmids),
         }
+
+        if total_impossible > 0:
+            reason_summary = " ".join(f"{k}={v}" for k, v in impossible_by_reason.items() if v > 0)
+            logger.warning(
+                f"Request validation: {total_impossible} of {total_requests} requests are infeasible ({reason_summary})"
+            )
+            logger.warning(f"Affected campers: {self.request_validation_summary['affected_campers']}")
 
     def check_feasibility(self) -> None:
         """Perform pre-solve feasibility checks and log warnings."""
@@ -1305,7 +1306,7 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            resolved_mp = [r for r in resolved_requests if _is_material_parent(r)]
+            resolved_mp = [r for r in resolved_requests if is_material_parent_request(r)]
             mp_requests_total += len(resolved_mp)
             satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
             mp_requests_satisfied += len(satisfied_mp)
@@ -1327,12 +1328,7 @@ class DirectBunkingSolver:
                 continue
 
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            # TODO(stage-4-retire): when the parent-paramount Stage 4 reweighting
-            # lands, retire `_is_material_parent()` (a legacy wrapper around
-            # `classify_request()` from bunking.satisfaction.bucket) and the
-            # Stage-4-era `staff_*` / `immaterial_*` metric mirrors that read
-            # from this same diagnostic.
-            if any(_is_material_parent(r) for r in resolved_possible):
+            if any(is_material_parent_request(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)
@@ -1342,6 +1338,14 @@ class DirectBunkingSolver:
         self.request_validation_summary["unsatisfied_no_possible"] = len(no_possible)
         self.request_validation_summary["unsatisfied_material_parent_unmet"] = len(material_parent_unmet)
         self.request_validation_summary["unsatisfied_other_unmet"] = len(other_unmet)
+        # Hard MSO bug signal: non-zero means the hard constraint failed to bind.
+        # Dashboard and alerting latch onto this key specifically.
+        self.request_validation_summary["mp_constraint_bug_signal"] = len(material_parent_unmet)
+        # Campers whose entire MP set was structurally impossible — the hard
+        # constraint was not added for them. Populated by parent_paramount
+        # during constraint build; surfaced here for dashboard visibility.
+        self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
+        self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
 
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet
@@ -1379,10 +1383,21 @@ class DirectBunkingSolver:
                 self.constraint_logger.log_violation(
                     "must_satisfy_one_material_parent_unmet",
                     f"{person.name} (ID: {person_cm_id}): {possible_count} possible requests, none satisfied",
-                    severity="warning",
+                    severity="error",
                 )
             if len(material_parent_unmet) > 10:
                 logger.info(f"... and {len(material_parent_unmet) - 10} more")
+            if material_parent_unmet:
+                logger.error(
+                    "parent_paramount_unbound: %d MP-having campers ended with no MP request satisfied under hard MSO",
+                    len(material_parent_unmet),
+                    extra={
+                        "parent_paramount": {
+                            "unmet_cm_ids": material_parent_unmet,
+                            "bug": "parent_paramount_unbound",
+                        }
+                    },
+                )
 
         if other_unmet:
             logger.info(

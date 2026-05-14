@@ -425,6 +425,9 @@ export const queryKeys = {
   solverRunsPrefix: () => ['solver-runs'] as const,
   solverRuns: (filters?: SolverRunsFilters) => ['solver-runs', filters ?? {}] as const,
 
+  // Solver pre-validate (debug view) — see frontend/src/pages/summer/SolverDebugPage
+  preCheck: (sessionCmId: number | null, year: number) => ['pre-check', sessionCmId, year] as const,
+
   // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
   scenariosList: (year: number) => ['scenarios', 'list', year] as const,
 }

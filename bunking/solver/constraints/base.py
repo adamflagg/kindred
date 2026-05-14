@@ -68,6 +68,20 @@ class SolverContext:
     # Keys map to (IntVar, weight) where IntVar=1 means bonus earned
     soft_constraint_bonuses: dict[str, tuple[cp_model.IntVar, int]] = field(default_factory=dict)
 
+    # Hard-constraint diagnostics
+    # CM IDs of campers whose entire Material-Parent request set is impossible
+    # (cross-session, unresolved name, etc.) — the hard MP constraint is not
+    # added for them. Populated by parent_paramount; read post-solve into
+    # solver_runs.stats for SolverDebug visibility.
+    mp_set_entirely_impossible: list[int] = field(default_factory=list)
+
+    # IIS-localization probe: when the infeasibility analyzer is bisecting the
+    # parent_paramount constraint set, it builds a context with this populated
+    # to skip the hard MP constraint for a specific subset of campers. Empty
+    # by default; production solver runs never set it. See
+    # `localize_hard_mso_infeasibility` in feasibility.py.
+    mp_skip_cms: set[int] = field(default_factory=set)
+
     def is_constraint_disabled(self, constraint_name: str) -> bool:
         """Check if a constraint is disabled in debug mode."""
         return self.debug_constraints.get(constraint_name, False)

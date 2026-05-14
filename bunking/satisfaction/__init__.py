@@ -26,6 +26,7 @@ from bunking.satisfaction.bucket import (
     COUNTED_BUCKETS,
     RequestBucket,
     classify_request,
+    is_material_parent_request,
 )
 from bunking.satisfaction.predicate import is_request_satisfied
 
@@ -41,6 +42,7 @@ __all__ = [
     "bucket_status",
     "camper_satisfaction",
     "classify_request",
+    "is_material_parent_request",
     "is_request_satisfied",
     "session_satisfaction",
 ]

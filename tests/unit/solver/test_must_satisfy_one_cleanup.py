@@ -8,7 +8,9 @@ actively wrong:
   - ``constraint.must_satisfy_one.ignore_impossible_requests`` (off-path
     injects guaranteed false soft-violations)
 
-KEPT: ``constraint.must_satisfy_one.penalty`` (the lone tunable).
+Stage 4 (#1379) extension: ``constraint.must_satisfy_one.penalty`` is also
+removed — the soft constraint was replaced by a hard CP-SAT constraint
+over Material-Parent requests only, so the penalty knob is dead config.
 
 Also deletes the ``add_age_preference_penalties`` function (~75 LOC, zero
 callers since initial commit, reads phantom config key
@@ -40,11 +42,12 @@ def test_schema_drops_enabled_fallback_ignore_impossible() -> None:
         assert key not in CONFIG_SCHEMA, f"{key} must be removed from CONFIG_SCHEMA"
 
 
-def test_schema_keeps_penalty() -> None:
+def test_schema_drops_penalty() -> None:
     from bunking.config.schema import CONFIG_SCHEMA
 
-    assert "constraint.must_satisfy_one.penalty" in CONFIG_SCHEMA, (
-        "constraint.must_satisfy_one.penalty must remain — it is the lone tunable knob"
+    assert "constraint.must_satisfy_one.penalty" not in CONFIG_SCHEMA, (
+        "constraint.must_satisfy_one.penalty must NOT be in CONFIG_SCHEMA — "
+        "removed in Stage 4 (#1379) when soft MSO became hard MP constraint"
     )
 
 
@@ -52,7 +55,7 @@ def test_schema_keeps_penalty() -> None:
 
 
 def _must_satisfy_source() -> str:
-    import bunking.solver.constraints.must_satisfy as mod
+    import bunking.solver.constraints.parent_paramount as mod
 
     return inspect.getsource(mod)
 
@@ -133,3 +136,32 @@ def test_migration_drops_three_must_satisfy_one_rows() -> None:
 def test_migration_uses_subcategory_must_satisfy_one() -> None:
     text = _migration_text()
     assert 'subcategory = "must_satisfy_one"' in text, 'Migration filter must scope to subcategory = "must_satisfy_one"'
+
+
+# Stage 4 (#1379) delete migration -------------------------------------------
+
+
+def _stage_4_migration_text() -> str:
+    repo_root = Path(__file__).resolve().parents[3]
+    path = repo_root / "pocketbase" / "pb_migrations" / "1500000099_drop_must_satisfy_one_penalty.js"
+    assert path.exists(), f"Migration file missing: {path}"
+    return path.read_text()
+
+
+def test_stage_4_migration_drops_penalty_row() -> None:
+    """Pin: the Stage 4 migration must delete the penalty row (not just any
+    must_satisfy_one row)."""
+    text = _stage_4_migration_text()
+    assert 'config_key = "penalty"' in text, (
+        'Migration must filter on config_key = "penalty" to delete only the penalty row'
+    )
+    assert 'subcategory = "must_satisfy_one"' in text, 'Migration must scope to subcategory = "must_satisfy_one"'
+
+
+def test_stage_4_migration_down_restores_seed_value() -> None:
+    """Pin: down-migration restores the original seeded value 100000 so a
+    rollback restores the pre-Stage-4 state."""
+    text = _stage_4_migration_text()
+    assert 'record.set("value", 100000)' in text, (
+        "Down-migration must restore the original seeded value 100000 from 1500000011_config.js"
+    )

@@ -48,8 +48,12 @@ penalty, 600s budget):
 
 ## Stream 1 — Stage 4: Hard Must-Satisfy-One Constraint
 
-**Status:** Tabled pending #1158 (predicate consolidation, merged 2026-05).
-Architecturally unblocked.
+**Status:** Shipped in #1391 (2026-05-13). The motivation, "why hard works,"
+safety gate, and risks below remain accurate. The "Surprising side-effect:
+model simplification" section was wrong in its model-size math — see the
+inline note in that section for the corrected version. Follow-ups #1395,
+\#1396, \#1397, \#1398 capture the remaining work surfaced during
+implementation.
 
 ### Motivation
 
@@ -74,10 +78,11 @@ property of CP-SAT's feasible region. The solver cannot produce *any*
 solution that violates it; the LP relaxation prunes friend-X-elsewhere
 branches at every node. There is no "trade-off" to lose locally.
 
-### Surprising side-effect: model simplification
+### Model simplification — original hypothesis vs. shipped reality
 
-Current soft MSO (`bunking/solver/constraints/must_satisfy.py:126-135`)
-per MP-having camper:
+**Original hypothesis (incorrect as written).** The soft MSO at
+`bunking/solver/constraints/must_satisfy.py:126-135` (pre-rename) looked
+like this per MP-having camper:
 
 ```python
 violation = ctx.model.NewBoolVar(...)                                # +1 BoolVar
@@ -86,26 +91,65 @@ ctx.model.Add(sum(all_sat_vars) >= 1).OnlyEnforceIf(violation.Not()) # +1 reifie
 ctx.soft_constraint_violations[...] = (violation, penalty)            # +1 objective term
 ```
 
-Hard MSO collapses to:
+The roadmap predicted collapsing to:
 
 ```python
 ctx.model.Add(sum(all_sat_vars) >= 1)                                # +1 plain linear
 ```
 
-S2 has 164 MP-having campers. Hard MSO directly removes:
+…and removing 164 BoolVars / 328 reified linears / 164 objective terms
+from S2.
 
-- −164 BoolVars (5,561 → ~5,397)
-- −164 linear constraints (21,922 → ~21,758)
-- −164 objective terms (objective function shorter)
-- And *reified → plain* constraint type upgrade — CP-SAT's propagation
-  doesn't have to maintain boolean implication for these.
+> **Reality (#1391):** the existing `all_sat_vars` produced by
+> `add_bunk_request_satisfaction_vars` use **one-way `OnlyEnforceIf`
+> implications** (`bunk_requests.py:75-117`). The solver can set
+> `sat_var = 1` freely without forcing actual co-placement. A hard
+> `sum(all_sat_vars) >= 1` over them would be vacuously satisfiable.
+> The pre-Stage-4 soft constraint summed over these falsifiable vars
+> and the objective rewarded them — meaning the 287,600 penalty was
+> almost certainly operationally inert (the 95.73% MP coverage came
+> from cluster constraints emergently placing friends, not the
+> penalty). See #1396 for the investigation issue.
+>
+> **What shipped** in #1391: hard constraint uses a bidirectional
+> per-request sat var via `ctx.person_bunk_assignment` (matches the
+> encoding `add_objective` uses at `direct_solver.py:663-714`) for
+> bunk_with / not_bunk_with, plus the existing per-(request, bunk)
+> `person_in_clean_bunk` forcing indicators exposed from
+> `add_age_preference_satisfaction_vars` for age_preference. One
+> bidirectional sat var + two reified linears per MP bunk request;
+> zero new vars for age_preference. Net S2 model effect: roughly
+> neutral vs. the soft baseline (−164 violation BoolVars, +~250
+> MP-specific sat vars, +~500 reified linears, +164 plain linears,
+> −164 objective terms). #1395 will eliminate the ~250 duplicate sat
+> vars by unifying with the objective's set.
 
 ### Safety gate
 
 `unsatisfied_no_possible` from `feasibility.py:196` counts campers whose
-ENTIRE MP set is structurally impossible. Currently 0 for S2, meaning
-every MP-having camper has at least one survivable MP request — the
-hard constraint binds cleanly on all of them.
+ENTIRE MP set is structurally impossible. The gate is enforced upstream
+by `_validate_requests` in `direct_solver.py`, which classifies a
+request as impossible when any of the following holds:
+
+- `target_not_in_solver` — requestee absent from `person_idx_map`
+- `cross_session` — `bunk_with` across sessions (boundary forbids)
+- `malformed` — `bunk_with`/`not_bunk_with` with no `requested_person_cm_id`
+- `pair_no_shared_bunk` — `bunk_with` where the requester and target
+  have no gender-compatible same-session bunk (added 2026-05-13 after
+  PR #1391's Taste 1 INFEASIBLE; cross-gender `bunk_with` slipped past
+  the prior gate and the hard MP constraint then forced impossible
+  co-placement). `not_bunk_with` with no shared bunk is trivially
+  satisfied and remains `possible`.
+- `age_pref_no_eligible_grade` — `age_preference` at the same-gender
+  grade bound in the wrong direction. Per camp staff policy: if a
+  camper is the oldest grade of their gender in the session and
+  prefers older (or youngest and prefers younger), the preference is
+  moot — there are no peers to be older/younger than them. Marking
+  impossible upstream is what allows the hard MP constraint to bind
+  cleanly for everyone else. Bounds are derived from the actual
+  same-gender camper pool in the session (scan-the-pool fallback;
+  the follow-up issue to tie this to admin-GUI-configured min/max
+  grades will swap the source without changing the call site).
 
 **Defensive pattern when adding the hard constraint:**
 
@@ -117,17 +161,27 @@ for person_cm_id, possible_reqs in possible_requests.items():
 ```
 
 If a future sweep returns `unsatisfied_no_possible > 0`, those campers
-are skipped (the constraint isn't added for them) and a warning is
-logged. The 4 current `impossible_requests` (synthetic IDs from
-unresolvable names) are spread across kids who ALSO have viable MP
-alternatives, so the constraint still applies to those kids.
+are skipped (the constraint isn't added for them) and surfaced via
+`mp_set_entirely_impossible` for staff review. The 4 current S2
+`impossible_requests` (synthetic IDs from unresolvable names) are spread
+across kids who ALSO have viable MP alternatives, so the constraint
+still applies to those kids.
 
-### Code refs
+**Pair-feasibility scope today:** gender + session. Group locks,
+AG-eligibility quirks, and other pre-fixed-assignment conflicts are
+NOT yet checked. If a future failure mode emerges from one of those,
+extend `_pair_has_shared_bunk` rather than adding a new reason.
 
-- `bunking/solver/constraints/must_satisfy.py:126-135` — current soft modeling
+### Code refs (post-#1391)
+
+- `bunking/solver/constraints/parent_paramount.py` — hard MP constraint (renamed from `must_satisfy.py`)
+- `bunking/solver/constraints/bunk_requests.py:75-117` — one-way soft sat var encoding (see #1395)
+- `bunking/solver/direct_solver.py:643-714` — bidirectional objective-side sat var encoding (template for #1391's hard path)
 - `bunking/solver/direct_solver.py:355-438` — `_validate_requests`, impossibility classification
+- `bunking/solver/direct_solver.py:1215-` — `_check_must_satisfy_one_violations` (post-solve diagnostic, ERROR severity under hard MSO)
 - `bunking/solver/feasibility.py:193-205` — `unsatisfied_no_possible` computation
-- `bunking/solver/constraints/base.py:51` — `ConstraintContext.impossible_requests`
+- `bunking/solver/constraints/base.py` — `SolverContext` including `mp_set_entirely_impossible`
+- `bunking/satisfaction/bucket.py` — `is_material_parent_request` (source-field bucket classifier)
 - Camp policy source: `wife-feedback-2026-04-scoreboard.md` Stage 4 sketch (local doc)
 
 ### Risks (small, in decreasing order)
@@ -152,7 +206,15 @@ alternatives, so the constraint still applies to those kids.
 
 ### GitHub issue
 
-To be filed alongside this doc.
+Tracking: #1379 (closed by #1391 on 2026-05-13).
+
+### Follow-ups surfaced during #1391 implementation
+
+- **#1395** — `refactor(solver): make add_bunk_request_satisfaction_vars bidirectional + unify sat vars with objective`. Eliminates the "free money" objective reward (one-way soft sat vars are falsifiable) and the ~250 duplicate BoolVars between `add_objective` and `parent_paramount`.
+- **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
+- **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
+- **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
+- **#1424** — `refactor(solver): schematize constraint.grade_spread.max_spread`. The key is read in 4 sites but absent from `CONFIG_SCHEMA`; each read leans on a `default=` to swallow the `UnknownKeyError`. Either schematize it or replace with a named constant.
 
 ---
 
@@ -270,7 +332,7 @@ to eliminate junk) yields:
 | `person_in_bunk[p, b]` — one per (person, bunk) | 193 × 17 = 3,281 | `direct_solver.py:_create_assignment_variables` |
 | `both_in_bunk[req, b]` — one per BUNK_WITH request per bunk | 311 × 17 = 5,287 | `constraints/bunk_requests.py:add_bunk_request_satisfaction_vars` |
 | `req_satisfied[r]` — one per request | 504 | `constraints/bunk_requests.py`, `age_preference.py` |
-| `must_satisfy_violation[p]` — one per MP camper | 164 | `constraints/must_satisfy.py` |
+| ~~`must_satisfy_violation[p]` — one per MP camper~~ | ~~164~~ | ~~`constraints/must_satisfy.py`~~ (removed in #1391, replaced by ~250 bidirectional `parent_paramount_req_*_satisfied` sat vars; see #1395 for unification) |
 | Constraint-internal indicators (grade_ratio, age_spread, level_progression, grade_adjacency) | ~500 | various |
 | **Total before presolve** | **~9,750** | |
 | **Post-presolve (reported)** | **5,561** | |
@@ -436,14 +498,235 @@ To be filed alongside this doc.
 
 ---
 
+## Stream 5 — Infeasibility Localization for Hard Constraints
+
+**Status:** Shipped in #1391 as a debug-mode diagnostic on the failure
+path.
+
+### Motivation
+
+Stream 1 (Stage 4 hard MSO) introduced a class of failure the prior
+Stream 2 metrics can't diagnose: **INFEASIBLE returns where the cause is
+a subset of the hard MP constraints that can't be jointly satisfied.**
+Tier 1/2 metrics target *feasible-but-suboptimal* solves (best-bound
+trajectory, LP gap, pre-solve compression). On INFEASIBLE the solver
+exits in presolve and those metrics yield no signal.
+
+The existing `find_infeasibility_cause` in `feasibility.py` does
+constraint-type-level isolation — it identifies which constraint
+*module* causes infeasibility (e.g. "parent_paramount" vs "gender").
+That's not granular enough when parent_paramount has 95 individual
+constraints and we need to know *which campers* are unsatisfiable.
+
+### Mechanism
+
+After `find_infeasibility_cause` identifies `parent_paramount` as the
+cause, `localize_hard_mso_infeasibility` runs a two-pass IIS search:
+
+1. **Singleton isolation** — for each MP-hard-constrained camper, solve
+   with that camper's hard constraint skipped. Any camper whose alone-
+   removal restores feasibility is reported as singleton-critical.
+2. **Deletion filter** — if no singleton works, start with all hard MP
+   constraints skipped (feasible by construction) and re-enforce them
+   one at a time. Each camper whose re-addition flips feasibility →
+   infeasibility is part of the minimal correction set.
+
+The result is recorded in the in-memory `solver_runs[run_id]` under
+`parent_paramount_iis` and logged at ERROR level. The `stats` JSON
+column on the `solver_runs` PB record carries it forward to the
+debug dashboard.
+
+Cost: ~`time_limit_seconds × N` solves where N is the
+MP-hard-constrained camper count. Each solve typically returns
+INFEASIBLE in presolve (<0.1s), so 95 candidates ≈ 10s. Bounded by
+`max_candidates=200` to keep pathological sessions from runaway cost.
+
+### Why this is its own stream
+
+Tier 1/2 (Stream 2) are *model-shape* and *feasible-solve-progress*
+metrics. Stream 5 is *post-failure root-cause-localization*. Same
+"observability" umbrella, but different solve states and different
+implementation surface. Keeping them as separate streams avoids
+stuffing the Stream 2 doc with diagnostics that only ever fire on
+INFEASIBLE.
+
+### Code refs
+
+- `bunking/solver/feasibility.py:localize_hard_mso_infeasibility`
+- `bunking/solver/constraints/parent_paramount.py` — honors
+  `ctx.mp_skip_cms` for the IIS probe
+- `bunking/solver/constraints/base.py:SolverContext.mp_skip_cms`
+- `api/services/solver_runner.py` — invokes localization after
+  `find_infeasibility_cause` flags parent_paramount
+
+### Risks
+
+1. ~10s extra wall time on INFEASIBLE runs. Acceptable since INFEASIBLE
+   already returns a fast 0.1s solve + 1–2s analyzer. Localization only
+   fires when the analyzer specifically blames `parent_paramount`.
+2. Deletion filter finds *a* minimal MCS, not *the* minimum MCS — if
+   the IIS structure has multiple minimal sets, order of iteration
+   determines which one we report. Acceptable for staff-facing
+   diagnostics; not for formal model verification.
+
+### Out of scope
+
+- CP-SAT assumptions API (`model.AddAssumption` +
+  `solver.SufficientAssumptionsForInfeasibility`). Native IIS support
+  but requires rewriting parent_paramount's constraint emission to be
+  per-camper-toggleable via assumptions. Deferred unless localization
+  performance becomes a bottleneck.
+- Auto-soft-fallback. The localizer tells us *which* campers can't be
+  honored; the architectural decision of whether to gracefully
+  degrade those to soft MSO is a separate question.
+
+---
+
+## Stream 6 — Pre-Check Impossibility Detection Framework
+
+**Status:** Framework + initial predicates shipping alongside Stage 4 hard
+MSO in #1391. Substreams below extend the registry as additional hard
+constraints land or surface gaps are identified.
+
+### Motivation
+
+Stream 1 made unmet MP requests infeasible rather than soft-degradable.
+Stream 5 (IIS Localization) tells us which campers cause it after the
+fact. But the conflict surfaced in Taste 1 — reciprocal `bunk_with`
+across a 2-grade gap — was knowable *before* the solver ran. The
+`_validate_requests` impossibility classifier in `direct_solver.py`
+didn't check grade compatibility; neither did the user-facing
+`/solver/pre-validate` endpoint at `api/routers/solver.py`.
+
+Worse, the two paths had drifted: `pre_validate_solver` does its own
+hand-rolled impossibility logic that misses `cross_session`,
+`pair_no_shared_bunk` (gender), and `age_pref_no_eligible_grade` —
+all checks that *do* exist in `direct_solver._validate_requests`.
+Staff could click "Pre-Check" on the bunking board, see "all clear",
+then run the solver and hit INFEASIBLE.
+
+### Mechanism
+
+A single `bunking/solver/impossibility.py` module owns classification.
+Each hard constraint module registers a `HardConstraintImpossibility`
+predicate exposing up to three optional layers:
+
+- `check_request(req, ctx)` — request-local (malformed, missing target)
+- `check_pair(req, ctx)` — pair-local (gender, grade gap, session boundary)
+- `check_cluster(component_cms, ctx)` — cluster-local (over-spread chain,
+  oversized connected component)
+
+`validate_impossibility(input_data, config) → ImpossibilityReport` runs
+all registered predicates and returns a structured report. Both
+`pre_validate_solver` and `DirectBunkingSolver._validate_requests` call
+this shared function; legacy hand-rolled paths in both are deleted.
+
+A registry discipline test (`tests/unit/solver/impossibility/test_registry.py`)
+asserts every constraint module marked `hard=True` has a matching
+predicate registered. Adding a new hard constraint without one fails CI.
+
+### Predicates in #1391
+
+| Predicate | Layer | Status |
+|---|---|---|
+| `SessionBoundaryImpossibility` | pair | Relocated from `pre_validate_solver` |
+| `GenderImpossibility` | pair | Relocated from `_validate_requests` |
+| `MalformedRequestImpossibility` | request | Relocated from `_validate_requests` |
+| `AgePreferenceImpossibility` | request | Relocated from `_validate_requests` |
+| `GradeCompatibilityImpossibility` | pair + cluster | **NEW** — fixes Taste 1 reciprocal `bunk_with` across grades |
+| `BunkCapacityImpossibility` | cluster | **NEW** — reciprocal `bunk_with` chains > max bunk capacity |
+
+`POST /api/solver/pre-validate` response gains a structured
+`impossibility_report` field replacing the legacy
+`statistics.unsatisfiable_requests`. `PreValidationResultsModal` reads
+the new shape: friendly prose for staff (default), reason-coded
+detail tables for admins (`BUNKING_DEBUG` permission). A chip on
+`SolverDebugPage.SweepPanel` opens the same modal for debug use.
+
+### Why this is its own stream
+
+Stream 5 is *post-failure* root-cause attribution within a single
+constraint module. Stream 6 is *pre-solve* structural rejection of
+requests that can never satisfy ANY hard constraint. Different solve
+states, different surfaces, complementary. Stream 5 fires when the
+solver returns INFEASIBLE despite passing pre-check; Stream 6 catches
+the bulk of cases before the solver runs at all.
+
+### Code refs
+
+- `bunking/solver/impossibility.py` — new shared module
+- `bunking/solver/constraints/grade_spread.py` + `grade_adjacency.py` —
+  contribute to `GradeCompatibilityImpossibility`
+- `bunking/solver/direct_solver.py:_validate_requests` — gutted to delegate
+- `api/routers/solver.py:pre_validate_solver` — gutted to delegate
+- `frontend/src/components/PreValidationResultsModal.tsx` — extended renderer
+- `frontend/src/components/PreValidateRequestsButton.tsx` — existing entry
+- `frontend/src/pages/summer/SolverDebugPage/SweepPanel.tsx` — new debug entry
+
+### Risks
+
+1. **API shape change** — `statistics.unsatisfiable_requests` removed in
+   the same PR. Modal updated together. No external consumers documented.
+2. **Drift between predicates and constraint modules** — mitigated by
+   `test_registry.py`; a `hard=True` constraint without a predicate fails CI.
+3. **Predicate over-eager flagging** silently drops a request from both
+   objective and MSO. Each predicate ships with negative tests (passes on
+   valid cases).
+
+### Deferred substreams
+
+**Stream 6a — `level_progression` impossibility predicate.** If a
+`bunk_with` requestee is locked by level progression to a bunk the
+requester cannot enter (also by progression), the request is impossible.
+Requires mapping level rules to per-camper allowed-bunk sets. Code ref:
+`bunking/solver/constraints/level_progression.py`. Effort: medium.
+
+**Stream 6b — `group_locks` impossibility predicate.** A `bunk_with` into
+a full locked group (no room) is impossible. A `not_bunk_with` between
+two campers already locked together is also impossible. Code ref:
+`bunking/solver/constraints/group_locks.py`. Effort: small.
+
+**Stream 6c — Per-bunk grade range predicates.** Today's
+`GradeCompatibilityImpossibility` uses the global `max_grade_range`. If
+per-bunk grade ranges become hard constraints (some bunks naturally hold
+narrower bands), the predicate needs to additionally verify *some* bunk's
+per-bunk range accepts both pair members. Blocked on per-bunk grade range
+becoming a hard constraint. Effort: medium.
+
+**Stream 6d — Cohort census (demand > supply).** Pre-solve O(N) pass that
+detects (gender, age-band) cohorts where MP demand exceeds bunk supply
+(e.g., 30 g8-F campers all with MP `clean(grade=8)` but only 2 g8-F
+bunks of capacity 12). Produces a new impossibility category
+`cohort_overcommit` (cluster-shape finding). Effort: medium.
+
+**Stream 6e — "Open request" navigational link (staff UX).** Each
+impossibility row in the staff modal links to the request in
+`RequestReviewPanel` filtered to that request. Strictly navigational;
+staff decides any action. Effort: tiny. Risk: navigation breaks if the
+request review filter API changes.
+
+**Stream 6f — Solver-probe-based fallback for unclassified requests.**
+For the residual subset of requests not classified by any static
+predicate, run a CP-SAT probe ("force this request, drop all others,
+check feasibility") as insurance against drift. ~0.1s per probe; only
+runs on the residual 5-10%. Effort: medium. Mitigated today by
+`test_registry.py`; consider only if drift becomes a real issue.
+
+### GitHub issues
+
+Framework + initial predicates ship in #1391. Substreams 6a–6f to be
+filed as separate issues if/when prioritized.
+
+---
+
 ## Suggested order
 
-| # | Stream | Why this slot | Effort | Dependency |
-|---|---|---|---|---|
-| 1 | **Stream 2: Metrics expansion (Tier 1 + Tier 2)** | Foundation for all subsequent measurement. Read-only, low risk. Establishes baselines. | ~120–180 LOC | None |
-| 2 | **Stream 1: Stage 4 hard MSO** | Camp policy fix. Model simplification (−164 vars, −164 reified) visible in new dashboard. | ~150 LOC | Stream 2 (measurement) |
-| 3a | **Stream 4: Mutual-boost** | Independent, can parallel with 3b. Layers cleanly on Stage 4 baseline. | ~80–120 LOC | Stream 1 (baseline) |
-| 3b | **Stream 3: Variable-count attack surface** | Compound model simplification. Bigger blast radius but lower urgency. | ~250–400 LOC | Stream 2 (measurement) |
+| # | Stream | Why this slot | Effort | Dependency | Status |
+|---|---|---|---|---|---|
+| 1 | **Stream 2: Metrics expansion (Tier 1 + Tier 2)** | Foundation for all subsequent measurement. Read-only, low risk. Establishes baselines. | ~120–180 LOC | None | **SHIPPED** (#1385) |
+| 2 | **Stream 1: Stage 4 hard MSO** | Camp policy fix. Model size roughly neutral vs soft baseline (corrected from original −164 estimate). | ~900 LOC | Stream 2 (measurement) | **SHIPPED** (#1391) |
+| 3a | **Stream 4: Mutual-boost** | Independent, can parallel with 3b. Layers cleanly on Stage 4 baseline. | ~80–120 LOC | Stream 1 (baseline) | Pending |
+| 3b | **Stream 3: Variable-count attack surface** | Compound model simplification. Bigger blast radius but lower urgency. Also see #1395 for the sat-var unification that ought to land before this. | ~250–400 LOC | Stream 2 (measurement), #1395 (recommended) | Pending |
 
 ### Why metrics first
 
@@ -482,5 +765,59 @@ diffs are clearer.
 
 ## Update log
 
-- **2026-05-13** — Doc created (this commit). All four streams
-  documented; GitHub issues to be filed in companion commits.
+- **2026-05-13** — Doc created. All four streams documented; GitHub
+  issues filed in companion commits.
+- **2026-05-13** — Stream 2 (metrics) shipped in #1385.
+- **2026-05-13** — Stream 1 (Stage 4 hard MSO) shipped in #1391.
+  Implementation surfaced that the soft sat vars used one-way
+  `OnlyEnforceIf` implications, so the roadmap's "−164 BoolVars / −164
+  reified" simplification math was wrong as written. The corrected
+  math (model approximately neutral vs soft baseline) is in the Stream
+  1 "Model simplification" section above. Four follow-up issues
+  filed: #1395 (sat var unification), #1396 (penalty-driven
+  investigation), #1397 (`solution.py` cleanup), #1398 (golden
+  alignment test).
+- **2026-05-13** — Stage 4 follow-up bundled into #1391: Taste 1
+  produced INFEASIBLE on first real-data run because cross-gender
+  `bunk_with` MP requests slipped past the safety gate. Widened
+  `_validate_requests` with a new `pair_no_shared_bunk` impossibility
+  reason (gender + session check via `_pair_has_shared_bunk`). Added
+  `parent_paramount` toggle to `feasibility.py`'s analyzer
+  `constraint_types` list — without it the analyzer mis-diagnoses
+  "gender" as the cause when hard MP is the real culprit.
+- **2026-05-13** — Second Stage 4 follow-up in #1391: Taste 1 still
+  INFEASIBLE because MP `age_preference` requests at the same-gender
+  grade bound (e.g. grade-6 boy prefers older in a max-grade-6-boys
+  session) were treated as "possible" by `_validate_requests` and
+  forced the hard MP constraint to fire when no satisfying bunk
+  composition exists. Camp policy: at-bound preferences in the wrong
+  direction are moot ("too bad, impossible"). Added
+  `age_pref_no_eligible_grade` reason and `_session_grade_bounds_for_gender`
+  helper. Bounds derived from the same-gender camper pool today; a
+  follow-up issue tracks tying this to admin-GUI grade configuration.
+- **2026-05-13** — Stream 5 (Infeasibility Localization) shipped in
+  #1391. Taste 1 INFEASIBLE persisted past both gate-widening fixes
+  (only knocked 3 of 98 candidates into `mp_set_entirely_impossible`).
+  Tier 1/2 metrics aren't the right tool for INFEASIBLE diagnostics —
+  they target FEASIBLE-but-suboptimal solves. Added an IIS-style
+  localization pass that fires on `parent_paramount`-caused
+  infeasibility: singleton isolation then deletion filter, reporting
+  the minimal correction set of campers whose hard MP constraints
+  can't be jointly satisfied. Output goes to logs and the
+  `parent_paramount_iis` field on `solver_runs.stats`.
+- **2026-05-13** — Stream 6 (Pre-Check Impossibility Detection
+  Framework) scoped and bundling into #1391. IIS on Taste 1 returned
+  a 2-camper MCS: a reciprocal `bunk_with` across a 2-grade gap (g3 ↔
+  g5). Each alone is satisfiable, the pair isn't. Singleton isolation
+  missed because removing either still leaves the other's MP forcing
+  co-placement. The pair-feasibility gate (`_pair_has_shared_bunk`)
+  only checks session + gender, not grade compatibility — exactly the
+  drift Stream 6 fixes. New `bunking/solver/impossibility.py` module
+  with per-constraint predicate registry; both `pre_validate_solver`
+  and `DirectBunkingSolver._validate_requests` delegate to it.
+  `GradeCompatibilityImpossibility` (pair + cluster) catches
+  that case pre-solve. API response `impossibility_report` replaces
+  legacy `statistics.unsatisfiable_requests`. `PreValidationResultsModal`
+  extended with staff-friendly prose vs admin-detail views. Substreams
+  6a–6f (level_progression, group_locks, per-bunk grade range, cohort
+  census, "open request" link, solver-probe fallback) deferred.

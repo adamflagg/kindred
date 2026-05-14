@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -9,10 +9,9 @@ import {
   Heart,
   Zap,
   Sparkles,
-  ArrowRight,
-  UserMinus,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -27,14 +26,6 @@ interface ValidationStatistics {
   total_requests: number
   campers_with_requests: number
   campers_without_requests: number
-  unsatisfiable_requests: Array<{
-    requester: string
-    requester_name?: string
-    request_type: string
-    requested_cm_id: string
-    requested_name?: string
-    reason: string
-  }>
   capacity_breakdown?: {
     boys: CapacityBreakdownItem
     girls: CapacityBreakdownItem
@@ -50,8 +41,10 @@ interface PreValidationResultsModalProps {
     errors: string[]
     warnings: string[]
     statistics: ValidationStatistics
+    impossibility_report: ImpossibilityReport
   }
-  sessionId: string
+  sessionId?: string
+  sessionLookup: (cm_id: number) => string | undefined
 }
 
 // Parse capacity issues from error messages
@@ -102,8 +95,7 @@ function parseCapacityIssues(errors: string[]): ParsedCapacityIssue[] {
 
 // Parse warnings into structured data
 interface ParsedWarning {
-  type: 'conflict' | 'unsatisfiable' | 'other'
-  count?: number
+  type: 'conflict' | 'other'
   names?: { requester: string; requested: string }
   message: string
 }
@@ -123,19 +115,6 @@ function parseWarnings(warnings: string[]): ParsedWarning[] {
       }
     }
 
-    // Unsatisfiable/unfulfillable requests - multiple formats
-    // "1 camper has requests that may not be fulfilled"
-    // "5 campers have requests that may not be fulfilled"
-    // "X camper(s) have only unsatisfiable requests"
-    const unsatMatch = warning.match(/(\d+) campers? ha(?:ve|s)(?: only unsatisfiable)? requests/i)
-    if (unsatMatch?.[1]) {
-      return {
-        type: 'unsatisfiable' as const,
-        count: parseInt(unsatMatch[1], 10),
-        message: warning,
-      }
-    }
-
     return {
       type: 'other' as const,
       message: warning.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper'),
@@ -150,22 +129,146 @@ function getNonCapacityErrors(errors: string[]): string[] {
     .map((e) => e.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper'))
 }
 
-// Translate technical reasons into friendly labels
-function friendlyReason(reason: string): string {
-  const lowerReason = reason.toLowerCase()
-  if (lowerReason.includes('not in session') || lowerReason.includes('not enrolled')) {
-    return 'Not enrolled'
+// Friendly labels for impossibility reason codes (staff view)
+const FRIENDLY_REASON_LABELS: Record<string, string> = {
+  grade_compatibility: 'Grade range too wide',
+  cross_session: 'Different sessions',
+  pair_no_shared_bunk: "Can't share a cabin",
+  age_pref_no_eligible_grade: 'No matching age group available',
+  malformed: 'Incomplete request',
+}
+
+function friendlyReasonLabel(code: string): string {
+  return FRIENDLY_REASON_LABELS[code] || code
+}
+
+function ordinalGrade(grade: number): string {
+  // Short form (e.g. "5th") — staff scan name + grade + gender inline; the
+  // trailing "grade" word adds noise without helping comprehension.
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = grade % 100
+  return `${grade}${s[(v - 20) % 10] || s[v] || s[0]}`
+}
+
+function requestVerb(requestType: string): string {
+  return requestType === 'not_bunk_with' ? "don't bunk with" : 'bunk with'
+}
+
+function renderSubtext(
+  item: ImpossibilityReportItem,
+  sessionLookup: (cm_id: number) => string | undefined
+) {
+  const r = item.requestee
+  const verb = requestVerb(item.request_type)
+  switch (item.reason_code) {
+    case 'grade_compatibility':
+      return r ? (
+        <div className="text-xs text-stone-600">
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)}
+        </div>
+      ) : null
+
+    case 'cross_session': {
+      if (!r) return null
+      const otherSessionCm = item.detail?.['requestee_session'] as number | undefined
+      const sessionName =
+        (otherSessionCm !== undefined ? sessionLookup(otherSessionCm) : undefined) ??
+        (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
+      return (
+        <div className="text-xs text-stone-600">
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)} · in <strong>{sessionName}</strong> session
+        </div>
+      )
+    }
+
+    case 'pair_no_shared_bunk':
+      return r ? (
+        <div className="text-xs text-stone-600">
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)} — not AG session
+        </div>
+      ) : null
+
+    case 'age_pref_no_eligible_grade': {
+      const dir = item.detail?.['direction'] as 'older' | 'younger' | undefined
+      if (dir === 'older' && item.detail?.['pool_max_grade'] !== undefined) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Wants older</strong> — already at oldest grade
+          </div>
+        )
+      }
+      if (dir === 'younger' && item.detail?.['pool_min_grade'] !== undefined) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Wants younger</strong> — already at youngest grade
+          </div>
+        )
+      }
+      if (dir) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Wants {dir}</strong> — no same-gender peers
+          </div>
+        )
+      }
+      return null
+    }
+
+    case 'malformed':
+      return (
+        <div className="text-xs text-stone-600">
+          <strong>Incomplete request</strong> — form is missing who they want to bunk with
+        </div>
+      )
+
+    default:
+      return r ? (
+        <div className="text-xs text-stone-600">
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)}
+        </div>
+      ) : null
   }
-  if (lowerReason.includes('gender') || lowerReason.includes('different area')) {
-    return 'Different area'
-  }
-  if (lowerReason.includes('age') || lowerReason.includes('spread')) {
-    return 'Age/grade gap'
-  }
-  if (lowerReason.includes('conflict')) {
-    return 'Conflict'
-  }
-  return reason.length > 20 ? reason.slice(0, 17) + '...' : reason
+}
+
+function ImpossibilityItems({
+  items,
+  sessionLookup,
+}: {
+  items: ImpossibilityReportItem[]
+  sessionLookup: (cm_id: number) => string | undefined
+}) {
+  return (
+    <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
+      {items.map((item) => (
+        // Composite key — a request can appear in multiple by_reason buckets
+        // after the multi-reason fix; this component receives one bucket's
+        // items so request_id is unique here, but include reason_code for
+        // safety when callers later flatten.
+        <div key={`${item.request_id}-${item.reason_code}`} className="text-sm">
+          <div className="font-medium">
+            {item.requester.name} ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
+          </div>
+          {renderSubtext(item, sessionLookup)}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // Capacity issue card component
@@ -207,38 +310,25 @@ function ConflictCard({ names }: { names: { requester: string; requested: string
   )
 }
 
-// Unsatisfiable count badge
-function UnsatisfiableBadge({ count }: { count: number }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 p-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
-        <UserMinus className="h-4 w-4 text-amber-600" />
-      </div>
-      <div>
-        <span className="text-foreground font-medium">{count} unfulfillable</span>
-        <div className="text-muted-foreground text-xs">
-          request{count !== 1 ? 's' : ''} can't be met
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function PreValidationResultsModal({
   isOpen,
   onClose,
   results,
+  sessionLookup,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
 
-  const { valid, errors, warnings, statistics } = results
+  const { valid, errors, warnings, statistics, impossibility_report } = results
 
   // Parse structured data from error messages
   const capacityIssues = useMemo(() => parseCapacityIssues(errors), [errors])
   const parsedWarnings = useMemo(() => parseWarnings(warnings), [warnings])
   const otherErrors = useMemo(() => getNonCapacityErrors(errors), [errors])
 
-  const hasIssues = errors.length > 0 || warnings.length > 0
+  const hasIssues =
+    errors.length > 0 || warnings.length > 0 || impossibility_report.total_impossible > 0
+  const showSuccess = valid && !hasIssues
+
   const requestRate =
     statistics.total_campers > 0
       ? Math.round((statistics.campers_with_requests / statistics.total_campers) * 100)
@@ -246,34 +336,39 @@ export default function PreValidationResultsModal({
 
   // Group warnings by type for cleaner display
   const conflictWarnings = parsedWarnings.filter((w) => w.type === 'conflict')
-  const unsatisfiableWarning = parsedWarnings.find((w) => w.type === 'unsatisfiable')
   const otherWarnings = parsedWarnings.filter((w) => w.type === 'other')
+
+  const summaryClass = 'cursor-pointer list-none [&::-webkit-details-marker]:hidden'
 
   const headerContent = (
     <div
       className={`flex items-center gap-3 py-4 pr-14 pl-5 ${
-        valid
+        showSuccess
           ? 'from-forest-500/10 to-forest-400/5 bg-gradient-to-r'
           : 'bg-gradient-to-r from-amber-500/15 to-amber-400/5'
       }`}
     >
       <div
         className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-          valid
+          showSuccess
             ? 'bg-forest-500 shadow-forest-500/30 text-white shadow-lg'
             : 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
         }`}
       >
-        {valid ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+        {showSuccess ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
       </div>
       <div>
         <h2 className="font-display text-foreground text-lg leading-tight font-bold">
-          {valid ? 'Ready to Run!' : 'Heads Up'}
+          {showSuccess ? 'Ready to Run!' : 'Heads Up'}
         </h2>
         <p className="text-muted-foreground text-sm">
-          {valid
+          {showSuccess
             ? 'All requests look good'
-            : `${errors.length + warnings.length} thing${errors.length + warnings.length > 1 ? 's' : ''} to review`}
+            : `${errors.length + warnings.length + impossibility_report.total_impossible} thing${
+                errors.length + warnings.length + impossibility_report.total_impossible !== 1
+                  ? 's'
+                  : ''
+              } to review`}
         </p>
       </div>
     </div>
@@ -284,12 +379,12 @@ export default function PreValidationResultsModal({
       <button
         onClick={onClose}
         className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-          valid
+          showSuccess
             ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
             : 'bg-muted hover:bg-muted/80 text-foreground'
         }`}
       >
-        {valid ? 'Got it!' : 'Close'}
+        {showSuccess ? 'Got it!' : 'Close'}
       </button>
     </div>
   )
@@ -300,8 +395,9 @@ export default function PreValidationResultsModal({
       onClose={onClose}
       header={headerContent}
       footer={footerContent}
-      size="sm"
+      size="md"
       noPadding
+      scrollable
     >
       {/* Quick Stats Row */}
       <div className="border-border/50 bg-muted/30 flex items-center justify-between border-b px-5 py-3">
@@ -355,9 +451,6 @@ export default function PreValidationResultsModal({
             </div>
           )}
 
-          {/* Unsatisfiable requests badge */}
-          {unsatisfiableWarning && <UnsatisfiableBadge count={unsatisfiableWarning.count ?? 1} />}
-
           {/* Conflict warnings - compact cards */}
           {conflictWarnings.length > 0 && (
             <div className="space-y-1.5">
@@ -398,8 +491,38 @@ export default function PreValidationResultsModal({
         </div>
       )}
 
+      {/* Impossibility Report — staff view */}
+      <div className="space-y-3 px-5 py-4">
+        {impossibility_report.total_impossible === 0 ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
+            <CheckCircle2 className="mr-2 inline-block h-5 w-5" />
+            No impossible requests found for this scenario.
+          </div>
+        ) : (
+          <>
+            {Object.entries(impossibility_report.by_reason).map(([code, items]) => (
+              <details
+                key={code}
+                open
+                className="rounded-lg border border-amber-200 bg-amber-50 p-3"
+              >
+                <summary
+                  className={`flex items-center justify-between font-semibold text-amber-900 ${summaryClass}`}
+                >
+                  <span>{friendlyReasonLabel(code)}</span>
+                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
+                    {items.length}
+                  </span>
+                </summary>
+                <ImpossibilityItems items={items} sessionLookup={sessionLookup} />
+              </details>
+            ))}
+          </>
+        )}
+      </div>
+
       {/* Collapsible Details */}
-      {(statistics.unsatisfiable_requests.length > 0 || hasIssues) && (
+      {(impossibility_report.total_impossible > 0 || hasIssues) && (
         <div className="border-border/50 border-t">
           <button
             onClick={() => setShowDetails(!showDetails)}
@@ -529,39 +652,6 @@ export default function PreValidationResultsModal({
                   <div className="text-muted-foreground text-[10px]">no reqs</div>
                 </div>
               </div>
-
-              {/* Unsatisfiable requests detail - compact table */}
-              {statistics.unsatisfiable_requests.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                    Unfulfillable Requests
-                  </p>
-                  <div className="border-border/50 max-h-32 overflow-y-auto rounded-lg border">
-                    <table className="w-full text-xs">
-                      <tbody className="divide-border/30 divide-y">
-                        {statistics.unsatisfiable_requests.map((req, index) => (
-                          <tr key={index} className="hover:bg-muted/30">
-                            <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requester_name ?? 'Unknown'}
-                            </td>
-                            <td className="text-muted-foreground px-1 py-1.5 text-center">
-                              <ArrowRight className="inline h-3 w-3" />
-                            </td>
-                            <td className="text-foreground max-w-[120px] truncate px-2 py-1.5">
-                              {req.requested_name ?? 'Unknown'}
-                            </td>
-                            <td className="px-2 py-1.5 text-right">
-                              <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px]">
-                                {friendlyReason(req.reason)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
 
               {/* Tip for capacity issues */}
               {capacityIssues.length > 0 && (

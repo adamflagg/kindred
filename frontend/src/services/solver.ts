@@ -51,6 +51,23 @@ interface CapacityBreakdownItem {
   sufficient: boolean
 }
 
+export interface ImpossibilityReportItem {
+  request_id: string
+  reason_code: string
+  reason_message: string
+  request_type: string
+  requester: { cm_id: number; name: string; grade: number; gender: string }
+  requestee: { cm_id: number; name: string; grade: number; gender: string } | null
+  detail: Record<string, unknown>
+}
+
+export interface ImpossibilityReport {
+  total_impossible: number
+  affected_campers: number
+  by_reason: Record<string, ImpossibilityReportItem[]>
+  flat: ImpossibilityReportItem[]
+}
+
 interface ValidationResult {
   valid: boolean
   errors: string[]
@@ -62,18 +79,13 @@ interface ValidationResult {
     total_requests: number
     campers_with_requests: number
     campers_without_requests: number
-    unsatisfiable_requests: Array<{
-      requester: string
-      request_type: string
-      requested_cm_id: string
-      reason: string
-    }>
     capacity_breakdown?: {
       boys: CapacityBreakdownItem
       girls: CapacityBreakdownItem
       ag: CapacityBreakdownItem
     }
   }
+  impossibility_report: ImpossibilityReport
 }
 
 interface BunkingValidationResult {

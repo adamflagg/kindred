@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
+import { useSessionList } from '../hooks/useSessionList'
 import { solverService } from '../services/solver'
+import type { ImpossibilityReport } from '../services/solver'
 import PreValidationResultsModal from './PreValidationResultsModal'
 
 interface PreValidateRequestsButtonProps {
@@ -21,13 +23,8 @@ interface ValidationResult {
     total_requests: number
     campers_with_requests: number
     campers_without_requests: number
-    unsatisfiable_requests: Array<{
-      requester: string
-      request_type: string
-      requested_cm_id: string
-      reason: string
-    }>
   }
+  impossibility_report: ImpossibilityReport
 }
 
 export default function PreValidateRequestsButton({
@@ -40,6 +37,14 @@ export default function PreValidateRequestsButton({
   const [showResults, setShowResults] = useState(false)
   const [validationResults, setValidationResults] = useState<ValidationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const sessionsQuery = useSessionList()
+  const sessionLookup = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const s of sessionsQuery.data ?? []) {
+      map.set(s.cm_id, s.name)
+    }
+    return (cm_id: number): string | undefined => map.get(cm_id)
+  }, [sessionsQuery.data])
 
   const handlePreValidate = async () => {
     setIsValidating(true)
@@ -82,6 +87,7 @@ export default function PreValidateRequestsButton({
           onClose={() => setShowResults(false)}
           results={validationResults}
           sessionId={sessionCmId.toString()}
+          sessionLookup={sessionLookup}
         />
       )}
     </>

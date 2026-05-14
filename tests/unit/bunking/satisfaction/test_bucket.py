@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from bunking.satisfaction.bucket import (
     COUNTED_BUCKETS,
     RequestBucket,
     classify_request,
+    is_material_parent_request,
 )
+
+
+def _mock_request(source_field: str | None) -> Mock:
+    """Build a Mock request with the given source_field for predicate tests."""
+    r = Mock()
+    r.source_field = source_field
+    r.id = "rec123abc"
+    return r
 
 
 class TestClassifyRequest:
@@ -41,3 +52,32 @@ class TestCountedBuckets:
 
     def test_is_frozenset(self) -> None:
         assert isinstance(COUNTED_BUCKETS, frozenset)
+
+
+class TestIsMaterialParentRequest:
+    """Tests for is_material_parent_request helper."""
+
+    def test_bunk_with_is_material_parent(self) -> None:
+        assert is_material_parent_request(_mock_request("bunk_with")) is True
+
+    def test_socialize_with_is_not_material_parent(self) -> None:
+        assert is_material_parent_request(_mock_request("socialize_with")) is False
+
+    def test_not_bunk_with_is_not_material_parent(self) -> None:
+        assert is_material_parent_request(_mock_request("not_bunk_with")) is False
+
+    def test_bunking_notes_is_not_material_parent(self) -> None:
+        assert is_material_parent_request(_mock_request("bunking_notes")) is False
+
+    def test_internal_notes_is_not_material_parent(self) -> None:
+        assert is_material_parent_request(_mock_request("internal_notes")) is False
+
+    def test_empty_source_field_returns_false(self) -> None:
+        assert is_material_parent_request(_mock_request("")) is False
+
+    def test_none_source_field_returns_false(self) -> None:
+        assert is_material_parent_request(_mock_request(None)) is False
+
+    def test_unknown_source_field_returns_false(self) -> None:
+        # Defensive: don't crash on data-hygiene regressions.
+        assert is_material_parent_request(_mock_request("nonsense_value")) is False

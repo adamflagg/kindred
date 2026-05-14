@@ -171,3 +171,60 @@ def add_grade_spread_soft_constraint(ctx: SolverContext, objective_terms: list[A
             penalties_added += 1
 
     logger.debug(f"Added grade spread soft penalties for {penalties_added} bunks")
+
+
+from bunking.models_v2 import DirectBunkRequest  # noqa: E402
+from bunking.solver.impossibility import (  # noqa: E402
+    HardConstraintImpossibility,
+    ImpossibilityContext,
+    ImpossibilityReason,
+    register,
+)
+
+
+class GradeCompatibilityImpossibility(HardConstraintImpossibility):
+    """Bunks span max 2 consecutive grades (max_grade_range=2 by default).
+
+    Pair: if |a.grade - b.grade| > (max_range - 1), the pair cannot
+    co-occupy ANY bunk satisfying grade_spread + grade_adjacency.
+    """
+
+    name = "grade_compatibility"
+
+    def _max_gap(self, ctx: ImpossibilityContext) -> int:
+        max_range = ctx.config.get_constraint("grade_spread", "max_spread", default=2)
+        # max_range is "max unique grades per bunk" combined with adjacency:
+        # max(grades) - min(grades) <= max_range - 1
+        return max(0, int(max_range) - 1)
+
+    def check_pair(self, req: DirectBunkRequest, ctx: ImpossibilityContext) -> ImpossibilityReason | None:
+        if req.request_type != "bunk_with":
+            return None
+        if not req.requested_person_cm_id:
+            return None
+        requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
+        requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id)
+        if requester is None or requestee is None:
+            return None
+        max_gap = self._max_gap(ctx)
+        gap = abs(requester.grade - requestee.grade)
+        if gap <= max_gap:
+            return None
+        return ImpossibilityReason(
+            code="grade_compatibility",
+            message=(
+                f"{requester.first_name} (grade {requester.grade}) and "
+                f"{requestee.first_name} (grade {requestee.grade}) span "
+                f"{gap} grade levels; cabins can only span "
+                f"{max_gap + 1} consecutive grade(s)."
+            ),
+            detail={
+                "gap": gap,
+                "max_gap_allowed": max_gap,
+                "requester_grade": requester.grade,
+                "requestee_grade": requestee.grade,
+            },
+        )
+
+
+register(GradeCompatibilityImpossibility())

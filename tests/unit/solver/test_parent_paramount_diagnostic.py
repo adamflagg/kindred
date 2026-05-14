@@ -22,6 +22,8 @@ and objective are unchanged.
 
 from __future__ import annotations
 
+import logging
+
 from bunking.config import ConfigLoader
 from bunking.models_v2 import (
     DirectBunk,
@@ -147,7 +149,7 @@ class TestMustSatisfyDiagnosticSplit:
         assert _violation_details(solver, CAT_OTHER_UNMET) == []
 
     def test_unsatisfied_material_parent_request_flagged_as_material_parent_unmet(self, mock_config):
-        """Type B: possible material-parent request unsatisfied → 'material_parent_unmet', warning severity."""
+        """Type B: possible material-parent request unsatisfied → 'material_parent_unmet', error severity."""
         # Both campers in session 100 — request is possible. After solve they're in different bunks.
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100)],
@@ -167,7 +169,7 @@ class TestMustSatisfyDiagnosticSplit:
         assert len(material) == 1
         assert "1001" in material[0]
         sev = solver.constraint_logger.violations[CAT_MATERIAL_PARENT_UNMET][0]["severity"]
-        assert sev == "warning"
+        assert sev == "error"  # promoted from warning: hard MSO makes MP unmet a bug signal
         # Other categories empty.
         assert _violation_details(solver, CAT_NO_POSSIBLE) == []
         assert _violation_details(solver, CAT_OTHER_UNMET) == []
@@ -509,3 +511,59 @@ class TestMustSatisfyDiagnosticSplit:
         assert "1001" in other[0]
         sev = solver.constraint_logger.violations[CAT_OTHER_UNMET][0]["severity"]
         assert sev == "info"
+
+
+def _make_material_parent_unmet_solver() -> tuple[DirectBunkingSolver, list[DirectBunkAssignment]]:
+    """Shared fixture: one camper with a possible material-parent request left unsatisfied.
+
+    Camper 1001 (session 100) wants to bunk with 1002 (session 100) — same session
+    so the request is possible.  They are placed in different bunks so the request
+    is unsatisfied.  This is the canonical Type-B scenario used by TestHardMSODiagnostic.
+    """
+    input_data = DirectSolverInput(
+        persons=[_person(1001, 100), _person(1002, 100)],
+        requests=[_request("r1", 1001, 1002, 100, source_field="bunk_with")],
+        bunks=[_bunk(2001, 100), _bunk(2002, 100)],
+    )
+    solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
+    assignments = [_assignment(1001, 2001, 100), _assignment(1002, 2002, 100)]
+    return solver, assignments
+
+
+class TestHardMSODiagnostic:
+    """Under hard MSO, material_parent_unmet > 0 is a bug signal.
+
+    Tasks 5 of Stage 4 #1379: promote severity to ERROR, emit a one-shot
+    structured ERROR log with bug=parent_paramount_unbound, and expose the
+    count via mp_constraint_bug_signal in request_validation_summary.
+    """
+
+    def test_material_parent_unmet_logs_error_under_hard_mso(self, mock_config, caplog):
+        """The post-loop one-shot ERROR must contain 'parent_paramount_unbound'.
+
+        After calling _check_must_satisfy_one_violations with one unmet MP camper,
+        at least one caplog record must contain 'parent_paramount_unbound'.
+        """
+        solver, assignments = _make_material_parent_unmet_solver()
+
+        with caplog.at_level(logging.ERROR):
+            solver._check_must_satisfy_one_violations(assignments)
+
+        assert any("parent_paramount_unbound" in record.message for record in caplog.records), (
+            "Expected at least one ERROR record containing 'parent_paramount_unbound'"
+        )
+
+    def test_material_parent_unmet_sets_stats_counter(self, mock_config):
+        """request_validation_summary['mp_constraint_bug_signal'] equals the unmet MP count."""
+        solver, assignments = _make_material_parent_unmet_solver()
+
+        solver._check_must_satisfy_one_violations(assignments)
+
+        assert solver.request_validation_summary.get("mp_constraint_bug_signal") == 1
+
+    def test_material_parent_unmet_does_not_raise(self, mock_config):
+        """_check_must_satisfy_one_violations must complete without raising even when MP unmet > 0."""
+        solver, assignments = _make_material_parent_unmet_solver()
+
+        # If this raises, the test fails — that is the assertion.
+        solver._check_must_satisfy_one_violations(assignments)

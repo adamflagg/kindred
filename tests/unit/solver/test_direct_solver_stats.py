@@ -377,7 +377,7 @@ class TestSingleBunkPathStats:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -387,7 +387,7 @@ class TestSingleBunkPathStats:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -492,7 +492,7 @@ class TestSingleBunkStatsKeyParity:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -502,7 +502,7 @@ class TestSingleBunkStatsKeyParity:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -571,7 +571,7 @@ class TestSingleBunkRequestValidation:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -581,7 +581,7 @@ class TestSingleBunkRequestValidation:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -633,7 +633,7 @@ class TestSingleBunkRequestValidation:
                 source_field="bunk_with",
                 status="resolved",
                 priority=4,
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             )
         ]
@@ -650,6 +650,73 @@ class TestSingleBunkRequestValidation:
         assert rv["mp_campers_satisfied"] == 1
         assert rv["all_campers_total"] == 1
         assert rv["all_campers_satisfied"] == 1
+
+
+class TestParentParamountStats:
+    """Stage 4 (#1379) hard MP constraint exposes two new keys on
+    ``request_validation`` for the SolverDebug dashboard:
+
+    - ``mp_set_entirely_impossible_count``: how many campers had MP requests
+      where every one was structurally impossible (cross-session,
+      unresolved name, etc.) — the hard constraint was not added for them.
+    - ``mp_set_entirely_impossible_cm_ids``: the cm_id list for the same
+      cohort.
+
+    Both must be present (even when zero) so the dashboard can render the
+    field without a missing-key fallback.
+    """
+
+    def _make_input(
+        self,
+        num_persons: int = 3,
+    ) -> DirectSolverInput:
+        # Single bunk — uses the fast-path solver (no grade_ratio / etc. config
+        # reads) so a plain MagicMock() config_service works, matching the
+        # pattern used by TestSingleBunkSatisfiedRequestsCentralization.
+        bunk = DirectBunk(
+            id="bunk-a",
+            campminder_id=9001,
+            name="G-1",
+            capacity=12,
+            gender="F",
+            session_cm_id=1000001,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="F",
+                session_cm_id=1000001,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=[], bunks=[bunk])
+
+    def test_stats_includes_mp_set_entirely_impossible_count_zero_when_clean(self) -> None:
+        """When no camper has an all-impossible MP set, the count is 0 and
+        cm_ids is an empty list (still present, not missing)."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats["request_validation"]
+        assert rv["mp_set_entirely_impossible_count"] == 0
+        assert rv["mp_set_entirely_impossible_cm_ids"] == []
+
+    def test_stats_includes_mp_set_entirely_impossible_when_populated(self) -> None:
+        """When parent_paramount marks a camper as all-MP-impossible, the
+        count and cm_ids fields reflect the cohort exactly. Populates the
+        field directly on self (the constraint module would do this during
+        the build pass; tests bypass that pass)."""
+        solver = DirectBunkingSolver(input_data=self._make_input(3), config_service=MagicMock())
+        solver.mp_set_entirely_impossible.extend([1000, 1001])
+        result = solver.solve(time_limit_seconds=10)
+        assert result is not None
+        rv = result.stats["request_validation"]
+        assert rv["mp_set_entirely_impossible_count"] == 2
+        assert sorted(rv["mp_set_entirely_impossible_cm_ids"]) == [1000, 1001]
 
 
 class TestSingleBunkSatisfiedRequestsCentralization:
@@ -671,7 +738,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             name="AG-1",
             capacity=capacity,
             gender="Mixed",
-            session_cm_id=500,
+            session_cm_id=1000001,
         )
         persons = [
             DirectPerson(
@@ -681,7 +748,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M" if i % 2 == 0 else "F",
-                session_cm_id=500,
+                session_cm_id=1000001,
             )
             for i in range(num_persons)
         ]
@@ -695,7 +762,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -714,7 +781,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -738,7 +805,7 @@ class TestSingleBunkSatisfiedRequestsCentralization:
             requester_person_cm_id=1000,
             requested_person_cm_id=1001,
             request_type="not_bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         solver = DirectBunkingSolver(
@@ -992,7 +1059,7 @@ class TestImpossibleRequestBreakdownByReason:
                     name="A",
                     capacity=10,
                     gender="Mixed",
-                    session_cm_id=500,
+                    session_cm_id=1000001,
                 ),
                 DirectBunk(
                     id="bunk-2",
@@ -1000,7 +1067,7 @@ class TestImpossibleRequestBreakdownByReason:
                     name="B",
                     capacity=10,
                     gender="Mixed",
-                    session_cm_id=501,
+                    session_cm_id=1000002,
                 ),
             ]
         return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
@@ -1014,7 +1081,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         input_data = self._make_input(persons, requests=[])
@@ -1026,6 +1093,8 @@ class TestImpossibleRequestBreakdownByReason:
             "target_not_in_solver": 0,
             "cross_session": 0,
             "malformed": 0,
+            "pair_no_shared_bunk": 0,
+            "age_pref_no_eligible_grade": 0,
         }
 
     def test_target_not_in_solver_counted(self) -> None:
@@ -1037,7 +1106,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         # Request targets person 9999 who does not exist in input.persons
@@ -1046,7 +1115,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=9999,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1065,7 +1134,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
             DirectPerson(
                 campminder_person_id=2,
@@ -1074,7 +1143,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=501,  # different session
+                session_cm_id=1000002,  # different session
             ),
         ]
         request = DirectBunkRequest(
@@ -1082,7 +1151,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=2,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1101,7 +1170,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
         ]
         # bunk_with with empty requested_person_cm_id → malformed
@@ -1110,7 +1179,7 @@ class TestImpossibleRequestBreakdownByReason:
             requester_person_cm_id=1,
             requested_person_cm_id=None,
             request_type="bunk_with",
-            session_cm_id=500,
+            session_cm_id=1000001,
             year=2026,
         )
         input_data = self._make_input(persons, requests=[request])
@@ -1129,7 +1198,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=500,
+                session_cm_id=1000001,
             ),
             DirectPerson(
                 campminder_person_id=2,
@@ -1138,7 +1207,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=501,
+                session_cm_id=1000002,
             ),
         ]
         requests = [
@@ -1148,7 +1217,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=9999,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
             # cross_session
@@ -1157,7 +1226,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=2,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
             # malformed
@@ -1166,7 +1235,7 @@ class TestImpossibleRequestBreakdownByReason:
                 requester_person_cm_id=1,
                 requested_person_cm_id=None,
                 request_type="bunk_with",
-                session_cm_id=500,
+                session_cm_id=1000001,
                 year=2026,
             ),
         ]

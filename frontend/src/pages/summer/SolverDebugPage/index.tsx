@@ -1,15 +1,19 @@
+import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Bug, Loader2, Trees } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { DebugTabs } from '../../../components/debug/DebugTabs'
+import SolverDebugImpossibilityModal from '../../../components/SolverDebugImpossibilityModal'
+import { useApiWithAuth } from '../../../hooks/useApiWithAuth'
 import { useYear } from '../../../hooks/useCurrentYear'
 import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
 import { useScenarioList } from '../../../hooks/useScenarioList'
 import { useSessionList } from '../../../hooks/useSessionList'
 import { useSolverRuns } from '../../../hooks/useSolverRuns'
+import { solverService } from '../../../services/solver'
 import { downloadJson } from '../../../utils/jsonExport'
-import type { SolverRunsFilters } from '../../../utils/queryKeys'
+import { queryKeys, type SolverRunsFilters } from '../../../utils/queryKeys'
 
 import { DrillDownDrawer } from './DrillDownDrawer'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
@@ -39,6 +43,19 @@ export default function SolverDebugPage() {
   const sessions = useSessionList()
   const scenarios = useScenarioList()
   const year = useYear()
+  const { fetchWithAuth } = useApiWithAuth()
+  const [selectedSessionCmId, setSelectedSessionCmId] = useState<number | null>(null)
+  const [preCheckModalOpen, setPreCheckModalOpen] = useState(false)
+
+  const preCheckQuery = useQuery({
+    queryKey: queryKeys.preCheck(selectedSessionCmId, year),
+    queryFn: async () => {
+      if (!selectedSessionCmId) return null
+      return solverService.preValidateRequests(selectedSessionCmId, year, fetchWithAuth)
+    },
+    enabled: !!selectedSessionCmId,
+  })
+
   const filtersWithYear = useMemo(() => ({ ...filters, year }), [filters, year])
   // Polling: kicks in when the user just clicked Run sweep (activeSweepId) or
   // when the fetched data shows an unsettled sweep (page-refresh case). The
@@ -251,7 +268,26 @@ export default function SolverDebugPage() {
         onRunSweep={handleRunSweep}
         onCancelSweep={(id) => cancelSweep.mutate(id)}
         inFlightSweep={inFlightSweep}
+        preCheckIsLoading={preCheckQuery.isLoading}
+        preCheckIsError={preCheckQuery.isError}
+        {...(typeof preCheckQuery.data?.impossibility_report.total_impossible === 'number'
+          ? {
+              preCheckImpossibilityCount: preCheckQuery.data.impossibility_report.total_impossible,
+              onOpenPreCheck: () => setPreCheckModalOpen(true),
+            }
+          : {})}
+        onSessionChange={setSelectedSessionCmId}
       />
+
+      {preCheckQuery.data && (
+        <SolverDebugImpossibilityModal
+          isOpen={preCheckModalOpen}
+          onClose={() => setPreCheckModalOpen(false)}
+          report={preCheckQuery.data.impossibility_report}
+          sessionCmId={selectedSessionCmId}
+          year={year}
+        />
+      )}
 
       <SolverFiltersBar
         filters={filters}

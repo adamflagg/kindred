@@ -235,8 +235,8 @@ class MockConfigLoader:
     def get_priority(self, priority_type: str, subtype: str = "default") -> int:
         return self.get_int(f"priority.{priority_type}.{subtype}", default=5)
 
-    def get_constraint(self, constraint_type: str, param: str) -> int:
-        return self.get_int(f"constraint.{constraint_type}.{param}", default=10)
+    def get_constraint(self, constraint_type: str, param: str, default: int = 10) -> int:
+        return self.get_int(f"constraint.{constraint_type}.{param}", default=default)
 
     def get_soft_constraint_weight(self, constraint_name: str) -> int:
         weight_mappings = {

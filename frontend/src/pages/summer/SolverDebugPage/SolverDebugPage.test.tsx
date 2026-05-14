@@ -97,6 +97,10 @@ vi.mock('../../../hooks/useRunSweep', () => ({
   useCancelSweep: () => ({ mutate: vi.fn() }),
 }))
 
+vi.mock('../../../hooks/useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn() }),
+}))
+
 const wrapper = ({ children }: { children: ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
