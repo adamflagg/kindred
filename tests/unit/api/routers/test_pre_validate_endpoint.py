@@ -124,7 +124,6 @@ def test_response_includes_impossibility_report(client: TestClient) -> None:
     assert "affected_campers" in ir
     assert "by_reason" in ir
     assert "flat" in ir
-    assert "clusters" in ir
 
 
 def test_statistics_does_not_include_unsatisfiable_requests(client: TestClient) -> None:

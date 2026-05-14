@@ -552,15 +552,6 @@ class DirectBunkingSolver:
                     if request.id in target_not_in_solver_extra
                 }
             ),
-            "clusters": [
-                {
-                    "reason_code": c.reason_code,
-                    "size": len(c.cm_ids),
-                    "cm_ids": c.cm_ids,
-                    "detail": c.detail,
-                }
-                for c in report.clusters
-            ],
         }
 
         if total_impossible > 0:

@@ -529,7 +529,6 @@ async def pre_validate_solver(
                 "affected_campers": report.affected_campers,
                 "by_reason": {code: [asdict(item) for item in items] for code, items in report.by_reason.items()},
                 "flat": [asdict(item) for item in report.flat],
-                "clusters": [asdict(c) for c in report.clusters],
             },
             "session_breakdown": session_breakdown,
             "related_sessions": ctx.related_session_ids,
