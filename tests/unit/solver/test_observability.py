@@ -96,6 +96,17 @@ class TestImpossibleByReasonByBucket:
             "staff": {},
         }
 
+    def test_two_requests_same_bucket_same_reason_accumulates(self) -> None:
+        pairs = [
+            (_req("r1", 1001, "bunk_with"), "cross_session"),
+            (_req("r2", 1002, "bunk_with"), "cross_session"),
+        ]
+        assert _build_impossible_by_reason_by_bucket(pairs) == {
+            "material_parent": {"cross_session": 2},
+            "immaterial_parent": {},
+            "staff": {},
+        }
+
     def test_unknown_source_field_is_dropped_and_logged(self, caplog) -> None:
         with caplog.at_level(logging.DEBUG):
             result = _build_impossible_by_reason_by_bucket([(_req("r1", 1001, "garbage_field"), "malformed")])
