@@ -124,6 +124,11 @@ class DirectBunkingSolver:
         # parent_paramount's hard constraint pass; surfaced post-solve into stats.
         self.mp_set_entirely_impossible: list[int] = []
 
+        # Canonical per-request satisfaction vars (bunk_with / not_bunk_with),
+        # keyed by request.id. Populated by get_or_create_request_sat_var via
+        # parent_paramount and add_objective; one shared var per request.
+        self.request_satisfied_vars: dict[str, cp_model.IntVar] = {}
+
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
 
@@ -170,6 +175,7 @@ class DirectBunkingSolver:
             soft_constraint_bonuses=self.soft_constraint_bonuses,
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
             mp_skip_cms=self.mp_skip_cms,
+            request_satisfied_vars=self.request_satisfied_vars,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:

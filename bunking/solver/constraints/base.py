@@ -82,6 +82,13 @@ class SolverContext:
     # `localize_hard_mso_infeasibility` in feasibility.py.
     mp_skip_cms: set[int] = field(default_factory=set)
 
+    # Canonical per-request satisfaction vars for bunk_with / not_bunk_with
+    # requests, keyed by request.id. Built + memoized by
+    # get_or_create_request_sat_var (bunk_requests.py); shared so add_objective
+    # and parent_paramount reference one honest bidirectional var per request
+    # instead of two. Exposed post-solve as DirectBunkingSolver.request_satisfied_vars.
+    request_satisfied_vars: dict[str, cp_model.IntVar] = field(default_factory=dict)
+
     def is_constraint_disabled(self, constraint_name: str) -> bool:
         """Check if a constraint is disabled in debug mode."""
         return self.debug_constraints.get(constraint_name, False)
