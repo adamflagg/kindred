@@ -466,3 +466,60 @@ describe('PreValidationResultsModal — staff-only view', () => {
     expect(friendlyLabels).toHaveLength(1)
   })
 })
+
+describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
+  it('renders a camper-level section with action hints by reason code', () => {
+    const results = {
+      ...baseResults,
+      impossibility_report: {
+        total_impossible: 2,
+        affected_campers: 2,
+        by_reason: {},
+        flat: [],
+        mp_campers_entirely_impossible: [
+          {
+            cm_id: 1,
+            name: 'Emma Johnson',
+            grade: 5,
+            gender: 'F',
+            reason_codes: ['target_not_in_solver'],
+          },
+          {
+            cm_id: 2,
+            name: 'Liam Garcia',
+            grade: 6,
+            gender: 'M',
+            reason_codes: ['grade_compatibility'],
+          },
+        ],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+
+    expect(screen.getByText(/zero parent requests honored/i)).toBeInTheDocument()
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/confirm enrollment/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/fix parent input/i)).toBeInTheDocument()
+  })
+
+  it('renders no camper-level section when the rollup is empty', () => {
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={baseResults}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    expect(screen.queryByText(/zero parent requests honored/i)).not.toBeInTheDocument()
+  })
+})
