@@ -60,13 +60,25 @@ def _build_and_solve(mock_config: Any) -> tuple[DirectBunkingSolver, cp_model.Cp
 
 
 def _person_to_bunk(solver: DirectBunkingSolver, cp_solver: cp_model.CpSolver) -> dict[int, int]:
-    """Reconstruct the cm_id -> bunk_cm_id map the predicate consumes."""
+    """Reconstruct the cm_id -> bunk_cm_id map the predicate consumes.
+
+    The hard assignment constraint (``sum(assignments) == 1`` per camper)
+    guarantees exactly one bunk per camper in any FEASIBLE/OPTIMAL solve. We
+    assert that cardinality explicitly so a fixture regression (e.g. the
+    assignment constraint disabled) fails loudly here rather than silently
+    masking an alignment failure.
+    """
     person_to_bunk: dict[int, int] = {}
     for person_idx, person_cm_id in enumerate(solver.person_ids):
-        for bunk_idx, bunk in enumerate(solver.bunks):
-            if cp_solver.Value(solver.assignments[(person_idx, bunk_idx)]) == 1:
-                person_to_bunk[person_cm_id] = bunk.campminder_id
-                break
+        assigned_bunks = [
+            bunk.campminder_id
+            for bunk_idx, bunk in enumerate(solver.bunks)
+            if cp_solver.Value(solver.assignments[(person_idx, bunk_idx)]) == 1
+        ]
+        assert len(assigned_bunks) == 1, (
+            f"expected exactly one assigned bunk for camper {person_cm_id}, got {assigned_bunks}"
+        )
+        person_to_bunk[person_cm_id] = assigned_bunks[0]
     return person_to_bunk
 
 
@@ -127,6 +139,17 @@ def test_alignment_fixture_outcomes_are_deterministic(mock_config: Any) -> None:
     """
     solver, cp_solver = _build_and_solve(mock_config)
     sat_vars = solver.request_satisfied_vars
+
+    # request_satisfied_vars must hold EXACTLY the expected request ids — no
+    # more, no less. Without the converse check, a future change that emits a
+    # shared sat var for an unexpected request id would slip past both this
+    # test and test_satvar_predicate_alignment (whose BUILD_PATH_EXERCISERS
+    # guard only names the three known exercisers).
+    assert set(sat_vars) == set(EXPECTED_SATISFACTION), (
+        "request_satisfied_vars key set drifted from EXPECTED_SATISFACTION:\n"
+        f"  unexpected: {sorted(set(sat_vars) - set(EXPECTED_SATISFACTION))}\n"
+        f"  missing:    {sorted(set(EXPECTED_SATISFACTION) - set(sat_vars))}"
+    )
 
     for req_id, expected in EXPECTED_SATISFACTION.items():
         assert req_id in sat_vars, f"{req_id} expected in request_satisfied_vars but absent"

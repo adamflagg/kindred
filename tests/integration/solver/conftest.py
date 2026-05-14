@@ -5,7 +5,14 @@ tests/unit/solver/test_satvar_unification.py: a MagicMock ConfigLoader that
 forwards every typed getter to its `default=`, plus a _PenaltyStubLoader
 installed via ConfigLoader.use() so penalty helpers in penalties.py that call
 ConfigLoader.get_instance() directly work without a real PocketBase
-connection. Lifted here so multiple integration tests can share it.
+connection.
+
+Lives in this conftest so future integration tests under
+tests/integration/solver/ can opt in; test_satvar_predicate_alignment.py is
+the current consumer. The sibling test_taste_of_camp_feasible.py keeps its own
+variant — it runs the full solve()+scoring path and injects the mock itself as
+the ConfigLoader singleton, which the shallow _PenaltyStubLoader here does not
+cover.
 """
 
 from __future__ import annotations
