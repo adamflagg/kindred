@@ -575,3 +575,51 @@ class TestValidateRequestsReasonSummaryLog:
         infeasible_warnings = [r.message for r in caplog.records if "infeasible" in r.message]
         assert infeasible_warnings, "expected an infeasibility warning to be logged"
         assert "infeasible ()" not in infeasible_warnings[0]
+
+
+def test_target_not_in_solver_classified_impossible_after_delegation():
+    """_validate_requests still classifies a bunk_with to a non-roster target as
+    impossible — now via the predicate, not the deleted hand-rolled fallback."""
+    from unittest.mock import MagicMock
+
+    from bunking.solver.direct_solver import DirectBunkingSolver
+    from tests.unit.solver.impossibility.conftest import (
+        make_bunk,
+        make_input,
+        make_person,
+        make_request,
+    )
+
+    p1 = make_person(1, session=1000001, gender="F", grade=5)
+    bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
+    requests = [make_request("r_ghost", requester=1, requestee=777, session=1000001)]
+    input_data = make_input([p1], bunks, requests)
+
+    solver = DirectBunkingSolver(input_data, MagicMock())
+
+    impossible_ids = {r.id for reqs in solver.impossible_requests.values() for r in reqs}
+    assert "r_ghost" in impossible_ids
+
+
+def test_mp_set_entirely_impossible_populated_at_init():
+    """The entirely-impossible MP camper rollup is populated during __init__
+    (from the report), before add_constraints runs."""
+    from unittest.mock import MagicMock
+
+    from bunking.solver.direct_solver import DirectBunkingSolver
+    from tests.unit.solver.impossibility.conftest import (
+        make_bunk,
+        make_input,
+        make_person,
+        make_request,
+    )
+
+    p1 = make_person(1, session=1000001, gender="F", grade=5)
+    bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
+    # Camper 1's only MP request targets a non-roster cm_id -> entire MP set impossible.
+    requests = [make_request("r1", requester=1, requestee=777, session=1000001)]
+    input_data = make_input([p1], bunks, requests)
+
+    solver = DirectBunkingSolver(input_data, MagicMock())
+
+    assert solver.mp_set_entirely_impossible == [1]
