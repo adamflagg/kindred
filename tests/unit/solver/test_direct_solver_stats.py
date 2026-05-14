@@ -1213,8 +1213,8 @@ class TestImpossibleRequestBreakdownByReason:
         summary = solver.request_validation_summary
         breakdown = summary["impossible_by_reason"]
         flat_total = sum(c for reasons in breakdown.values() for c in reasons.values())
-        # Layer-2 multi-reason recording means flat_total >= impossible_requests.
-        assert flat_total >= summary["impossible_requests"]
+        # No Layer-2 multi-reason requests in this fixture, so the non-deduped flat total equals the impossible count exactly.
+        assert flat_total == summary["impossible_requests"]
         assert summary["impossible_requests"] == 3
 
 

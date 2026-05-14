@@ -283,6 +283,8 @@ class DirectBunkingSolver:
             (request_by_id[item.request_id], item.reason_code) for item in report.flat
         ]
         impossible_pairs.extend((request_by_id[rid], "target_not_in_solver") for rid in target_not_in_solver_extra)
+        # NB: impossible_by_reason (bucketed) drops requests with unknown source_field,
+        # while total_impossible never does — the two are intentionally independent counts.
         impossible_by_reason = _build_impossible_by_reason_by_bucket(impossible_pairs)
 
         total_requests = sum(
