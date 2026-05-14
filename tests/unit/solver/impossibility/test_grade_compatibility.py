@@ -2,8 +2,6 @@
 
 Pair layer: a bunk_with pair whose grade gap > max_grade_range - 1
 cannot co-occupy any bunk satisfying grade_spread + grade_adjacency.
-
-Cluster layer added in Task 9.
 """
 
 from __future__ import annotations
@@ -87,63 +85,43 @@ def test_reciprocal_pair_both_flagged(mock_config):
     assert PREDICATE.check_pair(req_b, ctx) is not None
 
 
-# ---- Cluster-layer tests ----
+def test_grade_compatibility_no_cluster_check_emitted(mock_config):
+    """After Stage 4 hard MSO cleanup, GradeCompatibilityImpossibility no longer emits cluster_grade_compatibility.
 
+    A 5-camper chain spanning grades 3-7 (g3→g4→g5→g6→g7) must NOT produce a
+    cluster_grade_compatibility reason; only pair-level grade_compatibility for
+    cross-grade pairs whose gap > 1.
 
-def test_cluster_within_range_is_not_impossible(mock_config):
-    """A→B (g4↔g4), B→C (g4↔g5): component is {g4, g5}, within range."""
-    from dataclasses import replace as dc_replace
+    Each adjacent pair (g3-g4, g4-g5, g5-g6, g6-g7) has gap=1, which is ≤ max_gap_allowed=1
+    (max_grade_range=2 → max_gap=1), so no pair-level flags for those.
+    The cluster span (g3..g7, range=4) would have triggered the old cluster_grade_compatibility
+    check — after Task A5 removes check_cluster, that code no longer runs.
+    """
+    from bunking.solver.impossibility import validate_impossibility
 
-    p1 = make_person(1, session=100, gender="F", grade=4)
+    # 5-camper chain: each camper is one grade apart, so no pair is individually impossible
+    # but the cluster spans grades 3-7 (range=4 > max_grade_range=2).
+    p1 = make_person(1, session=100, gender="F", grade=3)
     p2 = make_person(2, session=100, gender="F", grade=4)
     p3 = make_person(3, session=100, gender="F", grade=5)
+    p4 = make_person(4, session=100, gender="F", grade=6)
+    p5 = make_person(5, session=100, gender="F", grade=7)
+    # Chain: 1→2→3→4→5 (each adjacent pair has gap=1, within range)
     reqs = [
         make_request("r1", requester=1, requestee=2, session=100),
         make_request("r2", requester=2, requestee=3, session=100),
+        make_request("r3", requester=3, requestee=4, session=100),
+        make_request("r4", requester=4, requestee=5, session=100),
     ]
-    input_data = make_input([p1, p2, p3], [make_bunk(10, session=100)], reqs)
-    ctx = _build_context(input_data, mock_config)
-    component = {1, 2, 3}
-    ctx_c = dc_replace(ctx, bunk_with_components=[component])
+    input_data = make_input([p1, p2, p3, p4, p5], [make_bunk(10, session=100)], reqs)
 
-    assert PREDICATE.check_cluster(component, ctx_c) is None
+    report = validate_impossibility(input_data, mock_config)
 
-
-def test_cluster_spanning_three_grades_is_impossible(mock_config):
-    """Chain A↔B (g3↔g5), B↔C (g5↔g7): component spans {g3, g5, g7}."""
-    from dataclasses import replace as dc_replace
-
-    p1 = make_person(1, session=100, gender="F", grade=3)
-    p2 = make_person(2, session=100, gender="F", grade=5)
-    p3 = make_person(3, session=100, gender="F", grade=7)
-    reqs = [
-        make_request("r1", requester=1, requestee=2, session=100),
-        make_request("r2", requester=2, requestee=3, session=100),
-    ]
-    input_data = make_input([p1, p2, p3], [make_bunk(10, session=100)], reqs)
-    ctx = _build_context(input_data, mock_config)
-    component = {1, 2, 3}
-    ctx_c = dc_replace(ctx, bunk_with_components=[component])
-
-    reason = PREDICATE.check_cluster(component, ctx_c)
-    assert reason is not None
-    assert reason.code == "cluster_grade_compatibility"
-    assert reason.detail["grade_min"] == 3
-    assert reason.detail["grade_max"] == 7
-    assert reason.detail["range"] == 4
-
-
-def test_cluster_consecutive_grades_only_is_not_impossible(mock_config):
-    """Component is {g4, g4, g4, g5}: range 1, within 2-grade allowance."""
-    from dataclasses import replace as dc_replace
-
-    p1 = make_person(1, session=100, gender="F", grade=4)
-    p2 = make_person(2, session=100, gender="F", grade=4)
-    p3 = make_person(3, session=100, gender="F", grade=4)
-    p4 = make_person(4, session=100, gender="F", grade=5)
-    input_data = make_input([p1, p2, p3, p4], [make_bunk(10, session=100)], [])
-    ctx = _build_context(input_data, mock_config)
-    component = {1, 2, 3, 4}
-    ctx_c = dc_replace(ctx, bunk_with_components=[component])
-
-    assert PREDICATE.check_cluster(component, ctx_c) is None
+    for item in report.flat:
+        assert item.reason_code != "cluster_grade_compatibility", (
+            f"cluster_grade_compatibility should be deleted, got {item}"
+        )
+    for cluster in report.clusters:
+        assert cluster.reason_code != "cluster_grade_compatibility", (
+            f"cluster_grade_compatibility should be deleted, got {cluster}"
+        )
