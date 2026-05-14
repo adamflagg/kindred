@@ -1,13 +1,18 @@
 """
-Bunk Request Satisfaction Variables.
+Bunk request satisfaction variables.
 
-Creates satisfaction variables for bunk_with and not_bunk_with requests.
-These variables are used by must_satisfy.py to ensure at least one request
-is satisfied per camper.
+Single canonical builder for bunk_with / not_bunk_with satisfaction vars.
+Both the objective (direct_solver.add_objective) and the hard MP constraint
+(parent_paramount) call get_or_create_request_sat_var, sharing exactly one
+honest bidirectional sat var per request via the memoized
+`ctx.request_satisfied_vars` map.
 
-This module handles the MECHANICS of request satisfaction:
-- bunk_with: satisfied when both campers are in the same bunk
-- not_bunk_with: satisfied when campers are in different bunks
+A sat var is true iff the request's placement condition actually holds:
+- bunk_with:     requester and target are in the same bunk
+- not_bunk_with: requester and target are in different bunks
+
+This module also hosts MalformedRequestImpossibility, the registered
+impossibility predicate for malformed bunk requests.
 """
 
 from __future__ import annotations
@@ -27,146 +32,55 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def add_bunk_request_satisfaction_vars(
+def get_or_create_request_sat_var(
     ctx: SolverContext,
-    requests_by_person: dict[int, list[DirectBunkRequest]],
-) -> dict[int, list[cp_model.IntVar]]:
-    """Create satisfaction variables for bunk_with/not_bunk_with requests.
-
-    This function creates boolean variables that track whether each request
-    is satisfied. The actual "at least one satisfied" constraint is added
-    by must_satisfy.py.
-
-    Args:
-        ctx: Solver context with model, assignments, and mappings
-        requests_by_person: Dict mapping person_cm_id to their filtered
-            bunk_with/not_bunk_with requests (already filtered for explicit sources)
-
-    Returns:
-        Dict mapping person_cm_id to list of satisfaction BoolVars
-    """
-    satisfaction_vars: dict[int, list[cp_model.IntVar]] = {}
-
-    for person_cm_id, requests in requests_by_person.items():
-        if person_cm_id not in ctx.person_idx_map:
-            continue
-
-        person_idx = ctx.person_idx_map[person_cm_id]
-        person_sat_vars: list[cp_model.IntVar] = []
-
-        for request in requests:
-            if request.request_type == RequestType.BUNK_WITH.value:
-                sat_var = _create_bunk_with_satisfaction_var(ctx, person_idx, request)
-                if sat_var is not None:
-                    person_sat_vars.append(sat_var)
-
-            elif request.request_type == RequestType.NOT_BUNK_WITH.value:
-                sat_var = _create_not_bunk_with_satisfaction_var(ctx, person_idx, request)
-                if sat_var is not None:
-                    person_sat_vars.append(sat_var)
-
-        if person_sat_vars:
-            satisfaction_vars[person_cm_id] = person_sat_vars
-
-    return satisfaction_vars
-
-
-def _create_bunk_with_satisfaction_var(
-    ctx: SolverContext,
-    requester_idx: int,
     request: DirectBunkRequest,
 ) -> cp_model.IntVar | None:
-    """Create satisfaction variable for a bunk_with request.
+    """Return the shared bidirectional satisfaction var for a bunk request.
 
-    A bunk_with request is satisfied if both the requester and requested
-    person are assigned to the same bunk.
+    Creates and memoizes the var on first call; later calls for the same
+    request.id return the identical var object. Both add_objective and
+    parent_paramount call this, so each request gets exactly one sat var.
 
-    Args:
-        ctx: Solver context
-        requester_idx: Index of the requesting person
-        request: The bunk_with request
+    Encoding (bidirectional, via ctx.person_bunk_assignment):
+        bunk_with:     sat_var == 1  <=>  requester bunk == target bunk
+        not_bunk_with: sat_var == 1  <=>  requester bunk != target bunk
 
-    Returns:
-        BoolVar that's true when request is satisfied, or None if request is invalid
+    Returns None for requests this builder cannot encode: an unsupported
+    request_type (only bunk_with / not_bunk_with), a missing target, or a
+    target/requester absent from person_idx_map.
     """
-    if not request.requested_person_cm_id:
+    existing = ctx.request_satisfied_vars.get(request.id)
+    if existing is not None:
+        return existing
+
+    if request.request_type not in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
+        # Silent: an unsupported type (e.g. age_preference) is expected control
+        # flow for callers, not a data-integrity smell — unlike the cases below.
         return None
 
-    if request.requested_person_cm_id not in ctx.person_idx_map:
-        logger.debug(f"bunk_with request {request.id}: requested person {request.requested_person_cm_id} not in solver")
+    target_cm_id = request.requested_person_cm_id
+    requester_cm_id = request.requester_person_cm_id
+    if target_cm_id is None or target_cm_id not in ctx.person_idx_map:
+        logger.debug(f"request {request.id}: target {target_cm_id} not in solver — no sat var")
+        return None
+    if requester_cm_id not in ctx.person_idx_map:
+        logger.debug(f"request {request.id}: requester {requester_cm_id} not in solver — no sat var")
         return None
 
-    requested_idx = ctx.person_idx_map[request.requested_person_cm_id]
+    requester_bunk = ctx.person_bunk_assignment[ctx.person_idx_map[requester_cm_id]]
+    target_bunk = ctx.person_bunk_assignment[ctx.person_idx_map[target_cm_id]]
 
-    # Create the satisfaction variable
-    sat_var = ctx.model.NewBoolVar(f"req_{request.id}_satisfied")
+    sat_var = ctx.model.NewBoolVar(f"req_satisfied_{request.id}")
 
-    # Request is satisfied if both are in the same bunk
-    # For each bunk, create a helper variable tracking if both are there
-    for bunk_idx in range(len(ctx.bunks)):
-        both_in_bunk = ctx.model.NewBoolVar(f"req_{request.id}_bunk_{bunk_idx}")
+    if request.request_type == RequestType.BUNK_WITH.value:
+        ctx.model.Add(requester_bunk == target_bunk).OnlyEnforceIf(sat_var)
+        ctx.model.Add(requester_bunk != target_bunk).OnlyEnforceIf(sat_var.Not())
+    else:  # NOT_BUNK_WITH
+        ctx.model.Add(requester_bunk != target_bunk).OnlyEnforceIf(sat_var)
+        ctx.model.Add(requester_bunk == target_bunk).OnlyEnforceIf(sat_var.Not())
 
-        # Both must be in this bunk
-        ctx.model.Add(
-            ctx.assignments[(requester_idx, bunk_idx)] + ctx.assignments[(requested_idx, bunk_idx)] == 2
-        ).OnlyEnforceIf(both_in_bunk)
-
-        # If both in bunk, request is satisfied
-        ctx.model.Add(sat_var == 1).OnlyEnforceIf(both_in_bunk)
-
-    return sat_var
-
-
-def _create_not_bunk_with_satisfaction_var(
-    ctx: SolverContext,
-    requester_idx: int,
-    request: DirectBunkRequest,
-) -> cp_model.IntVar | None:
-    """Create satisfaction variable for a not_bunk_with request.
-
-    A not_bunk_with request is satisfied if the requester and requested
-    person are assigned to different bunks.
-
-    Args:
-        ctx: Solver context
-        requester_idx: Index of the requesting person
-        request: The not_bunk_with request
-
-    Returns:
-        BoolVar that's true when request is satisfied, or None if request is invalid
-    """
-    if not request.requested_person_cm_id:
-        return None
-
-    if request.requested_person_cm_id not in ctx.person_idx_map:
-        logger.debug(
-            f"not_bunk_with request {request.id}: requested person {request.requested_person_cm_id} not in solver"
-        )
-        return None
-
-    requested_idx = ctx.person_idx_map[request.requested_person_cm_id]
-
-    # Create the satisfaction variable
-    sat_var = ctx.model.NewBoolVar(f"req_{request.id}_satisfied")
-
-    # Request is satisfied if NOT in same bunk
-    # We need to check they're in different bunks
-    different_bunks_vars = []
-
-    for bunk_idx in range(len(ctx.bunks)):
-        # Check if person is in this bunk but requested is not
-        person_in_bunk = ctx.assignments[(requester_idx, bunk_idx)]
-        requested_not_in_bunk = ctx.model.NewBoolVar(f"req_{request.id}_diff_bunk_{bunk_idx}")
-        ctx.model.Add(ctx.assignments[(requested_idx, bunk_idx)] == 0).OnlyEnforceIf(requested_not_in_bunk)
-
-        # If person in bunk and requested not, they're separated
-        separated = ctx.model.NewBoolVar(f"req_{request.id}_separated_{bunk_idx}")
-        ctx.model.AddBoolAnd([person_in_bunk, requested_not_in_bunk]).OnlyEnforceIf(separated)
-        different_bunks_vars.append(separated)
-
-    # If separated in any bunk assignment, request is satisfied
-    ctx.model.AddBoolOr(different_bunks_vars).OnlyEnforceIf(sat_var)
-
+    ctx.request_satisfied_vars[request.id] = sat_var
     return sat_var
 
 

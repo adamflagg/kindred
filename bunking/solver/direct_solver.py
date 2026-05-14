@@ -28,6 +28,7 @@ from .callbacks import SolverProgressCallback
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
+from .constraints.bunk_requests import get_or_create_request_sat_var
 from .constraints.cabin_occupancy import (
     add_cabin_minimum_occupancy_constraints,
     add_cabin_minimum_occupancy_soft_penalty,
@@ -124,6 +125,11 @@ class DirectBunkingSolver:
         # parent_paramount's hard constraint pass; surfaced post-solve into stats.
         self.mp_set_entirely_impossible: list[int] = []
 
+        # Canonical per-request satisfaction vars (bunk_with / not_bunk_with),
+        # keyed by request.id. Populated by get_or_create_request_sat_var via
+        # parent_paramount and add_objective; one shared var per request.
+        self.request_satisfied_vars: dict[str, cp_model.IntVar] = {}
+
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
 
@@ -170,6 +176,7 @@ class DirectBunkingSolver:
             soft_constraint_bonuses=self.soft_constraint_bonuses,
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
             mp_skip_cms=self.mp_skip_cms,
+            request_satisfied_vars=self.request_satisfied_vars,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
@@ -422,6 +429,10 @@ class DirectBunkingSolver:
         # First, create satisfaction variables for each request
         person_request_satisfaction = defaultdict(list)  # person_cm_id -> list of (request, satisfaction_var)
 
+        # SolverContext carries self.request_satisfied_vars by reference, so
+        # get_or_create_request_sat_var memo-shares with parent_paramount.
+        ctx = self._build_solver_context()
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in self.person_idx_map:
                 continue
@@ -434,30 +445,20 @@ class DirectBunkingSolver:
                     if request.requested_person_cm_id and request.requested_person_cm_id in self.person_idx_map:
                         target_idx = self.person_idx_map[request.requested_person_cm_id]
 
-                        # Create satisfaction variable for this request
-                        request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
-
-                        # OPTIMIZED: Request is satisfied if both are in same bunk
-                        # Direct comparison - O(1) instead of O(bunks)
-
                         # Check if they can possibly be in the same bunk (gender/session compatible)
                         valid_bunks = self._get_valid_bunks_for_pair(person_idx, target_idx)
 
                         if not valid_bunks:
-                            # No valid bunks for this pair - request cannot be satisfied
+                            # No valid bunks for this pair - request cannot be satisfied.
+                            # Pinned-impossible var stays objective-local (not in the shared map).
+                            request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
                             self.model.Add(request_satisfied == 0)
                         else:
-                            # Request is satisfied if their bunk assignments are equal
-                            # This is a single constraint instead of 20+ constraints!
-                            self.model.Add(
-                                self.person_bunk_assignment[person_idx] == self.person_bunk_assignment[target_idx]
-                            ).OnlyEnforceIf(request_satisfied)
+                            # Borrow the one canonical bidirectional sat var.
+                            request_satisfied = get_or_create_request_sat_var(ctx, request)
 
-                            self.model.Add(
-                                self.person_bunk_assignment[person_idx] != self.person_bunk_assignment[target_idx]
-                            ).OnlyEnforceIf(request_satisfied.Not())
-
-                        person_request_satisfaction[person_cm_id].append((request, request_satisfied))
+                        if request_satisfied is not None:
+                            person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
                 elif request.request_type == RequestType.NOT_BUNK_WITH.value:
                     # Negative request - want them apart
@@ -480,29 +481,20 @@ class DirectBunkingSolver:
                                 )
                         else:
                             # Soft constraint - create satisfaction variable
-                            request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
-
-                            # OPTIMIZED: Request is satisfied if they are NOT in same bunk
-                            # Direct comparison - O(1) instead of O(bunks)
-
                             # Check if they can possibly be in the same bunk
                             valid_bunks = self._get_valid_bunks_for_pair(person_idx, target_idx)
 
                             if not valid_bunks:
-                                # No valid bunks for this pair - they can't be together anyway
+                                # No valid bunks for this pair - they can't be together anyway.
+                                # Pinned-trivial var stays objective-local (not in the shared map).
+                                request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
                                 self.model.Add(request_satisfied == 1)
                             else:
-                                # Request is satisfied if their bunk assignments are NOT equal
-                                # This is a single constraint instead of 20+ constraints!
-                                self.model.Add(
-                                    self.person_bunk_assignment[person_idx] != self.person_bunk_assignment[target_idx]
-                                ).OnlyEnforceIf(request_satisfied)
+                                # Borrow the one canonical bidirectional sat var.
+                                request_satisfied = get_or_create_request_sat_var(ctx, request)
 
-                                self.model.Add(
-                                    self.person_bunk_assignment[person_idx] == self.person_bunk_assignment[target_idx]
-                                ).OnlyEnforceIf(request_satisfied.Not())
-
-                            person_request_satisfaction[person_cm_id].append((request, request_satisfied))
+                            if request_satisfied is not None:
+                                person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
                 # Note: age_preference requests are handled by must_satisfy_one constraint only
 
@@ -552,9 +544,6 @@ class DirectBunkingSolver:
 
         # NOTE: Age preference is now handled by constraints/age_preference.py
         # NOTE: Level progression is now handled by constraints/level_progression.py
-
-        # Build solver context for modular constraint calls
-        ctx = self._build_solver_context()
 
         # Add age/grade flow incentives
         add_age_grade_flow_objective(ctx, objective_terms)
