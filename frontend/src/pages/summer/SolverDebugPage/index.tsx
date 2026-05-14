@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 import { DebugTabs } from '../../../components/debug/DebugTabs'
-import PreValidationResultsModal from '../../../components/PreValidationResultsModal'
+import SolverDebugImpossibilityModal from '../../../components/SolverDebugImpossibilityModal'
 import { useApiWithAuth } from '../../../hooks/useApiWithAuth'
 import { useYear } from '../../../hooks/useCurrentYear'
 import { useCancelSweep, useRunSweep } from '../../../hooks/useRunSweep'
@@ -278,11 +278,12 @@ export default function SolverDebugPage() {
       />
 
       {preCheckQuery.data && (
-        <PreValidationResultsModal
+        <SolverDebugImpossibilityModal
           isOpen={preCheckModalOpen}
           onClose={() => setPreCheckModalOpen(false)}
-          results={preCheckQuery.data}
-          sessionId={String(selectedSessionCmId ?? '')}
+          report={preCheckQuery.data.impossibility_report}
+          sessionCmId={selectedSessionCmId}
+          year={year}
         />
       )}
 
