@@ -12,11 +12,7 @@ import {
   UserMinus,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
-import type {
-  ImpossibilityReport,
-  ImpossibilityReportItem,
-  ImpossibilityCluster,
-} from '../services/solver'
+import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -48,7 +44,8 @@ interface PreValidationResultsModalProps {
     statistics: ValidationStatistics
     impossibility_report: ImpossibilityReport
   }
-  sessionId: string
+  sessionId?: string
+  sessionLookup: (cm_id: number) => string | undefined
 }
 
 // Parse capacity issues from error messages
@@ -150,13 +147,10 @@ function getNonCapacityErrors(errors: string[]): string[] {
 // Friendly labels for impossibility reason codes (staff view)
 const FRIENDLY_REASON_LABELS: Record<string, string> = {
   grade_compatibility: 'Grade range too wide',
-  cluster_grade_compatibility: 'Group spans too many grades',
   cross_session: 'Different sessions',
   pair_no_shared_bunk: "Can't share a cabin (no compatible cabin available)",
   age_pref_no_eligible_grade: 'No matching age group available',
-  cluster_capacity: 'Group too large for one cabin',
   malformed: 'Incomplete request',
-  target_not_in_session: 'Requested camper not in this session',
 }
 
 function friendlyReasonLabel(code: string): string {
@@ -169,7 +163,91 @@ function ordinalGrade(grade: number): string {
   return `${grade}${s[(v - 20) % 10] || s[v] || s[0]} grade`
 }
 
-function ImpossibilityItems({ items }: { items: ImpossibilityReportItem[] }) {
+function renderSubtext(
+  item: ImpossibilityReportItem,
+  sessionLookup: (cm_id: number) => string | undefined
+) {
+  const r = item.requestee
+  switch (item.reason_code) {
+    case 'grade_compatibility':
+      return r ? (
+        <div className="text-xs text-stone-600">
+          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)}
+        </div>
+      ) : null
+
+    case 'cross_session': {
+      if (!r) return null
+      const otherSessionCm = item.detail?.['requestee_session'] as number | undefined
+      const sessionName =
+        (otherSessionCm !== undefined ? sessionLookup(otherSessionCm) : undefined) ??
+        (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
+      return (
+        <div className="text-xs text-stone-600">
+          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)} · in{' '}
+          <strong>{sessionName}</strong> session
+        </div>
+      )
+    }
+
+    case 'pair_no_shared_bunk':
+      return r ? (
+        <div className="text-xs text-stone-600">
+          wants to bunk with <strong>{r.name}</strong> ({r.gender}) — no compatible cabin in this
+          session
+        </div>
+      ) : null
+
+    case 'age_pref_no_eligible_grade': {
+      const dir = item.detail?.['direction'] as 'older' | 'younger' | undefined
+      if (dir === 'older' && item.detail?.['pool_max_grade'] !== undefined) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Prefers older bunkmates</strong> — already in the oldest grade in their session
+          </div>
+        )
+      }
+      if (dir === 'younger' && item.detail?.['pool_min_grade'] !== undefined) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Prefers younger bunkmates</strong> — already in the youngest grade in their
+            session
+          </div>
+        )
+      }
+      if (dir) {
+        return (
+          <div className="text-xs text-stone-600">
+            <strong>Prefers {dir} bunkmates</strong> — no same-gender campers in their session
+          </div>
+        )
+      }
+      return null
+    }
+
+    case 'malformed':
+      return (
+        <div className="text-xs text-stone-600">
+          <strong>Incomplete request</strong> — form is missing who they want to bunk with
+        </div>
+      )
+
+    default:
+      return r ? (
+        <div className="text-xs text-stone-600">
+          wants to bunk with <strong>{r.name}</strong> · {ordinalGrade(r.grade)}
+        </div>
+      ) : null
+  }
+}
+
+function ImpossibilityItems({
+  items,
+  sessionLookup,
+}: {
+  items: ImpossibilityReportItem[]
+  sessionLookup: (cm_id: number) => string | undefined
+}) {
   return (
     <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
       {items.map((item) => (
@@ -177,33 +255,9 @@ function ImpossibilityItems({ items }: { items: ImpossibilityReportItem[] }) {
           <div className="font-medium">
             {item.requester.name} · {ordinalGrade(item.requester.grade)}
           </div>
-          {item.requestee && (
-            <div className="text-stone-600">
-              wants to bunk with <strong>{item.requestee.name}</strong> ·{' '}
-              {ordinalGrade(item.requestee.grade)}
-            </div>
-          )}
+          {renderSubtext(item, sessionLookup)}
         </div>
       ))}
-    </div>
-  )
-}
-
-function ClusterCard({ cluster }: { cluster: ImpossibilityCluster }) {
-  return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-      <div className="font-semibold text-amber-900">{friendlyReasonLabel(cluster.reason_code)}</div>
-      <div className="mt-1 text-sm text-stone-700">{cluster.reason_message}</div>
-      {cluster.campers.length > 0 && (
-        <div className="mt-2 space-y-0.5 text-sm">
-          {cluster.campers.map((c) => (
-            <div key={c.cm_id} className="flex flex-wrap items-center gap-x-2">
-              <span className="font-medium">{c.name}</span>
-              <span className="text-stone-600">· {ordinalGrade(c.grade)}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -268,6 +322,7 @@ export default function PreValidationResultsModal({
   isOpen,
   onClose,
   results,
+  sessionLookup,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
 
@@ -278,7 +333,10 @@ export default function PreValidationResultsModal({
   const parsedWarnings = useMemo(() => parseWarnings(warnings), [warnings])
   const otherErrors = useMemo(() => getNonCapacityErrors(errors), [errors])
 
-  const hasIssues = errors.length > 0 || warnings.length > 0
+  const hasIssues =
+    errors.length > 0 || warnings.length > 0 || impossibility_report.total_impossible > 0
+  const showSuccess = valid && !hasIssues
+
   const requestRate =
     statistics.total_campers > 0
       ? Math.round((statistics.campers_with_requests / statistics.total_campers) * 100)
@@ -289,31 +347,37 @@ export default function PreValidationResultsModal({
   const unsatisfiableWarning = parsedWarnings.find((w) => w.type === 'unsatisfiable')
   const otherWarnings = parsedWarnings.filter((w) => w.type === 'other')
 
+  const summaryClass = 'cursor-pointer list-none [&::-webkit-details-marker]:hidden'
+
   const headerContent = (
     <div
       className={`flex items-center gap-3 py-4 pr-14 pl-5 ${
-        valid
+        showSuccess
           ? 'from-forest-500/10 to-forest-400/5 bg-gradient-to-r'
           : 'bg-gradient-to-r from-amber-500/15 to-amber-400/5'
       }`}
     >
       <div
         className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-          valid
+          showSuccess
             ? 'bg-forest-500 shadow-forest-500/30 text-white shadow-lg'
             : 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
         }`}
       >
-        {valid ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+        {showSuccess ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
       </div>
       <div>
         <h2 className="font-display text-foreground text-lg leading-tight font-bold">
-          {valid ? 'Ready to Run!' : 'Heads Up'}
+          {showSuccess ? 'Ready to Run!' : 'Heads Up'}
         </h2>
         <p className="text-muted-foreground text-sm">
-          {valid
+          {showSuccess
             ? 'All requests look good'
-            : `${errors.length + warnings.length} thing${errors.length + warnings.length > 1 ? 's' : ''} to review`}
+            : `${errors.length + warnings.length + impossibility_report.total_impossible} thing${
+                errors.length + warnings.length + impossibility_report.total_impossible !== 1
+                  ? 's'
+                  : ''
+              } to review`}
         </p>
       </div>
     </div>
@@ -324,12 +388,12 @@ export default function PreValidationResultsModal({
       <button
         onClick={onClose}
         className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-          valid
+          showSuccess
             ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
             : 'bg-muted hover:bg-muted/80 text-foreground'
         }`}
       >
-        {valid ? 'Got it!' : 'Close'}
+        {showSuccess ? 'Got it!' : 'Close'}
       </button>
     </div>
   )
@@ -441,8 +505,7 @@ export default function PreValidationResultsModal({
 
       {/* Impossibility Report — staff view */}
       <div className="space-y-3 px-5 py-4">
-        {impossibility_report.total_impossible === 0 &&
-        impossibility_report.clusters.length === 0 ? (
+        {impossibility_report.total_impossible === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
             <CheckCircle2 className="mr-2 inline-block h-5 w-5" />
             No impossible requests found for this scenario.
@@ -455,27 +518,23 @@ export default function PreValidationResultsModal({
                 open
                 className="rounded-lg border border-amber-200 bg-amber-50 p-3"
               >
-                <summary className="flex cursor-pointer items-center justify-between font-semibold text-amber-900">
+                <summary
+                  className={`flex items-center justify-between font-semibold text-amber-900 ${summaryClass}`}
+                >
                   <span>{friendlyReasonLabel(code)}</span>
                   <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
                     {items.length}
                   </span>
                 </summary>
-                <ImpossibilityItems items={items} />
+                <ImpossibilityItems items={items} sessionLookup={sessionLookup} />
               </details>
-            ))}
-
-            {impossibility_report.clusters.map((cluster, idx) => (
-              <ClusterCard key={idx} cluster={cluster} />
             ))}
           </>
         )}
       </div>
 
       {/* Collapsible Details */}
-      {(impossibility_report.total_impossible > 0 ||
-        impossibility_report.clusters.length > 0 ||
-        hasIssues) && (
+      {(impossibility_report.total_impossible > 0 || hasIssues) && (
         <div className="border-border/50 border-t">
           <button
             onClick={() => setShowDetails(!showDetails)}

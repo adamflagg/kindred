@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import PreValidationResultsModal from './PreValidationResultsModal'
 
+const noopSessionLookup = () => undefined
+
 const baseStatistics = {
   total_campers: 30,
   total_bunks: 4,
@@ -22,7 +24,6 @@ const baseResults = {
     affected_campers: 0,
     by_reason: {},
     flat: [],
-    clusters: [],
   },
 }
 
@@ -48,7 +49,6 @@ const resultsWithImpossibility = {
       grade_compatibility: [oneImpossibleItem],
     },
     flat: [oneImpossibleItem],
-    clusters: [],
   },
 }
 
@@ -58,14 +58,19 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       valid: true,
       errors: [],
       warnings: [],
-      statistics: { total_campers: 10, campers_with_requests: 8 },
-      // clusters: [] kept temporarily so current modal doesn't crash — removed from type in C3, modal ref cleaned in D6
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
       impossibility_report: {
         total_impossible: 2,
         affected_campers: 2,
         by_reason: {},
         flat: [],
-        clusters: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
     render(
@@ -73,7 +78,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         isOpen
         onClose={() => {}}
         results={results}
-        // @ts-expect-error sessionLookup added in D6
         sessionLookup={() => 'Session'}
       />
     )
@@ -87,7 +91,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       valid: false,
       errors: [],
       warnings: [],
-      statistics: { total_campers: 10, campers_with_requests: 8 },
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
       impossibility_report: {
         total_impossible: 1,
         affected_campers: 1,
@@ -105,7 +116,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-        clusters: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
     render(
@@ -113,7 +123,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         isOpen
         onClose={() => {}}
         results={results}
-        // @ts-expect-error sessionLookup added in D6
         sessionLookup={() => 'Session'}
       />
     )
@@ -127,7 +136,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       valid: false,
       errors: [],
       warnings: [],
-      statistics: { total_campers: 10, campers_with_requests: 8 },
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
       impossibility_report: {
         total_impossible: 1,
         affected_campers: 1,
@@ -145,7 +161,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-        clusters: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
     const sessionLookup = (cm: number) => (cm === 1378704 ? 'Pioneer Period' : 'Taste of Camp')
@@ -155,7 +170,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         isOpen
         onClose={() => {}}
         results={results}
-        // @ts-expect-error sessionLookup added in D6
         sessionLookup={sessionLookup}
       />
     )
@@ -169,7 +183,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       valid: false,
       errors: [],
       warnings: [],
-      statistics: { total_campers: 10, campers_with_requests: 8 },
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
       impossibility_report: {
         total_impossible: 1,
         affected_campers: 1,
@@ -187,7 +208,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-        clusters: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
     render(
@@ -195,7 +215,6 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         isOpen
         onClose={() => {}}
         results={results}
-        // @ts-expect-error sessionLookup added in D6
         sessionLookup={() => 'Session'}
       />
     )
@@ -209,7 +228,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
       valid: false,
       errors: [],
       warnings: [],
-      statistics: { total_campers: 10, campers_with_requests: 8 },
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
       impossibility_report: {
         total_impossible: 1,
         affected_campers: 1,
@@ -227,20 +253,19 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-        clusters: [],
       } as unknown as import('../services/solver').ImpossibilityReport,
     }
-    const { container } = render(
+    render(
       <PreValidationResultsModal
         isOpen
         onClose={() => {}}
         results={results}
-        // @ts-expect-error sessionLookup added in D6
         sessionLookup={() => 'Session'}
       />
     )
 
-    const detailsEls = container.querySelectorAll('details')
+    // Modal renders via createPortal into document.body; query there
+    const detailsEls = document.querySelectorAll('details')
     expect(detailsEls.length).toBeGreaterThan(0)
     detailsEls.forEach((el) => expect(el.hasAttribute('open')).toBe(true))
   })
@@ -253,7 +278,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
         isOpen={true}
         onClose={() => {}}
         results={baseResults}
-        sessionId="100"
+        sessionLookup={noopSessionLookup}
       />
     )
     expect(screen.getByText(/no impossible requests/i)).toBeInTheDocument()
@@ -275,7 +300,6 @@ describe('PreValidationResultsModal — staff-only view', () => {
           ],
         },
         flat: [],
-        clusters: [],
       },
     }
 
@@ -284,7 +308,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
         isOpen={true}
         onClose={() => {}}
         results={results}
-        sessionId="100"
+        sessionLookup={noopSessionLookup}
       />
     )
     expect(screen.getByText(/grade range too wide/i)).toBeInTheDocument()
@@ -292,40 +316,18 @@ describe('PreValidationResultsModal — staff-only view', () => {
     expect(screen.getByText(/Riley Raines/)).toBeInTheDocument()
   })
 
-  it('renders cluster section when clusters present', () => {
-    const results = {
-      ...baseResults,
-      impossibility_report: {
-        total_impossible: 0,
-        affected_campers: 4,
-        by_reason: {},
-        flat: [],
-        clusters: [
-          {
-            reason_code: 'cluster_grade_compatibility',
-            reason_message: 'A group of 4 spans grades 3-7',
-            cm_ids: [1, 2, 3, 4],
-            campers: [
-              { cm_id: 1, name: 'Pearl', grade: 3, gender: 'F' },
-              { cm_id: 2, name: 'Riley', grade: 5, gender: 'F' },
-              { cm_id: 3, name: 'Olivia', grade: 6, gender: 'F' },
-              { cm_id: 4, name: 'Ava', grade: 7, gender: 'F' },
-            ],
-            detail: { grade_min: 3, grade_max: 7, range: 4 },
-          },
-        ],
-      },
-    }
-
+  it('does not render cluster_grade_compatibility reason code (clusters removed)', () => {
+    // clusters field is no longer part of ImpossibilityReport; this verifies
+    // the modal renders cleanly with no cluster-related output
     render(
       <PreValidationResultsModal
         isOpen={true}
         onClose={() => {}}
-        results={results}
-        sessionId="100"
+        results={baseResults}
+        sessionLookup={noopSessionLookup}
       />
     )
-    expect(screen.getByText(/group spans too many grades/i)).toBeInTheDocument()
+    expect(screen.queryByText(/group spans too many grades/i)).not.toBeInTheDocument()
   })
 
   it('does not render reason codes (staff-only view)', () => {
@@ -334,7 +336,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
-        sessionId="100"
+        sessionLookup={noopSessionLookup}
       />
     )
     expect(screen.queryByText('grade_compatibility')).not.toBeInTheDocument()
@@ -346,7 +348,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
-        sessionId="100"
+        sessionLookup={noopSessionLookup}
       />
     )
     expect(screen.queryByRole('tab', { name: /by reason/i })).not.toBeInTheDocument()
@@ -360,7 +362,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
-        sessionId="100"
+        sessionLookup={noopSessionLookup}
       />
     )
     const friendlyLabels = screen.getAllByText(/grade range too wide/i)
