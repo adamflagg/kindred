@@ -312,10 +312,15 @@ class DirectBunkingSolver:
         }
 
         if total_impossible > 0:
-            reason_summary = " ".join(
-                f"{bucket}.{reason}={count}"
-                for bucket, reasons in impossible_by_reason.items()
-                for reason, count in reasons.items()
+            reason_summary = (
+                " ".join(
+                    f"{bucket}.{reason}={count}"
+                    for bucket, reasons in impossible_by_reason.items()
+                    for reason, count in reasons.items()
+                )
+                # impossible_by_reason drops requests with a missing/unknown source_field,
+                # so the bucketed breakdown can be empty even when total_impossible > 0.
+                or "unclassified — impossible requests have missing/unknown source_field"
             )
             logger.warning(
                 f"Request validation: {total_impossible} of {total_requests} requests are infeasible ({reason_summary})"

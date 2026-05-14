@@ -68,7 +68,10 @@ export function buildRunSummary(run: SolverRun): RunSummary {
 
   const context: RunSummary['context'] = {}
   if (details.source_label) context.source = details.source_label
-  if (stats.status) context.status = stats.status
+  // stats.status is the CP-SAT status, absent for in-flight runs — fall back to
+  // the PocketBase record status ("pending"/"running") so the row stays labelled.
+  const effectiveStatus = stats.status || run.status
+  if (effectiveStatus) context.status = effectiveStatus
   if (details.git_sha) context.git_sha = details.git_sha
   if (details.sweep_label) context.sweep_label = details.sweep_label
 

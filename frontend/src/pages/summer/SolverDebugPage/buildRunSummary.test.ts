@@ -118,6 +118,19 @@ describe('buildRunSummary', () => {
     expect(out.context).toEqual({ status: 'FEASIBLE' })
   })
 
+  it('falls back to run.status when stats.status is absent (in-flight run)', () => {
+    const inFlight: SolverRun = {
+      id: 'rec_inflight',
+      run_id: 'run_inflight',
+      status: 'running',
+      created: '2026-05-12T12:00:00Z',
+      stats: {},
+      details: {},
+    }
+    const out = buildRunSummary(inFlight)
+    expect(out.context.status).toBe('running')
+  })
+
   it('preserves group order: context, outcome groups, size, timing, quality, churn, search, model', () => {
     const out = buildRunSummary(fullRun)
     expect(Object.keys(out)).toEqual([

@@ -153,7 +153,7 @@ def _build_request_density_histogram_by_bucket(
     bucket, increments result[bucket][N] where N is the camper's request count
     in that bucket. All three RequestBucket keys are always present; empty
     buckets are {}. Requests with a missing or unknown source_field are dropped
-    with a DEBUG log (matches is_material_parent_request's defensive pattern).
+    with a DEBUG log.
     """
     result: dict[str, dict[int, int]] = {
         RequestBucket.MATERIAL_PARENT.value: {},

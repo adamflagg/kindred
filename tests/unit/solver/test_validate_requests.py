@@ -9,6 +9,8 @@ remain possible — session boundaries already guarantee separation.
 
 from __future__ import annotations
 
+import logging
+
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
@@ -537,3 +539,39 @@ class TestImpossibilityReportReuse:
         assert {k: [r.id for r in v] for k, v in reused.possible_requests.items()} == {
             k: [r.id for r in v] for k, v in base.possible_requests.items()
         }
+
+
+class TestValidateRequestsReasonSummaryLog:
+    """The infeasibility warning must stay informative even when the bucketed
+    breakdown is empty.
+
+    _build_impossible_by_reason_by_bucket drops requests with a missing or
+    unknown source_field, but total_impossible still counts them. When every
+    impossible request is dropped this way, the per-bucket breakdown is all
+    empty and the log line must not degrade to a bare "infeasible ()".
+    """
+
+    def test_warning_not_empty_parens_when_all_unclassified(self, mock_config, caplog):
+        """All impossible requests have an unclassifiable source_field → empty
+        bucketed breakdown, but the warning still carries a reason note."""
+        with caplog.at_level(logging.WARNING):
+            solver = DirectBunkingSolver(
+                DirectSolverInput(
+                    persons=[_make_person(1001, 1000001)],
+                    requests=[_make_request("r1", 1001, 9999, 1000001, source_field="garbage_field")],
+                    bunks=[_make_bunk(2001, 1000001)],
+                ),
+                ConfigLoader.get_instance(),
+            )
+
+        # Counted as impossible, but dropped from the bucketed breakdown.
+        assert solver.request_validation_summary["impossible_requests"] == 1
+        assert solver.request_validation_summary["impossible_by_reason"] == {
+            "material_parent": {},
+            "immaterial_parent": {},
+            "staff": {},
+        }
+
+        infeasible_warnings = [r.message for r in caplog.records if "infeasible" in r.message]
+        assert infeasible_warnings, "expected an infeasibility warning to be logged"
+        assert "infeasible ()" not in infeasible_warnings[0]

@@ -36,19 +36,20 @@ class TestRequestDensityHistogramByBucket:
         }
 
     def test_buckets_per_camper_per_bucket(self) -> None:
-        # Emma: 1 MP + 2 STAFF requests. Liam: 1 MP request.
+        # Emma: 1 MP + 1 IMMATERIAL + 2 STAFF requests. Liam: 1 MP request.
         requests_by_person = {
             1001: [
                 _req("r1", 1001, "bunk_with"),
                 _req("r2", 1001, "not_bunk_with"),
                 _req("r3", 1001, "internal_notes"),
+                _req("r5", 1001, "socialize_with"),
             ],
             1002: [_req("r4", 1002, "bunk_with")],
         }
         result = _build_request_density_histogram_by_bucket(requests_by_person)
         assert result == {
             "material_parent": {1: 2},  # Emma 1 MP, Liam 1 MP
-            "immaterial_parent": {},
+            "immaterial_parent": {1: 1},  # Emma 1 IMMATERIAL
             "staff": {2: 1},  # Emma 2 STAFF
         }
 
@@ -81,10 +82,11 @@ class TestImpossibleByReasonByBucket:
         pairs = [
             (_req("r1", 1001, "bunk_with"), "target_not_in_solver"),
             (_req("r2", 1002, "not_bunk_with"), "malformed"),
+            (_req("r3", 1003, "socialize_with"), "age_pref_no_eligible_grade"),
         ]
         assert _build_impossible_by_reason_by_bucket(pairs) == {
             "material_parent": {"target_not_in_solver": 1},
-            "immaterial_parent": {},
+            "immaterial_parent": {"age_pref_no_eligible_grade": 1},
             "staff": {"malformed": 1},
         }
 
