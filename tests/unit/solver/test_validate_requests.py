@@ -223,7 +223,7 @@ class TestValidateRequestsCrossSession:
         target-not-in-solver request must be counted ONCE, not twice."""
         # Person 1001 has two impossible requests:
         #   r1: bunk_with cross-session 1002 → caught by predicate (report.flat)
-        #   r2: bunk_with 9999 (not in person_idx_map) → target_not_in_solver_extra
+        #   r2: bunk_with 9999 (not in person_idx_map) → target_not_in_solver predicate (report.flat)
         solver = DirectBunkingSolver(
             DirectSolverInput(
                 persons=[_make_person(1001, 1000001), _make_person(1002, 1000002)],
