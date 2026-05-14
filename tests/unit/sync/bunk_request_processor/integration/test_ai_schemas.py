@@ -144,3 +144,38 @@ class TestExtraForbidOnAllAISchemas:
     def test_full_parse_response_rejects_unknown_field(self) -> None:
         with pytest.raises(ValidationError):
             AIFullParseResponse(**{"unknown_field": "x"})
+
+
+class TestAIBunkRequestItemAgeDirection:
+    """#1401: age_direction is a first-class structured field on AI bunk requests.
+
+    Direction was previously overloaded onto target_name (e.g. target_name="older").
+    A dedicated Literal-constrained field eliminates that overload. The schema does
+    NOT police cross-field semantics — provider enforcement handles drift salvage.
+    """
+
+    def test_age_direction_defaults_to_none(self) -> None:
+        item = AIBunkRequestItem(request_type="age_preference")
+        assert item.age_direction is None
+
+    def test_age_direction_accepts_older(self) -> None:
+        item = AIBunkRequestItem(request_type="age_preference", age_direction="older")
+        assert item.age_direction == "older"
+
+    def test_age_direction_accepts_younger(self) -> None:
+        item = AIBunkRequestItem(request_type="age_preference", age_direction="younger")
+        assert item.age_direction == "younger"
+
+    def test_age_direction_rejects_invalid_value(self) -> None:
+        with pytest.raises(ValidationError):
+            AIBunkRequestItem(request_type="age_preference", age_direction="middle")
+
+    def test_age_direction_accepted_on_bunk_with_but_meaningless(self) -> None:
+        """Schema allows age_direction on any request type; semantic enforcement is in provider."""
+        item = AIBunkRequestItem(
+            request_type="bunk_with",
+            target_name="Emma",
+            age_direction="older",
+        )
+        assert item.request_type == "bunk_with"
+        assert item.age_direction == "older"

@@ -91,6 +91,11 @@ class AIBunkRequestItem(AIBaseRequestItem):
     historical_year: int | None = None
     """Year of historical bunking reference (e.g., 2024 for 'same bunk last year')."""
 
+    age_direction: Literal["older", "younger"] | None = None
+    """Direction for age_preference requests. None means undirected (staff must review).
+    Schema-level only — the provider enforces that drift (e.g. age_direction set on
+    non-age_preference, or target_name set on age_preference) is salvaged + logged."""
+
 
 class AIParseResponse(_ForbidExtraModel):
     """Response from parse-only AI request.

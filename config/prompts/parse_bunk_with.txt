@@ -33,7 +33,9 @@ This field commonly contains:
    target_name = person's name
 
 3. "age_preference" - Preference for older/younger cabinmates (no specific person named)
-   target_name = "older", "younger", or "unclear"
+   Leave target_name null.
+   Set age_direction to "older" or "younger" for a clear direction.
+   Leave age_direction null if the preference is undirected (e.g. "age-appropriate cabin").
    Use when text says "prefers older kids" without naming anyone specific
 
 IMPORTANT: Parents often embed negative requests in this field. Extract BOTH positive and negative.
@@ -111,9 +113,13 @@ Example 5 - Twin context for a named separation:
 Input: "Would prefer to be separate from Ava if possible. Not because they aren't thick as thieves, but precisely b/c they are! As twins, they have to do everything together"
 Output: 1 not_bunk_with request for "Ava" (specific named individual). The twin commentary is rationale, in parse_notes.
 
-Example 6 - Age preference with name:
+Example 6 - Directional age preference:
 Input: "Better with younger kids who are a little gentler. Ethan is citizenship oriented"
-Output: 1 age_preference "younger" request (no person named, just preference)
+Output: 1 age_preference request with age_direction="younger" (target_name null; no person named, just preference)
+
+Example 7 - Undirected age preference:
+Input: "Age-wise, prefers an age-appropriate cabin — no strong preference"
+Output: 1 age_preference request with age_direction=null (target_name null) — undirected; staff will review.
 
 === TEMPORAL CONFLICTS (CRITICAL!) ===
 
@@ -148,7 +154,8 @@ IGNORE Family Camp content entirely:
 
 For each valid request, provide:
 - request_type: "bunk_with" | "not_bunk_with" | "age_preference"
-- target_name: Person's name or age value ("older", "younger", "unclear")
+- target_name: Person's name for bunk_with/not_bunk_with; null for age_preference requests.
+- age_direction: age_preference requests only — "older", "younger", or null (undirected).
 - confidence: 0.0-1.0 (use LOW confidence for uncertain extractions)
 - keywords_found: Priority words like "must", "important", "critical", "first choice"
 
