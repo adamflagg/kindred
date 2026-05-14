@@ -4,12 +4,13 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { REPO_URL } from '../../../constants/repo'
 import { copyText } from '../../../utils/copyText'
 
-import { buildRunSummary } from './buildRunSummary'
+import { buildRunSummary, hasNonEmptyBuckets } from './buildRunSummary'
 import { formatMetric, METRIC_REGISTRY_BY_GROUP, type MetricGroup } from './metricRegistry'
 import { pickStat } from './pickStat'
 import { buildRunTitle } from './runTitle'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
+import type { RequestBucket } from '../../../types/satisfaction'
 
 const GROUP_LABELS: Record<MetricGroup, string> = {
   outcome_requests: 'Outcome (requests)',
@@ -22,6 +23,8 @@ const GROUP_LABELS: Record<MetricGroup, string> = {
   model: 'Model',
   context: 'Context',
 }
+
+const BUCKET_ORDER: RequestBucket[] = ['material_parent', 'immaterial_parent', 'staff']
 
 const GROUP_ORDER: MetricGroup[] = [
   'outcome_requests',
@@ -191,37 +194,63 @@ export function DrillDownDrawer({ run, onClose }: Props) {
             </div>
           ) : null}
 
-          {s.request_density_histogram && Object.keys(s.request_density_histogram).length > 0 ? (
+          {s.request_density_histogram_by_bucket &&
+          hasNonEmptyBuckets(s.request_density_histogram_by_bucket) ? (
             <div>
               <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
-                Request density (campers grouped by request count)
+                Request density by bucket
               </div>
-              <div className="flex flex-wrap gap-2 text-sm">
-                {Object.entries(s.request_density_histogram)
-                  .sort(([a], [b]) => Number(a) - Number(b))
-                  .map(([count, campers]) => (
-                    <span key={count} className="rounded bg-emerald-50 px-3 py-1 text-emerald-900">
-                      {count}× requests: {campers.toLocaleString()}
-                    </span>
-                  ))}
+              <div className="space-y-1">
+                {BUCKET_ORDER.map((bucket) => {
+                  const hist = s.request_density_histogram_by_bucket?.[bucket] ?? {}
+                  const entries = Object.entries(hist).sort(([a], [b]) => Number(a) - Number(b))
+                  return (
+                    <div key={bucket} className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="w-40 shrink-0 text-xs text-gray-500">{bucket}</span>
+                      {entries.length === 0 ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
+                        entries.map(([count, campers]) => (
+                          <span
+                            key={count}
+                            className="rounded bg-emerald-50 px-3 py-1 text-emerald-900"
+                          >
+                            {count}× requests: {campers.toLocaleString()}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ) : null}
 
           {s.request_validation?.impossible_by_reason &&
-          Object.values(s.request_validation.impossible_by_reason).some((n) => n > 0) ? (
+          hasNonEmptyBuckets(s.request_validation.impossible_by_reason) ? (
             <div>
               <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
-                Impossible requests by reason
+                Impossible requests by bucket
               </div>
-              <div className="flex flex-wrap gap-2 text-sm">
-                {Object.entries(s.request_validation.impossible_by_reason).map(
-                  ([reason, count]) => (
-                    <span key={reason} className="rounded bg-red-50 px-3 py-1 text-red-900">
-                      {reason}: {count.toLocaleString()}
-                    </span>
+              <div className="space-y-1">
+                {BUCKET_ORDER.map((bucket) => {
+                  const reasons = s.request_validation?.impossible_by_reason?.[bucket] ?? {}
+                  const entries = Object.entries(reasons)
+                  return (
+                    <div key={bucket} className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="w-40 shrink-0 text-xs text-gray-500">{bucket}</span>
+                      {entries.length === 0 ? (
+                        <span className="text-gray-400">—</span>
+                      ) : (
+                        entries.map(([reason, count]) => (
+                          <span key={reason} className="rounded bg-red-50 px-3 py-1 text-red-900">
+                            {reason}: {count.toLocaleString()}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   )
-                )}
+                })}
               </div>
             </div>
           ) : null}

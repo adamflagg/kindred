@@ -12,7 +12,19 @@ from unittest.mock import MagicMock
 from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
-from bunking.solver.direct_solver import DirectBunkingSolver, _compute_optimality_gap, _count_constraint_types
+from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.observability import _compute_optimality_gap, _count_constraint_types
+
+
+def _make_req(req_id: str, requester: int, source_field: str) -> DirectBunkRequest:
+    return DirectBunkRequest(
+        id=req_id,
+        requester_person_cm_id=requester,
+        request_type="bunk_with",
+        session_cm_id=1000001,
+        year=2026,
+        source_field=source_field,
+    )
 
 
 class TestCountConstraintTypes:
@@ -57,7 +69,7 @@ class TestStatsDictIsJsonSerializable:
         import json
         from unittest.mock import MagicMock
 
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         solver = MagicMock()
         solver.StatusName.return_value = "OPTIMAL"
@@ -157,7 +169,7 @@ class TestBuildStatsDict:
         return proto
 
     def test_includes_existing_back_compat_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -181,7 +193,7 @@ class TestBuildStatsDict:
         assert stats["satisfied_request_count"] == 235
 
     def test_includes_new_timing_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -201,7 +213,7 @@ class TestBuildStatsDict:
         assert stats["num_workers"] == 8
 
     def test_includes_new_quality_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -221,7 +233,7 @@ class TestBuildStatsDict:
         assert stats["solution_info"] == "feasibility_jump_search worker 3"
 
     def test_includes_new_search_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -240,7 +252,7 @@ class TestBuildStatsDict:
         assert stats["num_integer_variables"] == 433
 
     def test_includes_new_model_fields(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         stats = _build_stats_dict(
             solver=self._make_solver(),
@@ -268,7 +280,7 @@ class TestBuildStatsDict:
         """
         from unittest.mock import MagicMock
 
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         solver = MagicMock(
             spec=[
@@ -326,7 +338,7 @@ class TestBuildStatsDictWithRealSolver:
     """
 
     def test_real_solve_populates_cp_sat_internals(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -471,7 +483,7 @@ _BUILD_STATS_DICT_KEYS = frozenset(
         "num_reified_linear",
         "max_linear_coefficient",
         "soft_constraints_by_module",
-        "request_density_histogram",
+        "request_density_histogram_by_bucket",
     }
 )
 
@@ -872,13 +884,13 @@ class TestCountReifiedLinearConstraints:
     """
 
     def test_empty_model_returns_zero(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         assert _count_reified_linear_constraints(model.Proto()) == 0
 
     def test_plain_linear_not_counted(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -886,7 +898,7 @@ class TestCountReifiedLinearConstraints:
         assert _count_reified_linear_constraints(model.Proto()) == 0
 
     def test_counts_reified_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _count_reified_linear_constraints
+        from bunking.solver.observability import _count_reified_linear_constraints
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -915,12 +927,12 @@ class TestCountSoftConstraintsByModule:
     """
 
     def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         assert _count_soft_constraints_by_module({}) == {}
 
     def test_groups_keys_by_known_prefix(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         # Values don't matter — function only inspects keys
         violations: dict[str, object] = {
@@ -942,7 +954,7 @@ class TestCountSoftConstraintsByModule:
         }
 
     def test_unknown_prefix_lands_in_other(self) -> None:
-        from bunking.solver.direct_solver import _count_soft_constraints_by_module
+        from bunking.solver.observability import _count_soft_constraints_by_module
 
         violations: dict[str, object] = {
             "some_future_constraint_42": object(),
@@ -959,13 +971,13 @@ class TestMaxLinearCoefficient:
     LP relaxation can't tighten."""
 
     def test_empty_model_returns_zero(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         assert _max_linear_coefficient(model.Proto()) == 0
 
     def test_finds_max_across_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 1000, "x")
@@ -976,7 +988,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 1000
 
     def test_negative_coefficient_uses_absolute_value(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 100, "x")
@@ -985,7 +997,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 50_000
 
     def test_includes_reified_linear_constraints(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 100, "x")
@@ -994,7 +1006,7 @@ class TestMaxLinearCoefficient:
         assert _max_linear_coefficient(model.Proto()) == 250_000
 
     def test_ignores_non_linear_constraint_types(self) -> None:
-        from bunking.solver.direct_solver import _max_linear_coefficient
+        from bunking.solver.observability import _max_linear_coefficient
 
         model = cp_model.CpModel()
         a = model.NewBoolVar("a")
@@ -1002,40 +1014,6 @@ class TestMaxLinearCoefficient:
         model.AddBoolAnd([a, b])  # No coefficients to look at
         model.AddBoolOr([a, b])
         assert _max_linear_coefficient(model.Proto()) == 0
-
-
-class TestRequestDensityHistogram:
-    """Per-camper request count histogram. Maps (request_count -> camper_count)
-    so the dashboard can show whether the stuck-core is dominated by
-    single-request kids (the typical S2 finding)."""
-
-    def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
-
-        assert _build_request_density_histogram({}) == {}
-
-    def test_groups_campers_by_request_count(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
-
-        # 1 camper with 3 requests, 2 with 1, 1 with 5
-        requests_by_person: dict[int, list[object]] = {
-            1001: [object(), object(), object()],
-            1002: [object()],
-            1003: [object()],
-            1004: [object(), object(), object(), object(), object()],
-        }
-        result = _build_request_density_histogram(requests_by_person)
-        assert result == {3: 1, 1: 2, 5: 1}
-
-    def test_skips_zero_request_campers(self) -> None:
-        from bunking.solver.direct_solver import _build_request_density_histogram
-
-        requests_by_person: dict[int, list[object]] = {
-            1001: [object()],
-            1002: [],  # zero-request campers excluded
-        }
-        result = _build_request_density_histogram(requests_by_person)
-        assert result == {1: 1}
 
 
 class TestImpossibleRequestBreakdownByReason:
@@ -1086,18 +1064,10 @@ class TestImpossibleRequestBreakdownByReason:
         ]
         input_data = self._make_input(persons, requests=[])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
-        # _validate_requests has been called in __init__
         breakdown = solver.request_validation_summary.get("impossible_by_reason")
-        assert isinstance(breakdown, dict)
-        assert breakdown == {
-            "target_not_in_solver": 0,
-            "cross_session": 0,
-            "malformed": 0,
-            "pair_no_shared_bunk": 0,
-            "age_pref_no_eligible_grade": 0,
-        }
+        assert breakdown == {"material_parent": {}, "immaterial_parent": {}, "staff": {}}
 
-    def test_target_not_in_solver_counted(self) -> None:
+    def test_target_not_in_solver_counted_in_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1109,7 +1079,6 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # Request targets person 9999 who does not exist in input.persons
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
@@ -1117,15 +1086,16 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["target_not_in_solver"] == 1
-        assert breakdown["cross_session"] == 0
-        assert breakdown["malformed"] == 0
+        assert breakdown["material_parent"] == {"target_not_in_solver": 1}
+        assert breakdown["immaterial_parent"] == {}
+        assert breakdown["staff"] == {}
 
-    def test_cross_session_counted(self) -> None:
+    def test_cross_session_counted_in_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1143,7 +1113,7 @@ class TestImpossibleRequestBreakdownByReason:
                 grade=8,
                 birthdate="2014-01-01",
                 gender="M",
-                session_cm_id=1000002,  # different session
+                session_cm_id=1000002,
             ),
         ]
         request = DirectBunkRequest(
@@ -1153,15 +1123,14 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["cross_session"] == 1
-        assert breakdown["target_not_in_solver"] == 0
-        assert breakdown["malformed"] == 0
+        assert breakdown["material_parent"] == {"cross_session": 1}
 
-    def test_malformed_counted(self) -> None:
+    def test_staff_sourced_impossible_lands_in_staff_bucket(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1173,23 +1142,23 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # bunk_with with empty requested_person_cm_id → malformed
+        # not_bunk_with with no target → malformed; source_field=not_bunk_with → STAFF
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
             requested_person_cm_id=None,
-            request_type="bunk_with",
+            request_type="not_bunk_with",
             session_cm_id=1000001,
             year=2026,
+            source_field="not_bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         breakdown = solver.request_validation_summary["impossible_by_reason"]
-        assert breakdown["malformed"] == 1
-        assert breakdown["target_not_in_solver"] == 0
-        assert breakdown["cross_session"] == 0
+        assert breakdown["staff"] == {"malformed": 1}
+        assert breakdown["material_parent"] == {}
 
-    def test_breakdown_sum_equals_total_impossible(self) -> None:
+    def test_breakdown_total_matches_flat_count(self) -> None:
         persons = [
             DirectPerson(
                 campminder_person_id=1,
@@ -1211,7 +1180,6 @@ class TestImpossibleRequestBreakdownByReason:
             ),
         ]
         requests = [
-            # target_not_in_solver
             DirectBunkRequest(
                 id="r1",
                 requester_person_cm_id=1,
@@ -1219,8 +1187,8 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
-            # cross_session
             DirectBunkRequest(
                 id="r2",
                 requester_person_cm_id=1,
@@ -1228,8 +1196,8 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
-            # malformed
             DirectBunkRequest(
                 id="r3",
                 requester_person_cm_id=1,
@@ -1237,13 +1205,16 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
+                source_field="bunk_with",
             ),
         ]
         input_data = self._make_input(persons, requests=requests)
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
         summary = solver.request_validation_summary
         breakdown = summary["impossible_by_reason"]
-        assert sum(breakdown.values()) == summary["impossible_requests"]
+        flat_total = sum(c for reasons in breakdown.values() for c in reasons.values())
+        # No Layer-2 multi-reason requests in this fixture, so the non-deduped flat total equals the impossible count exactly.
+        assert flat_total == summary["impossible_requests"]
         assert summary["impossible_requests"] == 3
 
 
@@ -1259,7 +1230,7 @@ class TestTier1MetricsInStatsDict:
     - `num_reified_linear`: int
     - `max_linear_coefficient`: int
     - `soft_constraints_by_module`: dict[str, int]
-    - `request_density_histogram`: dict[int, int]
+    - `request_density_histogram_by_bucket`: dict[str, dict[int, int]]
     - request_validation.impossible_by_reason: dict[str, int]  (via existing field)
     """
 
@@ -1283,7 +1254,7 @@ class TestTier1MetricsInStatsDict:
         return solver
 
     def test_emits_new_tier1_keys(self) -> None:
-        from bunking.solver.direct_solver import _build_stats_dict
+        from bunking.solver.observability import _build_stats_dict
 
         model = cp_model.CpModel()
         x = model.NewIntVar(0, 10, "x")
@@ -1296,9 +1267,9 @@ class TestTier1MetricsInStatsDict:
             "must_satisfy_2": object(),
             "grade_ratio_0_grade_5": object(),
         }
-        requests_by_person: dict[int, list[object]] = {
-            1: [object()],
-            2: [object(), object()],
+        requests_by_person: dict[int, list[DirectBunkRequest]] = {
+            1: [_make_req("r1", 1, "bunk_with")],
+            2: [_make_req("r2", 2, "bunk_with"), _make_req("r3", 2, "bunk_with")],
         }
         stats = _build_stats_dict(
             solver=solver,
@@ -1320,4 +1291,8 @@ class TestTier1MetricsInStatsDict:
             "must_satisfy": 2,
             "grade_ratio": 1,
         }
-        assert stats["request_density_histogram"] == {1: 1, 2: 1}
+        assert stats["request_density_histogram_by_bucket"] == {
+            "material_parent": {1: 1, 2: 1},
+            "immaterial_parent": {},
+            "staff": {},
+        }

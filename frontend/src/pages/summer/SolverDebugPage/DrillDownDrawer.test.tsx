@@ -53,7 +53,7 @@ describe('DrillDownDrawer', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  describe('Tier 1 observability metrics (issue #1380)', () => {
+  describe('Tier 1 observability metrics (issue #1388)', () => {
     const tier1Run: SolverRun = {
       ...run,
       stats: {
@@ -61,13 +61,21 @@ describe('DrillDownDrawer', () => {
         num_reified_linear: 164,
         max_linear_coefficient: 250_000,
         soft_constraints_by_module: { must_satisfy: 83, grade_ratio: 420, age_spread: 17 },
-        request_density_histogram: { 1: 142, 2: 38, 3: 12, 5: 1 },
+        request_density_histogram_by_bucket: {
+          material_parent: { 1: 142, 2: 38 },
+          immaterial_parent: { 1: 12 },
+          staff: {},
+        },
         request_validation: {
           total_requests: 240,
           possible_requests: 236,
           impossible_requests: 4,
           affected_campers: 3,
-          impossible_by_reason: { target_not_in_solver: 2, cross_session: 1, malformed: 1 },
+          impossible_by_reason: {
+            material_parent: { target_not_in_solver: 2, cross_session: 1 },
+            immaterial_parent: {},
+            staff: { malformed: 1 },
+          },
         },
       },
     }
@@ -80,20 +88,26 @@ describe('DrillDownDrawer', () => {
       expect(screen.getByText(/age_spread: 17/)).toBeInTheDocument()
     })
 
-    it('renders request density histogram', () => {
+    it('renders request density histogram per bucket', () => {
       render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
-      expect(screen.getByText(/Request density/i)).toBeInTheDocument()
-      // Chip format: "{count}× requests: {camper_count}"
+      expect(screen.getByText(/Request density by bucket/i)).toBeInTheDocument()
+      expect(screen.getAllByText('material_parent').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('immaterial_parent').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('staff').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText(/1× requests: 142/)).toBeInTheDocument()
-      expect(screen.getByText(/5× requests: 1/)).toBeInTheDocument()
+      expect(screen.getByText(/1× requests: 12/)).toBeInTheDocument()
+      // empty bucket (staff in density / immaterial_parent in impossibles) renders an em-dash row
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
     })
 
-    it('renders impossible request breakdown by reason', () => {
+    it('renders impossible request breakdown per bucket', () => {
       render(<DrillDownDrawer run={tier1Run} onClose={vi.fn()} />)
-      expect(screen.getByText(/Impossible requests by reason/i)).toBeInTheDocument()
+      expect(screen.getByText(/Impossible requests by bucket/i)).toBeInTheDocument()
       expect(screen.getByText(/target_not_in_solver: 2/)).toBeInTheDocument()
       expect(screen.getByText(/cross_session: 1/)).toBeInTheDocument()
       expect(screen.getByText(/malformed: 1/)).toBeInTheDocument()
+      // empty bucket (staff in density / immaterial_parent in impossibles) renders an em-dash row
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
     })
 
     it('hides empty dict-shaped sections', () => {
@@ -102,22 +116,28 @@ describe('DrillDownDrawer', () => {
         stats: {
           ...run.stats,
           soft_constraints_by_module: {},
-          request_density_histogram: {},
+          request_density_histogram_by_bucket: {
+            material_parent: {},
+            immaterial_parent: {},
+            staff: {},
+          },
           request_validation: {
             total_requests: 0,
             possible_requests: 0,
             impossible_requests: 0,
             affected_campers: 0,
-            impossible_by_reason: { target_not_in_solver: 0, cross_session: 0, malformed: 0 },
+            impossible_by_reason: {
+              material_parent: {},
+              immaterial_parent: {},
+              staff: {},
+            },
           },
         },
       }
       render(<DrillDownDrawer run={emptyRun} onClose={vi.fn()} />)
       expect(screen.queryByText(/Soft constraint terms by module/i)).not.toBeInTheDocument()
-      expect(screen.queryByText(/Request density/i)).not.toBeInTheDocument()
-      // 0/0/0 breakdown is still meaningful when validation ran — hide only
-      // when all three reasons are zero.
-      expect(screen.queryByText(/Impossible requests by reason/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Request density by bucket/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Impossible requests by bucket/i)).not.toBeInTheDocument()
     })
   })
 

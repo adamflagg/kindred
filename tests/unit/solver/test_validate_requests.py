@@ -9,6 +9,8 @@ remain possible — session boundaries already guarantee separation.
 
 from __future__ import annotations
 
+import logging
+
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
@@ -54,6 +56,7 @@ def _make_request(
     session: int,
     *,
     request_type: str = "bunk_with",
+    source_field: str = "bunk_with",
 ) -> DirectBunkRequest:
     return DirectBunkRequest(
         id=req_id,
@@ -63,6 +66,7 @@ def _make_request(
         session_cm_id=session,
         year=2026,
         status="resolved",
+        source_field=source_field,
     )
 
 
@@ -265,7 +269,9 @@ class TestValidateRequestsPairNoSharedBunk:
 
         assert len(solver.possible_requests[1001]) == 0
         assert len(solver.impossible_requests[1001]) == 1
-        assert solver.request_validation_summary["impossible_by_reason"]["pair_no_shared_bunk"] == 1
+        assert solver.request_validation_summary["impossible_by_reason"]["material_parent"] == {
+            "pair_no_shared_bunk": 1
+        }
 
     def test_not_bunk_with_cross_gender_is_possible(self, mock_config):
         """not_bunk_with cross-gender is trivially satisfied — gender already separates them."""
@@ -334,6 +340,7 @@ def _age_pref_request(req_id: str, requester: int, session: int, *, target: str)
         session_cm_id=session,
         year=2026,
         status="resolved",
+        source_field="socialize_with",
     )
 
 
@@ -367,7 +374,9 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
 
         assert len(solver.possible_requests[1001]) == 0
         assert len(solver.impossible_requests[1001]) == 1
-        assert solver.request_validation_summary["impossible_by_reason"]["age_pref_no_eligible_grade"] == 1
+        assert solver.request_validation_summary["impossible_by_reason"]["immaterial_parent"] == {
+            "age_pref_no_eligible_grade": 1
+        }
 
     def test_younger_at_min_grade_is_impossible(self, mock_config):
         """F grade 2 prefers younger; session has only grade ≥2 girls → impossible."""
@@ -530,3 +539,39 @@ class TestImpossibilityReportReuse:
         assert {k: [r.id for r in v] for k, v in reused.possible_requests.items()} == {
             k: [r.id for r in v] for k, v in base.possible_requests.items()
         }
+
+
+class TestValidateRequestsReasonSummaryLog:
+    """The infeasibility warning must stay informative even when the bucketed
+    breakdown is empty.
+
+    _build_impossible_by_reason_by_bucket drops requests with a missing or
+    unknown source_field, but total_impossible still counts them. When every
+    impossible request is dropped this way, the per-bucket breakdown is all
+    empty and the log line must not degrade to a bare "infeasible ()".
+    """
+
+    def test_warning_not_empty_parens_when_all_unclassified(self, mock_config, caplog):
+        """All impossible requests have an unclassifiable source_field → empty
+        bucketed breakdown, but the warning still carries a reason note."""
+        with caplog.at_level(logging.WARNING):
+            solver = DirectBunkingSolver(
+                DirectSolverInput(
+                    persons=[_make_person(1001, 1000001)],
+                    requests=[_make_request("r1", 1001, 9999, 1000001, source_field="garbage_field")],
+                    bunks=[_make_bunk(2001, 1000001)],
+                ),
+                ConfigLoader.get_instance(),
+            )
+
+        # Counted as impossible, but dropped from the bucketed breakdown.
+        assert solver.request_validation_summary["impossible_requests"] == 1
+        assert solver.request_validation_summary["impossible_by_reason"] == {
+            "material_parent": {},
+            "immaterial_parent": {},
+            "staff": {},
+        }
+
+        infeasible_warnings = [r.message for r in caplog.records if "infeasible" in r.message]
+        assert infeasible_warnings, "expected an infeasibility warning to be logged"
+        assert "infeasible ()" not in infeasible_warnings[0]
