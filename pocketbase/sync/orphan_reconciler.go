@@ -11,6 +11,11 @@ import (
 
 const serviceNameOrphanReconciler = "orphan_reconciler"
 
+// msgStrandedProd is the Warn message for the observe-only production audit.
+// Hoisted to a const to keep the call site within the line-length limit.
+const msgStrandedProd = "orphan_reconciler: stranded production assignments detected — " +
+	"not deleted (bunk_assignments sync owns prod cleanup)"
+
 // orphanCandidate is the minimal projection of an assignment row needed for
 // stranded-detection — decoupled from *core.Record so the detection logic is
 // unit-testable without a database.
@@ -28,11 +33,20 @@ func orphanPairKey(sessionID, bunkID string) string {
 
 // findStrandedAssignments returns the candidates whose (session, bunk) pair is
 // absent from validPairs — i.e. the bunk has no bunk_plan for that session.
-// Candidates with no bunk are skipped (already unassigned).
-func findStrandedAssignments(validPairs map[string]bool, candidates []orphanCandidate) []orphanCandidate {
+// Candidates with no bunk are skipped (already unassigned). Candidates whose
+// session is absent from plannedSessions are also skipped: a session with zero
+// bunk_plans is unreliable (that session's plans may have failed to sync), so
+// sweeping its drafts would null every valid assignment for the session.
+func findStrandedAssignments(
+	validPairs, plannedSessions map[string]bool,
+	candidates []orphanCandidate,
+) []orphanCandidate {
 	stranded := []orphanCandidate{}
 	for _, c := range candidates {
 		if c.BunkID == "" {
+			continue
+		}
+		if !plannedSessions[c.SessionID] {
 			continue
 		}
 		if !validPairs[orphanPairKey(c.SessionID, c.BunkID)] {
@@ -91,14 +105,16 @@ func (s *OrphanReconcilerSync) Sync(_ context.Context) error {
 }
 
 // reconcileOrphanedAssignments is the integration logic:
-//  1. Build the valid (session, bunk) set from bunk_plans for the year.
+//  1. Build the valid (session, bunk) set, plus the set of sessions that have
+//     at least one bunk_plan, from bunk_plans for the year.
 //  2. GATE: if there are zero bunk_plans for the year, the plan set is
-//     unreliable (bunk_plans sync failed or never ran) — skip entirely, since
-//     sweeping against an empty set would null every valid draft.
+//     unreliable (bunk_plans sync failed or never ran) — skip entirely. The
+//     same guard applies per session: a session with zero bunk_plans is left
+//     untouched, so a partial sync can't sweep an entire session's drafts.
 //  3. Sweep bunk_assignments_draft: null bunk + bunk_plan on stranded rows so
 //     the camper falls back into the Unassigned pool.
-//  4. Audit bunk_assignments (production): count stranded rows, log — but do
-//     NOT delete. The bunk_assignments sync's own deleteOrphans() owns prod.
+//  4. Audit bunk_assignments (production): log stranded rows — but do NOT
+//     delete. The bunk_assignments sync's own deleteOrphans() owns prod.
 func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	yearFilter := fmt.Sprintf("year = %d", year)
 
@@ -113,8 +129,11 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		return nil
 	}
 	validPairs := make(map[string]bool, len(plans))
+	plannedSessions := make(map[string]bool)
 	for _, p := range plans {
-		validPairs[orphanPairKey(p.GetString("session"), p.GetString("bunk"))] = true
+		sessionID := p.GetString("session")
+		validPairs[orphanPairKey(sessionID, p.GetString("bunk"))] = true
+		plannedSessions[sessionID] = true
 	}
 
 	// --- Draft sweep ---
@@ -129,6 +148,11 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	}
 	draftByID := make(map[string]*core.Record, len(drafts))
 	draftCandidates := make([]orphanCandidate, 0, len(drafts))
+	// Validity is derived from the (session, bunk) pair, NOT the draft's own
+	// bunk_plan relation: that relation is non-authoritative and may dangle
+	// (point at a since-deleted plan) even when the bunk is still planned. A
+	// draft whose bunk is still planned is left untouched here, stale
+	// bunk_plan and all.
 	for _, d := range drafts {
 		draftByID[d.Id] = d
 		draftCandidates = append(draftCandidates, orphanCandidate{
@@ -137,16 +161,16 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 			BunkID:    d.GetString("bunk"),
 		})
 	}
-	strandedDrafts := findStrandedAssignments(validPairs, draftCandidates)
+	strandedDrafts := findStrandedAssignments(validPairs, plannedSessions, draftCandidates)
 
 	writes := 0
 	for _, c := range strandedDrafts {
 		rec := draftByID[c.RecordID]
 		rec.Set("bunk", "")
 		rec.Set("bunk_plan", "")
-		if err := app.Save(rec); err != nil {
+		if saveErr := app.Save(rec); saveErr != nil {
 			stats.Errors++
-			slog.Error("orphan_reconciler: save draft", "id", c.RecordID, "error", err)
+			slog.Error("orphan_reconciler: save draft", "id", c.RecordID, "error", saveErr)
 			continue
 		}
 		writes++
@@ -160,6 +184,9 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		"", 0, 0,
 	)
 	if err != nil {
+		// Audit-only failure: the draft sweep above already succeeded, so we
+		// log + flag it (WasSuccessful() will report false) but do NOT return —
+		// a prod-query hiccup must not abort the run or roll back the sweep.
 		stats.Errors++
 		slog.Error("orphan_reconciler: query bunk_assignments", "error", err)
 	} else {
@@ -171,9 +198,12 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 				BunkID:    p.GetString("bunk"),
 			})
 		}
-		if strandedProd := findStrandedAssignments(validPairs, prodCandidates); len(strandedProd) > 0 {
-			slog.Warn("orphan_reconciler: stranded production assignments detected (not deleted — bunk_assignments sync owns prod cleanup)",
-				"year", year, "count", len(strandedProd))
+		if strandedProd := findStrandedAssignments(validPairs, plannedSessions, prodCandidates); len(strandedProd) > 0 {
+			pairs := make([]string, len(strandedProd))
+			for i, c := range strandedProd {
+				pairs[i] = fmt.Sprintf("%s(session=%s,bunk=%s)", c.RecordID, c.SessionID, c.BunkID)
+			}
+			slog.Warn(msgStrandedProd, "year", year, "count", len(strandedProd), "records", pairs)
 		}
 	}
 

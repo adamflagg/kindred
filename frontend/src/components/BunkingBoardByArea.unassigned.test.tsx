@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isCamperEffectivelyUnassigned } from './BunkingBoardByArea'
+import { isCamperEffectivelyUnassigned } from './bunkingBoardHelpers'
 import type { Camper } from '../types/app-types'
 
 const camper = (overrides: Partial<Camper>): Camper =>

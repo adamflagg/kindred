@@ -685,17 +685,12 @@ func (o *Orchestrator) checkGlobalTablesEmpty() bool {
 	return len(records) == 0
 }
 
-// RunDailySync runs all base data syncs in the correct order
-func (o *Orchestrator) RunDailySync(ctx context.Context) error {
-	// Check if global tables are empty - if so, run weekly sync first
-	// This ensures fresh DB setups have required global definitions before daily sync
-	if o.checkGlobalTablesEmpty() {
-		slog.Info("Global tables empty - running weekly sync first")
-		if err := o.RunWeeklySync(ctx); err != nil {
-			slog.Error("Weekly sync failed, continuing with daily", "error", err)
-		}
-	}
-
+// getDailySyncJobs returns the ordered list of jobs the daily sync runs,
+// respecting inter-job dependencies. orphan_reconciler is always appended last:
+// it must run after bunk_plans is final so it can sweep scenario drafts left
+// stranded by bunk-plan reorganizations (#1416, #1417). Extracted from
+// RunDailySync so the ordering can be asserted in tests.
+func getDailySyncJobs() []string {
 	// Define sync order (respecting dependencies)
 	// Note: person_tag_defs, custom_field_defs, and divisions run in weekly sync
 	// since they're global definitions that rarely change
@@ -747,6 +742,22 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 	// Orphan reconciliation runs last — after bunk_plans is final, it sweeps
 	// scenario drafts left stranded by bunk-plan reorganizations (#1416, #1417).
 	orderedJobs = append(orderedJobs, "orphan_reconciler")
+
+	return orderedJobs
+}
+
+// RunDailySync runs all base data syncs in the correct order
+func (o *Orchestrator) RunDailySync(ctx context.Context) error {
+	// Check if global tables are empty - if so, run weekly sync first
+	// This ensures fresh DB setups have required global definitions before daily sync
+	if o.checkGlobalTablesEmpty() {
+		slog.Info("Global tables empty - running weekly sync first")
+		if err := o.RunWeeklySync(ctx); err != nil {
+			slog.Error("Weekly sync failed, continuing with daily", "error", err)
+		}
+	}
+
+	orderedJobs := getDailySyncJobs()
 
 	// Set daily sync flag and queue
 	o.mu.Lock()

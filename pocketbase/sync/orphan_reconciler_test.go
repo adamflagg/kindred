@@ -13,20 +13,22 @@ func TestFindStrandedAssignments(t *testing.T) {
 		orphanPairKey("sess1", "bunkA"): true,
 		orphanPairKey("sess1", "bunkB"): true,
 	}
+	// Only sess1 has bunk_plans; sess2 has none (its plans failed to sync).
+	plannedSessions := map[string]bool{"sess1": true}
 	candidates := []orphanCandidate{
-		{RecordID: "r1", SessionID: "sess1", BunkID: "bunkA"}, // valid
-		{RecordID: "r2", SessionID: "sess1", BunkID: "bunkZ"}, // stranded
+		{RecordID: "r1", SessionID: "sess1", BunkID: "bunkA"}, // valid pair - kept
+		{RecordID: "r2", SessionID: "sess1", BunkID: "bunkZ"}, // stranded - bunk not planned
 		{RecordID: "r3", SessionID: "sess1", BunkID: ""},      // no bunk - skipped
-		{RecordID: "r4", SessionID: "sess2", BunkID: "bunkA"}, // stranded (wrong session)
+		{RecordID: "r4", SessionID: "sess2", BunkID: "bunkA"}, // session has zero plans - skipped
 	}
 
-	stranded := findStrandedAssignments(validPairs, candidates)
+	stranded := findStrandedAssignments(validPairs, plannedSessions, candidates)
 
-	if len(stranded) != 2 {
-		t.Fatalf("want 2 stranded, got %d: %+v", len(stranded), stranded)
+	if len(stranded) != 1 {
+		t.Fatalf("want 1 stranded, got %d: %+v", len(stranded), stranded)
 	}
-	if stranded[0].RecordID != "r2" || stranded[1].RecordID != "r4" {
-		t.Errorf("want [r2 r4], got [%s %s]", stranded[0].RecordID, stranded[1].RecordID)
+	if stranded[0].RecordID != "r2" {
+		t.Errorf("want [r2], got [%s]", stranded[0].RecordID)
 	}
 }
 
@@ -131,7 +133,7 @@ func TestOrphanReconciler_SweepsStrandedDraft(t *testing.T) {
 
 	svc := NewOrphanReconcilerSync(app)
 	svc.SetYear(2026)
-	if err := svc.Sync(context.Background()); err != nil {
+	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -167,7 +169,7 @@ func TestOrphanReconciler_GateSkipsWhenNoBunkPlans(t *testing.T) {
 
 	svc := NewOrphanReconcilerSync(app)
 	svc.SetYear(2026)
-	if err := svc.Sync(context.Background()); err != nil {
+	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -178,6 +180,47 @@ func TestOrphanReconciler_GateSkipsWhenNoBunkPlans(t *testing.T) {
 	}
 	if got.GetString("bunk") != bunk.Id {
 		t.Errorf("gate failed — draft was swept despite zero bunk_plans (bunk=%q)", got.GetString("bunk"))
+	}
+}
+
+func TestOrphanReconciler_GateSkipsPerSession(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupOrphanCollections(t, app)
+
+	// Session A has a bunk_plan; session B has none (its plans failed to sync).
+	// The global gate passes because plans exist overall — only the per-session
+	// gate protects session B's drafts.
+	sessA := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	sessB := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 200, "year": 2026})
+	bunkA := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "A-1", "year": 2026})
+	bunkB := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "B-1", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": bunkA.Id, "session": sessA.Id, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sessB.Id, "year": 2026})
+	// A draft in session B, which has zero bunk_plans. It must NOT be swept —
+	// session B's empty plan set is unreliable, not authoritative.
+	draftB := saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": person.Id, "session": sessB.Id,
+		"bunk": bunkB.Id, "year": 2026,
+	})
+
+	svc := NewOrphanReconcilerSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("bunk_assignments_draft", draftB.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if got.GetString("bunk") != bunkB.Id {
+		t.Errorf("per-session gate failed — session-B draft swept despite session B having zero bunk_plans (bunk=%q)",
+			got.GetString("bunk"))
 	}
 }
 
@@ -201,7 +244,7 @@ func TestOrphanReconciler_LeavesValidDraftUntouched(t *testing.T) {
 
 	svc := NewOrphanReconcilerSync(app)
 	svc.SetYear(2026)
-	if err := svc.Sync(context.Background()); err != nil {
+	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -237,7 +280,7 @@ func TestOrphanReconciler_ProdAuditDoesNotDelete(t *testing.T) {
 
 	svc := NewOrphanReconcilerSync(app)
 	svc.SetYear(2026)
-	if err := svc.Sync(context.Background()); err != nil {
+	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
 
@@ -272,12 +315,12 @@ func TestOrphanReconciler_Idempotent(t *testing.T) {
 
 	svc := NewOrphanReconcilerSync(app)
 	svc.SetYear(2026)
-	if err := svc.Sync(context.Background()); err != nil {
+	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync run 1: %v", err)
 	}
 	svc2 := NewOrphanReconcilerSync(app)
 	svc2.SetYear(2026)
-	if err := svc2.Sync(context.Background()); err != nil {
+	if err = svc2.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync run 2: %v", err)
 	}
 

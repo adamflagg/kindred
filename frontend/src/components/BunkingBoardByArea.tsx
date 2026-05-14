@@ -31,17 +31,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
-
-/**
- * A camper is "effectively unassigned" if they have no bunk, OR their bunk is
- * not among the session's displayed bunks. The second case is the stranded
- * camper from a bunk-plan reorganization (#1416): the bunk record still exists
- * but has no bunk_plan for this session, so it has no column on the board.
- * Without this check such campers match no column and vanish entirely.
- */
-export function isCamperEffectivelyUnassigned(camper: Camper, validBunkIds: Set<string>): boolean {
-  return !camper.assigned_bunk || !validBunkIds.has(camper.assigned_bunk)
-}
+import { isCamperEffectivelyUnassigned } from './bunkingBoardHelpers'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
