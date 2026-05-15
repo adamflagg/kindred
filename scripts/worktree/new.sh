@@ -42,22 +42,96 @@ FEATURE_NAME=$(echo "$FEATURE_NAME" | tr '[:upper:]' '[:lower:]' | tr ' _' '-' |
 BRANCH_NAME="feature/$FEATURE_NAME"
 WORKTREE_DIR="$WORKTREES_DIR/$FEATURE_NAME"
 
-# Calculate deterministic port offset from feature name (10-90 range, step 10)
+# Calculate a deterministic offset from the feature name. cksum gives a
+# 32-bit hash with vastly better distribution than the per-character sum
+# we used before. 90 slots per band (offsets 10..99) — the offset doesn't
+# have to be a multiple of 10, so we get ~12 active worktrees before
+# birthday-paradox collisions become likely (vs. ~3 before).
 calculate_port_offset() {
     local name="$1"
-    local hash=0
-    for ((i=0; i<${#name}; i++)); do
-        hash=$((hash + $(printf '%d' "'${name:$i:1}")))
-    done
-    # Range 1-9, multiply by 10 for offset
-    echo $(( (hash % 9 + 1) * 10 ))
+    local hash
+    hash=$(printf '%s' "$name" | cksum | cut -d' ' -f1)
+    echo $(( hash % 90 + 10 ))
 }
 
-PORT_OFFSET=$(calculate_port_offset "$FEATURE_NAME")
-VITE_PORT=$((3000 + PORT_OFFSET))
-FASTAPI_PORT=$((8000 + PORT_OFFSET))
-CADDY_PORT=$((8080 + PORT_OFFSET))
-POCKETBASE_PORT=$((8090 + PORT_OFFSET))
+# Worktree port bands — each service has its own dedicated 100-wide band
+# above main's ports (3000, 8000, 8080, 8090). Bands are disjoint from
+# each other AND from main, so no worktree port can ever equal any
+# main-repo port — even across services (an offset-90 worktree FastAPI
+# can't land on main's 8090 PB anymore).
+#
+# Bands:
+#   Vite       3110-3199
+#   FastAPI    8210-8299
+#   Caddy      8310-8399
+#   PocketBase 8410-8499
+ports_for_offset() {
+    local offset="$1"
+    VITE_PORT=$((3100 + offset))
+    FASTAPI_PORT=$((8200 + offset))
+    CADDY_PORT=$((8300 + offset))
+    POCKETBASE_PORT=$((8400 + offset))
+}
+
+# Collect offsets already claimed by sibling worktrees, running or not.
+# Each .env declares VITE_PORT and the four service ports share one
+# offset — so VITE_PORT alone identifies the claim. Old-scheme worktrees
+# (VITE_PORT < 3100) are correctly ignored: their bands don't overlap
+# with the new bands so they can't collide.
+collect_claimed_offsets() {
+    local env_file vite_port offset
+    for env_file in "$WORKTREES_DIR"/*/.env; do
+        [ -f "$env_file" ] || continue
+        [ "$env_file" = "$WORKTREE_DIR/.env" ] && continue
+        vite_port=$(grep -E '^VITE_PORT=' "$env_file" | tail -1 | cut -d= -f2 | tr -dc '0-9')
+        [ -n "$vite_port" ] || continue
+        offset=$((vite_port - 3100))
+        if [ "$offset" -ge 10 ] && [ "$offset" -le 99 ]; then
+            echo "$offset"
+        fi
+    done
+}
+
+INITIAL_OFFSET=$(calculate_port_offset "$FEATURE_NAME")
+CLAIMED_OFFSETS=$(collect_claimed_offsets | sort -u)
+
+# Walk forward cyclically through 10..99 from the hash-derived offset.
+# First slot not in CLAIMED_OFFSETS wins. The first allocation of any
+# feature name is fully deterministic; on collision we slide forward
+# deterministically and persist the chosen offset in .env, so subsequent
+# runs of the same worktree keep their ports.
+PORT_OFFSET=""
+for step in $(seq 0 89); do
+    candidate=$(( (INITIAL_OFFSET - 10 + step) % 90 + 10 ))
+    if ! echo "$CLAIMED_OFFSETS" | grep -qxF "$candidate"; then
+        PORT_OFFSET=$candidate
+        break
+    fi
+done
+if [ -z "$PORT_OFFSET" ]; then
+    echo -e "${RED}Error: every worktree port slot (10..99) is claimed.${NC}"
+    echo -e "Run ${YELLOW}./scripts/worktree/list.sh${NC} and clean up unused worktrees."
+    exit 1
+fi
+if [ "$PORT_OFFSET" != "$INITIAL_OFFSET" ]; then
+    echo -e "${YELLOW}Note: hash-derived offset $INITIAL_OFFSET claimed by another worktree; using $PORT_OFFSET.${NC}"
+fi
+ports_for_offset "$PORT_OFFSET"
+
+# Belt-and-suspenders: even after the sibling-.env scan, refuse to proceed
+# if any allocated port is in use by something outside the worktree pool
+# (an unrelated dev process, leftover services from a deleted worktree).
+PORT_IN_USE=()
+for port in "$VITE_PORT" "$FASTAPI_PORT" "$CADDY_PORT" "$POCKETBASE_PORT"; do
+    if lsof -ti:"$port" >/dev/null 2>&1; then
+        PORT_IN_USE+=("$port")
+    fi
+done
+if [ ${#PORT_IN_USE[@]} -gt 0 ]; then
+    echo -e "${RED}Error: port(s) in use by a non-worktree process: ${PORT_IN_USE[*]}${NC}"
+    echo -e "Run ${YELLOW}lsof -i :${PORT_IN_USE[0]}${NC} to identify the holder."
+    exit 1
+fi
 
 echo -e "${GREEN}=== Creating Worktree: $FEATURE_NAME ===${NC}"
 echo -e "Branch:    ${YELLOW}$BRANCH_NAME${NC}"
