@@ -6,9 +6,9 @@ function for comparing scenarios.
 
 Components evaluated:
 1. Request satisfaction (bunk_with, not_bunk_with) with:
-   - Priority weighting
+   - First-pick boost (is_first_requested → 10x slot-0 multiplier)
    - Source field multipliers
-   - Diminishing returns
+   - Diminishing returns (always-on, module constants)
 2. Age/grade flow bonuses (target grade distribution)
 3. Grade spread penalties (soft constraint)
 4. Cabin capacity penalties (soft constraint)
@@ -25,6 +25,12 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.solver.bunk_ordering import get_bunk_rank
 from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
+from bunking.solver.direct_solver import (
+    BASE_REQUEST_WEIGHT,
+    FIRST_REQUEST_MULTIPLIER,
+    SECOND_REQUEST_MULTIPLIER,
+    THIRD_PLUS_REQUEST_MULTIPLIER,
+)
 from bunking.solver.penalties import (
     grade_spread_penalty,
     min_occupancy_penalty,
@@ -140,10 +146,7 @@ class ObjectiveEvaluator:
         Exactly mirrors solver's add_objective() logic.
         """
         # Config values (same as solver)
-        enable_diminishing = self.config.get_int("objective.enable_diminishing_returns", default=1)
-        first_multiplier = self.config.get_int("objective.first_request_multiplier", default=10)
-        second_multiplier = self.config.get_int("objective.second_request_multiplier", default=5)
-        third_plus_multiplier = self.config.get_int("objective.third_plus_request_multiplier", default=1)
+        enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
 
         # Source field multipliers (same as solver)
         source_multipliers = {
@@ -221,8 +224,9 @@ class ObjectiveEvaluator:
         total_score = 0
 
         for person_requests in requests_by_person.values():
-            # Sort by priority descending (same as solver)
-            person_requests.sort(key=lambda x: x[0].get("priority", 5), reverse=True)
+            if enable_first_boost:
+                # Sort by is_first_requested DESC (same as solver)
+                person_requests.sort(key=lambda x: x[0].get("is_first_requested", False), reverse=True)
 
             satisfied_count_for_person = 0
 
@@ -232,9 +236,8 @@ class ObjectiveEvaluator:
 
                 satisfied_count_for_person += 1
 
-                # Base weight (same as solver: priority * 10)
-                priority = request.get("priority", 5)
-                base_weight = float(priority * 10)
+                # Base weight (same as solver)
+                base_weight = float(BASE_REQUEST_WEIGHT)
 
                 # Apply source field multiplier
                 source_fields = self._get_source_fields(request)
@@ -244,18 +247,14 @@ class ObjectiveEvaluator:
                     multiplier = 1.0
                 base_weight = base_weight * multiplier
 
-                # Apply diminishing returns based on satisfaction order
-                if enable_diminishing:
-                    # Use satisfied_count_for_person - 1 as index (0-based)
-                    order_idx = satisfied_count_for_person - 1
-                    if order_idx == 0:
-                        weight = base_weight * first_multiplier
-                    elif order_idx == 1:
-                        weight = base_weight * second_multiplier
-                    else:
-                        weight = base_weight * third_plus_multiplier
+                # Apply diminishing returns based on satisfaction order (always-on)
+                order_idx = satisfied_count_for_person - 1
+                if order_idx == 0:
+                    weight = base_weight * FIRST_REQUEST_MULTIPLIER
+                elif order_idx == 1:
+                    weight = base_weight * SECOND_REQUEST_MULTIPLIER
                 else:
-                    weight = base_weight
+                    weight = base_weight * THIRD_PLUS_REQUEST_MULTIPLIER
 
                 total_score += int(weight)
 
