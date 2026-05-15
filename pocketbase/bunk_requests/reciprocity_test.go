@@ -88,7 +88,10 @@ func makeRequest(t *testing.T, app core.App, requester, requestee int, rtype, st
 // makeRequestWithID is like makeRequest but lets the caller pin a specific
 // record ID — used by tests that exercise the lowest-id-wins behavior of
 // findRow when multiple siblings share pair coords.
-func makeRequestWithID(t *testing.T, app core.App, id string, requester, requestee int, rtype, status string) *core.Record {
+func makeRequestWithID(
+	t *testing.T, app core.App, id string,
+	requester, requestee int, rtype, status string,
+) *core.Record {
 	t.Helper()
 	col, err := app.FindCollectionByNameOrId("bunk_requests")
 	if err != nil {
@@ -323,7 +326,7 @@ func TestHook_RequestTypeFlipUpdatesAllSiblings(t *testing.T) {
 
 	gotSecond = mustFindRecord(t, app, sibSecond.Id)
 	if gotSecond.GetBool("is_reciprocal") {
-		t.Errorf("after flip: just-edited sibling (higher ID) expected is_reciprocal=false, got true (multi-sibling recompute miss — findRow only updates lowest-id row)")
+		t.Errorf("after flip: higher-ID sibling expected is_reciprocal=false, got true (multi-sibling recompute miss)")
 	}
 	gotFirst = mustFindRecord(t, app, sibFirst.Id)
 	if gotFirst.GetBool("is_reciprocal") {
