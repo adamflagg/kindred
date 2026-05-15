@@ -44,6 +44,7 @@ export interface SweepPanelProps {
   onCancelSweep: (sweepId: string) => void
   inFlightSweep: InFlightSweep | null
   preCheckImpossibilityCount?: number
+  preCheckEntirelyImpossibleCount?: number
   preCheckIsLoading?: boolean
   preCheckIsError?: boolean
   onOpenPreCheck?: () => void
@@ -68,6 +69,7 @@ export function SweepPanel({
   onCancelSweep,
   inFlightSweep,
   preCheckImpossibilityCount,
+  preCheckEntirelyImpossibleCount,
   preCheckIsLoading,
   preCheckIsError,
   onOpenPreCheck,
@@ -155,43 +157,60 @@ export function SweepPanel({
           <Zap className="h-4 w-4 text-amber-500" />
           Run benchmark sweep
         </h3>
-        {preCheckIsLoading && typeof preCheckImpossibilityCount !== 'number' ? (
-          <button
-            type="button"
-            disabled
-            className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-500"
-          >
-            … Pre-check · checking
-          </button>
-        ) : preCheckIsError && typeof preCheckImpossibilityCount !== 'number' ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenPreCheck?.()
-            }}
-            className="rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
-          >
-            ⚠ Pre-check · failed
-          </button>
-        ) : typeof preCheckImpossibilityCount === 'number' ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenPreCheck?.()
-            }}
-            className={
-              preCheckImpossibilityCount > 0
-                ? 'rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200'
-                : 'rounded-full border border-green-300 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 hover:bg-green-100'
-            }
-          >
-            {preCheckImpossibilityCount > 0
-              ? `⚠ Pre-check · ${preCheckImpossibilityCount} issues`
-              : '✓ Pre-check · no issues'}
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {preCheckIsLoading && typeof preCheckImpossibilityCount !== 'number' ? (
+            <button
+              type="button"
+              disabled
+              className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-500"
+            >
+              … Pre-check · checking
+            </button>
+          ) : preCheckIsError && typeof preCheckImpossibilityCount !== 'number' ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenPreCheck?.()
+              }}
+              className="rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+            >
+              ⚠ Pre-check · failed
+            </button>
+          ) : typeof preCheckImpossibilityCount === 'number' ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenPreCheck?.()
+              }}
+              className={
+                preCheckImpossibilityCount > 0
+                  ? 'rounded-full border border-amber-400 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200'
+                  : 'rounded-full border border-green-300 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 hover:bg-green-100'
+              }
+            >
+              {preCheckImpossibilityCount > 0
+                ? `⚠ Pre-check · ${preCheckImpossibilityCount} issues`
+                : '✓ Pre-check · no issues'}
+            </button>
+          ) : null}
+          {typeof preCheckEntirelyImpossibleCount === 'number' &&
+          preCheckEntirelyImpossibleCount > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenPreCheck?.()
+              }}
+              className="rounded-full border border-red-400 bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-900 hover:bg-red-200"
+            >
+              {`🛑 ${preCheckEntirelyImpossibleCount} entirely-impossible MP ${
+                preCheckEntirelyImpossibleCount === 1 ? 'camper' : 'campers'
+              }`}
+            </button>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={() => setExpanded((e) => !e)}
