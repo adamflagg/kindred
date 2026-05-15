@@ -287,11 +287,11 @@ export function useBunkRequestsCount({
       const getRequestsCount = async (sessionCmId: number): Promise<number> => {
         try {
           const filter = buildBunkRequestsFilter(sessionCmId, currentYear, false)
-          // Count-only query — server-side sort is wasted work.
-          const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
+          // Count-only query — paginated metadata avoids fetching every row.
+          const page = await pb.collection<BunkRequest>('bunk_requests').getList(1, 1, {
             filter,
           })
-          return requests.length
+          return page.totalItems
         } catch (error) {
           console.error('Error fetching bunk requests:', error)
           return 0

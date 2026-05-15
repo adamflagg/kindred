@@ -219,6 +219,10 @@ class TestEvaluateScenarioScore:
                 "objective.first_request_multiplier": 10,
                 "objective.second_request_multiplier": 5,
                 "objective.third_plus_request_multiplier": 1,
+                # Pinned ON so test_first_requested_boost validates ordering,
+                # not the production default. Flipping the production default
+                # to 0 would otherwise silently re-validate the wrong path.
+                "objective.enable_first_boost": 1,
                 # Legacy keys
                 "penalty.grade_spread": 100,
                 "penalty.over_capacity": 500,

@@ -265,7 +265,7 @@ async def evaluate_score(
     accurate comparison between different scenarios or between scenario and production.
 
     Score components:
-    - Request satisfaction (with priority weighting, source multipliers, diminishing returns)
+    - Request satisfaction (with first-pick boost, source multipliers, diminishing returns)
     - Age/grade flow bonuses (target grade distribution)
     - Penalties (grade spread, capacity, occupancy)
     """
