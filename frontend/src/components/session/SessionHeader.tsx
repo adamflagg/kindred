@@ -190,7 +190,7 @@ export default function SessionHeader({
 
           {/* Right: Action buttons - ml-auto pushes to far right */}
           <div className="ml-auto flex items-center gap-2">
-            {canManage && !isProductionMode && (
+            {canManage && (
               <PreValidateRequestsButton
                 sessionCmId={session.cm_id}
                 year={currentYear}
