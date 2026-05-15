@@ -34,42 +34,38 @@ logger = get_logger(__name__)
 def add_age_preference_satisfaction_vars(
     ctx: SolverContext,
     requests_by_person: dict[int, list[DirectBunkRequest]],
-    bunk_has_grade: dict[tuple[int, int], cp_model.IntVar] | None = None,
-) -> tuple[
-    dict[int, list[cp_model.IntVar]],
-    dict[tuple[int, int], cp_model.IntVar],
-    dict[str, list[cp_model.IntVar]],
-]:
-    """Create satisfaction variables for age_preference requests.
+) -> dict[str, list[cp_model.IntVar]]:
+    """Create bidirectional satisfaction variables for MP age_preference requests.
 
-    Uses efficient grade presence tracking:
-    1. Build shared bunk_has_grade[(bunk_idx, grade)] variables (if not provided)
-    2. For each request, check if bunk contains violating grades
-    3. Return satisfaction variables
+    Builds, for each feasible request, a sat_var bidirectionally bound to the
+    post-solve satisfaction condition ("requester's bunk contains no grades the
+    preference forbids") via the forcing_indicators returned to the caller.
+    Each sat_var is registered in ``ctx.request_satisfied_vars`` keyed by
+    request id — the same shared map ``get_or_create_request_sat_var`` uses for
+    bunk_with / not_bunk_with — so #1398's golden alignment test picks them up
+    automatically.
+
+    Only MP age_preference requests are modeled today; non-MP age_preference
+    requests have no solver representation. This is intentional — staff treat
+    non-MP age preferences as best-effort ("maybe you'll get it"), and the
+    planned material/immaterial/staff bucket weights (see
+    docs/reference/solver-config-decisions.md) will be the right home for any
+    future non-MP modeling.
 
     Args:
         ctx: Solver context with model, assignments, and mappings
-        requests_by_person: Dict mapping person_cm_id to their age_preference requests
-        bunk_has_grade: Optional pre-computed grade presence variables (for reuse)
+        requests_by_person: Dict mapping person_cm_id to their MP age_preference
+            requests (caller already filtered to MATERIAL_PARENT bucket)
 
     Returns:
-        Tuple of:
-        - Dict mapping person_cm_id to list of satisfaction BoolVars (objective-side,
-          one-way OnlyEnforceIf encoding — fine for soft maximization).
-        - The bunk_has_grade variables (for reuse by other constraints).
-        - Dict mapping request.id to its per-(request, bunk) forcing indicators.
-          Each forcing indicator is a BoolVar (or an assignment IntVar in the
-          no-bad-grades-possible branch) that, when set to 1, forces the
-          requester into a clean bunk and thus satisfies the request. Consumed
-          by parent_paramount's hard constraint via summation; one-way
-          OnlyEnforceIf anchoring is sufficient because the constraint forces
-          the indicator upward.
+        Dict mapping request.id to its per-(request, bunk) forcing indicators.
+        Each forcing indicator is a BoolVar (or an assignment IntVar in the
+        no-bad-grades-possible branch) that, when set to 1, forces the
+        requester into a clean bunk and thus satisfies the request. Consumed
+        by parent_paramount's hard must-satisfy-one constraint via summation.
     """
-    # Build or reuse shared grade presence variables
-    if bunk_has_grade is None:
-        bunk_has_grade = _build_bunk_has_grade_vars(ctx)
+    bunk_has_grade = _build_bunk_has_grade_vars(ctx)
 
-    satisfaction_vars: dict[int, list[cp_model.IntVar]] = {}
     forcing_indicators_by_req_id: dict[str, list[cp_model.IntVar]] = {}
 
     for person_cm_id, requests in requests_by_person.items():
@@ -79,8 +75,6 @@ def add_age_preference_satisfaction_vars(
         person_idx = ctx.person_idx_map[person_cm_id]
         person = ctx.person_by_cm_id[person_cm_id]
         person_grade = person.grade
-
-        person_sat_vars: list[cp_model.IntVar] = []
 
         for request in requests:
             if request.request_type != RequestType.AGE_PREFERENCE.value:
@@ -94,13 +88,10 @@ def add_age_preference_satisfaction_vars(
                 ctx, person_idx, person_grade, preference, request, bunk_has_grade
             )
             if sat_var is not None:
-                person_sat_vars.append(sat_var)
+                ctx.request_satisfied_vars[request.id] = sat_var
                 forcing_indicators_by_req_id[request.id] = forcing_indicators
 
-        if person_sat_vars:
-            satisfaction_vars[person_cm_id] = person_sat_vars
-
-    return satisfaction_vars, bunk_has_grade, forcing_indicators_by_req_id
+    return forcing_indicators_by_req_id
 
 
 def _build_bunk_has_grade_vars(ctx: SolverContext) -> dict[tuple[int, int], cp_model.IntVar]:
@@ -152,22 +143,28 @@ def _create_age_preference_satisfaction_var(
     request: DirectBunkRequest,
     bunk_has_grade: dict[tuple[int, int], cp_model.IntVar],
 ) -> tuple[cp_model.IntVar | None, list[cp_model.IntVar]]:
-    """Create satisfaction variable for a single age preference request.
+    """Create bidirectional satisfaction variable for a single age preference request.
 
     An age preference is satisfied when the camper's bunk does NOT contain
     any violating grades (younger for "older" pref, older for "younger" pref).
 
+    Both ``sat_var`` and its intermediate predicates (``bunk_is_clean``,
+    ``person_in_clean_bunk``) are bidirectionally bound to their definitions
+    so the post-solve predicate (``bunking.utils.age_preference.is_age_preference_satisfied``)
+    agrees with ``sat_var.value`` per the #1398 alignment test. (The predicate
+    is more permissive in the mixed-grade case has_older AND has_younger; the
+    integration fixture deliberately avoids that case — see
+    ``tests/integration/solver/fixtures.py``.)
+
     Returns:
         Tuple (sat_var, forcing_indicators):
-        - sat_var: BoolVar that's true when request is satisfied (objective-side,
-          one-way OnlyEnforceIf encoding), or None if no valid check.
+        - sat_var: BoolVar true iff request is satisfied, or None if no valid check.
         - forcing_indicators: per-(request, bunk) BoolVars (or assignment IntVars
           in the no-bad-grades-possible branch) that, when forced to 1, force
           the requester into a clean bunk. For the trivially-satisfied branch,
           the list contains a single always-1 BoolVar. Used by parent_paramount's
           hard MP constraint: summing these and constraining >= 1 forces real
-          satisfaction (one-way OnlyEnforceIf anchoring is sufficient when the
-          indicator is being forced upward).
+          satisfaction.
     """
     # Get all grades present in the solver
     all_grades = set()
@@ -215,21 +212,30 @@ def _create_age_preference_satisfaction_var(
             ctx.model.Add(sat_var == 1).OnlyEnforceIf(person_in_bunk)
             forcing_indicators.append(person_in_bunk)
         else:
-            # bunk_is_clean = NONE of the bad grades are present
+            # bunk_is_clean ↔ NONE of the bad grades are present
             bunk_is_clean = ctx.model.NewBoolVar(f"age_req_{request.id}_clean_bunk_{bunk_idx}")
-
-            # Clean means all bad_grade_present vars are 0
-            # Using AddBoolAnd with negated variables
             ctx.model.AddBoolAnd([v.Not() for v in bad_grade_present_vars]).OnlyEnforceIf(bunk_is_clean)
+            # Converse for bidirectional alignment: if any bad grade is present,
+            # bunk is not clean. Without this, bunk_is_clean=0 is consistent
+            # with all bad_grade_present=0, which would let sat_var drift away
+            # from the post-solve predicate.
+            ctx.model.AddBoolOr(bad_grade_present_vars).OnlyEnforceIf(bunk_is_clean.Not())
 
-            # If person in bunk AND bunk is clean, satisfied
+            # person_in_clean_bunk ↔ person_in_bunk AND bunk_is_clean
             person_in_clean_bunk = ctx.model.NewBoolVar(f"age_req_{request.id}_in_clean_{bunk_idx}")
             ctx.model.AddBoolAnd([person_in_bunk, bunk_is_clean]).OnlyEnforceIf(person_in_clean_bunk)
+            # Converse: person_in_bunk AND bunk_is_clean ⇒ person_in_clean_bunk.
+            ctx.model.Add(person_in_clean_bunk == 1).OnlyEnforceIf([person_in_bunk, bunk_is_clean])
+
             ctx.model.Add(sat_var == 1).OnlyEnforceIf(person_in_clean_bunk)
-            # Setting person_in_clean_bunk to 1 forces person_in_bunk = 1 and
-            # bunk_is_clean = 1 (which in turn forces all bad_grade_present = 0).
-            # That's real satisfaction.
             forcing_indicators.append(person_in_clean_bunk)
+
+    # Bidirectional binding of sat_var to forcing_indicators. The forward
+    # direction (forcing_indicator → sat_var=1) is already encoded per-bunk
+    # above. Here we add the reverse: sat_var=1 → at least one forcing
+    # indicator is 1. Without this, when all forcing_indicators=0 the solver
+    # is free to set sat_var=1 and disagree with the post-solve predicate.
+    ctx.model.AddBoolOr(forcing_indicators).OnlyEnforceIf(sat_var)
 
     return sat_var, forcing_indicators
 

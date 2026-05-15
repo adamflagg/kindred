@@ -1,25 +1,24 @@
 """Golden alignment test: solve-time sat vars vs post-solve predicate.
 
-#1398 — drift defense between the solver's CP-SAT satisfaction encoding
-(``get_or_create_request_sat_var`` in
-``bunking/solver/constraints/bunk_requests.py``) and the post-solve oracle
-(``bunking.satisfaction.predicate.is_request_satisfied``).
+#1398 — drift defense between the solver's CP-SAT satisfaction encoding and
+the post-solve oracle (``bunking.satisfaction.predicate.is_request_satisfied``).
 
-Scope (Option 2 — see #1398): asserts agreement for every entry in
-``DirectBunkingSolver.request_satisfied_vars`` — the shared bidirectional sat
-var built for ``bunk_with`` / ``not_bunk_with`` requests with in-roster
-targets. That map is the complete output of ``get_or_create_request_sat_var``
-and the exact surface PR #1427 changed.
+Scope:
+  * ``bunk_with`` / ``not_bunk_with`` — alignment for the shared bidirectional
+    sat var built by ``get_or_create_request_sat_var`` in
+    ``bunking/solver/constraints/bunk_requests.py``. See PR #1427.
+  * ``age_preference`` — alignment for the bidirectional sat var built by
+    ``_create_age_preference_satisfaction_var`` in
+    ``bunking/solver/constraints/age_preference.py``. See #1433.
 
-``age_preference`` is deliberately out of scope: it has no faithful
-satisfaction var to align against (its sat var is one-way encoded and
-discarded by its only caller — see #1433). The fixture still includes an
-``age_preference`` request plus impossible requests so the build/validation
-path is exercised, but they carry no shared sat var and so are not asserted.
+Impossible requests (dropped by ``_validate_requests`` before sat-var
+creation) carry no sat var and are not asserted; the fixture exercises the
+drop path with one ``age_preference`` and two malformed/missing-target
+``bunk_with`` requests.
 
-If ``test_satvar_predicate_alignment`` fails on real divergence (not a fixture
-bug), per the #1398 acceptance criteria file a follow-up to investigate which
-path — the encoding or the predicate — is wrong.
+If alignment fails on real divergence (not a fixture bug), per the #1398
+acceptance criteria file a follow-up to investigate which path — the encoding
+or the predicate — is wrong.
 """
 
 from __future__ import annotations
@@ -31,13 +30,18 @@ from ortools.sat.python import cp_model
 from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.direct_solver import DirectBunkingSolver
 from tests.integration.solver.fixtures import (
+    AGE_PREF_EXPECTED_SATISFACTION,
     BUILD_PATH_EXERCISERS,
     EXPECTED_SATISFACTION,
+    build_age_preference_alignment_fixture,
     build_alignment_fixture,
 )
 
 
-def _build_and_solve(mock_config: Any) -> tuple[DirectBunkingSolver, cp_model.CpSolver]:
+def _build_and_solve(
+    mock_config: Any,
+    fixture_builder: Any = build_alignment_fixture,
+) -> tuple[DirectBunkingSolver, cp_model.CpSolver]:
     """Build the alignment fixture, add constraints + objective, and solve.
 
     Uses a test-local ``CpSolver`` with ``num_search_workers=1`` — the model is
@@ -45,7 +49,7 @@ def _build_and_solve(mock_config: Any) -> tuple[DirectBunkingSolver, cp_model.Cp
     build-and-inspect pattern established by
     ``tests/unit/solver/test_satvar_unification.py``.
     """
-    solver = DirectBunkingSolver(build_alignment_fixture(), config_service=mock_config)
+    solver = DirectBunkingSolver(fixture_builder(), config_service=mock_config)
     solver.add_constraints()
     solver.add_objective()
 
@@ -57,6 +61,19 @@ def _build_and_solve(mock_config: Any) -> tuple[DirectBunkingSolver, cp_model.Cp
         f"alignment fixture did not solve: status={cp_solver.StatusName(status)}"
     )
     return solver, cp_solver
+
+
+def _bunkmate_grades(solver: DirectBunkingSolver, person_to_bunk: dict[int, int]) -> dict[int, list[int]]:
+    """Per-camper list of bunkmate grades, required by the age_preference predicate."""
+    bunk_to_persons: dict[int, list[int]] = {}
+    for cm_id, bunk_cm_id in person_to_bunk.items():
+        bunk_to_persons.setdefault(bunk_cm_id, []).append(cm_id)
+
+    grade_by_cm_id = {p.campminder_person_id: p.grade for p in solver.input.persons}
+    bunkmate_grades: dict[int, list[int]] = {}
+    for cm_id, bunk_cm_id in person_to_bunk.items():
+        bunkmate_grades[cm_id] = [grade_by_cm_id[other] for other in bunk_to_persons[bunk_cm_id] if other != cm_id]
+    return bunkmate_grades
 
 
 def _person_to_bunk(solver: DirectBunkingSolver, cp_solver: cp_model.CpSolver) -> dict[int, int]:
@@ -83,18 +100,19 @@ def _person_to_bunk(solver: DirectBunkingSolver, cp_solver: cp_model.CpSolver) -
 
 
 def test_satvar_predicate_alignment(mock_config: Any) -> None:
-    """Every shared sat var agrees with ``is_request_satisfied`` post-solve."""
+    """Every shared bunk_with/not_bunk_with sat var agrees with the predicate."""
     solver, cp_solver = _build_and_solve(mock_config)
     person_to_bunk = _person_to_bunk(solver, cp_solver)
 
     sat_vars = solver.request_satisfied_vars
     assert sat_vars, "fixture produced no shared sat vars — nothing to align"
 
-    # age_preference / impossible requests must never get a shared sat var.
+    # Impossible requests are dropped by _validate_requests before sat-var
+    # creation, so they must never appear in request_satisfied_vars.
     for req_id in BUILD_PATH_EXERCISERS:
         assert req_id not in sat_vars, (
-            f"{req_id} unexpectedly has a shared sat var — get_or_create_request_sat_var "
-            f"should return None for age_preference / impossible requests"
+            f"{req_id} unexpectedly has a shared sat var — _validate_requests should "
+            f"drop impossible requests before sat-var creation"
         )
 
     requests_by_id = {r.id: r for r in solver.input.requests}
@@ -104,8 +122,8 @@ def test_satvar_predicate_alignment(mock_config: Any) -> None:
     for req_id, sat_var in sat_vars.items():
         request = requests_by_id[req_id]
         solver_satisfied = bool(cp_solver.Value(sat_var))
-        # bunkmate_grades is unused: age_preference never reaches this map, and
-        # is_request_satisfied only requires it for age_preference requests.
+        # bunkmate_grades is unused: this fixture has no feasible age_preference
+        # requests, and is_request_satisfied only requires it for that type.
         predicate_satisfied = is_request_satisfied(
             request.model_dump(),
             person_to_bunk,
@@ -158,3 +176,74 @@ def test_alignment_fixture_outcomes_are_deterministic(mock_config: Any) -> None:
             f"{req_id}: fixture expected sat_var={expected}, solver produced {actual} — "
             f"the deterministic partition no longer holds, re-check build_alignment_fixture"
         )
+
+
+def test_age_preference_satvar_predicate_alignment(mock_config: Any) -> None:
+    """Every feasible MP age_preference sat var agrees with the predicate.
+
+    #1433 — after the bidirectional refactor, age_preference sat vars are
+    registered in ``DirectBunkingSolver.request_satisfied_vars`` and are
+    bidirectionally bound to the post-solve satisfaction condition.
+    """
+    solver, cp_solver = _build_and_solve(mock_config, build_age_preference_alignment_fixture)
+    person_to_bunk = _person_to_bunk(solver, cp_solver)
+    bunkmate_grades = _bunkmate_grades(solver, person_to_bunk)
+
+    sat_vars = solver.request_satisfied_vars
+
+    # Every expected age_preference request must have a sat var registered.
+    for req_id in AGE_PREF_EXPECTED_SATISFACTION:
+        assert req_id in sat_vars, (
+            f"{req_id} (feasible MP age_preference) missing from request_satisfied_vars — "
+            f"the bidirectional refactor (#1433) is not wired into the shared map"
+        )
+
+    requests_by_id = {r.id: r for r in solver.input.requests}
+    grade_by_cm_id = {p.campminder_person_id: p.grade for p in solver.input.persons}
+    disagreements: list[str] = []
+
+    for req_id in AGE_PREF_EXPECTED_SATISFACTION:
+        request = requests_by_id[req_id]
+        sat_var = sat_vars[req_id]
+        solver_satisfied = bool(cp_solver.Value(sat_var))
+        # is_request_satisfied reads requester_grade off the request dict (the
+        # production callers in score_evaluator / bunking_validator pad it on
+        # before calling). Mirror that here.
+        request_payload = request.model_dump()
+        request_payload["requester_grade"] = grade_by_cm_id[request.requester_person_cm_id]
+        predicate_satisfied = is_request_satisfied(
+            request_payload,
+            person_to_bunk,
+            bunkmate_grades=bunkmate_grades,
+        )
+        if solver_satisfied != predicate_satisfied:
+            disagreements.append(
+                f"  {req_id} (age_preference {request.age_preference_target}, "
+                f"requester={request.requester_person_cm_id}): "
+                f"solver sat_var={solver_satisfied}, is_request_satisfied={predicate_satisfied}"
+            )
+
+    assert not disagreements, "age_preference sat vars disagree with is_request_satisfied:\n" + "\n".join(disagreements)
+
+
+def test_age_preference_alignment_fixture_outcomes_are_deterministic(mock_config: Any) -> None:
+    """The age_preference fixture's structurally-forced outcomes hold.
+
+    Mirrors ``test_alignment_fixture_outcomes_are_deterministic`` but for the
+    age_preference fixture — anti-vacuity guard against fixture drift.
+    """
+    solver, cp_solver = _build_and_solve(mock_config, build_age_preference_alignment_fixture)
+    sat_vars = solver.request_satisfied_vars
+
+    for req_id, expected in AGE_PREF_EXPECTED_SATISFACTION.items():
+        assert req_id in sat_vars, f"{req_id} expected in request_satisfied_vars but absent"
+        actual = bool(cp_solver.Value(sat_vars[req_id]))
+        assert actual == expected, (
+            f"{req_id}: fixture expected sat_var={expected}, solver produced {actual} — "
+            f"the deterministic partition no longer holds, re-check "
+            f"build_age_preference_alignment_fixture"
+        )
+
+    # Both branches must be exercised.
+    assert any(AGE_PREF_EXPECTED_SATISFACTION.values()), "fixture has no satisfied case — vacuous"
+    assert not all(AGE_PREF_EXPECTED_SATISFACTION.values()), "fixture has no unsatisfied case — vacuous"

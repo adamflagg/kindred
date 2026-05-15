@@ -90,15 +90,15 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             elif r.request_type == RequestType.AGE_PREFERENCE.value:
                 mp_age_requests_by_person.setdefault(cm_id, []).append(r)
 
-    # Step 2: build sat vars for MP age_preference requests via the helper.
-    # The third return value is a per-request list of forcing indicators
-    # (person_in_clean_bunk BoolVars, or assignment vars in the no-bad-grades
-    # branch, or always-1 vars in the trivially-satisfied branch). We sum
-    # these directly in the hard constraint — they're one-way OnlyEnforceIf-
-    # anchored to real placement, which is sufficient when forced upward.
+    # Step 2: build bidirectional sat vars + forcing indicators for MP
+    # age_preference requests via the helper. The helper registers each sat
+    # var in ctx.request_satisfied_vars (shared with bunk_with / not_bunk_with)
+    # and returns per-request forcing indicators (person_in_clean_bunk BoolVars,
+    # or assignment vars in the no-bad-grades branch, or always-1 vars in the
+    # trivially-satisfied branch). We sum these directly in the hard constraint.
     age_forcing_indicators_by_req_id: dict[str, list[cp_model.IntVar]] = {}
     if mp_age_requests_by_person:
-        _, _, age_forcing_indicators_by_req_id = add_age_preference_satisfaction_vars(ctx, mp_age_requests_by_person)
+        age_forcing_indicators_by_req_id = add_age_preference_satisfaction_vars(ctx, mp_age_requests_by_person)
 
     # Step 3: per-camper, build bunk-request forcing vars inline and combine
     # with age-preference forcing indicators. Add the hard constraint.
