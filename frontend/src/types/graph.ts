@@ -33,7 +33,6 @@ export interface GraphEdge {
   reciprocal: boolean
   request_type?: string // 'bunk_with' | 'not_bunk_with' for edge_type='request' edges
   confidence?: number // AI confidence score for request edges
-  priority?: number // Priority level for request edges
   metadata?: Record<string, unknown> // Additional edge metadata
   // Legacy fields that may still be referenced
   is_reciprocal?: boolean
@@ -56,7 +55,6 @@ export interface CrossScopeEdge {
   edge_type: string
   weight: number
   request_type: string | null
-  priority: number | null
   confidence: number | null
   reciprocal: boolean
   cross_scope: true
