@@ -16,6 +16,7 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
+from ..processing.first_request_detector import is_first_requested
 
 logger = get_logger(__name__)
 
@@ -34,7 +35,6 @@ class RequestBuilder:
 
     def __init__(
         self,
-        priority_calculator: Any,
         temporal_name_cache: Any,
         year: int,
         auto_resolve_threshold: float,
@@ -42,12 +42,10 @@ class RequestBuilder:
         """Initialize the RequestBuilder.
 
         Args:
-            priority_calculator: Calculator for request priorities
             temporal_name_cache: Cache for name lookups (can be None)
             year: The current year for requests
             auto_resolve_threshold: Confidence threshold for auto-resolving
         """
-        self.priority_calculator = priority_calculator
         self.temporal_name_cache = temporal_name_cache
         self.year = year
         self.auto_resolve_threshold = auto_resolve_threshold
@@ -107,8 +105,8 @@ class RequestBuilder:
         Returns:
             BunkRequest or None if building fails
         """
-        # Calculate priority based on all requests for this person
-        priority = self.priority_calculator.calculate_priority(parsed_req, all_parsed_requests)
+        # Determine if this is the family's "first pick" for the slot-0 boost
+        is_first = is_first_requested(parsed_req, all_parsed_requests)
 
         # Get requested person name
         requested_name = self.get_requested_name(parsed_req, resolution_info)
@@ -141,7 +139,7 @@ class RequestBuilder:
             requested_cm_id=person_cm_id,
             request_type=parsed_req.request_type,
             session_cm_id=resolution_info.get("session_cm_id", 0),
-            priority=priority,
+            is_first_requested=is_first,
             confidence_score=resolution_info.get("confidence", parsed_req.confidence),
             source_field=parsed_req.source_field,
             csv_position=parsed_req.csv_position,

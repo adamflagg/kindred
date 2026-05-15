@@ -53,7 +53,7 @@ def _create_bunk_request(
         requested_cm_id=requested_cm_id,
         request_type=request_type,
         session_cm_id=session_cm_id,
-        priority=priority,
+        is_first_requested=(priority >= 4),
         confidence_score=confidence,
         source_field=source_field,
         csv_position=1,

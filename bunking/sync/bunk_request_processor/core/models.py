@@ -304,10 +304,10 @@ class BunkRequest:
     requested_cm_id: int | None  # None for age_preference and placeholders
     request_type: RequestType
     session_cm_id: int  # EXACT session (not family)
-    priority: int  # 1-4 scale
+    is_first_requested: bool  # True iff family's first pick (see first_request_detector)
     confidence_score: float
     source_field: str  # Which CSV field it came from
-    csv_position: int  # Position in the field
+    csv_position: int  # Position in the field (1-based; see openai_provider.py:427)
     year: int
     status: RequestStatus
     is_placeholder: bool  # True when no concrete person is resolved (e.g. age preferences)

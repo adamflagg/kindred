@@ -276,7 +276,7 @@ class TestBunkRequest:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -288,7 +288,7 @@ class TestBunkRequest:
 
         assert request.requester_cm_id == 12345
         assert request.requested_cm_id == 67890
-        assert request.priority == 4
+        assert request.is_first_requested == True
         assert request.year == 2025
         assert request.status == RequestStatus.RESOLVED
         assert not request.is_placeholder
@@ -306,7 +306,7 @@ class TestBunkRequest:
             requested_cm_id=None,  # No target for age preference
             request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
-            priority=1,
+            is_first_requested=False,
             confidence_score=1.0,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
@@ -332,7 +332,7 @@ class TestBunkRequest:
             requested_cm_id=None,  # Placeholder has no specific target
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=1.0,
             source_field="bunk_with",
             csv_position=0,

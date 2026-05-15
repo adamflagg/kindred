@@ -26,17 +26,9 @@ class TestRequestBuilderMetadata:
     """Tests for build_request_metadata method"""
 
     @pytest.fixture
-    def mock_priority_calculator(self):
-        """Create a mock priority calculator"""
-        mock = Mock()
-        mock.calculate_priority.return_value = 3
-        return mock
-
-    @pytest.fixture
-    def builder(self, mock_priority_calculator):
+    def builder(self):
         """Create a RequestBuilder with mocked dependencies"""
         return RequestBuilder(
-            priority_calculator=mock_priority_calculator,
             temporal_name_cache=None,
             year=2025,
             auto_resolve_threshold=0.8,
@@ -136,15 +128,8 @@ class TestRequestBuilderIntegration:
     """Integration tests for full request building"""
 
     @pytest.fixture
-    def mock_priority_calculator(self):
-        mock = Mock()
-        mock.calculate_priority.return_value = 3
-        return mock
-
-    @pytest.fixture
-    def builder(self, mock_priority_calculator):
+    def builder(self):
         return RequestBuilder(
-            priority_calculator=mock_priority_calculator,
             temporal_name_cache=None,
             year=2025,
             auto_resolve_threshold=0.8,
@@ -188,7 +173,6 @@ class TestCrossSessionSatisfied:
     def test_cross_session_high_confidence_resolves(self):
         """Cross-session NOT_BUNK_WITH with high confidence → RESOLVED."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -220,7 +204,6 @@ class TestCrossSessionSatisfied:
     def test_cross_session_low_confidence_pending(self):
         """Cross-session NOT_BUNK_WITH with low confidence → PENDING for staff review."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -252,7 +235,6 @@ class TestCrossSessionSatisfied:
     def test_session_mismatch_declines(self):
         """Session mismatch conflict_type triggers DECLINED via disposition rules."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -288,7 +270,6 @@ class TestEnrollmentDispositionStatus:
     def test_not_attending_conflict_declines(self):
         """has_conflict + target_not_attending → DECLINED with reason."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -325,7 +306,6 @@ class TestEnrollmentDispositionStatus:
         conflict types were conflated into a single target_is_inactive boolean.
         """
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -359,7 +339,6 @@ class TestEnrollmentDispositionStatus:
     def test_waitlisted_target_stays_pending(self):
         """target_waitlisted=True → PENDING even with high confidence."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
@@ -399,7 +378,7 @@ class TestBunkRequestDispositionFields:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -418,7 +397,7 @@ class TestBunkRequestDispositionFields:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -437,7 +416,7 @@ class TestBunkRequestDispositionFields:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -456,13 +435,10 @@ class TestResolutionMethodDirect:
     def test_build_single_request_sets_resolution_method(self):
         """build_single_request() sets resolution_method from resolution_info."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Emma Johnson",
             request_type=RequestType.BUNK_WITH,
@@ -490,13 +466,10 @@ class TestResolutionMethodDirect:
     def test_resolution_method_not_in_metadata(self):
         """resolution_method must NOT be stored in metadata dict."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Emma Johnson",
             request_type=RequestType.BUNK_WITH,
@@ -529,13 +502,10 @@ class TestDispositionReasonDirect:
     def test_build_single_request_sets_disposition_reason(self):
         """Resolved exact match sets disposition_reason='exact_match' on BunkRequest."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Emma Johnson",
             request_type=RequestType.BUNK_WITH,
@@ -562,13 +532,10 @@ class TestDispositionReasonDirect:
     def test_disposition_reason_not_in_metadata(self):
         """disposition_reason must NOT be stored in metadata dict."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Emma Johnson",
             request_type=RequestType.BUNK_WITH,
@@ -596,13 +563,10 @@ class TestDispositionReasonDirect:
     def test_cross_session_satisfied_sets_disposition_reason(self):
         """Cross-session conflict with high confidence sets disposition_reason='cross_session_satisfied'."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Ivy Smith",
             request_type=RequestType.NOT_BUNK_WITH,
@@ -630,13 +594,10 @@ class TestDispositionReasonDirect:
     def test_unresolved_name_has_empty_disposition(self):
         """Negative person_cm_id (unresolved) has no disposition — it's PENDING before rules."""
         builder = RequestBuilder(
-            priority_calculator=Mock(),
             temporal_name_cache=None,
             year=2026,
             auto_resolve_threshold=0.85,
         )
-        builder.priority_calculator.calculate_priority.return_value = 3
-
         parsed_req = ParsedRequest(
             raw_text="Sophia",
             request_type=RequestType.BUNK_WITH,
@@ -668,9 +629,7 @@ class TestBuildMetadataSourceFragment:
     @pytest.fixture
     def builder(self):
         mock = Mock()
-        mock.calculate_priority.return_value = 3
         return RequestBuilder(
-            priority_calculator=mock,
             temporal_name_cache=None,
             year=2025,
             auto_resolve_threshold=0.8,

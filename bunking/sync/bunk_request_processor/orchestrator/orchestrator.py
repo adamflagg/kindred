@@ -47,7 +47,6 @@ from ..debug.trace_models import (
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
 from ..processing.deduplicator import Deduplicator
-from ..processing.priority_calculator import PriorityCalculator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..services.context_builder import ContextBuilder
@@ -723,10 +722,6 @@ class RequestOrchestrator:
             year=self.year,
         )
 
-        # Create priority calculator with config from ai_config.json
-        priority_config = self.ai_config.get("priority", {})
-        self.priority_calculator = PriorityCalculator(priority_config)
-
         # Create spread filter from unified spread.* config
         from bunking.config.loader import ConfigLoader
 
@@ -826,7 +821,6 @@ class RequestOrchestrator:
         self.deduplicator = Deduplicator(self.request_repository)
         # Create request builder for constructing BunkRequest objects
         self.request_builder = RequestBuilder(
-            priority_calculator=self.priority_calculator,
             temporal_name_cache=self.temporal_name_cache,
             year=self.year,
             auto_resolve_threshold=self._get_auto_resolve_threshold(),
@@ -1546,7 +1540,9 @@ class RequestOrchestrator:
                         request_type=parsed_req.request_type.value if parsed_req.request_type else "",
                         status=final_status,
                         confidence=final_confidence,
-                        priority=getattr(matched_br, "priority", 0) if matched_br else 0,
+                        is_first_requested=bool(getattr(matched_br, "is_first_requested", False))
+                        if matched_br
+                        else False,
                         resolution_method=rr.method,
                         declined_reason=br_meta.get("declined_reason"),
                         disposition_reason=getattr(matched_br, "disposition_reason", "") if matched_br else "",

@@ -44,7 +44,7 @@ class TestOrchestratorMergeOnSave:
             requested_cm_id=requested_cm_id,
             request_type=request_type,
             session_cm_id=session_cm_id,
-            priority=3,
+            is_first_requested=False,
             confidence_score=confidence_score,
             source_field=source_field,
             csv_position=0,

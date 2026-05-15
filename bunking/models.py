@@ -27,7 +27,7 @@ class Request(BaseModel):
     request_type: RequestType
     target_camper_id: str | None = None
     age_preference: AgePreference | None = None
-    priority: int = Field(default=1, ge=1, le=5)
+    is_first_requested: bool = Field(default=False)
 
     @field_validator("target_camper_id")
     @classmethod
@@ -59,27 +59,15 @@ class Camper(BaseModel):
     @field_validator("priority_type")
     @classmethod
     def validate_priority_type(cls, v: PriorityType | None, info: ValidationInfo) -> PriorityType | None:
-        if v and "requests" in info.data:
-            positive_priorities = any(
-                r.request_type == RequestType.BUNK_WITH and r.priority > 1 for r in info.data["requests"]
-            )
-            negative_priorities = any(
-                r.request_type == RequestType.NOT_BUNK_WITH and r.priority > 1 for r in info.data["requests"]
-            )
-
-            if positive_priorities and negative_priorities:
-                raise ValueError("Cannot prioritize both positive and negative requests")
-
-            if positive_priorities and v != PriorityType.POSITIVE:
-                raise ValueError("Priority type must be POSITIVE when positive requests are prioritized")
-
-            if negative_priorities and v != PriorityType.NEGATIVE:
-                raise ValueError("Priority type must be NEGATIVE when negative requests are prioritized")
+        # Pre-existing validator stub — kept for backwards compatibility on
+        # the V1 model surface. The bunk_requests.priority field is gone
+        # (2026-05-15 priority-deletion PR) so there's nothing to validate
+        # against. Untouched fields on V1 Camper continue to round-trip.
         return v
 
     def get_sorted_requests(self) -> list[Request]:
-        """Return requests sorted by priority (highest first)"""
-        return sorted(self.requests, key=lambda r: r.priority, reverse=True)
+        """Return requests sorted with first-pick requests first."""
+        return sorted(self.requests, key=lambda r: r.is_first_requested, reverse=True)
 
 
 class Cabin(BaseModel):
@@ -294,7 +282,7 @@ class BunkRequest(BaseModel):
     year: int
     request_type: str  # bunk_with, not_bunk_with, age_preference
     requested_person_cm_id: str | None = None
-    priority: int = 5
+    is_first_requested: bool = False
     status: str = "pending"  # pending, approved, rejected
     notes: str | None = None
     source_field: str | None = None  # CSV field that generated this request
@@ -386,7 +374,6 @@ class SatisfactionAnalysis(BaseModel):
     """Analysis of request satisfaction"""
 
     overall_satisfaction_rate: float = Field(ge=0.0, le=1.0)
-    satisfaction_by_priority: dict[int, float] = Field(default_factory=dict)
     satisfaction_by_type: dict[str, float] = Field(default_factory=dict)
     low_satisfaction_campers: list[tuple[str, int, int, float]] = Field(default_factory=list)
     total_requests: int = Field(ge=0)
