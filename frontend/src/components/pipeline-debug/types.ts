@@ -153,7 +153,6 @@ export interface FinalBunkRequestTrace {
   request_type: string
   status: string
   confidence: number
-  priority: number
   resolution_method: string
   is_placeholder: boolean
   declined_reason: string | null
