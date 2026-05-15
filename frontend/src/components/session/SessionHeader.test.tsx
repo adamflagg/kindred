@@ -128,6 +128,60 @@ describe('SessionHeader scenario name truncation', () => {
 })
 
 // ---------------------------------------------------------------------------
+// DOM rendering tests — action button visibility by mode (#1413)
+// ---------------------------------------------------------------------------
+describe('SessionHeader action button visibility by mode', () => {
+  describe('when isProductionMode is true (viewing live CampMinder data)', () => {
+    it('renders the Pre-check button', () => {
+      renderSessionHeader({ isProductionMode: true, currentScenario: null })
+      expect(screen.getByRole('button', { name: /pre-check/i })).toBeInTheDocument()
+    })
+
+    it('renders the Validate Bunking (post-check) button', () => {
+      renderSessionHeader({ isProductionMode: true, currentScenario: null })
+      expect(screen.getByRole('button', { name: /validate bunking/i })).toBeInTheDocument()
+    })
+
+    it('does NOT render the Optimize Bunks (run-solver) button', () => {
+      renderSessionHeader({ isProductionMode: true, currentScenario: null })
+      expect(screen.queryByRole('button', { name: /optimize bunks/i })).not.toBeInTheDocument()
+    })
+
+    it('does NOT render the Clear assignments button', () => {
+      renderSessionHeader({ isProductionMode: true, currentScenario: null })
+      expect(screen.queryByRole('button', { name: /^clear$/i })).not.toBeInTheDocument()
+    })
+  })
+
+  describe('when isProductionMode is false (scenario/draft mode)', () => {
+    it('renders the Pre-check button', () => {
+      renderSessionHeader({ isProductionMode: false })
+      expect(screen.getByRole('button', { name: /pre-check/i })).toBeInTheDocument()
+    })
+
+    it('renders the Optimize Bunks button', () => {
+      renderSessionHeader({ isProductionMode: false })
+      expect(screen.getByRole('button', { name: /optimize bunks/i })).toBeInTheDocument()
+    })
+
+    it('renders the Clear button when a scenario is active', () => {
+      renderSessionHeader({
+        isProductionMode: false,
+        currentScenario: { id: 'sc1', name: 'Test Scenario' },
+      })
+      expect(screen.getByRole('button', { name: /^clear$/i })).toBeInTheDocument()
+    })
+  })
+
+  describe('when canManage is false', () => {
+    it('does NOT render the Pre-check button (regardless of mode)', () => {
+      renderSessionHeader({ canManage: false, isProductionMode: true, currentScenario: null })
+      expect(screen.queryByRole('button', { name: /pre-check/i })).not.toBeInTheDocument()
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Logic-only tests (no DOM) — existing coverage
 // ---------------------------------------------------------------------------
 
@@ -254,24 +308,6 @@ describe('SessionHeader', () => {
   })
 
   describe('conditional rendering', () => {
-    it('should show pre-validate button only in non-production mode', () => {
-      const isProductionMode = false as boolean
-      const session = { cm_id: 1001 } as { cm_id: number } | null
-
-      const shouldShowPreValidate = !isProductionMode && session !== null
-
-      expect(shouldShowPreValidate).toBe(true)
-    })
-
-    it('should hide pre-validate button in production mode', () => {
-      const isProductionMode = true as boolean
-      const session = { cm_id: 1001 } as { cm_id: number } | null
-
-      const shouldShowPreValidate = !isProductionMode && session !== null
-
-      expect(shouldShowPreValidate).toBe(false)
-    })
-
     it('should show clear button only when in scenario mode', () => {
       const isProductionMode = false as boolean
       const currentScenario = { id: 'scenario-1', name: 'Test Scenario' } as {
