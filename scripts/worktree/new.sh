@@ -207,14 +207,26 @@ fi
 echo -e "${BLUE}Building PocketBase...${NC}"
 (cd pocketbase && go build -o pocketbase .)
 
-# Seed database from main
+# Seed database from main.
+#
+# Use sqlite3 .backup (online backup API), NOT cp. Plain cp of a live SQLite
+# file can capture an inconsistent snapshot when WAL pages are mid-flight,
+# producing a copy that opens fine but reports "database disk image is
+# malformed" the first time PB queries the affected page. The online backup
+# API holds a shared lock on the source while streaming pages, so it is safe
+# to run against a database another process is reading/writing.
 echo -e "${BLUE}Seeding database from main...${NC}"
 if [ -f "$MAIN_REPO/pocketbase/pb_data/data.db" ]; then
+    if ! command -v sqlite3 &> /dev/null; then
+        echo -e "${RED}Error: sqlite3 CLI not found — required for safe DB seeding${NC}"
+        exit 1
+    fi
     mkdir -p "$WORKTREE_DIR/pocketbase/pb_data"
-    cp "$MAIN_REPO/pocketbase/pb_data/data.db" "$WORKTREE_DIR/pocketbase/pb_data/"
-    # Copy WAL files if they exist (for consistency)
-    cp "$MAIN_REPO/pocketbase/pb_data/data.db-shm" "$WORKTREE_DIR/pocketbase/pb_data/" 2>/dev/null || true
-    cp "$MAIN_REPO/pocketbase/pb_data/data.db-wal" "$WORKTREE_DIR/pocketbase/pb_data/" 2>/dev/null || true
+    # Online backup is safe even if main's PB is running. Do NOT copy *-shm /
+    # *-wal — the destination .db produced by .backup is already self-consistent
+    # in rollback-journal mode and stale WAL files from main would override it.
+    sqlite3 "$MAIN_REPO/pocketbase/pb_data/data.db" \
+        ".backup '$WORKTREE_DIR/pocketbase/pb_data/data.db'"
     # Mark as initialized so start_dev.sh skips admin bootstrap (DB already has credentials)
     touch "$WORKTREE_DIR/pocketbase/pb_data/.initialized"
     echo -e "${GREEN}Database seeded from main${NC}"
