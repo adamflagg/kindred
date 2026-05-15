@@ -79,7 +79,6 @@ interface GraphEdge {
   // line for mutual requests (#1309).
   reciprocal: boolean
   confidence?: number
-  priority?: number
 }
 
 interface BunkGraphMetrics {

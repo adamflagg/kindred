@@ -20,8 +20,8 @@ def _mock_attendee(person_id: int, session_id: int) -> Mock:
     m.expand = {
         "person": Mock(
             cm_id=person_id,
-            first_name="Test",
-            last_name="Person",
+            first_name="Emma",
+            last_name="Johnson",
             grade=5,
             birthdate="2015-01-01",
             gender="M",

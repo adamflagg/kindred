@@ -287,9 +287,9 @@ export function useBunkRequestsCount({
       const getRequestsCount = async (sessionCmId: number): Promise<number> => {
         try {
           const filter = buildBunkRequestsFilter(sessionCmId, currentYear, false)
+          // Count-only query — server-side sort is wasted work.
           const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
             filter,
-            sort: '-is_first_requested,requester_id',
           })
           return requests.length
         } catch (error) {

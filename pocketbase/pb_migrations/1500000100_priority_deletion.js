@@ -52,9 +52,13 @@ migrate(
     )
 
     // Replace the priority index with is_first_requested; preserve all
-    // other indexes intact. Filter is exact-match on the legacy index name.
+    // other indexes intact. Match the exact index name with a word boundary
+    // so a future "idx_bunk_requests_priority_locked" (or any other index
+    // whose name starts with this substring) can't be accidentally dropped.
+    // (`\b` treats `_` as a word char, so `_locked` won't satisfy the
+    // trailing boundary.)
     collection.indexes = collection.indexes.filter(
-      (idx) => !idx.includes("idx_bunk_requests_priority"),
+      (idx) => !/\bidx_bunk_requests_priority\b/.test(idx),
     )
     collection.indexes.push(
       "CREATE INDEX idx_bunk_requests_is_first_requested ON bunk_requests (is_first_requested)",
@@ -127,7 +131,7 @@ migrate(
 
     collection.fields.removeByName("is_first_requested")
     collection.indexes = collection.indexes.filter(
-      (idx) => !idx.includes("idx_bunk_requests_is_first_requested"),
+      (idx) => !/\bidx_bunk_requests_is_first_requested\b/.test(idx),
     )
 
     collection.fields.add(

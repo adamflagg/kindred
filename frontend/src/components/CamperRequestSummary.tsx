@@ -83,7 +83,7 @@ export function CamperRequestSummary({
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])
 
-  const isLoading = isLoadingRequests || isLoadingPersons
+  const isLoading = isAuthLoading || isLoadingRequests || isLoadingPersons
   const nonAgeRequests = requests.filter((r) => r.request_type !== 'age_preference')
   const agePreferenceRequest = requests.find((r) => r.request_type === 'age_preference')
   const isEmpty =

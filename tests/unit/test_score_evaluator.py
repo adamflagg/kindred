@@ -95,6 +95,11 @@ class TestCalculatePenalties:
             # Other keys still read via the config= parameter
             "constraint.grade_spread.max_spread": 2,
             "constraint.cabin_capacity.standard": 12,
+            # First-pick boost — pinned ON so tests validate ordering, not
+            # the production default. If someone flips the production default
+            # to 0, test_first_requested_boost would silently revalidate the
+            # wrong code path without this explicit pin.
+            "objective.enable_first_boost": 1,
         }.get(key, default)
         return config
 
@@ -259,7 +264,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
@@ -287,7 +291,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -316,7 +319,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -344,7 +346,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -369,7 +370,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -394,7 +394,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -476,7 +475,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.5x multiplier (share_bunk_with)
             }
         ]
@@ -485,7 +483,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.SOCIALIZE_WITH,  # 0.8x multiplier (socialize_preference)
             }
         ]
@@ -512,14 +509,12 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             },
             {
                 "requester_id": 3,
                 "requestee_id": 4,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNKING_NOTES,
             },
         ]
@@ -560,7 +555,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 10,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
@@ -590,7 +584,6 @@ class TestEvaluateScenarioScore:
                 "requester_person_cm_id": 1,  # Alternative name
                 "requested_person_cm_id": 2,  # Alternative name
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [

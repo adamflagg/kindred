@@ -52,8 +52,6 @@ def base_request_data():
         "keywords_found": {},
         "conflict_group_id": "",
         "requires_family_decision": False,
-        "priority_locked": False,
-        "priority_override_reason": "",
         "request_source": "csv_explicit",
         "prior_year_continuity": False,
         "prior_year_bunk_cm_id": 0,
