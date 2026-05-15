@@ -41,7 +41,6 @@ def base_request_data():
         "requester_person_cm_id": 100001,
         "requested_person_cm_id": 0,
         "request_type": "positive",
-        "priority": 1,
         "year": 2025,
         "original_text": "Test request",
         "status": "unresolved",
@@ -53,8 +52,6 @@ def base_request_data():
         "keywords_found": {},
         "conflict_group_id": "",
         "requires_family_decision": False,
-        "priority_locked": False,
-        "priority_override_reason": "",
         "request_source": "csv_explicit",
         "prior_year_continuity": False,
         "prior_year_bunk_cm_id": 0,
@@ -133,34 +130,21 @@ def test_valid_request_sources(pb_client, base_request_data):
                 pass
 
 
-def test_priority_constraints(pb_client, base_request_data):
-    """Test priority field constraints (1-10)"""
-    # Test invalid priority values
-    # Note: 0 is accepted as it's treated as null/empty for optional fields
-    invalid_priorities = [11, -1, 100]
-
-    for priority in invalid_priorities:
-        data = base_request_data.copy()
-        data["priority"] = priority
-        data["requester_person_cm_id"] = 100020 + abs(priority)
-
-        with pytest.raises(ClientResponseError) as exc_info:
-            pb_client.collection("bunk_requests").create(data)
-
-        assert "priority" in str(exc_info.value.data)
-
-    # Test valid priority values (including 0 which is treated as null)
-    valid_priorities = [0, 1, 5, 10]
+@pytest.mark.pocketbase_required
+def test_is_first_requested_field(pb_client, base_request_data):
+    """Test is_first_requested field accepts boolean values"""
+    # Test valid is_first_requested values
+    valid_is_first_requested = [False, True]
     created_ids = []
 
     try:
-        for priority in valid_priorities:
+        for idx, is_first_requested in enumerate(valid_is_first_requested):
             data = base_request_data.copy()
-            data["priority"] = priority
-            data["requester_person_cm_id"] = 100030 + priority
+            data["is_first_requested"] = is_first_requested
+            data["requester_person_cm_id"] = 100030 + idx
 
             result = pb_client.collection("bunk_requests").create(data)
-            assert result.priority == priority
+            assert result.is_first_requested == is_first_requested
             created_ids.append(result.id)
 
     finally:

@@ -285,7 +285,7 @@ async def validate_bunking(
                 if getattr(request_data, "requestee_id", None)
                 else None,
                 request_type=getattr(request_data, "request_type", ""),
-                priority=getattr(request_data, "priority", 5),
+                is_first_requested=bool(getattr(request_data, "is_first_requested", False)),
                 status=getattr(request_data, "status", "pending"),
                 session_cm_id=str(getattr(request_data, "session_id", "")),
                 year=getattr(request_data, "year", ctx.year),

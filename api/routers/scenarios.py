@@ -265,7 +265,7 @@ async def evaluate_score(
     accurate comparison between different scenarios or between scenario and production.
 
     Score components:
-    - Request satisfaction (with priority weighting, source multipliers, diminishing returns)
+    - Request satisfaction (with first-pick boost, source multipliers, diminishing returns)
     - Age/grade flow bonuses (target grade distribution)
     - Penalties (grade spread, capacity, occupancy)
     """
@@ -290,7 +290,7 @@ async def evaluate_score(
                 "requester_id": getattr(r, "requester_id", None),
                 "requestee_id": getattr(r, "requestee_id", None),
                 "request_type": getattr(r, "request_type", ""),
-                "priority": getattr(r, "priority", 5),
+                "is_first_requested": bool(getattr(r, "is_first_requested", False)),
                 "source_field": getattr(r, "source_field", None),
             }
             ai_reasoning = getattr(r, "ai_reasoning", None)

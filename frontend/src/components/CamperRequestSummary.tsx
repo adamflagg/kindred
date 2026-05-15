@@ -28,7 +28,7 @@ export function CamperRequestSummary({
   currentRequestId,
   requesterName,
 }: CamperRequestSummaryProps) {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
 
   // Staff-review exemption: this fetch intentionally does NOT filter
@@ -43,11 +43,11 @@ export function CamperRequestSummary({
     queryFn: async () => {
       return pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
-        sort: '-priority,request_type',
+        sort: '-is_first_requested,request_type',
       })
     },
     staleTime: 30000,
-    enabled: !!user && requesterCmId > 0,
+    enabled: !isAuthLoading && !!user && requesterCmId > 0,
   })
 
   const requesteeIds = useMemo(() => {
@@ -77,13 +77,13 @@ export function CamperRequestSummary({
       )
       return results.flat()
     },
-    enabled: !!user && requesteeIds.length > 0,
+    enabled: !isAuthLoading && !!user && requesteeIds.length > 0,
     staleTime: 30000,
   })
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])
 
-  const isLoading = isLoadingRequests || isLoadingPersons
+  const isLoading = isAuthLoading || isLoadingRequests || isLoadingPersons
   const nonAgeRequests = requests.filter((r) => r.request_type !== 'age_preference')
   const agePreferenceRequest = requests.find((r) => r.request_type === 'age_preference')
   const isEmpty =

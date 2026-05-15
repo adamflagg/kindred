@@ -56,9 +56,6 @@ def mock_config():
     def _get_bool(key, default=None):
         return default if default is not None else False
 
-    def _get_priority(priority_type, subtype="default"):
-        return 4  # Default priority threshold
-
     def _get_soft_constraint_weight(constraint_name):
         # Return 0 for all soft constraint weights — disables soft penalties
         # so the solver only enforces hard constraints (assignment, capacity,
@@ -70,7 +67,6 @@ def mock_config():
     cfg.get_float.side_effect = _get_float
     cfg.get_str.side_effect = _get_str
     cfg.get_bool.side_effect = _get_bool
-    cfg.get_priority.side_effect = _get_priority
     cfg.get_soft_constraint_weight.side_effect = _get_soft_constraint_weight
     return cfg
 
@@ -112,7 +108,6 @@ def _build_scenario():
             requestee=102,
             request_type="bunk_with",
             source_field="bunk_with",
-            priority=4,
             session=1000001,
         ),
         make_request(
@@ -121,7 +116,6 @@ def _build_scenario():
             requestee=101,
             request_type="bunk_with",
             source_field="bunk_with",
-            priority=4,
             session=1000001,
         ),
     ]

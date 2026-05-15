@@ -15,12 +15,15 @@ vi.mock('../lib/pocketbase', () => ({
   },
 }))
 
-// Mock useAuth
+// Mock useAuth — the default is "user authed, auth not loading"; individual
+// tests can override via mockUseAuth.mockReturnValue(...) before render.
+type MockAuth = { user: unknown; isLoading: boolean }
+const mockUseAuth = vi.fn<() => MockAuth>(() => ({
+  user: { id: 'test-user', email: 'test@example.com' },
+  isLoading: false,
+}))
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 'test-user', email: 'test@example.com' },
-    isLoading: false,
-  }),
+  useAuth: () => mockUseAuth(),
 }))
 
 // Mock AllCamperRequestsModal so it renders a dialog when open
@@ -43,6 +46,10 @@ const { CamperRequestSummary } = await import('./CamperRequestSummary')
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockUseAuth.mockReturnValue({
+    user: { id: 'test-user', email: 'test@example.com' },
+    isLoading: false,
+  })
 })
 
 const mockRequests: BunkRequestsResponse[] = [
@@ -169,6 +176,17 @@ describe('CamperRequestSummary', () => {
     await waitFor(() => {
       expect(screen.getByText(/No other requests/)).toBeInTheDocument()
     })
+  })
+
+  it('shows a loading state (not "No other requests") while auth is still resolving', () => {
+    // Query is gated by !isAuthLoading, so when auth hasn't resolved the
+    // requests query never runs and `requests=[]`. Without including
+    // isAuthLoading in the rendered loading state, the component would
+    // incorrectly fall through to the empty-state branch.
+    mockUseAuth.mockReturnValue({ user: null, isLoading: true })
+    render(<CamperRequestSummary requesterCmId={100} year={2025} currentRequestId="req1" />)
+    expect(screen.getByText(/Loading requests/)).toBeInTheDocument()
+    expect(screen.queryByText(/No other requests/)).not.toBeInTheDocument()
   })
 
   it('renders age_preference requests with "Prefers bunking with" text', async () => {

@@ -18,7 +18,7 @@ class DirectBunkRequest(BaseModel):
     requester_person_cm_id: int
     requested_person_cm_id: int | None = None
     request_type: str  # 'bunk_with', 'not_bunk_with', 'age_preference'
-    priority: int = Field(default=1, ge=1, le=10)
+    is_first_requested: bool = Field(default=False)
     session_cm_id: int
     year: int
     confidence_score: float = 0.0

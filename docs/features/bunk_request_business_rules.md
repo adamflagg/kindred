@@ -42,30 +42,31 @@ This document defines the correct behavior for the bunk request processing syste
 - **Purpose**: Staff observations, parent phone calls, historical notes
 - **Typical Types**: Any type based on context
 
-## Priority System (1-4 Scale)
+## First-Pick Flag (`is_first_requested`)
 
-### Priority 4 (Highest)
-1. **bunk_with** from family field:
-   - First in ordered list (when no priority keywords exist)
-   - Any with priority keywords (when keywords exist anywhere)
-2. **not_bunk_with** from family field
-3. **not_bunk_with** from staff field
-4. **age_preference** from family field (only when it's the sole request)
-5. **LAST_YEAR_BUNKMATES** (only when no other specific bunk_with exists)
+The legacy 1-4 priority scale and the `priority` / `priority_locked` columns were
+deleted in #1455. A single boolean flag, `is_first_requested`, now identifies
+the family's first-pick request. Source-field weighting and request-type
+weighting live in the solver objective, not on the request row.
 
-### Priority 3
-1. **bunk_with** from family field (subsequent in list without keywords)
-2. **LAST_YEAR_BUNKMATES** (when other specific bunk_with exists)
+### When `is_first_requested` is True
+Set by `bunking/sync/bunk_request_processor/processing/first_request_detector.py`:
 
-### Priority 2
-1. Any request type from staff notes fields
+1. The request's `csv_position == 1` within its source field (first in an
+   ordered list — see `bunking/sync/bunk_request_processor/core/models.py`
+   for the position convention), **OR**
+2. The request text contains a priority keyword (see below).
 
-### Priority 1 (Lowest)
-1. **age_preference** from family field (when other requests exist)
-2. **age_preference** from parent field (always)
+If ANY request in a family's list contains a priority keyword, the list is
+treated as unordered: only keyword-bearing requests are first-pick. Otherwise
+the first request in CSV order is first-pick.
 
-## Priority Keywords
-When these appear in request text, the request is considered high priority:
+`is_first_requested` is only meaningful for family-sourced positive requests
+(`bunk_with` from the family field). Other request types (`not_bunk_with`,
+`age_preference`, staff-sourced requests) leave the flag False.
+
+### Priority Keywords
+When any of these appear in request text, the request becomes first-pick:
 - "must have"
 - "very important"
 - "top priority"
@@ -75,7 +76,10 @@ When these appear in request text, the request is considered high priority:
 - "first choice"
 - "most important"
 
-**Rule**: If ANY request in a family's list has priority keywords, assume the list is unordered and only keyword requests get priority 4.
+### How the solver uses the flag
+At most one satisfied request per camper gets the slot-0 multiplier
+(`FIRST_REQUEST_MULTIPLIER = 10` in `bunking/solver/direct_solver.py`).
+Request weighting beyond slot-0 is source-field-driven, not priority-driven.
 
 ## Session Compatibility
 
@@ -113,7 +117,9 @@ When these appear in request text, the request is considered high priority:
 ### LAST_YEAR_BUNKMATES
 - Creates ONE placeholder request (not individual requests)
 - Status: "pending" for staff review
-- Priority: 4 if sole request, 3 if other specific requests exist
+- `is_first_requested` is True iff no other specific `bunk_with` request exists
+  for the camper in this session (so prior-year continuity gets the slot-0
+  boost only when there's no explicit first pick to compete with)
 - Purpose: Flag for staff to review prior year arrangement
 
 ### Request Status Values
@@ -148,7 +154,8 @@ When these appear in request text, the request is considered high priority:
 5. Valid request type for source field
 
 ### Automatic Corrections
-1. Remove duplicate requests (keep highest priority)
+1. Remove duplicate requests (keep the one with `is_first_requested=True` if
+   any; otherwise keep the highest-confidence row)
 2. Convert invalid cross-session requests to "declined"
 3. Flag low confidence matches for review
 
@@ -158,10 +165,10 @@ When these appear in request text, the request is considered high priority:
 1. Process each field independently
 2. Collect all requests for a person
 3. Apply deduplication rules
-4. Calculate priorities based on full context
+4. Compute `is_first_requested` per request (first-position OR priority keyword)
 5. Persist to database
 
 ### Position Tracking
-- Track CSV position (0-based) for each request
-- Used for priority when no keywords present
+- Track CSV position (1-based) for each request
+- Position 1 → first-pick candidate (see `is_first_requested` rules)
 - Preserved in metadata for debugging

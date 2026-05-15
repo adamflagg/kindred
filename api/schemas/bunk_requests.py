@@ -13,7 +13,7 @@ class BunkRequestCreate(BaseModel):
     requester_id: int
     requestee_id: int | None = None
     request_type: str
-    priority: int
+    is_first_requested: bool = False
     year: int
     session_id: int
     original_text: str
@@ -26,10 +26,9 @@ class BunkRequestCreate(BaseModel):
 class BunkRequestUpdate(BaseModel):
     """Request model for updating a bunk request."""
 
-    priority: int | None = None
+    is_first_requested: bool | None = None
     status: str | None = None
     manual_notes: str | None = None
-    priority_locked: bool | None = None
     requestee_id: int | None = None
 
 
@@ -40,7 +39,7 @@ class BunkRequestResponse(BaseModel):
     requester_id: int
     requestee_id: int | None = None
     request_type: str
-    priority: int
+    is_first_requested: bool
     year: int
     session_id: int
     status: str
@@ -48,6 +47,5 @@ class BunkRequestResponse(BaseModel):
     confidence_score: float
     parse_notes: str
     manual_notes: str | None = None
-    priority_locked: bool
     created: str
     updated: str

@@ -49,7 +49,6 @@ export function DispositionDetail({
                 <tr className="border-border text-muted-foreground border-b text-left text-xs font-medium">
                   <th className="pr-3 pb-2">Target</th>
                   <th className="pr-3 pb-2">Status</th>
-                  <th className="pr-3 pb-2">Pri</th>
                   <th className="pr-3 pb-2">Reason</th>
                   <th className="pr-3 pb-2">Confidence</th>
                   <th className="pr-3 pb-2">Method</th>
@@ -64,7 +63,6 @@ export function DispositionDetail({
                     <td className="py-2 pr-3">
                       <Badge label={br.status} color={statusColor(br.status)} />
                     </td>
-                    <td className="py-2 pr-3 font-mono text-xs">P{br.priority}</td>
                     <td className="text-muted-foreground py-2 pr-3 text-xs">
                       {br.disposition_reason !== ''
                         ? br.disposition_reason

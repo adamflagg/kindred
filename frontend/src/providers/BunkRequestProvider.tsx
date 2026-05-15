@@ -39,7 +39,7 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
         const filter = `session_id = ${sessionCmId} && year = ${currentYear} && (merged_into = "" || merged_into = null)`
         return await pb.collection<BunkRequest>('bunk_requests').getFullList({
           filter,
-          sort: '-priority,requester_id',
+          sort: '-is_first_requested,requester_id',
           requestKey: `bunk-requests-${sessionCmId}-${currentYear}`,
         })
       } catch (err) {

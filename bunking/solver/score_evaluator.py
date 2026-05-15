@@ -6,7 +6,7 @@ the full solver.
 
 The scoring logic mirrors the solver's objective function:
 1. Request satisfaction (bunk_with, not_bunk_with, age_preference)
-2. Priority weighting (1-10)
+2. First-pick boost (is_first_requested → 10x slot-0 multiplier)
 3. Source field multipliers (keyed by canonical SourceField values)
 4. Diminishing returns for multiple satisfied requests per person
 5. Soft constraint penalties (grade spread, capacity violations, etc.)
@@ -23,6 +23,12 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.satisfaction import is_request_satisfied
 from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
+from bunking.solver.direct_solver import (
+    BASE_REQUEST_WEIGHT,
+    FIRST_REQUEST_MULTIPLIER,
+    SECOND_REQUEST_MULTIPLIER,
+    THIRD_PLUS_REQUEST_MULTIPLIER,
+)
 from bunking.solver.penalties import (
     grade_spread_penalty,
     min_occupancy_penalty,
@@ -69,7 +75,7 @@ def evaluate_scenario_score(
     Args:
         requests: List of bunk requests with fields:
             - requester_id (cm_id), requestee_id (cm_id), request_type,
-            - priority, source_field, age_preference_target
+            - is_first_requested, source_field, age_preference_target
         assignments: List of assignments with fields:
             - person_cm_id, bunk_cm_id
         persons: List of persons with fields:
@@ -98,10 +104,7 @@ def evaluate_scenario_score(
     bunk_by_cm_id = {int(b.get("cm_id", 0)): b for b in bunks if b.get("cm_id")}
 
     # Get config values
-    enable_diminishing = config.get_int("objective.enable_diminishing_returns", default=1)
-    first_multiplier = config.get_int("objective.first_request_multiplier", default=10)
-    second_multiplier = config.get_int("objective.second_request_multiplier", default=5)
-    third_plus_multiplier = config.get_int("objective.third_plus_request_multiplier", default=1)
+    enable_first_boost = bool(config.get_int("objective.enable_first_boost", default=1))
 
     # Source field multipliers
     source_multipliers = {
@@ -126,7 +129,6 @@ def evaluate_scenario_score(
     for request in requests:
         requester_id = int(request.get("requester_id") or request.get("requester_person_cm_id") or 0)
         request_type = request.get("request_type", "")
-        priority = int(request.get("priority", 5))
 
         # Get source fields
         source_fields = _get_source_fields(request)
@@ -184,8 +186,8 @@ def evaluate_scenario_score(
             satisfied_count += 1
             field_stats[primary_field]["satisfied"] += 1
 
-            # Calculate base weight (priority scaled)
-            base_weight = priority * 10  # Scale up for visibility
+            # Calculate base weight
+            base_weight = BASE_REQUEST_WEIGHT
 
             # Apply source field multiplier
             multiplier = max(source_multipliers.get(f, 1.0) for f in source_fields) if source_fields else 1.0
@@ -198,19 +200,16 @@ def evaluate_scenario_score(
     request_score = 0
 
     for person_cm_id, satisfactions in person_satisfaction.items():
-        # Sort by weighted score descending (prioritize highest value requests)
-        satisfactions.sort(key=lambda x: x[1], reverse=True)
+        if enable_first_boost:
+            satisfactions.sort(key=lambda x: x[0].get("is_first_requested", False), reverse=True)
 
         for i, (request, base_score) in enumerate(satisfactions):
-            if enable_diminishing:
-                if i == 0:
-                    final_score = base_score * first_multiplier
-                elif i == 1:
-                    final_score = base_score * second_multiplier
-                else:
-                    final_score = base_score * third_plus_multiplier
+            if i == 0:
+                final_score = base_score * FIRST_REQUEST_MULTIPLIER
+            elif i == 1:
+                final_score = base_score * SECOND_REQUEST_MULTIPLIER
             else:
-                final_score = base_score
+                final_score = base_score * THIRD_PLUS_REQUEST_MULTIPLIER
 
             request_score += final_score
 

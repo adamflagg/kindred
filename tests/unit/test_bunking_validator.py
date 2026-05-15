@@ -50,7 +50,6 @@ class BunkRequestLike(Protocol):
     requested_person_cm_id: str | None
     request_type: str
     status: str
-    priority: int
     source_field: str | None
     source: str | None
     ai_p1_reasoning: dict[str, Any] | None
@@ -101,7 +100,6 @@ class MockBunkRequest:
     requested_person_cm_id: str | None
     request_type: str
     status: str = "resolved"
-    priority: int = 5
     source_field: str | None = None
     source: str | None = None  # "family" or "staff" (legacy column, derived via source_from_field post-#1142)
     ai_p1_reasoning: dict[str, Any] | None = None

@@ -95,6 +95,11 @@ class TestCalculatePenalties:
             # Other keys still read via the config= parameter
             "constraint.grade_spread.max_spread": 2,
             "constraint.cabin_capacity.standard": 12,
+            # First-pick boost — pinned ON so tests validate ordering, not
+            # the production default. If someone flips the production default
+            # to 0, test_first_requested_boost would silently revalidate the
+            # wrong code path without this explicit pin.
+            "objective.enable_first_boost": 1,
         }.get(key, default)
         return config
 
@@ -214,6 +219,10 @@ class TestEvaluateScenarioScore:
                 "objective.first_request_multiplier": 10,
                 "objective.second_request_multiplier": 5,
                 "objective.third_plus_request_multiplier": 1,
+                # Pinned ON so test_first_requested_boost validates ordering,
+                # not the production default. Flipping the production default
+                # to 0 would otherwise silently re-validate the wrong path.
+                "objective.enable_first_boost": 1,
                 # Legacy keys
                 "penalty.grade_spread": 100,
                 "penalty.over_capacity": 500,
@@ -259,7 +268,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
@@ -287,7 +295,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -316,7 +323,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -344,7 +350,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -369,7 +374,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "not_bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -394,7 +398,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [
@@ -411,38 +414,63 @@ class TestEvaluateScenarioScore:
 
         assert result.satisfied_requests == 0
 
-    def test_priority_weighting(self, mock_config):
-        """Test that higher priority requests contribute more to score."""
-        high_priority_request = [
-            {
-                "requester_id": 1,
-                "requestee_id": 2,
-                "request_type": "bunk_with",
-                "priority": 10,  # High priority
-            }
-        ]
-        low_priority_request = [
-            {
-                "requester_id": 1,
-                "requestee_id": 2,
-                "request_type": "bunk_with",
-                "priority": 1,  # Low priority
-            }
-        ]
+    def test_first_requested_boost(self, mock_config):
+        """Test that is_first_requested=True gets the 10x slot-0 multiplier.
+
+        Priority was deleted — is_first_requested is the new signal for
+        high-importance requests (the former P1 bucket). The flag's job is to
+        decide WHICH request gets slot-0 when a camper has multiple satisfied
+        requests; a single-request scenario can't exercise it (slot-0 always
+        applies). So we pin a two-request control: flip the flag between two
+        requests with different source-field multipliers, assert the slot-0
+        multiplier follows the flag.
+        """
         assignments = [
             {"person_cm_id": 1, "bunk_cm_id": 100},
             {"person_cm_id": 2, "bunk_cm_id": 100},
+            {"person_cm_id": 3, "bunk_cm_id": 100},
         ]
         persons = [
             {"cm_id": 1, "grade": 5},
             {"cm_id": 2, "grade": 5},
+            {"cm_id": 3, "grade": 5},
         ]
         bunks = [{"cm_id": 100, "max_size": 12}]
 
-        high_result = evaluate_scenario_score(high_priority_request, assignments, persons, bunks, config=mock_config)
-        low_result = evaluate_scenario_score(low_priority_request, assignments, persons, bunks, config=mock_config)
+        # Two satisfied requests for person 1; different source_field multipliers
+        # so the slot-0 vs slot-1 difference shows up in the score.
+        # bunk_with → 1.5x, internal_notes → 1.0x.
+        # If first-pick flag works, the bunk_with request lands in slot-0:
+        #   slot-0: 40*1.5*10 = 600, slot-1: 40*1.0*5 = 200 → total 800.
+        # If we flip the flag (internal_notes is first-pick instead):
+        #   slot-0: 40*1.0*10 = 400, slot-1: 40*1.5*5 = 300 → total 700.
+        bunk_with_first = [
+            {
+                "requester_id": 1,
+                "requestee_id": 2,
+                "request_type": "bunk_with",
+                "source_field": SourceField.BUNK_REQUEST_FORM,
+                "is_first_requested": True,
+            },
+            {
+                "requester_id": 1,
+                "requestee_id": 3,
+                "request_type": "bunk_with",
+                "source_field": SourceField.INTERNAL_NOTES,
+                "is_first_requested": False,
+            },
+        ]
+        internal_notes_first = [
+            {**bunk_with_first[0], "is_first_requested": False},
+            {**bunk_with_first[1], "is_first_requested": True},
+        ]
 
-        assert high_result.request_satisfaction_score > low_result.request_satisfaction_score
+        result_a = evaluate_scenario_score(bunk_with_first, assignments, persons, bunks, config=mock_config)
+        result_b = evaluate_scenario_score(internal_notes_first, assignments, persons, bunks, config=mock_config)
+
+        assert result_a.request_satisfaction_score == 800
+        assert result_b.request_satisfaction_score == 700
+        assert result_a.request_satisfaction_score > result_b.request_satisfaction_score
 
     def test_source_field_multiplier(self, mock_config):
         """Test that source field multipliers affect score."""
@@ -451,7 +479,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.5x multiplier (share_bunk_with)
             }
         ]
@@ -460,7 +487,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.SOCIALIZE_WITH,  # 0.8x multiplier (socialize_preference)
             }
         ]
@@ -487,14 +513,12 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             },
             {
                 "requester_id": 3,
                 "requestee_id": 4,
                 "request_type": "bunk_with",
-                "priority": 5,
                 "source_field": SourceField.BUNKING_NOTES,
             },
         ]
@@ -535,7 +559,6 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 10,
                 "source_field": SourceField.BUNK_REQUEST_FORM,
             }
         ]
@@ -565,7 +588,6 @@ class TestEvaluateScenarioScore:
                 "requester_person_cm_id": 1,  # Alternative name
                 "requested_person_cm_id": 2,  # Alternative name
                 "request_type": "bunk_with",
-                "priority": 5,
             }
         ]
         assignments = [

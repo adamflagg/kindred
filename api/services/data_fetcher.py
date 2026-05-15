@@ -437,7 +437,7 @@ def prepare_direct_solver_input(
             requester_person_cm_id=req.requester_id,
             requested_person_cm_id=getattr(req, "requestee_id", None),
             request_type=req.request_type,
-            priority=getattr(req, "priority", 5),
+            is_first_requested=bool(getattr(req, "is_first_requested", False)),
             session_cm_id=req.session_id,
             year=req.year,
             confidence_score=getattr(req, "confidence_score", 0.0),

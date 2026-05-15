@@ -294,7 +294,7 @@ class Deduplicator:
                 "keywords_found": req.metadata.get("keywords_found"),
                 # Position and timing
                 "csv_position": req.csv_position,
-                "priority": req.priority,
+                "is_first_requested": req.is_first_requested,
             }
             merged_sources.append(source_record)
 

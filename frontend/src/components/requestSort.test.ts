@@ -40,7 +40,6 @@ function request(
     id: partial.id,
     requester_id: partial.requester_id,
     requestee_id: partial.requestee_id ?? 0,
-    priority: partial.priority ?? 50,
     confidence_score: partial.confidence_score ?? 0.5,
     status: partial.status ?? ('pending' as BunkRequestsResponse['status']),
     parse_notes: partial.parse_notes ?? '',
@@ -196,24 +195,6 @@ describe('sortRequests — column click behavior preserved', () => {
     expect(sortRequests(requests, personMap, 'confidence', 'desc').map((r) => r.id)).toEqual([
       'high',
       'low',
-    ])
-  })
-
-  it('sorts by priority ascending and descending', () => {
-    const requests = [
-      request({ id: 'mid', requester_id: 1, priority: 50 }),
-      request({ id: 'top', requester_id: 2, priority: 10 }),
-      request({ id: 'bot', requester_id: 1, priority: 90 }),
-    ]
-    expect(sortRequests(requests, personMap, 'priority', 'asc').map((r) => r.id)).toEqual([
-      'top',
-      'mid',
-      'bot',
-    ])
-    expect(sortRequests(requests, personMap, 'priority', 'desc').map((r) => r.id)).toEqual([
-      'bot',
-      'mid',
-      'top',
     ])
   })
 })

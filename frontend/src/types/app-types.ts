@@ -64,7 +64,7 @@ export interface Camper {
     id?: string
     type?: string
     requested_person_id?: number
-    priority?: number
+    is_first_requested?: boolean
     [key: string]: unknown
   }> // Array of bunking requests
   custom_fields?: Record<string, unknown>
@@ -115,7 +115,7 @@ export interface BunkRequest {
   requester_id: number // CampMinder person ID
   requestee_id?: number | null // CampMinder person ID
   request_type: 'bunk_with' | 'not_bunk_with' | 'age_preference'
-  priority?: number
+  is_first_requested?: boolean
   year: number
   session_id: number // CampMinder session ID
   status: 'resolved' | 'pending' | 'declined'
@@ -125,7 +125,6 @@ export interface BunkRequest {
   socialize_explain?: string
   source_field?: string // CSV field this came from (bunk_with, not_bunk_with, manual, etc.)
   is_reciprocal?: boolean
-  priority_locked?: boolean
   manual_notes?: string
   // Age preference specific
   age_preference_target?: string // 'older' or 'younger'

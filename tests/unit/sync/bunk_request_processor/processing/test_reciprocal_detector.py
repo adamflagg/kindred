@@ -38,7 +38,7 @@ class TestReciprocalDetector:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -56,7 +56,7 @@ class TestReciprocalDetector:
             requested_cm_id=12345,  # Swapped
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=2,
+            is_first_requested=False,
             confidence_score=0.88,
             source_field="bunk_with",
             csv_position=0,
@@ -74,7 +74,6 @@ class TestReciprocalDetector:
         assert pair.request1 == base_request
         assert pair.request2 == reciprocal
         assert pair.is_mutual is True
-        assert pair.combined_priority == 5  # 3 + 2
         assert pair.confidence_boost == 0.1  # Default boost
 
     def test_no_reciprocal_different_types(self, detector, base_request):
@@ -84,7 +83,7 @@ class TestReciprocalDetector:
             requested_cm_id=12345,
             request_type=RequestType.NOT_BUNK_WITH,  # Different type
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.90,
             source_field="not_bunk_with",
             csv_position=0,
@@ -106,7 +105,7 @@ class TestReciprocalDetector:
             requested_cm_id=12345,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000021,  # Different session
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.90,
             source_field="bunk_with",
             csv_position=0,
@@ -130,7 +129,7 @@ class TestReciprocalDetector:
                 requested_cm_id=200,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=3,
+                is_first_requested=False,
                 confidence_score=0.95,
                 source_field="bunk_with",
                 csv_position=0,
@@ -144,7 +143,7 @@ class TestReciprocalDetector:
                 requested_cm_id=100,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=3,
+                is_first_requested=False,
                 confidence_score=0.95,
                 source_field="bunk_with",
                 csv_position=0,
@@ -159,7 +158,7 @@ class TestReciprocalDetector:
                 requested_cm_id=400,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=4,
+                is_first_requested=True,
                 confidence_score=0.90,
                 source_field="bunk_with",
                 csv_position=0,
@@ -173,7 +172,7 @@ class TestReciprocalDetector:
                 requested_cm_id=300,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=2,
+                is_first_requested=False,
                 confidence_score=0.85,
                 source_field="internal_notes",
                 csv_position=0,
@@ -202,7 +201,7 @@ class TestReciprocalDetector:
                 requested_cm_id=200,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=3,
+                is_first_requested=False,
                 confidence_score=0.95,
                 source_field="bunk_with",
                 csv_position=0,
@@ -216,7 +215,7 @@ class TestReciprocalDetector:
                 requested_cm_id=100,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=3,
+                is_first_requested=False,
                 confidence_score=0.95,
                 source_field="bunk_with",
                 csv_position=0,
@@ -239,7 +238,7 @@ class TestReciprocalDetector:
             requested_cm_id=None,  # Placeholder
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.50,
             source_field="bunk_with",
             csv_position=0,
@@ -261,7 +260,7 @@ class TestReciprocalDetector:
             requested_cm_id=None,
             request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=1.0,
             source_field="bunk_preference",
             csv_position=0,
@@ -276,7 +275,7 @@ class TestReciprocalDetector:
             requested_cm_id=None,
             request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=1.0,
             source_field="bunk_preference",
             csv_position=0,

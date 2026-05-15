@@ -22,7 +22,11 @@ from api.constants.collections import (
 )
 from bunking.logging_config import get_logger
 
-from .social_graph_builder import SocialGraphBuilder, build_request_edge_attrs
+from .social_graph_builder import (
+    SocialGraphBuilder,
+    _confidence_or_default,
+    build_request_edge_attrs,
+)
 
 logger = get_logger(__name__)
 
@@ -319,19 +323,17 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         }
 
     def _calculate_edge_weight(self, request: Any, reciprocal: bool) -> float:
-        """Calculate edge weight based on request properties."""
+        """Calculate edge weight based on request properties.
+
+        Confidence runs through the canonical None-safe helper so this stays
+        in lockstep with `social_graph_builder`'s edge contract: missing or
+        None confidence falls back to 1.0; an explicit 0.0 is preserved.
+        """
         base_weight = 1.0
 
-        # Add weight for priority
-        if hasattr(request, "priority"):
-            base_weight += request.priority * 0.1
-
-        # Double weight for reciprocal requests
         if reciprocal:
             base_weight *= 2
 
-        # Adjust for confidence
-        if hasattr(request, "confidence_score") and request.confidence_score:
-            base_weight *= request.confidence_score
+        base_weight *= _confidence_or_default(request)
 
         return round(base_weight, 2)

@@ -65,7 +65,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 2,
             "request_type": "bunk_with",
             "source_field": "bunk_with",
-            "priority": 5,
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -75,7 +74,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 4,
             "request_type": "bunk_with",
             "source_field": "bunk_with",
-            "priority": 5,
             "year": 2026,
             "session_id": 999,
         },  # unsatisfied
@@ -86,7 +84,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 3,
             "request_type": "bunk_with",
             "source_field": "socialize_with",
-            "priority": 3,
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -97,7 +94,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 4,
             "request_type": "not_bunk_with",
             "source_field": "not_bunk_with",
-            "priority": 5,
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -107,7 +103,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 1,
             "request_type": "not_bunk_with",
             "source_field": "not_bunk_with",
-            "priority": 5,
             "year": 2026,
             "session_id": 999,
         },  # violated
@@ -118,7 +113,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 5,
             "request_type": "bunk_with",
             "source_field": "bunking_notes",
-            "priority": 4,
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -129,7 +123,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 4,
             "request_type": "bunk_with",
             "source_field": "internal_notes",
-            "priority": 4,
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -143,7 +136,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requestee_id": 0,
             "request_type": "age_preference",
             "source_field": "socialize_with",
-            "priority": 4,
             "year": 2026,
             "session_id": 100,
             "requester_grade": 7,

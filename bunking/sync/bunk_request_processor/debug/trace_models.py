@@ -130,7 +130,7 @@ class FinalBunkRequestTrace(BaseModel):
     request_type: str = ""
     status: str = ""
     confidence: float = 0.0
-    priority: int = 0
+    is_first_requested: bool = False
     resolution_method: str = ""
     is_placeholder: bool = False
     declined_reason: str | None = None

@@ -4,7 +4,6 @@ import { CheckCircle, CheckCheck, XCircle, Scissors } from 'lucide-react'
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 import EditableRequestType from './EditableRequestType'
 import EditableRequestTarget from './EditableRequestTarget'
-import EditablePriority from './EditablePriority'
 import { computeTypeUpdate, computeTargetUpdate } from './requestEditableHelpers'
 import {
   formatReason,
@@ -28,7 +27,6 @@ export interface RequestRowDesktopProps {
   onToggleSelection: (id: string) => void
   onSelectCamper: (cmId: string) => void
   onValidatedUpdate: (request: BunkRequestsResponse, updates: Partial<BunkRequestsResponse>) => void
-  onPriorityChange: (id: string, priority: number) => void
   onSplit: (request: BunkRequestsResponse) => void
   onConfirmAction: (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -94,7 +92,6 @@ function RequestRowDesktop({
   onToggleSelection,
   onSelectCamper,
   onValidatedUpdate,
-  onPriorityChange,
   onSplit,
   onConfirmAction,
 }: RequestRowDesktopProps) {
@@ -124,13 +121,6 @@ function RequestRowDesktop({
       onValidatedUpdate(request, computeTargetUpdate(updates))
     },
     [onValidatedUpdate, request]
-  )
-
-  const handlePriorityChange = useCallback(
-    (newPriority: number) => {
-      onPriorityChange(request.id, newPriority)
-    },
-    [onPriorityChange, request.id]
   )
 
   const handleViewCamper = useCallback(
@@ -212,16 +202,6 @@ function RequestRowDesktop({
       </div>
       <div className="flex items-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <EditableRequestType value={request.request_type} onChange={handleTypeChange} />
-      </div>
-      <div
-        className="flex items-center justify-center px-4 py-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <EditablePriority
-          value={request.priority}
-          onChange={handlePriorityChange}
-          disabled={false}
-        />
       </div>
       <div className="flex items-center justify-center px-4 py-3">
         <span

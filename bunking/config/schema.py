@@ -210,36 +210,20 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         max_value=10.0,
     ),
     # =========================================================================
-    # OBJECTIVE FUNCTION - Diminishing Returns
+    # OBJECTIVE FUNCTION - First-pick boost (debug toggle)
     # =========================================================================
-    "objective.enable_diminishing_returns": ConfigKey(
-        key="objective.enable_diminishing_returns",
+    "objective.enable_first_boost": ConfigKey(
+        key="objective.enable_first_boost",
         config_type=ConfigType.INT,
         required=True,
-        description="Enable diminishing returns for multiple requests (1=enabled)",
+        description=(
+            "When true, the family's first-pick request (is_first_requested=true) "
+            "lands in slot 0 of the diminishing-returns stack and gets the 10x boost. "
+            "When false, slot 0 falls to insertion order — A/B-test handle for the "
+            "solver-debug UI."
+        ),
         min_value=0,
         max_value=1,
-    ),
-    "objective.first_request_multiplier": ConfigKey(
-        key="objective.first_request_multiplier",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Multiplier for first satisfied request",
-        min_value=0,
-    ),
-    "objective.second_request_multiplier": ConfigKey(
-        key="objective.second_request_multiplier",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Multiplier for second satisfied request",
-        min_value=0,
-    ),
-    "objective.third_plus_request_multiplier": ConfigKey(
-        key="objective.third_plus_request_multiplier",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Multiplier for third+ satisfied requests",
-        min_value=0,
     ),
     # =========================================================================
     # SOLVER SETTINGS

@@ -263,7 +263,7 @@ class RequestRepository:
             "requested_person_name": request.requested_name,  # Store target name for GUI display
             "request_type": request.request_type.value,
             "session_id": request.session_cm_id,
-            "priority": request.priority,
+            "is_first_requested": request.is_first_requested,
             "confidence_score": request.confidence_score,
             "source_field": request.source_field,
             "csv_position": request.csv_position,
@@ -558,7 +558,7 @@ class RequestRepository:
             requested_cm_id=get_field(db_record, "requestee_id"),
             request_type=RequestType(get_field(db_record, "request_type")),
             session_cm_id=get_field(db_record, "session_id"),
-            priority=get_field(db_record, "priority"),
+            is_first_requested=bool(get_field(db_record, "is_first_requested", False)),
             confidence_score=get_field(db_record, "confidence_score"),
             source_field=get_field(db_record, "source_field"),
             csv_position=get_field(db_record, "csv_position"),

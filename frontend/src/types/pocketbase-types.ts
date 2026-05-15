@@ -311,7 +311,7 @@ export type BunkRequestsRecord<
   metadata?: null | Tmetadata
   original_text?: string
   parse_notes?: string
-  priority?: number
+  is_first_requested?: boolean
   request_type: BunkRequestsRequestTypeOptions
   requested_person_name?: string
   requestee_id?: number

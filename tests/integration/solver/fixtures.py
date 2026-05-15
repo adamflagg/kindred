@@ -92,7 +92,6 @@ def build_alignment_fixture() -> DirectSolverInput:
                 requestee=1,
                 request_type="bunk_with",
                 source_field=MP_SOURCE,
-                priority=4,
                 session=SESSION,
             )
         )
@@ -107,7 +106,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=10,
             request_type="bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=3,
             session=SESSION,
         ),
         # camper 1 (CLIQUE) -> camper 9 (OTHER) -> unsatisfied.
@@ -117,7 +115,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=9,
             request_type="bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=3,
             session=SESSION,
         ),
         # camper 1 (CLIQUE) -> camper 10 (OTHER), different bunks -> satisfied.
@@ -127,7 +124,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=10,
             request_type="not_bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=3,
             session=SESSION,
         ),
         # camper 1 -> camper 3, both in CLIQUE (same bunk) -> unsatisfied.
@@ -137,7 +133,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=3,
             request_type="not_bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=3,
             session=SESSION,
         ),
     ]
@@ -154,7 +149,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             request_type="age_preference",
             source_field=NON_MP_SOURCE,
             age_preference_target="older",
-            priority=2,
             session=SESSION,
         ),
         # target not in the solver roster -> TargetNotInSolverImpossibility.
@@ -164,7 +158,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=999999,
             request_type="bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=2,
             session=SESSION,
         ),
         # malformed bunk_with (no requestee) -> MalformedRequestImpossibility.
@@ -174,7 +167,6 @@ def build_alignment_fixture() -> DirectSolverInput:
             requestee=None,
             request_type="bunk_with",
             source_field=NON_MP_SOURCE,
-            priority=2,
             session=SESSION,
         ),
     ]

@@ -154,7 +154,6 @@ describe('deriveStageStatus', () => {
             request_type: 'BUNK_WITH',
             status: 'RESOLVED',
             confidence: 0.95,
-            priority: 1,
             resolution_method: 'exact_match',
             is_placeholder: false,
             declined_reason: null,

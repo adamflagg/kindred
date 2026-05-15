@@ -145,7 +145,6 @@ describe('columnWidths', () => {
       'session',
       'bunk',
       'actions',
-      'priority',
       'confidence',
     ]
     for (const key of expectedKeys) {

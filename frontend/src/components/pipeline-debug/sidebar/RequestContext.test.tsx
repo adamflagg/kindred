@@ -108,7 +108,6 @@ const minimalTraceData: TraceData = {
         requested_name: 'Emma Johnson',
         request_type: 'BUNK_WITH',
         status: 'RESOLVED',
-        priority: 1,
         confidence: 0.95,
         resolution_method: 'exact_match',
         is_placeholder: false,
