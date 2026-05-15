@@ -16,25 +16,38 @@ import { GEO_CATEGORIES, type GeoCategory } from '../components/admin/geoConstan
 /**
  * Prefetch gaps + canonicals for non-active geo categories so tab switches are instant.
  * Fires on mount and whenever the active category changes.
+ *
+ * The prefetch is deferred via `requestIdleCallback` so it doesn't compete with the
+ * active tab's initial paint and interactivity. Falls back to setTimeout for browsers
+ * that don't expose requestIdleCallback (notably Safari pre-16.4).
  */
 export function useGeoPagePrefetch(activeCategory: string, year: number, activeOnly: boolean) {
   const queryClient = useQueryClient()
   const { fetchWithAuth } = useApiWithAuth()
 
   useEffect(() => {
-    const otherCategories: GeoCategory[] = GEO_CATEGORIES.filter((c) => c !== activeCategory)
-    for (const cat of otherCategories) {
-      void queryClient.prefetchQuery({
-        queryKey: queryKeys.geoGaps(cat, year, activeOnly),
-        queryFn: () => geoService.fetchGeoGaps(cat, year, fetchWithAuth, { activeOnly }),
-        ...userDataOptions,
-      })
-      void queryClient.prefetchQuery({
-        queryKey: queryKeys.geoAllCanonicals(cat, year),
-        queryFn: () => geoService.fetchAllCanonicals(cat, year, fetchWithAuth),
-        ...syncDataOptions,
-      })
+    const doPrefetch = () => {
+      const otherCategories: GeoCategory[] = GEO_CATEGORIES.filter((c) => c !== activeCategory)
+      for (const cat of otherCategories) {
+        void queryClient.prefetchQuery({
+          queryKey: queryKeys.geoGaps(cat, year, activeOnly),
+          queryFn: () => geoService.fetchGeoGaps(cat, year, fetchWithAuth, { activeOnly }),
+          ...userDataOptions,
+        })
+        void queryClient.prefetchQuery({
+          queryKey: queryKeys.geoAllCanonicals(cat, year),
+          queryFn: () => geoService.fetchAllCanonicals(cat, year, fetchWithAuth),
+          ...syncDataOptions,
+        })
+      }
     }
+
+    if (typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(doPrefetch, { timeout: 2000 })
+      return () => window.cancelIdleCallback?.(handle)
+    }
+    const handle = window.setTimeout(doPrefetch, 1)
+    return () => window.clearTimeout(handle)
   }, [activeCategory, year, activeOnly, queryClient, fetchWithAuth])
 }
 

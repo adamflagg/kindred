@@ -178,6 +178,23 @@ class TestCacheInvalidationEndpoint:
         assert resp.status_code == 200
         assert resp.json()["cleared"] == 0
 
+    def test_invalidation_endpoint_also_clears_geo_person_id_cache(self, test_client, fresh_cache):
+        """The same /cache/invalidate endpoint must also clear the geo _PERSON_ID_CACHE.
+
+        CampMinder sync changes attendee status_id, which feeds _fetch_active_person_pb_ids.
+        The frontend fires POST /api/metrics/cache/invalidate after sync completion, so
+        geo's person-id cache must hook into the same signal to avoid stale data.
+        """
+        from api.services.geo_service import _PERSON_ID_CACHE
+
+        # Prime the geo cache with a stub entry
+        _PERSON_ID_CACHE[(2025, (), None, None)] = ({"p1", "p2"}, 9999999999.0)
+        assert len(_PERSON_ID_CACHE) == 1
+
+        resp = test_client.post("/api/metrics/cache/invalidate")
+        assert resp.status_code == 200
+        assert len(_PERSON_ID_CACHE) == 0
+
 
 class TestCacheStatsEndpoint:
     """Test the GET /api/metrics/cache/stats endpoint."""
