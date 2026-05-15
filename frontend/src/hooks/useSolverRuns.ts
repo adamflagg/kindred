@@ -61,6 +61,8 @@ export interface SolverRunStats {
     mp_campers_satisfied?: number
     all_campers_total?: number
     all_campers_satisfied?: number
+    all_requests_total?: number
+    all_requests_satisfied?: number
     // Tier 1 observability (Stream 2, issue #1388)
     impossible_by_reason?: Record<RequestBucket, Record<string, number>>
   }
