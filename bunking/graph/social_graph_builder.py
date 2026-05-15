@@ -103,7 +103,6 @@ def build_request_edge_attrs(
     attrs: dict[str, Any] = {
         "weight": weight,
         "edge_type": "request",
-        "priority": getattr(request, "priority", 5),
         "confidence": getattr(request, "confidence_score", 1.0),
         "reciprocal": reciprocal,
         "source_field": sf,
@@ -366,8 +365,8 @@ class SocialGraphBuilder:
                 if is_reciprocal:
                     # Use the first request for properties
                     request = pair_requests[0]
-                    priority = getattr(request, "priority", 5)
-                    weight = 1.0 + (priority / 10.0)
+                    confidence_score = getattr(request, "confidence_score", 1.0)
+                    weight = confidence_score
 
                     # A reciprocal pair carries TWO requests (one per direction).
                     # Storing only pair_requests[0] as the edge's requester drops the
@@ -391,7 +390,6 @@ class SocialGraphBuilder:
                             # Sibling edge exists, add request as secondary
                             edge_data["secondary_type"] = "request"
                             edge_data["has_request"] = True
-                            edge_data["request_priority"] = priority
                             edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
                             edge_data["weight"] = max(edge_data["weight"], weight)
                             edge_data["reciprocal_rows"] = reciprocal_rows
@@ -420,8 +418,8 @@ class SocialGraphBuilder:
                     for request in pair_requests:
                         requester = getattr(request, "requester_id", None)
                         requestee = getattr(request, "requestee_id", None)
-                        req_priority = getattr(request, "priority", 5)
-                        weight = 1.0 + (req_priority / 10.0)
+                        confidence_score = getattr(request, "confidence_score", 1.0)
+                        weight = confidence_score
 
                         # Check if sibling edge exists
                         if bunk_graph.has_edge(requester, requestee):
@@ -430,7 +428,6 @@ class SocialGraphBuilder:
                                 # Sibling edge exists, add request as secondary
                                 edge_data["secondary_type"] = "request"
                                 edge_data["has_request"] = True
-                                edge_data["request_priority"] = req_priority
                                 edge_data["request_confidence"] = getattr(request, "confidence_score", 1.0)
                                 edge_data["weight"] = max(edge_data["weight"], weight)
                                 logger.info(
@@ -631,21 +628,19 @@ class SocialGraphBuilder:
                 # Check for self-referential request (defense in depth)
                 if requester == requestee:
                     # Log detailed information about self-referential request
-                    req_priority = getattr(request, "priority", None)
                     req_confidence = getattr(request, "confidence_score", None)
                     req_status = getattr(request, "status", None)
                     logger.warning(
                         f"Skipping self-referential request: person {requester} "
                         f"requesting themselves (request ID: {request.id}, "
-                        f"priority: {req_priority}, confidence: {req_confidence}, "
+                        f"confidence: {req_confidence}, "
                         f"status: {req_status})"
                     )
                     continue  # Skip adding this edge
 
-                # Calculate edge weight based on priority and confidence
-                priority = getattr(request, "priority", 5)
+                # Calculate edge weight from confidence; priority dimension removed
                 confidence_score = getattr(request, "confidence_score", 1.0)
-                weight = priority * confidence_score
+                weight = confidence_score
 
                 self.graph.add_edge(
                     requester,

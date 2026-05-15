@@ -322,10 +322,6 @@ class OptimizedSocialGraphBuilder(SocialGraphBuilder):
         """Calculate edge weight based on request properties."""
         base_weight = 1.0
 
-        # Add weight for priority
-        if hasattr(request, "priority"):
-            base_weight += request.priority * 0.1
-
         # Double weight for reciprocal requests
         if reciprocal:
             base_weight *= 2
