@@ -111,6 +111,23 @@ func runRecompute(e *core.RecordEvent) {
 	requestee := r.GetInt("requestee_id")
 	requestType := r.GetString("request_type")
 
+	// Read and clear the pre-update cache BEFORE invoking RecomputePairReciprocity.
+	// RecomputePairReciprocity may save sibling rows (or even this same row again,
+	// when multiple source_field siblings share these pair coords). Those saves
+	// re-enter OnRecordUpdate → captureOldCoords, which would overwrite our
+	// cache entry with post-mutation coords and cause us to miss the old-pair
+	// recompute below.
+	var oldCoords pairCoords
+	hasOldCoords := false
+	if r.Id != "" {
+		if cached, ok := preUpdateCache.LoadAndDelete(r.Id); ok {
+			if old, ok := cached.(pairCoords); ok {
+				oldCoords = old
+				hasOldCoords = true
+			}
+		}
+	}
+
 	if err := RecomputePairReciprocity(e.App, year, sessionID, requester, requestee, requestType); err != nil {
 		slog.Error("RecomputePairReciprocity failed",
 			"requester", requester,
@@ -120,37 +137,29 @@ func runRecompute(e *core.RecordEvent) {
 		)
 	}
 
-	if r.Id == "" {
-		return
-	}
-	cached, ok := preUpdateCache.LoadAndDelete(r.Id)
-	if !ok {
-		return
-	}
-	old, ok := cached.(pairCoords)
-	if !ok {
+	if !hasOldCoords {
 		return
 	}
 
-	pairUnchanged := old.Requester == requester &&
-		old.Requestee == requestee &&
-		old.Year == year &&
-		old.SessionID == sessionID &&
-		old.RequestType == requestType
+	pairUnchanged := oldCoords.Requester == requester &&
+		oldCoords.Requestee == requestee &&
+		oldCoords.Year == year &&
+		oldCoords.SessionID == sessionID &&
+		oldCoords.RequestType == requestType
 	if pairUnchanged {
 		return
 	}
-	if old.Requester == 0 || old.Requestee == 0 {
+	if oldCoords.Requester == 0 || oldCoords.Requestee == 0 {
 		return
 	}
 
 	if err := RecomputePairReciprocity(
-		e.App, old.Year, old.SessionID, old.Requester, old.Requestee, old.RequestType,
+		e.App, oldCoords.Year, oldCoords.SessionID, oldCoords.Requester, oldCoords.Requestee, oldCoords.RequestType,
 	); err != nil {
 		slog.Error("RecomputePairReciprocity failed (old pair)",
-			"requester", old.Requester,
-			"requestee", old.Requestee,
-			"request_type", old.RequestType,
+			"requester", oldCoords.Requester,
+			"requestee", oldCoords.Requestee,
+			"request_type", oldCoords.RequestType,
 			"error", err,
 		)
 	}

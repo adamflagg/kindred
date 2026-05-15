@@ -14,12 +14,20 @@ const (
 	statusResolved         = "resolved"
 )
 
-// RecomputePairReciprocity recomputes is_reciprocal on both rows of a
+// RecomputePairReciprocity recomputes is_reciprocal on every row of a
 // (personA, personB, request_type) pair in the same year + session.
 // Idempotent: writes only if the new value differs from the stored one.
 //
 // Reciprocity is meaningful only for bunk_with and not_bunk_with rows that
 // share year+session+request_type; the call is a no-op for any other shape.
+//
+// Production allows multiple rows per directed pair when they originate
+// from different source_field values (the unique index includes source_field).
+// Reciprocity is a pair-level property — all sibling rows in the same
+// direction share the same target is_reciprocal — so every sibling must
+// be updated, not just the lowest-id one. The previous single-row logic
+// silently left non-lowest-id siblings stale when their request_type was
+// flipped (#1445).
 func RecomputePairReciprocity(
 	app core.App,
 	year int,
@@ -35,40 +43,44 @@ func RecomputePairReciprocity(
 		return nil
 	}
 
-	rowAB, err := findRow(app, year, sessionID, personA, personB, requestType)
+	rowsAB, err := findRows(app, year, sessionID, personA, personB, requestType)
 	if err != nil {
 		return fmt.Errorf("find A→B: %w", err)
 	}
-	rowBA, err := findRow(app, year, sessionID, personB, personA, requestType)
+	rowsBA, err := findRows(app, year, sessionID, personB, personA, requestType)
 	if err != nil {
 		return fmt.Errorf("find B→A: %w", err)
 	}
 
-	aResolved := rowAB != nil && rowAB.GetString("status") == statusResolved
-	bResolved := rowBA != nil && rowBA.GetString("status") == statusResolved
+	aResolved := anyResolved(rowsAB)
+	bResolved := anyResolved(rowsBA)
 
 	// Reciprocity is a symmetric pair-level property: both rows are reciprocal
-	// iff both exist AND both are resolved. Matches the graph builder's
-	// has_forward && has_backward semantic at social_graph_builder.py:379.
+	// iff at least one row on each side exists AND at least one is resolved on
+	// each side. Matches the graph builder's has_forward && has_backward
+	// semantic at social_graph_builder.py:379.
 	pairReciprocal := aResolved && bResolved
 
-	if err := setIfChanged(app, rowAB, pairReciprocal); err != nil {
-		return fmt.Errorf("update A→B: %w", err)
+	for _, row := range rowsAB {
+		if err := setIfChanged(app, row, pairReciprocal); err != nil {
+			return fmt.Errorf("update A→B sibling %s: %w", row.Id, err)
+		}
 	}
-	if err := setIfChanged(app, rowBA, pairReciprocal); err != nil {
-		return fmt.Errorf("update B→A: %w", err)
+	for _, row := range rowsBA {
+		if err := setIfChanged(app, row, pairReciprocal); err != nil {
+			return fmt.Errorf("update B→A sibling %s: %w", row.Id, err)
+		}
 	}
 	return nil
 }
 
-// findRow returns the bunk_request matching the given coordinates, or nil if
-// no row exists. Production allows multiple rows per directed pair when
-// they originate from different source_field values (the unique index
-// includes source_field). When that happens this helper returns the
-// lowest-id row deterministically — sufficient for "is the other direction
-// resolved?" since all sibling rows in the same direction share the same
-// pair coordinates.
-func findRow(app core.App, year, sessionID, requester, requestee int, requestType string) (*core.Record, error) {
+// findRows returns every bunk_request matching the given coordinates, or
+// an empty slice if none exist. Production allows multiple rows per directed
+// pair when they originate from different source_field values; this helper
+// returns all of them so reciprocity updates can apply uniformly across
+// siblings (#1445 — a single-row helper silently left stale state on
+// non-lowest-id rows when request_type was flipped).
+func findRows(app core.App, year, sessionID, requester, requestee int, requestType string) ([]*core.Record, error) {
 	filter := "year = {:year} && session_id = {:sessionID} && " +
 		"requester_id = {:requester} && requestee_id = {:requestee} && " +
 		"request_type = {:requestType}"
@@ -76,7 +88,7 @@ func findRow(app core.App, year, sessionID, requester, requestee int, requestTyp
 		"bunk_requests",
 		filter,
 		"id",
-		1,
+		0, // 0 = unlimited
 		0,
 		map[string]any{
 			"year":        year,
@@ -89,10 +101,17 @@ func findRow(app core.App, year, sessionID, requester, requestee int, requestTyp
 	if err != nil {
 		return nil, fmt.Errorf("find bunk_requests: %w", err)
 	}
-	if len(records) == 0 {
-		return nil, nil
+	return records, nil
+}
+
+// anyResolved reports whether any row in the slice has status = "resolved".
+func anyResolved(rows []*core.Record) bool {
+	for _, r := range rows {
+		if r.GetString("status") == statusResolved {
+			return true
+		}
 	}
-	return records[0], nil
+	return false
 }
 
 // setIfChanged updates is_reciprocal only if the stored value differs from

@@ -82,11 +82,25 @@ func setupBunkRequestsCollection(t *testing.T, app core.App) {
 // pair coords + status. Returns the saved record.
 func makeRequest(t *testing.T, app core.App, requester, requestee int, rtype, status string) *core.Record {
 	t.Helper()
+	return makeRequestWithID(t, app, "", requester, requestee, rtype, status)
+}
+
+// makeRequestWithID is like makeRequest but lets the caller pin a specific
+// record ID — used by tests that exercise the lowest-id-wins behavior of
+// findRow when multiple siblings share pair coords.
+func makeRequestWithID(
+	t *testing.T, app core.App, id string,
+	requester, requestee int, rtype, status string,
+) *core.Record {
+	t.Helper()
 	col, err := app.FindCollectionByNameOrId("bunk_requests")
 	if err != nil {
 		t.Fatalf("makeRequest: find collection: %v", err)
 	}
 	r := core.NewRecord(col)
+	if id != "" {
+		r.Id = id
+	}
 	r.Set("requester_id", requester)
 	r.Set("requestee_id", requestee)
 	r.Set("request_type", rtype)
@@ -251,6 +265,120 @@ func TestHook_StatusFlipFlipsPartner(t *testing.T) {
 	gotAB := mustFindRecord(t, app, rowAB.Id)
 	if gotAB.GetBool("is_reciprocal") {
 		t.Errorf("after A→B flip to declined: A→B expected is_reciprocal=false, got true")
+	}
+}
+
+// #1445: Multi-sibling case — production allows multiple rows for the same
+// (requester, requestee, request_type, year, session) when source_field differs.
+// When flipping the request_type of a non-lowest-id sibling, the hook's
+// findRow returned only the lowest-id sibling and updated it (a no-op when
+// it was already correct), leaving the just-flipped row stale. Asserts that
+// EVERY sibling sharing the destination pair coords has is_reciprocal recomputed.
+func TestHook_RequestTypeFlipUpdatesAllSiblings(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	// Setup mirrors prod: Asher (100) has one not_bunk_with → Owen (200) sibling
+	// from the CM not_bunk_with field, AND one bunk_with → Owen sibling parsed
+	// from staff notes. Owen has bunk_with → Asher. Force deterministic IDs so
+	// sibFirst < sibSecond lexicographically — production triggers this when
+	// staff_notes parses arrive after the CM field row gets a lower auto-ID.
+	sibFirst := makeRequestWithID(t, app, "aaa01first00000", 100, 200, "not_bunk_with", "resolved")
+	sibSecond := makeRequestWithID(t, app, "zzz99second0000", 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	// Sanity: sibSecond (bunk_with) is reciprocal with rowBA.
+	gotSecond := mustFindRecord(t, app, sibSecond.Id)
+	if !gotSecond.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected bunk_with sibling is_reciprocal=true")
+	}
+	gotBA := mustFindRecord(t, app, rowBA.Id)
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected B→A is_reciprocal=true")
+	}
+	gotFirst := mustFindRecord(t, app, sibFirst.Id)
+	if gotFirst.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected not_bunk_with sibling is_reciprocal=false (no partner)")
+	}
+
+	// Refetch sibSecond fresh from DB to mirror the production update flow —
+	// the frontend always loads the latest state before patching, so its
+	// is_reciprocal reflects the cascade-updated DB value (true). The original
+	// test Go pointer still holds stale in-memory is_reciprocal=false from
+	// when makeRequest ran, and saving that would mask the production bug.
+	sibSecondFresh := mustFindRecord(t, app, sibSecond.Id)
+
+	// Flip the SECOND sibling (higher ID, currently bunk_with) to not_bunk_with.
+	// Now there are TWO not_bunk_with siblings from A→B; B has no not_bunk_with
+	// partner. Both must end up reciprocal=false. The lower-ID sibFirst was
+	// already false; the just-flipped sibSecond was true (from its bunk_with
+	// life) and must be cleared.
+	sibSecondFresh.Set("request_type", "not_bunk_with")
+	if err := app.Save(sibSecondFresh); err != nil {
+		t.Fatalf("save flipped sibSecond: %v", err)
+	}
+
+	gotSecond = mustFindRecord(t, app, sibSecond.Id)
+	if gotSecond.GetBool("is_reciprocal") {
+		t.Errorf("after flip: higher-ID sibling expected is_reciprocal=false, got true (multi-sibling recompute miss)")
+	}
+	gotFirst = mustFindRecord(t, app, sibFirst.Id)
+	if gotFirst.GetBool("is_reciprocal") {
+		t.Errorf("after flip: pre-existing not_bunk_with sibling (lower ID) expected is_reciprocal=false, got true")
+	}
+	gotBA = mustFindRecord(t, app, rowBA.Id)
+	if gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after flip: B→A expected is_reciprocal=false (old bunk_with pair orphaned), got true")
+	}
+}
+
+// Diagnostic — #1445 reproduction: flipping request_type on a reciprocal pair
+// must clear is_reciprocal on BOTH the mutated row AND the orphaned partner.
+// Mirror of TestHook_StatusFlipFlipsPartner but flips request_type instead.
+func TestHook_RequestTypeFlipFlipsBoth(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("NewTestApp: %v", err)
+	}
+	defer app.Cleanup()
+
+	setupBunkRequestsCollection(t, app)
+	registerHooksOnApp(app)
+
+	rowAB := makeRequest(t, app, 100, 200, "bunk_with", "resolved")
+	rowBA := makeRequest(t, app, 200, 100, "bunk_with", "resolved")
+
+	// Sanity check — initial pair both reciprocal.
+	gotBA := mustFindRecord(t, app, rowBA.Id)
+	if !gotBA.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected B→A reciprocal=true")
+	}
+	gotAB := mustFindRecord(t, app, rowAB.Id)
+	if !gotAB.GetBool("is_reciprocal") {
+		t.Fatalf("precondition: expected A→B reciprocal=true")
+	}
+
+	// Flip A→B from bunk_with → not_bunk_with. The old pair (100,200,bunk_with)
+	// is now orphaned (only B→A has bunk_with). The new pair (100,200,not_bunk_with)
+	// has only A→B (B has no not_bunk_with). Both rows should end up reciprocal=false.
+	rowAB.Set("request_type", "not_bunk_with")
+	if err := app.Save(rowAB); err != nil {
+		t.Fatalf("save mutated AB: %v", err)
+	}
+
+	gotAB = mustFindRecord(t, app, rowAB.Id)
+	if gotAB.GetBool("is_reciprocal") {
+		t.Errorf("after A→B request_type flip: A→B expected is_reciprocal=false, got true (same-row recompute miss)")
+	}
+	gotBA = mustFindRecord(t, app, rowBA.Id)
+	if gotBA.GetBool("is_reciprocal") {
+		t.Errorf("after A→B request_type flip: B→A expected is_reciprocal=false, got true (old-pair recompute miss)")
 	}
 }
 
