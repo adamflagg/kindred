@@ -1,7 +1,7 @@
 """Processing components for bunk requests.
 
 This module contains components for processing parsed requests:
-- First-request detection (slot-0 boost flag)
+- First-request detection (is_first_requested boost flag, derived from csv_position == 1 + priority keywords)
 - Reciprocal detection
 - Batch signal detection
 - Deduplication"""

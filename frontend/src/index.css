@@ -1224,9 +1224,9 @@
    ============================================ */
 .request-table-grid {
   display: grid;
-  /* Columns: checkbox+expand | requester | request | type | priority | confidence | status | actions */
-  grid-template-columns: 64px 240px 260px 160px 80px 100px 140px 120px;
-  min-width: 1164px;
+  /* Columns: checkbox+expand | requester | request | type | confidence | status | actions */
+  grid-template-columns: 64px 240px 260px 160px 100px 140px 120px;
+  min-width: 1084px;
 }
 
 /* Mobile card layout for request review panel */

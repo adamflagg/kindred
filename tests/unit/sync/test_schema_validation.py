@@ -132,6 +132,7 @@ def test_valid_request_sources(pb_client, base_request_data):
                 pass
 
 
+@pytest.mark.pocketbase_required
 def test_is_first_requested_field(pb_client, base_request_data):
     """Test is_first_requested field accepts boolean values"""
     # Test valid is_first_requested values

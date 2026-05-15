@@ -64,7 +64,7 @@ export interface Camper {
     id?: string
     type?: string
     requested_person_id?: number
-    priority?: number
+    is_first_requested?: boolean
     [key: string]: unknown
   }> // Array of bunking requests
   custom_fields?: Record<string, unknown>

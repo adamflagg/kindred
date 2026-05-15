@@ -269,9 +269,63 @@ class TestEvaluateScenarioScore:
             config=mock_config,
         )
 
-        # Verify the first-pick gets slot-0 boost: score = 15 * 10 = 150
-        # (base_weight=10 * source_mult=1.5 * FIRST_REQUEST_MULTIPLIER=10)
-        assert first_pick.request_satisfaction_score == 150
+        # Verify the first-pick gets slot-0 boost: score = 60 * 10 = 600
+        # (base_weight=40 * source_mult=1.5 * FIRST_REQUEST_MULTIPLIER=10)
+        assert first_pick.request_satisfaction_score == 600
+
+    def test_first_requested_flag_determines_slot_0(self, mock_config):
+        """Two-request control: flipping is_first_requested between two
+        requests with different source-mults must change the total score.
+
+        Slot-0 (10x) goes to whichever request is flagged. With
+        BUNK_REQUEST_FORM(1.5) flagged first: 60*10 + 40*5 = 800.
+        With INTERNAL_NOTES(1.0) flagged first: 40*10 + 60*5 = 700.
+        """
+        from bunking.solver.score_evaluator import evaluate_scenario_score
+
+        assignments = [
+            {"person_cm_id": 100, "bunk_cm_id": 1},
+            {"person_cm_id": 200, "bunk_cm_id": 1},
+            {"person_cm_id": 300, "bunk_cm_id": 1},
+        ]
+        persons = [
+            {"cm_id": 100, "grade": 5, "gender": "M"},
+            {"cm_id": 200, "grade": 5, "gender": "M"},
+            {"cm_id": 300, "grade": 5, "gender": "M"},
+        ]
+        bunks = [{"cm_id": 1, "name": "B-1", "gender": "M", "max_size": 12}]
+
+        bunk_with_first = [
+            {
+                "requester_id": 100,
+                "requestee_id": 200,
+                "request_type": "bunk_with",
+                "is_first_requested": True,
+                "source_field": SourceField.BUNK_REQUEST_FORM,
+            },
+            {
+                "requester_id": 100,
+                "requestee_id": 300,
+                "request_type": "bunk_with",
+                "is_first_requested": False,
+                "source_field": SourceField.INTERNAL_NOTES,
+            },
+        ]
+        internal_notes_first = [
+            {**bunk_with_first[0], "is_first_requested": False},
+            {**bunk_with_first[1], "is_first_requested": True},
+        ]
+
+        a = evaluate_scenario_score(
+            requests=bunk_with_first, assignments=assignments, persons=persons, bunks=bunks, config=mock_config
+        )
+        b = evaluate_scenario_score(
+            requests=internal_notes_first, assignments=assignments, persons=persons, bunks=bunks, config=mock_config
+        )
+
+        assert a.request_satisfaction_score == 800
+        assert b.request_satisfaction_score == 700
+        assert a.request_satisfaction_score > b.request_satisfaction_score
 
     def test_grade_spread_penalty(self, mock_config):
         """Bunks with too many unique grades should incur penalty.

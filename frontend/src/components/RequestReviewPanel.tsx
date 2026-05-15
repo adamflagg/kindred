@@ -76,7 +76,7 @@ export default function RequestReviewPanel({
   seedPersons,
 }: RequestReviewPanelProps) {
   const queryClient = useQueryClient()
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const undoStack = useUndoStack()
   // Task 7: Default filter/sort constants and localStorage persistence
   const storageKey = `kindred-requests-filters-${sessionId}`
@@ -250,7 +250,7 @@ export default function RequestReviewPanel({
       })
     },
     staleTime: 30000,
-    enabled: !!user,
+    enabled: !isAuthLoading && !!user,
   })
 
   // #1310 — seed map keyed on cm_id from parent-supplied campers. Stable
@@ -298,7 +298,7 @@ export default function RequestReviewPanel({
 
       return results.flat()
     },
-    enabled: !!user && personIds.length > 0,
+    enabled: !isAuthLoading && !!user && personIds.length > 0,
   })
 
   // Merge seed (for instant in-session names) with fetched (for cross-session
@@ -323,7 +323,7 @@ export default function RequestReviewPanel({
         sort: 'created',
       })
     },
-    enabled: !!requestToSplit,
+    enabled: !isAuthLoading && !!user && !!requestToSplit,
   })
 
   // Transform absorbed requests + kept request into source links format for SplitRequestModal
@@ -392,7 +392,7 @@ export default function RequestReviewPanel({
         expand: 'original_request',
       })
     },
-    enabled: !!expandedMergedRequestId,
+    enabled: !isAuthLoading && !!user && !!expandedMergedRequestId,
     staleTime: 60000, // Cache for 1 minute
   })
 

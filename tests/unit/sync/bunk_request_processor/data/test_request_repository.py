@@ -46,21 +46,21 @@ class TestRequestRepository:
 
     def _create_request_mock(
         self,
-        id,
-        requester_id,
-        requestee_id,
-        request_type,
-        session_id,
-        year,
-        is_first_requested=True,
-        confidence_score=0.95,
-        source="family",
-        source_field="bunk_with",
-        csv_position=0,
-        status="resolved",
-        is_placeholder=False,
-        metadata="{}",
-    ):
+        id: str,
+        requester_id: int,
+        requestee_id: int | None,
+        request_type: str,
+        session_id: int,
+        year: int,
+        is_first_requested: bool = True,
+        confidence_score: float = 0.95,
+        source: str = "family",
+        source_field: str = "bunk_with",
+        csv_position: int = 0,
+        status: str = "resolved",
+        is_placeholder: bool = False,
+        metadata: str = "{}",
+    ) -> Mock:
         """Helper to create a properly structured request mock with new field names"""
         mock = Mock()
         mock.id = id

@@ -100,10 +100,10 @@ class TestScoreEvaluatorCanonicalKeys:
             config=mock_config,
         )
 
-        # base_weight(10) * source_multiplier(1.5) = 15 (weighted_score)
-        # slot-0 → FIRST_REQUEST_MULTIPLIER(10): 15 * 10 = 150
+        # base_weight(40) * source_multiplier(1.5) = 60 (weighted_score)
+        # slot-0 → FIRST_REQUEST_MULTIPLIER(10): 60 * 10 = 600
         # Priority was deleted — base_weight replaces priority * 10.
-        assert share_result.request_satisfaction_score == 150
+        assert share_result.request_satisfaction_score == 600
 
     def test_field_scores_keyed_by_canonical_values(self, mock_config):
         """field_scores breakdown must use canonical SourceField values as keys."""

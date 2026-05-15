@@ -267,7 +267,7 @@ class ParsedRequest:
     age_preference: AgePreference | None  # For age_preference type
     source_field: str  # Which CSV field it came from
     confidence: float
-    csv_position: int  # Position in the CSV field (0-based)
+    csv_position: int  # Position in the CSV field (1-based; producers normalize via openai_provider.py:427 / provider_factory.py:45)
     metadata: dict[str, Any]
     notes: str | None = None
 

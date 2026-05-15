@@ -25,7 +25,7 @@ class TestRequestBuilderMetadata:
     """Tests for build_request_metadata method"""
 
     @pytest.fixture
-    def builder(self):
+    def builder(self) -> RequestBuilder:
         """Create a RequestBuilder with mocked dependencies"""
         return RequestBuilder(
             temporal_name_cache=None,
@@ -127,7 +127,7 @@ class TestRequestBuilderIntegration:
     """Integration tests for full request building"""
 
     @pytest.fixture
-    def builder(self):
+    def builder(self) -> RequestBuilder:
         return RequestBuilder(
             temporal_name_cache=None,
             year=2025,
@@ -626,7 +626,7 @@ class TestBuildMetadataSourceFragment:
     """build_request_metadata should surface source_fragment from parsed_req.metadata."""
 
     @pytest.fixture
-    def builder(self):
+    def builder(self) -> RequestBuilder:
         return RequestBuilder(
             temporal_name_cache=None,
             year=2025,

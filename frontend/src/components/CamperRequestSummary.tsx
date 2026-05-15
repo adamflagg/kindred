@@ -28,7 +28,7 @@ export function CamperRequestSummary({
   currentRequestId,
   requesterName,
 }: CamperRequestSummaryProps) {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
 
   // Staff-review exemption: this fetch intentionally does NOT filter
@@ -47,7 +47,7 @@ export function CamperRequestSummary({
       })
     },
     staleTime: 30000,
-    enabled: !!user && requesterCmId > 0,
+    enabled: !isAuthLoading && !!user && requesterCmId > 0,
   })
 
   const requesteeIds = useMemo(() => {
@@ -77,7 +77,7 @@ export function CamperRequestSummary({
       )
       return results.flat()
     },
-    enabled: !!user && requesteeIds.length > 0,
+    enabled: !isAuthLoading && !!user && requesteeIds.length > 0,
     staleTime: 30000,
   })
 

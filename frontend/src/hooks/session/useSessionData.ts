@@ -289,7 +289,7 @@ export function useBunkRequestsCount({
           const filter = buildBunkRequestsFilter(sessionCmId, currentYear, false)
           const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
             filter,
-            sort: '-priority,requester_id',
+            sort: '-is_first_requested,requester_id',
           })
           return requests.length
         } catch (error) {

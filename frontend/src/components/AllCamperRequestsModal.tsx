@@ -145,7 +145,7 @@ export function AllCamperRequestsModal({
   year,
   currentRequestId,
 }: AllCamperRequestsModalProps) {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const queryClient = useQueryClient()
   const headingId = useId()
 
@@ -196,7 +196,7 @@ export function AllCamperRequestsModal({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
         sort: '-is_first_requested,request_type',
       }),
-    enabled: isOpen && !!user && requesterCmId > 0,
+    enabled: isOpen && !isAuthLoading && !!user && requesterCmId > 0,
     staleTime: 30_000,
   })
 
@@ -225,7 +225,7 @@ export function AllCamperRequestsModal({
       )
       return results.flat()
     },
-    enabled: isOpen && !!user && requesteeIds.length > 0,
+    enabled: isOpen && !isAuthLoading && !!user && requesteeIds.length > 0,
   })
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])

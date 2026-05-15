@@ -53,7 +53,7 @@ class RequestBuilder:
     def build_requests(self, resolved_requests: list[tuple[ParsedRequest, dict[str, Any]]]) -> list[BunkRequest]:
         """Build BunkRequest objects from resolved requests.
 
-        Groups by requester for priority calculation, then builds each request.
+        Groups by requester for first-pick detection, then builds each request.
 
         Args:
             resolved_requests: List of (ParsedRequest, resolution_info) tuples
@@ -63,7 +63,7 @@ class RequestBuilder:
         """
         pending_requests = []
 
-        # Group requests by requester for priority calculation
+        # Group requests by requester for first-pick detection
         requests_by_person: dict[int, list[tuple[ParsedRequest, dict[str, Any]]]] = {}
         for parsed_req, resolution_info in resolved_requests:
             requester_cm_id = resolution_info["requester_cm_id"]
@@ -99,7 +99,7 @@ class RequestBuilder:
         Args:
             parsed_req: The parsed request
             resolution_info: Resolution context from Phase 2/3
-            all_parsed_requests: All requests for this person (for priority calculation)
+            all_parsed_requests: All requests for this person (for first-pick detection)
             requester_cm_id: The requester's CM ID
 
         Returns:

@@ -62,7 +62,9 @@ logger = get_logger(__name__)
 # 2026-05-15 per solver-config-decisions.md "Bunk Request Priority +
 # Diminishing Returns" domain — zero production tuning evidence on any of
 # them, and the priority dimension they multiplied is gone).
-BASE_REQUEST_WEIGHT = 10  # replaces priority * 10 (priority was always 1-4)
+BASE_REQUEST_WEIGHT = 40  # matches old `priority * 10` for typical P4 first-pick;
+# keeps satisfaction net-positive against the under-occupancy penalty (else a
+# typical fixture totals negative — see solver_score.json baseline).
 FIRST_REQUEST_MULTIPLIER = 10  # slot-0 boost
 SECOND_REQUEST_MULTIPLIER = 5
 THIRD_PLUS_REQUEST_MULTIPLIER = 1

@@ -18,8 +18,13 @@ from bunking.solver.direct_solver import (
 
 
 def test_constants_match_seeded_values():
-    """Hardcoded multipliers match the pre-deletion seed values."""
-    assert BASE_REQUEST_WEIGHT == 10
+    """Hardcoded multipliers match the calibrated values.
+
+    BASE=40 matches old `priority * 10` at typical P4 first-pick magnitude so
+    the satisfaction side outweighs under-occupancy penalties (else the typical
+    fixture totals net-negative — see solver_score.json baseline).
+    """
+    assert BASE_REQUEST_WEIGHT == 40
     assert FIRST_REQUEST_MULTIPLIER == 10
     assert SECOND_REQUEST_MULTIPLIER == 5
     assert THIRD_PLUS_REQUEST_MULTIPLIER == 1

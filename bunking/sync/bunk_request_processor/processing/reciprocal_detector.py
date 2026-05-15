@@ -1,7 +1,7 @@
 """Reciprocal Detector - Detects bidirectional bunk requests
 
 Identifies when two campers have requested to bunk with each other,
-which increases confidence and priority."""
+which increases the request's confidence score."""
 
 from __future__ import annotations
 

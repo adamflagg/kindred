@@ -424,7 +424,7 @@ export default function CamperDetailsPanel({
       const filter = `requester_id = ${camper.person_cm_id} && year = ${currentYear} && status = "resolved"`
       const requests = await pb.collection('bunk_requests').getFullList<BunkRequestsResponse>({
         filter,
-        sort: '-priority,request_type',
+        sort: '-is_first_requested,request_type',
       })
 
       const requestedPersonCmIds = new Set<number>()

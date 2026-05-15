@@ -710,7 +710,7 @@ class RequestOrchestrator:
         )
 
     def _init_scoring_components(self) -> None:
-        """Initialize conflict detector and priority calculator."""
+        """Initialize conflict detector, social-graph signals, and spread filter."""
         # Social graph signals will be linked after social graph init
         self.social_graph_signals: SocialGraphSignalsAdapter | None = None
 
