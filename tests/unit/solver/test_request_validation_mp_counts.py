@@ -79,7 +79,7 @@ def _run_post_solve_with_fixed_assignments(
     keeps the test fast and deterministic.
 
     Internally `_check_must_satisfy_one_violations` builds person_to_bunk
-    and calls `calculate_satisfied_requests` itself, so we only need to
+    and calls `satisfied_request_ids_by_person` itself, so we only need to
     hand it the assignment list.
     """
     input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
@@ -232,3 +232,35 @@ def test_entirely_impossible_mp_camper_excluded_from_mp_campers_total() -> None:
 
     assert summary["mp_campers_total"] == 1
     assert summary["mp_campers_satisfied"] == 1
+
+
+def test_not_bunk_with_unassigned_target_counts_as_satisfied() -> None:
+    """Pins divergence #1 inside the MSO diagnostic.
+
+    A camper whose only resolved request is a ``not_bunk_with`` against an
+    unassigned target is now counted as *satisfied* by the canonical predicate
+    ("no conflict possible"). The retired ``calculate_satisfied_requests``
+    treated it as unsatisfied, which would have landed this camper in
+    ``unsatisfied_other_unmet``. This locks the post-`satisfied_request_ids_by_person`
+    behavior so the diagnostic's treatment of the edge is explicit, not implicit.
+    """
+    persons = [_person(1), _person(2)]
+    bunks = [_bunk(100)]
+    requests = [
+        # not_bunk_with -> STAFF (non-material); target 2 is on the roster but
+        # left out of `assignments` below, so it is unassigned at solve time.
+        _req("r1", 1, 2, source_field="not_bunk_with", request_type="not_bunk_with"),
+    ]
+    assignments = {1: 100}  # camper 2 deliberately unassigned
+
+    s = _run_post_solve_with_fixed_assignments(persons, bunks, requests, assignments)
+
+    # Divergence #1: the request is satisfied, so the camper is counted as
+    # satisfied and lands in NONE of the unmet buckets.
+    assert s["all_campers_total"] == 1
+    assert s["all_campers_satisfied"] == 1
+    assert s["unsatisfied_other_unmet"] == 0
+    assert s["unsatisfied_material_parent_unmet"] == 0
+    assert s["unsatisfied_no_possible"] == 0
+    # not_bunk_with is non-material, so MP scopes are untouched.
+    assert s["mp_campers_total"] == 0
