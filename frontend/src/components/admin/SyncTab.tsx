@@ -230,7 +230,7 @@ export function SyncTab() {
             <Icon className={`h-5 w-5 flex-shrink-0 ${syncType.color}`} />
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold sm:text-base">{syncType.name}</div>
-              {'description' in syncType && syncType.description && (
+              {'description' in syncType && (
                 <div className="text-muted-foreground truncate text-xs">{syncType.description}</div>
               )}
             </div>
