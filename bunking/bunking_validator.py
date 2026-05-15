@@ -639,7 +639,7 @@ class BunkingValidator:
                                     message=f"{person_name} has a valid 'not bunk with' request but is bunked with {requested_name}",
                                     details={
                                         "request_type": request.request_type,
-                                        "priority": request.priority,
+                                        "is_first_requested": getattr(request, "is_first_requested", False),
                                         "person_id": person_id,
                                         "requested_person_id": request.requested_person_cm_id,
                                         "status": request.status,

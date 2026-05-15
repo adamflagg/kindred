@@ -40,7 +40,7 @@ class TestMultipleRequestsPerField:
         req.confidence = 0.95
         req.csv_position = 0
         req.metadata = {}
-        req.priority = "high"
+        req.is_first_requested = True
         req.is_valid = True
         return req
 

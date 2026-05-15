@@ -139,7 +139,7 @@ class TestRequestRepositorySoftDelete:
         merged_req_1.request_type = "bunk_with"
         merged_req_1.session_id = 1000002
         merged_req_1.year = 2025
-        merged_req_1.priority = 4
+        merged_req_1.is_first_requested = True
         merged_req_1.confidence_score = 0.95
         merged_req_1.source = "family"
         merged_req_1.source_field = "bunking_notes"
@@ -156,7 +156,7 @@ class TestRequestRepositorySoftDelete:
         merged_req_2.request_type = "bunk_with"
         merged_req_2.session_id = 1000002
         merged_req_2.year = 2025
-        merged_req_2.priority = 3
+        merged_req_2.is_first_requested = False
         merged_req_2.confidence_score = 0.85
         merged_req_2.source = "family"
         merged_req_2.source_field = "internal_notes"
@@ -228,7 +228,7 @@ class TestGetByIdExcludesMerged:
         mock_record.request_type = "bunk_with"
         mock_record.session_id = 1000002
         mock_record.year = 2025
-        mock_record.priority = 4
+        mock_record.is_first_requested = True
         mock_record.confidence_score = 0.95
         mock_record.source = "family"
         mock_record.source_field = "share_bunk_with"
