@@ -475,6 +475,14 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleIndividualSync(e, scheduler, "enrollment_snapshots")
 		}))
 
+	// Orphan reconciler sync
+	// Auto-unassigns scenario-draft campers stranded by bunk-plan changes.
+	// PocketBase-only — no CampMinder API call.
+	e.Router.POST("/api/custom/sync/orphan-reconciler",
+		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
+			return handleIndividualSync(e, scheduler, "orphan_reconciler")
+		}))
+
 	return nil
 }
 
@@ -902,6 +910,7 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"staff_vehicle_info",         // Derived: staff vehicle info extraction
 		"normalize_geographic",       // Derived: normalize state/country names
 		"enrollment_snapshots",       // Derived: daily enrollment snapshot capture
+		"orphan_reconciler",          // Derived: auto-unassign stranded scenario-draft assignments
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",

@@ -1782,6 +1782,40 @@ func TestRunPhaseYearMustPropagateToServices(t *testing.T) {
 	t.Log("YearSetter interface is implemented by year-aware services")
 }
 
+// TestSyncStatusListIncludesOrphanReconciler verifies orphan_reconciler is registered
+// in syncJobMeta with a phase. handleSyncStatus's hardcoded syncTypes slice is a local
+// var that can't be read from tests; the placement in the diff is the primary safeguard.
+// This test catches one related regression: forgetting to register the job in
+// syncJobMeta before adding it to the status list or routes.
+func TestSyncStatusListIncludesOrphanReconciler(t *testing.T) {
+	// Required jobs that must be registered in syncJobMeta. handleSyncStatus's
+	// local syncTypes slice can't be inspected here; placement in the diff is
+	// the human-readable guard for that path.
+	requiredInStatusList := []string{
+		"normalize_geographic",
+		"enrollment_snapshots",
+		"orphan_reconciler", // must be present — card shows "idle" without it
+	}
+
+	// Cross-check against syncJobMeta: every job in the required list must also be
+	// registered with its expected phase so the two sources stay in sync.
+	for _, jobID := range requiredInStatusList {
+		phase := GetPhaseForJob(jobID)
+		if phase == "" {
+			t.Errorf("job %q not found in syncJobMeta — add it before adding to status list", jobID)
+		}
+	}
+
+	// Verify no duplicates in the required list.
+	seen := make(map[string]bool)
+	for _, id := range requiredInStatusList {
+		if seen[id] {
+			t.Errorf("duplicate in requiredInStatusList: %q", id)
+		}
+		seen[id] = true
+	}
+}
+
 // TestNormalizeSession verifies session "0" normalizes to DefaultSession ("all"),
 // matching the behavior of the other two endpoints that already handle this case.
 // Regression test for #806.
