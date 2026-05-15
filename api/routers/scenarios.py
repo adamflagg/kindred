@@ -290,7 +290,7 @@ async def evaluate_score(
                 "requester_id": getattr(r, "requester_id", None),
                 "requestee_id": getattr(r, "requestee_id", None),
                 "request_type": getattr(r, "request_type", ""),
-                "priority": getattr(r, "priority", 5),
+                "is_first_requested": bool(getattr(r, "is_first_requested", False)),
                 "source_field": getattr(r, "source_field", None),
             }
             ai_reasoning = getattr(r, "ai_reasoning", None)
