@@ -39,7 +39,7 @@ uv run pytest tests/ -k "keyword"                   # by keyword
 SKIP_POCKETBASE_TESTS=true uv run pytest tests/     # explicit skip even locally
 ```
 
-Pre-push runs the full unit suite. Integration/e2e require a running dev server.
+Pre-push runs type checks and fast linters only (mypy, tsc, ruff, golangci-lint, shellcheck, pb-js-lint) — pytest and vitest are CI-only. Run them locally when you make test-affecting changes. Integration/e2e require a running dev server regardless of where they run.
 
 ## Worktree gotcha
 

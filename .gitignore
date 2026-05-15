@@ -211,6 +211,7 @@ tmp/
 !package.json
 !package-lock.json
 !.prettierrc.json
+# Claude Code project config — not sensitive; placed here to override `*.json`
 !.claude/settings.json
 !**/sample_*.csv
 !config/staff_list.example.json

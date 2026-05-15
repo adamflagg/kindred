@@ -47,7 +47,10 @@ Applied (Tier 1, binaries + DBs):
 "Read(pb_data/*.db-*)"
 "Read(pb_data/storage/**)"
 "Read(pocketbase/pocketbase)"
-"Read(local/assets/*.png|jpg|jpeg|ico)"
+"Read(local/assets/*.png)"
+"Read(local/assets/*.jpg)"
+"Read(local/assets/*.jpeg)"
+"Read(local/assets/*.ico)"
 "Edit(pb_data/**)"
 "Write(pb_data/**)"
 ```

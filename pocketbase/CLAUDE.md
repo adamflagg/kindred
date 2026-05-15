@@ -82,7 +82,7 @@ Format: `2026-01-06T14:05:52Z [pocketbase] LEVEL message key=value...`. `LOG_LEV
 ## Sync invariants
 
 1. **Sync order matters:** sessions → attendees → persons → bunks → plans → assignments → requests
-2. **Year-aware:** uses `season_id` from PocketBase `config` table
+2. **Year-aware:** sync filters by `CAMPMINDER_SEASON_ID` env var (set in `.env`; see "Year invariant" above)
 3. **Sessions 1–4 run sequentially** with independent history
 4. **WAL checkpoint required** after database modifications
 5. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against the configured valid-summer-session-types list

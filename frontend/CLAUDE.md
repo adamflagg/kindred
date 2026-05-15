@@ -32,7 +32,7 @@ React + TypeScript + Vite. Dev server on `:3000` (HMR); prod served via Caddy at
 ## Auth — easy to get wrong
 
 - **`useAuth().isLoading` first.** Always check `isLoading` before making authenticated API calls.
-- **PB JWT lives in `localStorage`, not cookies.** Calling `fetch` with `credentials: 'include'` silently 401s on protected endpoints. Use `fetchWithAuth` from `services/` for protected FastAPI routes.
+- **PB JWT lives in `localStorage`, not cookies.** Calling `fetch` with `credentials: 'include'` silently 401s on protected endpoints. Obtain `fetchWithAuth` from the `useApiWithAuth()` hook (`hooks/useApiWithAuth.ts`) and pass it into service functions — services take it as a parameter, they don't export it.
 - **Bypass-auth mode** grants admin via `usePermissions().isAdmin`, NOT `useAuth().user.is_admin`.
 
 ## React Query keys
@@ -59,11 +59,11 @@ cd frontend && npx vitest run                         # one-shot tests
 cd frontend && npx vitest run src/path/file.test.ts   # single test
 ```
 
-Pre-push runs: prettier, eslint, tsc, vitest. Failing any blocks push.
+Pre-push runs `tsc --noEmit` for both `tsconfig.json` and `tsconfig.node.json`. Prettier runs at commit time; eslint and vitest run in CI only. Failing pre-push blocks push.
 
 ## Worktree-specific notes
 
-In a fresh worktree, hit the **Vite dev port** (e.g. `localhost:3010`), not the Caddy port — Caddy serves the stale built bundle from `pocketbase/pb_public/`.
+In a fresh worktree, hit the **Vite dev port printed by `new.sh`** (the port offset is hashed from the feature name — `localhost:3010`, `3080`, etc. depending on the worktree), not the Caddy port. Caddy serves the stale built bundle from `pocketbase/pb_public/`.
 
 ## Private config
 

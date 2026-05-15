@@ -35,7 +35,7 @@ Config: `docker/Caddyfile` (prod), `frontend/Caddyfile` (dev).
 
 ## Auth
 
-`bunking/auth_middleware.py` + `bunking/jwt_auth.py` verify PocketBase JWTs. Frontend must use `fetchWithAuth` (not raw `fetch`) — the JWT lives in localStorage, not cookies. Protected endpoints must verify auth or they silently 401.
+`bunking/auth_middleware.py` + `bunking/jwt_auth.py` verify PocketBase JWTs. Frontend must call protected endpoints through the `fetchWithAuth` wrapper returned by `useApiWithAuth()` (not raw `fetch`) — the JWT lives in localStorage, not cookies. Protected endpoints must verify auth or they silently 401.
 
 ## Conventions
 
