@@ -3,6 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import SolverDebugImpossibilityModal from './SolverDebugImpossibilityModal'
 
+vi.mock('./CamperDetailsPanel', () => ({
+  default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
+    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+  ),
+}))
+
 const stubReport = {
   total_impossible: 1,
   affected_campers: 1,
@@ -160,5 +166,92 @@ describe('SolverDebugImpossibilityModal — C2: Copy JSON button', () => {
     fireEvent.click(button)
 
     expect(writeText).toHaveBeenCalledWith(JSON.stringify(stubReport, null, 2))
+  })
+})
+
+describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel', () => {
+  const reportWithRed = {
+    ...stubReport,
+    mp_campers_entirely_impossible: [
+      {
+        cm_id: 999,
+        name: 'Samuel Johnson',
+        grade: 7,
+        gender: 'M',
+        reason_codes: ['grade_compatibility'],
+      },
+    ],
+  }
+
+  it('opens the panel for a red-section camper when their name is clicked', async () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={reportWithRed}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Samuel Johnson' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
+      'data-camper-id',
+      '999'
+    )
+  })
+
+  it('opens the panel for a flat-table requester when their name is clicked', async () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Pearl' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '1')
+  })
+
+  it('opens the panel for a flat-table requestee when their name is clicked', async () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
+  })
+
+  it('renders a null requestee as plain text in the flat table (no button)', () => {
+    const reportNull = {
+      ...stubReport,
+      flat: [
+        {
+          ...stubReport.flat[0],
+          request_id: 'r_null',
+          reason_code: 'target_not_in_solver',
+          requestee: null,
+        },
+      ],
+      by_reason: {},
+    } as unknown as import('../services/solver').ImpossibilityReport
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={reportNull}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    // Requester still has a button; requestee column shows the dash placeholder.
+    expect(screen.getByRole('button', { name: 'Pearl' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Riley' })).not.toBeInTheDocument()
   })
 })
