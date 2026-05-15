@@ -495,7 +495,14 @@ class DirectBunkingSolver:
                         if request_satisfied is not None:
                             person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
-                # Note: age_preference requests are handled by must_satisfy_one constraint only
+                # age_preference is intentionally absent from the objective:
+                # MP age_preference is enforced by parent_paramount's hard
+                # must-satisfy-one constraint (see constraints/age_preference.py).
+                # Non-MP age_preference has no solver representation — staff
+                # treat those as best-effort ("maybe you'll get it"), and the
+                # planned material/immaterial/staff bucket weights (see
+                # docs/reference/solver-config-decisions.md) will be the right
+                # home for any future non-MP modeling. #1433.
 
         # Apply diminishing returns to the satisfaction variables.
         # When `objective.enable_first_boost` is true, sort so that the
