@@ -1820,10 +1820,6 @@ export type MultiSessionSolverRequest = {
    */
   time_limit_per_session?: number | null
   /**
-   * Include Analysis
-   */
-  include_analysis?: boolean
-  /**
    * Scenario
    */
   scenario?: string | null
@@ -5190,10 +5186,6 @@ export type SolverRequest = {
    * Override config time limit
    */
   time_limit?: number | null
-  /**
-   * Include Analysis
-   */
-  include_analysis?: boolean
   /**
    * Scenario
    */

@@ -118,7 +118,6 @@ async def run_solver(
         request.session_cm_id,
         request.year,
         time_limit,
-        request.include_analysis,
         request.scenario,
         request.debug_constraints,
         request.config,
@@ -837,7 +836,6 @@ async def run_multi_session_solver(
                     session_cm_id,
                     request.year,
                     time_limit,
-                    request.include_analysis,
                     request.scenario,
                     respect_locks=request.respect_locks,
                 )

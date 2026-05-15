@@ -7,26 +7,14 @@ This package contains:
 - SolverProgressCallback: Real-time solver progress monitoring
 - Constraint builders: Modular constraint implementations
 - Preprocessing: Friend group detection and splitting
-- Solution analysis: Post-solve result analysis
 """
 
 from .callbacks import SolverProgressCallback
 from .direct_solver import DirectBunkingSolver
 from .logging import ConstraintLogger
-from .solution import (
-    analyze_bunk_health,
-    analyze_level_progressions,
-    analyze_solution,
-    get_bunk_name,
-)
 
 __all__ = [
     "ConstraintLogger",
     "DirectBunkingSolver",
     "SolverProgressCallback",
-    # Solution analysis functions
-    "analyze_bunk_health",
-    "analyze_level_progressions",
-    "analyze_solution",
-    "get_bunk_name",
 ]

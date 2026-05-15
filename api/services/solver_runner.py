@@ -92,7 +92,6 @@ async def run_solver_task_v2(
     session_cm_id: int,
     year: int,
     time_limit: int,
-    include_analysis: bool = False,
     scenario: str | None = None,
     debug_constraints: dict[str, Any] | None = None,
     config_overrides: dict[str, Any] | None = None,
@@ -287,10 +286,6 @@ async def run_solver_task_v2(
                 str(person_cm_id): request_ids for person_cm_id, request_ids in result.satisfied_requests.items()
             },
         }
-
-        if include_analysis:
-            logger.info("Analysis requested but not available with DirectBunkingSolver")
-            results_data["analysis_note"] = "Analysis functionality pending reimplementation"
 
         solver_runs[run_id]["results"] = results_data
         solver_runs[run_id]["scenario"] = scenario

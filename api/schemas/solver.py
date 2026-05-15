@@ -16,7 +16,6 @@ class SolverRequest(BaseModel):
     year: int
     apply_results: bool = False
     time_limit: int | None = Field(default=None, ge=1, le=600, description="Override config time limit")
-    include_analysis: bool = False
     scenario: str | None = None  # PocketBase ID of saved_scenario (relation)
     debug_constraints: dict[str, Any] | None = None
     debug_mode: bool = False
@@ -31,7 +30,6 @@ class MultiSessionSolverRequest(BaseModel):
     year: int
     apply_results: bool = False
     time_limit_per_session: int | None = Field(default=None, ge=1, le=600, description="Override config time limit")
-    include_analysis: bool = False
     scenario: str | None = None  # PocketBase ID of saved_scenario (relation)
     solve_by_sex: bool = True
     respect_locks: bool = Field(default=True, description="Whether to respect locked bunk assignments")
