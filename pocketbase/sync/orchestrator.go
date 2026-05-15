@@ -232,6 +232,8 @@ type Stats struct {
 	Expanded int `json:"expanded,omitempty"`
 	// AlreadyProcessed tracks records already processed (for process_requests)
 	AlreadyProcessed int `json:"already_processed,omitempty"`
+	// ProdAuditWarnings counts bunk_assignments rows found stranded but not cleared (observe-only).
+	ProdAuditWarnings int `json:"prod_audit_warnings,omitempty"`
 	// Duration in seconds
 	Duration int `json:"duration"`
 	// SubStats for combined syncs (e.g., persons includes households)

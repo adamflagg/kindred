@@ -204,6 +204,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 				pairs[i] = fmt.Sprintf("%s(session=%s,bunk=%s)", c.RecordID, c.SessionID, c.BunkID)
 			}
 			slog.Warn(msgStrandedProd, "year", year, "count", len(strandedProd), "records", pairs)
+			stats.ProdAuditWarnings = len(strandedProd)
 		}
 	}
 
