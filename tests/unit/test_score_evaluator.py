@@ -411,22 +411,20 @@ class TestEvaluateScenarioScore:
 
         assert result.satisfied_requests == 0
 
-    def test_priority_weighting(self, mock_config):
-        """Test that higher priority requests contribute more to score."""
-        high_priority_request = [
+    def test_first_requested_boost(self, mock_config):
+        """Test that is_first_requested=True gets the 10x slot-0 multiplier.
+
+        Priority was deleted — is_first_requested is the new signal for
+        high-importance requests (the former P1 bucket). A first-pick request
+        should score at slot-0 (FIRST_REQUEST_MULTIPLIER=10x) while a
+        subsequent request for the same person scores at slot-1 (5x).
+        """
+        first_request = [
             {
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "priority": 10,  # High priority
-            }
-        ]
-        low_priority_request = [
-            {
-                "requester_id": 1,
-                "requestee_id": 2,
-                "request_type": "bunk_with",
-                "priority": 1,  # Low priority
+                "is_first_requested": True,
             }
         ]
         assignments = [
@@ -439,10 +437,10 @@ class TestEvaluateScenarioScore:
         ]
         bunks = [{"cm_id": 100, "max_size": 12}]
 
-        high_result = evaluate_scenario_score(high_priority_request, assignments, persons, bunks, config=mock_config)
-        low_result = evaluate_scenario_score(low_priority_request, assignments, persons, bunks, config=mock_config)
+        first_result = evaluate_scenario_score(first_request, assignments, persons, bunks, config=mock_config)
 
-        assert high_result.request_satisfaction_score > low_result.request_satisfaction_score
+        # base_weight(10) * no_source_multiplier(1.0) * FIRST_REQUEST_MULTIPLIER(10) = 100
+        assert first_result.request_satisfaction_score == 100
 
     def test_source_field_multiplier(self, mock_config):
         """Test that source field multipliers affect score."""

@@ -77,8 +77,8 @@ def test_dead_negative_requests_threshold_branch_removed():
     )
     # The comment "priority >= 8" is allowed in docstring, but the actual
     # if/elif branch checking it must not exist
-    lines = [l.strip() for l in src.split("\n")]
-    executable_lines = [l for l in lines if l and not l.startswith("#")]
+    lines = [line.strip() for line in src.split("\n")]
+    executable_lines = [line for line in lines if line and not line.startswith("#")]
     assert "if request.priority >= 8" not in "\n".join(executable_lines), (
         "unreachable priority>=8 gate must stay deleted"
     )

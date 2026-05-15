@@ -9,7 +9,6 @@ Tests the RequestBuilder class in services/ which handles:
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import Mock
 
 import pytest
 
@@ -628,7 +627,6 @@ class TestBuildMetadataSourceFragment:
 
     @pytest.fixture
     def builder(self):
-        mock = Mock()
         return RequestBuilder(
             temporal_name_cache=None,
             year=2025,

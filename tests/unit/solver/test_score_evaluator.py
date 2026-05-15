@@ -238,18 +238,22 @@ class TestEvaluateScenarioScore:
         assert result.total_requests == 1
         assert result.satisfied_requests == 1
 
-    def test_priority_affects_score(self, mock_config):
-        """Higher priority requests should contribute more to score."""
+    def test_first_requested_boost_affects_score(self, mock_config):
+        """is_first_requested=True requests should receive the 10x slot-0 multiplier.
+
+        Priority was deleted — is_first_requested is the new mechanism for
+        boosting high-signal requests (the former P1 bucket).
+        """
         from bunking.solver.score_evaluator import evaluate_scenario_score
 
-        # Low priority request
-        low_priority = evaluate_scenario_score(
+        # First-pick request (is_first_requested=True → slot-0 → FIRST_REQUEST_MULTIPLIER)
+        first_pick = evaluate_scenario_score(
             requests=[
                 {
                     "requester_id": 100,
                     "requestee_id": 200,
                     "request_type": "bunk_with",
-                    "priority": 1,
+                    "is_first_requested": True,
                     "source_field": SourceField.BUNK_REQUEST_FORM,
                 }
             ],
@@ -265,30 +269,9 @@ class TestEvaluateScenarioScore:
             config=mock_config,
         )
 
-        # High priority request
-        high_priority = evaluate_scenario_score(
-            requests=[
-                {
-                    "requester_id": 100,
-                    "requestee_id": 200,
-                    "request_type": "bunk_with",
-                    "priority": 10,
-                    "source_field": SourceField.BUNK_REQUEST_FORM,
-                }
-            ],
-            assignments=[
-                {"person_cm_id": 100, "bunk_cm_id": 1},
-                {"person_cm_id": 200, "bunk_cm_id": 1},
-            ],
-            persons=[
-                {"cm_id": 100, "grade": 5, "gender": "M"},
-                {"cm_id": 200, "grade": 5, "gender": "M"},
-            ],
-            bunks=[{"cm_id": 1, "name": "B-1", "gender": "M", "max_size": 12}],
-            config=mock_config,
-        )
-
-        assert high_priority.request_satisfaction_score > low_priority.request_satisfaction_score
+        # Verify the first-pick gets slot-0 boost: score = 15 * 10 = 150
+        # (base_weight=10 * source_mult=1.5 * FIRST_REQUEST_MULTIPLIER=10)
+        assert first_pick.request_satisfaction_score == 150
 
     def test_grade_spread_penalty(self, mock_config):
         """Bunks with too many unique grades should incur penalty.

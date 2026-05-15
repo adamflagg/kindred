@@ -288,7 +288,7 @@ class TestBunkRequest:
 
         assert request.requester_cm_id == 12345
         assert request.requested_cm_id == 67890
-        assert request.is_first_requested == True
+        assert request.is_first_requested
         assert request.year == 2025
         assert request.status == RequestStatus.RESOLVED
         assert not request.is_placeholder

@@ -379,7 +379,6 @@ class TestOrchestratorSourceLinkInitialization:
                             orchestrator.pb = mock_pb_client
                             orchestrator.ai_config = {}
                             orchestrator.temporal_name_cache = Mock()
-                            orchestrator.priority_calculator = Mock()
                             orchestrator.year = 2025
 
                             # Call the method that should init SourceLinkRepository
