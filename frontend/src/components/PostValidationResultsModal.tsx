@@ -677,6 +677,7 @@ export default function PostValidationResultsModal({
       footer={footerContent}
       size="md"
       noPadding
+      scrollable
     >
       {/* Satisfaction Ring + Quick Stats */}
       <div className="border-border/50 flex items-center gap-6 border-b px-5 py-5">
@@ -763,14 +764,23 @@ export default function PostValidationResultsModal({
 
       {/* Impossibility cohort — surfaced from the latest pre-check (#1442 part 2).
           Closes the loop on "we got 100% Optimized, who didn't get fulfilled?"
-          by naming the campers whose requests were structurally impossible. */}
+          by naming the campers whose requests were structurally impossible.
+
+          Two distinct facts shown as two distinct lines: the named cohort
+          (entirely-impossible MP campers) and the scenario-wide impossible
+          request count (which may include partially-impossible kids not in
+          this list). Combining them ("X campers had Y impossible requests")
+          implied the Y belonged to the X, which is misleading. */}
       {showImpossibilitySection && (
         <div className="space-y-2 px-5 py-4">
           <div className="rounded-lg border border-red-200 bg-red-50 p-3">
             <p className="font-semibold text-red-900">
-              {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} had{' '}
+              {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} won&rsquo;t get any
+              parent request fulfilled
+            </p>
+            <p className="mt-0.5 text-xs text-red-800">
               {totalImpossibleRequests} impossible request
-              {totalImpossibleRequests === 1 ? '' : 's'} we couldn&rsquo;t fulfill
+              {totalImpossibleRequests === 1 ? '' : 's'} total in this scenario
             </p>
             <div className="mt-2 space-y-1.5 border-t border-red-200 pt-2">
               {mpImpossible.map((camper) => (

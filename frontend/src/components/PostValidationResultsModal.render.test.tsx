@@ -475,7 +475,12 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
   })
 
-  it('renders header with both camper and request counts', () => {
+  it('renders camper count and total impossible request count as separate, independent texts', () => {
+    // The camper count is "entirely-impossible MP campers" (zero parent reqs
+    // honored), while total_impossible spans ALL impossible requests in the
+    // scenario (including partially-impossible kids not named here). Combining
+    // them into "X campers had Y impossible requests" implies the Y belong to
+    // the X, which is wrong. Render them as two distinct statements.
     const report = makeReport(
       [
         { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
@@ -498,13 +503,38 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
       />
     )
+
+    // Primary line: how many campers got zero parent requests honored.
     expect(
-      screen.getByText(
-        (_, el) =>
-          el?.tagName === 'P' &&
-          (el.textContent ?? '').includes('3 campers had 5 impossible requests we couldn’t fulfill')
-      )
+      screen.getByText(/3 campers won['’]t get any parent request fulfilled/i)
     ).toBeInTheDocument()
+    // Secondary line: scenario-wide impossible request count, labeled as a
+    // separate fact (not "they had Y").
+    expect(screen.getByText(/5 impossible requests total in this scenario/i)).toBeInTheDocument()
+    // Guard against the misleading combined phrasing.
+    expect(screen.queryByText(/3 campers had 5 impossible requests/i)).not.toBeInTheDocument()
+  })
+
+  it('uses singular grammar when only one camper and one impossible request', () => {
+    const report = makeReport(
+      [{ cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['malformed'] }],
+      1
+    )
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+      />
+    )
+
+    expect(
+      screen.getByText(/1 camper won['’]t get any parent request fulfilled/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/1 campers/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/1 impossible request total in this scenario/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 impossible requests/i)).not.toBeInTheDocument()
   })
 
   it('opens the panel when a camper name in the section is clicked', async () => {

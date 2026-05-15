@@ -59,11 +59,15 @@ export default function ValidateBunkingButton({
   // the post-check modal (#1442 part 2). Shared query key with the session-
   // header pre-check + SolverDebugPage — so if either has populated cache, we
   // serve instantly; otherwise we fetch on demand. Impossibility is an input-
-  // feasibility property, so the report is valid regardless of solver state.
+  // feasibility property, so the report is valid regardless of solver state —
+  // long staleTime + no refetch-on-focus keeps the cache warm and avoids
+  // duplicate fetches while the user moves between tabs.
   const preCheckQuery = useQuery({
     queryKey: queryKeys.preCheck(sessionCmId, year),
     queryFn: () => solverService.preValidateRequests(sessionCmId, year, fetchWithAuth),
     enabled: showResults,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const handleValidate = async () => {

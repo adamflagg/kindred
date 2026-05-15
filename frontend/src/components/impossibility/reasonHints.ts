@@ -9,6 +9,7 @@ export const REASON_HINTS: Record<string, string> = {
   pair_no_shared_bunk: 'cross-gender request — confirm with the family',
   age_pref_no_eligible_grade: 'at the youngest/oldest grade — preference is moot',
   malformed: 'request is missing a name — needs parent resubmission',
+  self_conflict: 'contradicting requests — confirm which preference the family meant',
 }
 
 export function camperActionHints(reasonCodes: string[]): string {

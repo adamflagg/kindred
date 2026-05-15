@@ -657,6 +657,10 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
     ['pair_no_shared_bunk', 'cross-gender request — confirm with the family'],
     ['age_pref_no_eligible_grade', 'at the youngest/oldest grade — preference is moot'],
     ['malformed', 'request is missing a name — needs parent resubmission'],
+    // self_conflict is emitted by bunking/solver/constraints/self_conflict.py
+    // and shows up in FRIENDLY_REASON_LABELS already; needs a hint too so a
+    // camper with only self_conflict doesn't fall through to "review request".
+    ['self_conflict', 'contradicting requests — confirm which preference the family meant'],
   ])('renders the hint for reason code %s', (code, expectedHint) => {
     renderWithMpCamper([code])
     expect(screen.getByText(new RegExp(expectedHint))).toBeInTheDocument()
