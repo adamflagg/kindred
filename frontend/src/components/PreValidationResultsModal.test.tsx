@@ -453,6 +453,52 @@ describe('PreValidationResultsModal — staff-only view', () => {
     expect(screen.getByText(/isn['’]t enrolled in this session/i)).toBeInTheDocument()
   })
 
+  it('renders friendly label + subtext for self_conflict (#1446)', () => {
+    const results = {
+      ...baseResults,
+      impossibility_report: {
+        total_impossible: 2,
+        affected_campers: 1,
+        by_reason: {
+          self_conflict: [
+            {
+              request_id: 'r_bw',
+              reason_code: 'self_conflict',
+              reason_message:
+                "Emma Johnson has both a 'bunk_with' and a 'not_bunk_with' request toward Liam Garcia",
+              request_type: 'bunk_with',
+              requester: { cm_id: 1, name: 'Emma Johnson', grade: 6, gender: 'F' },
+              requestee: { cm_id: 2, name: 'Liam Garcia', grade: 6, gender: 'M' },
+              detail: {
+                conflicting_request_id: 'r_nbw',
+                requested_person_cm_id: 2,
+                this_type: 'bunk_with',
+                conflicting_type: 'not_bunk_with',
+              },
+            },
+          ],
+        },
+        flat: [],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+
+    // Section header uses the friendly label, never the raw snake_case code.
+    expect(screen.queryByText('self_conflict')).not.toBeInTheDocument()
+    expect(screen.getByText(/contradicting requests/i)).toBeInTheDocument()
+    // Subtext explains the contradiction shape: "bunk with X — also marked don't bunk with"
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/don't bunk with/i)).toBeInTheDocument()
+  })
+
   it('does not render cluster_grade_compatibility reason code (clusters removed)', () => {
     // clusters field is no longer part of ImpossibilityReport; this verifies
     // the modal renders cleanly with no cluster-related output

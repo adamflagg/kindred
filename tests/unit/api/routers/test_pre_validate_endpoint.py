@@ -281,3 +281,52 @@ def test_response_includes_mp_campers_entirely_impossible(client: TestClient) ->
             "reason_codes": ["target_not_in_solver"],
         },
     ]
+
+
+def test_response_propagates_self_conflict_bucket(client: TestClient) -> None:
+    """A self_conflict bucket in the impossibility report is present in the response."""
+    from bunking.solver.impossibility import ImpossibleItem
+
+    self_conflict_item = ImpossibleItem(
+        request_id="r_bw",
+        reason_code="self_conflict",
+        reason_message="Emma Johnson has both a 'bunk_with' and a 'not_bunk_with' request toward Liam Garcia.",
+        request_type="bunk_with",
+        requester={"cm_id": 1, "name": "Emma Johnson", "grade": 6, "gender": "F"},
+        requestee={"cm_id": 2, "name": "Liam Garcia", "grade": 6, "gender": "M"},
+        detail={
+            "conflicting_request_id": "r_nbw",
+            "requested_person_cm_id": 2,
+            "this_type": "bunk_with",
+            "conflicting_type": "not_bunk_with",
+        },
+    )
+    fake_report = _FakeReport(
+        total_impossible=1,
+        affected_campers=1,
+        by_reason={"self_conflict": [self_conflict_item]},
+        flat=[self_conflict_item],
+    )
+
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        _apply_standard_mocks(mock_build_ctx, mock_fetch, mock_prepare, mock_validate, mock_config, report=fake_report)
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    ir = body["impossibility_report"]
+    assert ir["total_impossible"] == 1
+    assert ir["affected_campers"] == 1
+    assert "self_conflict" in ir["by_reason"]
+    bucket = ir["by_reason"]["self_conflict"]
+    assert len(bucket) == 1
+    assert bucket[0]["reason_code"] == "self_conflict"
+    assert bucket[0]["request_id"] == "r_bw"
+    assert bucket[0]["detail"]["conflicting_request_id"] == "r_nbw"
