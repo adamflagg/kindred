@@ -148,13 +148,21 @@ function friendlyReasonLabel(code: string): string {
   return FRIENDLY_REASON_LABELS[code] || code
 }
 
-// Camper-level action hint: target_not_in_solver means the named friend isn't
-// enrolled (confirm enrollment); any other reason means the request itself is
-// the problem (fix parent input).
+// Per-reason hint copy: tells staff what to actually do for each rejection.
+// Exported so PostValidationResultsModal can reuse the same map.
+export const REASON_HINTS: Record<string, string> = {
+  target_not_in_solver: 'check enrollment — requested camper not on roster',
+  grade_compatibility: 'grade gap too wide — confirm priority with the family',
+  cross_session: 'requested friend is in a different session — confirm intent',
+  pair_no_shared_bunk: 'cross-gender request — confirm with the family',
+  age_pref_no_eligible_grade: 'at the youngest/oldest grade — preference is moot',
+  malformed: 'request is missing a name — needs parent resubmission',
+}
+
 function camperActionHints(reasonCodes: string[]): string {
   const hints = new Set<string>()
   for (const code of reasonCodes) {
-    hints.add(code === 'target_not_in_solver' ? 'confirm enrollment' : 'fix parent input')
+    hints.add(REASON_HINTS[code] ?? 'review request')
   }
   return Array.from(hints).join(' / ')
 }

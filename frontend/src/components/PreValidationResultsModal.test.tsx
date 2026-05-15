@@ -592,9 +592,13 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
 
     expect(screen.getByText(/zero parent requests honored/i)).toBeInTheDocument()
     expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(screen.getByText(/confirm enrollment/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/check enrollment — requested camper not on roster/)
+    ).toBeInTheDocument()
     expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
-    expect(screen.getByText(/fix parent input/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/grade gap too wide — confirm priority with the family/)
+    ).toBeInTheDocument()
   })
 
   it('renders no camper-level section when the rollup is empty', () => {
@@ -607,5 +611,56 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
       />
     )
     expect(screen.queryByText(/zero parent requests honored/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('PreValidationResultsModal — per-reason hint copy', () => {
+  const renderWithMpCamper = (reasonCodes: string[]) => {
+    const results = {
+      ...baseResults,
+      impossibility_report: {
+        total_impossible: reasonCodes.length,
+        affected_campers: 1,
+        by_reason: {},
+        flat: [],
+        mp_campers_entirely_impossible: [
+          { cm_id: 100, name: 'Emma Johnson', grade: 4, gender: 'F', reason_codes: reasonCodes },
+        ],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+  }
+
+  it.each([
+    ['target_not_in_solver', 'check enrollment — requested camper not on roster'],
+    ['grade_compatibility', 'grade gap too wide — confirm priority with the family'],
+    ['cross_session', 'requested friend is in a different session — confirm intent'],
+    ['pair_no_shared_bunk', 'cross-gender request — confirm with the family'],
+    ['age_pref_no_eligible_grade', 'at the youngest/oldest grade — preference is moot'],
+    ['malformed', 'request is missing a name — needs parent resubmission'],
+  ])('renders the hint for reason code %s', (code, expectedHint) => {
+    renderWithMpCamper([code])
+    expect(screen.getByText(new RegExp(expectedHint))).toBeInTheDocument()
+  })
+
+  it('joins hints for multi-reason campers with " / "', () => {
+    renderWithMpCamper(['grade_compatibility', 'cross_session'])
+    expect(
+      screen.getByText(
+        /grade gap too wide — confirm priority with the family \/ requested friend is in a different session — confirm intent/
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('falls back to a generic hint for unknown reason codes', () => {
+    renderWithMpCamper(['some_brand_new_code'])
+    expect(screen.getByText(/review request/)).toBeInTheDocument()
   })
 })
