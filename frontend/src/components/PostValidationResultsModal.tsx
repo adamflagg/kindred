@@ -16,16 +16,10 @@ import {
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
 import { CamperNameButton } from './impossibility/CamperNameButton'
-import { REASON_HINTS } from './PreValidationResultsModal'
+import { camperActionHints } from './impossibility/reasonHints'
 import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
 
 const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
-
-function hintsFor(codes: string[]): string {
-  const hints = new Set<string>()
-  for (const code of codes) hints.add(REASON_HINTS[code] ?? 'review request')
-  return Array.from(hints).join(' / ')
-}
 
 interface FieldStats {
   total: number
@@ -788,7 +782,7 @@ export default function PostValidationResultsModal({
                       onSelect={setSelectedCamperId}
                     />
                     <span className="ml-2 text-xs text-stone-600">
-                      {hintsFor(camper.reason_codes)}
+                      {camperActionHints(camper.reason_codes)}
                     </span>
                   </div>
                   <div className="flex flex-wrap justify-end gap-1">
