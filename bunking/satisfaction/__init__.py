@@ -23,6 +23,7 @@ from bunking.satisfaction.api_shape import (
     SatisfactionFlags,
     SatisfactionResponse,
 )
+from bunking.satisfaction.batch import satisfied_request_ids_by_person
 from bunking.satisfaction.bucket import (
     COUNTED_BUCKETS,
     RequestBucket,
@@ -30,7 +31,6 @@ from bunking.satisfaction.bucket import (
     is_material_parent_request,
 )
 from bunking.satisfaction.predicate import is_request_satisfied
-from bunking.satisfaction.batch import satisfied_request_ids_by_person
 
 __all__ = [
     "COUNTED_BUCKETS",

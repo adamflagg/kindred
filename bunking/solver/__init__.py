@@ -17,7 +17,6 @@ from .solution import (
     analyze_bunk_health,
     analyze_level_progressions,
     analyze_solution,
-    calculate_field_level_stats,
     get_bunk_name,
 )
 
@@ -29,6 +28,5 @@ __all__ = [
     "analyze_bunk_health",
     "analyze_level_progressions",
     "analyze_solution",
-    "calculate_field_level_stats",
     "get_bunk_name",
 ]

@@ -166,60 +166,6 @@ class TestScoreEvaluatorCanonicalKeys:
         assert _get_source_fields(request) == [SourceField.SOCIALIZE_WITH]
 
 
-class TestSolutionCanonicalKeys:
-    """solution.py must use canonical SourceField values for field_level_stats."""
-
-    def test_field_stats_keyed_by_canonical_values(self):
-        """calculate_field_level_stats must return canonical SourceField keys."""
-        from bunking.models_v2 import DirectBunkRequest
-        from bunking.solver.solution import calculate_field_level_stats
-
-        request = DirectBunkRequest(
-            id="req1",
-            requester_person_cm_id=100,
-            requested_person_cm_id=200,
-            request_type="bunk_with",
-            priority=5,
-            session_cm_id=1000,
-            year=2025,
-            source_field=SourceField.BUNK_REQUEST_FORM,
-        )
-
-        result = calculate_field_level_stats(
-            satisfied_requests={100: ["req1"]},
-            requests_by_person={100: [request]},
-        )
-
-        field_stats = result["by_field"]
-        assert SourceField.BUNK_REQUEST_FORM in field_stats
-        assert field_stats[SourceField.BUNK_REQUEST_FORM]["total"] == 1
-        assert field_stats[SourceField.BUNK_REQUEST_FORM]["satisfied"] == 1
-
-    def test_explicit_csv_fields_match_canonical_values(self):
-        """Explicit CSV field detection must use canonical SourceField values."""
-        from bunking.models_v2 import DirectBunkRequest
-        from bunking.solver.solution import calculate_field_level_stats
-
-        request = DirectBunkRequest(
-            id="req1",
-            requester_person_cm_id=100,
-            requested_person_cm_id=200,
-            request_type="bunk_with",
-            priority=5,
-            session_cm_id=1000,
-            year=2025,
-            source_field=SourceField.BUNK_REQUEST_FORM,
-        )
-
-        result = calculate_field_level_stats(
-            satisfied_requests={100: ["req1"]},
-            requests_by_person={100: [request]},
-        )
-
-        assert result["explicit_csv_requests"]["total"] == 1
-        assert result["explicit_csv_requests"]["satisfied"] == 1
-
-
 class TestDirectSolverCanonicalKeys:
     """direct_solver.py must map canonical source_field to config keys."""
 

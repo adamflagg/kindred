@@ -11,127 +11,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
-from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest
-
-
-def calculate_field_level_stats(
-    satisfied_requests: dict[int, list[str]],
-    requests_by_person: dict[int, list[DirectBunkRequest]],
-) -> dict[str, Any]:
-    """Calculate request satisfaction statistics broken down by source field.
-
-    Args:
-        satisfied_requests: Dict mapping person CM ID to satisfied request IDs
-        requests_by_person: Dict mapping person CM ID to their requests
-
-    Returns:
-        Dict with field-level stats, explicit CSV stats, and summary
-    """
-    # Define explicit CSV fields
-    explicit_csv_fields = {
-        SourceField.BUNK_REQUEST_FORM,
-        SourceField.STAFF_NOT_BUNK_WITH,
-        SourceField.BUNKING_NOTES,
-        SourceField.INTERNAL_NOTES,
-    }
-
-    # Initialize field stats
-    field_stats: dict[str, dict[str, Any]] = {
-        SourceField.BUNK_REQUEST_FORM: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        SourceField.STAFF_NOT_BUNK_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        SourceField.BUNKING_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        SourceField.INTERNAL_NOTES: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        SourceField.SOCIALIZE_WITH: {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-        "other": {"total": 0, "satisfied": 0, "satisfaction_rate": 0.0},
-    }
-
-    # Track stats by explicit vs other
-    explicit_stats = {"total": 0, "satisfied": 0}
-
-    # Build satisfied request lookup
-    satisfied_req_ids: set[str] = set()
-    for req_list in satisfied_requests.values():
-        satisfied_req_ids.update(req_list)
-
-    # Process all requests
-    for requests in requests_by_person.values():
-        for request in requests:
-            # Get source fields
-            source_fields: list[str] = []
-            if hasattr(request, "source_field") and request.source_field:
-                source_fields = [request.source_field]
-            if not source_fields:
-                source_fields = ["other"]
-
-            # Check if explicit
-            is_explicit = any(field in explicit_csv_fields for field in source_fields)
-
-            # Update stats for each source field
-            for field in source_fields:
-                field_key = field if field in field_stats else "other"
-                field_stats[field_key]["total"] += 1
-
-                if request.id in satisfied_req_ids:
-                    field_stats[field_key]["satisfied"] += 1
-
-            # Update explicit vs other stats
-            if is_explicit:
-                explicit_stats["total"] += 1
-                if request.id in satisfied_req_ids:
-                    explicit_stats["satisfied"] += 1
-
-    # Calculate satisfaction rates
-    for field_data in field_stats.values():
-        if field_data["total"] > 0:
-            field_data["satisfaction_rate"] = field_data["satisfied"] / field_data["total"]
-
-    # Calculate explicit satisfaction rate
-    explicit_satisfaction_rate = 0.0
-    if explicit_stats["total"] > 0:
-        explicit_satisfaction_rate = explicit_stats["satisfied"] / explicit_stats["total"]
-
-    # Count campers with unsatisfied explicit requests
-    campers_with_unsatisfied_explicit = 0
-    for requests in requests_by_person.values():
-        has_explicit = False
-        has_satisfied_explicit = False
-
-        for request in requests:
-            # Get source fields
-            source_fields = []
-            if hasattr(request, "source_field") and request.source_field:
-                source_fields = [request.source_field]
-
-            # Check if explicit
-            is_explicit = any(field in explicit_csv_fields for field in source_fields)
-            if is_explicit:
-                has_explicit = True
-                if request.id in satisfied_req_ids:
-                    has_satisfied_explicit = True
-
-        if has_explicit and not has_satisfied_explicit:
-            campers_with_unsatisfied_explicit += 1
-
-    total_requests = sum(f["total"] for f in field_stats.values())
-    total_satisfied = sum(f["satisfied"] for f in field_stats.values())
-
-    return {
-        "by_field": field_stats,
-        "explicit_csv_requests": {
-            "total": explicit_stats["total"],
-            "satisfied": explicit_stats["satisfied"],
-            "satisfaction_rate": explicit_satisfaction_rate,
-            "campers_with_unsatisfied_explicit": campers_with_unsatisfied_explicit,
-        },
-        "summary": {
-            "total_requests": total_requests,
-            "total_satisfied": total_satisfied,
-            "overall_satisfaction_rate": (total_satisfied / total_requests if total_requests > 0 else 0.0),
-        },
-    }
 
 
 def analyze_bunk_health(
@@ -256,7 +138,7 @@ def analyze_solution(
         bunks: List of bunk objects
 
     Returns:
-        Dict with bunk_health, session_metrics, warnings, and field_level_stats
+        Dict with bunk_health, session_metrics, and warnings
     """
     analysis: dict[str, Any] = {
         "bunk_health": {},
@@ -266,7 +148,6 @@ def analyze_solution(
             "overall_satisfaction": 0.0,
         },
         "warnings": [],
-        "field_level_stats": calculate_field_level_stats(satisfied_requests, requests_by_person),
     }
 
     # Build assignment lookup

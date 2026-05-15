@@ -848,25 +848,6 @@ class DirectBunkingSolver:
             self.bunks,
         )
 
-        # Log field-level statistics
-        if "field_level_stats" in analysis:
-            logger.info("=== Request Satisfaction by CSV Field ===")
-            for field, stats in analysis["field_level_stats"]["by_field"].items():
-                if stats["total"] > 0:
-                    logger.info(
-                        f"{field}: {stats['satisfied']}/{stats['total']} ({stats['satisfaction_rate']:.1%} satisfied)"
-                    )
-
-            explicit_stats = analysis["field_level_stats"]["explicit_csv_requests"]
-            logger.info(
-                "Explicit source fields (Share Bunk With, Do Not Share Bunk With, BunkingNotes Notes, Internal Bunk Notes):"
-            )
-            logger.info(f"  Total: {explicit_stats['total']} requests")
-            logger.info(f"  Satisfied: {explicit_stats['satisfied']} ({explicit_stats['satisfaction_rate']:.1%})")
-            logger.info(
-                f"  Campers with unsatisfied explicit requests: {explicit_stats['campers_with_unsatisfied_explicit']}"
-            )
-
         # Check constraint violations in final solution
         self._check_constraint_violations(assignments, solver)
 
