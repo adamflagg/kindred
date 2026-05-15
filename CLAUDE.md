@@ -36,58 +36,18 @@ OR-Tools Solver ─────────┘
 
 ## Codebase Map
 
-### Python Backend (`bunking/`)
-Core solver + data-processing package. `api/` is a thin HTTP layer over it.
+Subdir `CLAUDE.md` files load automatically when you edit files in that area — they contain conventions, gotchas, and commands specific to each surface. Root file (this one) covers cross-cutting rules; surface specifics live below.
 
-| Module/Package | Purpose |
-|----------------|---------|
-| `solver/` | OR-Tools CP-SAT solver (see below) |
-| `sync/bunk_request_processor/` | CSV → AI parse → name resolution → disposition pipeline |
-| `satisfaction/` | Single source of truth for "is request X satisfied?" — RequestBucket policy, per-request predicate, per-camper/session aggregation |
-| `metrics/` | Analytics aggregation |
-| `graph/` | Social graph construction + caching — `SocialGraphBuilder` is the public API |
-| `rbac/` | FastAPI permission dependencies (small; the Go side has its own `pocketbase/rbac/`) |
-| `geo_normalizer/` | City/state normalization against `uscities.csv` |
-| `config/` | `ConfigLoader` — reads the PocketBase `config` table |
-| `models_v2.py` | `DirectSolver*` dataclasses — the solver's I/O contract |
-| `bunking_validator.py` | Analyzes assignments and reports validation issues — consumed by `api/routers/validation.py` |
-| `auth_middleware.py` / `jwt_auth.py` | PocketBase JWT verification for FastAPI |
+| Surface | Where | Subdir context |
+|---------|-------|----------------|
+| Python core (sync pipeline, satisfaction policy, social graph, RBAC, geo, config) | `bunking/` | `bunking/CLAUDE.md` |
+| Solver (OR-Tools CP-SAT, constraints, feasibility) | `bunking/solver/` | `bunking/solver/CLAUDE.md` |
+| FastAPI HTTP layer | `api/` | `api/CLAUDE.md` |
+| PocketBase (Go, SQLite, CampMinder sync, migrations) | `pocketbase/` | `pocketbase/CLAUDE.md` |
+| React UI | `frontend/src/` | `frontend/CLAUDE.md` |
+| Tests (pytest + Vitest) | `tests/`, `frontend/src/**/*.test.ts` | `tests/CLAUDE.md` |
 
-### Solver (`bunking/solver/`)
-CP-SAT model built from composable **constraint builders**. Entry: `direct_solver.py`.
-- `constraints/` — one module per concern (gender, age_spread, grade_adjacency, bunk_requests, parent_paramount, group_locks, level_progression, …). Each follows the `ConstraintBuilder`/`ObjectiveBuilder` protocols in `constraints/base.py`.
-- `SolverContext` (`constraints/base.py`) — shared state threaded through builders.
-- `feasibility.py` / `impossibility.py` — diagnose infeasible models.
-- Organized by Tier / Stage / RequestBucket. Read before touching the solver: `docs/reference/solver-roadmap.md`, `docs/guides/solver-configuration.md`, `docs/api/solver-api.md`.
-
-### FastAPI (`api/`)
-Routers in `api/routers/` (solver, scenarios, social_graph, satisfaction, requests, metrics, validation, geo, debug, internal). Schemas in `api/schemas/`, helpers in `api/utils/`. Business logic lives in `bunking/`, not here.
-
-### PocketBase Go (`pocketbase/`)
-Entry: `main.go`. Packages: `sync/` + `campminder/`, `rbac/`, `feedback/`, `google/`, `bunk_requests/`, `ratelimit/`, `logging/`, `pb_hooks/` (JS hooks), `pb_migrations/` (schema source of truth).
-
-### Frontend (`frontend/src/`)
-
-| Directory | Purpose |
-|-----------|---------|
-| `components/` | Reusable React components |
-| `components/graph/` | Social network graph modules (styles, interactions, layout, UI) |
-| `pages/` | Route-level page components |
-| `hooks/` | Custom React hooks (data fetching, state) |
-| `services/` | API clients, business logic |
-| `types/` | TypeScript type definitions |
-| `lib/` | Third-party library integrations |
-| `contexts/` | React context providers |
-
-**Key Component Patterns:**
-- **Modular extraction**: Large components like `SocialNetworkGraph.tsx` are decomposed into utility modules
-- **Custom hooks**: Data fetching logic extracted to hooks (`useSocialGraphData`, `useBunkNames`, `useSessionHierarchy`)
-- **Barrel exports**: Component directories use `index.ts` for clean imports
-
-**Technologies**: React 19, TypeScript 5.8+, Vite, Tailwind CSS, React Query, @dnd-kit, Cytoscape.js
-
-### Tests (`tests/`)
-`tests/{unit,integration,e2e,performance}/`. Markers (`pyproject.toml`, strict mode — an unregistered marker is a failure): `ai_required` and `pocketbase_required` are **skipped in CI** (they need live AI tokens / a running PocketBase). Run them locally with a dev server up.
+Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
 
 ## 📚 Full Documentation
 
@@ -160,11 +120,7 @@ Format: `type(scope): description` — Breaking changes: `feat(api)!: descriptio
 
 ## Logging Standards
 
-Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`
-
-- Python: `from bunking.logging_config import configure_logging, get_logger`
-- Go: `import "github.com/camp/kindred/pocketbase/logging"` then `logging.Init("pocketbase")`
-- `LOG_LEVEL=INFO` (default) suppresses health checks; use `DEBUG` for verbose
+Format: `2026-01-06T14:05:52Z [source] LEVEL message key=value...`. `LOG_LEVEL=INFO` (default) suppresses health checks; `DEBUG` for verbose. Language-specific setup: `bunking/CLAUDE.md` (Python), `pocketbase/CLAUDE.md` (Go).
 
 ## Git Hooks (Lefthook)
 
@@ -183,22 +139,7 @@ Escape hatches and manual runs: `docs/reference/git-workflow.md`
 
 ## Error Handling Conventions
 
-**Frontend:**
-- **Page-level `<ErrorBoundary>`**: Every lazy-loaded route in `App.tsx` is wrapped with `<ErrorBoundary>` around `<Suspense>`. This isolates crashes to the affected page — nav and other routes remain functional. New routes MUST follow this pattern.
-- **`<QueryGuard>`** (`components/QueryGuard.tsx`): Render-prop component that handles loading/error/empty/success states for React Query data. Use it in new data-fetching pages to avoid hand-rolling the same if/isLoading/if/error pattern. Existing pages use inline patterns — don't refactor them unless already touching that code.
-- **All 4 states must be handled**: loading, error, empty, success. Never render a data-dependent component without checking the query state first.
-
-**Backend:**
-- **Global exception handler** in `api/main.py` catches unhandled exceptions and returns `{"detail": "Internal server error"}` (generic). Full error details are logged server-side with `exc_info=True`. Never use `raise HTTPException(status_code=500, detail=str(e))` — let the global handler catch it instead.
-
-## Tour & Hint Maintenance
-
-When modifying page layout, features, or `data-tour` attributes on a toured page, review and update the corresponding tour definition in `frontend/src/tours/definitions/`.
-Checklist:
-- [ ] data-tour attributes still reference correct elements
-- [ ] isReady() still checks the right element
-- [ ] Step/hint descriptions match current behavior
-- [ ] Bump `version` if steps changed (triggers re-play for returning users)
+Surface-specific — see `frontend/CLAUDE.md` (ErrorBoundary + QueryGuard patterns) and `api/CLAUDE.md` (global FastAPI exception handler).
 
 ---
 
@@ -216,22 +157,17 @@ Checklist:
 
 ## Development Notes
 
-### Invariants
-Internalize these — violating them produces incorrect code or data corruption.
+### Invariants (cross-cutting)
+Internalize these — violating them produces incorrect code or data corruption. Surface-specific invariants live in the corresponding subdir CLAUDE.md.
 
-1. **CampMinder IDs** — All cross-table relationships use CM IDs, never PocketBase IDs
+1. **CampMinder IDs** — all cross-table relationships use CM IDs, never PocketBase IDs
 2. **Sync order matters** — sessions → attendees → persons → bunks → plans → assignments → requests
-3. **Family-camp data syncs** alongside summer data — summer-camp views must filter `session_type` against `VALID_SUMMER_SESSION_TYPES` (frontend) / `valid_summer_session_types` equivalents to avoid leaking family-camp sessions, attendees, or bunks
+3. **Family-camp data syncs alongside summer data** — summer-camp views must filter `session_type` against `VALID_SUMMER_SESSION_TYPES` (frontend) / `valid_summer_session_types` equivalents
 4. **Config is database-driven** — PocketBase `config` table, not JSON files. AI settings via env vars (`AI_API_KEY`, `AI_MODEL`, `AI_PROVIDER`)
-5. **Year-aware syncs** — Uses `season_id` from config; ready for new year with config update
-6. **Sequential session syncs** — Sessions 1-4 run sequentially with independent history
-7. **WAL checkpoint** — Required after database modifications
-8. **PocketBase filter syntax** — ALWAYS spaces around operators (`field = value` not `field=value`)
-9. **React auth guards** — Check `isLoading` from `useAuth()` before authenticated API calls
-10. **React Query keys** — Use centralized keys from `frontend/src/utils/queryKeys.ts`
-11. **Attendee filtering** — Solver uses `status_id = 2` for active enrolled attendees
-12. **mypy strict mode** — `pyproject.toml` runs mypy with `strict = true`; all new Python must be fully type-annotated or pre-push fails
-13. **Spelling: "cancelled"** — PocketBase fields use British spelling (`cancelled_count`). Go linter allows it via `.golangci.yml` extra-words. Use `cancelled` consistently, not `canceled`
+5. **Year-aware syncs** — uses `season_id` from config; ready for new year with config update
+6. **Sequential session syncs** — sessions 1-4 run sequentially with independent history
+7. **WAL checkpoint required** after database modifications
+8. **Attendee filtering** — solver uses `status_id = 2` for active enrolled attendees
 
 ### Tooling Notes
 1. **Language Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 5.8+/ES2022
@@ -239,8 +175,6 @@ Internalize these — violating them produces incorrect code or data corruption.
 3. **AI model** — GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
 4. **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`
 5. **IPv4 in production** — Caddy/Vite configs use `127.0.0.1`; scripts may use localhost
-6. **Python line length** — 120 chars (configured in `ruff.toml`), enforced by ruff format
-7. **Frontend tests** — Vitest (not Jest); `npm run test` for watch mode, `npx vitest run` for one-shot
 
 ---
 
@@ -252,11 +186,15 @@ Internalize these — violating them produces incorrect code or data corruption.
 
 **NEVER commit or push to `main`.** All changes go through a feature branch and PR. Main is protected; direct pushes fail anyway.
 
-**ALWAYS use a worktree for feature work.** Before starting ANY feature work:
+**ALWAYS create worktrees via `./scripts/worktree/new.sh` — never bare `git worktree add`, never `EnterWorktree`.** Before starting ANY feature work:
 ```bash
 ./scripts/worktree/new.sh <descriptive-feature-name>
 cd ../kindred-worktrees/<feature-name>
 ```
+
+The script does setup `git worktree add` skips: port allocation (Vite/FastAPI/Caddy/PocketBase offsets so parallel worktrees don't collide), branch naming (`feature/<name>`), DB seed from main, local-config symlinks. Bypassing it has caused parallel-agent port collisions on recent PRs.
+
+A `PreToolUse` hook (`.claude/hooks/worktree-guard.sh`) blocks direct `git worktree add` invocations. If it denies a call, that's working as intended — switch to `new.sh`.
 
 **When can I work in the main repo folder?** Only if BOTH conditions are met:
 

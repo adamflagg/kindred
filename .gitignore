@@ -104,6 +104,7 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/bunk_requests/
 !pocketbase/cmd/
 !pocketbase/README.md
+!pocketbase/CLAUDE.md
 # JS tooling for migrations/hooks linting
 !pocketbase/package.json
 !pocketbase/package-lock.json
@@ -172,6 +173,8 @@ coverage.xml
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+!.claude/hooks/
+!.claude/hooks/**
 .superpowers
 docs/superpowers/
 
@@ -208,6 +211,7 @@ tmp/
 !package.json
 !package-lock.json
 !.prettierrc.json
+!.claude/settings.json
 !**/sample_*.csv
 !config/staff_list.example.json
 !config/sheets_export.example.json
