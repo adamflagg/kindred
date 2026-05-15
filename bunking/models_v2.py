@@ -148,5 +148,4 @@ class DirectSolverOutput(BaseModel):
         default_factory=dict
     )  # person_cm_id -> list of satisfied request IDs
     warnings: list[str] = Field(default_factory=list)
-    analysis: dict[str, Any] | None = None  # Post-solve analysis results
     log_file_path: str | None = None  # Path to saved solver log file

@@ -750,7 +750,6 @@ async def solve_scenario(
             session_cm_id=session_cm_id,
             year=scenario_year,
             time_limit=30,
-            include_analysis=False,
             scenario=scenario_id,
         )
 

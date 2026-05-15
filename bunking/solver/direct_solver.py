@@ -52,7 +52,6 @@ from .observability import (
     _count_constraint_types,
     _count_soft_constraints_by_module,
 )
-from .solution import analyze_solution
 
 if TYPE_CHECKING:
     from bunking.solver.impossibility import ImpossibilityReport
@@ -698,13 +697,6 @@ class DirectBunkingSolver:
             assignments=assignments,
             satisfied_requests=satisfied_requests,
             stats=stats,
-            analysis={
-                "single_bunk_session": True,
-                "bunk_name": bunk.name,
-                "campers_assigned": len(assignments),
-                "capacity": bunk.capacity,
-                "utilization": len(assignments) / bunk.capacity if bunk.capacity > 0 else 0,
-            },
         )
 
     def solve(self, time_limit_seconds: int = 60) -> DirectSolverOutput | None:
@@ -839,20 +831,8 @@ class DirectBunkingSolver:
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
 
-        # Perform post-solve analysis
-        analysis = analyze_solution(
-            assignments,
-            satisfied_requests,
-            self.input.requests_by_person,
-            self.input.requests,
-            self.bunks,
-        )
-
         # Check constraint violations in final solution
         self._check_constraint_violations(assignments, solver)
-
-        # Add constraint logger summary to analysis
-        analysis["constraint_summary"] = self.constraint_logger.get_summary()
 
         # Save logs to file if we have a session ID
         log_file_path = None
@@ -884,7 +864,6 @@ class DirectBunkingSolver:
             assignments=assignments,
             stats=stats,
             satisfied_requests=satisfied_requests,
-            analysis=analysis,
             log_file_path=log_file_path,
         )
 
