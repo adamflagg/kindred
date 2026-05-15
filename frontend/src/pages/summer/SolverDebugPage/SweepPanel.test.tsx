@@ -465,6 +465,135 @@ describe('SweepPanel — pre-check chip', () => {
   })
 })
 
+describe('SweepPanel — entirely-impossible MP campers chip (#1440)', () => {
+  it('renders a separate red chip when preCheckEntirelyImpossibleCount > 0', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={33}
+        preCheckEntirelyImpossibleCount={3}
+      />
+    )
+    // Both chips render — amber pre-check chip stays, red "entirely-impossible MP" chip joins it.
+    expect(screen.getByRole('button', { name: /pre-check.*33.*issue/i })).toBeInTheDocument()
+    const redChip = screen.getByRole('button', { name: /entirely-impossible MP/i })
+    expect(redChip).toBeInTheDocument()
+    expect(redChip).toHaveTextContent('3')
+  })
+
+  it('exposes the entirely-impossible camper count in the red chip accessible name', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={10}
+        preCheckEntirelyImpossibleCount={2}
+      />
+    )
+    // Screen-reader text must reflect the count, not a static "entirely-impossible MP".
+    expect(
+      screen.getByRole('button', { name: /2.*entirely-impossible MP.*camper/i })
+    ).toBeInTheDocument()
+  })
+
+  it('omits the red chip when preCheckEntirelyImpossibleCount is 0', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={5}
+        preCheckEntirelyImpossibleCount={0}
+      />
+    )
+    // Amber chip still here, no red chip when nobody is entirely impossible.
+    expect(screen.getByRole('button', { name: /pre-check/i })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /entirely-impossible MP/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('omits the red chip when preCheckEntirelyImpossibleCount is not provided', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={5}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /entirely-impossible MP/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it('clicking the red chip invokes onOpenPreCheck (same modal as amber)', async () => {
+    const onOpenPreCheck = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={10}
+        preCheckEntirelyImpossibleCount={4}
+        onOpenPreCheck={onOpenPreCheck}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /entirely-impossible MP/i }))
+    expect(onOpenPreCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking the red chip does not toggle panel collapse', async () => {
+    const user = userEvent.setup()
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckImpossibilityCount={10}
+        preCheckEntirelyImpossibleCount={2}
+        onOpenPreCheck={vi.fn()}
+      />
+    )
+    expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /entirely-impossible MP/i }))
+    // Panel still expanded.
+    expect(screen.getByRole('button', { name: /run sweep/i })).toBeInTheDocument()
+  })
+
+  it('does not render the red chip while pre-check is loading (no count yet)', () => {
+    render(
+      <SweepPanel
+        sessions={fakeSessions}
+        scenarios={fakeScenarios}
+        onRunSweep={vi.fn()}
+        onCancelSweep={vi.fn()}
+        inFlightSweep={null}
+        preCheckIsLoading
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /entirely-impossible MP/i })
+    ).not.toBeInTheDocument()
+  })
+})
+
 describe('SweepPanel collapse (#mockup-parity)', () => {
   const STORAGE_KEY = 'solver-debug.sweep-panel-expanded'
 
