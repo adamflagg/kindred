@@ -25,7 +25,6 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
   const [selectedRequester, setSelectedRequester] = useState<PersonsResponse | null>(null)
   const [selectedTarget, setSelectedTarget] = useState<PersonsResponse | null>(null)
   const [agePreferenceTarget, setAgePreferenceTarget] = useState<'older' | 'younger'>('older')
-  const [priority, setPriority] = useState(4)
   const [notes, setNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -68,7 +67,6 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
         year: year,
         requester_id: selectedRequester.cm_id,
         request_type: requestType as BunkRequestsResponse['request_type'],
-        priority: priority,
         status: 'resolved' as BunkRequestsResponse['status'], // Manually created requests go directly to resolved
         confidence_score: 1.0, // Full confidence for manual entries
         source_field: 'manual', // Required field - identifies this as a staff-created request
@@ -277,22 +275,6 @@ export default function CreateRequestModal({ sessionId, year, onClose }: CreateR
                 </select>
               </div>
             )}
-
-            {/* Priority */}
-            <div>
-              <label className="mb-2 block text-sm font-semibold">Priority</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(parseInt(e.target.value))}
-                className="input-lodge"
-              >
-                {[4, 3, 2, 1].map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
 
             {/* Notes */}
             <div>

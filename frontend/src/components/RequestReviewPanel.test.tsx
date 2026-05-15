@@ -1028,16 +1028,16 @@ describe('RequestReviewPanel', () => {
         // Each sortable column has a handleSort call; use those as unique anchors.
         const requesterIdx = headerBlock.indexOf("handleSort('requester')")
         const requestIdx = headerBlock.indexOf("handleSort('request')")
-        const priorityIdx = headerBlock.indexOf("handleSort('priority')")
+        const confidenceIdx = headerBlock.indexOf("handleSort('confidence')")
 
         expect(requesterIdx).toBeGreaterThan(-1)
         expect(requestIdx).toBeGreaterThan(-1)
-        expect(priorityIdx).toBeGreaterThan(-1)
         // Requester comes before Request
         expect(requesterIdx).toBeLessThan(requestIdx)
-        // Request comes before Priority; Type (unsortable) lives between them
-        expect(requestIdx).toBeLessThan(priorityIdx)
-        expect(headerBlock.slice(requestIdx, priorityIdx)).toContain('Type')
+        // Request comes before Confidence; Type (unsortable) lives between them
+        // Priority column has been deleted — is_first_requested is sync-derived, not user-settable
+        expect(requestIdx).toBeLessThan(confidenceIdx)
+        expect(headerBlock.slice(requestIdx, confidenceIdx)).toContain('Type')
       })
     })
 
@@ -1259,7 +1259,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.9,
-        priority: 1,
       })
 
       // Wait for at least one row-level Approve button to appear
@@ -1294,7 +1293,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.5,
-        priority: 1,
       })
 
       const rejectButton = await findButtonByTitle('Reject')
@@ -1360,7 +1358,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.7,
-        priority: 1,
       })
 
       await expandRowById('req-collapse-approve-1')
@@ -1388,7 +1385,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.4,
-        priority: 1,
       })
 
       await expandRowById('req-collapse-decline-1')
@@ -1421,7 +1417,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.8,
-        priority: 1,
       }
       const rowB: Partial<BunkRequestsResponse> = {
         id: 'req-unrelated-b',
@@ -1432,7 +1427,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.6,
-        priority: 2,
       }
 
       pb.collection.mockImplementation((name: string) => {
@@ -1533,7 +1527,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.75,
-        priority: 1,
       })
 
       updateSpy.mockResolvedValue({})
@@ -1597,7 +1590,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.85,
-        priority: 1,
       })
 
       // Approve succeeds; first undo attempt fails; second attempt succeeds.
@@ -1676,7 +1668,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'bunk_with',
         confidence_score: 0.9,
-        priority: 1,
       } as BunkRequestsResponse
 
       const { pb } = (await import('../lib/pocketbase')) as unknown as {
@@ -1789,7 +1780,6 @@ describe('RequestReviewPanel', () => {
           status: 'pending',
           request_type: 'bunk_with',
           confidence_score: 0.8,
-          priority: 1,
         } as BunkRequestsResponse,
         {
           id: 'bulk-rec-2',
@@ -1800,7 +1790,6 @@ describe('RequestReviewPanel', () => {
           status: 'pending',
           request_type: 'bunk_with',
           confidence_score: 0.7,
-          priority: 1,
         } as BunkRequestsResponse,
       ]
 
@@ -1921,7 +1910,6 @@ describe('RequestReviewPanel', () => {
         status: 'pending',
         request_type: 'not_bunk_with',
         confidence_score: 0.6,
-        priority: 2,
       })
 
       updateSpy.mockResolvedValue({})
@@ -2039,7 +2027,6 @@ describe('RequestReviewPanel', () => {
                 status: 'pending',
                 request_type: 'bunk_with',
                 confidence_score: 0.9,
-                priority: 1,
               },
             ]),
             getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),

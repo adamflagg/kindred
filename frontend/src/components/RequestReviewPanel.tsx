@@ -36,7 +36,6 @@ import {
   formatDispositionReason,
   MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
-import EditablePriority from './EditablePriority'
 import RequestRowDesktop from './RequestRowDesktop'
 import RequestRowMobile from './RequestRowMobile'
 import CreateRequestModal from './CreateRequestModal'
@@ -247,7 +246,7 @@ export default function RequestReviewPanel({
 
       return await pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: filterStr,
-        sort: '-confidence_score,priority',
+        sort: '-confidence_score',
       })
     },
     staleTime: 30000,
@@ -848,13 +847,6 @@ export default function RequestReviewPanel({
     setSelectedCamperId(cmId)
   }, [])
 
-  const handlePriorityChangeRow = useCallback(
-    (id: string, priority: number) => {
-      updateRequestMutation.mutate({ id, updates: { priority } })
-    },
-    [updateRequestMutation]
-  )
-
   const handleSplitRow = useCallback((request: BunkRequestsResponse) => {
     setRequestToSplit(request)
     setShowSplitModal(true)
@@ -1062,23 +1054,6 @@ export default function RequestReviewPanel({
               </div>
               <div
                 className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center text-sm font-medium"
-                onClick={() => handleSort('priority')}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  Priority
-                  {sortBy === 'priority' && (
-                    <span className="text-primary">
-                      {sortOrder === 'asc' ? (
-                        <ChevronUp className="h-3 w-3" />
-                      ) : (
-                        <ChevronDown className="h-3 w-3" />
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div
-                className="text-muted-foreground hover:text-foreground cursor-pointer px-4 py-3 text-center text-sm font-medium"
                 onClick={() => handleSort('confidence')}
               >
                 <div className="flex items-center justify-center gap-1">
@@ -1193,19 +1168,6 @@ export default function RequestReviewPanel({
                           >
                             <div className="space-y-2 text-sm">
                               <div>
-                                <span className="font-medium">Priority:</span>{' '}
-                                <EditablePriority
-                                  value={request.priority}
-                                  onChange={(newPriority) => {
-                                    updateRequestMutation.mutate({
-                                      id: request.id,
-                                      updates: { priority: newPriority },
-                                    })
-                                  }}
-                                  disabled={false}
-                                />
-                              </div>
-                              <div>
                                 <span className="font-medium">Source:</span>{' '}
                                 <span className="text-muted-foreground">
                                   {safeSourceFromField(request.source_field) ?? 'unknown'}
@@ -1284,7 +1246,6 @@ export default function RequestReviewPanel({
                           onToggleSelection={toggleRequestSelection}
                           onSelectCamper={handleSelectCamperId}
                           onValidatedUpdate={handleValidatedUpdate}
-                          onPriorityChange={handlePriorityChangeRow}
                           onSplit={handleSplitRow}
                           onConfirmAction={openConfirmPopover}
                         />
