@@ -16,6 +16,7 @@ describe('syncTypes', () => {
     const enrollmentIdx = ids.indexOf('enrollment_snapshots')
     const orphanIdx = ids.indexOf('orphan_reconciler')
     expect(orphanIdx).toBeGreaterThan(enrollmentIdx)
+    expect(orphanIdx).toBe(ids.length - 1)
   })
 
   it('orphan_reconciler has a description clarifying PB-only', () => {
