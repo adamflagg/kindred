@@ -228,7 +228,12 @@ export function SyncTab() {
         <div className="mb-3 flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <Icon className={`h-5 w-5 flex-shrink-0 ${syncType.color}`} />
-            <span className="truncate text-sm font-semibold sm:text-base">{syncType.name}</span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold sm:text-base">{syncType.name}</div>
+              {'description' in syncType && syncType.description && (
+                <div className="text-muted-foreground truncate text-xs">{syncType.description}</div>
+              )}
+            </div>
           </div>
           <StatusIcon status={status.status} />
         </div>
@@ -259,6 +264,11 @@ export function SyncTab() {
                 {status.summary.errors > 0 && (
                   <span className="font-medium text-red-600 dark:text-red-400">
                     {status.summary.errors} err
+                  </span>
+                )}
+                {(status.summary.prod_audit_warnings ?? 0) > 0 && (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    {status.summary.prod_audit_warnings} prod⚠
                   </span>
                 )}
               </div>
