@@ -239,6 +239,7 @@ for _module_name in (
     "bunk_requests",
     "gender",
     "grade_spread",
+    "self_conflict",
     "session_boundary",
 ):
     _importlib.import_module(f"bunking.solver.constraints.{_module_name}")

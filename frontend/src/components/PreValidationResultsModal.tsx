@@ -141,6 +141,7 @@ const FRIENDLY_REASON_LABELS: Record<string, string> = {
   age_pref_no_eligible_grade: 'No matching age group available',
   malformed: 'Incomplete request',
   target_not_in_solver: 'Friend not enrolled',
+  self_conflict: 'Contradicting requests',
 }
 
 function friendlyReasonLabel(code: string): string {
@@ -281,6 +282,20 @@ function renderSubtext(
           Requested friend isn&rsquo;t enrolled in this session
         </div>
       )
+
+    case 'self_conflict': {
+      const conflictingType = item.detail?.['conflicting_type'] as string | undefined
+      const conflictingVerb = conflictingType ? requestVerb(conflictingType) : 'do the opposite'
+      return r ? (
+        <div className="text-xs text-stone-600">
+          {verb}{' '}
+          <strong>
+            {r.name} ({r.gender})
+          </strong>{' '}
+          · {ordinalGrade(r.grade)} — also marked <strong>{conflictingVerb}</strong>
+        </div>
+      ) : null
+    }
 
     default:
       return r ? (

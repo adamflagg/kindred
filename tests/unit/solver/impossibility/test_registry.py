@@ -17,6 +17,7 @@ EXPECTED_HARD_PREDICATES = {
     "age_preference",
     "grade_compatibility",
     "target_not_in_solver",
+    "self_conflict",
 }
 
 
