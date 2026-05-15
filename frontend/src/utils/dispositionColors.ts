@@ -132,7 +132,13 @@ export const formatReason = formatDispositionReason
  * Whether the Status cell should render a reason line under the chip.
  *
  * - Resolved rows: never (chip alone; mutual-match badge lives elsewhere).
- * - Declined rows: whenever a reason is present.
+ * - Declined rows: only for canonical pipeline-declined reasons
+ *   (DECLINED_REASONS). Manual UI declines leave the prior pipeline reason in
+ *   place (intentional per #1368), so the field is often a stale resolved- or
+ *   pending-family value — rendering it alongside "Declined" produces a
+ *   contradictory display ("Declined · Matched"). Symmetric with the pending
+ *   branch below. The all-camper audit modal renders full history via its own
+ *   code path, unaffected by this predicate (issue #1447).
  * - Pending rows: only for triage reasons (needs_review, target_waitlisted,
  *   undirected_preference, self_referential). Other pending rows stay chip-only.
  */
@@ -143,7 +149,7 @@ export function shouldShowReasonInStatus(
   if (!reason) return false
   const normalized = status.toLowerCase()
   if (normalized === 'resolved') return false
-  if (normalized === 'declined') return true
+  if (normalized === 'declined') return DECLINED_REASONS.has(reason)
   if (normalized === 'pending') return PENDING_REASONS.has(reason)
   return false
 }

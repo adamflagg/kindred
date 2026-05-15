@@ -226,6 +226,60 @@ describe('shouldShowReasonInStatus', () => {
     expect(shouldShowReasonInStatus('declined', undefined)).toBe(false)
   })
 
+  // Manual UI declines (RequestReviewPanel, AllCamperRequestsModal) write
+  // `status: 'declined'` and leave `disposition_reason` at its prior pipeline
+  // value (intentional per #1368 — empty would lose audit context). The
+  // BunkRequestRow surface should not advertise that stale reason alongside
+  // the new Declined chip — it produces a contradictory display ("Declined ·
+  // Matched"). The all-camper audit modal continues to render the full
+  // history via its own code path; this predicate is for the per-camper
+  // BunkRequestRow only.
+  describe('declined rows with stale resolved-family disposition_reason (#1447)', () => {
+    it('returns false for declined + auto_resolved (stale manual decline)', () => {
+      expect(shouldShowReasonInStatus('declined', 'auto_resolved')).toBe(false)
+    })
+
+    it('returns false for declined + exact_match (stale match reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'exact_match')).toBe(false)
+    })
+
+    it('returns false for declined + high_confidence_match (stale match reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'high_confidence_match')).toBe(false)
+    })
+
+    it('returns false for declined + reciprocal_match (stale match reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'reciprocal_match')).toBe(false)
+    })
+
+    it('returns false for declined + cross_session_satisfied (stale resolved reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'cross_session_satisfied')).toBe(false)
+    })
+
+    it('returns false for declined + needs_review (stale pending reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'needs_review')).toBe(false)
+    })
+
+    it('returns false for declined + unknown_reason (unclassified stale reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'unknown_reason')).toBe(false)
+    })
+
+    it('returns true for declined + session_mismatch (canonical declined reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'session_mismatch')).toBe(true)
+    })
+
+    it('returns true for declined + target_not_attending (canonical declined reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'target_not_attending')).toBe(true)
+    })
+
+    it('returns true for declined + target_not_enrolled (canonical declined reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'target_not_enrolled')).toBe(true)
+    })
+
+    it('returns true for declined + requester_not_attending (canonical declined reason)', () => {
+      expect(shouldShowReasonInStatus('declined', 'requester_not_attending')).toBe(true)
+    })
+  })
+
   it('returns true for pending rows with a triage reason', () => {
     expect(shouldShowReasonInStatus('pending', 'needs_review')).toBe(true)
     expect(shouldShowReasonInStatus('pending', 'target_waitlisted')).toBe(true)
