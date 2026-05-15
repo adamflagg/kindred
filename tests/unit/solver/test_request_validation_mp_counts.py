@@ -234,6 +234,82 @@ def test_entirely_impossible_mp_camper_excluded_from_mp_campers_total() -> None:
     assert summary["mp_campers_satisfied"] == 1
 
 
+def test_impossible_mp_request_excluded_from_mp_requests_totals() -> None:
+    """mp_requests_total and mp_requests_satisfied gate on possibility, mirroring
+    the mp_campers_* keys fixed in #1429.
+
+    Camper 1 has two MP requests: r_imp targets cm_id 999 (not in persons -> impossible)
+    and r_ok targets camper 2 (satisfiable). The impossible request must be excluded
+    from BOTH numerator and denominator, so mp_request_rate (Optimized) = 1/1 = 100%,
+    not 1/2 = 50%.
+    """
+    p1 = _person(1, session_cm_id=500)
+    p2 = _person(2, session_cm_id=500)
+    bunks = [_bunk(10, capacity=10, session_cm_id=500)]
+    requests = [
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),  # impossible
+        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_with"),  # possible + satisfied
+    ]
+    assignments = {1: 10, 2: 10}
+
+    s = _run_post_solve_with_fixed_assignments([p1, p2], bunks, requests, assignments)
+
+    assert s["mp_requests_total"] == 1
+    assert s["mp_requests_satisfied"] == 1
+
+
+def test_entirely_impossible_camper_excluded_from_all_campers_totals() -> None:
+    """all_campers_total and all_campers_satisfied gate on possibility, mirroring
+    the mp_campers_* fix from #1429. Bug today: a camper whose ENTIRE resolved
+    request set is impossible is counted in all_campers_total with no path to the
+    numerator, dragging 'Camper rate' below 100%.
+
+    Camper 1's only resolved request (any source) is impossible -> excluded.
+    Camper 2 has a satisfiable bunk_with -> included and counted satisfied.
+    Expected: all_campers_total == 1, all_campers_satisfied == 1 -> rate = 100%.
+    """
+    p1 = _person(1, session_cm_id=500)
+    p2 = _person(2, session_cm_id=500)
+    p3 = _person(3, session_cm_id=500)
+    bunks = [_bunk(10, capacity=10, session_cm_id=500)]
+    requests = [
+        # Camper 1: only request targets a non-roster cm_id -> impossible.
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),
+        # Camper 2: satisfiable MP request.
+        _req("r_ok", requester_id=2, target_id=3, source_field="bunk_with"),
+    ]
+    assignments = {1: 10, 2: 10, 3: 10}
+
+    s = _run_post_solve_with_fixed_assignments([p1, p2, p3], bunks, requests, assignments)
+
+    assert s["all_campers_total"] == 1
+    assert s["all_campers_satisfied"] == 1
+
+
+def test_impossible_request_excluded_from_all_requests_totals() -> None:
+    """New all_requests_total / all_requests_satisfied keys give 'Request rate'
+    (all_request_rate in the UI) the same possible-gating discipline as the
+    other three rate metrics. Without these keys the UI computes all_request_rate
+    from stats.total_requests / stats.satisfied_request_count, which counts
+    impossible requests (and even pending/declined ones) in the denominator.
+
+    Two resolved bunk_with requests, one impossible, one satisfied -> rate = 1/1 = 100%.
+    """
+    p1 = _person(1, session_cm_id=500)
+    p2 = _person(2, session_cm_id=500)
+    bunks = [_bunk(10, capacity=10, session_cm_id=500)]
+    requests = [
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),  # impossible
+        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_with"),  # possible + satisfied
+    ]
+    assignments = {1: 10, 2: 10}
+
+    s = _run_post_solve_with_fixed_assignments([p1, p2], bunks, requests, assignments)
+
+    assert s["all_requests_total"] == 1
+    assert s["all_requests_satisfied"] == 1
+
+
 def test_not_bunk_with_unassigned_target_counts_as_satisfied() -> None:
     """Pins divergence #1 inside the MSO diagnostic.
 

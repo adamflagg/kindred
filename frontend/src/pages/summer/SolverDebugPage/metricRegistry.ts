@@ -193,7 +193,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     key: 'mp_request_rate',
     label: 'Optimized (MP req)',
     description:
-      'Material-parent requests honored / MP requests total. 100% is the ideal outcome — every parent priority request satisfied.',
+      'Material-parent requests honored / possible MP requests. Denominator excludes structurally-impossible requests so the metric measures solver quality, not data quality.',
     interpretation: 'higher-better',
     format: 'percent',
     group: 'outcome_requests',
@@ -202,7 +202,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
     key: 'mp_camper_rate',
     label: 'Acceptable (MP camper)',
     description:
-      'Campers with ≥1 MP request satisfied / Campers with ≥1 MP request. 100% means every camper with a parent priority got at least one MP request honored.',
+      'Campers with ≥1 possible MP request satisfied / campers with ≥1 possible MP request. 100% means every camper with a solver-actionable parent priority got at least one MP request honored.',
     interpretation: 'higher-better',
     format: 'percent',
     group: 'outcome_campers',
@@ -210,7 +210,8 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   all_request_rate: {
     key: 'all_request_rate',
     label: 'Request rate',
-    description: 'All requests honored / all requests total, across every source bucket.',
+    description:
+      'Possible requests honored / possible requests total, across every source bucket. Structurally-impossible requests excluded from both.',
     interpretation: 'higher-better',
     format: 'percent',
     group: 'outcome_requests',
@@ -218,7 +219,8 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   all_camper_rate: {
     key: 'all_camper_rate',
     label: 'Camper rate',
-    description: 'Campers with ≥1 any-source request satisfied / campers with ≥1 request.',
+    description:
+      'Campers with ≥1 possible request satisfied / campers with ≥1 possible request. Campers whose entire resolved request set is structurally impossible are excluded.',
     interpretation: 'higher-better',
     format: 'percent',
     group: 'outcome_campers',
@@ -226,7 +228,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   mp_requests_satisfied: {
     key: 'mp_requests_satisfied',
     label: 'MP req met',
-    description: 'Number of material-parent requests the solver honored.',
+    description: 'Possible material-parent requests the solver honored.',
     interpretation: 'higher-better',
     format: 'integer',
     group: 'outcome_requests',
@@ -235,7 +237,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   mp_requests_total: {
     key: 'mp_requests_total',
     label: 'MP req total',
-    description: 'Total resolved material-parent requests in scope this run.',
+    description: 'Possible resolved material-parent requests in scope this run.',
     interpretation: 'context',
     format: 'integer',
     group: 'outcome_requests',
@@ -244,7 +246,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   mp_campers_satisfied: {
     key: 'mp_campers_satisfied',
     label: 'MP campers met',
-    description: 'Campers with ≥1 material-parent request satisfied.',
+    description: 'Campers with ≥1 possible material-parent request satisfied.',
     interpretation: 'higher-better',
     format: 'integer',
     group: 'outcome_campers',
@@ -253,7 +255,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   mp_campers_total: {
     key: 'mp_campers_total',
     label: 'MP campers total',
-    description: 'Campers with ≥1 resolved material-parent request.',
+    description: 'Campers with ≥1 possible resolved material-parent request.',
     interpretation: 'context',
     format: 'integer',
     group: 'outcome_campers',
@@ -262,7 +264,7 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   all_campers_satisfied: {
     key: 'all_campers_satisfied',
     label: 'Campers met',
-    description: 'Campers with ≥1 request of any source satisfied.',
+    description: 'Campers with ≥1 possible request of any source satisfied.',
     interpretation: 'higher-better',
     format: 'integer',
     group: 'outcome_campers',
@@ -271,29 +273,47 @@ export const METRIC_REGISTRY: Record<string, MetricMeta> = {
   all_campers_total: {
     key: 'all_campers_total',
     label: 'Campers total',
-    description: 'Campers with ≥1 resolved request of any source.',
+    description: 'Campers with ≥1 possible resolved request of any source.',
     interpretation: 'context',
     format: 'integer',
     group: 'outcome_campers',
     parent: 'all_camper_rate',
   },
-  satisfied_request_count: {
-    key: 'satisfied_request_count',
+  all_requests_satisfied: {
+    key: 'all_requests_satisfied',
     label: 'Req met',
-    description: 'Total requests honored across all sources.',
+    description: 'Possible requests honored across all sources.',
     interpretation: 'higher-better',
     format: 'integer',
     group: 'outcome_requests',
     parent: 'all_request_rate',
   },
-  total_requests: {
-    key: 'total_requests',
+  all_requests_total: {
+    key: 'all_requests_total',
     label: 'Req total',
-    description: 'Total resolved requests in scope this run, across all sources.',
+    description: 'Possible resolved requests in scope this run, across all sources.',
     interpretation: 'context',
     format: 'integer',
     group: 'outcome_requests',
     parent: 'all_request_rate',
+  },
+  satisfied_request_count: {
+    key: 'satisfied_request_count',
+    label: 'Req met (raw)',
+    description:
+      'Raw satisfied request count, ungated. Counts impossible requests as failed. Prefer all_requests_satisfied for rate computation; this exists for back-compat.',
+    interpretation: 'higher-better',
+    format: 'integer',
+    group: 'outcome_requests',
+  },
+  total_requests: {
+    key: 'total_requests',
+    label: 'Req total (raw)',
+    description:
+      'Raw input request count (all statuses, including pending/declined). Use all_requests_total for the possible-gated denominator.',
+    interpretation: 'context',
+    format: 'integer',
+    group: 'outcome_requests',
   },
   impossible_requests: {
     key: 'impossible_requests',

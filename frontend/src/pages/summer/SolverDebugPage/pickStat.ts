@@ -16,8 +16,8 @@ export function pickStat(
     return tot ? (sat ?? 0) / tot : null
   }
   if (key === 'all_request_rate') {
-    const sat = stats.satisfied_request_count
-    const tot = stats.total_requests
+    const sat = stats.request_validation?.all_requests_satisfied
+    const tot = stats.request_validation?.all_requests_total
     return tot ? (sat ?? 0) / tot : null
   }
   if (key === 'all_camper_rate') {

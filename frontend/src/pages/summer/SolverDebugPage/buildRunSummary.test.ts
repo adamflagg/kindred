@@ -42,6 +42,8 @@ const fullRun: SolverRun = {
       mp_campers_total: 164,
       all_campers_satisfied: 174,
       all_campers_total: 188,
+      all_requests_satisfied: 401,
+      all_requests_total: 500,
       affected_campers: 4,
       impossible_requests: 4,
       unsatisfied_no_possible: 0,
@@ -75,7 +77,7 @@ describe('buildRunSummary', () => {
   it('formats percent metrics as "NN.NN%" strings', () => {
     const out = buildRunSummary(fullRun)
     expect(out.outcome_requests?.['mp_request_rate']).toBe('86.20%')
-    expect(out.outcome_requests?.['all_request_rate']).toBe('80.36%')
+    expect(out.outcome_requests?.['all_request_rate']).toBe('80.20%')
     expect(out.outcome_campers?.['mp_camper_rate']).toBe('95.73%')
     expect(out.outcome_campers?.['all_camper_rate']).toBe('92.55%')
     expect(out.quality?.['optimality_gap']).toBe('4.76%')

@@ -1043,10 +1043,15 @@ class DirectBunkingSolver:
         mp_campers_satisfied = 0
         all_campers_total = 0
         all_campers_satisfied = 0
+        all_requests_total = 0
+        all_requests_satisfied = 0
 
-        # "Acceptable" (mp_camper_rate) denominator must exclude campers whose
-        # entire MP set is structurally impossible — they can never be satisfied,
-        # so counting them understates the solver-actionable rate.
+        # All four rate metrics ("Optimized (MP req)", "Acceptable (MP camper)",
+        # "Request rate", "Camper rate") gate on possibility so they share the
+        # same denominator semantics: only resolved requests/campers the solver
+        # actually has a path to satisfy. Without this, structurally-impossible
+        # requests (e.g. requestee in another session) silently drag denominators
+        # down and the metrics drift apart purely as bookkeeping artifacts.
         impossible_request_ids: set[str] = {item.request_id for item in self.impossibility_report.flat}
 
         for person_cm_id, requests in self.input.requests_by_person.items():
@@ -1062,20 +1067,28 @@ class DirectBunkingSolver:
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
             resolved_mp = [r for r in resolved_requests if is_material_parent_request(r)]
-            mp_requests_total += len(resolved_mp)
-            satisfied_mp = [r for r in resolved_mp if r.id in satisfied_ids_for_person]
-            mp_requests_satisfied += len(satisfied_mp)
-            # Camper-level "Acceptable" rate: denominator = campers with >=1
-            # POSSIBLE MP request; numerator gated to the same possible subset so
-            # mp_campers_satisfied is always <= mp_campers_total (no >100%).
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
+            resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
+
+            # Request-level "Optimized" (MP) rate.
+            mp_requests_total += len(resolved_possible_mp)
+            mp_requests_satisfied += sum(1 for r in resolved_possible_mp if r.id in satisfied_ids_for_person)
+
+            # Camper-level "Acceptable" (MP) rate.
             if resolved_possible_mp:
                 mp_campers_total += 1
                 if any(r.id in satisfied_ids_for_person for r in resolved_possible_mp):
                     mp_campers_satisfied += 1
-            all_campers_total += 1
-            if any(r.id in satisfied_ids_for_person for r in resolved_requests):
-                all_campers_satisfied += 1
+
+            # Request-level "Request rate" (any source).
+            all_requests_total += len(resolved_possible)
+            all_requests_satisfied += sum(1 for r in resolved_possible if r.id in satisfied_ids_for_person)
+
+            # Camper-level "Camper rate" (any source).
+            if resolved_possible:
+                all_campers_total += 1
+                if any(r.id in satisfied_ids_for_person for r in resolved_possible):
+                    all_campers_satisfied += 1
 
             resolved_ids = {r.id for r in resolved_requests}
             if any(rid in resolved_ids for rid in all_satisfied.get(person_cm_id, [])):
@@ -1116,6 +1129,8 @@ class DirectBunkingSolver:
         self.request_validation_summary["mp_campers_satisfied"] = mp_campers_satisfied
         self.request_validation_summary["all_campers_total"] = all_campers_total
         self.request_validation_summary["all_campers_satisfied"] = all_campers_satisfied
+        self.request_validation_summary["all_requests_total"] = all_requests_total
+        self.request_validation_summary["all_requests_satisfied"] = all_requests_satisfied
 
         if no_possible:
             logger.info(
