@@ -192,7 +192,11 @@ def _override_to_response(record: Any) -> OverrideResponse:
 # fresh GeoService per request — an instance cache would never be reused. TTL is the
 # safety net; the primary invalidation is the /api/metrics/cache/invalidate endpoint,
 # which fires on CampMinder sync completion (when attendee status_id actually changes).
-_PERSON_ID_CACHE: dict[tuple[int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
+# Key shape: (mode, year, session_types, session_cm_id, duration). The leading mode
+# string ("active" / "duration") namespaces the two fetch helpers so they cannot collide
+# on identical args — the active helper applies an attendee status_id filter, the
+# duration helper does not, so they return semantically different sets.
+_PERSON_ID_CACHE: dict[tuple[str, int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
 _PERSON_ID_CACHE_TTL_SECONDS = 900  # 15 minutes — matches graph_cache
 
 
@@ -235,11 +239,11 @@ class GeoService:
     ) -> set[str]:
         """Fetch PB IDs of persons with active enrolled attendee records.
 
-        Results are cached in a module-level dict keyed by (year, session_types,
+        Results are cached in a module-level dict keyed by ("active", year, session_types,
         session_cm_id, duration). TTL is _PERSON_ID_CACHE_TTL_SECONDS; the cache is
         also cleared by POST /api/metrics/cache/invalidate after CampMinder sync.
         """
-        cache_key = (year, tuple(session_types or []), session_cm_id, duration)
+        cache_key = ("active", year, tuple(session_types or []), session_cm_id, duration)
         now = time.monotonic()
 
         cached = _PERSON_ID_CACHE.get(cache_key)
@@ -299,7 +303,7 @@ class GeoService:
 
         Results are cached in the module-level _PERSON_ID_CACHE (see _fetch_active_person_pb_ids).
         """
-        cache_key = (year, tuple(session_types or ["__duration_only__"]), session_cm_id, duration)
+        cache_key = ("duration", year, tuple(session_types or []), session_cm_id, duration)
         now = time.monotonic()
 
         cached = _PERSON_ID_CACHE.get(cache_key)

@@ -185,10 +185,13 @@ class TestCacheInvalidationEndpoint:
         The frontend fires POST /api/metrics/cache/invalidate after sync completion, so
         geo's person-id cache must hook into the same signal to avoid stale data.
         """
-        from api.services.geo_service import _PERSON_ID_CACHE
+        from api.services.geo_service import _PERSON_ID_CACHE, clear_person_id_cache
 
-        # Prime the geo cache with a stub entry
-        _PERSON_ID_CACHE[(2025, (), None, None)] = ({"p1", "p2"}, 9999999999.0)
+        # Reset shared module-level cache so prior-test bleed can't skew the count.
+        clear_person_id_cache()
+
+        # Prime the geo cache with a stub entry (key shape: mode, year, types, cm_id, duration)
+        _PERSON_ID_CACHE[("active", 2025, (), None, None)] = ({"p1", "p2"}, 9999999999.0)
         assert len(_PERSON_ID_CACHE) == 1
 
         resp = test_client.post("/api/metrics/cache/invalidate")

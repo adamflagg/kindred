@@ -23,9 +23,13 @@ import { GEO_CATEGORIES, type GeoCategory } from '../components/admin/geoConstan
  */
 export function useGeoPagePrefetch(activeCategory: string, year: number, activeOnly: boolean) {
   const queryClient = useQueryClient()
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   useEffect(() => {
+    // Skip while auth is restoring — firing fetchWithAuth without a token returns 401,
+    // which trips the global handler in useApiWithAuth → /login redirect.
+    if (isAuthLoading) return
+
     const doPrefetch = () => {
       const otherCategories: GeoCategory[] = GEO_CATEGORIES.filter((c) => c !== activeCategory)
       for (const cat of otherCategories) {
@@ -48,7 +52,7 @@ export function useGeoPagePrefetch(activeCategory: string, year: number, activeO
     }
     const handle = window.setTimeout(doPrefetch, 1)
     return () => window.clearTimeout(handle)
-  }, [activeCategory, year, activeOnly, queryClient, fetchWithAuth])
+  }, [activeCategory, year, activeOnly, queryClient, fetchWithAuth, isAuthLoading])
 }
 
 export function useGeoGaps(category: string, year: number, activeOnly = true) {

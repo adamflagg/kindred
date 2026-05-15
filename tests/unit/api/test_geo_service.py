@@ -1313,6 +1313,52 @@ class TestPersonIdCache:
 
         assert _PERSON_ID_CACHE_TTL_SECONDS == 900
 
+    @pytest.mark.asyncio
+    async def test_active_and_duration_keys_do_not_collide(self, mock_pb: MagicMock) -> None:
+        """Active and duration helpers must NOT share cache buckets with identical args.
+
+        Regression: pre-fix, both produced key (year, ("main",), None, "1-week") when called
+        with session_types=["main"] + duration="1-week". Whichever fired first poisoned the
+        other's lookup with a semantically wrong set (one filters status_id=2, the other doesn't).
+        """
+        from api.services.geo_service import GeoService
+
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21", session_type="main"),
+        ]
+        active_attendees = [_make_attendee_record("active_person")]
+        duration_attendees = [_make_attendee_record("duration_person")]
+
+        attendee_calls: list[int] = []
+
+        def collection_router(name: str) -> MagicMock:
+            mock_coll = MagicMock()
+            if name == "camp_sessions":
+                mock_coll.get_full_list.return_value = sessions
+            elif name == "attendees":
+
+                def capture(**kwargs: Any) -> list[Mock]:
+                    attendee_calls.append(1)
+                    return active_attendees if len(attendee_calls) == 1 else duration_attendees
+
+                mock_coll.get_full_list.side_effect = capture
+            else:
+                mock_coll.get_full_list.return_value = []
+            return mock_coll
+
+        mock_pb.collection.side_effect = collection_router
+
+        service = GeoService(mock_pb)
+
+        active_result = await service._fetch_active_person_pb_ids(2025, ["main"], None, "1-week")
+        duration_result = await service._fetch_duration_person_pb_ids(2025, "1-week", session_types=["main"])
+
+        # Each helper must produce its own result; cross-mode collision would serve the
+        # first helper's cached set to the second.
+        assert active_result == {"active_person"}
+        assert duration_result == {"duration_person"}
+        assert len(attendee_calls) == 2, "duration helper hit the active helper's cache bucket"
+
 
 # ============================================================================
 # Schema Country & State Distribution Tests
