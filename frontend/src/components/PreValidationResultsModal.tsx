@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -16,6 +16,9 @@ import type {
   ImpossibilityReportItem,
   EntirelyImpossibleMpCamper,
 } from '../services/solver'
+import { CamperNameButton } from './impossibility/CamperNameButton'
+
+const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
 
 interface CapacityBreakdownItem {
   campers: number
@@ -167,7 +170,13 @@ function camperActionHints(reasonCodes: string[]): string {
   return Array.from(hints).join(' / ')
 }
 
-function EntirelyImpossibleMpSection({ campers }: { campers: EntirelyImpossibleMpCamper[] }) {
+function EntirelyImpossibleMpSection({
+  campers,
+  onSelectCamper,
+}: {
+  campers: EntirelyImpossibleMpCamper[]
+  onSelectCamper: (id: string) => void
+}) {
   if (campers.length === 0) return null
   return (
     <details open className="rounded-lg border border-red-200 bg-red-50 p-3">
@@ -181,7 +190,8 @@ function EntirelyImpossibleMpSection({ campers }: { campers: EntirelyImpossibleM
         {campers.map((c) => (
           <div key={c.cm_id} className="text-sm">
             <div className="font-medium">
-              {c.name} ({c.gender}) · {ordinalGrade(c.grade)}
+              <CamperNameButton cmId={c.cm_id} name={c.name} onSelect={onSelectCamper} /> (
+              {c.gender}) · {ordinalGrade(c.grade)}
             </div>
             <div className="text-xs text-stone-600">{camperActionHints(c.reason_codes)}</div>
           </div>
@@ -203,9 +213,24 @@ function requestVerb(requestType: string): string {
   return requestType === 'not_bunk_with' ? "don't bunk with" : 'bunk with'
 }
 
+function RequesteeName({
+  r,
+  onSelectCamper,
+}: {
+  r: NonNullable<ImpossibilityReportItem['requestee']>
+  onSelectCamper: (id: string) => void
+}) {
+  return (
+    <strong>
+      <CamperNameButton cmId={r.cm_id} name={r.name} onSelect={onSelectCamper} /> ({r.gender})
+    </strong>
+  )
+}
+
 function renderSubtext(
   item: ImpossibilityReportItem,
-  sessionLookup: (cm_id: number) => string | undefined
+  sessionLookup: (cm_id: number) => string | undefined,
+  onSelectCamper: (id: string) => void
 ) {
   const r = item.requestee
   const verb = requestVerb(item.request_type)
@@ -213,11 +238,7 @@ function renderSubtext(
     case 'grade_compatibility':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
         </div>
       ) : null
 
@@ -229,11 +250,8 @@ function renderSubtext(
         (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
       return (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} · in <strong>{sessionName}</strong> session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} ·
+          in <strong>{sessionName}</strong> session
         </div>
       )
     }
@@ -241,11 +259,8 @@ function renderSubtext(
     case 'pair_no_shared_bunk':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} — not AG session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
+          not AG session
         </div>
       ) : null
 
@@ -296,11 +311,8 @@ function renderSubtext(
       const conflictingVerb = conflictingType ? requestVerb(conflictingType) : 'do the opposite'
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} — also marked <strong>{conflictingVerb}</strong>
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
+          also marked <strong>{conflictingVerb}</strong>
         </div>
       ) : null
     }
@@ -308,11 +320,7 @@ function renderSubtext(
     default:
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
         </div>
       ) : null
   }
@@ -321,9 +329,11 @@ function renderSubtext(
 function ImpossibilityItems({
   items,
   sessionLookup,
+  onSelectCamper,
 }: {
   items: ImpossibilityReportItem[]
   sessionLookup: (cm_id: number) => string | undefined
+  onSelectCamper: (id: string) => void
 }) {
   return (
     <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
@@ -334,9 +344,14 @@ function ImpossibilityItems({
         // safety when callers later flatten.
         <div key={`${item.request_id}-${item.reason_code}`} className="text-sm">
           <div className="font-medium">
-            {item.requester.name} ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
+            <CamperNameButton
+              cmId={item.requester.cm_id}
+              name={item.requester.name}
+              onSelect={onSelectCamper}
+            />{' '}
+            ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
           </div>
-          {renderSubtext(item, sessionLookup)}
+          {renderSubtext(item, sessionLookup, onSelectCamper)}
         </div>
       ))}
     </div>
@@ -389,6 +404,7 @@ export default function PreValidationResultsModal({
   sessionLookup,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
 
   const { valid, errors, warnings, statistics, impossibility_report } = results
 
@@ -567,6 +583,7 @@ export default function PreValidationResultsModal({
       <div className="space-y-3 px-5 py-4">
         <EntirelyImpossibleMpSection
           campers={impossibility_report.mp_campers_entirely_impossible ?? []}
+          onSelectCamper={setSelectedCamperId}
         />
         {impossibility_report.total_impossible === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
@@ -589,7 +606,11 @@ export default function PreValidationResultsModal({
                     {items.length}
                   </span>
                 </summary>
-                <ImpossibilityItems items={items} sessionLookup={sessionLookup} />
+                <ImpossibilityItems
+                  items={items}
+                  sessionLookup={sessionLookup}
+                  onSelectCamper={setSelectedCamperId}
+                />
               </details>
             ))}
           </>
@@ -738,6 +759,14 @@ export default function PreValidationResultsModal({
             </div>
           )}
         </div>
+      )}
+      {selectedCamperId && (
+        <Suspense fallback={null}>
+          <CamperDetailsPanel
+            camperId={selectedCamperId}
+            onClose={() => setSelectedCamperId(null)}
+          />
+        </Suspense>
       )}
     </Modal>
   )

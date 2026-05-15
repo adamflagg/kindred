@@ -1,7 +1,13 @@
 // frontend/src/components/PreValidationResultsModal.test.tsx
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
 import PreValidationResultsModal from './PreValidationResultsModal'
+
+vi.mock('./CamperDetailsPanel', () => ({
+  default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
+    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+  ),
+}))
 
 const noopSessionLookup = () => undefined
 
@@ -221,10 +227,16 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     )
 
     // Top line shows requester's gender — used to be only name + grade.
-    expect(screen.getByText(/Samuel Johnson \(M\) · 5th/)).toBeInTheDocument()
+    // Name is now a click-through button; check the assembled text via parent element.
+    expect(screen.getByRole('button', { name: 'Samuel Johnson' })).toBeInTheDocument()
+    expect(
+      screen.getByText((_, el) => el?.textContent === 'Samuel Johnson (M) · 5th')
+    ).toBeInTheDocument()
     // Subtext surfaces requestee gender (in parens, right next to name) and
     // grade (short "Xth" form) — staff scan name → gender → grade left-to-right.
-    expect(screen.getByText(/Emma Johnson \(F\)/)).toBeInTheDocument()
+    // Name is now a click-through button; check assembled text via parent.
+    expect(screen.getByRole('button', { name: 'Emma Johnson' })).toBeInTheDocument()
+    expect(screen.getByText((_, el) => el?.textContent === 'Emma Johnson (F)')).toBeInTheDocument()
   })
 
   it('renders not_bunk_with subtext with negative wording (not "wants to bunk with")', () => {
@@ -662,5 +674,98 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
   it('falls back to a generic hint for unknown reason codes', () => {
     renderWithMpCamper(['some_brand_new_code'])
     expect(screen.getByText(/review request/)).toBeInTheDocument()
+  })
+})
+
+describe('PreValidationResultsModal — click-through to CamperDetailsPanel', () => {
+  const resultsWithRedSectionAndYellow = {
+    ...baseResults,
+    impossibility_report: {
+      total_impossible: 1,
+      affected_campers: 2,
+      by_reason: { grade_compatibility: [oneImpossibleItem] },
+      flat: [oneImpossibleItem],
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 500,
+          name: 'Olivia Chen',
+          grade: 6,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+        },
+      ],
+    } as unknown as import('../services/solver').ImpossibilityReport,
+  }
+
+  it('opens the panel for the red-section camper when their name is clicked', async () => {
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={resultsWithRedSectionAndYellow}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    const panel = await screen.findByTestId('camper-details-panel')
+    expect(panel).toHaveAttribute('data-camper-id', '500')
+  })
+
+  it('opens the panel for a yellow-section requester when their name is clicked', async () => {
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={resultsWithRedSectionAndYellow}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Pearl' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '1')
+  })
+
+  it('opens the panel for a yellow-section requestee when their name is clicked', async () => {
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={resultsWithRedSectionAndYellow}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
+  })
+
+  it('renders the requestee as plain text (not a button) when requestee is null', () => {
+    const targetMissingItem = {
+      request_id: 'r_missing',
+      reason_code: 'target_not_in_solver',
+      reason_message: 'friend not enrolled',
+      request_type: 'bunk_with',
+      requester: { cm_id: 7, name: 'Riley Sam', grade: 4, gender: 'M' },
+      requestee: null,
+      detail: { requested_name: 'Phantom Friend' },
+    }
+    const results = {
+      ...baseResults,
+      impossibility_report: {
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: { target_not_in_solver: [targetMissingItem] },
+        flat: [targetMissingItem],
+      } as unknown as import('../services/solver').ImpossibilityReport,
+    }
+    render(
+      <PreValidationResultsModal
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Riley Sam' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Phantom Friend/ })).not.toBeInTheDocument()
   })
 })
