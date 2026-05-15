@@ -709,10 +709,6 @@ export type CrossScopeEdge = {
    */
   request_type?: string | null
   /**
-   * Priority
-   */
-  priority?: number | null
-  /**
    * Confidence
    */
   confidence?: number | null
@@ -5030,10 +5026,6 @@ export type SocialGraphEdge = {
    * Confidence
    */
   confidence?: number | null
-  /**
-   * Priority
-   */
-  priority?: number | null
   /**
    * Request Type
    */

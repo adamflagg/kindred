@@ -37,7 +37,6 @@ class CrossScopeEdge(BaseModel):
     edge_type: Literal["request"]
     weight: float = 1.0
     request_type: str | None = None
-    priority: int | None = None
     confidence: float | None = None
     reciprocal: bool = False
     cross_scope: Literal[True] = True
@@ -139,7 +138,6 @@ def apply_scope(
                         weight=data.get("weight", 1.0),
                         edge_type=data.get("edge_type", "request"),
                         request_type=data.get("request_type"),
-                        priority=data.get("priority"),
                         confidence=data.get("confidence"),
                         # Derived from the full pre-subgraph topology — same approach
                         # the API router uses for in-scope SocialGraphEdge.reciprocal.

@@ -319,10 +319,10 @@ Validate current bunking assignments for a session, checking for constraint viol
     {
       "severity": "warning",
       "type": "unsatisfied_request",
-      "message": "Bunk request not satisfied: John Doe wants to bunk with Jane Smith",
+      "message": "Bunk request not satisfied: Emma Johnson wants to bunk with Olivia Chen",
       "details": {
         "request_type": "bunk_with",
-        "priority": 8,
+        "is_first_requested": true,
         "person_id": "12345",
         "requested_person_id": "67890"
       },
@@ -331,10 +331,10 @@ Validate current bunking assignments for a session, checking for constraint viol
     {
       "severity": "error",
       "type": "negative_request_violated",
-      "message": "Negative request violated: Sam Johnson is bunked with Alex Miller",
+      "message": "Negative request violated: Liam Garcia is bunked with Samuel Johnson",
       "details": {
         "request_type": "not_bunk_with",
-        "priority": 10,
+        "is_first_requested": false,
         "person_id": "11111",
         "requested_person_id": "22222"
       },
@@ -590,11 +590,11 @@ Get all solver configuration values.
 ```json
 [
   {
-    "key": "priority.bunk_with.base",
-    "value": 10,
-    "description": "Base priority for standard bunk-with requests",
-    "category": "Request Priorities",
-    "friendly_name": "Standard Request Priority"
+    "key": "objective.enable_first_boost",
+    "value": 1,
+    "description": "When true, the request flagged as first-pick gets the slot-0 multiplier.",
+    "category": "objective",
+    "friendly_name": "Enable First-Pick Boost"
   },
   // ... more config values
 ]
@@ -606,15 +606,15 @@ Get all solver configuration values.
 Get a specific configuration value.
 
 **Path Parameters:**
-- `key`: Configuration key (e.g., "priority.bunk_with.base")
+- `key`: Configuration key (e.g., "objective.enable_first_boost")
 
 **Response:**
 ```json
 {
-  "key": "priority.bunk_with.base",
-  "value": 10,
-  "description": "Base priority for standard bunk-with requests",
-  "category": "Request Priorities"
+  "key": "objective.enable_first_boost",
+  "value": 1,
+  "description": "When true, the request flagged as first-pick gets the slot-0 multiplier.",
+  "category": "objective"
 }
 ```
 
@@ -629,7 +629,7 @@ Update a configuration value.
 **Request Body:**
 ```json
 {
-  "value": 15
+  "value": 0
 }
 ```
 
@@ -637,9 +637,9 @@ Update a configuration value.
 ```json
 {
   "message": "Configuration updated successfully",
-  "key": "priority.bunk_with.base",
-  "old_value": 10,
-  "new_value": 15
+  "key": "objective.enable_first_boost",
+  "old_value": 1,
+  "new_value": 0
 }
 ```
 
@@ -763,7 +763,7 @@ Bulk update multiple bunk requests.
   "request_ids": ["req1", "req2", "req3"],
   "updates": {
     "status": "resolved",
-    "priority_locked": true
+    "is_first_requested": true
   }
 }
 ```

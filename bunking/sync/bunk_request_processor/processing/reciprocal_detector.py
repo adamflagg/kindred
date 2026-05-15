@@ -1,7 +1,7 @@
 """Reciprocal Detector - Detects bidirectional bunk requests
 
 Identifies when two campers have requested to bunk with each other,
-which increases confidence and priority."""
+which increases the request's confidence score."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ class ReciprocalPair:
     request1: BunkRequest
     request2: BunkRequest
     is_mutual: bool
-    combined_priority: int
     confidence_boost: float
 
 
@@ -89,7 +88,6 @@ class ReciprocalDetector:
                         request1=request,
                         request2=reciprocal,
                         is_mutual=True,
-                        combined_priority=request.priority + reciprocal.priority,
                         confidence_boost=self.confidence_boost,
                     )
 

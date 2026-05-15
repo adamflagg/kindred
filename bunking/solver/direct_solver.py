@@ -58,6 +58,17 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Objective shape constants (formerly objective.* PB config keys; hardcoded
+# 2026-05-15 per solver-config-decisions.md "Bunk Request Priority +
+# Diminishing Returns" domain — zero production tuning evidence on any of
+# them, and the priority dimension they multiplied is gone).
+BASE_REQUEST_WEIGHT = 40  # matches old `priority * 10` for typical P4 first-pick;
+# keeps satisfaction net-positive against the under-occupancy penalty (else a
+# typical fixture totals negative — see solver_score.json baseline).
+FIRST_REQUEST_MULTIPLIER = 10  # slot-0 boost
+SECOND_REQUEST_MULTIPLIER = 5
+THIRD_PLUS_REQUEST_MULTIPLIER = 1
+
 
 class DirectBunkingSolver:
     """Solver that works directly with bunk_requests table data."""
@@ -462,86 +473,61 @@ class DirectBunkingSolver:
                             person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
                 elif request.request_type == RequestType.NOT_BUNK_WITH.value:
-                    # Negative request - want them apart
+                    # Negative request — want them apart. Always soft: the
+                    # legacy `priority >= 8` hard branch was unreachable
+                    # since the producer capped priority at 4 (#1432) and
+                    # the priority field is gone post-deletion.
                     if request.requested_person_cm_id and request.requested_person_cm_id in self.person_idx_map:
                         target_idx = self.person_idx_map[request.requested_person_cm_id]
 
-                        # Add as hard constraint if priority is high enough
-                        if request.priority >= self.config.get_constraint(
-                            "negative_requests", "hard_constraint_threshold", default=8
-                        ):
-                            # OPTIMIZED: Direct comparison - they must NOT be in same bunk
-                            # Check if they could possibly be in the same bunk
-                            valid_bunks = self._get_valid_bunks_for_pair(person_idx, target_idx)
+                        # Check if they can possibly be in the same bunk
+                        valid_bunks = self._get_valid_bunks_for_pair(person_idx, target_idx)
 
-                            if valid_bunks:
-                                # Only add constraint if they could potentially be together
-                                # This is a single constraint instead of 20+ constraints!
-                                self.model.Add(
-                                    self.person_bunk_assignment[person_idx] != self.person_bunk_assignment[target_idx]
-                                )
+                        if not valid_bunks:
+                            # No valid bunks for this pair — they can't be together anyway.
+                            # Pinned-trivial var stays objective-local (not in the shared map).
+                            request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
+                            self.model.Add(request_satisfied == 1)
                         else:
-                            # Soft constraint - create satisfaction variable
-                            # Check if they can possibly be in the same bunk
-                            valid_bunks = self._get_valid_bunks_for_pair(person_idx, target_idx)
+                            # Borrow the one canonical bidirectional sat var.
+                            request_satisfied = get_or_create_request_sat_var(ctx, request)
 
-                            if not valid_bunks:
-                                # No valid bunks for this pair - they can't be together anyway.
-                                # Pinned-trivial var stays objective-local (not in the shared map).
-                                request_satisfied = self.model.NewBoolVar(f"req_satisfied_{request.id}")
-                                self.model.Add(request_satisfied == 1)
-                            else:
-                                # Borrow the one canonical bidirectional sat var.
-                                request_satisfied = get_or_create_request_sat_var(ctx, request)
-
-                            if request_satisfied is not None:
-                                person_request_satisfaction[person_cm_id].append((request, request_satisfied))
+                        if request_satisfied is not None:
+                            person_request_satisfaction[person_cm_id].append((request, request_satisfied))
 
                 # Note: age_preference requests are handled by must_satisfy_one constraint only
 
-        # Now apply diminishing returns to the satisfaction variables
-        # Get config for diminishing returns
-        enable_diminishing = self.config.get_int("objective.enable_diminishing_returns", default=1)
-        first_multiplier = self.config.get_int("objective.first_request_multiplier", default=10)
-        second_multiplier = self.config.get_int("objective.second_request_multiplier", default=5)
-        third_plus_multiplier = self.config.get_int("objective.third_plus_request_multiplier", default=1)
+        # Apply diminishing returns to the satisfaction variables.
+        # When `objective.enable_first_boost` is true, sort so that the
+        # family's first-pick request (is_first_requested=true) lands in
+        # slot 0 of the diminishing-returns stack. When false, slot 0
+        # falls to natural iteration order — useful for A/B-testing the
+        # boost in the solver-debug UI.
+        enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
 
         for person_cm_id, request_satisfactions in person_request_satisfaction.items():
             if not request_satisfactions:
                 continue
 
-            # Sort by priority (highest first)
-            request_satisfactions.sort(key=lambda x: x[0].priority, reverse=True)
+            if enable_first_boost:
+                # Stable sort by is_first_requested DESC — True (1) before
+                # False (0), insertion order preserved among ties.
+                request_satisfactions.sort(key=lambda x: x[0].is_first_requested, reverse=True)
 
-            if enable_diminishing:
-                # Apply diminishing returns based on how many requests are satisfied
-                for i, (request, satisfied_var) in enumerate(request_satisfactions):
-                    base_weight = float(request.priority * 10)
+            for i, (request, satisfied_var) in enumerate(request_satisfactions):
+                base_weight = float(BASE_REQUEST_WEIGHT)
+                # Apply source field multiplier based on CSV fields
+                source_multiplier = self._get_csv_field_multiplier(request)
+                base_weight = base_weight * source_multiplier
 
-                    # Apply source field multiplier based on CSV fields
-                    source_multiplier = self._get_csv_field_multiplier(request)
-                    base_weight = base_weight * source_multiplier
+                if i == 0:
+                    weight = base_weight * FIRST_REQUEST_MULTIPLIER
+                elif i == 1:
+                    weight = base_weight * SECOND_REQUEST_MULTIPLIER
+                else:
+                    weight = base_weight * THIRD_PLUS_REQUEST_MULTIPLIER
 
-                    if i == 0:
-                        # First request gets full weight multiplier
-                        weight = base_weight * first_multiplier
-                    elif i == 1:
-                        # Second request gets reduced weight
-                        weight = base_weight * second_multiplier
-                    else:
-                        # Third+ requests get minimal weight
-                        weight = base_weight * third_plus_multiplier
-
-                    objective_terms.append(int(weight) * satisfied_var)
-            else:
-                # No diminishing returns - use standard weights
-                for request, satisfied_var in request_satisfactions:
-                    weight = float(request.priority * 10)
-
-                    # Apply source field multiplier based on CSV fields
-                    source_multiplier = self._get_csv_field_multiplier(request)
-                    weight = weight * source_multiplier
-                    objective_terms.append(int(weight) * satisfied_var)
+                objective_terms.append(int(weight) * satisfied_var)
 
         # NOTE: Age preference is now handled by constraints/age_preference.py
         # NOTE: Level progression is now handled by constraints/level_progression.py

@@ -23,6 +23,15 @@ if TYPE_CHECKING:
     from api.services.geo_service import GeoService
 
 
+# Reset the module-level _PERSON_ID_CACHE before every test in this file so
+# cached results from one test don't bleed into another's call-count assertions.
+@pytest.fixture(autouse=True)
+def _reset_geo_module_cache() -> None:
+    from api.services.geo_service import clear_person_id_cache
+
+    clear_person_id_cache()
+
+
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -1210,7 +1219,7 @@ class TestBatchResolveCoords:
 
 
 class TestPersonIdCache:
-    """Test TTL caching of active person IDs."""
+    """Test TTL caching of active person IDs (module-level cache)."""
 
     @pytest.fixture
     def mock_pb(self) -> MagicMock:
@@ -1252,18 +1261,103 @@ class TestPersonIdCache:
     @pytest.mark.asyncio
     async def test_cache_expires_after_ttl(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Cache should expire after TTL seconds."""
+        from api.services.geo_service import _PERSON_ID_CACHE
+
         attendees = [_make_attendee_record("p1")]
         mock_pb.collection.return_value.get_full_list.return_value = attendees
 
         await service._fetch_active_person_pb_ids(2025)
 
         # Manually expire the cache by setting timestamp to 0
-        cache = service._person_id_cache
-        for key in cache:
-            cache[key] = (cache[key][0], 0.0)
+        for key in _PERSON_ID_CACHE:
+            _PERSON_ID_CACHE[key] = (_PERSON_ID_CACHE[key][0], 0.0)
 
         await service._fetch_active_person_pb_ids(2025)
         assert mock_pb.collection.return_value.get_full_list.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_shared_across_service_instances(self, mock_pb: MagicMock) -> None:
+        """Cache is module-level: a second GeoService instance hits the same cache."""
+        from api.services.geo_service import GeoService
+
+        attendees = [_make_attendee_record("p1")]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        service_a = GeoService(mock_pb)
+        service_b = GeoService(mock_pb)
+
+        result_a = await service_a._fetch_active_person_pb_ids(2025)
+        result_b = await service_b._fetch_active_person_pb_ids(2025)
+
+        assert result_a == result_b == {"p1"}
+        # Only one PB call total — the second instance reused the cache populated by the first
+        assert mock_pb.collection.return_value.get_full_list.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_clear_person_id_cache_empties_cache(self, service: GeoService, mock_pb: MagicMock) -> None:
+        """clear_person_id_cache() forces the next call to refetch from PB."""
+        from api.services.geo_service import clear_person_id_cache
+
+        attendees = [_make_attendee_record("p1")]
+        mock_pb.collection.return_value.get_full_list.return_value = attendees
+
+        await service._fetch_active_person_pb_ids(2025)
+        clear_person_id_cache()
+        await service._fetch_active_person_pb_ids(2025)
+
+        assert mock_pb.collection.return_value.get_full_list.call_count == 2
+
+    def test_ttl_is_fifteen_minutes(self) -> None:
+        """TTL is bumped to 15 minutes (900s) — matches graph_cache."""
+        from api.services.geo_service import _PERSON_ID_CACHE_TTL_SECONDS
+
+        assert _PERSON_ID_CACHE_TTL_SECONDS == 900
+
+    @pytest.mark.asyncio
+    async def test_active_and_duration_keys_do_not_collide(self, mock_pb: MagicMock) -> None:
+        """Active and duration helpers must NOT share cache buckets with identical args.
+
+        Regression: pre-fix, both produced key (year, ("main",), None, "1-week") when called
+        with session_types=["main"] + duration="1-week". Whichever fired first poisoned the
+        other's lookup with a semantically wrong set (one filters status_id=2, the other doesn't).
+        """
+        from api.services.geo_service import GeoService
+
+        sessions = [
+            _make_session_record(cm_id=1001, start_date="2025-06-15", end_date="2025-06-21", session_type="main"),
+        ]
+        active_attendees = [_make_attendee_record("active_person")]
+        duration_attendees = [_make_attendee_record("duration_person")]
+
+        attendee_calls: list[int] = []
+
+        def collection_router(name: str) -> MagicMock:
+            mock_coll = MagicMock()
+            if name == "camp_sessions":
+                mock_coll.get_full_list.return_value = sessions
+            elif name == "attendees":
+
+                def capture(**kwargs: Any) -> list[Mock]:
+                    attendee_calls.append(1)
+                    return active_attendees if len(attendee_calls) == 1 else duration_attendees
+
+                mock_coll.get_full_list.side_effect = capture
+            else:
+                mock_coll.get_full_list.return_value = []
+            return mock_coll
+
+        mock_pb.collection.side_effect = collection_router
+
+        service = GeoService(mock_pb)
+
+        active_result = await service._fetch_active_person_pb_ids(2025, ["main"], None, "1-week")
+        duration_result = await service._fetch_duration_person_pb_ids(2025, "1-week", session_types=["main"])
+
+        # Each helper must produce its own result; cross-mode collision would serve the
+        # first helper's cached set to the second.
+        assert active_result == {"active_person"}
+        assert duration_result == {"duration_person"}
+        assert len(attendee_calls) == 2, "duration helper hit the active helper's cache bucket"
 
 
 # ============================================================================
@@ -1840,7 +1934,9 @@ class TestDurationFilteringRespectsSessionTypes:
         mock_pb.collection.side_effect = collection_router
 
         # Clear cache to avoid stale hits
-        service._person_id_cache.clear()
+        from api.services.geo_service import clear_person_id_cache
+
+        clear_person_id_cache()
 
         await service._fetch_duration_person_pb_ids(2025, "1-week", session_cm_id=1001)
 

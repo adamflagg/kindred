@@ -41,7 +41,7 @@ class TestPartialInvalidationSingleSource:
             requested_cm_id=requested_cm_id,
             request_type=request_type,
             session_cm_id=1000002,
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.95,
             source_field=source_field,
             csv_position=0,

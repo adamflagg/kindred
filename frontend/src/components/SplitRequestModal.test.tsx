@@ -53,7 +53,6 @@ function createMergedMockRequest(
     requestee_id: 67890,
     request_type: BunkRequestsRequestTypeOptions.bunk_with,
     session_id: 1000001,
-    priority: 3,
     confidence_score: 0.95,
     source_field: 'share_bunk_with',
     source_fields: ['share_bunk_with', 'bunking_notes'], // Multiple sources

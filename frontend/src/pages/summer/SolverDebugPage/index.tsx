@@ -273,6 +273,8 @@ export default function SolverDebugPage() {
         {...(typeof preCheckQuery.data?.impossibility_report.total_impossible === 'number'
           ? {
               preCheckImpossibilityCount: preCheckQuery.data.impossibility_report.total_impossible,
+              preCheckEntirelyImpossibleCount:
+                preCheckQuery.data.impossibility_report.mp_campers_entirely_impossible?.length ?? 0,
               onOpenPreCheck: () => setPreCheckModalOpen(true),
             }
           : {})}

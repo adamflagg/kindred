@@ -78,9 +78,6 @@ def mock_config() -> Generator[Any]:
     def _get_bool(key: str, default: Any = None) -> Any:
         return default if default is not None else False
 
-    def _get_priority(priority_type: str, subtype: str = "default") -> int:
-        return 4
-
     def _get_soft_constraint_weight(constraint_name: str) -> int:
         return 0
 
@@ -89,7 +86,6 @@ def mock_config() -> Generator[Any]:
     cfg.get_float.side_effect = _get_float
     cfg.get_str.side_effect = _get_str
     cfg.get_bool.side_effect = _get_bool
-    cfg.get_priority.side_effect = _get_priority
     cfg.get_soft_constraint_weight.side_effect = _get_soft_constraint_weight
 
     with ConfigLoader.use(_PenaltyStubLoader()):  # type: ignore[arg-type]

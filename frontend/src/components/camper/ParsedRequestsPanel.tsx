@@ -6,6 +6,7 @@ import { Users, ChevronDown, ChevronRight, Hash, Zap, Bug } from 'lucide-react'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import { formatSourceField } from '../../utils/formatSourceField'
 import { getSourceFieldClasses } from '../../utils/sourceFieldColors'
+import FirstPickBadge from './FirstPickBadge'
 
 interface ParsedRequestsPanelProps {
   requests: EnhancedBunkRequest[]
@@ -153,7 +154,7 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
             )}
           </div>
           <div className="text-muted-foreground mt-1 flex items-center gap-3 text-xs">
-            <PriorityBadge priority={request.priority ?? 0} />
+            <FirstPickBadge isFirstRequested={request.is_first_requested ?? false} />
             <StatusBadge status={request.status} />
             {request.confidence_score && <ConfidenceBadge score={request.confidence_score} />}
             <SourceFieldBadge sourceField={sourceField} />
@@ -175,17 +176,6 @@ function RequestCard({ request, isExpanded, onToggle }: RequestCardProps) {
       {isExpanded && <RequestDetails request={request} />}
     </div>
   )
-}
-
-function PriorityBadge({ priority }: { priority: number }) {
-  const bgColor =
-    priority >= 8
-      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-      : priority >= 5
-        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-
-  return <span className={`rounded px-1.5 py-0.5 ${bgColor}`}>P{priority}</span>
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -342,11 +332,6 @@ function RequestDetails({ request }: { request: EnhancedBunkRequest }) {
           className={`rounded px-2 py-1 ${request.is_reciprocal ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'}`}
         >
           {request.is_reciprocal ? 'Reciprocal' : 'Not Reciprocal'}
-        </span>
-        <span
-          className={`rounded px-2 py-1 ${request.priority_locked ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}
-        >
-          {request.priority_locked ? 'Priority Locked' : 'Priority Unlocked'}
         </span>
       </div>
     </div>

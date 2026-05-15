@@ -39,7 +39,7 @@ export const BunkRequestsRecordSchema = z.object({
   metadata: nullableJson(z.record(z.string(), z.unknown())),
   original_text: z.string().optional(),
   parse_notes: z.string().optional(),
-  priority: z.number().optional(),
+  is_first_requested: z.boolean().optional(),
   request_type: BunkRequestsRequestTypeSchema,
   requestee_id: z.number().optional(),
   requested_person_name: z.string().optional(),

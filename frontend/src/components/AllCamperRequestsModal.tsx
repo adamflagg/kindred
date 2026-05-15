@@ -129,10 +129,6 @@ function RequestCard({
         </section>
       </div>
       <footer className="bg-muted/40 border-border/60 text-muted-foreground flex items-center gap-3 border-t px-4 py-2 text-xs">
-        <span className="bg-muted text-foreground rounded px-2 py-0.5 font-mono text-[10.5px]">
-          Priority {request.priority}
-        </span>
-        <span>·</span>
         <span className="font-mono text-[11px]">
           {((request.confidence_score ?? 0) * 100).toFixed(0)}%
         </span>
@@ -149,7 +145,7 @@ export function AllCamperRequestsModal({
   year,
   currentRequestId,
 }: AllCamperRequestsModalProps) {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const queryClient = useQueryClient()
   const headingId = useId()
 
@@ -198,9 +194,9 @@ export function AllCamperRequestsModal({
     queryFn: async () =>
       pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
-        sort: '-priority,request_type',
+        sort: '-is_first_requested,request_type',
       }),
-    enabled: isOpen && !!user && requesterCmId > 0,
+    enabled: isOpen && !isAuthLoading && !!user && requesterCmId > 0,
     staleTime: 30_000,
   })
 
@@ -229,7 +225,7 @@ export function AllCamperRequestsModal({
       )
       return results.flat()
     },
-    enabled: isOpen && !!user && requesteeIds.length > 0,
+    enabled: isOpen && !isAuthLoading && !!user && requesteeIds.length > 0,
   })
 
   const personMap = useMemo(() => new Map(persons.map((p) => [p.cm_id, p])), [persons])

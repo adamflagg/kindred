@@ -17,7 +17,6 @@ const baseRequest: Partial<BunkRequestsResponse> = {
   year: 2025,
   is_reciprocal: false,
   confidence_score: 0.5,
-  priority: 1,
   created: '2025-01-01',
   updated: '2025-01-01',
 } as BunkRequestsResponse

@@ -1,7 +1,7 @@
 """Processing components for bunk requests.
 
 This module contains components for processing parsed requests:
-- Priority calculation
+- First-request detection (is_first_requested boost flag, derived from csv_position == 1 + priority keywords)
 - Reciprocal detection
 - Batch signal detection
 - Deduplication"""
@@ -9,14 +9,14 @@ This module contains components for processing parsed requests:
 from __future__ import annotations
 
 from .deduplicator import DeduplicationResult, Deduplicator, DuplicateGroup
-from .priority_calculator import PriorityCalculator
+from .first_request_detector import is_first_requested
 from .reciprocal_detector import ReciprocalDetector, ReciprocalPair
 
 __all__ = [
     "DeduplicationResult",
     "Deduplicator",
     "DuplicateGroup",
-    "PriorityCalculator",
     "ReciprocalDetector",
     "ReciprocalPair",
+    "is_first_requested",
 ]

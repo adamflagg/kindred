@@ -46,21 +46,21 @@ class TestRequestRepository:
 
     def _create_request_mock(
         self,
-        id,
-        requester_id,
-        requestee_id,
-        request_type,
-        session_id,
-        year,
-        priority=4,
-        confidence_score=0.95,
-        source="family",
-        source_field="bunk_with",
-        csv_position=0,
-        status="resolved",
-        is_placeholder=False,
-        metadata="{}",
-    ):
+        id: str,
+        requester_id: int,
+        requestee_id: int | None,
+        request_type: str,
+        session_id: int,
+        year: int,
+        is_first_requested: bool = True,
+        confidence_score: float = 0.95,
+        source: str = "family",
+        source_field: str = "bunk_with",
+        csv_position: int = 0,
+        status: str = "resolved",
+        is_placeholder: bool = False,
+        metadata: str = "{}",
+    ) -> Mock:
         """Helper to create a properly structured request mock with new field names"""
         mock = Mock()
         mock.id = id
@@ -69,7 +69,7 @@ class TestRequestRepository:
         mock.request_type = request_type
         mock.session_id = session_id
         mock.year = year
-        mock.priority = priority
+        mock.is_first_requested = is_first_requested
         mock.confidence_score = confidence_score
         mock.source = source
         mock.source_field = source_field
@@ -89,7 +89,7 @@ class TestRequestRepository:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field=SourceField.BUNK_REQUEST_FORM,
             csv_position=0,
@@ -115,7 +115,7 @@ class TestRequestRepository:
         assert create_args["requestee_id"] == 67890
         assert create_args["request_type"] == "bunk_with"
         assert create_args["session_id"] == 1000002
-        assert create_args["priority"] == 4
+        assert create_args["is_first_requested"] is True
         assert create_args["confidence_score"] == 0.95
         assert "source" not in create_args  # #1142 stage 4: column dropped
         assert create_args["source_field"] == SourceField.BUNK_REQUEST_FORM
@@ -134,7 +134,7 @@ class TestRequestRepository:
             requested_cm_id=None,  # No target for age preference
             request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
-            priority=1,
+            is_first_requested=False,
             confidence_score=1.0,
             source_field="ret_parent_socialize_with_best",
             csv_position=0,
@@ -169,7 +169,7 @@ class TestRequestRepository:
                 request_type="bunk_with",
                 session_id=1000002,
                 year=2025,
-                priority=4,
+                is_first_requested=True,
                 confidence_score=0.95,
                 source="family",
                 source_field="bunk_with",
@@ -233,7 +233,7 @@ class TestRequestRepository:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=3,  # Changed from 4
+            is_first_requested=False,  # Changed from 4
             confidence_score=0.85,  # Changed from 0.95
             source_field="bunk_with",
             csv_position=0,
@@ -258,7 +258,7 @@ class TestRequestRepository:
         update_args = mock_collection.update.call_args
         assert update_args[0][0] == "abc123"  # ID
         update_data = update_args[0][1]
-        assert update_data["priority"] == 3
+        assert update_data["is_first_requested"] is False
         assert update_data["confidence_score"] == 0.85
         assert update_data["status"] == "pending"
 
@@ -279,7 +279,7 @@ class TestRequestRepository:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -720,7 +720,7 @@ class TestMapToDbDispositionFields:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -796,7 +796,7 @@ class TestMapToDbSourceFragment:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=4,
+            is_first_requested=True,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,

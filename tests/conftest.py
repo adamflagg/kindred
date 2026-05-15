@@ -232,9 +232,6 @@ class MockConfigLoader:
         value = self._config.get(key)
         return str(value) if value is not None else default
 
-    def get_priority(self, priority_type: str, subtype: str = "default") -> int:
-        return self.get_int(f"priority.{priority_type}.{subtype}", default=5)
-
     def get_constraint(self, constraint_type: str, param: str, default: int = 10) -> int:
         return self.get_int(f"constraint.{constraint_type}.{param}", default=default)
 

@@ -20,10 +20,7 @@ class _MinimalConfig:
     """
 
     _values: ClassVar[dict[str, int | float]] = {
-        "objective.enable_diminishing_returns": 1,
-        "objective.first_request_multiplier": 10,
-        "objective.second_request_multiplier": 5,
-        "objective.third_plus_request_multiplier": 1,
+        "objective.enable_first_boost": 1,
         "objective.source_multipliers.share_bunk_with": 1.5,
         "objective.source_multipliers.do_not_share_with": 1.5,
         "objective.source_multipliers.bunking_notes": 1.2,
@@ -59,7 +56,7 @@ def test_unknown_request_type_treated_as_unsatisfied(caplog):
             "source_field": "bunk_with",
             "requester_id": 1,
             "requestee_id": 2,
-            "priority": 5,
+            "is_first_requested": True,
         },
         {
             "id": "r2",
@@ -67,7 +64,7 @@ def test_unknown_request_type_treated_as_unsatisfied(caplog):
             "source_field": "bunk_with",
             "requester_id": 1,
             "requestee_id": 3,
-            "priority": 5,
+            "is_first_requested": True,
         },
     ]
     # person 1 and 2 share bunk 10; person 3 is in bunk 11
@@ -109,7 +106,7 @@ def test_age_preference_with_explicit_none_requester_grade_uses_persons_fallback
             "requestee_id": 0,
             "age_preference_target": "older",
             "requester_grade": None,  # explicit None — present but unfilled
-            "priority": 5,
+            "is_first_requested": True,
         }
     ]
     # Requester (1) is grade 5; bunkmate (2) is grade 8 → "older" target satisfied.

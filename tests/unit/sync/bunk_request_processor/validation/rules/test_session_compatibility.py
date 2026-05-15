@@ -55,7 +55,7 @@ class TestSessionCompatibilityRule:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,

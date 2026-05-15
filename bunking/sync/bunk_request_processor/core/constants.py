@@ -45,7 +45,7 @@ CONFIDENCE_THRESHOLDS = {
     # Boost values (added to base confidence)
     "social_graph_boost": 0.1,
     "same_school_boost": 0.05,
-    # Status thresholds (used by collected_request.py)
+    # Status thresholds
     "auto_accept": 0.95,  # High confidence, no staff review needed
     "resolved": 0.85,  # Standard confidence, staff may spot-check
 }

@@ -1,6 +1,6 @@
 import type { BunkRequestsResponse, PersonsResponse } from '../types/pocketbase-types'
 
-export type SortColumn = 'grade' | 'requester' | 'request' | 'priority' | 'confidence' | 'status'
+export type SortColumn = 'grade' | 'requester' | 'request' | 'confidence' | 'status'
 
 /**
  * Default sort applied on every mount of the requests tab. Staff asked for
@@ -91,10 +91,6 @@ export function sortRequests(
         bValue = bP ? `${bP.first_name || ''} ${bP.last_name || ''}` : b.parse_notes || ''
         break
       }
-      case 'priority':
-        aValue = a.priority
-        bValue = b.priority
-        break
       case 'confidence':
         aValue = a.confidence_score
         bValue = b.confidence_score

@@ -260,7 +260,6 @@ async def get_session_social_graph(
                     edge_type=edge_type,
                     reciprocal=graph.has_edge(target, source),
                     confidence=data.get("confidence"),
-                    priority=data.get("priority"),
                     request_type=data.get("request_type"),
                     metadata=data.get("metadata", {}),
                 )
@@ -511,7 +510,6 @@ async def get_bunk_social_graph(
                         edge_type=primary_type,
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence") if is_request else None,
-                        priority=data.get("priority") if is_request else None,
                         request_type=data.get("request_type") if is_request else None,
                     )
                 )
@@ -524,7 +522,6 @@ async def get_bunk_social_graph(
                         edge_type=secondary_type,
                         reciprocal=is_reciprocal,
                         confidence=data.get("request_confidence"),
-                        priority=data.get("request_priority"),
                     )
                 )
             else:
@@ -537,7 +534,6 @@ async def get_bunk_social_graph(
                         edge_type=edge_type,
                         reciprocal=is_reciprocal,
                         confidence=data.get("confidence"),
-                        priority=data.get("priority"),
                         request_type=data.get("request_type"),
                     )
                 )

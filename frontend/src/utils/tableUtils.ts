@@ -112,7 +112,6 @@ export const columnWidths = {
   bunk: 'minmax(80px,100px)', // Bunk codes
   actions: 'minmax(100px,120px)', // 2-3 action buttons
 
-  // Priority based columns
-  priority: 'minmax(80px,100px)', // Priority numbers
+  // Confidence columns
   confidence: 'minmax(90px,110px)', // Percentage values
 }

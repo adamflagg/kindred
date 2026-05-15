@@ -179,7 +179,6 @@ class TestApplyScope:
         # 1 → 2 cross-edge: full metadata, reciprocal=True (back-edge exists)
         e12 = by_pair[(1, 2)]
         assert e12.request_type == "bunk_with"
-        assert e12.priority == 5
         assert e12.confidence == 0.9
         assert e12.reciprocal is True
 
@@ -191,7 +190,6 @@ class TestApplyScope:
         # 1 → 3 cross-edge: different request_type, reciprocal=False (no back-edge)
         e13 = by_pair[(1, 3)]
         assert e13.request_type == "not_bunk_with"
-        assert e13.priority == 2
         assert e13.confidence == 0.6
         assert e13.reciprocal is False
 
@@ -316,7 +314,6 @@ class TestCrossScopeEdgeModel:
             reciprocal=True,
         )
         assert edge.request_type == "bunk_with"
-        assert edge.priority == 5
         assert edge.confidence == 0.95
         assert edge.reciprocal is True
 
@@ -340,7 +337,6 @@ class TestCrossScopeEdgeModel:
     def test_optional_fields_default_to_none(self) -> None:
         edge = CrossScopeEdge(source=1, target=2, edge_type="request")
         assert edge.request_type is None
-        assert edge.priority is None
         assert edge.confidence is None
 
     def test_deprecated_historical_edge_type_rejected(self) -> None:
@@ -445,7 +441,6 @@ class TestApplyScopeReturnsCrossScopeEdgeObjects:
         by_pair = {(e.source, e.target): e for e in cross}
         e12 = by_pair[(1, 2)]
         assert e12.edge_type == "request"
-        assert e12.priority == 3
         assert e12.confidence == 0.8
         assert e12.request_type == "bunk_with"
         assert e12.reciprocal is True  # back-edge 2→1 exists

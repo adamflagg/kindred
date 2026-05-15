@@ -85,7 +85,6 @@ class TestScoreEvaluatorCanonicalKeys:
                     "requester_id": 100,
                     "requestee_id": 200,
                     "request_type": "bunk_with",
-                    "priority": 5,
                     "source_field": SourceField.BUNK_REQUEST_FORM,
                 }
             ],
@@ -101,9 +100,10 @@ class TestScoreEvaluatorCanonicalKeys:
             config=mock_config,
         )
 
-        # Without multiplier: priority(5) * 10 * first_request(10) = 500
-        # With 1.5x multiplier: 500 * 1.5 = 750
-        assert share_result.request_satisfaction_score == 750
+        # base_weight(40) * source_multiplier(1.5) = 60 (weighted_score)
+        # slot-0 → FIRST_REQUEST_MULTIPLIER(10): 60 * 10 = 600
+        # Priority was deleted — base_weight replaces priority * 10.
+        assert share_result.request_satisfaction_score == 600
 
     def test_field_scores_keyed_by_canonical_values(self, mock_config):
         """field_scores breakdown must use canonical SourceField values as keys."""

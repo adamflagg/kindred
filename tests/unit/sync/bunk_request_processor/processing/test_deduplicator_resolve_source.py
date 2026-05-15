@@ -21,7 +21,7 @@ def _req(source_field: str) -> BunkRequest:
         requested_cm_id=2,
         request_type=RequestType.BUNK_WITH,
         session_cm_id=1000001,
-        priority=4,
+        is_first_requested=True,
         confidence_score=0.9,
         source_field=source_field,
         csv_position=0,

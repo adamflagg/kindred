@@ -44,7 +44,7 @@ def _create_bunk_request(
     request_type: RequestType = RequestType.BUNK_WITH,
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
-    priority: int = 3,
+    is_first_requested: bool = False,
     source_field: str = "bunk_with",
 ) -> BunkRequest:
     """Helper to create BunkRequest objects for testing"""
@@ -53,7 +53,7 @@ def _create_bunk_request(
         requested_cm_id=requested_cm_id,
         request_type=request_type,
         session_cm_id=session_cm_id,
-        priority=priority,
+        is_first_requested=is_first_requested,
         confidence_score=confidence,
         source_field=source_field,
         csv_position=1,

@@ -188,7 +188,6 @@ def test_graph_node_metrics_baseline(
             r["requestee_id"],
             edge_type="request",
             request_type=r["request_type"],
-            priority=r["priority"],
             source=("staff" if r["source_field"] in ("not_bunk_with", "bunking_notes", "internal_notes") else "family"),
             source_field=r["source_field"],
             request_id=r["id"],

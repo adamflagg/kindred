@@ -449,7 +449,7 @@ Parsed and resolved bunk requests (output of Python processor).
 | `status` | select | resolved/pending/declined |
 | `year` | number | Camp year |
 | `session_id` | number | CampMinder session ID |
-| `priority` | number | 1-10 priority |
+| `is_first_requested` | bool | True iff family's first-pick request (slot-0 boost in solver) |
 | `original_text` | text | Original request text |
 | `confidence_score` | number | AI confidence 0.0-1.0 |
 | `confidence_level` | text | Confidence description |

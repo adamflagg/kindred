@@ -247,7 +247,7 @@ class ConfigLoader:
 
     def _get_env_key(self, key: str) -> str:
         """Convert dot notation to environment variable name."""
-        # priority.age_preference.default -> CONFIG_PRIORITY_AGE_PREFERENCE_DEFAULT
+        # smart_local_resolution.enabled -> CONFIG_SMART_LOCAL_RESOLUTION_ENABLED
         return "CONFIG_" + key.upper().replace(".", "_")
 
     def get(self, key: str) -> Any:
@@ -348,25 +348,6 @@ class ConfigLoader:
             if default is not None:
                 return default
             raise
-
-    def get_priority(self, priority_type: str, subtype: str = "default") -> int:
-        """
-        Get a priority value.
-
-        Args:
-            priority_type: Type of priority (e.g., "age_preference").
-            subtype: Subtype (default: "default").
-
-        Returns:
-            Priority value as integer.
-        """
-        key = f"priority.{priority_type}.{subtype}"
-        # Priority keys may not be in schema - use safe fallback
-        try:
-            return self.get_int(key)
-        except UnknownKeyError:
-            logger.debug(f"Priority key '{key}' not in schema, using default 5")
-            return 5
 
     def get_constraint(self, constraint_type: str, param: str, default: int | None = None) -> int:
         """

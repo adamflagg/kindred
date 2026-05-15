@@ -97,7 +97,7 @@ class TestValidationPipeline:
             requested_cm_id=67890,
             request_type=RequestType.BUNK_WITH,
             session_cm_id=1000002,
-            priority=3,
+            is_first_requested=False,
             confidence_score=0.95,
             source_field="bunk_with",
             csv_position=0,
@@ -214,7 +214,7 @@ class TestValidationPipeline:
         # Rule with errors and warnings (but doesn't short-circuit)
         rule1 = MockRule(
             "rule1",
-            priority=10,
+            priority=1,
             short_circuit=False,
             validate_fn=lambda _: rule1_result,
         )
@@ -222,7 +222,7 @@ class TestValidationPipeline:
         # Rule with just warnings (doesn't short-circuit)
         rule2 = MockRule(
             "rule2",
-            priority=5,
+            priority=2,
             validate_fn=lambda _: rule2_result,
             short_circuit_fn=lambda _: False,
         )
@@ -248,7 +248,7 @@ class TestValidationPipeline:
                 requested_cm_id=i + 1,
                 request_type=RequestType.BUNK_WITH,
                 session_cm_id=1000002,
-                priority=3,
+                is_first_requested=False,
                 confidence_score=0.95,
                 source_field="bunk_with",
                 csv_position=0,

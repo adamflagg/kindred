@@ -44,7 +44,7 @@ class TestOrchestratorMergeOnSave:
             requested_cm_id=requested_cm_id,
             request_type=request_type,
             session_cm_id=session_cm_id,
-            priority=3,
+            is_first_requested=False,
             confidence_score=confidence_score,
             source_field=source_field,
             csv_position=0,
@@ -379,7 +379,6 @@ class TestOrchestratorSourceLinkInitialization:
                             orchestrator.pb = mock_pb_client
                             orchestrator.ai_config = {}
                             orchestrator.temporal_name_cache = Mock()
-                            orchestrator.priority_calculator = Mock()
                             orchestrator.year = 2025
 
                             # Call the method that should init SourceLinkRepository
