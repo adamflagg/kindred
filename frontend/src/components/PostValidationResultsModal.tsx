@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -15,6 +15,17 @@ import {
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
+import { CamperNameButton } from './impossibility/CamperNameButton'
+import { REASON_HINTS } from './PreValidationResultsModal'
+import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
+
+const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
+
+function hintsFor(codes: string[]): string {
+  const hints = new Set<string>()
+  for (const code of codes) hints.add(REASON_HINTS[code] ?? 'review request')
+  return Array.from(hints).join(' / ')
+}
 
 interface FieldStats {
   total: number
@@ -61,6 +72,14 @@ interface PostValidationResultsModalProps {
   onClose: () => void
   results: ValidationResults
   scenarioId?: string
+  /**
+   * Impossibility data from the most recent pre-check. Optional — when absent
+   * (e.g., user opened post-check without pre-checking first), the section is
+   * simply hidden. Impossibility is an input-feasibility property and is the
+   * same regardless of solver assignments, so showing the pre-check report
+   * here closes the loop on "we got 100% — who didn't get fulfilled?"
+   */
+  impossibilityReport?: ImpossibilityReport
 }
 
 // Parse issue into structured display data
@@ -512,9 +531,16 @@ export default function PostValidationResultsModal({
   onClose,
   results,
   scenarioId,
+  impossibilityReport,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
+  const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+
+  const mpImpossible: EntirelyImpossibleMpCamper[] =
+    impossibilityReport?.mp_campers_entirely_impossible ?? []
+  const totalImpossibleRequests = impossibilityReport?.total_impossible ?? 0
+  const showImpossibilitySection = mpImpossible.length > 0
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
@@ -741,6 +767,47 @@ export default function PostValidationResultsModal({
         </div>
       </div>
 
+      {/* Impossibility cohort — surfaced from the latest pre-check (#1442 part 2).
+          Closes the loop on "we got 100% Optimized, who didn't get fulfilled?"
+          by naming the campers whose requests were structurally impossible. */}
+      {showImpossibilitySection && (
+        <div className="space-y-2 px-5 py-4">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="font-semibold text-red-900">
+              {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} had{' '}
+              {totalImpossibleRequests} impossible request
+              {totalImpossibleRequests === 1 ? '' : 's'} we couldn&rsquo;t fulfill
+            </p>
+            <div className="mt-2 space-y-1.5 border-t border-red-200 pt-2">
+              {mpImpossible.map((camper) => (
+                <div key={camper.cm_id} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex-1">
+                    <CamperNameButton
+                      cmId={camper.cm_id}
+                      name={camper.name}
+                      onSelect={setSelectedCamperId}
+                    />
+                    <span className="ml-2 text-xs text-stone-600">
+                      {hintsFor(camper.reason_codes)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {camper.reason_codes.map((code) => (
+                      <span
+                        key={code}
+                        className="rounded-full bg-amber-200 px-2 py-0.5 text-xs text-amber-900"
+                      >
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Issues List (if any) */}
       {hasIssues && (
         <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">
@@ -862,6 +929,14 @@ export default function PostValidationResultsModal({
             </div>
           )}
         </div>
+      )}
+      {selectedCamperId && (
+        <Suspense fallback={null}>
+          <CamperDetailsPanel
+            camperId={selectedCamperId}
+            onClose={() => setSelectedCamperId(null)}
+          />
+        </Suspense>
       )}
     </Modal>
   )

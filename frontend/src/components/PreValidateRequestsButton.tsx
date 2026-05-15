@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { useSessionList } from '../hooks/useSessionList'
 import { solverService } from '../services/solver'
 import type { ImpossibilityReport } from '../services/solver'
+import { queryKeys } from '../utils/queryKeys'
 import PreValidationResultsModal from './PreValidationResultsModal'
 
 interface PreValidateRequestsButtonProps {
@@ -33,6 +35,7 @@ export default function PreValidateRequestsButton({
   className = '',
 }: PreValidateRequestsButtonProps) {
   const { fetchWithAuth } = useApiWithAuth()
+  const queryClient = useQueryClient()
   const [isValidating, setIsValidating] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [validationResults, setValidationResults] = useState<ValidationResult | null>(null)
@@ -54,6 +57,9 @@ export default function PreValidateRequestsButton({
       const results = await solverService.preValidateRequests(sessionCmId, year, fetchWithAuth)
       setValidationResults(results)
       setShowResults(true)
+      // Publish to the shared React Query cache so the post-check modal and
+      // SolverDebugPage serve from the same source — see #1441 / #1442 part 2.
+      queryClient.setQueryData(queryKeys.preCheck(sessionCmId, year), results)
     } catch (err) {
       console.error('Pre-validation failed:', err)
       setError(err instanceof Error ? err.message : 'Pre-validation failed')

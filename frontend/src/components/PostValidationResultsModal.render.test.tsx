@@ -431,3 +431,122 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     expect(document.getElementById(controlsId as string)).not.toBeNull()
   })
 })
+
+vi.mock('./CamperDetailsPanel', () => ({
+  default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
+    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+  ),
+}))
+
+describe('PostValidationResultsModal — impossibility section (#1442 part 2)', () => {
+  const makeReport = (
+    mp: Array<{
+      cm_id: number
+      name: string
+      grade: number
+      gender: string
+      reason_codes: string[]
+    }>,
+    totalImpossible = mp.length
+  ) => ({
+    total_impossible: totalImpossible,
+    affected_campers: mp.length,
+    by_reason: {},
+    flat: [],
+    mp_campers_entirely_impossible: mp,
+  })
+
+  it('does not render the section when impossibilityReport prop is omitted', () => {
+    render(<PostValidationResultsModal isOpen={true} onClose={() => {}} results={makeResults()} />)
+    expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
+  })
+
+  it('does not render the section when mp_campers_entirely_impossible is empty', () => {
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={
+          makeReport([], 0) as unknown as import('../services/solver').ImpossibilityReport
+        }
+      />
+    )
+    expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
+  })
+
+  it('renders header with both camper and request counts', () => {
+    const report = makeReport(
+      [
+        { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+        { cm_id: 2, name: 'Liam Garcia', grade: 5, gender: 'M', reason_codes: ['malformed'] },
+        {
+          cm_id: 3,
+          name: 'Olivia Chen',
+          grade: 6,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+        },
+      ],
+      5
+    )
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+      />
+    )
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'P' &&
+          (el.textContent ?? '').includes('3 campers had 5 impossible requests we couldn’t fulfill')
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('opens the panel when a camper name in the section is clicked', async () => {
+    const report = makeReport([
+      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+    ])
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+      />
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
+      'data-camper-id',
+      '42'
+    )
+  })
+
+  it('renders the per-camper hint from REASON_HINTS', () => {
+    const report = makeReport([
+      {
+        cm_id: 7,
+        name: 'Samuel Johnson',
+        grade: 5,
+        gender: 'M',
+        reason_codes: ['cross_session'],
+      },
+    ])
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+      />
+    )
+    expect(
+      screen.getByText(/requested friend is in a different session — confirm intent/)
+    ).toBeInTheDocument()
+  })
+})
