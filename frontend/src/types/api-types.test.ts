@@ -50,7 +50,6 @@ const _exhaustiveSocialGraphEdge: Required<ApiSocialGraphEdge> = {
   edge_type: 'request',
   reciprocal: true,
   confidence: 0.9,
-  priority: 1,
   request_type: 'bunk_with',
   metadata: {},
   cross_scope: false,
@@ -62,7 +61,6 @@ const _exhaustiveCrossScopeEdge: Required<ApiCrossScopeEdge> = {
   edge_type: 'request',
   weight: 1.0,
   request_type: 'bunk_with',
-  priority: 1,
   confidence: 0.85,
   reciprocal: false,
   cross_scope: true,
@@ -100,7 +98,6 @@ const sampleEdge: ApiSocialGraphEdge = {
   edge_type: 'request',
   reciprocal: true,
   confidence: 0.9,
-  priority: 1,
   request_type: 'bunk_with',
   metadata: {},
   cross_scope: false,
@@ -112,7 +109,6 @@ const sampleCrossScopeEdge: ApiCrossScopeEdge = {
   edge_type: 'request',
   weight: 1.0,
   request_type: 'bunk_with',
-  priority: 1,
   confidence: 0.85,
   reciprocal: false,
   cross_scope: true,
@@ -168,9 +164,8 @@ describe('ApiCrossScopeEdge (generated)', () => {
     expect(typeof sampleCrossScopeEdge.target).toBe('number')
   })
 
-  it('has optional nullable priority and confidence', () => {
-    const edge: ApiCrossScopeEdge = { ...sampleCrossScopeEdge, priority: null, confidence: null }
-    expect(edge.priority).toBeNull()
+  it('has optional nullable confidence', () => {
+    const edge: ApiCrossScopeEdge = { ...sampleCrossScopeEdge, confidence: null }
     expect(edge.confidence).toBeNull()
   })
 })

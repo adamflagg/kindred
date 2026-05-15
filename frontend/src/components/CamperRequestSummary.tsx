@@ -43,7 +43,7 @@ export function CamperRequestSummary({
     queryFn: async () => {
       return pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
-        sort: '-priority,request_type',
+        sort: '-is_first_requested,request_type',
       })
     },
     staleTime: 30000,

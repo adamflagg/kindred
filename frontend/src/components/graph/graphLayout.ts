@@ -99,7 +99,6 @@ export function prepareWorkerInput(
       source: e.data.source,
       target: e.data.target,
       edge_type: e.data.edge_type,
-      priority: e.data.priority,
     },
   }))
 

@@ -194,7 +194,7 @@ export function AllCamperRequestsModal({
     queryFn: async () =>
       pb.collection<BunkRequestsResponse>('bunk_requests').getFullList({
         filter: `requester_id = ${requesterCmId} && year = ${year} && (merged_into = "" || merged_into = null)`,
-        sort: '-priority,request_type',
+        sort: '-is_first_requested,request_type',
       }),
     enabled: isOpen && !!user && requesterCmId > 0,
     staleTime: 30_000,

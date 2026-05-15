@@ -45,7 +45,7 @@ export function useAllBunkRequests(
         const filter = `requester_id = ${personCmId} && year = ${currentYear}`
         const requests = await pb.collection<BunkRequest>('bunk_requests').getFullList({
           filter,
-          sort: '-priority,request_type',
+          sort: '-is_first_requested,request_type',
         })
 
         // Collect unique requested person CM IDs (excluding negative IDs for unresolved names)

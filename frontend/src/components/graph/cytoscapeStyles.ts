@@ -303,7 +303,6 @@ export interface EdgeElement {
     source: string
     target: string
     edge_type: string
-    priority?: number
     confidence?: number
     is_reciprocal?: boolean
     request_type?: string
@@ -469,8 +468,7 @@ export function createGraphElements(
       source: e.source.toString(),
       target: e.target.toString(),
       edge_type: e.edge_type,
-      // priority and confidence are nullable in the generated types (null → undefined)
-      ...(e.priority != null ? { priority: e.priority } : {}),
+      // confidence is nullable in the generated types (null → undefined)
       ...(e.confidence != null ? { confidence: e.confidence } : {}),
       is_reciprocal: flags.is_reciprocal,
       ...(e.request_type ? { request_type: e.request_type } : {}),
@@ -492,7 +490,6 @@ export function createGraphElements(
       source: e.source.toString(),
       target: e.target.toString(),
       edge_type: e.edge_type,
-      ...(e.priority != null ? { priority: e.priority } : {}),
       ...(e.confidence != null ? { confidence: e.confidence } : {}),
       is_reciprocal: flags.is_reciprocal,
       ...(e.request_type ? { request_type: e.request_type } : {}),
