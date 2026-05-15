@@ -9,6 +9,22 @@ vi.mock('./CamperDetailsPanel', () => ({
   ),
 }))
 
+// BunkRequestProvider runs useQuery against PocketBase; in tests we don't
+// boot the real provider — wrap children in a marker div instead.
+vi.mock('../providers/BunkRequestProvider', () => ({
+  BunkRequestProvider: ({
+    sessionCmId,
+    children,
+  }: {
+    sessionCmId: number
+    children: React.ReactNode
+  }) => (
+    <div data-testid="bunk-request-provider" data-session-cm-id={sessionCmId}>
+      {children}
+    </div>
+  ),
+}))
+
 const stubReport = {
   total_impossible: 1,
   affected_campers: 1,
@@ -226,6 +242,22 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
     )
     fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
+  })
+
+  it('wraps CamperDetailsPanel in a session-scoped BunkRequestProvider (#1464 regression)', async () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={reportWithRed}
+        sessionCmId={5555555}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Samuel Johnson' }))
+    const provider = await screen.findByTestId('bunk-request-provider')
+    expect(provider).toHaveAttribute('data-session-cm-id', '5555555')
+    expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
   })
 
   it('renders a null requestee as plain text in the flat table (no button)', () => {

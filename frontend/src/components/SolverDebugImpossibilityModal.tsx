@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState } from 'react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
 const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
 
@@ -282,13 +283,19 @@ export default function SolverDebugImpossibilityModal({
           </table>
         )}
       </div>
-      {selectedCamperId && (
-        <Suspense fallback={null}>
-          <CamperDetailsPanel
-            camperId={selectedCamperId}
-            onClose={() => setSelectedCamperId(null)}
-          />
-        </Suspense>
+      {selectedCamperId && sessionCmId !== null && (
+        // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+        // SolverDebugPage has no ancestor BunkRequestProvider, so we mount
+        // a local session-scoped one here. Gated on sessionCmId — clicks
+        // shouldn't be possible when no session is selected, but be safe.
+        <BunkRequestProvider sessionCmId={sessionCmId}>
+          <Suspense fallback={null}>
+            <CamperDetailsPanel
+              camperId={selectedCamperId}
+              onClose={() => setSelectedCamperId(null)}
+            />
+          </Suspense>
+        </BunkRequestProvider>
       )}
     </Modal>
   )

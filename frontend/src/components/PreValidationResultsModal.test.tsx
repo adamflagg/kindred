@@ -9,6 +9,23 @@ vi.mock('./CamperDetailsPanel', () => ({
   ),
 }))
 
+// BunkRequestProvider runs useQuery against PocketBase; in tests we don't
+// boot the real provider — wrap children in a marker div instead so we can
+// also assert the panel mounts inside the provider.
+vi.mock('../providers/BunkRequestProvider', () => ({
+  BunkRequestProvider: ({
+    sessionCmId,
+    children,
+  }: {
+    sessionCmId: number
+    children: React.ReactNode
+  }) => (
+    <div data-testid="bunk-request-provider" data-session-cm-id={sessionCmId}>
+      {children}
+    </div>
+  ),
+}))
+
 const noopSessionLookup = () => undefined
 
 const baseStatistics = {
@@ -81,6 +98,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -126,6 +144,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -173,6 +192,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -219,6 +239,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -273,6 +294,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -321,6 +343,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -366,6 +389,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -384,6 +408,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('shows empty-state banner when no impossibilities', () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={baseResults}
@@ -414,6 +439,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={results}
@@ -450,6 +476,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -496,6 +523,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -516,6 +544,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
     // the modal renders cleanly with no cluster-related output
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={baseResults}
@@ -528,6 +557,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('does not render reason codes (staff-only view)', () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
@@ -540,6 +570,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('does not render admin tabs (staff-only view)', () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
@@ -554,6 +585,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('renders impossibility section only once in the DOM (no duplicate)', () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={resultsWithImpossibility}
@@ -595,6 +627,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
 
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -616,6 +649,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
   it('renders no camper-level section when the rollup is empty', () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={baseResults}
@@ -642,6 +676,7 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}
@@ -704,6 +739,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
   it('opens the panel for the red-section camper when their name is clicked', async () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={resultsWithRedSectionAndYellow}
@@ -719,6 +755,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
   it('opens the panel for a yellow-section requester when their name is clicked', async () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={resultsWithRedSectionAndYellow}
@@ -732,6 +769,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
   it('opens the panel for a yellow-section requestee when their name is clicked', async () => {
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={resultsWithRedSectionAndYellow}
@@ -740,6 +778,24 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
+  })
+
+  it('wraps CamperDetailsPanel in a session-scoped BunkRequestProvider (#1464 regression)', () => {
+    render(
+      <PreValidationResultsModal
+        isOpen
+        sessionCmId={1234567}
+        onClose={() => {}}
+        results={resultsWithRedSectionAndYellow}
+        sessionLookup={noopSessionLookup}
+      />
+    )
+    // Pre-existing test data uses cm_id=500; click and assert the panel is
+    // wrapped inside a BunkRequestProvider keyed to the modal's session.
+    fireEvent.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    const provider = screen.getByTestId('bunk-request-provider')
+    expect(provider).toHaveAttribute('data-session-cm-id', '1234567')
+    expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
   })
 
   it('renders the requestee as plain text (not a button) when requestee is null', () => {
@@ -763,6 +819,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
     }
     render(
       <PreValidationResultsModal
+        sessionCmId={1000001}
         isOpen
         onClose={() => {}}
         results={results}

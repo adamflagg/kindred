@@ -92,7 +92,7 @@ export default function PreValidateRequestsButton({
           isOpen={showResults}
           onClose={() => setShowResults(false)}
           results={validationResults}
-          sessionId={sessionCmId.toString()}
+          sessionCmId={sessionCmId}
           sessionLookup={sessionLookup}
         />
       )}

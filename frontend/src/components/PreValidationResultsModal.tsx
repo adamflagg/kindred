@@ -18,6 +18,7 @@ import type {
 } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
 import { camperActionHints } from './impossibility/reasonHints'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
 const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
 
@@ -51,7 +52,13 @@ interface PreValidationResultsModalProps {
     statistics: ValidationStatistics
     impossibility_report: ImpossibilityReport
   }
-  sessionId?: string
+  /**
+   * CampMinder session id. Required so the click-through CamperDetailsPanel
+   * can mount inside a session-scoped BunkRequestProvider — SessionHeader
+   * (where the Pre-Check button lives) sits outside SessionView's provider
+   * tree, so the panel can't rely on an ancestor provider.
+   */
+  sessionCmId: number
   sessionLookup: (cm_id: number) => string | undefined
 }
 
@@ -383,6 +390,7 @@ export default function PreValidationResultsModal({
   isOpen,
   onClose,
   results,
+  sessionCmId,
   sessionLookup,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
@@ -743,12 +751,20 @@ export default function PreValidationResultsModal({
         </div>
       )}
       {selectedCamperId && (
-        <Suspense fallback={null}>
-          <CamperDetailsPanel
-            camperId={selectedCamperId}
-            onClose={() => setSelectedCamperId(null)}
-          />
-        </Suspense>
+        // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+        // SessionHeader (where the Pre-Check button lives) sits outside
+        // SessionView's BunkRequestProvider tree, so we mount a local
+        // session-scoped provider here. React Query keys are shared, so
+        // this doesn't cause duplicate fetches when an ancestor provider
+        // also exists.
+        <BunkRequestProvider sessionCmId={sessionCmId}>
+          <Suspense fallback={null}>
+            <CamperDetailsPanel
+              camperId={selectedCamperId}
+              onClose={() => setSelectedCamperId(null)}
+            />
+          </Suspense>
+        </BunkRequestProvider>
       )}
     </Modal>
   )
