@@ -617,15 +617,21 @@ async def get_day1(
 
 @router.post("/cache/invalidate")
 async def invalidate_metrics_cache() -> dict[str, int]:
-    """Invalidate all cached metrics responses.
+    """Invalidate all cached metrics responses + geo person-id cache.
 
     Auth is handled by the middleware (skipped for this path since cache
     clearing is safe and idempotent). Called by:
     - PocketBase hook on registration config changes (internal, no user context)
     - Frontend on sync completion (via invalidateSyncData)
     - Frontend after saving registration dates
+
+    Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
+    changes attendee status_id, which feeds _fetch_active_person_pb_ids.
     """
+    from api.services.geo_service import clear_person_id_cache
+
     cleared = metrics_cache.invalidate_all()
+    clear_person_id_cache()
     return {"cleared": cleared}
 
 

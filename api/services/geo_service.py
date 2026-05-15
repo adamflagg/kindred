@@ -184,6 +184,34 @@ def _override_to_response(record: Any) -> OverrideResponse:
 
 
 # ============================================================================
+# Module-level person ID cache
+# ============================================================================
+
+# Cache for _fetch_active_person_pb_ids / _fetch_duration_person_pb_ids results.
+# Module-level (not instance-level) because api.routers.geo._get_service() creates a
+# fresh GeoService per request — an instance cache would never be reused. TTL is the
+# safety net; the primary invalidation is the /api/metrics/cache/invalidate endpoint,
+# which fires on CampMinder sync completion (when attendee status_id actually changes).
+# Key shape: (mode, year, session_types, session_cm_id, duration). The leading mode
+# string ("active" / "duration") namespaces the two fetch helpers so they cannot collide
+# on identical args — the active helper applies an attendee status_id filter, the
+# duration helper does not, so they return semantically different sets.
+_PERSON_ID_CACHE: dict[tuple[str, int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
+_PERSON_ID_CACHE_TTL_SECONDS = 900  # 15 minutes — matches graph_cache
+
+
+def clear_person_id_cache() -> int:
+    """Empty the module-level person ID cache. Returns count of entries cleared.
+
+    Called from POST /api/metrics/cache/invalidate so CampMinder sync completion
+    flushes geo data alongside metrics.
+    """
+    count = len(_PERSON_ID_CACHE)
+    _PERSON_ID_CACHE.clear()
+    return count
+
+
+# ============================================================================
 # Service class
 # ============================================================================
 
@@ -193,7 +221,6 @@ class GeoService:
 
     def __init__(self, pb: PocketBase) -> None:
         self.pb = pb
-        self._person_id_cache: dict[tuple[int, tuple[str, ...], int | None, str | None], tuple[set[str], float]] = {}
 
     @staticmethod
     def _overrides_query(category: str, year: int, extra_filter: str = "") -> dict[str, str]:
@@ -212,15 +239,17 @@ class GeoService:
     ) -> set[str]:
         """Fetch PB IDs of persons with active enrolled attendee records.
 
-        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id, duration).
+        Results are cached in a module-level dict keyed by ("active", year, session_types,
+        session_cm_id, duration). TTL is _PERSON_ID_CACHE_TTL_SECONDS; the cache is
+        also cleared by POST /api/metrics/cache/invalidate after CampMinder sync.
         """
-        cache_key = (year, tuple(session_types or []), session_cm_id, duration)
+        cache_key = ("active", year, tuple(session_types or []), session_cm_id, duration)
         now = time.monotonic()
 
-        cached = self._person_id_cache.get(cache_key)
+        cached = _PERSON_ID_CACHE.get(cache_key)
         if cached is not None:
             result, cached_at = cached
-            if now - cached_at < 60.0:
+            if now - cached_at < _PERSON_ID_CACHE_TTL_SECONDS:
                 return result
 
         att_filter = f"year = {year} && {ACTIVE_ENROLLED_FILTER}"
@@ -243,7 +272,7 @@ class GeoService:
                 att_filter += f" && ({' || '.join(id_clauses)})"
             else:
                 # No sessions match the duration — return empty set
-                self._person_id_cache[cache_key] = (set(), now)
+                _PERSON_ID_CACHE[cache_key] = (set(), now)
                 return set()
 
         attendees: list[Any] = await asyncio.to_thread(
@@ -251,7 +280,7 @@ class GeoService:
             query_params={"filter": att_filter, "fields": "person"},
         )
         result = {a.person for a in attendees if a.person}
-        self._person_id_cache[cache_key] = (result, now)
+        _PERSON_ID_CACHE[cache_key] = (result, now)
         return result
 
     async def _fetch_duration_person_pb_ids(
@@ -272,15 +301,15 @@ class GeoService:
             session_types: Optional session types to restrict to (e.g., ["main"]).
             session_cm_id: Optional specific session CampMinder ID to restrict to.
 
-        Results are cached for 60 seconds keyed by (year, session_types, session_cm_id, duration).
+        Results are cached in the module-level _PERSON_ID_CACHE (see _fetch_active_person_pb_ids).
         """
-        cache_key = (year, tuple(session_types or ["__duration_only__"]), session_cm_id, duration)
+        cache_key = ("duration", year, tuple(session_types or []), session_cm_id, duration)
         now = time.monotonic()
 
-        cached = self._person_id_cache.get(cache_key)
+        cached = _PERSON_ID_CACHE.get(cache_key)
         if cached is not None:
             result, cached_at = cached
-            if now - cached_at < 60.0:
+            if now - cached_at < _PERSON_ID_CACHE_TTL_SECONDS:
                 return result
 
         sessions_raw: list[Any] = await asyncio.to_thread(
@@ -301,7 +330,7 @@ class GeoService:
             duration_ids = {sid for sid in duration_ids if sid == session_cm_id}
 
         if not duration_ids:
-            self._person_id_cache[cache_key] = (set(), now)
+            _PERSON_ID_CACHE[cache_key] = (set(), now)
             return set()
 
         id_clauses = [f"session.cm_id = {sid}" for sid in duration_ids]
@@ -312,7 +341,7 @@ class GeoService:
             query_params={"filter": att_filter, "fields": "person"},
         )
         result = {a.person for a in attendees if a.person}
-        self._person_id_cache[cache_key] = (result, now)
+        _PERSON_ID_CACHE[cache_key] = (result, now)
         return result
 
     @staticmethod
