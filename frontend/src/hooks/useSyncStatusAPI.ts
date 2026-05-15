@@ -42,6 +42,7 @@ export interface SyncStatus {
     skipped: number
     errors: number
     already_processed?: number // For process_requests: records already processed
+    prod_audit_warnings?: number // For orphan_reconciler: stranded prod assignments (observe-only)
     duration?: number
     sub_stats?: Record<string, SubStats> // For combined syncs (e.g., persons includes households)
   }
@@ -81,6 +82,7 @@ export interface SyncStatusResponse {
   staff_vehicle_info: SyncStatus
   normalize_geographic: SyncStatus
   enrollment_snapshots: SyncStatus
+  orphan_reconciler: SyncStatus
   // Export phase
   multi_workbook_export: SyncStatus
   // On-demand custom value syncs (expensive, 1 API call per entity)
