@@ -403,6 +403,8 @@ func (s *PersonsSync) updateRelationsAndCleanup(
 }
 
 // logSyncResults logs the final sync statistics.
+//
+//nolint:gocritic // hugeParam: Stats grew past 80B with ProdAuditWarnings; signature refactor out of scope for #1439
 func (s *PersonsSync) logSyncResults(householdStats Stats) {
 	slog.Info("Combined sync complete",
 		"persons_created", s.Stats.Created,
