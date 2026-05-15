@@ -5,6 +5,7 @@ import {
   User,
   Layout,
   UserCheck,
+  UserX,
   FileText,
   Brain,
   Tag,
@@ -275,6 +276,14 @@ export const YEAR_SYNC_TYPES = [
     name: 'Enrollment Snapshots',
     icon: Camera,
     color: 'text-teal-500',
+    phase: 'transform' as SyncPhase,
+  },
+  {
+    id: 'orphan_reconciler',
+    name: 'Orphan Reconciler',
+    description: 'PB-only · no CampMinder fetch',
+    icon: UserX,
+    color: 'text-orange-500',
     phase: 'transform' as SyncPhase,
   },
   // Process phase - CSV + AI (current year only)

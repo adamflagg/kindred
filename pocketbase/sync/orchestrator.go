@@ -232,6 +232,8 @@ type Stats struct {
 	Expanded int `json:"expanded,omitempty"`
 	// AlreadyProcessed tracks records already processed (for process_requests)
 	AlreadyProcessed int `json:"already_processed,omitempty"`
+	// ProdAuditWarnings counts bunk_assignments rows found stranded but not cleared (observe-only).
+	ProdAuditWarnings int `json:"prod_audit_warnings,omitempty"`
 	// Duration in seconds
 	Duration int `json:"duration"`
 	// SubStats for combined syncs (e.g., persons includes households)
@@ -241,7 +243,7 @@ type Stats struct {
 // IsNoOp returns true if the sync made no changes to the database.
 // A sync is a no-op when Created, Updated, Deleted, and Errors are all zero.
 // Skipped records don't affect the data, so they're not considered changes.
-func (s Stats) IsNoOp() bool {
+func (s *Stats) IsNoOp() bool {
 	return s.Created == 0 && s.Updated == 0 && s.Deleted == 0 && s.Errors == 0
 }
 
@@ -647,6 +649,8 @@ func (o *Orchestrator) MarkSyncRunning(syncType string) error {
 // runningJobs to lastCompletedStatus. No-ops if syncType is not tracked.
 // Used by handlers that manage their own Service instances (e.g., process_requests)
 // rather than routing through RunSingleSync.
+//
+//nolint:gocritic // hugeParam: Stats grew past 80B with ProdAuditWarnings; signature refactor out of scope for #1439
 func (o *Orchestrator) FinalizeSyncStatus(syncType string, stats Stats, err error) {
 	endTime := time.Now()
 

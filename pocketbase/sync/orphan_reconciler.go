@@ -198,7 +198,9 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 				BunkID:    p.GetString("bunk"),
 			})
 		}
-		if strandedProd := findStrandedAssignments(validPairs, plannedSessions, prodCandidates); len(strandedProd) > 0 {
+		strandedProd := findStrandedAssignments(validPairs, plannedSessions, prodCandidates)
+		stats.ProdAuditWarnings = len(strandedProd)
+		if len(strandedProd) > 0 {
 			pairs := make([]string, len(strandedProd))
 			for i, c := range strandedProd {
 				pairs[i] = fmt.Sprintf("%s(session=%s,bunk=%s)", c.RecordID, c.SessionID, c.BunkID)

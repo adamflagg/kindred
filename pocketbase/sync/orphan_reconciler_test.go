@@ -333,6 +333,44 @@ func TestOrphanReconciler_Idempotent(t *testing.T) {
 	}
 }
 
+func TestOrphanReconciler_ProdAuditWarnings(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupOrphanCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	// otherBunk has a plan → session IS in plannedSessions
+	otherBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": otherBunk.Id, "session": sess.Id, "year": 2026})
+	// strandedBunk has no plan for this session → prod assignment is stranded
+	strandedBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "G-5", "year": 2026})
+	person := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": person.Id, "session": sess.Id, "bunk": strandedBunk.Id, "year": 2026,
+	})
+
+	svc := NewOrphanReconcilerSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if svc.Stats.ProdAuditWarnings != 1 {
+		t.Errorf("want ProdAuditWarnings=1, got %d", svc.Stats.ProdAuditWarnings)
+	}
+	// Prod assignment must NOT be cleared (observe-only).
+	prods, err := app.FindRecordsByFilter("bunk_assignments", "year = 2026", "", 0, 0)
+	if err != nil || len(prods) != 1 {
+		t.Fatalf("prod assignment should still exist, got %d err=%v", len(prods), err)
+	}
+	if prods[0].GetString("bunk") != strandedBunk.Id {
+		t.Errorf("prod assignment bunk must not be cleared (observe-only)")
+	}
+}
+
 // TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal verifies that a failure
 // querying production bunk_assignments is recorded in Stats.Errors — so
 // WasSuccessful() reports false — but does NOT abort the run: the draft sweep
