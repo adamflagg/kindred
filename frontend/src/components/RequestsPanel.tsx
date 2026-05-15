@@ -212,10 +212,6 @@ export default function RequestsPanel({
             • <strong>Age Preference:</strong> Tries to place camper with similar/older/younger
             campers
           </li>
-          <li>
-            • <strong>Priority:</strong> Higher priority constraints are satisfied first (5 is
-            highest)
-          </li>
         </ul>
       </div>
     </div>

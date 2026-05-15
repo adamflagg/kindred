@@ -129,10 +129,6 @@ function RequestCard({
         </section>
       </div>
       <footer className="bg-muted/40 border-border/60 text-muted-foreground flex items-center gap-3 border-t px-4 py-2 text-xs">
-        <span className="bg-muted text-foreground rounded px-2 py-0.5 font-mono text-[10.5px]">
-          Priority {request.priority}
-        </span>
-        <span>·</span>
         <span className="font-mono text-[11px]">
           {((request.confidence_score ?? 0) * 100).toFixed(0)}%
         </span>
