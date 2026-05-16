@@ -951,9 +951,9 @@ export default function PostValidationResultsModal({
               </span>
             </div>
             <ul className="mt-3 divide-y divide-stone-200 text-sm">
-              {(statistics.priority_unsuccessfuls ?? []).map((p) => (
+              {(statistics.priority_unsuccessfuls ?? []).map((p, idx) => (
                 <li
-                  key={`${p.requester_cm_id}-${p.target_cm_id}`}
+                  key={`${p.requester_cm_id}-${p.target_cm_id}-${idx}`}
                   className="flex items-center justify-between py-2"
                 >
                   <div>

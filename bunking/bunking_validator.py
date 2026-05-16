@@ -650,14 +650,68 @@ class BunkingValidator:
         campers_with_unsatisfied_valid_requests = []
 
         for person_id, alerting_requests in alerting_requests_by_person.items():
-            if len(alerting_requests) > 0 and len(satisfied_alerting_by_person[person_id]) == 0:
+            if len(alerting_requests) == 0:
+                continue
+
+            person = person_by_id.get(person_id)
+            person_name = person.name if person else f"Person {person_id}"
+
+            # not_bunk_with violation detection runs for ALL campers with any alerting
+            # requests, regardless of whether other requests are satisfied. A camper with
+            # a satisfied bunk_with AND a violated not_bunk_with must still appear in
+            # negative_request_violations_detail ("Families to call").
+            for request in alerting_requests:
+                if request.request_type == "not_bunk_with" and request.requested_person_cm_id:
+                    requested_person = person_by_id.get(request.requested_person_cm_id)
+                    requested_name = (
+                        requested_person.name if requested_person else f"Person {request.requested_person_cm_id}"
+                    )
+                    person_assignment = assignments_by_person.get(person_id)
+                    requested_assignment = assignments_by_person.get(request.requested_person_cm_id)
+                    if (
+                        person_assignment
+                        and requested_assignment
+                        and person_assignment.bunk_cm_id == requested_assignment.bunk_cm_id
+                    ):
+                        stats.negative_request_violations += 1
+                        # Find the bunk name for the detail record.
+                        violated_bunk_cm_id = person_assignment.bunk_cm_id
+                        violated_bunk = (bunk_by_id or {}).get(violated_bunk_cm_id)
+                        violated_bunk_name = violated_bunk.name if violated_bunk else violated_bunk_cm_id
+                        stats.negative_request_violations_detail.append(
+                            NegativeRequestViolation(
+                                requester_cm_id=person_id,
+                                target_cm_id=request.requested_person_cm_id,
+                                requester_name=person_name,
+                                target_name=requested_name,
+                                bunk_cm_id=violated_bunk_cm_id,
+                                bunk_name=violated_bunk_name,
+                            )
+                        )
+                        source_fields = get_source_fields(request)
+                        issues.append(
+                            ValidationIssue(
+                                severity=ValidationSeverity.ERROR,
+                                type="valid_negative_request_violated",
+                                message=f"{person_name} has a valid 'not bunk with' request but is bunked with {requested_name}",
+                                details={
+                                    "request_type": request.request_type,
+                                    "is_first_requested": getattr(request, "is_first_requested", False),
+                                    "person_id": person_id,
+                                    "requested_person_id": request.requested_person_cm_id,
+                                    "status": request.status,
+                                    "source_fields": source_fields,
+                                },
+                                affected_ids=[person_id, request.requested_person_cm_id],
+                            )
+                        )
+
+            # bunk_with unsatisfied warnings are only emitted when the camper has NO
+            # satisfied alerting requests (the "zero satisfied" guard stays here).
+            if len(satisfied_alerting_by_person[person_id]) == 0:
                 campers_with_unsatisfied_valid_requests.append(person_id)
 
-                # Get person info for reporting
-                person = person_by_id.get(person_id)
-                person_name = person.name if person else f"Person {person_id}"
-
-                # Report each unsatisfied alerting request for this person
+                # Report each unsatisfied alerting bunk_with request for this person
                 for request in alerting_requests:
                     source_fields = get_source_fields(request)
                     if request.request_type == "bunk_with" and request.requested_person_cm_id:
@@ -681,49 +735,6 @@ class BunkingValidator:
                                 affected_ids=[person_id, request.requested_person_cm_id],
                             )
                         )
-                    elif request.request_type == "not_bunk_with" and request.requested_person_cm_id:
-                        requested_person = person_by_id.get(request.requested_person_cm_id)
-                        requested_name = (
-                            requested_person.name if requested_person else f"Person {request.requested_person_cm_id}"
-                        )
-                        person_assignment = assignments_by_person.get(person_id)
-                        requested_assignment = assignments_by_person.get(request.requested_person_cm_id)
-                        if (
-                            person_assignment
-                            and requested_assignment
-                            and person_assignment.bunk_cm_id == requested_assignment.bunk_cm_id
-                        ):
-                            stats.negative_request_violations += 1
-                            # Find the bunk name for the detail record.
-                            violated_bunk_cm_id = person_assignment.bunk_cm_id
-                            violated_bunk = (bunk_by_id or {}).get(violated_bunk_cm_id)
-                            violated_bunk_name = violated_bunk.name if violated_bunk else violated_bunk_cm_id
-                            stats.negative_request_violations_detail.append(
-                                NegativeRequestViolation(
-                                    requester_cm_id=person_id,
-                                    target_cm_id=request.requested_person_cm_id,
-                                    requester_name=person_name,
-                                    target_name=requested_name,
-                                    bunk_cm_id=violated_bunk_cm_id,
-                                    bunk_name=violated_bunk_name,
-                                )
-                            )
-                            issues.append(
-                                ValidationIssue(
-                                    severity=ValidationSeverity.ERROR,
-                                    type="valid_negative_request_violated",
-                                    message=f"{person_name} has a valid 'not bunk with' request but is bunked with {requested_name}",
-                                    details={
-                                        "request_type": request.request_type,
-                                        "is_first_requested": getattr(request, "is_first_requested", False),
-                                        "person_id": person_id,
-                                        "requested_person_id": request.requested_person_cm_id,
-                                        "status": request.status,
-                                        "source_fields": source_fields,
-                                    },
-                                    affected_ids=[person_id, request.requested_person_cm_id],
-                                )
-                            )
 
         # Aggregate totals narrow to material_parent + staff (the alerting
         # bucket). Best-effort socialize_with is reported only in its own
