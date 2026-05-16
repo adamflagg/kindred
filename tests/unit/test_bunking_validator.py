@@ -2002,9 +2002,9 @@ def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
     """Camper-level two-tier MP coverage: at-least-one vs all satisfied.
 
     3 campers (Emma Johnson, Liam Garcia, Olivia Chen), each with 2 MP requests.
-    - Emma Johnson (pid=1): 2/2 satisfied → counts in BOTH tiers
-    - Liam Garcia  (pid=4): 1/2 satisfied → counts in "at least one" only
-    - Olivia Chen  (pid=7): 0/2 satisfied → counts in NEITHER tier
+    - Emma Johnson (pid=1000001): 2/2 satisfied → counts in BOTH tiers
+    - Liam Garcia  (pid=1000004): 1/2 satisfied → counts in "at least one" only
+    - Olivia Chen  (pid=1000007): 0/2 satisfied → counts in NEITHER tier
 
     Expected:
         mp_campers_total                     = 3
@@ -2016,15 +2016,15 @@ def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
     # Three campers + their request targets (targets just need to exist as persons
     # so the validator can resolve them; their own assignments don't matter).
     persons = [
-        MockPerson(campminder_id="1", name="Emma Johnson"),
-        MockPerson(campminder_id="2", name="Riley Sam"),
-        MockPerson(campminder_id="3", name="Samuel Johnson"),
-        MockPerson(campminder_id="4", name="Liam Garcia"),
-        MockPerson(campminder_id="5", name="Alex Kim"),
-        MockPerson(campminder_id="6", name="Jordan Lee"),
-        MockPerson(campminder_id="7", name="Olivia Chen"),
-        MockPerson(campminder_id="8", name="Casey Morgan"),
-        MockPerson(campminder_id="9", name="Taylor Reed"),
+        MockPerson(campminder_id="1000001", name="Emma Johnson"),
+        MockPerson(campminder_id="1000002", name="Riley Sam"),
+        MockPerson(campminder_id="1000003", name="Samuel Johnson"),
+        MockPerson(campminder_id="1000004", name="Liam Garcia"),
+        MockPerson(campminder_id="1000005", name="Olivia Chen"),
+        MockPerson(campminder_id="1000006", name="Riley Sam"),
+        MockPerson(campminder_id="1000007", name="Olivia Chen"),
+        MockPerson(campminder_id="1000008", name="Samuel Johnson"),
+        MockPerson(campminder_id="1000009", name="Liam Garcia"),
     ]
 
     # Two bunks: alpha holds Emma + her two targets, beta holds Liam + one target.
@@ -2034,25 +2034,25 @@ def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
     ]
 
     assignments = [
-        # Emma Johnson (pid=1): both targets in same bunk → 2/2 satisfied
-        MockBunkAssignment(person_cm_id="1", bunk_cm_id="100"),
-        MockBunkAssignment(person_cm_id="2", bunk_cm_id="100"),
-        MockBunkAssignment(person_cm_id="3", bunk_cm_id="100"),
-        # Liam Garcia (pid=4): only first target in same bunk → 1/2 satisfied
-        MockBunkAssignment(person_cm_id="4", bunk_cm_id="200"),
-        MockBunkAssignment(person_cm_id="5", bunk_cm_id="200"),
-        MockBunkAssignment(person_cm_id="6", bunk_cm_id="100"),  # different bunk → unsatisfied
-        # Olivia Chen (pid=7): neither target in same bunk → 0/2 satisfied
-        MockBunkAssignment(person_cm_id="7", bunk_cm_id="200"),
-        MockBunkAssignment(person_cm_id="8", bunk_cm_id="100"),  # different bunk
-        MockBunkAssignment(person_cm_id="9", bunk_cm_id="100"),  # different bunk
+        # Emma Johnson (pid=1000001): both targets in same bunk → 2/2 satisfied
+        MockBunkAssignment(person_cm_id="1000001", bunk_cm_id="100"),
+        MockBunkAssignment(person_cm_id="1000002", bunk_cm_id="100"),
+        MockBunkAssignment(person_cm_id="1000003", bunk_cm_id="100"),
+        # Liam Garcia (pid=1000004): only first target in same bunk → 1/2 satisfied
+        MockBunkAssignment(person_cm_id="1000004", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="1000005", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="1000006", bunk_cm_id="100"),  # different bunk → unsatisfied
+        # Olivia Chen (pid=1000007): neither target in same bunk → 0/2 satisfied
+        MockBunkAssignment(person_cm_id="1000007", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="1000008", bunk_cm_id="100"),  # different bunk
+        MockBunkAssignment(person_cm_id="1000009", bunk_cm_id="100"),  # different bunk
     ]
 
     requests = [
         # Emma Johnson: req 1 → Riley Sam (satisfied — both in alpha)
         MockBunkRequest(
-            requester_person_cm_id="1",
-            requested_person_cm_id="2",
+            requester_person_cm_id="1000001",
+            requested_person_cm_id="1000002",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
@@ -2060,44 +2060,44 @@ def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
         ),
         # Emma Johnson: req 2 → Samuel Johnson (satisfied — both in alpha)
         MockBunkRequest(
-            requester_person_cm_id="1",
-            requested_person_cm_id="3",
+            requester_person_cm_id="1000001",
+            requested_person_cm_id="1000003",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         ),
-        # Liam Garcia: req 1 → Alex Kim (satisfied — both in beta)
+        # Liam Garcia: req 1 → Olivia Chen (satisfied — both in beta)
         MockBunkRequest(
-            requester_person_cm_id="4",
-            requested_person_cm_id="5",
+            requester_person_cm_id="1000004",
+            requested_person_cm_id="1000005",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         ),
-        # Liam Garcia: req 2 → Jordan Lee (unsatisfied — Jordan in alpha, Liam in beta)
+        # Liam Garcia: req 2 → Riley Sam (unsatisfied — Riley in alpha, Liam in beta)
         MockBunkRequest(
-            requester_person_cm_id="4",
-            requested_person_cm_id="6",
+            requester_person_cm_id="1000004",
+            requested_person_cm_id="1000006",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         ),
-        # Olivia Chen: req 1 → Casey Morgan (unsatisfied — Casey in alpha, Olivia in beta)
+        # Olivia Chen: req 1 → Samuel Johnson (unsatisfied — Samuel in alpha, Olivia in beta)
         MockBunkRequest(
-            requester_person_cm_id="7",
-            requested_person_cm_id="8",
+            requester_person_cm_id="1000007",
+            requested_person_cm_id="1000008",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
             source="family",
         ),
-        # Olivia Chen: req 2 → Taylor Reed (unsatisfied — Taylor in alpha, Olivia in beta)
+        # Olivia Chen: req 2 → Liam Garcia (unsatisfied — Liam in alpha, Olivia in beta)
         MockBunkRequest(
-            requester_person_cm_id="7",
-            requested_person_cm_id="9",
+            requester_person_cm_id="1000007",
+            requested_person_cm_id="1000009",
             request_type="bunk_with",
             status="resolved",
             source_field=SourceField.BUNK_REQUEST_FORM,
