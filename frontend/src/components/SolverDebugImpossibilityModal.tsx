@@ -299,8 +299,12 @@ export default function SolverDebugImpossibilityModal({
         // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
         // SolverDebugPage has no ancestor BunkRequestProvider, so we mount a
         // local session-scoped one here. The provider mount is hoisted above
-        // the selectedCamperId gate so it doesn't churn observers on every
-        // panel open/close. ErrorBoundary catches chunk-load failures.
+        // the selectedCamperId gate so opening/closing the details panel
+        // doesn't churn the provider's observers. Tradeoff: this fires the
+        // provider's two queries (allBunkRequests + /api/satisfaction) on
+        // every modal open even if the user never clicks a camper name —
+        // both queries are cache-warm in the common case (SolverDebugPage
+        // already populated them). ErrorBoundary catches chunk-load failures.
         <BunkRequestProvider sessionCmId={sessionCmId}>
           {selectedCamperId && (
             <ErrorBoundary

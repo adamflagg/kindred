@@ -673,4 +673,80 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
     expect(screen.queryByText('grade_compatibility')).not.toBeInTheDocument()
   })
+
+  it('shows a small "pre-check unavailable" notice when preCheckError is true and no report is in', () => {
+    // Honors the 4-state query handling rule from frontend/CLAUDE.md: the post-
+    // check modal silently dropping the impossibility section on pre-check
+    // failure looks identical to "no impossibilities" — we surface the
+    // difference instead.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        preCheckError={true}
+      />
+    )
+    expect(screen.getByText(/pre-check unavailable/i)).toBeInTheDocument()
+  })
+
+  it('does not show the pre-check notice when the report did arrive', () => {
+    // If the report is present, no need to apologize — the section either
+    // renders the cohort or correctly hides itself.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeReport([])}
+        preCheckError={true}
+      />
+    )
+    expect(screen.queryByText(/pre-check unavailable/i)).not.toBeInTheDocument()
+  })
+
+  it('clears the selected camper when the modal closes, so reopening starts fresh', async () => {
+    // Otherwise selectedCamperId persists across close/reopen and the camper
+    // details panel remounts with stale selection.
+    const report = makeReport([
+      { cm_id: 99, name: 'Riley Sam', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+    ])
+    const { rerender } = render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Riley Sam/ }))
+    expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
+
+    // Close the modal.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={false}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+
+    // Reopen — the details panel should NOT come back with the stale selection.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+  })
 })

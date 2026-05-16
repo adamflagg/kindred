@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -81,6 +81,12 @@ interface PostValidationResultsModalProps {
    * here closes the loop on "we got 100% — who didn't get fulfilled?"
    */
   impossibilityReport?: ImpossibilityReport | undefined
+  /**
+   * True when the pre-check fetch failed. Surfaces a small notice in lieu of
+   * the impossibility section so users don't mistake "fetch failed" for "no
+   * impossibilities."
+   */
+  preCheckError?: boolean | undefined
 }
 
 // Parse issue into structured display data
@@ -534,10 +540,14 @@ export default function PostValidationResultsModal({
   scenarioId,
   sessionCmId,
   impossibilityReport,
+  preCheckError = false,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isOpen) setSelectedCamperId(null)
+  }, [isOpen])
 
   const mpImpossible: EntirelyImpossibleMpCamper[] =
     impossibilityReport?.mp_campers_entirely_impossible ?? []
@@ -784,6 +794,15 @@ export default function PostValidationResultsModal({
         onSelectCamper={setSelectedCamperId}
       />
 
+      {preCheckError && !impossibilityReport && (
+        <div className="px-5 py-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            Pre-check unavailable — couldn&rsquo;t load the impossibility cohort. Re-run Pre-Check
+            to see it.
+          </div>
+        </div>
+      )}
+
       {/* Issues List (if any) */}
       {hasIssues && (
         <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">
@@ -910,8 +929,12 @@ export default function PostValidationResultsModal({
           SessionHeader (where the Check-Bunking button lives) sits outside
           SessionView's BunkRequestProvider tree, so we mount a local
           session-scoped provider here. The provider mount is hoisted above
-          the selectedCamperId gate so it doesn't churn observers on every
-          panel open/close. ErrorBoundary catches chunk-load failures. */}
+          the selectedCamperId gate so opening/closing the details panel
+          doesn't churn the provider's observers. Tradeoff: this fires the
+          provider's two queries (allBunkRequests + /api/satisfaction) on
+          every modal open even if the user never clicks a camper name —
+          both queries are cache-warm in the common case (session header
+          already populated them). ErrorBoundary catches chunk-load failures. */}
       <BunkRequestProvider sessionCmId={sessionCmId}>
         {selectedCamperId && (
           <ErrorBoundary

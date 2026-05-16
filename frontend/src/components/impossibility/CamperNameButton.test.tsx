@@ -38,4 +38,13 @@ describe('CamperNameButton', () => {
     fireEvent.click(span)
     expect(onSelect).not.toHaveBeenCalled()
   })
+
+  it('when disabled, uses a muted text color so the non-interactive state is visible', () => {
+    // Otherwise the disabled span is indistinguishable from regular foreground
+    // text and users may try to click it expecting the same affordance as the
+    // enabled state.
+    render(<CamperNameButton cmId={1} name="Riley Sam" onSelect={() => {}} disabled />)
+    const span = screen.getByText('Riley Sam')
+    expect(span.className).toMatch(/text-muted-foreground/)
+  })
 })

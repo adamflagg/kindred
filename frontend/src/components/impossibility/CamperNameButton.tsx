@@ -14,7 +14,11 @@ export function CamperNameButton({
   disabled = false,
 }: CamperNameButtonProps) {
   if (disabled) {
-    return <span className="text-foreground">{name}</span>
+    // Muted color signals "this name would normally be clickable, but isn't
+    // right now" (e.g. SolverDebug with no session selected) — distinct from
+    // regular foreground text so users don't try to click expecting the same
+    // affordance as the enabled state.
+    return <span className="text-muted-foreground">{name}</span>
   }
   return (
     <button

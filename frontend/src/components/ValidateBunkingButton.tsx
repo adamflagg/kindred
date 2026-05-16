@@ -118,6 +118,7 @@ export default function ValidateBunkingButton({
           sessionCmId={sessionCmId}
           scenarioId={currentScenario?.id}
           impossibilityReport={preCheckQuery.data?.impossibility_report}
+          preCheckError={preCheckQuery.isError}
         />
       )}
     </>

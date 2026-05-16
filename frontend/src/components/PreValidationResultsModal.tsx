@@ -743,8 +743,12 @@ export default function PreValidationResultsModal({
           SessionHeader (where the Pre-Check button lives) sits outside
           SessionView's BunkRequestProvider tree, so we mount a local
           session-scoped provider here. Provider is hoisted above the
-          selectedCamperId gate so it doesn't churn observers on every
-          panel open/close. ErrorBoundary catches chunk-load failures. */}
+          selectedCamperId gate so opening/closing the details panel doesn't
+          churn the provider's observers. Tradeoff: this fires the provider's
+          two queries (allBunkRequests + /api/satisfaction) on every modal
+          open even if the user never clicks a camper name — both queries
+          are cache-warm in the common case (session header already
+          populated them). ErrorBoundary catches chunk-load failures. */}
       <BunkRequestProvider sessionCmId={sessionCmId}>
         {selectedCamperId && (
           <ErrorBoundary

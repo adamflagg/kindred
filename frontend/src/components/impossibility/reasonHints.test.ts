@@ -34,10 +34,12 @@ describe('camperActionHints', () => {
 })
 
 describe('REASON_HINTS / FRIENDLY_REASON_LABELS coverage', () => {
-  it('FRIENDLY_REASON_LABELS covers every ReasonCode in REASON_HINTS', () => {
+  it('FRIENDLY_REASON_LABELS and REASON_HINTS share the exact same key set', () => {
+    // Bidirectional equality — arrayContaining only catches missing keys; this
+    // also catches a label added without a hint (or vice versa).
     const hintKeys = Object.keys(REASON_HINTS).sort()
     const labelKeys = Object.keys(FRIENDLY_REASON_LABELS).sort()
-    expect(labelKeys).toEqual(expect.arrayContaining(hintKeys))
+    expect(labelKeys).toEqual(hintKeys)
   })
 })
 
