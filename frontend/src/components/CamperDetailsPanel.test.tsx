@@ -360,6 +360,32 @@ describe('CamperDetailsPanel', () => {
       fireEvent.keyDown(document, { key: 'Escape' })
       expect(mockOnClose).not.toHaveBeenCalled()
     })
+
+    // Regression: when the panel is mounted inside a Modal, pressing Escape
+    // should close the panel without also closing the underlying modal.
+    // Both register document-level keydown listeners — the panel uses
+    // capture-phase + stopPropagation so its handler runs first and prevents
+    // the modal's bubble-phase listener from firing.
+    it('stops Escape from reaching outer document-level listeners (LIFO close)', async () => {
+      const outerHandler = vi.fn()
+      document.addEventListener('keydown', outerHandler)
+
+      try {
+        render(<CamperDetailsPanel camperId="12345" onClose={mockOnClose} />)
+        await waitFor(() => {
+          expect(document.querySelector('[data-testid="panel-backdrop"]')).toBeInTheDocument()
+        })
+
+        fireEvent.keyDown(document, { key: 'Escape' })
+
+        const escapeCalls = outerHandler.mock.calls.filter(
+          ([event]) => (event as KeyboardEvent).key === 'Escape'
+        )
+        expect(escapeCalls).toHaveLength(0)
+      } finally {
+        document.removeEventListener('keydown', outerHandler)
+      }
+    })
   })
 
   // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ import { CheckCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useScenario } from '../hooks/useScenario'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
-import { solverService } from '../services/solver'
+import { solverService, type PreCheckCacheValue } from '../services/solver'
 import { queryKeys } from '../utils/queryKeys'
 import PostValidationResultsModal from './PostValidationResultsModal'
 
@@ -62,12 +62,13 @@ export default function ValidateBunkingButton({
   // feasibility property, so the report is valid regardless of solver state —
   // long staleTime + no refetch-on-focus keeps the cache warm and avoids
   // duplicate fetches while the user moves between tabs.
-  const preCheckQuery = useQuery({
+  const preCheckQuery = useQuery<PreCheckCacheValue>({
     queryKey: queryKeys.preCheck(sessionCmId, year),
     queryFn: () => solverService.preValidateRequests(sessionCmId, year, fetchWithAuth),
     enabled: showResults,
     staleTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
+    retry: false,
   })
 
   const handleValidate = async () => {
@@ -115,10 +116,8 @@ export default function ValidateBunkingButton({
           onClose={() => setShowResults(false)}
           results={validationResults}
           sessionCmId={sessionCmId}
-          {...(currentScenario?.id && { scenarioId: currentScenario.id })}
-          {...(preCheckQuery.data?.impossibility_report && {
-            impossibilityReport: preCheckQuery.data.impossibility_report,
-          })}
+          scenarioId={currentScenario?.id}
+          impossibilityReport={preCheckQuery.data?.impossibility_report}
         />
       )}
     </>

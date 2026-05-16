@@ -1,8 +1,23 @@
-// Per-reason hint copy: tells staff what to actually do for each rejection.
-// Shared across PreValidationResultsModal + PostValidationResultsModal so both
-// modals speak the same language about a given impossibility code.
+// Reason-code copy for impossibility modals.
+//
+// Two parallel views on the same set of codes:
+//   - REASON_HINTS — action copy ("what should staff do?")
+//   - FRIENDLY_REASON_LABELS — short noun phrase ("what is this?") for chips
+//
+// Typed against the shared ReasonCode union so adding a new code in one map
+// without the other is a compile error — the gap that 931045ca's self_conflict
+// fix patched at runtime.
 
-export const REASON_HINTS: Record<string, string> = {
+export type ReasonCode =
+  | 'target_not_in_solver'
+  | 'grade_compatibility'
+  | 'cross_session'
+  | 'pair_no_shared_bunk'
+  | 'age_pref_no_eligible_grade'
+  | 'malformed'
+  | 'self_conflict'
+
+export const REASON_HINTS: Record<ReasonCode, string> = {
   target_not_in_solver: 'check enrollment — requested camper not on roster',
   grade_compatibility: 'grade gap too wide — confirm priority with the family',
   cross_session: 'requested friend is in a different session — confirm intent',
@@ -12,10 +27,26 @@ export const REASON_HINTS: Record<string, string> = {
   self_conflict: 'contradicting requests — confirm which preference the family meant',
 }
 
+export const FRIENDLY_REASON_LABELS: Record<ReasonCode, string> = {
+  target_not_in_solver: 'Friend not enrolled',
+  grade_compatibility: 'Grade range too wide',
+  cross_session: 'Different sessions',
+  pair_no_shared_bunk: "Can't share a cabin",
+  age_pref_no_eligible_grade: 'No matching age group available',
+  malformed: 'Incomplete request',
+  self_conflict: 'Contradicting requests',
+}
+
+export function friendlyReasonLabel(code: string): string {
+  return FRIENDLY_REASON_LABELS[code as ReasonCode] ?? code
+}
+
+// Sorted before joining so the same code set always renders identically,
+// regardless of the order the backend emits reason_codes.
 export function camperActionHints(reasonCodes: string[]): string {
   const hints = new Set<string>()
   for (const code of reasonCodes) {
-    hints.add(REASON_HINTS[code] ?? 'review request')
+    hints.add(REASON_HINTS[code as ReasonCode] ?? 'review request')
   }
-  return Array.from(hints).join(' / ')
+  return Array.from(hints).sort().join(' / ')
 }

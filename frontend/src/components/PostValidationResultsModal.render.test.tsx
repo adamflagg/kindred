@@ -608,7 +608,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
       'data-camper-id',
       '42'
@@ -629,7 +629,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
     const provider = await screen.findByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '9876543')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
@@ -657,5 +657,30 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     expect(
       screen.getByText(/requested friend is in a different session — confirm intent/)
     ).toBeInTheDocument()
+  })
+
+  // Scan-it row 1: post-check used to render snake_case reason codes
+  // directly; pre-check has always run them through FRIENDLY_REASON_LABELS.
+  it('renders reason chips with the friendly label, not the raw snake_case code', () => {
+    const report = makeReport([
+      {
+        cm_id: 8,
+        name: 'Liam Garcia',
+        grade: 4,
+        gender: 'M',
+        reason_codes: ['grade_compatibility'],
+      },
+    ])
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+      />
+    )
+    expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
+    expect(screen.queryByText('grade_compatibility')).not.toBeInTheDocument()
   })
 })

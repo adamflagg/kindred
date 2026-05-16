@@ -97,6 +97,11 @@ interface ValidationResult {
   impossibility_report: ImpossibilityReport
 }
 
+// Shared cache type for the pre-check query — written by PreValidateRequestsButton
+// (via queryClient.setQueryData) and read by ValidateBunkingButton's useQuery.
+// Exporting the inferred return type keeps the writer and reader locked together.
+export type PreCheckCacheValue = Awaited<ReturnType<typeof solverService.preValidateRequests>>
+
 interface BunkingValidationResult {
   is_valid: boolean
   errors: Array<{

@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { useSessionList } from '../hooks/useSessionList'
 import { solverService } from '../services/solver'
-import type { ImpossibilityReport } from '../services/solver'
+import type { ImpossibilityReport, PreCheckCacheValue } from '../services/solver'
 import { queryKeys } from '../utils/queryKeys'
 import PreValidationResultsModal from './PreValidationResultsModal'
 
@@ -59,7 +59,7 @@ export default function PreValidateRequestsButton({
       setShowResults(true)
       // Publish to the shared React Query cache so the post-check modal and
       // SolverDebugPage serve from the same source — see #1441 / #1442 part 2.
-      queryClient.setQueryData(queryKeys.preCheck(sessionCmId, year), results)
+      queryClient.setQueryData<PreCheckCacheValue>(queryKeys.preCheck(sessionCmId, year), results)
     } catch (err) {
       console.error('Pre-validation failed:', err)
       setError(err instanceof Error ? err.message : 'Pre-validation failed')

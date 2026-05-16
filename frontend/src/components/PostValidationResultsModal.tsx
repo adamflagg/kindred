@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -16,11 +16,11 @@ import {
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
 import { CamperNameButton } from './impossibility/CamperNameButton'
-import { camperActionHints } from './impossibility/reasonHints'
+import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
+import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
-
-const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
 
 interface FieldStats {
   total: number
@@ -66,7 +66,7 @@ interface PostValidationResultsModalProps {
   isOpen: boolean
   onClose: () => void
   results: ValidationResults
-  scenarioId?: string
+  scenarioId?: string | undefined
   /**
    * CampMinder session id. Required so the click-through CamperDetailsPanel
    * can mount inside a session-scoped BunkRequestProvider — SessionHeader
@@ -81,7 +81,7 @@ interface PostValidationResultsModalProps {
    * same regardless of solver assignments, so showing the pre-check report
    * here closes the loop on "we got 100% — who didn't get fulfilled?"
    */
-  impossibilityReport?: ImpossibilityReport
+  impossibilityReport?: ImpossibilityReport | undefined
 }
 
 // Parse issue into structured display data
@@ -810,7 +810,7 @@ export default function PostValidationResultsModal({
                         key={code}
                         className="rounded-full bg-amber-200 px-2 py-0.5 text-xs text-amber-900"
                       >
-                        {code}
+                        {friendlyReasonLabel(code)}
                       </span>
                     ))}
                   </div>
@@ -943,20 +943,40 @@ export default function PostValidationResultsModal({
           )}
         </div>
       )}
-      {selectedCamperId && (
-        // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
-        // SessionHeader (where the Check-Bunking button lives) sits outside
-        // SessionView's BunkRequestProvider tree, so we mount a local
-        // session-scoped provider here.
-        <BunkRequestProvider sessionCmId={sessionCmId}>
-          <Suspense fallback={null}>
-            <CamperDetailsPanel
-              camperId={selectedCamperId}
-              onClose={() => setSelectedCamperId(null)}
-            />
-          </Suspense>
-        </BunkRequestProvider>
-      )}
+      {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+          SessionHeader (where the Check-Bunking button lives) sits outside
+          SessionView's BunkRequestProvider tree, so we mount a local
+          session-scoped provider here. The provider mount is hoisted above
+          the selectedCamperId gate so it doesn't churn observers on every
+          panel open/close. ErrorBoundary catches chunk-load failures. */}
+      <BunkRequestProvider sessionCmId={sessionCmId}>
+        {selectedCamperId && (
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                <p>Couldn&apos;t load camper details: {error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setSelectedCamperId(null)
+                  }}
+                  className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          >
+            <Suspense fallback={null}>
+              <LazyCamperDetailsPanel
+                camperId={selectedCamperId}
+                onClose={() => setSelectedCamperId(null)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </BunkRequestProvider>
     </Modal>
   )
 }

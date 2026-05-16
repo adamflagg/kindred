@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -17,10 +17,11 @@ import type {
   EntirelyImpossibleMpCamper,
 } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
-import { camperActionHints } from './impossibility/reasonHints'
+import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
-const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
+import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -144,21 +145,6 @@ function getNonCapacityErrors(errors: string[]): string[] {
     .map((e) => e.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper'))
 }
 
-// Friendly labels for impossibility reason codes (staff view)
-const FRIENDLY_REASON_LABELS: Record<string, string> = {
-  grade_compatibility: 'Grade range too wide',
-  cross_session: 'Different sessions',
-  pair_no_shared_bunk: "Can't share a cabin",
-  age_pref_no_eligible_grade: 'No matching age group available',
-  malformed: 'Incomplete request',
-  target_not_in_solver: 'Friend not enrolled',
-  self_conflict: 'Contradicting requests',
-}
-
-function friendlyReasonLabel(code: string): string {
-  return FRIENDLY_REASON_LABELS[code] || code
-}
-
 function EntirelyImpossibleMpSection({
   campers,
   onSelectCamper,
@@ -209,10 +195,13 @@ function RequesteeName({
   r: NonNullable<ImpossibilityReportItem['requestee']>
   onSelectCamper: (id: string) => void
 }) {
+  // Bolding lives on the button itself (cleaner SR semantics than nesting
+  // <button> inside <strong>; visual treatment also stays consistent with
+  // the trailing "(F)" suffix outside the button).
   return (
-    <strong>
+    <span className="font-bold">
       <CamperNameButton cmId={r.cm_id} name={r.name} onSelect={onSelectCamper} /> ({r.gender})
-    </strong>
+    </span>
   )
 }
 
@@ -750,22 +739,40 @@ export default function PreValidationResultsModal({
           )}
         </div>
       )}
-      {selectedCamperId && (
-        // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
-        // SessionHeader (where the Pre-Check button lives) sits outside
-        // SessionView's BunkRequestProvider tree, so we mount a local
-        // session-scoped provider here. React Query keys are shared, so
-        // this doesn't cause duplicate fetches when an ancestor provider
-        // also exists.
-        <BunkRequestProvider sessionCmId={sessionCmId}>
-          <Suspense fallback={null}>
-            <CamperDetailsPanel
-              camperId={selectedCamperId}
-              onClose={() => setSelectedCamperId(null)}
-            />
-          </Suspense>
-        </BunkRequestProvider>
-      )}
+      {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+          SessionHeader (where the Pre-Check button lives) sits outside
+          SessionView's BunkRequestProvider tree, so we mount a local
+          session-scoped provider here. Provider is hoisted above the
+          selectedCamperId gate so it doesn't churn observers on every
+          panel open/close. ErrorBoundary catches chunk-load failures. */}
+      <BunkRequestProvider sessionCmId={sessionCmId}>
+        {selectedCamperId && (
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                <p>Couldn&apos;t load camper details: {error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setSelectedCamperId(null)
+                  }}
+                  className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          >
+            <Suspense fallback={null}>
+              <LazyCamperDetailsPanel
+                camperId={selectedCamperId}
+                onClose={() => setSelectedCamperId(null)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </BunkRequestProvider>
     </Modal>
   )
 }

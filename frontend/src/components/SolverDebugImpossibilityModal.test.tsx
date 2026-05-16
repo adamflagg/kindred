@@ -35,8 +35,8 @@ const stubReport = {
         reason_code: 'grade_compatibility',
         reason_message: 'test',
         request_type: 'bunk_with',
-        requester: { name: 'Pearl', cm_id: 1, grade: 3, gender: 'F' },
-        requestee: { name: 'Riley', cm_id: 2, grade: 5, gender: 'F' },
+        requester: { name: 'Emma Johnson', cm_id: 1, grade: 3, gender: 'F' },
+        requestee: { name: 'Riley Sam', cm_id: 2, grade: 5, gender: 'F' },
         detail: { gap: 2, max_gap_allowed: 1 },
       },
     ],
@@ -47,8 +47,8 @@ const stubReport = {
       reason_code: 'grade_compatibility',
       reason_message: 'test',
       request_type: 'bunk_with',
-      requester: { name: 'Pearl', cm_id: 1, grade: 3, gender: 'F' },
-      requestee: { name: 'Riley', cm_id: 2, grade: 5, gender: 'F' },
+      requester: { name: 'Emma Johnson', cm_id: 1, grade: 3, gender: 'F' },
+      requestee: { name: 'Riley Sam', cm_id: 2, grade: 5, gender: 'F' },
       detail: { gap: 2, max_gap_allowed: 1 },
     },
   ],
@@ -209,7 +209,7 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
         year={2026}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Samuel Johnson' }))
+    fireEvent.click(screen.getByRole('button', { name: /Samuel Johnson/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
       'data-camper-id',
       '999'
@@ -226,7 +226,7 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
         year={2026}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Pearl' }))
+    fireEvent.click(screen.getByRole('button', { name: /Emma Johnson/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '1')
   })
 
@@ -240,7 +240,7 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
         year={2026}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
+    fireEvent.click(screen.getByRole('button', { name: /Riley Sam/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
   })
 
@@ -254,7 +254,7 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
         year={2026}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Samuel Johnson' }))
+    fireEvent.click(screen.getByRole('button', { name: /Samuel Johnson/ }))
     const provider = await screen.findByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '5555555')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
@@ -283,7 +283,97 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
       />
     )
     // Requester still has a button; requestee column shows the dash placeholder.
-    expect(screen.getByRole('button', { name: 'Pearl' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Riley' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Emma Johnson/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Riley Sam/ })).not.toBeInTheDocument()
+  })
+})
+
+// Scan-it row 2: the modal stays mounted across opens (SolverDebugPage gates
+// it on preCheckQuery.data which is stable), so selectedCamperId must be
+// cleared on close — otherwise reopening shows the previously selected camper.
+describe('SolverDebugImpossibilityModal — reset on close', () => {
+  it('does not render the details panel after the modal is closed and reopened', async () => {
+    const { rerender } = render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Emma Johnson/ }))
+    expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
+
+    // Close
+    rerender(
+      <SolverDebugImpossibilityModal
+        isOpen={false}
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+
+    // Reopen
+    rerender(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+  })
+
+  it('clears the selected camper when sessionCmId becomes null', async () => {
+    const { rerender } = render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Emma Johnson/ }))
+    expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
+
+    rerender(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={null}
+        year={2026}
+      />
+    )
+
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+  })
+})
+
+// Scan-it row 8: with no session selected the panel mount is gated, so
+// clicking a name does nothing. Render plain text instead of an interactive
+// button to avoid the dead-click.
+describe('SolverDebugImpossibilityModal — disable click-through when sessionCmId is null', () => {
+  it('renders camper names as plain text (no buttons) when sessionCmId is null', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={stubReport}
+        sessionCmId={null}
+        year={2026}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /Emma Johnson/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Riley Sam/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Riley Sam')).toBeInTheDocument()
   })
 })

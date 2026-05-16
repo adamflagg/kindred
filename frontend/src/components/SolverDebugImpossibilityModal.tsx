@@ -1,10 +1,11 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
-const CamperDetailsPanel = lazy(() => import('./CamperDetailsPanel'))
+import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
 
 const REASON_CHIP_STYLES: Record<string, { bg: string; text: string }> = {
   grade_compatibility: { bg: '#fef3c7', text: '#92400e' },
@@ -91,6 +92,14 @@ export default function SolverDebugImpossibilityModal({
   const [justCopied, setJustCopied] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
 
+  // SolverDebugPage gates this modal on preCheckQuery.data (stable), so the
+  // component stays mounted across isOpen toggles. Clear the selection on
+  // close — and when the session is unset — so a reopened modal doesn't
+  // pop the panel back over the user's next view.
+  useEffect(() => {
+    if (!isOpen || sessionCmId === null) setSelectedCamperId(null)
+  }, [isOpen, sessionCmId])
+
   const sorted = useMemo(() => {
     const arr = [...report.flat]
     arr.sort((a, b) => {
@@ -169,6 +178,7 @@ export default function SolverDebugImpossibilityModal({
                         cmId={c.cm_id}
                         name={c.name}
                         onSelect={setSelectedCamperId}
+                        disabled={sessionCmId === null}
                       />{' '}
                       ({c.cm_id}/g{c.grade}/{c.gender})
                     </span>
@@ -253,6 +263,7 @@ export default function SolverDebugImpossibilityModal({
                         cmId={item.requester.cm_id}
                         name={item.requester.name}
                         onSelect={setSelectedCamperId}
+                        disabled={sessionCmId === null}
                       />{' '}
                       <span className="text-stone-500">
                         ({item.requester.cm_id}/g{item.requester.grade}/{item.requester.gender})
@@ -265,6 +276,7 @@ export default function SolverDebugImpossibilityModal({
                             cmId={item.requestee.cm_id}
                             name={item.requestee.name}
                             onSelect={setSelectedCamperId}
+                            disabled={sessionCmId === null}
                           />{' '}
                           <span className="text-stone-500">
                             ({item.requestee.cm_id}/g{item.requestee.grade}/{item.requestee.gender})
@@ -283,18 +295,39 @@ export default function SolverDebugImpossibilityModal({
           </table>
         )}
       </div>
-      {selectedCamperId && sessionCmId !== null && (
+      {sessionCmId !== null && (
         // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
-        // SolverDebugPage has no ancestor BunkRequestProvider, so we mount
-        // a local session-scoped one here. Gated on sessionCmId — clicks
-        // shouldn't be possible when no session is selected, but be safe.
+        // SolverDebugPage has no ancestor BunkRequestProvider, so we mount a
+        // local session-scoped one here. The provider mount is hoisted above
+        // the selectedCamperId gate so it doesn't churn observers on every
+        // panel open/close. ErrorBoundary catches chunk-load failures.
         <BunkRequestProvider sessionCmId={sessionCmId}>
-          <Suspense fallback={null}>
-            <CamperDetailsPanel
-              camperId={selectedCamperId}
-              onClose={() => setSelectedCamperId(null)}
-            />
-          </Suspense>
+          {selectedCamperId && (
+            <ErrorBoundary
+              fallback={(error, reset) => (
+                <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                  <p>Couldn&apos;t load camper details: {error.message}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      reset()
+                      setSelectedCamperId(null)
+                    }}
+                    className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            >
+              <Suspense fallback={null}>
+                <LazyCamperDetailsPanel
+                  camperId={selectedCamperId}
+                  onClose={() => setSelectedCamperId(null)}
+                />
+              </Suspense>
+            </ErrorBoundary>
+          )}
         </BunkRequestProvider>
       )}
     </Modal>

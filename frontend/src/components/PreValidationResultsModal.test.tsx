@@ -53,10 +53,10 @@ const baseResults = {
 const oneImpossibleItem = {
   request_id: 'r1',
   reason_code: 'grade_compatibility',
-  reason_message: 'Pearl and Riley span 2 grade levels',
+  reason_message: 'Emma and Riley Sam span 2 grade levels',
   request_type: 'bunk_with',
-  requester: { cm_id: 1, name: 'Pearl', grade: 3, gender: 'F' },
-  requestee: { cm_id: 2, name: 'Riley', grade: 5, gender: 'F' },
+  requester: { cm_id: 1, name: 'Emma', grade: 3, gender: 'F' },
+  requestee: { cm_id: 2, name: 'Riley Sam', grade: 5, gender: 'F' },
   detail: { gap: 2, max_gap_allowed: 1 },
 }
 
@@ -179,8 +179,8 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
               reason_code: 'cross_session',
               reason_message: 'different sessions',
               request_type: 'bunk_with',
-              requester: { name: 'Aubrey Engler', cm_id: 10, grade: 4, gender: 'F' },
-              requestee: { name: 'Judith Klein', cm_id: 11, grade: 4, gender: 'F' },
+              requester: { name: 'Olivia Chen', cm_id: 10, grade: 4, gender: 'F' },
+              requestee: { name: 'Samuel Johnson', cm_id: 11, grade: 4, gender: 'F' },
               detail: { requester_session: 1000001, requestee_session: 1000002 },
             },
           ],
@@ -201,7 +201,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     )
 
     expect(screen.getByText(/Pioneer Period/)).toBeInTheDocument()
-    expect(screen.getByText(/Judith Klein/)).toBeInTheDocument()
+    expect(screen.getByText(/Samuel Johnson/)).toBeInTheDocument()
   })
 
   it('cross-gender pair shows requester gender on top line and requestee grade in subtext', () => {
@@ -249,14 +249,14 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
 
     // Top line shows requester's gender — used to be only name + grade.
     // Name is now a click-through button; check the assembled text via parent element.
-    expect(screen.getByRole('button', { name: 'Samuel Johnson' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Samuel Johnson/ })).toBeInTheDocument()
     expect(
       screen.getByText((_, el) => el?.textContent === 'Samuel Johnson (M) · 5th')
     ).toBeInTheDocument()
     // Subtext surfaces requestee gender (in parens, right next to name) and
     // grade (short "Xth" form) — staff scan name → gender → grade left-to-right.
     // Name is now a click-through button; check assembled text via parent.
-    expect(screen.getByRole('button', { name: 'Emma Johnson' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Emma Johnson/ })).toBeInTheDocument()
     expect(screen.getByText((_, el) => el?.textContent === 'Emma Johnson (F)')).toBeInTheDocument()
   })
 
@@ -428,8 +428,8 @@ describe('PreValidationResultsModal — staff-only view', () => {
           grade_compatibility: [
             {
               ...oneImpossibleItem,
-              requester: { cm_id: 1, name: 'Pearl Szasz-Toth', grade: 3, gender: 'F' },
-              requestee: { cm_id: 2, name: 'Riley Raines', grade: 5, gender: 'F' },
+              requester: { cm_id: 1, name: 'Liam Garcia', grade: 3, gender: 'F' },
+              requestee: { cm_id: 2, name: 'Riley Sam', grade: 5, gender: 'F' },
             },
           ],
         },
@@ -447,8 +447,8 @@ describe('PreValidationResultsModal — staff-only view', () => {
       />
     )
     expect(screen.getByText(/grade range too wide/i)).toBeInTheDocument()
-    expect(screen.getByText(/Pearl Szasz-Toth/)).toBeInTheDocument()
-    expect(screen.getByText(/Riley Raines/)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/Riley Sam/)).toBeInTheDocument()
   })
 
   it('renders friendly label + subtext for target_not_in_solver (requestee is null)', () => {
@@ -747,7 +747,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
       />
     )
     expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    fireEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
     const panel = await screen.findByTestId('camper-details-panel')
     expect(panel).toHaveAttribute('data-camper-id', '500')
   })
@@ -762,7 +762,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
         sessionLookup={noopSessionLookup}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Pearl' }))
+    fireEvent.click(screen.getByRole('button', { name: /Emma/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '1')
   })
 
@@ -776,7 +776,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
         sessionLookup={noopSessionLookup}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Riley' }))
+    fireEvent.click(screen.getByRole('button', { name: /Riley Sam/ }))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute('data-camper-id', '2')
   })
 
@@ -792,7 +792,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
     )
     // Pre-existing test data uses cm_id=500; click and assert the panel is
     // wrapped inside a BunkRequestProvider keyed to the modal's session.
-    fireEvent.click(screen.getByRole('button', { name: 'Olivia Chen' }))
+    fireEvent.click(screen.getByRole('button', { name: /Olivia Chen/ }))
     const provider = screen.getByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '1234567')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
@@ -826,7 +826,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
         sessionLookup={noopSessionLookup}
       />
     )
-    expect(screen.getByRole('button', { name: 'Riley Sam' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Riley Sam/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Phantom Friend/ })).not.toBeInTheDocument()
   })
 })
