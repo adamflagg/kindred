@@ -824,9 +824,9 @@ export default function ScenarioComparisonPage() {
                     <ListboxOption
                       value="production"
                       disabled={leftScenarioId === 'production'}
-                      className="listbox-option"
+                      className="listbox-option border-2 border-dashed border-amber-400 bg-amber-50/40 font-semibold dark:bg-amber-900/20"
                     >
-                      CampMinder (Production)
+                      ⬩ CampMinder (Production)
                     </ListboxOption>
                     {scenarios.length > 0 && (
                       <div className="text-muted-foreground border-border mt-1 border-t px-4 py-1.5 text-xs font-semibold tracking-wider uppercase">
