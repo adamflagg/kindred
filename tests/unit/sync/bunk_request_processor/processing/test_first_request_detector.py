@@ -1,4 +1,4 @@
-"""Tests for the is_first_requested helper.
+"""Tests for the is_first_requested helper and detect_first_request.
 
 Replaces the previous PriorityCalculator's slot-0 selection logic with a
 boolean producer signal. Only family BUNK_WITH requests can be first-pick;
@@ -15,6 +15,7 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestType,
 )
 from bunking.sync.bunk_request_processor.processing.first_request_detector import (
+    detect_first_request,
     is_first_requested,
 )
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -309,3 +310,122 @@ class TestEdgeCases:
         assert is_first_requested(family_first, all_reqs) is True
         assert is_first_requested(family_second, all_reqs) is False
         assert is_first_requested(staff_note, all_reqs) is False
+
+
+# ---------------------------------------------------------------------------
+# TG-3: detect_first_request — DetectionResult with priority_keyword_detected
+# ---------------------------------------------------------------------------
+
+
+def _make_parsed_request(
+    raw_text: str = "bunk with Liam",
+    csv_position: int = 1,
+) -> ParsedRequest:
+    """Family BUNK_WITH request factory for detect_first_request tests."""
+    return ParsedRequest(
+        raw_text=raw_text,
+        request_type=RequestType.BUNK_WITH,
+        target_name="Liam Garcia",
+        age_preference=None,
+        source_field=SourceField.BUNK_REQUEST_FORM,
+        confidence=1.0,
+        csv_position=csv_position,
+        metadata={},
+    )
+
+
+def test_priority_keyword_detected_is_true_when_keyword_matches() -> None:
+    """Explicit priority keyword at non-position-1 sets both flags True."""
+    # csv_position=2 proves the boolean is keyword-driven, not positional
+    parsed = _make_parsed_request(
+        raw_text="Liam is our top priority",
+        csv_position=2,
+    )
+    result = detect_first_request(parsed, family_siblings=[])
+    assert result.is_first_requested is True
+    assert result.priority_keyword_detected is True
+
+
+def test_priority_keyword_detected_is_false_for_positional_fallback() -> None:
+    """No keyword present → positional fallback; priority_keyword_detected must be False."""
+    parsed = _make_parsed_request(
+        raw_text="bunk with Olivia Chen",  # no priority keyword
+        csv_position=1,  # positional fallback fires
+    )
+    result = detect_first_request(parsed, family_siblings=[])
+    assert result.is_first_requested is True
+    assert result.priority_keyword_detected is False
+
+
+def test_priority_keyword_detected_is_false_when_sibling_outscores() -> None:
+    """Sibling has keyword → this row loses; priority_keyword_detected must be False."""
+    parsed = _make_parsed_request(raw_text="bunk with Riley Sam", csv_position=1)
+    sibling = _make_parsed_request(raw_text="MUST HAVE Samuel Johnson", csv_position=2)
+    result = detect_first_request(parsed, family_siblings=[sibling])
+    assert result.is_first_requested is False  # sibling's keyword wins
+    assert result.priority_keyword_detected is False  # this row has no keyword
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: detect_first_request early-return paths (non-BUNK_REQUEST_FORM source
+# and non-BUNK_WITH request type)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"source_field": SourceField.BUNKING_NOTES},
+        {"source_field": SourceField.INTERNAL_NOTES},
+        {"source_field": SourceField.STAFF_NOT_BUNK_WITH},
+    ],
+)
+def test_detect_first_request_non_bunk_request_form_source_returns_false(
+    override: dict[str, object],
+) -> None:
+    """Non-BUNK_REQUEST_FORM source always returns (False, False) early."""
+    parsed = ParsedRequest(
+        raw_text="MUST HAVE Emma Johnson",
+        request_type=RequestType.BUNK_WITH,
+        target_name="Emma Johnson",
+        age_preference=None,
+        source_field=override["source_field"],  # type: ignore[arg-type]
+        confidence=1.0,
+        csv_position=1,
+        metadata={},
+    )
+    result = detect_first_request(parsed, family_siblings=[])
+    assert result.is_first_requested is False
+    assert result.priority_keyword_detected is False
+
+
+def test_detect_first_request_non_bunk_with_request_type_returns_false() -> None:
+    """Non-BUNK_WITH request type always returns (False, False) early."""
+    parsed = ParsedRequest(
+        raw_text="MUST HAVE Liam Garcia",
+        request_type=RequestType.AGE_PREFERENCE,
+        target_name=None,
+        age_preference=None,
+        source_field=SourceField.BUNK_REQUEST_FORM,
+        confidence=1.0,
+        csv_position=1,
+        metadata={},
+    )
+    result = detect_first_request(parsed, family_siblings=[])
+    assert result.is_first_requested is False
+    assert result.priority_keyword_detected is False
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: detect_first_request when BOTH parsed and a sibling have a priority
+# keyword — own keyword fires first, result is (True, True)
+# ---------------------------------------------------------------------------
+
+
+def test_detect_first_request_own_keyword_wins_over_sibling_keyword() -> None:
+    """Both rows have a priority keyword; own keyword fires first → (True, True)."""
+    parsed = _make_parsed_request(raw_text="MUST HAVE Olivia Chen", csv_position=2)
+    sibling = _make_parsed_request(raw_text="top priority Liam Garcia", csv_position=1)
+    result = detect_first_request(parsed, family_siblings=[sibling])
+    assert result.is_first_requested is True
+    assert result.priority_keyword_detected is True

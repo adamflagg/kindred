@@ -303,6 +303,7 @@ export type BunkRequestsRecord<
   disposition_reason?: string
   id: string
   is_active?: boolean
+  is_first_requested?: boolean
   is_placeholder?: boolean
   is_reciprocal?: boolean
   keywords_found?: null | Tkeywords_found
@@ -311,7 +312,7 @@ export type BunkRequestsRecord<
   metadata?: null | Tmetadata
   original_text?: string
   parse_notes?: string
-  is_first_requested?: boolean
+  priority_keyword_detected?: boolean
   request_type: BunkRequestsRequestTypeOptions
   requested_person_name?: string
   requestee_id?: number
