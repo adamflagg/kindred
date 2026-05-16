@@ -94,12 +94,98 @@ class TestKeywordPath:
             "most important",
             "must be with",
             "#1",
+            # OBR-validated additions
+            "highest priority",
+            "biggest request",
+            "only request",
+            "(priority)",
         ],
     )
     def test_all_priority_keywords_recognized(self, keyword: str) -> None:
         req = _family_bunk_with(raw_text=f"Emma Johnson {keyword}", csv_position=2)
         other = _family_bunk_with(raw_text="Liam Garcia", csv_position=1)
         assert is_first_requested(req, [req, other]) is True
+
+    def test_allcaps_important_triggers(self) -> None:
+        # IMPORTANT (all-caps) is a case-sensitive match: 7 occurrences in OBR corpus.
+        req = _family_bunk_with(raw_text="Olivia Chen IMPORTANT", csv_position=2)
+        other = _family_bunk_with(raw_text="Mia Garcia", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+    def test_allcaps_important_inline_triggers(self) -> None:
+        # Mirrors real corpus pattern: "1) EMMA JOHNSON (highest priority) 2) Liam Garcia"
+        req = _family_bunk_with(raw_text="1) Ethan Smith IMPORTANT request 2) Mason Lee", csv_position=2)
+        other = _family_bunk_with(raw_text="Sophia Kim", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+
+class TestNewKeywordsCaseInsensitive:
+    """OBR-added keywords are matched case-insensitively (lowercased before scan)."""
+
+    def test_highest_priority_uppercase(self) -> None:
+        req = _family_bunk_with(raw_text="Emma Johnson (HIGHEST PRIORITY)", csv_position=2)
+        other = _family_bunk_with(raw_text="Liam Garcia", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+    def test_biggest_request_mixed_case(self) -> None:
+        req = _family_bunk_with(raw_text="Her Biggest Request is Olivia Chen", csv_position=2)
+        other = _family_bunk_with(raw_text="Riley Sam", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+    def test_only_request_lowercase(self) -> None:
+        req = _family_bunk_with(raw_text="our only request is Mia Garcia", csv_position=2)
+        other = _family_bunk_with(raw_text="Emma Johnson", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+    def test_priority_in_parens_inline(self) -> None:
+        # Mirrors corpus: "1. Emma Johnson (priority) 2. Liam Garcia"
+        req = _family_bunk_with(raw_text="1. Sophia Kim (priority) 2. Ethan Smith", csv_position=2)
+        other = _family_bunk_with(raw_text="Mason Lee", csv_position=1)
+        assert is_first_requested(req, [req, other]) is True
+
+
+class TestImportantCaseSensitivity:
+    """IMPORTANT is case-sensitive: only the ALL-CAPS spelling triggers.
+    Lowercase 'important' and mixed-case 'Important' must NOT trigger."""
+
+    def test_lowercase_important_does_not_trigger(self) -> None:
+        # "important" (lowercase) is a soft/common word — not a priority signal.
+        req = _family_bunk_with(raw_text="it is important to Eliana that she be with her cousin", csv_position=2)
+        other = _family_bunk_with(raw_text="Emma Johnson", csv_position=1)
+        # No keyword → falls through to csv_position logic; position=2 → False.
+        assert is_first_requested(req, [req, other]) is False
+
+    def test_mixed_case_important_does_not_trigger(self) -> None:
+        req = _family_bunk_with(raw_text="Liam Garcia Important", csv_position=2)
+        other = _family_bunk_with(raw_text="Olivia Chen", csv_position=1)
+        assert is_first_requested(req, [req, other]) is False
+
+    def test_titlecase_important_does_not_trigger(self) -> None:
+        req = _family_bunk_with(raw_text="Riley Sam - Important request", csv_position=2)
+        other = _family_bunk_with(raw_text="Mia Garcia", csv_position=1)
+        assert is_first_requested(req, [req, other]) is False
+
+
+class TestSoftMarkersExcluded:
+    """Soft markers ('if possible', 'ideally', 'would prefer', 'hoping') are
+    deliberately excluded — they signal flexibility, not urgency."""
+
+    @pytest.mark.parametrize(
+        "soft_phrase",
+        [
+            "if possible",
+            "ideally",
+            "would prefer",
+            "hoping",
+            "would love",
+            "would be great",
+        ],
+    )
+    def test_soft_marker_does_not_trigger(self, soft_phrase: str) -> None:
+        req = _family_bunk_with(raw_text=f"Emma Johnson {soft_phrase}", csv_position=2)
+        other = _family_bunk_with(raw_text="Liam Garcia", csv_position=1)
+        # Soft marker present but no hard keyword → csv_position=2 → False.
+        assert is_first_requested(req, [req, other]) is False
 
 
 class TestNonFamilyBunkWithReturnsFalse:
