@@ -138,7 +138,7 @@ def _record_item(
             bucket = classify_request(req.source_field).value
         except ValueError:
             logger.debug(
-                "impossibility: unknown source_field %r on request %s — bucket=None",
+                "impossibility: unknown source_field source_field=%r request_id=%r bucket=None",
                 req.source_field,
                 req.id,
             )

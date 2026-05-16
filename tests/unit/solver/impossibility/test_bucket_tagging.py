@@ -108,4 +108,7 @@ def test_unknown_source_field_yields_bucket_none(mock_config, caplog):
     assert len(report.flat) == 1
     assert report.flat[0].bucket is None
     assert "impossibility: unknown source_field" in caplog.text
-    assert "totally_made_up_value" in caplog.text
+    # Per the repo logging contract (CLAUDE.md): "Format log messages as ... key=value".
+    # Assert structured key=value pairs rather than prose interpolation.
+    assert "source_field='totally_made_up_value'" in caplog.text
+    assert "request_id='r1'" in caplog.text

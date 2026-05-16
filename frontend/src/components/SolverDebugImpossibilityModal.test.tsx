@@ -29,17 +29,19 @@ function makeRealLocalStorage() {
   }
 }
 
-// Three-item report covering all three buckets — used by most filter tests.
-function makeThreeBucketReport(): ImpossibilityReport {
+// Six-item report covering all three buckets + a multi-reason request.
+// Olivia↔Riley appears twice (two reason codes, same request_id) — the
+// explicit Option-B trade-off.
+function makeReport(): ImpossibilityReport {
   return {
-    total_impossible: 3,
-    affected_campers: 5,
+    total_impossible: 6,
+    affected_campers: 8,
     by_reason: {},
     flat: [
       {
         request_id: 'r1',
         reason_code: 'cross_session',
-        reason_message: 'cross-session',
+        reason_message: '',
         request_type: 'bunk_with',
         requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
         requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
@@ -48,8 +50,38 @@ function makeThreeBucketReport(): ImpossibilityReport {
       },
       {
         request_id: 'r2',
+        reason_code: 'grade_compatibility',
+        reason_message: '',
+        request_type: 'bunk_with',
+        requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
+        requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
+        detail: { grade_a: 7, grade_b: 7, span: 0 },
+        bucket: 'material_parent',
+      },
+      {
+        request_id: 'r2',
+        reason_code: 'pair_no_shared_bunk',
+        reason_message: '',
+        request_type: 'bunk_with',
+        requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
+        requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
+        detail: { shared_bunks: 0 },
+        bucket: 'material_parent',
+      },
+      {
+        request_id: 'r3',
+        reason_code: 'age_pref_no_eligible_grade',
+        reason_message: '',
+        request_type: 'age_preference',
+        requester: { cm_id: 1000567, name: 'Samuel Johnson', grade: 10, gender: 'M' },
+        requestee: null,
+        detail: { prefers: 'younger', grade: 10 },
+        bucket: 'material_parent',
+      },
+      {
+        request_id: 'r4',
         reason_code: 'target_not_in_solver',
-        reason_message: 'target absent',
+        reason_message: '',
         request_type: 'socialize_with',
         requester: { cm_id: 1000345, name: 'Ethan Wilson', grade: 8, gender: 'M' },
         requestee: { cm_id: 1000891, name: 'Mia Brown', grade: 8, gender: 'F' },
@@ -57,9 +89,9 @@ function makeThreeBucketReport(): ImpossibilityReport {
         bucket: 'immaterial_parent',
       },
       {
-        request_id: 'r3',
+        request_id: 'r5',
         reason_code: 'malformed',
-        reason_message: 'malformed note',
+        reason_message: '',
         request_type: 'note',
         requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
         requestee: null,
@@ -67,534 +99,322 @@ function makeThreeBucketReport(): ImpossibilityReport {
         bucket: 'staff',
       },
     ],
-    by_bucket_count: { material_parent: 1, immaterial_parent: 1, staff: 1 },
+    by_bucket_count: { material_parent: 4, immaterial_parent: 1, staff: 1 },
   }
 }
 
-describe('SolverDebugImpossibilityModal — filter chip state machine', () => {
-  let realStorage: ReturnType<typeof makeRealLocalStorage>
+// Row helper — find data rows in the body (skip header row).
+function bodyRows() {
+  return screen.getAllByRole('row').slice(1)
+}
 
+// Scoped queries — restrict to the table body to avoid collision with filter
+// chips at the top of the modal.
+function tbody(): HTMLElement {
+  const table = screen.getByRole('table')
+  const body = table.querySelector('tbody')
+  if (!body) throw new Error('expected a <tbody>')
+  return body as HTMLElement
+}
+function rowChipsByLabel(label: string): HTMLElement[] {
+  return within(tbody()).queryAllByText(label)
+}
+
+describe('SolverDebugImpossibilityModal — Bucket column', () => {
   beforeEach(() => {
-    realStorage = makeRealLocalStorage()
-    vi.stubGlobal('localStorage', realStorage)
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
   })
-
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
-  it('defaults to all-on (renders all three bucket sections)', () => {
+  it('renders a Bucket column header to the left of Reason', () => {
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={makeThreeBucketReport()}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent?.trim())
+    // Bucket should be the first column, Reason second
+    expect(headers[0]?.replace(/[↑↓↕]/g, '').trim()).toBe('Bucket')
+    expect(headers[1]?.replace(/[↑↓↕]/g, '').trim()).toBe('Reason')
   })
 
-  it('clicking MP chip isolates to MP-only', async () => {
-    const user = userEvent.setup()
+  it('renders one MP/IMP/STAFF chip per row in the Bucket column', () => {
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={makeThreeBucketReport()}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    await user.click(screen.getByRole('button', { name: /^mp/i }))
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^immaterial parent$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^staff$/i })).not.toBeInTheDocument()
-  })
-
-  it('clicking the All chip after isolation restores all sections', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^mp/i }))
-    await user.click(screen.getByRole('button', { name: /^all/i }))
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
-  })
-
-  it('clicking an isolated bucket again returns to all-on', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^mp/i })) // isolate
-    await user.click(screen.getByRole('button', { name: /^mp/i })) // toggle off → all-on
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
-  })
-
-  it('clicking a different bucket while isolated switches the isolation', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^mp/i }))
-    await user.click(screen.getByRole('button', { name: /^imp/i }))
-    expect(screen.queryByRole('region', { name: /^material parent$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^staff$/i })).not.toBeInTheDocument()
-  })
-
-  it('persists isolated state to localStorage and restores it on remount', async () => {
-    const user = userEvent.setup()
-    const props = {
-      isOpen: true,
-      onClose: () => {},
-      report: makeThreeBucketReport(),
-      sessionCmId: 12,
-      year: 2026,
-    }
-    const { unmount } = render(<SolverDebugImpossibilityModal {...props} />)
-    await user.click(screen.getByRole('button', { name: /^staff/i }))
-    expect(localStorage.getItem(FILTER_STORAGE_KEY)).toBe('staff')
-    unmount()
-
-    render(<SolverDebugImpossibilityModal {...props} />)
-    expect(screen.queryByRole('region', { name: /^material parent$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
-  })
-
-  it('renders "from last open" indicator when persisted state is not all-on', () => {
-    localStorage.setItem(FILTER_STORAGE_KEY, 'material_parent')
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    expect(screen.getByText(/from last open/i)).toBeInTheDocument()
-  })
-
-  it('omits "from last open" indicator when state is all-on', () => {
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    expect(screen.queryByText(/from last open/i)).not.toBeInTheDocument()
-  })
-
-  it('falls back to all-on when localStorage contains an invalid value', () => {
-    localStorage.setItem(FILTER_STORAGE_KEY, 'totally_bogus_value')
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={makeThreeBucketReport()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
+    // 4 MP rows + 1 IMP row + 1 STAFF row — count within tbody only so the
+    // filter chips above the table don't double-count.
+    expect(rowChipsByLabel('MP')).toHaveLength(4)
+    expect(rowChipsByLabel('IMP')).toHaveLength(1)
+    expect(rowChipsByLabel('STAFF')).toHaveLength(1)
   })
 })
 
-describe('SolverDebugImpossibilityModal — bucket sections + grouped rows', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('renders one row per request_id with multi-reason chips stacked', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 2,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'pair_no_shared_bunk',
-          reason_message: 'no shared bunk',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-          requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-          detail: { shared_bunks: 0 },
-          bucket: 'material_parent',
-        },
-        {
-          request_id: 'r1',
-          reason_code: 'grade_compatibility',
-          reason_message: 'grade gap',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-          requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-          detail: { grade_a: 7, grade_b: 7, span: 0 },
-          bucket: 'material_parent',
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    const section = screen.getByRole('region', { name: /^material parent$/i })
-    // Exactly one CamperNameButton labeled "Olivia Chen" in the row area
-    const oliviaButtons = within(section).getAllByRole('button', { name: /Olivia Chen/ })
-    expect(oliviaButtons).toHaveLength(1)
-    // Both reason chips present in the single row
-    expect(within(section).getByText('pair_no_shared_bunk')).toBeInTheDocument()
-    expect(within(section).getByText('grade_compatibility')).toBeInTheDocument()
+describe('SolverDebugImpossibilityModal — filter chips', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('orders reason sub-rows alphabetically by reason_code', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 2,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'pair_no_shared_bunk',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-          requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-          detail: { shared_bunks: 0 },
-          bucket: 'material_parent',
-        },
-        {
-          request_id: 'r1',
-          reason_code: 'grade_compatibility',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-          requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-          detail: { span: 0 },
-          bucket: 'material_parent',
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
+  it('renders All/MP/IMP/Staff chips with counts from by_bucket_count', () => {
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    const section = screen.getByRole('region', { name: /^material parent$/i })
-    const chipTexts = within(section)
-      .getAllByText(/grade_compatibility|pair_no_shared_bunk/)
-      .map((el) => el.textContent ?? '')
-    expect(chipTexts[0]).toBe('grade_compatibility')
-    expect(chipTexts[1]).toBe('pair_no_shared_bunk')
+    // total_impossible=6 for All; per-bucket from by_bucket_count
+    expect(screen.getByRole('button', { name: /All\s*6/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^MP\s*4/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^IMP\s*1/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Staff\s*1/ })).toBeInTheDocument()
   })
 
-  it('renders inline k=v detail with amber keys', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: { req_sess: 12, target_sess: 13 },
-          bucket: 'material_parent',
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
+  it('defaults to All-on (all 6 rows visible)', () => {
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    expect(screen.getByText('req_sess')).toBeInTheDocument()
-    expect(screen.getByText('target_sess')).toBeInTheDocument()
-    expect(screen.getByText('12')).toBeInTheDocument()
-    expect(screen.getByText('13')).toBeInTheDocument()
-    // Key has amber color class
-    expect(screen.getByText('req_sess')).toHaveClass('text-amber-700')
+    expect(bodyRows()).toHaveLength(6)
   })
 
-  it('hides empty bucket sections but their chip still shows 0 count', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'malformed',
-          reason_message: '',
-          request_type: 'note',
-          requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
-          requestee: null,
-          detail: { field: 'internal_notes' },
-          bucket: 'staff',
-        },
-      ],
-      by_bucket_count: { staff: 1 },
-    }
+  it('clicking MP chip isolates table to MP rows only', async () => {
+    const user = userEvent.setup()
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    expect(screen.queryByRole('region', { name: /^material parent$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^immaterial parent$/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
-    // MP chip still renders with 0
-    const mpChip = screen.getByRole('button', { name: /^mp/i })
-    expect(mpChip).toHaveTextContent('0')
+    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    // 4 MP rows visible, IMP/STAFF rows gone (filter chips above the table
+    // still show all four — they're persistent navigation, not row markers).
+    expect(bodyRows()).toHaveLength(4)
+    expect(rowChipsByLabel('IMP')).toHaveLength(0)
+    expect(rowChipsByLabel('STAFF')).toHaveLength(0)
+  })
+
+  it('clicking MP chip a second time toggles back to All-on', async () => {
+    const user = userEvent.setup()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    const mpChip = screen.getByRole('button', { name: /^MP\s*4/ })
+    await user.click(mpChip)
+    await user.click(mpChip)
+    expect(bodyRows()).toHaveLength(6)
+  })
+
+  it('clicking the All chip from any isolated state restores all rows', async () => {
+    const user = userEvent.setup()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /^IMP\s*1/ }))
+    expect(bodyRows()).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: /All\s*6/ }))
+    expect(bodyRows()).toHaveLength(6)
+  })
+
+  it('clicking a different bucket while isolated switches isolation', async () => {
+    const user = userEvent.setup()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    expect(bodyRows()).toHaveLength(4)
+    await user.click(screen.getByRole('button', { name: /^Staff\s*1/ }))
+    expect(bodyRows()).toHaveLength(1)
+    expect(rowChipsByLabel('STAFF')).toHaveLength(1)
   })
 })
 
-describe('SolverDebugImpossibilityModal — MP stuck-block + row pinning', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('renders stuck-block under MP section header when mp_campers_entirely_impossible is non-empty', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: { req_sess: 12 },
-          bucket: 'material_parent',
-        },
-      ],
-      mp_campers_entirely_impossible: [
-        {
-          cm_id: 1000123,
-          name: 'Emma Johnson',
-          grade: 8,
-          gender: 'F',
-          reason_codes: ['cross_session'],
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    const section = screen.getByRole('region', { name: /^material parent$/i })
-    const stuckBlock = within(section).getByTestId('mp-stuck-block')
-    expect(within(stuckBlock).getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(within(stuckBlock).getByText('cross_session')).toBeInTheDocument()
+describe('SolverDebugImpossibilityModal — filter localStorage persistence', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('omits the stuck-block when mp_campers_entirely_impossible is empty', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: {},
-          bucket: 'material_parent',
-        },
-      ],
-      mp_campers_entirely_impossible: [],
-      by_bucket_count: { material_parent: 1 },
-    }
+  it('persists isolated state to localStorage', async () => {
+    const user = userEvent.setup()
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    expect(screen.queryByTestId('mp-stuck-block')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    expect(window.localStorage.getItem(FILTER_STORAGE_KEY)).toBe('material_parent')
   })
 
-  it('pins stuck request rows to the top of the MP section', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 2,
-      affected_campers: 4,
-      by_reason: {},
-      flat: [
-        // Aaron is alphabetically earlier but NOT stuck → must appear AFTER Emma
-        {
-          request_id: 'r_aaron',
-          reason_code: 'pair_no_shared_bunk',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 999, name: 'Aaron Brown', grade: 7, gender: 'M' },
-          requestee: { cm_id: 998, name: 'Mason Lee', grade: 7, gender: 'M' },
-          detail: { shared_bunks: 0 },
-          bucket: 'material_parent',
-        },
-        {
-          request_id: 'r_emma',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: { req_sess: 12 },
-          bucket: 'material_parent',
-        },
-      ],
-      mp_campers_entirely_impossible: [
-        {
-          cm_id: 1000123,
-          name: 'Emma Johnson',
-          grade: 8,
-          gender: 'F',
-          reason_codes: ['cross_session'],
-        },
-      ],
-      by_bucket_count: { material_parent: 2 },
-    }
+  it('rehydrates the persisted filter on mount', () => {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, 'immaterial_parent')
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    const section = screen.getByRole('region', { name: /^material parent$/i })
-    const rows = within(section).getAllByRole('row')
-    // First data row (excluding the stuck-block, which is a div) is Emma's
-    expect(within(rows[0]!).getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(within(rows[1]!).getByText(/Aaron Brown/)).toBeInTheDocument()
+    // Should land on IMP-only (1 row)
+    expect(bodyRows()).toHaveLength(1)
+    expect(rowChipsByLabel('IMP')).toHaveLength(1)
   })
 
-  it('marks stuck rows with bg-red-50 class and 🛑 prefix', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: {},
-          bucket: 'material_parent',
-        },
-      ],
-      mp_campers_entirely_impossible: [
-        {
-          cm_id: 1000123,
-          name: 'Emma Johnson',
-          grade: 8,
-          gender: 'F',
-          reason_codes: ['cross_session'],
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
+  it('falls back to All when localStorage contains an invalid value', () => {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, 'nonsense_value')
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={report}
+        report={makeReport()}
         sessionCmId={12}
         year={2026}
       />
     )
-    const section = screen.getByRole('region', { name: /^material parent$/i })
-    const row = within(section).getAllByRole('row')[0]!
-    expect(row).toHaveClass('bg-red-50')
-    expect(within(row).getByText(/🛑/)).toBeInTheDocument()
+    expect(bodyRows()).toHaveLength(6)
   })
 })
 
-describe('SolverDebugImpossibilityModal — edge cases', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
+describe('SolverDebugImpossibilityModal — multi-reason rows', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders multi-reason requests as separate rows (Olivia↔Riley appears twice)', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // Each row uses CamperNameButton which exposes aria-label="Open details for {name}"
+    // Olivia is the requester in two rows (grade_compatibility + pair_no_shared_bunk)
+    expect(screen.getAllByRole('button', { name: 'Open details for Olivia Chen' }).length).toBe(2)
+    expect(screen.getAllByRole('button', { name: 'Open details for Riley Sam' }).length).toBe(2)
+  })
+})
+
+describe('SolverDebugImpossibilityModal — sortable headers preserved from main', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('defaults to sort by reason ascending', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    const reasonHeader = screen
+      .getAllByRole('columnheader')
+      .find((h) => h.textContent?.includes('Reason'))
+    expect(reasonHeader).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  it('clicking Camper A header switches sort to name and shows ascending', async () => {
+    const user = userEvent.setup()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /sort by camper a/i }))
+    const camperHeader = screen
+      .getAllByRole('columnheader')
+      .find((h) => h.textContent?.includes('Camper A'))
+    expect(camperHeader).toHaveAttribute('aria-sort', 'ascending')
+  })
+})
+
+describe('SolverDebugImpossibilityModal — preserved behavior from main', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
   it('renders the green "no issues" block when total_impossible is zero', () => {
+    const empty: ImpossibilityReport = {
+      total_impossible: 0,
+      affected_campers: 0,
+      by_reason: {},
+      flat: [],
+      by_bucket_count: {},
+    }
     render(
       <SolverDebugImpossibilityModal
         isOpen
         onClose={() => {}}
-        report={{
-          total_impossible: 0,
-          affected_campers: 0,
-          by_reason: {},
-          flat: [],
-          by_bucket_count: {},
-        }}
+        report={empty}
         sessionCmId={12}
         year={2026}
       />
@@ -602,9 +422,118 @@ describe('SolverDebugImpossibilityModal — edge cases', () => {
     expect(screen.getByText(/no issues detected/i)).toBeInTheDocument()
   })
 
-  it('shows the empty-bucket placeholder when isolated to an empty bucket', async () => {
-    const user = userEvent.setup()
+  it('renders the red stuck-banner above the table when mp_campers_entirely_impossible is non-empty', () => {
     const report: ImpossibilityReport = {
+      ...makeReport(),
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000123,
+          name: 'Emma Johnson',
+          grade: 8,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+        },
+      ],
+    }
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={report}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    expect(screen.getByText(/1 entirely-impossible MP campers/)).toBeInTheDocument()
+  })
+
+  it('Copy JSON button copies the full unfiltered report even when filter is isolated', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    // The component routes through navigator.clipboard only when both the
+    // clipboard API is present AND the page is in a secure context. jsdom
+    // defaults isSecureContext to false, so stub it true for this test.
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    })
+    const report = makeReport()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={report}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /^Staff\s*1/ })) // isolate to staff
+    await user.click(screen.getByRole('button', { name: /copy json/i }))
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify(report, null, 2))
+  })
+
+  it('Copy JSON falls back to execCommand when not in a secure context (LAN HTTP)', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: false,
+    })
+    // jsdom doesn't define document.execCommand by default — install it as a
+    // mock before spying, then restore afterward.
+    const execMock = vi.fn().mockReturnValue(true)
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execMock,
+    })
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /copy json/i }))
+    expect(execMock).toHaveBeenCalledWith('copy')
+    Reflect.deleteProperty(document, 'execCommand')
+  })
+
+  it('wraps every camper name with CamperNameButton', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // Sample two: Emma (requester in r1) and Mia Brown (requestee in r4)
+    expect(
+      screen.getByRole('button', { name: 'Open details for Emma Johnson' })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open details for Mia Brown' })).toBeInTheDocument()
+  })
+})
+
+describe('SolverDebugImpossibilityModal — defensive rendering', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders chips without crashing when by_bucket_count is missing from the response', () => {
+    // Simulates a stale or partially-marshalled API response that omits
+    // by_bucket_count. The modal must fall back to 0 per chip, not throw
+    // "Cannot read properties of undefined (reading 'material_parent')".
+    const report = {
       total_impossible: 1,
       affected_campers: 1,
       by_reason: {},
@@ -620,22 +549,35 @@ describe('SolverDebugImpossibilityModal — edge cases', () => {
           bucket: 'material_parent',
         },
       ],
-      by_bucket_count: { material_parent: 1 },
-    }
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^staff/i }))
-    expect(screen.getByText(/No impossibilities in this bucket/i)).toBeInTheDocument()
+      // by_bucket_count intentionally omitted
+    } as unknown as ImpossibilityReport
+    expect(() =>
+      render(
+        <SolverDebugImpossibilityModal
+          isOpen
+          onClose={() => {}}
+          report={report}
+          sessionCmId={12}
+          year={2026}
+        />
+      )
+    ).not.toThrow()
+    // Filter chips still render (with fallback "0" counts)
+    expect(screen.getByRole('button', { name: /^MP/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^IMP/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Staff/ })).toBeInTheDocument()
+  })
+})
+
+describe('SolverDebugImpossibilityModal — bucket=null handling', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('renders an Unbucketed section for items with bucket=null', () => {
+  it('renders bucket=null rows with em-dash in the Bucket column when filter=all', () => {
     const report: ImpossibilityReport = {
       total_impossible: 1,
       affected_campers: 1,
@@ -643,12 +585,12 @@ describe('SolverDebugImpossibilityModal — edge cases', () => {
       flat: [
         {
           request_id: 'r1',
-          reason_code: 'malformed',
+          reason_code: 'cross_session',
           reason_message: '',
-          request_type: 'note',
-          requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
-          requestee: null,
-          detail: { field: 'unknown_field_value' },
+          request_type: 'bunk_with',
+          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
+          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
+          detail: {},
           bucket: null,
         },
       ],
@@ -663,19 +605,20 @@ describe('SolverDebugImpossibilityModal — edge cases', () => {
         year={2026}
       />
     )
-    const section = screen.getByRole('region', { name: /unbucketed/i })
-    expect(within(section).getByText(/Noah Davis/)).toBeInTheDocument()
+    const rows = bodyRows()
+    expect(rows).toHaveLength(1)
+    const firstRow = rows[0]
+    if (!firstRow) throw new Error('expected one row')
+    // The Bucket cell of the row uses an em-dash placeholder
+    const cells = within(firstRow).getAllByRole('cell')
+    expect(cells[0]?.textContent).toBe('—')
   })
-})
 
-describe('SolverDebugImpossibilityModal — preserved behavior', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('wraps every camper name (pair + stuck-block) with CamperNameButton', () => {
+  it('hides bucket=null rows when an isolated bucket filter is active', async () => {
+    const user = userEvent.setup()
     const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
+      total_impossible: 2,
+      affected_campers: 2,
       by_reason: {},
       flat: [
         {
@@ -688,14 +631,15 @@ describe('SolverDebugImpossibilityModal — preserved behavior', () => {
           detail: {},
           bucket: 'material_parent',
         },
-      ],
-      mp_campers_entirely_impossible: [
         {
-          cm_id: 1000123,
-          name: 'Emma Johnson',
-          grade: 8,
-          gender: 'F',
-          reason_codes: ['cross_session'],
+          request_id: 'r2',
+          reason_code: 'malformed',
+          reason_message: '',
+          request_type: 'note',
+          requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
+          requestee: null,
+          detail: {},
+          bucket: null,
         },
       ],
       by_bucket_count: { material_parent: 1 },
@@ -709,308 +653,9 @@ describe('SolverDebugImpossibilityModal — preserved behavior', () => {
         year={2026}
       />
     )
-    // CamperNameButton exposes aria-label="Open details for {name}".
-    // Emma appears in both the stuck-block AND the pinned pair row → ≥ 2 buttons.
-    // Liam appears only in the pair row → exactly 1 button.
-    expect(
-      screen.getAllByRole('button', { name: 'Open details for Emma Johnson' }).length
-    ).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole('button', { name: 'Open details for Liam Garcia' })).toBeInTheDocument()
-  })
-
-  it('Copy JSON button copies the full unfiltered report even when filter is isolated', async () => {
-    const user = userEvent.setup()
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    })
-    const report = makeThreeBucketReport()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^staff/i })) // isolate to staff
-    await user.click(screen.getByRole('button', { name: /copy json/i }))
-    expect(writeText).toHaveBeenCalledWith(JSON.stringify(report, null, 2))
-  })
-})
-
-// ---------- new safety-net behaviors ----------
-
-function reportWithStuckCamper(): ImpossibilityReport {
-  return {
-    total_impossible: 3,
-    affected_campers: 5,
-    by_reason: {},
-    flat: [
-      {
-        request_id: 'r_mp',
-        reason_code: 'cross_session',
-        reason_message: '',
-        request_type: 'bunk_with',
-        requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-        requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-        detail: {},
-        bucket: 'material_parent',
-      },
-      {
-        request_id: 'r_imp',
-        reason_code: 'target_not_in_solver',
-        reason_message: '',
-        request_type: 'socialize_with',
-        requester: { cm_id: 1000345, name: 'Ethan Wilson', grade: 8, gender: 'M' },
-        requestee: { cm_id: 1000891, name: 'Mia Brown', grade: 8, gender: 'F' },
-        detail: {},
-        bucket: 'immaterial_parent',
-      },
-      {
-        request_id: 'r_staff',
-        reason_code: 'malformed',
-        reason_message: '',
-        request_type: 'note',
-        requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
-        requestee: null,
-        detail: {},
-        bucket: 'staff',
-      },
-    ],
-    mp_campers_entirely_impossible: [
-      {
-        cm_id: 1000123,
-        name: 'Emma Johnson',
-        grade: 8,
-        gender: 'F',
-        reason_codes: ['cross_session'],
-      },
-    ],
-    by_bucket_count: { material_parent: 1, immaterial_parent: 1, staff: 1 },
-  }
-}
-
-describe('SolverDebugImpossibilityModal — stuck rollup visibility across filters', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('shows in-section stuck-block when filter=all (no hoisted duplicate)', () => {
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    expect(screen.getByTestId('mp-stuck-block')).toBeInTheDocument()
-    expect(screen.queryByTestId('mp-stuck-block-hoisted')).not.toBeInTheDocument()
-  })
-
-  it('shows in-section stuck-block when filter=material_parent (no hoisted duplicate)', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^mp/i }))
-    expect(screen.getByTestId('mp-stuck-block')).toBeInTheDocument()
-    expect(screen.queryByTestId('mp-stuck-block-hoisted')).not.toBeInTheDocument()
-  })
-
-  it('hoists stuck-block above bucket sections when filter=immaterial_parent', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^imp/i }))
-    const hoisted = screen.getByTestId('mp-stuck-block-hoisted')
-    expect(hoisted).toBeInTheDocument()
-    // The in-section block is gone because the MP section itself is hidden.
-    expect(screen.queryByTestId('mp-stuck-block')).not.toBeInTheDocument()
-    expect(within(hoisted).getByText(/Emma Johnson/)).toBeInTheDocument()
-  })
-
-  it('hoists stuck-block above bucket sections when filter=staff', async () => {
-    const user = userEvent.setup()
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^staff/i }))
-    expect(screen.getByTestId('mp-stuck-block-hoisted')).toBeInTheDocument()
-    expect(screen.queryByTestId('mp-stuck-block')).not.toBeInTheDocument()
-  })
-
-  it('omits both stuck-blocks when mp_campers_entirely_impossible is empty', async () => {
-    const user = userEvent.setup()
-    const report = reportWithStuckCamper()
-    report.mp_campers_entirely_impossible = []
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^staff/i }))
-    expect(screen.queryByTestId('mp-stuck-block')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('mp-stuck-block-hoisted')).not.toBeInTheDocument()
-  })
-})
-
-describe('SolverDebugImpossibilityModal — localStorage failure safety', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  function throwingStorage(failOn: 'get' | 'set') {
-    return {
-      getItem: () => {
-        if (failOn === 'get') throw new Error('SecurityError: storage disabled')
-        return null
-      },
-      setItem: () => {
-        if (failOn === 'set') throw new Error('QuotaExceededError')
-      },
-      removeItem: () => {},
-      clear: () => {},
-      key: () => null,
-      get length() {
-        return 0
-      },
-    }
-  }
-
-  it('falls back to all-on when localStorage.getItem throws', () => {
-    vi.stubGlobal('localStorage', throwingStorage('get'))
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    // All three sections render because filter defaulted to 'all'.
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^immaterial parent$/i })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /^staff$/i })).toBeInTheDocument()
-  })
-
-  it('does not crash on chip click when localStorage.setItem throws', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('localStorage', throwingStorage('set'))
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={reportWithStuckCamper()}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /^mp/i }))
-    // Click succeeded → MP isolated, IMP/Staff sections gone.
-    expect(screen.getByRole('region', { name: /^material parent$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^immaterial parent$/i })).not.toBeInTheDocument()
-  })
-})
-
-describe('SolverDebugImpossibilityModal — unknown bucket runtime guard', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('routes items with unknown bucket strings to Unbucketed without crashing', () => {
-    const report = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: {},
-          // Simulate a backend that emits a bucket value the frontend doesn't recognize.
-          bucket: 'newly_added_bucket' as unknown as 'material_parent',
-        },
-      ],
-      by_bucket_count: {},
-    } as ImpossibilityReport
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    const section = screen.getByRole('region', { name: /unbucketed/i })
-    expect(within(section).getByText(/Emma Johnson/)).toBeInTheDocument()
-  })
-})
-
-describe('SolverDebugImpossibilityModal — compactDetail nested object rendering', () => {
-  beforeEach(() => localStorage.clear())
-  afterEach(() => localStorage.clear())
-
-  it('serializes nested object detail values as JSON, not [object Object]', () => {
-    const report: ImpossibilityReport = {
-      total_impossible: 1,
-      affected_campers: 1,
-      by_reason: {},
-      flat: [
-        {
-          request_id: 'r1',
-          reason_code: 'cross_session',
-          reason_message: '',
-          request_type: 'bunk_with',
-          requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-          requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-          detail: { pool: { min: 5, max: 8 } },
-          bucket: 'material_parent',
-        },
-      ],
-      by_bucket_count: { material_parent: 1 },
-    }
-    render(
-      <SolverDebugImpossibilityModal
-        isOpen
-        onClose={() => {}}
-        report={report}
-        sessionCmId={12}
-        year={2026}
-      />
-    )
-    expect(screen.getByText('{"min":5,"max":8}')).toBeInTheDocument()
-    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument()
+    expect(bodyRows()).toHaveLength(2)
+    await user.click(screen.getByRole('button', { name: /^MP\s*1/ }))
+    expect(bodyRows()).toHaveLength(1)
+    expect(screen.queryByText('Noah Davis')).not.toBeInTheDocument()
   })
 })

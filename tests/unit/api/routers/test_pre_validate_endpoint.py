@@ -43,14 +43,18 @@ def _empty_solver_input() -> DirectSolverInput:
 
 @dataclass
 class _FakeReport:
-    """Minimal stand-in for ImpossibilityReport."""
+    """Minimal stand-in for ImpossibilityReport.
+
+    Mirrors the real dataclass field-for-field so ``asdict(report)`` in the
+    route produces the same shape the frontend expects.
+    """
 
     total_impossible: int = 0
     affected_campers: int = 0
     by_reason: dict[str, object] = field(default_factory=dict)
     flat: list[object] = field(default_factory=list)
-    clusters: list[object] = field(default_factory=list)
     mp_campers_entirely_impossible: list[dict[str, object]] = field(default_factory=list)
+    by_bucket_count: dict[str, int] = field(default_factory=dict)
 
 
 def _make_session_ctx(session_cm_id: int = 1000001, year: int = 2026) -> MagicMock:
@@ -281,6 +285,39 @@ def test_response_includes_mp_campers_entirely_impossible(client: TestClient) ->
             "reason_codes": ["target_not_in_solver"],
         },
     ]
+
+
+def test_response_includes_by_bucket_count(client: TestClient) -> None:
+    """The /solver/pre-validate response surfaces the per-bucket counts.
+
+    Regression guard: a prior hand-rolled response dict omitted this field,
+    causing the frontend modal to crash on ``report.by_bucket_count[bucket]``
+    when rendering filter chips.
+    """
+    fake_report = _FakeReport(
+        total_impossible=4,
+        affected_campers=3,
+        by_bucket_count={"material_parent": 2, "immaterial_parent": 1, "staff": 1},
+    )
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        _apply_standard_mocks(mock_build_ctx, mock_fetch, mock_prepare, mock_validate, mock_config, report=fake_report)
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    ir = resp.json()["impossibility_report"]
+    assert "by_bucket_count" in ir, f"missing by_bucket_count; got keys {list(ir.keys())}"
+    assert ir["by_bucket_count"] == {
+        "material_parent": 2,
+        "immaterial_parent": 1,
+        "staff": 1,
+    }
 
 
 def test_response_propagates_self_conflict_bucket(client: TestClient) -> None:
