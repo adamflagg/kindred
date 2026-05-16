@@ -14,7 +14,7 @@ from bunking.bunking_validator import (
     ValidationSeverity,
     ValidationStatistics,
 )
-from bunking.models import Bunk, BunkRequest, Person
+from bunking.models import Bunk, BunkAssignment, BunkRequest, Person
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 # ---------------------------------------------------------------------------
