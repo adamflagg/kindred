@@ -11,6 +11,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
+import { makeImpossibilityReport } from '../test/impossibilityReport'
+import type { EntirelyImpossibleMpCamper } from '../services/solver'
 
 // Mock the Modal component to render children directly
 vi.mock('./ui/Modal', () => ({
@@ -486,22 +488,12 @@ vi.mock('./CamperDetailsPanel', () => ({
 }))
 
 describe('PostValidationResultsModal — impossibility section (#1442 part 2)', () => {
-  const makeReport = (
-    mp: Array<{
-      cm_id: number
-      name: string
-      grade: number
-      gender: string
-      reason_codes: string[]
-    }>,
-    totalImpossible = mp.length
-  ) => ({
-    total_impossible: totalImpossible,
-    affected_campers: mp.length,
-    by_reason: {},
-    flat: [],
-    mp_campers_entirely_impossible: mp,
-  })
+  const makeReport = (mp: EntirelyImpossibleMpCamper[], totalImpossible = mp.length) =>
+    makeImpossibilityReport({
+      total_impossible: totalImpossible,
+      affected_campers: mp.length,
+      mp_campers_entirely_impossible: mp,
+    })
 
   it('does not render the section when impossibilityReport prop is omitted', () => {
     render(
@@ -522,9 +514,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={
-          makeReport([], 0) as unknown as import('../services/solver').ImpossibilityReport
-        }
+        impossibilityReport={makeReport([], 0)}
       />
     )
     expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
@@ -556,7 +546,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
 
@@ -582,7 +572,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
 
@@ -604,7 +594,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
     const user = userEvent.setup()
@@ -625,7 +615,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         sessionCmId={9876543}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
     const user = userEvent.setup()
@@ -651,7 +641,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
     expect(
@@ -677,7 +667,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
         isOpen={true}
         onClose={() => {}}
         results={makeResults()}
-        impossibilityReport={report as unknown as import('../services/solver').ImpossibilityReport}
+        impossibilityReport={report}
       />
     )
     expect(screen.getByText('Grade range too wide')).toBeInTheDocument()

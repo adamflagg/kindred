@@ -15,8 +15,7 @@ import {
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
-import { CamperNameButton } from './impossibility/CamperNameButton'
-import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
+import { ImpossibilityCohortSection } from './impossibility/ImpossibilityCohortSection'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
@@ -543,7 +542,6 @@ export default function PostValidationResultsModal({
   const mpImpossible: EntirelyImpossibleMpCamper[] =
     impossibilityReport?.mp_campers_entirely_impossible ?? []
   const totalImpossibleRequests = impossibilityReport?.total_impossible ?? 0
-  const showImpossibilitySection = mpImpossible.length > 0
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
@@ -780,46 +778,11 @@ export default function PostValidationResultsModal({
           request count (which may include partially-impossible kids not in
           this list). Combining them ("X campers had Y impossible requests")
           implied the Y belonged to the X, which is misleading. */}
-      {showImpossibilitySection && (
-        <div className="space-y-2 px-5 py-4">
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-            <p className="font-semibold text-red-900">
-              {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} won&rsquo;t get any
-              parent request fulfilled
-            </p>
-            <p className="mt-0.5 text-xs text-red-800">
-              {totalImpossibleRequests} impossible request
-              {totalImpossibleRequests === 1 ? '' : 's'} total in this scenario
-            </p>
-            <div className="mt-2 space-y-1.5 border-t border-red-200 pt-2">
-              {mpImpossible.map((camper) => (
-                <div key={camper.cm_id} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="flex-1">
-                    <CamperNameButton
-                      cmId={camper.cm_id}
-                      name={camper.name}
-                      onSelect={setSelectedCamperId}
-                    />
-                    <span className="ml-2 text-xs text-stone-600">
-                      {camperActionHints(camper.reason_codes)}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    {camper.reason_codes.map((code) => (
-                      <span
-                        key={code}
-                        className="rounded-full bg-amber-200 px-2 py-0.5 text-xs text-amber-900"
-                      >
-                        {friendlyReasonLabel(code)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <ImpossibilityCohortSection
+        campers={mpImpossible}
+        totalImpossibleRequests={totalImpossibleRequests}
+        onSelectCamper={setSelectedCamperId}
+      />
 
       {/* Issues List (if any) */}
       {hasIssues && (

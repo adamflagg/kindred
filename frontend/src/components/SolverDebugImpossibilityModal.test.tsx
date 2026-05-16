@@ -2,6 +2,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import SolverDebugImpossibilityModal from './SolverDebugImpossibilityModal'
+import { makeImpossibilityReport } from '../test/impossibilityReport'
 
 vi.mock('./CamperDetailsPanel', () => ({
   default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
@@ -25,7 +26,7 @@ vi.mock('../providers/BunkRequestProvider', () => ({
   ),
 }))
 
-const stubReport = {
+const stubReport = makeImpossibilityReport({
   total_impossible: 1,
   affected_campers: 1,
   by_reason: {
@@ -52,7 +53,7 @@ const stubReport = {
       detail: { gap: 2, max_gap_allowed: 1 },
     },
   ],
-}
+})
 
 // C1 — new desired behavior: single flat sortable table, no tab strip
 describe('SolverDebugImpossibilityModal — C1: single flat table (no tabs)', () => {
@@ -119,11 +120,9 @@ describe('SolverDebugImpossibilityModal — sortable header a11y', () => {
 
 describe('SolverDebugImpossibilityModal — entirely-impossible MP campers', () => {
   it('renders a compact camper-level block with reason chips', () => {
-    const report = {
+    const report = makeImpossibilityReport({
       total_impossible: 1,
       affected_campers: 1,
-      by_reason: {},
-      flat: [],
       mp_campers_entirely_impossible: [
         {
           cm_id: 1,
@@ -133,7 +132,7 @@ describe('SolverDebugImpossibilityModal — entirely-impossible MP campers', () 
           reason_codes: ['target_not_in_solver'],
         },
       ],
-    } as unknown as import('../services/solver').ImpossibilityReport
+    })
 
     render(
       <SolverDebugImpossibilityModal
@@ -261,18 +260,19 @@ describe('SolverDebugImpossibilityModal — click-through to CamperDetailsPanel'
   })
 
   it('renders a null requestee as plain text in the flat table (no button)', () => {
-    const reportNull = {
+    const baseItem = stubReport.flat[0]!
+    const reportNull = makeImpossibilityReport({
       ...stubReport,
       flat: [
         {
-          ...stubReport.flat[0],
+          ...baseItem,
           request_id: 'r_null',
           reason_code: 'target_not_in_solver',
           requestee: null,
         },
       ],
       by_reason: {},
-    } as unknown as import('../services/solver').ImpossibilityReport
+    })
     render(
       <SolverDebugImpossibilityModal
         isOpen

@@ -2,6 +2,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import PreValidationResultsModal from './PreValidationResultsModal'
+import { makeImpossibilityReport } from '../test/impossibilityReport'
 
 vi.mock('./CamperDetailsPanel', () => ({
   default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
@@ -42,12 +43,12 @@ const baseResults = {
   errors: [],
   warnings: [],
   statistics: baseStatistics,
-  impossibility_report: {
+  impossibility_report: makeImpossibilityReport({
     total_impossible: 0,
     affected_campers: 0,
     by_reason: {},
     flat: [],
-  },
+  }),
 }
 
 const oneImpossibleItem = {
@@ -65,14 +66,14 @@ const resultsWithImpossibility = {
   errors: [],
   warnings: [],
   statistics: baseStatistics,
-  impossibility_report: {
+  impossibility_report: makeImpossibilityReport({
     total_impossible: 1,
     affected_campers: 2,
     by_reason: {
       grade_compatibility: [oneImpossibleItem],
     },
     flat: [oneImpossibleItem],
-  },
+  }),
 }
 
 describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
@@ -89,12 +90,12 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 2,
         affected_campers: 2,
         by_reason: {},
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -123,7 +124,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -140,7 +141,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -169,7 +170,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -186,7 +187,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     const sessionLookup = (cm: number) => (cm === 1000002 ? 'Pioneer Period' : 'Taste of Camp')
 
@@ -217,7 +218,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -234,7 +235,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
 
     render(
@@ -273,7 +274,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -290,7 +291,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -322,7 +323,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -339,7 +340,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -368,7 +369,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
         campers_with_requests: 8,
         campers_without_requests: 2,
       },
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -385,7 +386,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -421,7 +422,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('renders grouped section for grade_compatibility with friendly label', () => {
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 2,
         by_reason: {
@@ -434,7 +435,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
           ],
         },
         flat: [],
-      },
+      }),
     }
 
     render(
@@ -454,7 +455,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('renders friendly label + subtext for target_not_in_solver (requestee is null)', () => {
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: {
@@ -471,7 +472,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
 
     render(
@@ -495,7 +496,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
   it('renders friendly label + subtext for self_conflict (#1446)', () => {
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 2,
         affected_campers: 1,
         by_reason: {
@@ -518,7 +519,7 @@ describe('PreValidationResultsModal — staff-only view', () => {
           ],
         },
         flat: [],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
 
     render(
@@ -601,7 +602,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
   it('renders a camper-level section with action hints by reason code', () => {
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 2,
         affected_campers: 2,
         by_reason: {},
@@ -622,7 +623,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
             reason_codes: ['grade_compatibility'],
           },
         ],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
 
     render(
@@ -664,7 +665,7 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
   const renderWithMpCamper = (reasonCodes: string[]) => {
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: reasonCodes.length,
         affected_campers: 1,
         by_reason: {},
@@ -672,7 +673,7 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
         mp_campers_entirely_impossible: [
           { cm_id: 100, name: 'Emma Johnson', grade: 4, gender: 'F', reason_codes: reasonCodes },
         ],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
@@ -719,7 +720,7 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
 describe('PreValidationResultsModal — click-through to CamperDetailsPanel', () => {
   const resultsWithRedSectionAndYellow = {
     ...baseResults,
-    impossibility_report: {
+    impossibility_report: makeImpossibilityReport({
       total_impossible: 1,
       affected_campers: 2,
       by_reason: { grade_compatibility: [oneImpossibleItem] },
@@ -733,7 +734,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
           reason_codes: ['cross_session'],
         },
       ],
-    } as unknown as import('../services/solver').ImpossibilityReport,
+    }),
   }
 
   it('opens the panel for the red-section camper when their name is clicked', async () => {
@@ -810,12 +811,12 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
     }
     const results = {
       ...baseResults,
-      impossibility_report: {
+      impossibility_report: makeImpossibilityReport({
         total_impossible: 1,
         affected_campers: 1,
         by_reason: { target_not_in_solver: [targetMissingItem] },
         flat: [targetMissingItem],
-      } as unknown as import('../services/solver').ImpossibilityReport,
+      }),
     }
     render(
       <PreValidationResultsModal
