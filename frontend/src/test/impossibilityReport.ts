@@ -16,6 +16,7 @@ export function makeImpossibilityReport(
     by_reason: {},
     flat: [],
     mp_campers_entirely_impossible: [],
+    by_bucket_count: {},
     ...overrides,
   }
 }

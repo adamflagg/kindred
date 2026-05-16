@@ -24,7 +24,11 @@ from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader
+from bunking.logging_config import get_logger
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
+from bunking.satisfaction.bucket import classify_request, is_material_parent_request
+
+logger = get_logger(__name__)
 
 
 class ImpossibilityReason(NamedTuple):
@@ -57,6 +61,11 @@ class ImpossibleItem:
     requester: dict[str, Any]
     requestee: dict[str, Any] | None
     detail: dict[str, Any]
+    # RequestBucket.value; None when source_field missing or unknown.
+    # Defaults to None so existing test fixtures that construct ImpossibleItem
+    # directly (e.g., tests/unit/api/routers/test_pre_validate_endpoint.py)
+    # don't have to be updated for this additive change.
+    bucket: str | None = None
 
 
 @dataclass
@@ -69,6 +78,9 @@ class ImpossibilityReport:
     # set is impossible. Each entry: {cm_id, name, grade, gender, reason_codes}.
     # Derived from `flat` — see validate_impossibility.
     mp_campers_entirely_impossible: list[dict[str, Any]] = field(default_factory=list)
+    # request_id-unique counts per RequestBucket.value. bucket=None items are excluded.
+    # Used by the admin modal's filter chips so they show counts without re-aggregating.
+    by_bucket_count: dict[str, int] = field(default_factory=dict)
 
 
 class HardConstraintImpossibility:
@@ -116,6 +128,21 @@ def _record_item(
 ) -> None:
     requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
     requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id) if req.requested_person_cm_id else None
+
+    # Bucket classification with safe fallback (mirrors is_material_parent_request precedent).
+    # An unknown source_field surfaces as bucket=None — the modal renders these in an
+    # "Unbucketed" section so they're still visible but flagged as a data-hygiene gap.
+    bucket: str | None = None
+    if req.source_field:
+        try:
+            bucket = classify_request(req.source_field).value
+        except ValueError:
+            logger.debug(
+                "impossibility: unknown source_field %r on request %s — bucket=None",
+                req.source_field,
+                req.id,
+            )
+
     item = ImpossibleItem(
         request_id=req.id,
         reason_code=reason.code,
@@ -124,6 +151,7 @@ def _record_item(
         requester=_camper_dict(requester) if requester else {"cm_id": req.requester_person_cm_id},
         requestee=_camper_dict(requestee) if requestee else None,
         detail=reason.detail,
+        bucket=bucket,
     )
     report.flat.append(item)
     report.by_reason.setdefault(reason.code, []).append(item)
@@ -193,13 +221,18 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
     report.total_impossible = len({item.request_id for item in report.flat})
     report.affected_campers = len({item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id")})
 
+    # Per-bucket request-id-unique counts (mirrors total_impossible's dedup).
+    seen_per_bucket: dict[str, set[str]] = {}
+    for item in report.flat:
+        if item.bucket is None:
+            continue
+        seen_per_bucket.setdefault(item.bucket, set()).add(item.request_id)
+    report.by_bucket_count = {bucket: len(ids) for bucket, ids in seen_per_bucket.items()}
+
     # Camper-level rollup: a roster camper whose ENTIRE Material-Parent request
     # set is impossible gets zero parent requests honored under the hard MP
     # constraint. Pure derived property of `flat` — single source of truth for
-    # both parent_paramount and the pre-validate endpoint. Local import keeps
-    # the satisfaction package off impossibility.py's import-time graph.
-    from bunking.satisfaction.bucket import is_material_parent_request
-
+    # both parent_paramount and the pre-validate endpoint.
     impossible_ids = {item.request_id for item in report.flat}
     reasons_by_request: dict[str, set[str]] = defaultdict(set)
     for item in report.flat:
