@@ -487,6 +487,247 @@ vi.mock('./CamperDetailsPanel', () => ({
   ),
 }))
 
+// ---------------------------------------------------------------------------
+// Task 4.3 — "Campers who got nothing" section
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Campers who got nothing section (TG-4.3)', () => {
+  it('renders named tiles for entirely-impossible MP campers', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({
+          mp_campers_entirely_impossible: [
+            { cm_id: 1001, name: 'Emma Johnson', gender: 'Girls', grade: 7, reason_codes: [] },
+            { cm_id: 1002, name: 'Liam Garcia', gender: 'Boys', grade: 4, reason_codes: [] },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText('Campers who got nothing')).toBeInTheDocument()
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+  })
+
+  it('does not render "Campers who got nothing" when the list is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({ mp_campers_entirely_impossible: [] })}
+      />
+    )
+    expect(screen.queryByText('Campers who got nothing')).not.toBeInTheDocument()
+  })
+
+  it('does not render "Campers who got nothing" when impossibilityReport is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText('Campers who got nothing')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4.4 — "Families to call" section
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Families to call section (TG-4.4)', () => {
+  it('renders Families to call list with named rows for not_bunk_with violations', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          negative_request_violations_detail: [
+            {
+              requester_cm_id: '1003',
+              target_cm_id: '1004',
+              requester_name: 'Riley Sam',
+              target_name: 'Samuel Johnson',
+              bunk_cm_id: '2003',
+              bunk_name: 'Pine 3',
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText('Families to call')).toBeInTheDocument()
+    expect(screen.getByText('Riley Sam')).toBeInTheDocument()
+    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Pine 3')).toBeInTheDocument()
+  })
+
+  it('does not render "Families to call" when negative_request_violations_detail is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText('Families to call')).not.toBeInTheDocument()
+  })
+
+  it('does not render "Families to call" when negative_request_violations_detail is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({ negative_request_violations_detail: [] })}
+      />
+    )
+    expect(screen.queryByText('Families to call')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4.5 — "Priority unsuccessfuls" section
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Priority unsuccessfuls section (TG-4.5)', () => {
+  it('renders Priority unsuccessfuls with parent wording snippets', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          priority_unsuccessfuls: [
+            {
+              requester_cm_id: '1005',
+              target_cm_id: '1006',
+              requester_name: 'Sophia Martinez',
+              target_name: 'Mia Wilson',
+              raw_text: 'Mia is our top priority',
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText('Priority unsuccessfuls')).toBeInTheDocument()
+    expect(screen.getByText('Sophia Martinez')).toBeInTheDocument()
+    expect(screen.getByText('Mia Wilson')).toBeInTheDocument()
+    expect(screen.getByText(/Mia is our top priority/)).toBeInTheDocument()
+  })
+
+  it('does not render "Priority unsuccessfuls" when the list is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText('Priority unsuccessfuls')).not.toBeInTheDocument()
+  })
+
+  it('does not render "Priority unsuccessfuls" when the list is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({ priority_unsuccessfuls: [] })}
+      />
+    )
+    expect(screen.queryByText('Priority unsuccessfuls')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4.6 — "Impossibility by reason" section
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6)', () => {
+  it('renders impossibility by_reason as stat tiles when reasons are present', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({
+          mp_campers_entirely_impossible: [],
+          by_reason: {
+            grade_compatibility: [
+              {
+                request_id: 'r1',
+                reason_code: 'grade_compatibility',
+                reason_message: 'grade too wide',
+                request_type: 'bunk_with',
+                requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' },
+                requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' },
+                detail: {},
+              },
+              {
+                request_id: 'r2',
+                reason_code: 'grade_compatibility',
+                reason_message: 'grade too wide',
+                request_type: 'bunk_with',
+                requester: { cm_id: 3, name: 'Olivia Chen', grade: 5, gender: 'F' },
+                requestee: { cm_id: 4, name: 'Riley Sam', grade: 9, gender: 'F' },
+                detail: {},
+              },
+            ],
+            cross_session: [
+              {
+                request_id: 'r3',
+                reason_code: 'cross_session',
+                reason_message: 'different session',
+                request_type: 'bunk_with',
+                requester: { cm_id: 5, name: 'Sophia Martinez', grade: 6, gender: 'F' },
+                requestee: null,
+                detail: {},
+              },
+            ],
+          },
+        })}
+      />
+    )
+    expect(screen.getByText(/impossible by reason/i)).toBeInTheDocument()
+  })
+
+  it('does not render "Impossible by reason" when by_reason is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({ by_reason: {} })}
+      />
+    )
+    expect(screen.queryByText(/impossible by reason/i)).not.toBeInTheDocument()
+  })
+
+  it('does not render "Impossible by reason" when impossibilityReport is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/impossible by reason/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('PostValidationResultsModal — impossibility section (#1442 part 2)', () => {
   const makeReport = (mp: EntirelyImpossibleMpCamper[], totalImpossible = mp.length) =>
     makeImpossibilityReport({

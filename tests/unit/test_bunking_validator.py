@@ -104,6 +104,8 @@ class MockBunkRequest:
     source: str | None = None  # "family" or "staff" (legacy column, derived via source_from_field post-#1142)
     ai_p1_reasoning: dict[str, Any] | None = None
     age_preference_target: str | None = None
+    priority_keyword_detected: bool = False  # TG-3: True when parent text had an explicit priority keyword
+    raw_text: str = ""  # TG-3: parent's original wording snippet
 
 
 @dataclass
@@ -2118,3 +2120,206 @@ def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
     assert stats.mp_campers_total == 3
     assert stats.mp_campers_with_at_least_one_satisfied == 2  # Emma + Liam
     assert stats.mp_campers_with_all_satisfied == 1  # Emma only
+
+
+# ---------------------------------------------------------------------------
+# Task 4.1: negative_request_violations_detail
+# ---------------------------------------------------------------------------
+
+
+def test_negative_request_violations_detail_lists_unhonored_not_bunk_with():
+    """negative_request_violations_detail must list each not_bunk_with violation with full tuple.
+
+    When Riley Sam (1001) has a staff not_bunk_with request for Samuel Johnson (1002)
+    but both are assigned to Pine 3 (bunk 2003), the detail list must contain one entry
+    with requester_cm_id, target_cm_id, requester_name, target_name, bunk_cm_id, bunk_name.
+    The existing count field (negative_request_violations) must still equal 1.
+    """
+    session = _mock_session(cm_id="10000001", name="NegReqDetailFixture")
+    persons = [
+        MockPerson(campminder_id="1001", name="Riley Sam", grade=6),
+        MockPerson(campminder_id="1002", name="Samuel Johnson", grade=6),
+    ]
+    bunks = [MockBunk(campminder_id="2003", name="Pine 3", max_size=8)]
+    assignments = [
+        _mock_assignment("1001", "2003"),
+        _mock_assignment("1002", "2003"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1001",
+            requested_person_cm_id="1002",
+            request_type="not_bunk_with",
+            status="resolved",
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
+            source="staff",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert stats.negative_request_violations == 1  # existing count preserved
+    assert len(stats.negative_request_violations_detail) == 1
+    detail = stats.negative_request_violations_detail[0]
+    assert detail["requester_cm_id"] == "1001"
+    assert detail["target_cm_id"] == "1002"
+    assert detail["requester_name"] == "Riley Sam"
+    assert detail["target_name"] == "Samuel Johnson"
+    assert detail["bunk_cm_id"] == "2003"
+    assert detail["bunk_name"] == "Pine 3"
+
+
+def test_negative_request_violations_detail_empty_when_no_violations():
+    """When not_bunk_with is honored (campers in different bunks), detail list is empty."""
+    session = _mock_session(cm_id="10000001", name="NegReqNoViolationFixture")
+    persons = [
+        MockPerson(campminder_id="1001", name="Riley Sam", grade=6),
+        MockPerson(campminder_id="1002", name="Samuel Johnson", grade=6),
+    ]
+    bunks = [
+        MockBunk(campminder_id="2001", name="Cedar 1", max_size=8),
+        MockBunk(campminder_id="2002", name="Cedar 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("1001", "2001"),
+        _mock_assignment("1002", "2002"),  # different bunk — request honored
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1001",
+            requested_person_cm_id="1002",
+            request_type="not_bunk_with",
+            status="resolved",
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
+            source="staff",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert stats.negative_request_violations == 0
+    assert stats.negative_request_violations_detail == []
+
+
+# ---------------------------------------------------------------------------
+# Task 4.5: priority_unsuccessfuls
+# ---------------------------------------------------------------------------
+
+
+def test_priority_unsuccessfuls_lists_keyword_flagged_unmet_requests():
+    """priority_unsuccessfuls must list only requests with priority_keyword_detected=True that are unsatisfied.
+
+    Sophia Martinez (1005) wants to bunk with Mia Wilson (1006): priority_keyword_detected=True,
+    but they're in different bunks → unsatisfied → must appear in priority_unsuccessfuls.
+
+    Ethan Brown (1007) wants to bunk with Mason Lee (1008): priority_keyword_detected=False →
+    even though also unsatisfied, must NOT appear in priority_unsuccessfuls.
+    """
+    session = _mock_session(cm_id="10000002", name="PriorityUnsuccessfulFixture")
+    persons = [
+        MockPerson(campminder_id="1005", name="Sophia Martinez", grade=7),
+        MockPerson(campminder_id="1006", name="Mia Wilson", grade=7),
+        MockPerson(campminder_id="1007", name="Ethan Brown", grade=7),
+        MockPerson(campminder_id="1008", name="Mason Lee", grade=7),
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Maple 1", max_size=8),
+        MockBunk(campminder_id="3002", name="Maple 2", max_size=8),
+        MockBunk(campminder_id="3003", name="Maple 3", max_size=8),
+        MockBunk(campminder_id="3004", name="Maple 4", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("1005", "3001"),
+        _mock_assignment("1006", "3002"),  # not together — Sophia's request unsatisfied
+        _mock_assignment("1007", "3003"),
+        _mock_assignment("1008", "3004"),  # not together — Ethan's request also unsatisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1005",
+            requested_person_cm_id="1006",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            priority_keyword_detected=True,
+            raw_text="Mia is our top priority",
+        ),
+        MockBunkRequest(
+            requester_person_cm_id="1007",
+            requested_person_cm_id="1008",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            priority_keyword_detected=False,
+            raw_text="bunk with Mason",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert len(stats.priority_unsuccessfuls) == 1
+    only = stats.priority_unsuccessfuls[0]
+    assert only["requester_name"] == "Sophia Martinez"
+    assert only["target_name"] == "Mia Wilson"
+    assert only["raw_text"] == "Mia is our top priority"
+    assert only["requester_cm_id"] == "1005"
+    assert only["target_cm_id"] == "1006"
+
+
+def test_priority_unsuccessfuls_empty_when_all_priority_requests_satisfied():
+    """When a priority-keyword request IS satisfied, it must not appear in priority_unsuccessfuls."""
+    session = _mock_session(cm_id="10000003", name="PrioritySatisfiedFixture")
+    persons = [
+        MockPerson(campminder_id="1005", name="Sophia Martinez", grade=7),
+        MockPerson(campminder_id="1006", name="Mia Wilson", grade=7),
+    ]
+    bunks = [MockBunk(campminder_id="3001", name="Maple 1", max_size=8)]
+    assignments = [
+        _mock_assignment("1005", "3001"),
+        _mock_assignment("1006", "3001"),  # same bunk — satisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1005",
+            requested_person_cm_id="1006",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            priority_keyword_detected=True,
+            raw_text="Mia is our top priority",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=bunks,
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+
+    assert result.statistics.priority_unsuccessfuls == []

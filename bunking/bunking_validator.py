@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,27 @@ class HistoricalBunkingRecord:
 
 
 logger = get_logger(__name__)
+
+
+class NegativeRequestViolation(TypedDict):
+    """Detail record for a single not_bunk_with violation where both campers share a bunk."""
+
+    requester_cm_id: str
+    target_cm_id: str
+    requester_name: str
+    target_name: str
+    bunk_cm_id: str
+    bunk_name: str
+
+
+class PriorityUnsuccessful(TypedDict):
+    """Detail record for a priority-keyword-flagged bunk_with request that was not satisfied."""
+
+    requester_cm_id: str
+    target_cm_id: str
+    requester_name: str
+    target_name: str
+    raw_text: str  # parent's original wording snippet
 
 
 class ValidationSeverity(StrEnum):
@@ -163,6 +184,14 @@ class ValidationStatistics(BaseModel):
 
     # Negative request violations (all not_bunk_with violations)
     negative_request_violations: int = 0
+    # Detail list for not_bunk_with violations — one entry per violated pair.
+    # Added in TG-4 alongside the existing count field.
+    negative_request_violations_detail: list[NegativeRequestViolation] = Field(default_factory=list)
+
+    # Priority-keyword-flagged bunk_with requests that were not satisfied (TG-4/TG-3).
+    # Populated by cross-referencing priority_keyword_detected=True requests against
+    # the satisfaction loop — only unsatisfied ones appear here.
+    priority_unsuccessfuls: list[PriorityUnsuccessful] = Field(default_factory=list)
 
     # Camper-level two-tier MP coverage (bunk_request_form source only).
     # mp_campers_total = number of distinct requesters with ≥1 MP request.
@@ -254,7 +283,8 @@ class BunkingValidator:
         self._validate_bunk_capacities(bunks, assignments_by_bunk, stats, issues)
 
         # Validate request satisfaction
-        self._validate_requests(requests, assignments_by_person, person_by_id, stats, issues)
+        bunk_by_id: dict[str, Bunk] = {b.campminder_id: b for b in bunks}
+        self._validate_requests(requests, assignments_by_person, person_by_id, stats, issues, bunk_by_id=bunk_by_id)
 
         # Validate age/grade spreads
         self._validate_spreads(bunks, assignments_by_bunk, person_by_id, stats, issues)
@@ -359,6 +389,7 @@ class BunkingValidator:
         person_by_id: dict[str, Person],
         stats: ValidationStatistics,
         issues: list[ValidationIssue],
+        bunk_by_id: dict[str, Bunk] | None = None,
     ) -> None:
         """Validate request satisfaction - tracking by source field."""
         # Valid statuses are 'resolved' (accepted/approved)
@@ -585,6 +616,28 @@ class BunkingValidator:
                     for field in source_fields:
                         if field in stats.field_stats:
                             stats.field_stats[field]["satisfied"] += 1
+                else:
+                    # Unsatisfied request: check for priority keyword flag (TG-3/TG-4).
+                    # Only bunk_with requests from a parent with a priority keyword that
+                    # ended up unmet should appear in the priority_unsuccessfuls action list.
+                    if (
+                        request.request_type == "bunk_with"
+                        and request.requested_person_cm_id
+                        and getattr(request, "priority_keyword_detected", False)
+                    ):
+                        requester_person = person_by_id.get(requester_id)
+                        requested_person = person_by_id.get(request.requested_person_cm_id)
+                        stats.priority_unsuccessfuls.append(
+                            PriorityUnsuccessful(
+                                requester_cm_id=requester_id,
+                                target_cm_id=request.requested_person_cm_id,
+                                requester_name=requester_person.name if requester_person else f"Person {requester_id}",
+                                target_name=requested_person.name
+                                if requested_person
+                                else f"Person {request.requested_person_cm_id}",
+                                raw_text=getattr(request, "raw_text", ""),
+                            )
+                        )
 
         # Calculate per-field satisfaction rates
         for field_data in stats.field_stats.values():
@@ -640,6 +693,21 @@ class BunkingValidator:
                             and requested_assignment
                             and person_assignment.bunk_cm_id == requested_assignment.bunk_cm_id
                         ):
+                            stats.negative_request_violations += 1
+                            # Find the bunk name for the detail record.
+                            violated_bunk_cm_id = person_assignment.bunk_cm_id
+                            violated_bunk = (bunk_by_id or {}).get(violated_bunk_cm_id)
+                            violated_bunk_name = violated_bunk.name if violated_bunk else violated_bunk_cm_id
+                            stats.negative_request_violations_detail.append(
+                                NegativeRequestViolation(
+                                    requester_cm_id=person_id,
+                                    target_cm_id=request.requested_person_cm_id,
+                                    requester_name=person_name,
+                                    target_name=requested_name,
+                                    bunk_cm_id=violated_bunk_cm_id,
+                                    bunk_name=violated_bunk_name,
+                                )
+                            )
                             issues.append(
                                 ValidationIssue(
                                     severity=ValidationSeverity.ERROR,

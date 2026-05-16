@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
-import { ImpossibilityCohortSection } from './impossibility/ImpossibilityCohortSection'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { friendlyReasonLabel, camperActionHints } from './impossibility/reasonHints'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
@@ -46,6 +46,23 @@ interface ValidationStatistics {
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
   field_stats: Record<string, FieldStats>
+  /** TG-4: not_bunk_with violations with full pair detail for "Families to call" section. */
+  negative_request_violations_detail?: Array<{
+    requester_cm_id: string
+    target_cm_id: string
+    requester_name: string
+    target_name: string
+    bunk_cm_id: string
+    bunk_name: string
+  }>
+  /** TG-4/TG-3: priority-keyword-flagged bunk_with requests that were not satisfied. */
+  priority_unsuccessfuls?: Array<{
+    requester_cm_id: string
+    target_cm_id: string
+    requester_name: string
+    target_name: string
+    raw_text: string
+  }>
 }
 
 interface Issue {
@@ -779,26 +796,193 @@ export default function PostValidationResultsModal({
         </div>
       </div>
 
-      {/* Impossibility cohort — surfaced from the latest pre-check (#1442 part 2).
-          Closes the loop on "we got 100% Optimized, who didn't get fulfilled?"
-          by naming the campers whose requests were structurally impossible.
-
-          Two distinct facts shown as two distinct lines: the named cohort
-          (entirely-impossible MP campers) and the scenario-wide impossible
-          request count (which may include partially-impossible kids not in
-          this list). Combining them ("X campers had Y impossible requests")
-          implied the Y belonged to the X, which is misleading. */}
-      <ImpossibilityCohortSection
-        campers={mpImpossible}
-        totalImpossibleRequests={totalImpossibleRequests}
-        onSelectCamper={setSelectedCamperId}
-      />
+      {/* TG-4.3: "Campers who got nothing" — reformatted ImpossibilityCohortSection.
+          Preserves the existing text copy ("won't get any parent request fulfilled",
+          "impossible requests total") so pre-existing tests keep passing.
+          Named card approach per Option B visual language. */}
+      {mpImpossible.length > 0 && (
+        <div className="px-5 pt-4">
+          <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-red-800">Campers who got nothing</h3>
+                <p className="mt-0.5 text-xs text-red-700/80">
+                  {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} won&rsquo;t get
+                  any parent request fulfilled
+                </p>
+                <p className="text-xs text-red-700/60">
+                  {totalImpossibleRequests} impossible request
+                  {totalImpossibleRequests === 1 ? '' : 's'} total in this scenario
+                </p>
+              </div>
+              <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-800">
+                {mpImpossible.length}
+              </span>
+            </div>
+            <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+              {mpImpossible.map((c) => (
+                <li
+                  key={c.cm_id}
+                  className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
+                >
+                  <div className="flex-1">
+                    <button
+                      type="button"
+                      className="text-left font-medium text-stone-900 hover:text-red-700"
+                      onClick={() => setSelectedCamperId(String(c.cm_id))}
+                    >
+                      {c.name}
+                    </button>
+                    {c.reason_codes.length > 0 && (
+                      <span className="ml-2 text-xs text-stone-500">
+                        {camperActionHints(c.reason_codes)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-1">
+                    {c.reason_codes.map((code) => (
+                      <span
+                        key={code}
+                        className="rounded-full bg-amber-200 px-2 py-0.5 text-xs text-amber-900"
+                      >
+                        {friendlyReasonLabel(code)}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {preCheckError && !impossibilityReport && (
         <div className="px-5 py-2">
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
             Pre-check unavailable — couldn&rsquo;t load the impossibility cohort. Re-run Pre-Check
             to see it.
+          </div>
+        </div>
+      )}
+
+      {/* TG-4.6: "Impossible by reason" — by_reason breakdown from pre-check.
+          Shows as collapsible stat tiles in post-check's card visual language. */}
+      {impossibilityReport && Object.keys(impossibilityReport.by_reason).length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <h3 className="font-semibold text-stone-900">Impossible by reason</h3>
+            <p className="mt-0.5 text-xs text-stone-500">
+              Why these requests can&rsquo;t be satisfied — from the latest pre-check
+            </p>
+            <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Object.entries(impossibilityReport.by_reason).map(([code, items]) => (
+                <li key={code} className="flex flex-col rounded-lg bg-white px-3 py-2 text-center">
+                  <span className="text-foreground text-lg font-bold">{items.length}</span>
+                  <span className="text-muted-foreground text-xs">{friendlyReasonLabel(code)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* TG-4.4: "Families to call" — not_bunk_with violations detail list.
+          Shows requester/target pairs and the bunk where they both ended up. */}
+      {(statistics.negative_request_violations_detail ?? []).length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-amber-900">Families to call</h3>
+                <p className="text-xs text-amber-800/80">
+                  Material <em>do not bunk with</em> wasn&rsquo;t honored — heads-up calls
+                  recommended
+                </p>
+              </div>
+              <span className="rounded-full bg-amber-200/80 px-2.5 py-1 text-xs font-medium text-amber-900">
+                {(statistics.negative_request_violations_detail ?? []).length}
+              </span>
+            </div>
+            <ul className="mt-3 divide-y divide-amber-100 text-sm">
+              {(statistics.negative_request_violations_detail ?? []).map((v) => (
+                <li
+                  key={`${v.requester_cm_id}-${v.target_cm_id}-${v.bunk_cm_id}`}
+                  className="flex items-center justify-between py-2"
+                >
+                  <div>
+                    <button
+                      type="button"
+                      className="font-medium hover:text-amber-800"
+                      onClick={() => setSelectedCamperId(v.requester_cm_id)}
+                    >
+                      {v.requester_name}
+                    </button>
+                    <span> placed with </span>
+                    <button
+                      type="button"
+                      className="font-medium hover:text-amber-800"
+                      onClick={() => setSelectedCamperId(v.target_cm_id)}
+                    >
+                      {v.target_name}
+                    </button>
+                  </div>
+                  <span className="font-mono text-xs text-stone-500">{v.bunk_name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* TG-4.5: "Priority unsuccessfuls" — priority-keyword-flagged requests that
+          didn't land. Uses priority_keyword_detected from TG-3 (PR #1474). */}
+      {(statistics.priority_unsuccessfuls ?? []).length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-stone-900">Priority unsuccessfuls</h3>
+                <p className="text-xs text-stone-600">
+                  Parents explicitly marked these as priority — request didn&rsquo;t land
+                </p>
+              </div>
+              <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
+                {(statistics.priority_unsuccessfuls ?? []).length}
+              </span>
+            </div>
+            <ul className="mt-3 divide-y divide-stone-200 text-sm">
+              {(statistics.priority_unsuccessfuls ?? []).map((p) => (
+                <li
+                  key={`${p.requester_cm_id}-${p.target_cm_id}`}
+                  className="flex items-center justify-between py-2"
+                >
+                  <div>
+                    <button
+                      type="button"
+                      className="font-medium hover:text-stone-700"
+                      onClick={() => setSelectedCamperId(p.requester_cm_id)}
+                    >
+                      {p.requester_name}
+                    </button>
+                    <span> wanted </span>
+                    <button
+                      type="button"
+                      className="font-medium hover:text-stone-700"
+                      onClick={() => setSelectedCamperId(p.target_cm_id)}
+                    >
+                      {p.target_name}
+                    </button>
+                    <span className="text-xs text-stone-500 italic">
+                      {' '}
+                      &middot; &ldquo;{p.raw_text}&rdquo;
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">
+                    unmet
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
