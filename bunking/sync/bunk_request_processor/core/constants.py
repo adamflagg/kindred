@@ -29,7 +29,7 @@ PRIORITY_KEYWORDS: tuple[str, ...] = (
     "must be with",  # Config: must_be_with
     "#1",  # Config: hashtag_one
     # OBR-validated additions (corpus mining: docs/plans/obr-priority-mining.md)
-    "highest priority",  # "1) NADAV MUIR (highest priority) 2) Jack…"
+    "highest priority",  # "1) Olivia Chen (highest priority) 2) Liam Garcia…"
     "biggest request",  # "Her biggest request is to not be in the same bunk…"
     "only request",  # "our only request would be that she's with a few other kiddos…"
     "(priority)",  # "(priority)" inline after a name in ranked list

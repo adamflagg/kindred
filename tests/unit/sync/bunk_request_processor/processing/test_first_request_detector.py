@@ -109,13 +109,13 @@ class TestKeywordPath:
     def test_allcaps_important_triggers(self) -> None:
         # IMPORTANT (all-caps) is a case-sensitive match: 7 occurrences in OBR corpus.
         req = _family_bunk_with(raw_text="Olivia Chen IMPORTANT", csv_position=2)
-        other = _family_bunk_with(raw_text="Mia Garcia", csv_position=1)
+        other = _family_bunk_with(raw_text="Samuel Johnson", csv_position=1)
         assert is_first_requested(req, [req, other]) is True
 
     def test_allcaps_important_inline_triggers(self) -> None:
         # Mirrors real corpus pattern: "1) EMMA JOHNSON (highest priority) 2) Liam Garcia"
-        req = _family_bunk_with(raw_text="1) Ethan Smith IMPORTANT request 2) Mason Lee", csv_position=2)
-        other = _family_bunk_with(raw_text="Sophia Kim", csv_position=1)
+        req = _family_bunk_with(raw_text="1) Riley Sam IMPORTANT request 2) Liam Garcia", csv_position=2)
+        other = _family_bunk_with(raw_text="Olivia Chen", csv_position=1)
         assert is_first_requested(req, [req, other]) is True
 
 
@@ -133,14 +133,14 @@ class TestNewKeywordsCaseInsensitive:
         assert is_first_requested(req, [req, other]) is True
 
     def test_only_request_lowercase(self) -> None:
-        req = _family_bunk_with(raw_text="our only request is Mia Garcia", csv_position=2)
+        req = _family_bunk_with(raw_text="our only request is Olivia Chen", csv_position=2)
         other = _family_bunk_with(raw_text="Emma Johnson", csv_position=1)
         assert is_first_requested(req, [req, other]) is True
 
     def test_priority_in_parens_inline(self) -> None:
         # Mirrors corpus: "1. Emma Johnson (priority) 2. Liam Garcia"
-        req = _family_bunk_with(raw_text="1. Sophia Kim (priority) 2. Ethan Smith", csv_position=2)
-        other = _family_bunk_with(raw_text="Mason Lee", csv_position=1)
+        req = _family_bunk_with(raw_text="1. Riley Sam (priority) 2. Samuel Johnson", csv_position=2)
+        other = _family_bunk_with(raw_text="Liam Garcia", csv_position=1)
         assert is_first_requested(req, [req, other]) is True
 
 
@@ -162,7 +162,19 @@ class TestImportantCaseSensitivity:
 
     def test_titlecase_important_does_not_trigger(self) -> None:
         req = _family_bunk_with(raw_text="Riley Sam - Important request", csv_position=2)
-        other = _family_bunk_with(raw_text="Mia Garcia", csv_position=1)
+        other = _family_bunk_with(raw_text="Samuel Johnson", csv_position=1)
+        assert is_first_requested(req, [req, other]) is False
+
+    def test_unimportant_does_not_trigger(self) -> None:
+        # "UNIMPORTANT" contains "IMPORTANT" as substring — must NOT trigger.
+        req = _family_bunk_with(raw_text="Olivia Chen UNIMPORTANT stuff", csv_position=2)
+        other = _family_bunk_with(raw_text="Emma Johnson", csv_position=1)
+        assert is_first_requested(req, [req, other]) is False
+
+    def test_importantly_does_not_trigger(self) -> None:
+        # "IMPORTANTLY" contains "IMPORTANT" as substring — must NOT trigger.
+        req = _family_bunk_with(raw_text="IMPORTANTLY, Liam Garcia", csv_position=2)
+        other = _family_bunk_with(raw_text="Riley Sam", csv_position=1)
         assert is_first_requested(req, [req, other]) is False
 
 
