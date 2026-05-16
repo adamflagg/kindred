@@ -515,13 +515,12 @@ async def pre_validate_solver(
                 "campers_without_requests": campers_without_requests,
                 "capacity_breakdown": capacity_breakdown,
             },
-            "impossibility_report": {
-                "total_impossible": report.total_impossible,
-                "affected_campers": report.affected_campers,
-                "by_reason": {code: [asdict(item) for item in items] for code, items in report.by_reason.items()},
-                "flat": [asdict(item) for item in report.flat],
-                "mp_campers_entirely_impossible": report.mp_campers_entirely_impossible,
-            },
+            # Serialize the whole ImpossibilityReport dataclass in one shot so any
+            # field added to the dataclass automatically flows through to the
+            # frontend — a prior hand-rolled dict silently dropped by_bucket_count
+            # and crashed the modal. Keep the dataclass as the single source of
+            # truth for the response shape.
+            "impossibility_report": asdict(report),
             "session_breakdown": session_breakdown,
             "related_sessions": ctx.related_session_ids,
         }

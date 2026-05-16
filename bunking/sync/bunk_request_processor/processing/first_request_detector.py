@@ -17,6 +17,7 @@ Consumers that need only the bool can still use the legacy
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ..core.constants import PRIORITY_KEYWORDS
@@ -112,5 +113,11 @@ def is_first_requested(
 def _has_priority_keyword(text: str) -> bool:
     if not text:
         return False
+    # "IMPORTANT" is matched case-sensitively: the all-caps shout is a priority
+    # signal (7 occurrences in OBR corpus), but lowercase "important" is too
+    # common a word to be a reliable signal (e.g. "it is important to Eliana
+    # that she be able to be in a bunk with her cousin").
+    if re.search(r"\bIMPORTANT\b", text):
+        return True
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in PRIORITY_KEYWORDS)

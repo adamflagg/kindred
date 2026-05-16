@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
@@ -6,6 +6,33 @@ import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
+
+type Bucket = 'material_parent' | 'immaterial_parent' | 'staff'
+type BucketFilter = 'all' | Bucket
+
+const BUCKET_ORDER: readonly Bucket[] = ['material_parent', 'immaterial_parent', 'staff'] as const
+
+// Filter-chip labels (mixed case for natural reading in the chip row).
+const BUCKET_CHIP_LABEL: Record<Bucket, string> = {
+  material_parent: 'MP',
+  immaterial_parent: 'IMP',
+  staff: 'Staff',
+}
+
+// In-row bucket chip — all-caps to match the visual weight of reason chips.
+const BUCKET_ROW_LABEL: Record<Bucket, string> = {
+  material_parent: 'MP',
+  immaterial_parent: 'IMP',
+  staff: 'STAFF',
+}
+
+const BUCKET_CHIP_STYLE: Record<Bucket, { bg: string; text: string }> = {
+  material_parent: { bg: '#dbeafe', text: '#1e3a8a' },
+  immaterial_parent: { bg: '#ede9fe', text: '#5b21b6' },
+  staff: { bg: '#f1f5f9', text: '#475569' },
+}
+
+const FILTER_STORAGE_KEY = 'solver-debug.impossibility-modal-filter'
 
 const REASON_CHIP_STYLES: Record<string, { bg: string; text: string }> = {
   grade_compatibility: { bg: '#fef3c7', text: '#92400e' },
@@ -25,6 +52,32 @@ function compactDetail(detail: Record<string, unknown> | null | undefined): stri
   return Object.entries(detail)
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(', ')
+}
+
+function isBucket(v: unknown): v is Bucket {
+  return v === 'material_parent' || v === 'immaterial_parent' || v === 'staff'
+}
+
+function isBucketFilter(v: unknown): v is BucketFilter {
+  return v === 'all' || isBucket(v)
+}
+
+function loadInitialFilter(): BucketFilter {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (isBucketFilter(raw)) return raw
+  } catch {
+    // localStorage may throw in restricted contexts; fall through to default
+  }
+  return 'all'
+}
+
+function persistFilter(filter: BucketFilter): void {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, filter)
+  } catch {
+    // best-effort persistence
+  }
 }
 
 type SortColumn = 'reason' | 'name' | 'type'
@@ -60,23 +113,56 @@ function SortableHeader({
       aria-sort={ariaSort}
       className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
     >
-      <span
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         aria-label={`Sort by ${label.toLowerCase()}`}
         onClick={() => onSort(column)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSort(column)
-          }
-        }}
-        className="-mx-2 -my-1 inline-block w-full cursor-pointer px-2 py-1 hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
+        className="-mx-2 -my-1 inline-block w-full cursor-pointer bg-transparent px-2 py-1 text-left font-semibold hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
       >
         {label}
         {arrow(column)}
-      </span>
+      </button>
     </th>
+  )
+}
+
+function BucketChip({ bucket }: { bucket: Bucket }) {
+  const style = BUCKET_CHIP_STYLE[bucket]
+  return (
+    <span
+      className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+      style={{ background: style.bg, color: style.text }}
+    >
+      {BUCKET_ROW_LABEL[bucket]}
+    </span>
+  )
+}
+
+function FilterChip({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={
+        active
+          ? 'rounded-full border border-stone-900 bg-stone-900 px-3 py-0.5 font-sans text-xs font-medium text-white'
+          : 'rounded-full border border-stone-300 bg-white px-3 py-0.5 font-sans text-xs font-medium text-stone-700 hover:bg-stone-50'
+      }
+    >
+      {label}
+      <span className="ml-1.5 tabular-nums opacity-65">{count}</span>
+    </button>
   )
 }
 
@@ -89,8 +175,21 @@ export default function SolverDebugImpossibilityModal({
 }: Props) {
   const [sortCol, setSortCol] = useState<SortColumn>('reason')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [justCopied, setJustCopied] = useState(false)
+  // 'idle' | 'copied' | 'failed' — transient UI flash from the Copy JSON button.
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  const [bucketFilter, setBucketFilter] = useState<BucketFilter>(loadInitialFilter)
+
+  // Cancel any pending copy-status reset on unmount so we never call setState
+  // on an unmounted component after a 1.5s flash.
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        clearTimeout(copyResetTimerRef.current)
+      }
+    }
+  }, [])
 
   // SolverDebugPage gates this modal on preCheckQuery.data (stable), so the
   // component stays mounted across isOpen toggles. Clear the selection on
@@ -100,8 +199,18 @@ export default function SolverDebugImpossibilityModal({
     if (!isOpen || sessionCmId === null) setSelectedCamperId(null)
   }, [isOpen, sessionCmId])
 
+  useEffect(() => {
+    persistFilter(bucketFilter)
+  }, [bucketFilter])
+
+  const handleBucketChipClick = (bucket: Bucket) => {
+    // Click an inactive bucket → isolate to it. Click the already-isolated
+    // bucket → toggle back to all. Click "All" while isolated → reset to all.
+    setBucketFilter((prev) => (prev === bucket ? 'all' : bucket))
+  }
+
   const sorted = useMemo(() => {
-    const arr = [...report.flat]
+    const arr = report.flat.filter((item) => bucketFilter === 'all' || item.bucket === bucketFilter)
     arr.sort((a, b) => {
       const get = (item: ImpossibilityReportItem): string | number => {
         switch (sortCol) {
@@ -120,7 +229,7 @@ export default function SolverDebugImpossibilityModal({
       return 0
     })
     return arr
-  }, [report.flat, sortCol, sortDir])
+  }, [report.flat, sortCol, sortDir, bucketFilter])
 
   const handleSort = (col: SortColumn) => {
     if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -132,9 +241,51 @@ export default function SolverDebugImpossibilityModal({
   const arrow = (col: SortColumn) => (sortCol === col ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '')
 
   const handleCopyJson = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(report, null, 2))
-    setJustCopied(true)
-    setTimeout(() => setJustCopied(false), 1500)
+    // Copy the full unfiltered report — the filter is a view, not a slice.
+    const text = JSON.stringify(report, null, 2)
+    // navigator.clipboard requires a secure context (HTTPS or localhost). When
+    // a worktree is opened over LAN HTTP (http://<host>:<vite-port>), the
+    // clipboard API is undefined or throws, so fall back to the legacy
+    // execCommand path. Both are best-effort.
+    let copied = false
+    if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text)
+        copied = true
+      } catch {
+        // fall through to execCommand
+      }
+    }
+    if (!copied && typeof document !== 'undefined') {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.setAttribute('readonly', '')
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      try {
+        copied = document.execCommand('copy')
+      } catch {
+        copied = false
+      } finally {
+        document.body.removeChild(ta)
+      }
+    }
+    setCopyStatus(copied ? 'copied' : 'failed')
+    if (!copied) {
+      // Surface the failure to dev tools — silent failure is the bug we're
+      // guarding against. The visible button label change above is the
+      // primary signal; the console line helps when triaging from a console
+      // log capture.
+      console.warn('SolverDebugImpossibilityModal: Copy JSON failed (both clipboard paths)')
+    }
+    if (copyResetTimerRef.current !== null) clearTimeout(copyResetTimerRef.current)
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopyStatus('idle')
+      copyResetTimerRef.current = null
+    }, 1500)
   }
 
   const headerContent = (
@@ -153,7 +304,11 @@ export default function SolverDebugImpossibilityModal({
           onClick={handleCopyJson}
           className="rounded border border-stone-300 bg-white px-2.5 py-1 font-sans text-xs hover:bg-stone-50"
         >
-          {justCopied ? '✓ Copied' : '📋 Copy JSON'}
+          {copyStatus === 'copied'
+            ? '✓ Copied'
+            : copyStatus === 'failed'
+              ? '✗ Copy failed'
+              : '📋 Copy JSON'}
         </button>
       </div>
     </div>
@@ -162,7 +317,15 @@ export default function SolverDebugImpossibilityModal({
   const empty = report.total_impossible === 0
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} header={headerContent} size="xl" scrollable noPadding>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      header={headerContent}
+      size="2xl"
+      scrollable
+      noPadding
+      ariaLabel="Pre-validate impossibility report"
+    >
       <div className="px-5 py-4 font-mono">
         {report.mp_campers_entirely_impossible &&
           report.mp_campers_entirely_impossible.length > 0 && (
@@ -204,134 +367,172 @@ export default function SolverDebugImpossibilityModal({
             // impossibility_report empty — no issues detected
           </div>
         ) : (
-          <table className="w-full border-collapse text-xs">
-            <thead className="bg-stone-100">
-              <tr>
-                <SortableHeader
-                  column="reason"
-                  label="Reason"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  arrow={arrow}
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              <FilterChip
+                label="All"
+                count={report.total_impossible}
+                active={bucketFilter === 'all'}
+                onClick={() => setBucketFilter('all')}
+              />
+              {BUCKET_ORDER.map((b) => (
+                <FilterChip
+                  key={b}
+                  label={BUCKET_CHIP_LABEL[b]}
+                  count={report.by_bucket_count?.[b] ?? 0}
+                  active={bucketFilter === b}
+                  onClick={() => handleBucketChipClick(b)}
                 />
-                <SortableHeader
-                  column="name"
-                  label="Camper A"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  arrow={arrow}
-                />
-                <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
-                  Camper B
-                </th>
-                <SortableHeader
-                  column="type"
-                  label="Type"
-                  sortCol={sortCol}
-                  sortDir={sortDir}
-                  onSort={handleSort}
-                  arrow={arrow}
-                />
-                <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
-                  Detail
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((item: ImpossibilityReportItem) => {
-                const chip = reasonChipStyle(item.reason_code)
-                // Composite key — multi-reason recording in validate_impossibility
-                // can produce multiple flat items per request_id (one per matching
-                // predicate). request_id + reason_code is unique per item.
-                return (
-                  <tr
-                    key={`${item.request_id}-${item.reason_code}`}
-                    className="border-b border-stone-200"
-                  >
-                    <td className="px-2 py-1">
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                        style={{ background: chip.bg, color: chip.text }}
-                      >
-                        {item.reason_code}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1">
-                      <CamperNameButton
-                        cmId={item.requester.cm_id}
-                        name={item.requester.name}
-                        onSelect={setSelectedCamperId}
-                        disabled={sessionCmId === null}
-                      />{' '}
-                      <span className="text-stone-500">
-                        ({item.requester.cm_id}/g{item.requester.grade}/{item.requester.gender})
-                      </span>
-                    </td>
-                    <td className="px-2 py-1">
-                      {item.requestee ? (
-                        <>
-                          <CamperNameButton
-                            cmId={item.requestee.cm_id}
-                            name={item.requestee.name}
-                            onSelect={setSelectedCamperId}
-                            disabled={sessionCmId === null}
-                          />{' '}
-                          <span className="text-stone-500">
-                            ({item.requestee.cm_id}/g{item.requestee.grade}/{item.requestee.gender})
-                          </span>
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="px-2 py-1 text-stone-600">{item.request_type}</td>
-                    <td className="px-2 py-1 text-stone-600">{compactDetail(item.detail)}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+              ))}
+            </div>
+            <table className="w-full border-collapse text-xs">
+              {/* Column widths: Detail is the long column (k=v lists) so cap
+                  Bucket/Reason/Camper A/Camper B/Type and let Detail breathe.
+                  whitespace-nowrap on Detail keeps "k=v, k=v, k=v" on one
+                  line so admins can scan without word wraps mid-key. */}
+              <colgroup>
+                <col style={{ width: '4rem' }} />
+                <col style={{ width: '11.5rem' }} />
+                <col style={{ width: '12.5rem' }} />
+                <col style={{ width: '12.5rem' }} />
+                <col style={{ width: '7.5rem' }} />
+                <col />
+              </colgroup>
+              <thead className="bg-stone-100">
+                <tr>
+                  <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
+                    Bucket
+                  </th>
+                  <SortableHeader
+                    column="reason"
+                    label="Reason"
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    arrow={arrow}
+                  />
+                  <SortableHeader
+                    column="name"
+                    label="Camper A"
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    arrow={arrow}
+                  />
+                  <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
+                    Camper B
+                  </th>
+                  <SortableHeader
+                    column="type"
+                    label="Type"
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    arrow={arrow}
+                  />
+                  <th className="border-b border-stone-300 px-2 py-1 text-left font-semibold">
+                    Detail
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((item: ImpossibilityReportItem) => {
+                  const chip = reasonChipStyle(item.reason_code)
+                  // Composite key — multi-reason recording in validate_impossibility
+                  // can produce multiple flat items per request_id (one per matching
+                  // predicate). request_id + reason_code is unique per item.
+                  return (
+                    <tr
+                      key={`${item.request_id}-${item.reason_code}`}
+                      className="border-b border-stone-200"
+                    >
+                      <td className="px-2 py-1">
+                        {isBucket(item.bucket) ? (
+                          <BucketChip bucket={item.bucket} />
+                        ) : (
+                          <span className="text-stone-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1">
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                          style={{ background: chip.bg, color: chip.text }}
+                        >
+                          {item.reason_code}
+                        </span>
+                      </td>
+                      <td className="px-2 py-1">
+                        <CamperNameButton
+                          cmId={item.requester.cm_id}
+                          name={item.requester.name}
+                          onSelect={setSelectedCamperId}
+                          disabled={sessionCmId === null}
+                        />{' '}
+                        <span className="text-stone-500">
+                          ({item.requester.cm_id}/g{item.requester.grade}/{item.requester.gender})
+                        </span>
+                      </td>
+                      <td className="px-2 py-1">
+                        {item.requestee ? (
+                          <>
+                            <CamperNameButton
+                              cmId={item.requestee.cm_id}
+                              name={item.requestee.name}
+                              onSelect={setSelectedCamperId}
+                              disabled={sessionCmId === null}
+                            />{' '}
+                            <span className="text-stone-500">
+                              ({item.requestee.cm_id}/g{item.requestee.grade}/
+                              {item.requestee.gender})
+                            </span>
+                          </>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="px-2 py-1 text-stone-600">{item.request_type}</td>
+                      <td className="px-2 py-1 whitespace-nowrap text-stone-600">
+                        {compactDetail(item.detail)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
-      {sessionCmId !== null && (
+      {selectedCamperId != null && sessionCmId != null && (
         // CamperDetailsPanel calls useBunkRequestContext() unconditionally;
         // SolverDebugPage has no ancestor BunkRequestProvider, so we mount a
-        // local session-scoped one here. The provider mount is hoisted above
-        // the selectedCamperId gate so opening/closing the details panel
-        // doesn't churn the provider's observers. Tradeoff: this fires the
-        // provider's two queries (allBunkRequests + /api/satisfaction) on
-        // every modal open even if the user never clicks a camper name —
-        // both queries are cache-warm in the common case (SolverDebugPage
-        // already populated them). ErrorBoundary catches chunk-load failures.
+        // local session-scoped one here. Provider stays gated behind the
+        // selectedCamperId check so the provider's queries don't fire on
+        // every modal open (matches PR #1469's tighter gate vs main).
         <BunkRequestProvider sessionCmId={sessionCmId}>
-          {selectedCamperId && (
-            <ErrorBoundary
-              fallback={(error, reset) => (
-                <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
-                  <p>Couldn&apos;t load camper details: {error.message}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      reset()
-                      setSelectedCamperId(null)
-                    }}
-                    className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
-            >
-              <Suspense fallback={null}>
-                <LazyCamperDetailsPanel
-                  camperId={selectedCamperId}
-                  onClose={() => setSelectedCamperId(null)}
-                />
-              </Suspense>
-            </ErrorBoundary>
-          )}
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                <p>Couldn&apos;t load camper details: {error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setSelectedCamperId(null)
+                  }}
+                  className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          >
+            <Suspense fallback={null}>
+              <LazyCamperDetailsPanel
+                camperId={selectedCamperId}
+                onClose={() => setSelectedCamperId(null)}
+              />
+            </Suspense>
+          </ErrorBoundary>
         </BunkRequestProvider>
       )}
     </Modal>
