@@ -12,7 +12,11 @@ VALID_SESSION_TYPES = {"main", "embedded", "ag"}
 # Priority keywords that indicate high importance
 # These should match the keywords in ai_config.json priority_overrides.keywords
 # plus common variations that parents use
-PRIORITY_KEYWORDS = [
+#
+# All entries are matched case-insensitively (lowercased before scan).
+# Exception: "IMPORTANT" (all-caps) is handled separately in _has_priority_keyword
+# as a case-sensitive guard — lowercase "important" is too common a word to trigger.
+PRIORITY_KEYWORDS: tuple[str, ...] = (
     # Original keywords
     "must have",
     "very important",
@@ -24,7 +28,12 @@ PRIORITY_KEYWORDS = [
     "most important",
     "must be with",  # Config: must_be_with
     "#1",  # Config: hashtag_one
-]
+    # OBR-validated additions (corpus mining: docs/plans/obr-priority-mining.md)
+    "highest priority",  # "1) Olivia Chen (highest priority) 2) Liam Garcia…"
+    "biggest request",  # "Her biggest request is to not be in the same bunk…"
+    "only request",  # "our only request would be that she's with a few other kiddos…"
+    "(priority)",  # "(priority)" inline after a name in ranked list
+)
 
 # Age filtering constants
 MAX_AGE_DIFFERENCE_MONTHS = 36  # For pre-filtering candidates
