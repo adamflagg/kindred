@@ -673,6 +673,7 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
                 requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' },
                 requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' },
                 detail: {},
+                bucket: null,
               },
               {
                 request_id: 'r2',
@@ -682,6 +683,7 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
                 requester: { cm_id: 3, name: 'Olivia Chen', grade: 5, gender: 'F' },
                 requestee: { cm_id: 4, name: 'Riley Sam', grade: 9, gender: 'F' },
                 detail: {},
+                bucket: null,
               },
             ],
             cross_session: [
@@ -693,6 +695,7 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
                 requester: { cm_id: 5, name: 'Sophia Martinez', grade: 6, gender: 'F' },
                 requestee: null,
                 detail: {},
+                bucket: null,
               },
             ],
           },
