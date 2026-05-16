@@ -1,14 +1,21 @@
 /**
- * Human-readable display labels for source field V2 names.
+ * Human-readable display labels for source field names.
  *
  * This is the SINGLE source of truth for source field display labels.
- * V2 internal names (bunk_with, not_bunk_with, etc.) are the canonical
- * values stored in the database. This function converts them to
- * user-facing labels for display only.
+ * Handles both:
+ * - DB/SourceField wire values ("bunk_with", "not_bunk_with") — used by
+ *   PipelineBatchList and other views that read source_field from the DB.
+ * - Validator stats keys ("share_bunk_with", "do_not_share_with") — emitted
+ *   by bunking_validator.py and shown in the post-check modal.
  */
 const SOURCE_FIELD_LABELS: Record<string, string> = {
+  // Validator stats keys (bunking_validator.py _SOURCEFIELD_TO_STATS_KEY)
+  share_bunk_with: 'Bunk Request Form',
+  do_not_share_with: 'Do NOT Share Bunk With',
+  // DB wire values (SourceField constants — backward-compat for pipeline views)
   bunk_with: 'Bunk Request Form',
   not_bunk_with: 'Do NOT Share Bunk With',
+  // Shared keys (same in both contexts)
   bunking_notes: 'Bunking Notes',
   internal_notes: 'Internal Notes',
   socialize_with: 'Social With Checkbox',
