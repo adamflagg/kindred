@@ -40,12 +40,14 @@ interface ValidationResults {
 interface ValidateBunkingButtonProps {
   sessionCmId: number
   year: number
+  sessionName?: string
   className?: string
 }
 
 export default function ValidateBunkingButton({
   sessionCmId,
   year,
+  sessionName,
   className = '',
 }: ValidateBunkingButtonProps) {
   const { currentScenario } = useScenario()
@@ -119,6 +121,8 @@ export default function ValidateBunkingButton({
           scenarioId={currentScenario?.id}
           impossibilityReport={preCheckQuery.data?.impossibility_report}
           preCheckError={preCheckQuery.isError}
+          sessionName={sessionName}
+          year={year}
         />
       )}
     </>

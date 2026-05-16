@@ -19,52 +19,13 @@ import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel, camperActionHints } from './impossibility/reasonHints'
 import { ErrorBoundary } from './ErrorBoundary'
-import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
+import type {
+  ImpossibilityReport,
+  EntirelyImpossibleMpCamper,
+  ValidationStatistics,
+} from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
-
-interface FieldStats {
-  total: number
-  satisfied: number
-  satisfaction_rate: number
-}
-
-interface ValidationStatistics {
-  total_campers: number
-  assigned_campers: number
-  unassigned_campers: number
-  total_requests: number
-  satisfied_requests: number
-  request_satisfaction_rate: number
-  bunks_at_capacity: number
-  bunks_under_capacity: number
-  bunks_over_capacity: number
-  material_parent_requests?: number
-  satisfied_material_parent_requests?: number
-  material_parent_request_satisfaction_rate?: number
-  campers_with_unsatisfied_material_parent_requests?: number
-  unsatisfied_material_parent_persons?: Array<{ cm_id: number; name: string }>
-  best_effort_parent_requests?: number
-  satisfied_best_effort_parent_requests?: number
-  best_effort_parent_request_satisfaction_rate?: number
-  field_stats: Record<string, FieldStats>
-  /** TG-4: not_bunk_with violations with full pair detail for "Families to call" section. */
-  negative_request_violations_detail?: Array<{
-    requester_cm_id: string
-    target_cm_id: string
-    requester_name: string
-    target_name: string
-    bunk_cm_id: string
-    bunk_name: string
-  }>
-  /** TG-4/TG-3: priority-keyword-flagged bunk_with requests that were not satisfied. */
-  priority_unsuccessfuls?: Array<{
-    requester_cm_id: string
-    target_cm_id: string
-    requester_name: string
-    target_name: string
-    raw_text: string
-  }>
-}
+import { useAuth } from '../contexts/AuthContext'
 
 interface Issue {
   type: string
@@ -571,6 +532,8 @@ export default function PostValidationResultsModal({
   sessionName,
   year,
 }: PostValidationResultsModalProps) {
+  const { user } = useAuth()
+  const plannerName = (user?.['name'] as string | undefined) || 'Camp Staff'
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
@@ -706,7 +669,7 @@ export default function PostValidationResultsModal({
         <LazyPdfExportButton
           sessionName={sessionName ?? String(sessionCmId)}
           year={year ?? new Date().getFullYear()}
-          plannerName=""
+          plannerName={plannerName}
           statistics={statistics}
           impossibilityReport={
             impossibilityReport ?? {

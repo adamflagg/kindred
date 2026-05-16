@@ -14,6 +14,11 @@ import PostValidationResultsModal from './PostValidationResultsModal'
 import { makeImpossibilityReport } from '../test/impossibilityReport'
 import type { EntirelyImpossibleMpCamper } from '../services/solver'
 
+// Stub out AuthContext so tests don't need a real AuthProvider
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Test User' } }),
+}))
+
 // Mock the Modal component to render children directly
 vi.mock('./ui/Modal', () => ({
   Modal: ({

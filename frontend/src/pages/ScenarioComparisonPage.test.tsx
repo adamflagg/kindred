@@ -15,9 +15,16 @@ import type { LockGroupSummary } from '../utils/scenarioComparisonUtils'
 
 function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationStatistics {
   return {
+    total_campers: 0,
     total_requests: 0,
     satisfied_requests: 0,
     request_satisfaction_rate: 0,
+    assigned_campers: 0,
+    unassigned_campers: 0,
+    bunks_at_capacity: 0,
+    bunks_under_capacity: 0,
+    bunks_over_capacity: 0,
+    field_stats: {},
     material_parent_requests: 0,
     satisfied_material_parent_requests: 0,
     material_parent_request_satisfaction_rate: 0,
@@ -30,8 +37,6 @@ function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationSta
     staff_request_satisfaction_rate: 0,
     campers_with_unsatisfied_staff_requests: 0,
     negative_request_violations: 0,
-    assigned_campers: 0,
-    unassigned_campers: 0,
     isolation_risks: 0,
     mp_campers_total: 0,
     mp_campers_with_at_least_one_satisfied: 0,
@@ -211,13 +216,11 @@ describe('ValidationScoreCard parent-paramount stats', () => {
     // @ts-expect-error — deliberately violating the type contract to simulate
     // a stale runtime payload, mirroring the real risk during rollout.
     delete stats.request_satisfaction_rate
-    // @ts-expect-error — see above
+    delete stats.material_parent_request_satisfaction_rate
     delete stats.staff_request_satisfaction_rate
-    // @ts-expect-error — see above
+    delete stats.best_effort_parent_request_satisfaction_rate
     delete stats.mp_campers_total
-    // @ts-expect-error — see above
     delete stats.mp_campers_with_at_least_one_satisfied
-    // @ts-expect-error — see above
     delete stats.mp_campers_with_all_satisfied
 
     const { container } = render(

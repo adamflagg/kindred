@@ -121,6 +121,15 @@ export interface ValidationStatistics {
   best_effort_parent_requests?: number
   satisfied_best_effort_parent_requests?: number
   best_effort_parent_request_satisfaction_rate?: number
+  /** Staff bunk requests (distinct from parent requests). */
+  staff_requests?: number
+  satisfied_staff_requests?: number
+  staff_request_satisfaction_rate?: number
+  campers_with_unsatisfied_staff_requests?: number
+  /** Count of not_bunk_with constraint violations. */
+  negative_request_violations?: number
+  /** Campers in bunks with no socially connected peers (isolation risk count). */
+  isolation_risks?: number
   field_stats: Record<
     string,
     {
@@ -144,6 +153,10 @@ export interface ValidationStatistics {
     target_name: string
     raw_text: string
   }>
+  /** TG-6: camper-level two-tier MP coverage. */
+  mp_campers_total?: number
+  mp_campers_with_at_least_one_satisfied?: number
+  mp_campers_with_all_satisfied?: number
 }
 
 // Shared cache type for the pre-check query — written by PreValidateRequestsButton

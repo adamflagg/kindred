@@ -51,6 +51,8 @@ import {
   type LockGroupSummary,
 } from '../utils/scenarioComparisonUtils'
 import { solverService } from '../services/solver'
+import type { ValidationStatistics } from '../services/solver'
+export type { ValidationStatistics } from '../services/solver'
 import { QueryGuard } from '../components/QueryGuard'
 import type { Session } from '../types/app-types'
 import { buildCsvContent, downloadCsv, slugify, todayIso } from '../utils/csvExport'
@@ -174,35 +176,6 @@ interface BunkComparison {
   rightCampers: CamperAssignment[]
   movedIn: Array<{ camper: CamperAssignment; fromBunk: string }>
   movedOut: Array<{ camper: CamperAssignment; toBunk: string }>
-}
-
-// Validation score types
-export interface ValidationStatistics {
-  total_requests: number
-  satisfied_requests: number
-  request_satisfaction_rate: number
-  // Stage 3a material (hard) parent requests — raw counts kept for drill-down.
-  material_parent_requests: number
-  satisfied_material_parent_requests: number
-  material_parent_request_satisfaction_rate: number
-  campers_with_unsatisfied_material_parent_requests: number
-  // Stage 3a best-effort (soft) parent requests — not shown on score card.
-  best_effort_parent_requests: number
-  satisfied_best_effort_parent_requests: number
-  best_effort_parent_request_satisfaction_rate: number
-  // Staff fields, distinct from parent.
-  staff_requests: number
-  satisfied_staff_requests: number
-  staff_request_satisfaction_rate: number
-  campers_with_unsatisfied_staff_requests: number
-  negative_request_violations: number
-  assigned_campers: number
-  unassigned_campers: number
-  isolation_risks: number
-  // TG-6: camper-level two-tier MP coverage.
-  mp_campers_total: number
-  mp_campers_with_at_least_one_satisfied: number
-  mp_campers_with_all_satisfied: number
 }
 
 export interface ValidationResult {
@@ -1320,8 +1293,8 @@ export function ValidationScoreCard({
         <StatBlock
           label="Staff requests"
           pct={staffPct}
-          satisfied={stats.satisfied_staff_requests}
-          total={stats.staff_requests}
+          satisfied={stats.satisfied_staff_requests ?? 0}
+          total={stats.staff_requests ?? 0}
         />
         {/* Families to call (negative request violations) */}
         <div>
@@ -1331,10 +1304,10 @@ export function ValidationScoreCard({
           <div
             className={clsx(
               'text-xl font-bold',
-              stats.negative_request_violations > 0 ? 'text-red-600' : 'text-forest-600'
+              (stats.negative_request_violations ?? 0) > 0 ? 'text-red-600' : 'text-forest-600'
             )}
           >
-            {stats.negative_request_violations}
+            {stats.negative_request_violations ?? 0}
           </div>
         </div>
         {/* Isolated campers */}
@@ -1345,10 +1318,10 @@ export function ValidationScoreCard({
           <div
             className={clsx(
               'text-xl font-bold',
-              stats.isolation_risks > 0 ? 'text-amber-600' : 'text-forest-600'
+              (stats.isolation_risks ?? 0) > 0 ? 'text-amber-600' : 'text-forest-600'
             )}
           >
-            {stats.isolation_risks}
+            {stats.isolation_risks ?? 0}
           </div>
         </div>
       </div>
