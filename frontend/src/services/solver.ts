@@ -59,6 +59,7 @@ export interface ImpossibilityReportItem {
   requester: { cm_id: number; name: string; grade: number; gender: string }
   requestee: { cm_id: number; name: string; grade: number; gender: string } | null
   detail: Record<string, unknown>
+  bucket: 'material_parent' | 'immaterial_parent' | 'staff' | null
 }
 
 export interface EntirelyImpossibleMpCamper {
@@ -75,6 +76,10 @@ export interface ImpossibilityReport {
   by_reason: Record<string, ImpossibilityReportItem[]>
   flat: ImpossibilityReportItem[]
   mp_campers_entirely_impossible?: EntirelyImpossibleMpCamper[]
+  // Optional because callers (e.g. the admin modal) intentionally tolerate a
+  // missing/legacy payload — see the defensive-rendering test in
+  // SolverDebugImpossibilityModal.test.tsx.
+  by_bucket_count?: Record<string, number>
 }
 
 interface ValidationResult {

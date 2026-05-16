@@ -10,7 +10,7 @@ interface ModalProps {
   header?: ReactNode // Custom header content (overrides title)
   footer?: ReactNode // Footer content
   children: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
   noPadding?: boolean // Remove default padding for complex layouts
   scrollable?: boolean // Make content area scrollable
   // Accessibility: callers using the custom `header` slot should thread
@@ -30,6 +30,7 @@ const sizeClasses = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  '2xl': 'max-w-6xl',
 } as const
 
 /**
