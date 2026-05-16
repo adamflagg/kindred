@@ -29,77 +29,92 @@ function makeRealLocalStorage() {
   }
 }
 
-// Six-item report covering all three buckets + a multi-reason request.
+// Six-row report covering all three buckets + a multi-reason request.
 // Olivia↔Riley appears twice (two reason codes, same request_id) — the
 // explicit Option-B trade-off.
+//
+// total_impossible / affected_campers / by_bucket_count all count UNIQUE
+// request_ids per backend contract (impossibility.py:_finalize_report), so
+// the multi-reason r2 row collapses in the counts but stays as two table rows.
 function makeReport(): ImpossibilityReport {
+  const flat: ImpossibilityReport['flat'] = [
+    {
+      request_id: 'r1',
+      reason_code: 'cross_session',
+      reason_message: '',
+      request_type: 'bunk_with',
+      requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
+      requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
+      detail: { req_sess: 12, target_sess: 13 },
+      bucket: 'material_parent',
+    },
+    {
+      request_id: 'r2',
+      reason_code: 'grade_compatibility',
+      reason_message: '',
+      request_type: 'bunk_with',
+      requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
+      requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
+      detail: { grade_a: 7, grade_b: 7, span: 0 },
+      bucket: 'material_parent',
+    },
+    {
+      request_id: 'r2',
+      reason_code: 'pair_no_shared_bunk',
+      reason_message: '',
+      request_type: 'bunk_with',
+      requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
+      requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
+      detail: { shared_bunks: 0 },
+      bucket: 'material_parent',
+    },
+    {
+      request_id: 'r3',
+      reason_code: 'age_pref_no_eligible_grade',
+      reason_message: '',
+      request_type: 'age_preference',
+      requester: { cm_id: 1000567, name: 'Samuel Johnson', grade: 10, gender: 'M' },
+      requestee: null,
+      detail: { prefers: 'younger', grade: 10 },
+      bucket: 'material_parent',
+    },
+    {
+      request_id: 'r4',
+      reason_code: 'target_not_in_solver',
+      reason_message: '',
+      request_type: 'socialize_with',
+      requester: { cm_id: 1000345, name: 'Ethan Wilson', grade: 8, gender: 'M' },
+      requestee: { cm_id: 1000891, name: 'Mia Brown', grade: 8, gender: 'F' },
+      detail: { target_cm_id: 1000891, in_roster: false },
+      bucket: 'immaterial_parent',
+    },
+    {
+      request_id: 'r5',
+      reason_code: 'malformed',
+      reason_message: '',
+      request_type: 'note',
+      requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
+      requestee: null,
+      detail: { field: 'internal_notes', parsed: null },
+      bucket: 'staff',
+    },
+  ]
+  // Derive by_reason from flat to mirror the backend invariant
+  // (_record_item writes both in lockstep). Keeps the fixture consistent
+  // with production shape even if `flat` evolves.
+  const by_reason: ImpossibilityReport['by_reason'] = {}
+  for (const item of flat) {
+    ;(by_reason[item.reason_code] ??= []).push(item)
+  }
   return {
-    total_impossible: 6,
-    affected_campers: 8,
-    by_reason: {},
-    flat: [
-      {
-        request_id: 'r1',
-        reason_code: 'cross_session',
-        reason_message: '',
-        request_type: 'bunk_with',
-        requester: { cm_id: 1000123, name: 'Emma Johnson', grade: 8, gender: 'F' },
-        requestee: { cm_id: 1000456, name: 'Liam Garcia', grade: 9, gender: 'M' },
-        detail: { req_sess: 12, target_sess: 13 },
-        bucket: 'material_parent',
-      },
-      {
-        request_id: 'r2',
-        reason_code: 'grade_compatibility',
-        reason_message: '',
-        request_type: 'bunk_with',
-        requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-        requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-        detail: { grade_a: 7, grade_b: 7, span: 0 },
-        bucket: 'material_parent',
-      },
-      {
-        request_id: 'r2',
-        reason_code: 'pair_no_shared_bunk',
-        reason_message: '',
-        request_type: 'bunk_with',
-        requester: { cm_id: 1000789, name: 'Olivia Chen', grade: 7, gender: 'F' },
-        requestee: { cm_id: 1000234, name: 'Riley Sam', grade: 7, gender: 'F' },
-        detail: { shared_bunks: 0 },
-        bucket: 'material_parent',
-      },
-      {
-        request_id: 'r3',
-        reason_code: 'age_pref_no_eligible_grade',
-        reason_message: '',
-        request_type: 'age_preference',
-        requester: { cm_id: 1000567, name: 'Samuel Johnson', grade: 10, gender: 'M' },
-        requestee: null,
-        detail: { prefers: 'younger', grade: 10 },
-        bucket: 'material_parent',
-      },
-      {
-        request_id: 'r4',
-        reason_code: 'target_not_in_solver',
-        reason_message: '',
-        request_type: 'socialize_with',
-        requester: { cm_id: 1000345, name: 'Ethan Wilson', grade: 8, gender: 'M' },
-        requestee: { cm_id: 1000891, name: 'Mia Brown', grade: 8, gender: 'F' },
-        detail: { target_cm_id: 1000891, in_roster: false },
-        bucket: 'immaterial_parent',
-      },
-      {
-        request_id: 'r5',
-        reason_code: 'malformed',
-        reason_message: '',
-        request_type: 'note',
-        requester: { cm_id: 1000678, name: 'Noah Davis', grade: 9, gender: 'M' },
-        requestee: null,
-        detail: { field: 'internal_notes', parsed: null },
-        bucket: 'staff',
-      },
-    ],
-    by_bucket_count: { material_parent: 4, immaterial_parent: 1, staff: 1 },
+    // Unique request_ids: r1, r2, r3, r4, r5 = 5
+    total_impossible: 5,
+    // Unique requester cm_ids: Emma, Olivia, Samuel, Ethan, Noah = 5
+    affected_campers: 5,
+    by_reason,
+    flat,
+    // Unique request_ids per bucket: MP {r1, r2, r3} = 3, IMP {r4} = 1, Staff {r5} = 1
+    by_bucket_count: { material_parent: 3, immaterial_parent: 1, staff: 1 },
   }
 }
 
@@ -181,8 +196,8 @@ describe('SolverDebugImpossibilityModal — filter chips', () => {
       />
     )
     // total_impossible=6 for All; per-bucket from by_bucket_count
-    expect(screen.getByRole('button', { name: /All\s*6/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^MP\s*4/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /All\s*5/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^MP\s*3/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^IMP\s*1/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Staff\s*1/ })).toBeInTheDocument()
   })
@@ -211,7 +226,7 @@ describe('SolverDebugImpossibilityModal — filter chips', () => {
         year={2026}
       />
     )
-    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    await user.click(screen.getByRole('button', { name: /^MP\s*3/ }))
     // 4 MP rows visible, IMP/STAFF rows gone (filter chips above the table
     // still show all four — they're persistent navigation, not row markers).
     expect(bodyRows()).toHaveLength(4)
@@ -230,7 +245,7 @@ describe('SolverDebugImpossibilityModal — filter chips', () => {
         year={2026}
       />
     )
-    const mpChip = screen.getByRole('button', { name: /^MP\s*4/ })
+    const mpChip = screen.getByRole('button', { name: /^MP\s*3/ })
     await user.click(mpChip)
     await user.click(mpChip)
     expect(bodyRows()).toHaveLength(6)
@@ -249,7 +264,7 @@ describe('SolverDebugImpossibilityModal — filter chips', () => {
     )
     await user.click(screen.getByRole('button', { name: /^IMP\s*1/ }))
     expect(bodyRows()).toHaveLength(1)
-    await user.click(screen.getByRole('button', { name: /All\s*6/ }))
+    await user.click(screen.getByRole('button', { name: /All\s*5/ }))
     expect(bodyRows()).toHaveLength(6)
   })
 
@@ -264,11 +279,40 @@ describe('SolverDebugImpossibilityModal — filter chips', () => {
         year={2026}
       />
     )
-    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    await user.click(screen.getByRole('button', { name: /^MP\s*3/ }))
     expect(bodyRows()).toHaveLength(4)
     await user.click(screen.getByRole('button', { name: /^Staff\s*1/ }))
     expect(bodyRows()).toHaveLength(1)
     expect(rowChipsByLabel('STAFF')).toHaveLength(1)
+  })
+})
+
+describe('SolverDebugImpossibilityModal — filter chip a11y', () => {
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', makeRealLocalStorage())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('exposes selection via aria-pressed so AT can announce the active bucket', async () => {
+    const user = userEvent.setup()
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // Default: All is active
+    expect(screen.getByRole('button', { name: /All\s*5/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^MP\s*3/ })).toHaveAttribute('aria-pressed', 'false')
+    // Click MP — now MP is active, All is not
+    await user.click(screen.getByRole('button', { name: /^MP\s*3/ }))
+    expect(screen.getByRole('button', { name: /^MP\s*3/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /All\s*5/ })).toHaveAttribute('aria-pressed', 'false')
   })
 })
 
@@ -291,7 +335,7 @@ describe('SolverDebugImpossibilityModal — filter localStorage persistence', ()
         year={2026}
       />
     )
-    await user.click(screen.getByRole('button', { name: /^MP\s*4/ }))
+    await user.click(screen.getByRole('button', { name: /^MP\s*3/ }))
     expect(window.localStorage.getItem(FILTER_STORAGE_KEY)).toBe('material_parent')
   })
 
@@ -395,11 +439,28 @@ describe('SolverDebugImpossibilityModal — sortable headers preserved from main
 })
 
 describe('SolverDebugImpossibilityModal — preserved behavior from main', () => {
+  // navigator.clipboard / window.isSecureContext / document.execCommand are
+  // mutated via Object.defineProperty in the Copy JSON tests. vi.unstubAllGlobals
+  // does not restore those, so capture the original descriptors in beforeEach
+  // and re-apply them in afterEach to keep tests order-independent.
+  let savedClipboard: PropertyDescriptor | undefined
+  let savedIsSecureContext: PropertyDescriptor | undefined
+  let savedExecCommand: PropertyDescriptor | undefined
+
   beforeEach(() => {
     vi.stubGlobal('localStorage', makeRealLocalStorage())
+    savedClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    savedIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext')
+    savedExecCommand = Object.getOwnPropertyDescriptor(document, 'execCommand')
   })
   afterEach(() => {
     vi.unstubAllGlobals()
+    if (savedClipboard) Object.defineProperty(navigator, 'clipboard', savedClipboard)
+    else Reflect.deleteProperty(navigator, 'clipboard')
+    if (savedIsSecureContext) Object.defineProperty(window, 'isSecureContext', savedIsSecureContext)
+    else Reflect.deleteProperty(window, 'isSecureContext')
+    if (savedExecCommand) Object.defineProperty(document, 'execCommand', savedExecCommand)
+    else Reflect.deleteProperty(document, 'execCommand')
   })
 
   it('renders the green "no issues" block when total_impossible is zero', () => {
@@ -420,6 +481,41 @@ describe('SolverDebugImpossibilityModal — preserved behavior from main', () =>
       />
     )
     expect(screen.getByText(/no issues detected/i)).toBeInTheDocument()
+  })
+
+  it('exposes an accessible name on the dialog (aria-label)', () => {
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    // Modal uses a custom header slot, so it must thread an explicit aria-label
+    // for screen readers — see Modal.tsx contract.
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(/impossibility/i)
+  })
+
+  it('Copy JSON shows a failure state when both clipboard paths fail', async () => {
+    const user = userEvent.setup()
+    // No clipboard, not in a secure context, no execCommand → both paths fail.
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false })
+    const execMock = vi.fn().mockReturnValue(false)
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: execMock })
+    render(
+      <SolverDebugImpossibilityModal
+        isOpen
+        onClose={() => {}}
+        report={makeReport()}
+        sessionCmId={12}
+        year={2026}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /copy json/i }))
+    // The button label flips to a visible failure state instead of staying idle.
+    expect(screen.getByRole('button', { name: /copy failed/i })).toBeInTheDocument()
   })
 
   it('renders the red stuck-banner above the table when mp_campers_entirely_impossible is non-empty', () => {
@@ -500,7 +596,6 @@ describe('SolverDebugImpossibilityModal — preserved behavior from main', () =>
     )
     await user.click(screen.getByRole('button', { name: /copy json/i }))
     expect(execMock).toHaveBeenCalledWith('copy')
-    Reflect.deleteProperty(document, 'execCommand')
   })
 
   it('wraps every camper name with CamperNameButton', () => {

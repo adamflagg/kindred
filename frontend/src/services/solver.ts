@@ -76,7 +76,10 @@ export interface ImpossibilityReport {
   by_reason: Record<string, ImpossibilityReportItem[]>
   flat: ImpossibilityReportItem[]
   mp_campers_entirely_impossible?: EntirelyImpossibleMpCamper[]
-  by_bucket_count: Record<string, number>
+  // Optional because callers (e.g. the admin modal) intentionally tolerate a
+  // missing/legacy payload — see the defensive-rendering test in
+  // SolverDebugImpossibilityModal.test.tsx.
+  by_bucket_count?: Record<string, number>
 }
 
 interface ValidationResult {

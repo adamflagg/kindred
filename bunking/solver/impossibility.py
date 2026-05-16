@@ -219,7 +219,9 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
     # Dedupe at the request-id level — a request appearing in N buckets is
     # ONE impossible request, not N. Same for the affected-campers headline.
     report.total_impossible = len({item.request_id for item in report.flat})
-    report.affected_campers = len({item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id")})
+    report.affected_campers = len(
+        {item.requester.get("cm_id") for item in report.flat if item.requester.get("cm_id") is not None}
+    )
 
     # Per-bucket request-id-unique counts (mirrors total_impossible's dedup).
     seen_per_bucket: dict[str, set[str]] = {}

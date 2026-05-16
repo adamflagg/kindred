@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReport, ImpossibilityReportItem } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
@@ -113,22 +113,15 @@ function SortableHeader({
       aria-sort={ariaSort}
       className="border-b border-stone-300 px-2 py-1 text-left font-semibold"
     >
-      <span
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         aria-label={`Sort by ${label.toLowerCase()}`}
         onClick={() => onSort(column)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onSort(column)
-          }
-        }}
-        className="-mx-2 -my-1 inline-block w-full cursor-pointer px-2 py-1 hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
+        className="-mx-2 -my-1 inline-block w-full cursor-pointer bg-transparent px-2 py-1 text-left font-semibold hover:bg-stone-200 focus:bg-stone-200 focus:outline-none"
       >
         {label}
         {arrow(column)}
-      </span>
+      </button>
     </th>
   )
 }
@@ -160,6 +153,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={
         active
           ? 'rounded-full border border-stone-900 bg-stone-900 px-3 py-0.5 font-sans text-xs font-medium text-white'
@@ -181,9 +175,21 @@ export default function SolverDebugImpossibilityModal({
 }: Props) {
   const [sortCol, setSortCol] = useState<SortColumn>('reason')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [justCopied, setJustCopied] = useState(false)
+  // 'idle' | 'copied' | 'failed' — transient UI flash from the Copy JSON button.
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [bucketFilter, setBucketFilter] = useState<BucketFilter>(loadInitialFilter)
+
+  // Cancel any pending copy-status reset on unmount so we never call setState
+  // on an unmounted component after a 1.5s flash.
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        clearTimeout(copyResetTimerRef.current)
+      }
+    }
+  }, [])
 
   // SolverDebugPage gates this modal on preCheckQuery.data (stable), so the
   // component stays mounted across isOpen toggles. Clear the selection on
@@ -267,10 +273,19 @@ export default function SolverDebugImpossibilityModal({
         document.body.removeChild(ta)
       }
     }
-    if (copied) {
-      setJustCopied(true)
-      setTimeout(() => setJustCopied(false), 1500)
+    setCopyStatus(copied ? 'copied' : 'failed')
+    if (!copied) {
+      // Surface the failure to dev tools — silent failure is the bug we're
+      // guarding against. The visible button label change above is the
+      // primary signal; the console line helps when triaging from a console
+      // log capture.
+      console.warn('SolverDebugImpossibilityModal: Copy JSON failed (both clipboard paths)')
     }
+    if (copyResetTimerRef.current !== null) clearTimeout(copyResetTimerRef.current)
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopyStatus('idle')
+      copyResetTimerRef.current = null
+    }, 1500)
   }
 
   const headerContent = (
@@ -289,7 +304,11 @@ export default function SolverDebugImpossibilityModal({
           onClick={handleCopyJson}
           className="rounded border border-stone-300 bg-white px-2.5 py-1 font-sans text-xs hover:bg-stone-50"
         >
-          {justCopied ? '✓ Copied' : '📋 Copy JSON'}
+          {copyStatus === 'copied'
+            ? '✓ Copied'
+            : copyStatus === 'failed'
+              ? '✗ Copy failed'
+              : '📋 Copy JSON'}
         </button>
       </div>
     </div>
@@ -298,7 +317,15 @@ export default function SolverDebugImpossibilityModal({
   const empty = report.total_impossible === 0
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} header={headerContent} size="2xl" scrollable noPadding>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      header={headerContent}
+      size="2xl"
+      scrollable
+      noPadding
+      ariaLabel="Pre-validate impossibility report"
+    >
       <div className="px-5 py-4 font-mono">
         {report.mp_campers_entirely_impossible &&
           report.mp_campers_entirely_impossible.length > 0 && (
