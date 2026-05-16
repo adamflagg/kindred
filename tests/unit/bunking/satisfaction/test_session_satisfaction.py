@@ -714,3 +714,76 @@ def test_assignment_with_dict_style_expand_is_processed() -> None:
     # Both assignments must surface; dict-style must NOT be silently dropped.
     assert 1 in resp.campers
     assert 2 in resp.campers
+
+
+def _unassigned_draft_row(person_cm_id: int) -> Any:
+    """Scenario draft row where orphan_reconciler cleared the bunk rel.
+
+    Mirrors the post-reconciliation state: person rel + expand intact,
+    bunk rel is empty string, no bunk in expand payload. This is the
+    canonical "camper sitting in the Unassigned pool" shape.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"a{person_cm_id:014d}",
+        cm_id=person_cm_id * 1000,
+        person=f"p{person_cm_id:014d}",
+        bunk="",
+        session=f"s{1:014d}",
+        expand={"person": SimpleNamespace(id=f"p{person_cm_id:014d}", cm_id=person_cm_id)},
+    )
+
+
+def _dangling_bunk_assignment(person_cm_id: int, bunk_rel_id: str) -> Any:
+    """Assignment row whose bunk rel points at a record that no longer exists.
+
+    Mirrors a true data-corruption case: rel value is set but the expand
+    payload omits bunk because the referenced record is gone.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        id=f"a{person_cm_id:014d}",
+        cm_id=person_cm_id * 1000,
+        person=f"p{person_cm_id:014d}",
+        bunk=bunk_rel_id,
+        session=f"s{1:014d}",
+        expand={"person": SimpleNamespace(id=f"p{person_cm_id:014d}", cm_id=person_cm_id)},
+    )
+
+
+class TestUnresolvedExpandWarningClassification:
+    """Distinguish intentional unassigned (silent) from dangling FK (WARN).
+
+    orphan_reconciler clears `bunk` to '' on draft rows whose (session, bunk)
+    pair drops out of bunk_plans — the camper falls back into the Unassigned
+    pool by design. Warning about those is log noise. A non-empty bunk rel
+    that fails to expand IS real corruption and must still surface.
+    """
+
+    def test_empty_bunk_rel_does_not_warn(self, caplog: pytest.LogCaptureFixture) -> None:
+        persons = [_person(1)]
+        assignments = [_unassigned_draft_row(person_cm_id=1)]
+        pb = _build_pb_mock(persons, [], [], draft_assignments=assignments)
+
+        valid_scenario = "scenarioabc1234"
+        with caplog.at_level("WARNING", logger="bunking.satisfaction.aggregate"):
+            session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=valid_scenario, pb_client=pb)
+
+        unresolved = [r for r in caplog.records if "unresolved expand" in r.getMessage()]
+        assert unresolved == [], f"unexpected warnings: {[r.getMessage() for r in unresolved]}"
+
+    def test_dangling_bunk_rel_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        persons = [_person(1)]
+        assignments = [_dangling_bunk_assignment(person_cm_id=1, bunk_rel_id="b00000000000999")]
+        pb = _build_pb_mock(persons, [], [], draft_assignments=assignments)
+
+        valid_scenario = "scenarioabc1234"
+        with caplog.at_level("WARNING", logger="bunking.satisfaction.aggregate"):
+            session_satisfaction(session_cm_ids=[999], year=2026, scenario_id=valid_scenario, pb_client=pb)
+
+        unresolved = [r for r in caplog.records if "unresolved expand" in r.getMessage()]
+        assert len(unresolved) == 1, (
+            f"expected exactly 1 unresolved-expand warning, got: {[r.getMessage() for r in unresolved]}"
+        )
