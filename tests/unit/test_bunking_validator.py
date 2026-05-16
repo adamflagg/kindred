@@ -14,7 +14,7 @@ from bunking.bunking_validator import (
     ValidationSeverity,
     ValidationStatistics,
 )
-from bunking.models import BunkRequest, Person
+from bunking.models import Bunk, BunkAssignment, BunkRequest, Person
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 # ---------------------------------------------------------------------------
@@ -1993,3 +1993,128 @@ def test_validator_handles_non_numeric_bunkmate_grade():
         requests=cast(list[BunkRequest], requests),
     )
     assert result.statistics is not None
+
+
+# ─── TG-6: camper-level two-tier MP coverage ─────────────────────────────────
+
+
+def test_mp_camper_level_coverage_at_least_one_and_all() -> None:
+    """Camper-level two-tier MP coverage: at-least-one vs all satisfied.
+
+    3 campers (Emma Johnson, Liam Garcia, Olivia Chen), each with 2 MP requests.
+    - Emma Johnson (pid=1): 2/2 satisfied → counts in BOTH tiers
+    - Liam Garcia  (pid=4): 1/2 satisfied → counts in "at least one" only
+    - Olivia Chen  (pid=7): 0/2 satisfied → counts in NEITHER tier
+
+    Expected:
+        mp_campers_total                     = 3
+        mp_campers_with_at_least_one_satisfied = 2  (Emma + Liam)
+        mp_campers_with_all_satisfied          = 1  (Emma only)
+    """
+    session = _mock_session(cm_id="10000001", name="Test Session")
+
+    # Three campers + their request targets (targets just need to exist as persons
+    # so the validator can resolve them; their own assignments don't matter).
+    persons = [
+        MockPerson(campminder_id="1", name="Emma Johnson"),
+        MockPerson(campminder_id="2", name="Riley Sam"),
+        MockPerson(campminder_id="3", name="Samuel Johnson"),
+        MockPerson(campminder_id="4", name="Liam Garcia"),
+        MockPerson(campminder_id="5", name="Alex Kim"),
+        MockPerson(campminder_id="6", name="Jordan Lee"),
+        MockPerson(campminder_id="7", name="Olivia Chen"),
+        MockPerson(campminder_id="8", name="Casey Morgan"),
+        MockPerson(campminder_id="9", name="Taylor Reed"),
+    ]
+
+    # Two bunks: alpha holds Emma + her two targets, beta holds Liam + one target.
+    bunks = [
+        MockBunk(campminder_id="100", name="Alpha"),
+        MockBunk(campminder_id="200", name="Beta"),
+    ]
+
+    assignments = [
+        # Emma Johnson (pid=1): both targets in same bunk → 2/2 satisfied
+        MockBunkAssignment(person_cm_id="1", bunk_cm_id="100"),
+        MockBunkAssignment(person_cm_id="2", bunk_cm_id="100"),
+        MockBunkAssignment(person_cm_id="3", bunk_cm_id="100"),
+        # Liam Garcia (pid=4): only first target in same bunk → 1/2 satisfied
+        MockBunkAssignment(person_cm_id="4", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="5", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="6", bunk_cm_id="100"),  # different bunk → unsatisfied
+        # Olivia Chen (pid=7): neither target in same bunk → 0/2 satisfied
+        MockBunkAssignment(person_cm_id="7", bunk_cm_id="200"),
+        MockBunkAssignment(person_cm_id="8", bunk_cm_id="100"),  # different bunk
+        MockBunkAssignment(person_cm_id="9", bunk_cm_id="100"),  # different bunk
+    ]
+
+    requests = [
+        # Emma Johnson: req 1 → Riley Sam (satisfied — both in alpha)
+        MockBunkRequest(
+            requester_person_cm_id="1",
+            requested_person_cm_id="2",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # Emma Johnson: req 2 → Samuel Johnson (satisfied — both in alpha)
+        MockBunkRequest(
+            requester_person_cm_id="1",
+            requested_person_cm_id="3",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # Liam Garcia: req 1 → Alex Kim (satisfied — both in beta)
+        MockBunkRequest(
+            requester_person_cm_id="4",
+            requested_person_cm_id="5",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # Liam Garcia: req 2 → Jordan Lee (unsatisfied — Jordan in alpha, Liam in beta)
+        MockBunkRequest(
+            requester_person_cm_id="4",
+            requested_person_cm_id="6",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # Olivia Chen: req 1 → Casey Morgan (unsatisfied — Casey in alpha, Olivia in beta)
+        MockBunkRequest(
+            requester_person_cm_id="7",
+            requested_person_cm_id="8",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # Olivia Chen: req 2 → Taylor Reed (unsatisfied — Taylor in alpha, Olivia in beta)
+        MockBunkRequest(
+            requester_person_cm_id="7",
+            requested_person_cm_id="9",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+
+    validator = BunkingValidator()
+    result = validator.validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert stats.mp_campers_total == 3
+    assert stats.mp_campers_with_at_least_one_satisfied == 2  # Emma + Liam
+    assert stats.mp_campers_with_all_satisfied == 1  # Emma only
