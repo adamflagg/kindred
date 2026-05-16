@@ -181,12 +181,12 @@ export interface ValidationStatistics {
   total_requests: number
   satisfied_requests: number
   request_satisfaction_rate: number
-  // Stage 3a material (hard) parent requests — tiles read these.
+  // Stage 3a material (hard) parent requests — raw counts kept for drill-down.
   material_parent_requests: number
   satisfied_material_parent_requests: number
   material_parent_request_satisfaction_rate: number
   campers_with_unsatisfied_material_parent_requests: number
-  // Stage 3a best-effort (soft) parent requests — de-emphasized tile.
+  // Stage 3a best-effort (soft) parent requests — not shown on score card.
   best_effort_parent_requests: number
   satisfied_best_effort_parent_requests: number
   best_effort_parent_request_satisfaction_rate: number
@@ -199,6 +199,10 @@ export interface ValidationStatistics {
   assigned_campers: number
   unassigned_campers: number
   isolation_risks: number
+  // TG-6: camper-level two-tier MP coverage.
+  mp_campers_total: number
+  mp_campers_with_at_least_one_satisfied: number
+  mp_campers_with_all_satisfied: number
 }
 
 export interface ValidationResult {
@@ -766,8 +770,11 @@ export default function ScenarioComparisonPage() {
                     <ChevronDown className="text-muted-foreground h-5 w-5 flex-shrink-0" />
                   </ListboxButton>
                   <ListboxOptions className="listbox-options w-full">
-                    <ListboxOption value="production" className="listbox-option">
-                      CampMinder (Production)
+                    <ListboxOption
+                      value="production"
+                      className="listbox-option border-2 border-dashed border-amber-400 bg-amber-50/40 font-semibold dark:bg-amber-900/20"
+                    >
+                      ⬩ CampMinder (Production)
                     </ListboxOption>
                     {scenarios.length > 0 && (
                       <div className="text-muted-foreground border-border mt-1 border-t px-4 py-1.5 text-xs font-semibold tracking-wider uppercase">
@@ -817,9 +824,9 @@ export default function ScenarioComparisonPage() {
                     <ListboxOption
                       value="production"
                       disabled={leftScenarioId === 'production'}
-                      className="listbox-option"
+                      className="listbox-option border-2 border-dashed border-amber-400 bg-amber-50/40 font-semibold dark:bg-amber-900/20"
                     >
-                      CampMinder (Production)
+                      ⬩ CampMinder (Production)
                     </ListboxOption>
                     {scenarios.length > 0 && (
                       <div className="text-muted-foreground border-border mt-1 border-t px-4 py-1.5 text-xs font-semibold tracking-wider uppercase">
@@ -870,6 +877,8 @@ export default function ScenarioComparisonPage() {
               rightValidation={rightValidation}
               leftScenarioName={leftScenarioName}
               rightScenarioName={rightScenarioName}
+              leftScenarioId={leftScenarioId}
+              rightScenarioId={rightScenarioId}
             />
 
             {/* Metrics Summary */}
@@ -1146,32 +1155,6 @@ function StatBlock({
   )
 }
 
-// De-emphasized variant for best-effort (soft) requests — smaller text,
-// neutral color so it doesn't compete with the material parent tile.
-function StatBlockMuted({
-  label,
-  pct,
-  satisfied,
-  total,
-}: {
-  label: string
-  pct: number
-  satisfied: number
-  total: number
-}) {
-  return (
-    <div className="opacity-70">
-      <div className="text-muted-foreground text-xs tracking-wider uppercase">{label}</div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-muted-foreground text-base font-semibold">{pct}%</span>
-        <span className="text-muted-foreground text-xs">
-          ({satisfied}/{total})
-        </span>
-      </div>
-    </div>
-  )
-}
-
 // ValidationSection — QueryGuard boundary for validation score comparison.
 // Handles loading / error / empty / success states so that ValidationScoreCard
 // only needs to render the success case.
@@ -1183,6 +1166,8 @@ export interface ValidationSectionProps {
   rightValidation: ValidationResult | null | undefined
   leftScenarioName: string
   rightScenarioName: string
+  leftScenarioId?: string
+  rightScenarioId?: string
 }
 
 export function ValidationSection({
@@ -1192,6 +1177,8 @@ export function ValidationSection({
   rightValidation,
   leftScenarioName,
   rightScenarioName,
+  leftScenarioId,
+  rightScenarioId,
 }: ValidationSectionProps) {
   return (
     <QueryGuard
@@ -1212,12 +1199,18 @@ export function ValidationSection({
           </div>
           <div className="bg-muted/20 grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
             {/* Left Scenario Score */}
-            <ValidationScoreCard label={leftScenarioName} validation={leftValidation} side="left" />
+            <ValidationScoreCard
+              label={leftScenarioName}
+              validation={leftValidation}
+              side="left"
+              isProduction={leftScenarioId === 'production'}
+            />
             {/* Right Scenario Score */}
             <ValidationScoreCard
               label={rightScenarioName}
               validation={rightValidation}
               side="right"
+              isProduction={rightScenarioId === 'production'}
             />
           </div>
         </div>
@@ -1231,9 +1224,16 @@ export interface ValidationScoreCardProps {
   label: string
   validation: ValidationResult | null | undefined
   side: 'left' | 'right'
+  /** When true, applies a dashed-amber border to signal this is the live CampMinder snapshot. */
+  isProduction?: boolean
 }
 
-export function ValidationScoreCard({ label, validation, side }: ValidationScoreCardProps) {
+export function ValidationScoreCard({
+  label,
+  validation,
+  side,
+  isProduction = false,
+}: ValidationScoreCardProps) {
   // Note: loading / error / empty states are handled by the parent ValidationSection
   // (QueryGuard boundary). This component only renders in the success path.
   // null/undefined validation means the individual side has no data yet — render
@@ -1249,49 +1249,85 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
 
   const stats = validation.statistics
 
-  // "All Requests" = material parent + staff only; best-effort excluded.
-  const allTotal = (stats.material_parent_requests ?? 0) + (stats.staff_requests ?? 0)
-  const allSatisfied =
-    (stats.satisfied_material_parent_requests ?? 0) + (stats.satisfied_staff_requests ?? 0)
-  const allPct = allTotal > 0 ? Math.round((allSatisfied / allTotal) * 100) : 0
+  // Camper-level two-tier MP coverage (TG-6).
+  const mpTotal = stats.mp_campers_total ?? 0
+  const atLeastOnePct =
+    mpTotal > 0
+      ? Math.round(((stats.mp_campers_with_at_least_one_satisfied ?? 0) / mpTotal) * 100)
+      : 0
+  const allMpPct =
+    mpTotal > 0 ? Math.round(((stats.mp_campers_with_all_satisfied ?? 0) / mpTotal) * 100) : 0
 
-  const materialParentPct = Math.round((stats.material_parent_request_satisfaction_rate ?? 0) * 100)
-  const bestEffortPct = Math.round((stats.best_effort_parent_request_satisfaction_rate ?? 0) * 100)
   const staffPct = Math.round((stats.staff_request_satisfaction_rate ?? 0) * 100)
 
   return (
     <div
       className={clsx(
         'rounded-xl border-2 p-4',
-        side === 'left'
-          ? 'border-bark-200 bg-bark-50 dark:border-bark-700 dark:bg-bark-900/20'
-          : 'border-forest-200 bg-forest-50 dark:border-forest-700 dark:bg-forest-900/20'
+        isProduction
+          ? 'border-dashed border-amber-400 bg-amber-50/40 dark:bg-amber-900/20'
+          : side === 'left'
+            ? 'border-bark-200 bg-bark-50 dark:border-bark-700 dark:bg-bark-900/20'
+            : 'border-forest-200 bg-forest-50 dark:border-forest-700 dark:bg-forest-900/20'
       )}
     >
       <div className="mb-3 truncate text-sm font-semibold">{label}</div>
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <StatBlock label="All Requests" pct={allPct} satisfied={allSatisfied} total={allTotal} />
+        {/* Two-tier camper-level MP coverage — hero tiles */}
+        <div>
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">
+            At least one request
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span
+              className={clsx(
+                'text-xl font-bold',
+                atLeastOnePct >= 80
+                  ? 'text-forest-600'
+                  : atLeastOnePct >= 60
+                    ? 'text-amber-600'
+                    : 'text-red-600'
+              )}
+            >
+              {atLeastOnePct}%
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {stats.mp_campers_with_at_least_one_satisfied ?? 0} / {mpTotal} campers
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">All requests</div>
+          <div className="flex items-baseline gap-1">
+            <span
+              className={clsx(
+                'text-xl font-bold',
+                allMpPct >= 80
+                  ? 'text-forest-600'
+                  : allMpPct >= 60
+                    ? 'text-amber-600'
+                    : 'text-red-600'
+              )}
+            >
+              {allMpPct}%
+            </span>
+            <span className="text-muted-foreground text-xs">
+              {stats.mp_campers_with_all_satisfied ?? 0} / {mpTotal} campers
+            </span>
+          </div>
+        </div>
+        {/* Staff requests */}
         <StatBlock
-          label="Material Parent"
-          pct={materialParentPct}
-          satisfied={stats.satisfied_material_parent_requests ?? 0}
-          total={stats.material_parent_requests ?? 0}
-        />
-        <StatBlock
-          label="Staff Requests"
+          label="Staff requests"
           pct={staffPct}
           satisfied={stats.satisfied_staff_requests}
           total={stats.staff_requests}
         />
-        <StatBlockMuted
-          label="Best-Effort Parent"
-          pct={bestEffortPct}
-          satisfied={stats.satisfied_best_effort_parent_requests ?? 0}
-          total={stats.best_effort_parent_requests ?? 0}
-        />
-        {/* Violations & Risks */}
+        {/* Families to call (negative request violations) */}
         <div>
-          <div className="text-muted-foreground text-xs tracking-wider uppercase">Violations</div>
+          <div className="text-muted-foreground text-xs tracking-wider uppercase">
+            Families to call
+          </div>
           <div
             className={clsx(
               'text-xl font-bold',
@@ -1301,9 +1337,10 @@ export function ValidationScoreCard({ label, validation, side }: ValidationScore
             {stats.negative_request_violations}
           </div>
         </div>
+        {/* Isolated campers */}
         <div>
           <div className="text-muted-foreground text-xs tracking-wider uppercase">
-            Isolation Risks
+            Isolated campers
           </div>
           <div
             className={clsx(

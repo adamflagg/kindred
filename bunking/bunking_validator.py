@@ -164,6 +164,14 @@ class ValidationStatistics(BaseModel):
     # Negative request violations (all not_bunk_with violations)
     negative_request_violations: int = 0
 
+    # Camper-level two-tier MP coverage (bunk_request_form source only).
+    # mp_campers_total = number of distinct requesters with ≥1 MP request.
+    # mp_campers_with_at_least_one_satisfied = campers where ≥1 of their MP requests is satisfied.
+    # mp_campers_with_all_satisfied = campers where ALL of their MP requests are satisfied.
+    mp_campers_total: int = 0
+    mp_campers_with_at_least_one_satisfied: int = 0
+    mp_campers_with_all_satisfied: int = 0
+
 
 class ValidationResult(BaseModel):
     """Complete validation result with statistics and issues."""
@@ -686,6 +694,22 @@ class BunkingValidator:
             person = person_by_id.get(pid)
             unmet_persons.append({"cm_id": cm_id, "name": person.name if person else f"Person {pid}"})
         stats.unsatisfied_material_parent_persons = sorted(unmet_persons, key=lambda entry: entry["name"])
+
+        # Camper-level two-tier MP coverage.
+        # mp_campers_total = distinct requesters with ≥1 MP request.
+        # at_least_one = requester has ≥1 satisfied MP request.
+        # all_satisfied = requester has ≥1 MP request AND every MP request is satisfied.
+        stats.mp_campers_total = sum(1 for reqs in material_parent_by_person.values() if reqs)
+        stats.mp_campers_with_at_least_one_satisfied = sum(
+            1
+            for pid, reqs in material_parent_by_person.items()
+            if reqs and satisfied_material_parent_by_person.get(pid)
+        )
+        stats.mp_campers_with_all_satisfied = sum(
+            1
+            for pid, reqs in material_parent_by_person.items()
+            if reqs and len(satisfied_material_parent_by_person.get(pid, [])) == len(reqs)
+        )
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

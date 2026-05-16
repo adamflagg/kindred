@@ -33,6 +33,9 @@ function makeStats(overrides: Partial<ValidationStatistics> = {}): ValidationSta
     assigned_campers: 0,
     unassigned_campers: 0,
     isolation_risks: 0,
+    mp_campers_total: 0,
+    mp_campers_with_at_least_one_satisfied: 0,
+    mp_campers_with_all_satisfied: 0,
     ...overrides,
   }
 }
@@ -178,46 +181,29 @@ describe('explicit_csv_* fields are removed', () => {
   })
 })
 
-// ─── Stage 3a parent-paramount: ValidationScoreCard — material + best-effort tiles ──
+// ─── Stage 3a parent-paramount: ValidationScoreCard — staff tile (TG-6 updated) ──
+// Note: Material Parent and Best-Effort Parent tiles were replaced in TG-6 with
+// camper-level two-tier MP coverage tiles. Staff tile relabeled to "Staff requests".
 
 describe('ValidationScoreCard parent-paramount stats', () => {
-  it('renders Material Parent tile from material_parent_request_satisfaction_rate', () => {
+  it('renders Staff requests stat (relabeled from "Staff Requests")', () => {
     const stats = makeStats({
-      // Stage 3a material-parent values (what the tile SHOULD read)
-      material_parent_requests: 10,
-      satisfied_material_parent_requests: 9,
-      material_parent_request_satisfaction_rate: 0.9,
-    })
-    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
-    const parentLabel = screen.getByText(/^Material Parent$/i)
-    const parentSection = parentLabel.parentElement!
-    const parentScope = within(parentSection)
-    expect(parentScope.getByText('90%')).toBeInTheDocument()
-    expect(parentScope.getByText('(9/10)')).toBeInTheDocument()
-  })
-
-  it('renders Staff Requests stat as a sibling badge', () => {
-    const stats = makeStats({
-      material_parent_requests: 10,
-      satisfied_material_parent_requests: 10,
-      material_parent_request_satisfaction_rate: 1.0,
       staff_requests: 50,
       satisfied_staff_requests: 25,
       staff_request_satisfaction_rate: 0.5,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="right" />)
-    const staffLabel = screen.getByText(/^Staff Requests$/i)
+    const staffLabel = screen.getByText(/^staff requests$/i)
     const staffSection = staffLabel.parentElement!
     const staffScope = within(staffSection)
     expect(staffScope.getByText('50%')).toBeInTheDocument()
     expect(staffScope.getByText('(25/50)')).toBeInTheDocument()
   })
 
-  it('does not render NaN% when rate fields are missing from a stale payload', () => {
-    // Stage 3a rate fields are typed as required `number`, but during rollout
+  it('does not render NaN% when rate/camper fields are missing from a stale payload', () => {
+    // TG-6 rate fields are typed as required `number`, but during rollout
     // (or with a stale cached scenario response) the runtime payload can
-    // still arrive without them. Math.round(undefined * 100) === NaN, which
-    // would render as "NaN%". Guard against that.
+    // still arrive without them. Guard against NaN rendering.
     const stats = makeStats({
       total_requests: 100,
       satisfied_requests: 50,
@@ -226,74 +212,144 @@ describe('ValidationScoreCard parent-paramount stats', () => {
     // a stale runtime payload, mirroring the real risk during rollout.
     delete stats.request_satisfaction_rate
     // @ts-expect-error — see above
-    delete stats.material_parent_request_satisfaction_rate
-    // @ts-expect-error — see above
     delete stats.staff_request_satisfaction_rate
     // @ts-expect-error — see above
-    delete stats.best_effort_parent_request_satisfaction_rate
+    delete stats.mp_campers_total
+    // @ts-expect-error — see above
+    delete stats.mp_campers_with_at_least_one_satisfied
+    // @ts-expect-error — see above
+    delete stats.mp_campers_with_all_satisfied
 
     const { container } = render(
       <ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />
     )
     expect(container.textContent).not.toContain('NaN')
-    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(4)
+    // Score card shows at least 2 zero-percent tiles (at-least-one + all-requests)
+    expect(screen.getAllByText('0%').length).toBeGreaterThanOrEqual(2)
   })
 
-  it('renders four tiles: All Requests, Material Parent, Best-Effort Parent, Staff', () => {
+  it('renders camper-level coverage tiles and staff tile (not legacy combo tiles)', () => {
     const stats = makeStats({
-      material_parent_requests: 10,
-      satisfied_material_parent_requests: 9,
-      material_parent_request_satisfaction_rate: 0.9,
-      best_effort_parent_requests: 5,
-      satisfied_best_effort_parent_requests: 3,
-      best_effort_parent_request_satisfaction_rate: 0.6,
+      mp_campers_total: 10,
+      mp_campers_with_at_least_one_satisfied: 9,
+      mp_campers_with_all_satisfied: 6,
       staff_requests: 50,
       satisfied_staff_requests: 26,
       staff_request_satisfaction_rate: 0.52,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
-    expect(screen.getByText(/^All Requests$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Material Parent$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Best-Effort Parent$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^Staff Requests$/i)).toBeInTheDocument()
+    expect(screen.getByText(/at least one request/i)).toBeInTheDocument()
+    expect(screen.getByText(/^all requests$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^staff requests$/i)).toBeInTheDocument()
+    // Old tiles must not appear
+    expect(screen.queryByText(/^material parent$/i)).toBeNull()
+    expect(screen.queryByText(/^best-effort parent$/i)).toBeNull()
+  })
+})
+
+// ─── TG-6: two-tier camper-level MP coverage tiles ──────────────────────────
+
+describe('ValidationScoreCard TG-6: two-tier MP coverage + relabels', () => {
+  it('renders "At least one request" tile from mp_campers_with_at_least_one_satisfied / mp_campers_total', () => {
+    // 3 MP campers total, 2 have at least one satisfied → 67%
+    const stats = makeStats({
+      mp_campers_total: 3,
+      mp_campers_with_at_least_one_satisfied: 2,
+      mp_campers_with_all_satisfied: 1,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.getByText(/at least one request/i)).toBeInTheDocument()
+    expect(screen.getByText('67%')).toBeInTheDocument()
+    expect(screen.getByText(/2\s*\/\s*3 campers/)).toBeInTheDocument()
   })
 
-  it('All Requests tile counts material_parent + staff only (excludes best-effort)', () => {
-    // material: 10 total, 8 satisfied; staff: 20 total, 15 satisfied
-    // best-effort: 5 total, 4 satisfied — must NOT appear in "All" denominator
-    // expected All: (8+15)/(10+20) = 23/30 = 76%
+  it('renders "All requests" tile from mp_campers_with_all_satisfied / mp_campers_total', () => {
+    // 3 MP campers total, 1 has all satisfied → 33%
+    const stats = makeStats({
+      mp_campers_total: 3,
+      mp_campers_with_at_least_one_satisfied: 2,
+      mp_campers_with_all_satisfied: 1,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.getByText(/^all requests$/i)).toBeInTheDocument()
+    expect(screen.getByText('33%')).toBeInTheDocument()
+    expect(screen.getByText(/1\s*\/\s*3 campers/)).toBeInTheDocument()
+  })
+
+  it('shows 0% when mp_campers_total is 0 (no division by zero)', () => {
+    const stats = makeStats({
+      mp_campers_total: 0,
+      mp_campers_with_at_least_one_satisfied: 0,
+      mp_campers_with_all_satisfied: 0,
+    })
+    const { container } = render(
+      <ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />
+    )
+    expect(container.textContent).not.toContain('NaN')
+  })
+
+  it('labels "Violations" tile as "Families to call"', () => {
+    const stats = makeStats({ negative_request_violations: 3 })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.getByText(/families to call/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^violations$/i)).toBeNull()
+  })
+
+  it('labels isolation tile as "Isolated campers" (not "Isolation Risks")', () => {
+    const stats = makeStats({ isolation_risks: 2 })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.getByText(/isolated campers/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^isolation risks$/i)).toBeNull()
+  })
+
+  it('labels staff tile as "Staff requests" (not "Staff Requests" with capital R)', () => {
+    const stats = makeStats({
+      staff_requests: 10,
+      satisfied_staff_requests: 8,
+      staff_request_satisfaction_rate: 0.8,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    // Case-insensitive: staff requests label present
+    expect(screen.getByText(/^staff requests$/i)).toBeInTheDocument()
+  })
+
+  it('does NOT render synthetic "All Requests" MP+staff combo tile', () => {
     const stats = makeStats({
       material_parent_requests: 10,
       satisfied_material_parent_requests: 8,
-      material_parent_request_satisfaction_rate: 0.8,
-      best_effort_parent_requests: 5,
-      satisfied_best_effort_parent_requests: 4,
-      best_effort_parent_request_satisfaction_rate: 0.8,
       staff_requests: 20,
       satisfied_staff_requests: 15,
-      staff_request_satisfaction_rate: 0.75,
+      mp_campers_total: 5,
+      mp_campers_with_at_least_one_satisfied: 4,
+      mp_campers_with_all_satisfied: 3,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
-    const allLabel = screen.getByText(/^All Requests$/i)
-    const allSection = allLabel.parentElement!
-    const allScope = within(allSection)
-    // 23/30 = 76.666...% → Math.round = 77%
-    expect(allScope.getByText('77%')).toBeInTheDocument()
-    expect(allScope.getByText('(23/30)')).toBeInTheDocument()
+    // The old synthetic "All Requests" tile showed a count like "(23/30)" — that combo should be gone.
+    // We verify the old combined total (10+20=30) does NOT appear as a denominator.
+    expect(screen.queryByText('(23/30)')).toBeNull()
   })
 
-  it('Best-Effort Parent tile reads best_effort_parent_request_satisfaction_rate', () => {
+  it('does NOT render "Material Parent" (request-level) tile', () => {
     const stats = makeStats({
-      best_effort_parent_requests: 8,
-      satisfied_best_effort_parent_requests: 5,
-      best_effort_parent_request_satisfaction_rate: 0.625,
+      material_parent_requests: 10,
+      satisfied_material_parent_requests: 9,
+      material_parent_request_satisfaction_rate: 0.9,
+      mp_campers_total: 5,
+      mp_campers_with_at_least_one_satisfied: 4,
+      mp_campers_with_all_satisfied: 3,
     })
     render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
-    const beLabel = screen.getByText(/^Best-Effort Parent$/i)
-    const beSection = beLabel.parentElement!
-    const beScope = within(beSection)
-    expect(beScope.getByText('63%')).toBeInTheDocument()
-    expect(beScope.getByText('(5/8)')).toBeInTheDocument()
+    expect(screen.queryByText(/^material parent$/i)).toBeNull()
+  })
+
+  it('does NOT render "Best-Effort Parent" muted tile', () => {
+    const stats = makeStats({
+      best_effort_parent_requests: 5,
+      satisfied_best_effort_parent_requests: 3,
+      best_effort_parent_request_satisfaction_rate: 0.6,
+    })
+    render(<ValidationScoreCard label="Test" validation={makeValidation(stats)} side="left" />)
+    expect(screen.queryByText(/^best-effort parent$/i)).toBeNull()
   })
 })
 
