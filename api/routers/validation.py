@@ -293,6 +293,8 @@ async def validate_bunking(
                 ai_reasoning=getattr(request_data, "ai_reasoning", None),
                 ai_p1_reasoning=getattr(request_data, "ai_p1_reasoning", None),
                 age_preference_target=getattr(request_data, "age_preference_target", None),
+                priority_keyword_detected=bool(getattr(request_data, "priority_keyword_detected", False)),
+                raw_text=getattr(request_data, "raw_text", "") or "",
             )
             requests.append(bunk_request)
 

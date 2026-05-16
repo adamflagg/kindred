@@ -289,6 +289,8 @@ class BunkRequest(BaseModel):
     ai_reasoning: str | dict[str, Any] | None = None  # Legacy AI reasoning data
     ai_p1_reasoning: str | dict[str, Any] | None = None  # Phase 1 AI reasoning with csv_source_fields
     age_preference_target: str | None = None  # 'older' or 'younger' for age_preference requests
+    priority_keyword_detected: bool = False  # TG-3: True when parent text had an explicit priority keyword
+    raw_text: str = ""  # TG-3: parent's original wording snippet
 
 
 class Session(BaseModel):
