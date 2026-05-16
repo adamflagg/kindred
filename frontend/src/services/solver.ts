@@ -102,6 +102,63 @@ interface ValidationResult {
   impossibility_report: ImpossibilityReport
 }
 
+/** Full statistics payload returned by the post-check validation endpoint. */
+export interface ValidationStatistics {
+  total_campers: number
+  assigned_campers: number
+  unassigned_campers: number
+  total_requests: number
+  satisfied_requests: number
+  request_satisfaction_rate: number
+  bunks_at_capacity: number
+  bunks_under_capacity: number
+  bunks_over_capacity: number
+  material_parent_requests?: number
+  satisfied_material_parent_requests?: number
+  material_parent_request_satisfaction_rate?: number
+  campers_with_unsatisfied_material_parent_requests?: number
+  unsatisfied_material_parent_persons?: Array<{ cm_id: number; name: string }>
+  best_effort_parent_requests?: number
+  satisfied_best_effort_parent_requests?: number
+  best_effort_parent_request_satisfaction_rate?: number
+  /** Staff bunk requests (distinct from parent requests). */
+  staff_requests?: number
+  satisfied_staff_requests?: number
+  staff_request_satisfaction_rate?: number
+  campers_with_unsatisfied_staff_requests?: number
+  /** Count of not_bunk_with constraint violations. */
+  negative_request_violations?: number
+  /** Campers in bunks with no socially connected peers (isolation risk count). */
+  isolation_risks?: number
+  field_stats: Record<
+    string,
+    {
+      total: number
+      satisfied: number
+      satisfaction_rate: number
+    }
+  >
+  negative_request_violations_detail?: Array<{
+    requester_cm_id: string
+    target_cm_id: string
+    requester_name: string
+    target_name: string
+    bunk_cm_id: string
+    bunk_name: string
+  }>
+  priority_unsuccessfuls?: Array<{
+    requester_cm_id: string
+    target_cm_id: string
+    requester_name: string
+    target_name: string
+    raw_text: string
+  }>
+  /** TG-6: camper-level two-tier MP coverage. */
+  mp_campers_total?: number
+  mp_campers_with_at_least_one_satisfied?: number
+  mp_campers_with_all_satisfied?: number
+}
+
 // Shared cache type for the pre-check query — written by PreValidateRequestsButton
 // (via queryClient.setQueryData) and read by ValidateBunkingButton's useQuery.
 // Exporting the inferred return type keeps the writer and reader locked together.

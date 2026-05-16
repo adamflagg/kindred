@@ -14,6 +14,11 @@ import PostValidationResultsModal from './PostValidationResultsModal'
 import { makeImpossibilityReport } from '../test/impossibilityReport'
 import type { EntirelyImpossibleMpCamper } from '../services/solver'
 
+// Stub out AuthContext so tests don't need a real AuthProvider
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { name: 'Test User' } }),
+}))
+
 // Mock the Modal component to render children directly
 vi.mock('./ui/Modal', () => ({
   Modal: ({
@@ -673,7 +678,7 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
                 requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' },
                 requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' },
                 detail: {},
-                bucket: null,
+                bucket: 'material_parent' as const,
               },
               {
                 request_id: 'r2',
@@ -683,7 +688,7 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
                 requester: { cm_id: 3, name: 'Olivia Chen', grade: 5, gender: 'F' },
                 requestee: { cm_id: 4, name: 'Riley Sam', grade: 9, gender: 'F' },
                 detail: {},
-                bucket: null,
+                bucket: 'material_parent' as const,
               },
             ],
             cross_session: [
@@ -992,5 +997,24 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+  })
+})
+
+// ── TG-5: PDF export button ──────────────────────────────────────────────────
+
+function makeBaseProps(overrides: Record<string, unknown> = {}) {
+  return {
+    isOpen: true,
+    onClose: () => {},
+    sessionCmId: 1000001,
+    results: makeResults(),
+    ...overrides,
+  }
+}
+
+describe('PostValidationResultsModal — PDF export button (TG-5)', () => {
+  it('shows an Export PDF button before any PDF code loads', () => {
+    render(<PostValidationResultsModal {...makeBaseProps()} />)
+    expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument()
   })
 })

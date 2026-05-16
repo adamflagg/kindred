@@ -209,6 +209,7 @@ export default function SessionHeader({
             <ValidateBunkingButton
               sessionCmId={session.cm_id}
               year={currentYear}
+              sessionName={session.name}
               className="px-3 py-2 text-sm"
             />
             {canManage && !isProductionMode && currentScenario && (
