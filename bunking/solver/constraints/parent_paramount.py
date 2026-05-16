@@ -93,9 +93,9 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
     # Step 2: build bidirectional sat vars + forcing indicators for MP
     # age_preference requests via the helper. The helper registers each sat
     # var in ctx.request_satisfied_vars (shared with bunk_with / not_bunk_with)
-    # and returns per-request forcing indicators (person_in_clean_bunk BoolVars,
-    # or assignment vars in the no-bad-grades branch, or always-1 vars in the
-    # trivially-satisfied branch). We sum these directly in the hard constraint.
+    # and returns per-request forcing indicators (person_in_clean_bunk BoolVars
+    # per bunk, or a single always-1 BoolVar in the trivially-satisfied branch).
+    # We sum these directly in the hard constraint.
     age_forcing_indicators_by_req_id: dict[str, list[cp_model.IntVar]] = {}
     if mp_age_requests_by_person:
         age_forcing_indicators_by_req_id = add_age_preference_satisfaction_vars(ctx, mp_age_requests_by_person)
