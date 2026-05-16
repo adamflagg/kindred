@@ -14,6 +14,7 @@ import {
   Activity,
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
+import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel, camperActionHints } from './impossibility/reasonHints'
@@ -104,6 +105,15 @@ interface PostValidationResultsModalProps {
    * impossibilities."
    */
   preCheckError?: boolean | undefined
+  /**
+   * Human-readable session name for the PDF export filename and header.
+   * Falls back to the sessionCmId string when not provided.
+   */
+  sessionName?: string | undefined
+  /**
+   * Camp year for the PDF export filename and header.
+   */
+  year?: number | undefined
 }
 
 // Parse issue into structured display data
@@ -558,6 +568,8 @@ export default function PostValidationResultsModal({
   sessionCmId,
   impossibilityReport,
   preCheckError = false,
+  sessionName,
+  year,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
@@ -687,9 +699,26 @@ export default function PostValidationResultsModal({
 
   const footerContent = (
     <div className="bg-muted/30 border-border/50 flex items-center justify-between border-t px-5 py-4">
-      <span className="text-muted-foreground text-xs">
-        {new Date(results.validated_at).toLocaleString()}
-      </span>
+      <div className="flex items-center gap-3">
+        <span className="text-muted-foreground text-xs">
+          {new Date(results.validated_at).toLocaleString()}
+        </span>
+        <LazyPdfExportButton
+          sessionName={sessionName ?? String(sessionCmId)}
+          year={year ?? new Date().getFullYear()}
+          plannerName=""
+          statistics={statistics}
+          impossibilityReport={
+            impossibilityReport ?? {
+              total_impossible: 0,
+              affected_campers: 0,
+              by_reason: {},
+              flat: [],
+              mp_campers_entirely_impossible: [],
+            }
+          }
+        />
+      </div>
       <button
         onClick={onClose}
         className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
