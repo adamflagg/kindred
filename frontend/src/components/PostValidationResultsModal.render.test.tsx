@@ -11,6 +11,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
+import { makeImpossibilityReport } from '../test/impossibilityReport'
+import type { EntirelyImpossibleMpCamper } from '../services/solver'
 
 // Mock the Modal component to render children directly
 vi.mock('./ui/Modal', () => ({
@@ -34,6 +36,22 @@ vi.mock('./ui/Modal', () => ({
       </div>
     )
   },
+}))
+
+// BunkRequestProvider runs useQuery against PocketBase; in tests we don't
+// boot the real provider — wrap children in a marker div instead.
+vi.mock('../providers/BunkRequestProvider', () => ({
+  BunkRequestProvider: ({
+    sessionCmId,
+    children,
+  }: {
+    sessionCmId: number
+    children: React.ReactNode
+  }) => (
+    <div data-testid="bunk-request-provider" data-session-cm-id={sessionCmId}>
+      {children}
+    </div>
+  ),
 }))
 
 function makeStats(overrides: Record<string, unknown> = {}) {
@@ -69,7 +87,14 @@ function makeResults(statsOverrides: Record<string, unknown> = {}) {
 
 describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)', () => {
   it('does not render the best-effort one-liner even when best_effort_parent_requests > 0', () => {
-    render(<PostValidationResultsModal isOpen={true} onClose={() => {}} results={makeResults()} />)
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
 
     expect(screen.queryByText(/best-effort preferences honored/i)).not.toBeInTheDocument()
   })
@@ -77,6 +102,7 @@ describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)',
   it('does not render the best-effort one-liner when best_effort_parent_requests is 0', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -94,6 +120,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
   it('shows kid-count copy when ≥1 kid has an unmet parent request', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -110,6 +137,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
   it('uses singular "kid" when exactly 1 kid is unmet', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -127,6 +155,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
   it('shows "All N parent requests fulfilled" when zero kids unmet but parent requests exist', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -143,6 +172,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
   it('uses singular "request" when exactly 1 parent request exists and is fulfilled', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -159,6 +189,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
   it('falls back to per-tier generic sub when zero parent requests in session', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -184,6 +215,7 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
   it('passes parent satisfaction rate to SatisfactionRing when parent requests exist', () => {
     const { container } = render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -208,6 +240,7 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
   it('falls back to all-up rate when zero material parent requests in session', () => {
     const { container } = render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -228,6 +261,7 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
   it('drives status tier from parent rate (parent at 60% lands in Needs Attention even when all-up is 90%)', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -252,6 +286,7 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
   it('renders parent-only fraction in the second stats tile', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -275,6 +310,7 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
   it('uses amber styling on the parent tile when rate < 0.85', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -298,6 +334,7 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
   it('uses green styling on the parent tile when rate >= 0.85', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -319,6 +356,7 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
   it('falls back to all-up fraction when zero material parent requests', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -346,7 +384,14 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 
 describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
   it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
-    render(<PostValidationResultsModal isOpen={true} onClose={() => {}} results={makeResults()} />)
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
 
     expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
   })
@@ -354,6 +399,7 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
   it('shows no drill-down section when unsatisfied_material_parent_persons is empty', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({ unsatisfied_material_parent_persons: [] })}
@@ -366,6 +412,7 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
   it('shows collapsible drill-down section with count when unsatisfied persons present', () => {
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -385,6 +432,7 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     const user = userEvent.setup()
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -411,6 +459,7 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     const user = userEvent.setup()
     render(
       <PostValidationResultsModal
+        sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
@@ -429,5 +478,275 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     // The controlled list element should now exist with the matching id.
     expect(document.getElementById(controlsId as string)).not.toBeNull()
+  })
+})
+
+vi.mock('./CamperDetailsPanel', () => ({
+  default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
+    <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
+  ),
+}))
+
+describe('PostValidationResultsModal — impossibility section (#1442 part 2)', () => {
+  const makeReport = (mp: EntirelyImpossibleMpCamper[], totalImpossible = mp.length) =>
+    makeImpossibilityReport({
+      total_impossible: totalImpossible,
+      affected_campers: mp.length,
+      mp_campers_entirely_impossible: mp,
+    })
+
+  it('does not render the section when impossibilityReport prop is omitted', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
+  })
+
+  it('does not render the section when mp_campers_entirely_impossible is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeReport([], 0)}
+      />
+    )
+    expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
+  })
+
+  it('renders camper count and total impossible request count as separate, independent texts', () => {
+    // The camper count is "entirely-impossible MP campers" (zero parent reqs
+    // honored), while total_impossible spans ALL impossible requests in the
+    // scenario (including partially-impossible kids not named here). Combining
+    // them into "X campers had Y impossible requests" implies the Y belong to
+    // the X, which is wrong. Render them as two distinct statements.
+    const report = makeReport(
+      [
+        { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+        { cm_id: 2, name: 'Liam Garcia', grade: 5, gender: 'M', reason_codes: ['malformed'] },
+        {
+          cm_id: 3,
+          name: 'Olivia Chen',
+          grade: 6,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+        },
+      ],
+      5
+    )
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+
+    // Primary line: how many campers got zero parent requests honored.
+    expect(
+      screen.getByText(/3 campers won['’]t get any parent request fulfilled/i)
+    ).toBeInTheDocument()
+    // Secondary line: scenario-wide impossible request count, labeled as a
+    // separate fact (not "they had Y").
+    expect(screen.getByText(/5 impossible requests total in this scenario/i)).toBeInTheDocument()
+    // Guard against the misleading combined phrasing.
+    expect(screen.queryByText(/3 campers had 5 impossible requests/i)).not.toBeInTheDocument()
+  })
+
+  it('uses singular grammar when only one camper and one impossible request', () => {
+    const report = makeReport(
+      [{ cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['malformed'] }],
+      1
+    )
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+
+    expect(
+      screen.getByText(/1 camper won['’]t get any parent request fulfilled/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/1 campers/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/1 impossible request total in this scenario/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 impossible requests/i)).not.toBeInTheDocument()
+  })
+
+  it('opens the panel when a camper name in the section is clicked', async () => {
+    const report = makeReport([
+      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+    ])
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
+      'data-camper-id',
+      '42'
+    )
+  })
+
+  it('wraps CamperDetailsPanel in a session-scoped BunkRequestProvider (#1464 regression)', async () => {
+    const report = makeReport([
+      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+    ])
+    render(
+      <PostValidationResultsModal
+        isOpen={true}
+        sessionCmId={9876543}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    const provider = await screen.findByTestId('bunk-request-provider')
+    expect(provider).toHaveAttribute('data-session-cm-id', '9876543')
+    expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
+  })
+
+  it('renders the per-camper hint from REASON_HINTS', () => {
+    const report = makeReport([
+      {
+        cm_id: 7,
+        name: 'Samuel Johnson',
+        grade: 5,
+        gender: 'M',
+        reason_codes: ['cross_session'],
+      },
+    ])
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    expect(
+      screen.getByText(/requested friend is in a different session — confirm intent/)
+    ).toBeInTheDocument()
+  })
+
+  // Scan-it row 1: post-check used to render snake_case reason codes
+  // directly; pre-check has always run them through FRIENDLY_REASON_LABELS.
+  it('renders reason chips with the friendly label, not the raw snake_case code', () => {
+    const report = makeReport([
+      {
+        cm_id: 8,
+        name: 'Liam Garcia',
+        grade: 4,
+        gender: 'M',
+        reason_codes: ['grade_compatibility'],
+      },
+    ])
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
+    expect(screen.queryByText('grade_compatibility')).not.toBeInTheDocument()
+  })
+
+  it('shows a small "pre-check unavailable" notice when preCheckError is true and no report is in', () => {
+    // Honors the 4-state query handling rule from frontend/CLAUDE.md: the post-
+    // check modal silently dropping the impossibility section on pre-check
+    // failure looks identical to "no impossibilities" — we surface the
+    // difference instead.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        preCheckError={true}
+      />
+    )
+    expect(screen.getByText(/pre-check unavailable/i)).toBeInTheDocument()
+  })
+
+  it('does not show the pre-check notice when the report did arrive', () => {
+    // If the report is present, no need to apologize — the section either
+    // renders the cohort or correctly hides itself.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeReport([])}
+        preCheckError={true}
+      />
+    )
+    expect(screen.queryByText(/pre-check unavailable/i)).not.toBeInTheDocument()
+  })
+
+  it('clears the selected camper when the modal closes, so reopening starts fresh', async () => {
+    // Otherwise selectedCamperId persists across close/reopen and the camper
+    // details panel remounts with stale selection.
+    const report = makeReport([
+      { cm_id: 99, name: 'Riley Sam', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+    ])
+    const { rerender } = render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Riley Sam/ }))
+    expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
+
+    // Close the modal.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={false}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+
+    // Reopen — the details panel should NOT come back with the stale selection.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
   })
 })

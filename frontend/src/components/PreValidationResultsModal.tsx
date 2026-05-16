@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -16,6 +16,12 @@ import type {
   ImpossibilityReportItem,
   EntirelyImpossibleMpCamper,
 } from '../services/solver'
+import { CamperNameButton } from './impossibility/CamperNameButton'
+import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
+
+import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
 
 interface CapacityBreakdownItem {
   campers: number
@@ -47,7 +53,13 @@ interface PreValidationResultsModalProps {
     statistics: ValidationStatistics
     impossibility_report: ImpossibilityReport
   }
-  sessionId?: string
+  /**
+   * CampMinder session id. Required so the click-through CamperDetailsPanel
+   * can mount inside a session-scoped BunkRequestProvider — SessionHeader
+   * (where the Pre-Check button lives) sits outside SessionView's provider
+   * tree, so the panel can't rely on an ancestor provider.
+   */
+  sessionCmId: number
   sessionLookup: (cm_id: number) => string | undefined
 }
 
@@ -133,33 +145,13 @@ function getNonCapacityErrors(errors: string[]): string[] {
     .map((e) => e.replace(/\s*\(\d+\)/g, '').replace(/camper \d+/g, 'a camper'))
 }
 
-// Friendly labels for impossibility reason codes (staff view)
-const FRIENDLY_REASON_LABELS: Record<string, string> = {
-  grade_compatibility: 'Grade range too wide',
-  cross_session: 'Different sessions',
-  pair_no_shared_bunk: "Can't share a cabin",
-  age_pref_no_eligible_grade: 'No matching age group available',
-  malformed: 'Incomplete request',
-  target_not_in_solver: 'Friend not enrolled',
-  self_conflict: 'Contradicting requests',
-}
-
-function friendlyReasonLabel(code: string): string {
-  return FRIENDLY_REASON_LABELS[code] || code
-}
-
-// Camper-level action hint: target_not_in_solver means the named friend isn't
-// enrolled (confirm enrollment); any other reason means the request itself is
-// the problem (fix parent input).
-function camperActionHints(reasonCodes: string[]): string {
-  const hints = new Set<string>()
-  for (const code of reasonCodes) {
-    hints.add(code === 'target_not_in_solver' ? 'confirm enrollment' : 'fix parent input')
-  }
-  return Array.from(hints).join(' / ')
-}
-
-function EntirelyImpossibleMpSection({ campers }: { campers: EntirelyImpossibleMpCamper[] }) {
+function EntirelyImpossibleMpSection({
+  campers,
+  onSelectCamper,
+}: {
+  campers: EntirelyImpossibleMpCamper[]
+  onSelectCamper: (id: string) => void
+}) {
   if (campers.length === 0) return null
   return (
     <details open className="rounded-lg border border-red-200 bg-red-50 p-3">
@@ -173,7 +165,8 @@ function EntirelyImpossibleMpSection({ campers }: { campers: EntirelyImpossibleM
         {campers.map((c) => (
           <div key={c.cm_id} className="text-sm">
             <div className="font-medium">
-              {c.name} ({c.gender}) · {ordinalGrade(c.grade)}
+              <CamperNameButton cmId={c.cm_id} name={c.name} onSelect={onSelectCamper} /> (
+              {c.gender}) · {ordinalGrade(c.grade)}
             </div>
             <div className="text-xs text-stone-600">{camperActionHints(c.reason_codes)}</div>
           </div>
@@ -195,9 +188,27 @@ function requestVerb(requestType: string): string {
   return requestType === 'not_bunk_with' ? "don't bunk with" : 'bunk with'
 }
 
+function RequesteeName({
+  r,
+  onSelectCamper,
+}: {
+  r: NonNullable<ImpossibilityReportItem['requestee']>
+  onSelectCamper: (id: string) => void
+}) {
+  // Bolding lives on the button itself (cleaner SR semantics than nesting
+  // <button> inside <strong>; visual treatment also stays consistent with
+  // the trailing "(F)" suffix outside the button).
+  return (
+    <span className="font-bold">
+      <CamperNameButton cmId={r.cm_id} name={r.name} onSelect={onSelectCamper} /> ({r.gender})
+    </span>
+  )
+}
+
 function renderSubtext(
   item: ImpossibilityReportItem,
-  sessionLookup: (cm_id: number) => string | undefined
+  sessionLookup: (cm_id: number) => string | undefined,
+  onSelectCamper: (id: string) => void
 ) {
   const r = item.requestee
   const verb = requestVerb(item.request_type)
@@ -205,11 +216,7 @@ function renderSubtext(
     case 'grade_compatibility':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
         </div>
       ) : null
 
@@ -221,11 +228,8 @@ function renderSubtext(
         (otherSessionCm !== undefined ? `Session ${otherSessionCm}` : 'a different session')
       return (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} · in <strong>{sessionName}</strong> session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} ·
+          in <strong>{sessionName}</strong> session
         </div>
       )
     }
@@ -233,11 +237,8 @@ function renderSubtext(
     case 'pair_no_shared_bunk':
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} — not AG session
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
+          not AG session
         </div>
       ) : null
 
@@ -288,11 +289,8 @@ function renderSubtext(
       const conflictingVerb = conflictingType ? requestVerb(conflictingType) : 'do the opposite'
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)} — also marked <strong>{conflictingVerb}</strong>
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)} —
+          also marked <strong>{conflictingVerb}</strong>
         </div>
       ) : null
     }
@@ -300,11 +298,7 @@ function renderSubtext(
     default:
       return r ? (
         <div className="text-xs text-stone-600">
-          {verb}{' '}
-          <strong>
-            {r.name} ({r.gender})
-          </strong>{' '}
-          · {ordinalGrade(r.grade)}
+          {verb} <RequesteeName r={r} onSelectCamper={onSelectCamper} /> · {ordinalGrade(r.grade)}
         </div>
       ) : null
   }
@@ -313,9 +307,11 @@ function renderSubtext(
 function ImpossibilityItems({
   items,
   sessionLookup,
+  onSelectCamper,
 }: {
   items: ImpossibilityReportItem[]
   sessionLookup: (cm_id: number) => string | undefined
+  onSelectCamper: (id: string) => void
 }) {
   return (
     <div className="mt-2 space-y-2 border-t border-amber-200 pt-2">
@@ -326,9 +322,14 @@ function ImpossibilityItems({
         // safety when callers later flatten.
         <div key={`${item.request_id}-${item.reason_code}`} className="text-sm">
           <div className="font-medium">
-            {item.requester.name} ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
+            <CamperNameButton
+              cmId={item.requester.cm_id}
+              name={item.requester.name}
+              onSelect={onSelectCamper}
+            />{' '}
+            ({item.requester.gender}) · {ordinalGrade(item.requester.grade)}
           </div>
-          {renderSubtext(item, sessionLookup)}
+          {renderSubtext(item, sessionLookup, onSelectCamper)}
         </div>
       ))}
     </div>
@@ -378,9 +379,11 @@ export default function PreValidationResultsModal({
   isOpen,
   onClose,
   results,
+  sessionCmId,
   sessionLookup,
 }: PreValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
 
   const { valid, errors, warnings, statistics, impossibility_report } = results
 
@@ -559,6 +562,7 @@ export default function PreValidationResultsModal({
       <div className="space-y-3 px-5 py-4">
         <EntirelyImpossibleMpSection
           campers={impossibility_report.mp_campers_entirely_impossible ?? []}
+          onSelectCamper={setSelectedCamperId}
         />
         {impossibility_report.total_impossible === 0 ? (
           <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-800">
@@ -581,7 +585,11 @@ export default function PreValidationResultsModal({
                     {items.length}
                   </span>
                 </summary>
-                <ImpossibilityItems items={items} sessionLookup={sessionLookup} />
+                <ImpossibilityItems
+                  items={items}
+                  sessionLookup={sessionLookup}
+                  onSelectCamper={setSelectedCamperId}
+                />
               </details>
             ))}
           </>
@@ -731,6 +739,44 @@ export default function PreValidationResultsModal({
           )}
         </div>
       )}
+      {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+          SessionHeader (where the Pre-Check button lives) sits outside
+          SessionView's BunkRequestProvider tree, so we mount a local
+          session-scoped provider here. Provider is hoisted above the
+          selectedCamperId gate so opening/closing the details panel doesn't
+          churn the provider's observers. Tradeoff: this fires the provider's
+          two queries (allBunkRequests + /api/satisfaction) on every modal
+          open even if the user never clicks a camper name — both queries
+          are cache-warm in the common case (session header already
+          populated them). ErrorBoundary catches chunk-load failures. */}
+      <BunkRequestProvider sessionCmId={sessionCmId}>
+        {selectedCamperId && (
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                <p>Couldn&apos;t load camper details: {error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setSelectedCamperId(null)
+                  }}
+                  className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          >
+            <Suspense fallback={null}>
+              <LazyCamperDetailsPanel
+                camperId={selectedCamperId}
+                onClose={() => setSelectedCamperId(null)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </BunkRequestProvider>
     </Modal>
   )
 }

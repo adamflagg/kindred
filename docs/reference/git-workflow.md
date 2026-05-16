@@ -33,14 +33,29 @@ cd ../kindred-worktrees/<feature-name>
 | Main Repo | Worktree |
 |-----------|----------|
 | `<repo>/` | `<repo>-worktrees/<feature>/` |
-| Ports: 3000, 8000, 8080, 8090 | Ports: auto-assigned (offset 10-90) |
+| Ports: 3000, 8000, 8080, 8090 | Ports: Vite 3110-3199, FastAPI 8210-8299, Caddy 8310-8399, PB 8410-8499 |
 | Branch: main | Branch: feature/<feature> |
 | Database: production data | Database: seeded from main |
 
 ### Port Assignment
-Ports are deterministically assigned from the feature name hash:
-- Worktree "fix-auth" might get: Vite 3040, API 8040, Caddy 8180, PB 8190
-- Same name always gets same ports (no conflicts between runs)
+Ports are deterministically derived from the feature name (cksum hash, mod 90,
+offset 10..99). Each service sits in its own dedicated band, all bands disjoint
+from main's ports — so no worktree port can ever equal a main-repo port, even
+across services:
+
+| Service    | Band       | Example (offset 42) |
+|------------|------------|---------------------|
+| Vite       | 3110-3199  | 3142                |
+| FastAPI    | 8210-8299  | 8242                |
+| Caddy      | 8310-8399  | 8342                |
+| PocketBase | 8410-8499  | 8442                |
+
+Same feature name always gets the same ports on first allocation. If the
+hash-derived offset is already claimed by a sibling worktree (its `.env` is
+scanned at allocation time), `new.sh` deterministically walks forward through
+the 90 slots to the next free one and persists the chosen offset in the new
+`.env`. A final `lsof` check catches non-worktree port holders (an unrelated
+dev process, leftover services from a deleted worktree).
 
 ### What Gets Isolated
 - `.venv/` - Python virtual environment

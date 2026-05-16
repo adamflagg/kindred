@@ -560,14 +560,19 @@ export default function CamperDetailsPanel({
     }
   }, [embedded, onClose])
 
-  // Dismiss overlay with Escape key (non-embedded mode only)
+  // Dismiss overlay with Escape key (non-embedded mode only). When mounted
+  // inside a Modal, both listen on `document` for Escape — we register in
+  // the capture phase and stop propagation so the panel closes first and
+  // the underlying modal stays open (LIFO close behaviour).
   useEffect(() => {
     if (embedded || isClosing) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose()
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      handleClose()
     }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [embedded, isClosing, handleClose])
 
   // Helper: get location from person's discrete address columns

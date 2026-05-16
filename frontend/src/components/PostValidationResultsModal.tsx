@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -15,6 +15,11 @@ import {
 } from 'lucide-react'
 import { Modal } from './ui/Modal'
 import { formatSourceField } from '../utils/formatSourceField'
+import { ImpossibilityCohortSection } from './impossibility/ImpossibilityCohortSection'
+import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
+import { ErrorBoundary } from './ErrorBoundary'
+import type { ImpossibilityReport, EntirelyImpossibleMpCamper } from '../services/solver'
+import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 
 interface FieldStats {
   total: number
@@ -60,7 +65,28 @@ interface PostValidationResultsModalProps {
   isOpen: boolean
   onClose: () => void
   results: ValidationResults
-  scenarioId?: string
+  scenarioId?: string | undefined
+  /**
+   * CampMinder session id. Required so the click-through CamperDetailsPanel
+   * can mount inside a session-scoped BunkRequestProvider — SessionHeader
+   * (where the Check-Bunking button lives) sits outside SessionView's
+   * provider tree.
+   */
+  sessionCmId: number
+  /**
+   * Impossibility data from the most recent pre-check. Optional — when absent
+   * (e.g., user opened post-check without pre-checking first), the section is
+   * simply hidden. Impossibility is an input-feasibility property and is the
+   * same regardless of solver assignments, so showing the pre-check report
+   * here closes the loop on "we got 100% — who didn't get fulfilled?"
+   */
+  impossibilityReport?: ImpossibilityReport | undefined
+  /**
+   * True when the pre-check fetch failed. Surfaces a small notice in lieu of
+   * the impossibility section so users don't mistake "fetch failed" for "no
+   * impossibilities."
+   */
+  preCheckError?: boolean | undefined
 }
 
 // Parse issue into structured display data
@@ -512,9 +538,20 @@ export default function PostValidationResultsModal({
   onClose,
   results,
   scenarioId,
+  sessionCmId,
+  impossibilityReport,
+  preCheckError = false,
 }: PostValidationResultsModalProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
+  const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isOpen) setSelectedCamperId(null)
+  }, [isOpen])
+
+  const mpImpossible: EntirelyImpossibleMpCamper[] =
+    impossibilityReport?.mp_campers_entirely_impossible ?? []
+  const totalImpossibleRequests = impossibilityReport?.total_impossible ?? 0
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
@@ -657,6 +694,7 @@ export default function PostValidationResultsModal({
       footer={footerContent}
       size="md"
       noPadding
+      scrollable
     >
       {/* Satisfaction Ring + Quick Stats */}
       <div className="border-border/50 flex items-center gap-6 border-b px-5 py-5">
@@ -740,6 +778,30 @@ export default function PostValidationResultsModal({
           </div>
         </div>
       </div>
+
+      {/* Impossibility cohort — surfaced from the latest pre-check (#1442 part 2).
+          Closes the loop on "we got 100% Optimized, who didn't get fulfilled?"
+          by naming the campers whose requests were structurally impossible.
+
+          Two distinct facts shown as two distinct lines: the named cohort
+          (entirely-impossible MP campers) and the scenario-wide impossible
+          request count (which may include partially-impossible kids not in
+          this list). Combining them ("X campers had Y impossible requests")
+          implied the Y belonged to the X, which is misleading. */}
+      <ImpossibilityCohortSection
+        campers={mpImpossible}
+        totalImpossibleRequests={totalImpossibleRequests}
+        onSelectCamper={setSelectedCamperId}
+      />
+
+      {preCheckError && !impossibilityReport && (
+        <div className="px-5 py-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+            Pre-check unavailable — couldn&rsquo;t load the impossibility cohort. Re-run Pre-Check
+            to see it.
+          </div>
+        </div>
+      )}
 
       {/* Issues List (if any) */}
       {hasIssues && (
@@ -863,6 +925,44 @@ export default function PostValidationResultsModal({
           )}
         </div>
       )}
+      {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
+          SessionHeader (where the Check-Bunking button lives) sits outside
+          SessionView's BunkRequestProvider tree, so we mount a local
+          session-scoped provider here. The provider mount is hoisted above
+          the selectedCamperId gate so opening/closing the details panel
+          doesn't churn the provider's observers. Tradeoff: this fires the
+          provider's two queries (allBunkRequests + /api/satisfaction) on
+          every modal open even if the user never clicks a camper name —
+          both queries are cache-warm in the common case (session header
+          already populated them). ErrorBoundary catches chunk-load failures. */}
+      <BunkRequestProvider sessionCmId={sessionCmId}>
+        {selectedCamperId && (
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div className="fixed inset-y-0 right-0 z-50 m-4 max-w-md rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                <p>Couldn&apos;t load camper details: {error.message}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset()
+                    setSelectedCamperId(null)
+                  }}
+                  className="mt-2 rounded bg-red-600 px-3 py-1 text-white"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          >
+            <Suspense fallback={null}>
+              <LazyCamperDetailsPanel
+                camperId={selectedCamperId}
+                onClose={() => setSelectedCamperId(null)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+      </BunkRequestProvider>
     </Modal>
   )
 }

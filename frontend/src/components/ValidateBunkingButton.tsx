@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { CheckCircle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useScenario } from '../hooks/useScenario'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
-import { solverService } from '../services/solver'
+import { solverService, type PreCheckCacheValue } from '../services/solver'
+import { queryKeys } from '../utils/queryKeys'
 import PostValidationResultsModal from './PostValidationResultsModal'
 
 interface ValidationResults {
@@ -53,6 +55,22 @@ export default function ValidateBunkingButton({
   const [validationResults, setValidationResults] = useState<ValidationResults | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Pre-check report drives the "campers with impossible requests" section in
+  // the post-check modal (#1442 part 2). Shared query key with the session-
+  // header pre-check + SolverDebugPage — so if either has populated cache, we
+  // serve instantly; otherwise we fetch on demand. Impossibility is an input-
+  // feasibility property, so the report is valid regardless of solver state —
+  // long staleTime + no refetch-on-focus keeps the cache warm and avoids
+  // duplicate fetches while the user moves between tabs.
+  const preCheckQuery = useQuery<PreCheckCacheValue>({
+    queryKey: queryKeys.preCheck(sessionCmId, year),
+    queryFn: () => solverService.preValidateRequests(sessionCmId, year, fetchWithAuth),
+    enabled: showResults,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
+
   const handleValidate = async () => {
     setIsValidating(true)
     setError(null)
@@ -97,7 +115,10 @@ export default function ValidateBunkingButton({
           isOpen={showResults}
           onClose={() => setShowResults(false)}
           results={validationResults}
-          {...(currentScenario?.id && { scenarioId: currentScenario.id })}
+          sessionCmId={sessionCmId}
+          scenarioId={currentScenario?.id}
+          impossibilityReport={preCheckQuery.data?.impossibility_report}
+          preCheckError={preCheckQuery.isError}
         />
       )}
     </>
