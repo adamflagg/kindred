@@ -22,10 +22,18 @@ const BUCKET_SHORT: Record<Bucket, string> = {
   staff: 'Staff',
 }
 
+function isBucket(value: unknown): value is Bucket {
+  return value === 'material_parent' || value === 'immaterial_parent' || value === 'staff'
+}
+
 function loadFilter(): FilterState {
-  const v = localStorage.getItem(FILTER_STORAGE_KEY)
-  if (v === 'all' || v === 'material_parent' || v === 'immaterial_parent' || v === 'staff') {
-    return v
+  // localStorage can throw in Safari private mode, quota-exceeded, or storage-disabled
+  // contexts (matches the best-effort pattern in src/utils/scenarioStorage.ts).
+  try {
+    const v = localStorage.getItem(FILTER_STORAGE_KEY)
+    if (v === 'all' || isBucket(v)) return v
+  } catch {
+    // ignore — fall through to default
   }
   return 'all'
 }
@@ -38,7 +46,11 @@ function useFilter(): [
   const [state, setState] = useState<FilterState>(() => loadFilter())
   const [initialState] = useState<FilterState>(() => state)
   useEffect(() => {
-    localStorage.setItem(FILTER_STORAGE_KEY, state)
+    try {
+      localStorage.setItem(FILTER_STORAGE_KEY, state)
+    } catch {
+      // Persistence is best-effort; ignore SecurityError / QuotaExceededError.
+    }
   }, [state])
   return [state, setState, initialState]
 }
@@ -75,7 +87,7 @@ function groupByBucketAndRequest(flat: ImpossibilityReportItem[]): GroupedReport
         requester: item.requester,
         requestee: item.requestee,
         request_type: item.request_type,
-        bucket: (item.bucket as Bucket | null) ?? null,
+        bucket: isBucket(item.bucket) ? item.bucket : null,
         reasons: [item],
       })
     }
@@ -132,13 +144,16 @@ function ReasonChip({ code }: { code: string }) {
 
 function compactDetail(detail: Record<string, unknown> | null | undefined): ReactNode {
   if (!detail || Object.keys(detail).length === 0) return null
-  const parts = Object.entries(detail).map(([k, v], i) => (
-    <span key={k}>
-      {i > 0 ? ', ' : ''}
-      <span className="text-amber-700">{k}</span>=
-      <span className="text-stone-900">{String(v)}</span>
-    </span>
-  ))
+  const parts = Object.entries(detail).map(([k, v], i) => {
+    const display = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)
+    return (
+      <span key={k}>
+        {i > 0 ? ', ' : ''}
+        <span className="text-amber-700">{k}</span>=
+        <span className="text-stone-900">{display}</span>
+      </span>
+    )
+  })
   return <span className="font-mono text-[10.5px]">{parts}</span>
 }
 
@@ -332,6 +347,48 @@ export default function SolverDebugImpossibilityModal({
               <span className="ml-auto text-[10px] text-stone-400">↻ from last open</span>
             ) : null}
           </div>
+
+          {/*
+            Hoisted stuck-block: when the MP section isn't rendered (filter isolated to
+            IMP/Staff, or MP has no requests), surface the entirely-impossible MP campers
+            above the bucket sections so the 🛑 rollup is never filter-gated. When the MP
+            section IS rendered, the in-section block carries this content — we don't
+            duplicate.
+          */}
+          {(() => {
+            const stuckCampers = report.mp_campers_entirely_impossible ?? []
+            const mpSectionWillRender =
+              (filter === 'all' || filter === 'material_parent') &&
+              grouped.byBucket.material_parent.length > 0
+            if (stuckCampers.length === 0 || mpSectionWillRender) return null
+            return (
+              <div
+                data-testid="mp-stuck-block-hoisted"
+                className="border-t border-red-200 bg-red-50 px-5 py-2 font-mono text-[10.5px]"
+              >
+                <div className="mb-1 text-[10px] font-bold tracking-wider text-red-900 uppercase">
+                  🛑 MP · {stuckCampers.length} entirely-impossible
+                </div>
+                {stuckCampers.map((c) => (
+                  <div key={c.cm_id} className="flex flex-wrap items-center gap-1.5 py-0.5">
+                    <span className="font-semibold text-red-900">
+                      <CamperNameButton
+                        cmId={c.cm_id}
+                        name={c.name}
+                        onSelect={setSelectedCamperId}
+                      />
+                      <span className="ml-1 text-[10px] font-normal text-stone-400">
+                        ({c.cm_id}/g{c.grade}/{c.gender})
+                      </span>
+                    </span>
+                    {[...new Set(c.reason_codes)].sort().map((code) => (
+                      <ReasonChip key={code} code={code} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* Bucket sections */}
           {visibleBuckets.map((b) => {
