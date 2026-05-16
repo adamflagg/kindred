@@ -314,6 +314,7 @@ class BunkRequest:
     metadata: dict[str, Any]  # All tracking info
 
     # Promoted fields — written directly, not via metadata
+    priority_keyword_detected: bool = False  # True only when raw_text had an explicit keyword (TG-3)
     resolution_method: str = ""  # "exact_match", "fuzzy_match", "phonetic_match", etc.
     disposition_reason: str = ""  # "exact_match", "reciprocal_match", "needs_review", etc.
 

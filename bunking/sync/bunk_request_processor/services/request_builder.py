@@ -16,7 +16,8 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
-from ..processing.first_request_detector import is_first_requested
+from ..processing.first_request_detector import detect_first_request
+from ..shared.constants import SourceField
 
 logger = get_logger(__name__)
 
@@ -105,8 +106,18 @@ class RequestBuilder:
         Returns:
             BunkRequest or None if building fails
         """
-        # Determine if this is the family's "first pick" for the slot-0 boost
-        is_first = is_first_requested(parsed_req, all_parsed_requests)
+        # Determine if this is the family's "first pick" for the slot-0 boost,
+        # and whether an explicit priority keyword drove that designation (TG-3).
+        family_siblings = [
+            r
+            for r in all_parsed_requests
+            if r is not parsed_req
+            and r.source_field == SourceField.BUNK_REQUEST_FORM
+            and r.request_type == RequestType.BUNK_WITH
+        ]
+        detection = detect_first_request(parsed_req, family_siblings=family_siblings)
+        is_first = detection.is_first_requested
+        keyword_detected = detection.priority_keyword_detected
 
         # Get requested person name
         requested_name = self.get_requested_name(parsed_req, resolution_info)
@@ -140,6 +151,7 @@ class RequestBuilder:
             request_type=parsed_req.request_type,
             session_cm_id=resolution_info.get("session_cm_id", 0),
             is_first_requested=is_first,
+            priority_keyword_detected=keyword_detected,
             confidence_score=resolution_info.get("confidence", parsed_req.confidence),
             source_field=parsed_req.source_field,
             csv_position=parsed_req.csv_position,
