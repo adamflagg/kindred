@@ -2158,7 +2158,7 @@ def test_negative_request_violations_detail_lists_unhonored_not_bunk_with():
 
     result = BunkingValidator().validate_bunking(
         session=session,
-        bunks=bunks,
+        bunks=cast(list[Bunk], bunks),
         assignments=assignments,
         persons=cast(list[Person], persons),
         requests=cast(list[BunkRequest], requests),
@@ -2204,7 +2204,7 @@ def test_negative_request_violations_detail_empty_when_no_violations():
 
     result = BunkingValidator().validate_bunking(
         session=session,
-        bunks=bunks,
+        bunks=cast(list[Bunk], bunks),
         assignments=assignments,
         persons=cast(list[Person], persons),
         requests=cast(list[BunkRequest], requests),
@@ -2273,7 +2273,7 @@ def test_priority_unsuccessfuls_lists_keyword_flagged_unmet_requests():
 
     result = BunkingValidator().validate_bunking(
         session=session,
-        bunks=bunks,
+        bunks=cast(list[Bunk], bunks),
         assignments=assignments,
         persons=cast(list[Person], persons),
         requests=cast(list[BunkRequest], requests),
@@ -2316,7 +2316,7 @@ def test_priority_unsuccessfuls_empty_when_all_priority_requests_satisfied():
 
     result = BunkingValidator().validate_bunking(
         session=session,
-        bunks=bunks,
+        bunks=cast(list[Bunk], bunks),
         assignments=assignments,
         persons=cast(list[Person], persons),
         requests=cast(list[BunkRequest], requests),
