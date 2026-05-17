@@ -294,6 +294,16 @@ export const BUNK_LEVEL_ISSUE_TYPES = new Set([
   'isolation_risk',
 ])
 
+// Issue types surfaced in dedicated sections (Families to contact, Unmet
+// drill-down). These are suppressed from the "Other issues" residual so they
+// don't double-render. Exported so Task 15 PDF code can reuse the same set.
+export const SUPPRESSED_ISSUE_TYPES = new Set([
+  'valid_negative_request_violated', // → Families to contact (Task 9)
+  'no_requests', // → Families to contact "Got nothing"
+  'valid_request_unsatisfied', // → Unmet parent drill-down (Task 10)
+  'campers_with_unsatisfied_valid_requests', // same
+])
+
 export function extractBunkName(issueMessage: string): string {
   const match = issueMessage.match(/^(\S+(?:\s+\S+)?)\s/)
   return match?.[1] ?? 'Unknown'
@@ -592,29 +602,23 @@ export default function PostValidationResultsModal({
   const PARENT_SATISFACTION_TARGET = 0.85
   const parentUnderTarget = parentTotal > 0 && satisfactionRate < PARENT_SATISFACTION_TARGET
 
-  // Group issues by type and severity
-  const groupedIssues = useMemo(() => {
+  // Residual issues: neither bunk-level nor suppressed (surfaced in dedicated sections).
+  const otherIssues = useMemo(
+    () =>
+      issues.filter(
+        (i) => !SUPPRESSED_ISSUE_TYPES.has(i.type) && !BUNK_LEVEL_ISSUE_TYPES.has(i.type)
+      ),
+    [issues]
+  )
+  const groupedOtherIssues = useMemo(() => {
     const byType = new Map<string, { issues: Issue[]; severity: string }>()
-
-    for (const issue of issues) {
+    for (const issue of otherIssues) {
       const existing = byType.get(issue.type)
-      if (existing) {
-        existing.issues.push(issue)
-      } else {
-        byType.set(issue.type, { issues: [issue], severity: issue.severity })
-      }
+      if (existing) existing.issues.push(issue)
+      else byType.set(issue.type, { issues: [issue], severity: issue.severity })
     }
-
-    // Sort by severity (errors first, then warnings, then info)
-    const severityOrder: Record<string, number> = {
-      error: 0,
-      warning: 1,
-      info: 2,
-    }
-    return [...byType.entries()].sort((a, b) => {
-      return (severityOrder[a[1].severity] ?? 3) - (severityOrder[b[1].severity] ?? 3)
-    })
-  }, [issues])
+    return [...byType.entries()]
+  }, [otherIssues])
 
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
@@ -1099,17 +1103,32 @@ export default function PostValidationResultsModal({
         </div>
       )}
 
-      {/* Issues List (if any) */}
-      {hasIssues && (
-        <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">
-          {groupedIssues.map(([type, { issues: typeIssues, severity }]) => (
-            <IssueGroup key={type} type={type} issues={typeIssues} severity={severity} />
-          ))}
+      {/* Other issues — residual types not covered by Families to contact or Bunks needing attention */}
+      {groupedOtherIssues.length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-stone-900">Other issues</h3>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Items not covered by Families to contact or Bunks needing attention
+                </p>
+              </div>
+              <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
+                {groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)}
+              </span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {groupedOtherIssues.map(([type, group]) => (
+                <IssueGroup key={type} type={type} issues={group.issues} severity={group.severity} />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Success state message */}
-      {!hasIssues && (
+      {issues.length === 0 && (
         <div className="px-5 py-6 text-center">
           <div className="bg-forest-500/10 mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl">
             <Sparkles className="text-forest-500 h-6 w-6" />

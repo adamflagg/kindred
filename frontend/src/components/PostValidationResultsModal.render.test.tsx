@@ -1120,6 +1120,50 @@ describe('PostValidationResultsModal — Bunks needing attention', () => {
         results={{ ...makeResults(), issues }}
       />
     )
-    expect(screen.queryByText(/bunks needing attention/i)).not.toBeInTheDocument()
+    // The "Other issues" subtitle mentions "Bunks needing attention" — use a
+    // heading-role query to verify the Bunks section heading itself is absent.
+    expect(
+      screen.queryByRole('heading', { name: /bunks needing attention/i })
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Other issues residual', () => {
+  it('hides suppressed types and renders only residual camper-level types', () => {
+    const issues = [
+      { type: 'valid_negative_request_violated', severity: 'error', message: 'X separated' },
+      { type: 'unassigned_campers', severity: 'error', message: '2 unassigned' },
+      { type: 'no_requests', severity: 'warning', message: 'Liam got nothing' },
+      { type: 'level_regression', severity: 'warning', message: 'Samuel regressed' },
+      { type: 'valid_request_unsatisfied', severity: 'warning', message: 'Emma unmet' },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    expect(screen.getByText(/other issues/i)).toBeInTheDocument()
+    expect(screen.getByText(/unassigned campers/i)).toBeInTheDocument()
+    expect(screen.getByText(/level regression/i)).toBeInTheDocument()
+    // Suppressed types absent (their typeLabels via getIssueTypeLabel):
+    // valid_negative_request_violated → "Valid Negative Request Violated"
+    expect(screen.queryByText(/valid negative request violated/i)).not.toBeInTheDocument()
+    // no_requests → "No Requests"
+    expect(screen.queryByText(/^no requests$/i)).not.toBeInTheDocument()
+  })
+
+  it('hides Other issues entirely when no residual issues', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/^other issues$/i)).not.toBeInTheDocument()
   })
 })
