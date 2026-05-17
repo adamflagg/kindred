@@ -3,7 +3,10 @@
 Provides shared functionality for FuzzyMatchStrategy and PhoneticMatchStrategy,
 including session disambiguation, confidence calculation, and result building.
 
-All confidence values are loaded from PocketBase config to avoid hardcoding."""
+All tunable confidence/boost values are loaded from PocketBase config to avoid
+hardcoding. The one exception is GATE_DEMOTION_CONFIDENCE (0.5), a control-flow
+sentinel chosen so disposition rule 8 routes the result to PENDING regardless of
+the bunk_with/not_bunk_with thresholds — it's not a tunable knob."""
 
 from __future__ import annotations
 
@@ -297,10 +300,10 @@ def _is_exact_or_close_first_name(target_first: str, cand_first: str, cand_pref:
     t = target_first.strip().lower()
     f = (cand_first or "").strip().lower()
     p = (cand_pref or "").strip().lower()
-    if not t or not f:
+    if not t or (not f and not p):
         return False
-    if t == f or (p and t == p):
+    if (f and t == f) or (p and t == p):
         return True
-    sim_f = jellyfish.jaro_winkler_similarity(t, f)
+    sim_f = jellyfish.jaro_winkler_similarity(t, f) if f else 0.0
     sim_p = jellyfish.jaro_winkler_similarity(t, p) if p else 0.0
     return max(sim_f, sim_p) >= _FIRST_NAME_CLOSE_SPELLING_THRESHOLD

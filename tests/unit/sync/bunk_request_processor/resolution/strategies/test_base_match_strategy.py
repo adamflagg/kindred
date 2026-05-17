@@ -506,6 +506,24 @@ class TestIsExactOrCloseFirstName:
 
         assert _is_exact_or_close_first_name("Liam", "", None) is False
 
+    def test_empty_candidate_first_with_matching_preferred_passes(self):
+        # Person record with empty first_name but populated preferred_name
+        # should still gate-pass an exact preferred-name match.
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        assert _is_exact_or_close_first_name("Liam", "", "Liam") is True
+
+    def test_empty_candidate_first_with_close_preferred_passes(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # JW("Cathryn","Catherine") ~0.905 — close-spelling against preferred
+        # when first_name is empty must still pass.
+        assert _is_exact_or_close_first_name("Cathryn", "", "Catherine") is True
+
     def test_none_preferred_handled(self):
         from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
             _is_exact_or_close_first_name,

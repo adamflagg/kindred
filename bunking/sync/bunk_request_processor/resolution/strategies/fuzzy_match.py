@@ -18,7 +18,12 @@ from ...shared import last_name_matches, parse_name
 from ...shared.name_utils import ParsedName
 from ...shared.nickname_groups import SPELLING_VARIATIONS, find_nickname_variations
 from ..interfaces import ResolutionResult
-from .base_match_strategy import GATE_DEMOTION_CONFIDENCE, BaseMatchStrategy, _is_exact_or_close_first_name
+from .base_match_strategy import (
+    _FIRST_NAME_CLOSE_SPELLING_THRESHOLD,
+    GATE_DEMOTION_CONFIDENCE,
+    BaseMatchStrategy,
+    _is_exact_or_close_first_name,
+)
 
 # Default fallback values when config is missing
 DEFAULT_NICKNAME_BASE = 0.85
@@ -352,7 +357,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                     pp = (p.preferred_name or "").lower() if p.preferred_name else ""
                     sim_f = jellyfish.jaro_winkler_similarity(first_lower, pf) if pf else 0.0
                     sim_p = jellyfish.jaro_winkler_similarity(first_lower, pp) if pp else 0.0
-                    if max(sim_f, sim_p) >= 0.90:
+                    if max(sim_f, sim_p) >= _FIRST_NAME_CLOSE_SPELLING_THRESHOLD:
                         seen_cm_ids.add(p.cm_id)
                         merged.append(p)
 
