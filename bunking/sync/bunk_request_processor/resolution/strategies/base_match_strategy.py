@@ -287,7 +287,7 @@ def _is_exact_or_close_first_name(target_first: str, cand_first: str, cand_pref:
     distant fuzzy matches to ambiguous (PENDING) when the AI provided only
     a first name to work with.
     """
-    import jellyfish  # local import to mirror existing pattern in fuzzy_match.py:538
+    import jellyfish
 
     t = target_first.strip().lower()
     f = (cand_first or "").strip().lower()

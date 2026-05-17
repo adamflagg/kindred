@@ -91,7 +91,13 @@ class TestFuzzyMatchStrategy:
         assert result.metadata["match_type"] == "nickname"  # Sara/Sarah is in nickname groups
 
     def test_single_name_fuzzy(self, strategy, mock_repositories):
-        """Test fuzzy matching on first name only"""
+        """Single-name nickname-table inference (Mike → Michael) goes PENDING via #1394 gate.
+
+        Previously this returned the session-disambiguated Michael at confidence 0.85
+        (auto-resolve). After #1394, the gate fires on the multi-match → session-
+        disambiguate-to-one path too: "Mike" is neither exact-equal nor JW≥0.90 close
+        to "Michael", so the candidate is surfaced at 0.5 for staff review.
+        """
         person_repo, attendee_repo = mock_repositories
 
         # Search for "Mike" (no last name)
@@ -126,11 +132,12 @@ class TestFuzzyMatchStrategy:
         # Pass session context since repository mocks don't chain well
         result = strategy.resolve("Mike", requester_cm_id=11111, session_cm_id=1000002, year=2025)
 
+        # Gate surfaces the disambiguated candidate at 0.5 (forces PENDING via
+        # disposition rule 8). is_resolved=True so outer resolve() returns it.
         assert result.is_resolved
-        assert result.person.cm_id == 12345  # Chose same session match
-        # Session disambiguation gives 0.85 confidence (same session boost)
-        assert result.confidence == 0.85
-        assert result.metadata["match_type"] == "session_disambiguated"
+        assert result.person.cm_id == 12345  # Session disambiguation picked same-session Michael
+        assert result.confidence == 0.5
+        assert result.metadata["ambiguity_reason"] == "first_name_only_distant_match"
 
     def test_no_fuzzy_match_found(self, strategy, mock_repositories):
         """Test when no fuzzy match is found"""
@@ -888,6 +895,39 @@ class TestNormalizedSearchSingleNameGate:
 
         assert result.is_resolved
         assert result.person == robert
+
+    def test_blocks_session_disambiguated_distant_match_on_substring_path(self, strategy):
+        """Multi-match bypass regression: in batch mode the initial substring scan
+        (`name_lower in full_name_lower`) returns >1 candidates for a short first
+        name like "Jo" (matches Jordan, Joseph, Joanna…). When session disambiguation
+        then narrows to one in-session person whose first name is NOT exact-or-close
+        to the target, the gate must still fire — otherwise the disambiguated person
+        auto-resolves at session_match confidence (~0.85), undermining #1394.
+        """
+        jordan = Person(cm_id=4001, first_name="Jordan", last_name="Smith", preferred_name=None)
+        joseph = Person(cm_id=4002, first_name="Joseph", last_name="Chen", preferred_name=None)
+        candidates = [jordan, joseph]
+        attendee_info = {
+            4001: {"session_cm_id": 1000001},  # same session as requester
+            4002: {"session_cm_id": 1000002},  # other session
+        }
+
+        result = strategy._try_normalized_search(
+            "Jo",
+            requester_cm_id=9999,
+            session_cm_id=1000001,
+            year=2026,
+            candidates=candidates,
+            attendee_info=attendee_info,
+        )
+
+        # Substring scan finds both ("jo" ⊂ "jordan smith", "jo" ⊂ "joseph chen").
+        # Session disambiguation picks Jordan. Gate must demote to PENDING because
+        # "Jo" is neither exact-equal nor JW≥0.90 close to "Jordan".
+        assert result.is_resolved
+        assert result.person == jordan
+        assert result.confidence == 0.5
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
 
 if __name__ == "__main__":

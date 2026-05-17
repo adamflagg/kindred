@@ -253,6 +253,38 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         name_lower = name.lower().strip()
         match_type = "normalized"
 
+        # Detect single-name search via parse_name so the gate's notion of "single
+        # name" matches the upstream `parsed.is_complete` branch in resolve_with_context.
+        # Raw `name.strip().split()` would miss enumeration prefixes (e.g. "1. Jo"
+        # splits to 2 tokens but parse_name strips the prefix to yield a first-only
+        # result).
+        parsed = parse_name(name)
+        is_single_name_search = bool(parsed.first) and not parsed.is_complete
+
+        def _gate_distant_first_name(person: Person, base_match_type: str) -> ResolutionResult | None:
+            """If single-name search resolves to a non-exact/non-close first name,
+            return a PENDING-forcing 0.5 result; else None to allow normal flow.
+
+            Applied at every path that produces a single resolved person — single
+            initial match, session disambiguation, and relationship disambiguation —
+            so the #1394 gate isn't bypassed by the multi-match → disambiguate-to-one
+            cascade.
+            """
+            if is_single_name_search and not _is_exact_or_close_first_name(
+                name, person.first_name, person.preferred_name
+            ):
+                return ResolutionResult(
+                    person=person,
+                    confidence=0.5,
+                    method=self.name,
+                    metadata={
+                        "ambiguity_reason": "first_name_only_distant_match",
+                        "match_type": base_match_type,
+                        "sub_method": base_match_type,
+                    },
+                )
+            return None
+
         if candidates:
             # In-memory normalized matching - track if match is via preferred_name
             matches = []
@@ -285,9 +317,8 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # finding only Kate Chen because year-filtering narrowed the variant pool).
             # Without the merge, year filtering plus first-match-wins could resolve
             # the wrong person silently (see PR for cascade analysis).
-            name_parts = name.strip().split()
-            if len(name_parts) == 1:
-                first_only = name_parts[0]
+            if is_single_name_search:
+                first_only = parsed.first
                 # Phase 1: literal + nickname variations (existing behavior)
                 search_terms: list[str] = [first_only, *find_nickname_variations(first_only)]
                 # Phase 2: spelling variations from SPELLING_VARIATIONS dict
@@ -342,20 +373,9 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # forces PENDING. Keeps `is_resolved=True` so the outer resolve() returns
             # this result (ambiguous would require >1 candidates and would otherwise
             # be discarded, dropping the candidate from staff view).
-            is_single_name_search = len(name.strip().split()) == 1
-            if is_single_name_search and not _is_exact_or_close_first_name(
-                name, matches[0].first_name, matches[0].preferred_name
-            ):
-                return ResolutionResult(
-                    person=matches[0],
-                    confidence=0.5,
-                    method=self.name,
-                    metadata={
-                        "ambiguity_reason": "first_name_only_distant_match",
-                        "match_type": match_type,
-                        "sub_method": match_type,
-                    },
-                )
+            gated = _gate_distant_first_name(matches[0], match_type)
+            if gated is not None:
+                return gated
             confidence = self._calculate_confidence(
                 matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_normalized=True
             )
@@ -368,7 +388,14 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         else:
             # Try session disambiguation
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
-            if result.is_resolved:
+            if result.is_resolved and result.person is not None:
+                # Apply #1394 gate here too: substring scan ("jo" ⊂ "jordan smith")
+                # can populate matches with multiple candidates whose first names
+                # don't satisfy the gate; session disambiguation can then collapse
+                # to one of them, bypassing the single-match gate above. Re-check.
+                gated = _gate_distant_first_name(result.person, match_type)
+                if gated is not None:
+                    return gated
                 if result.metadata is None:
                     result.metadata = {}
                 result.metadata["sub_method"] = match_type
@@ -377,7 +404,10 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # Try relationship disambiguation
             if self.relationship_analyzer and session_cm_id:
                 result = self._pick_best_by_relationships(matches, requester_cm_id, session_cm_id)
-                if result.is_resolved:
+                if result.is_resolved and result.person is not None:
+                    gated = _gate_distant_first_name(result.person, match_type)
+                    if gated is not None:
+                        return gated
                     if result.metadata is None:
                         result.metadata = {}
                     result.metadata["sub_method"] = match_type
@@ -584,8 +614,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         when candidates is empty (catches last-name misspellings like
         Jonson→Johnson).
         """
-        import jellyfish
-
         if not parsed.is_complete:
             return ResolutionResult(confidence=0.0, method=self.name)
 
