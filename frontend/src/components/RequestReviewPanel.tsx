@@ -530,7 +530,10 @@ export default function RequestReviewPanel({
 
   const updateRequestMutation = useMutation<BunkRequestsResponse, Error, UpdateRequestVars>({
     mutationFn: async ({ id, updates }: UpdateRequestVars) => {
-      return pb.collection('bunk_requests').update(id, updates)
+      // GUI-originated write → flip staff_touched true so the audit signal
+      // sticks for any subsequent reader. One-way flag, idempotent re-set.
+      // Issue #1458.
+      return pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
     },
     onSuccess: (_data, variables) => {
       invalidateRequestQueries(queryClient)
@@ -551,7 +554,24 @@ export default function RequestReviewPanel({
       ids: string[]
       updates: Partial<BunkRequestsResponse>
     }) => {
-      return Promise.all(ids.map((id) => pb.collection('bunk_requests').update(id, updates)))
+      // A→A skip: bulk actions select rows en masse, and the selection may
+      // include rows already in the target state (e.g. bulk-approve over a
+      // mix of pending and already-resolved). For those, the PATCH would be
+      // a no-op — skip entirely so staff_touched stays honest (audit signal
+      // = "a human actually changed this row," not "a human clicked while
+      // this row was in the selection"). Issue #1458.
+      const updateKeys = Object.keys(updates) as Array<keyof BunkRequestsResponse>
+      return Promise.all(
+        ids
+          .filter((id) => {
+            const current = requests.find((r: BunkRequestsResponse) => r.id === id)
+            if (!current) return true // unknown row — let server decide
+            return updateKeys.some((k) => current[k] !== updates[k])
+          })
+          .map((id) =>
+            pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
+          )
+      )
     },
     onSuccess: () => {
       invalidateRequestQueries(queryClient)
@@ -592,7 +612,9 @@ export default function RequestReviewPanel({
               id,
               label: `Reverted ${labelVerb} of ${requesterName}`,
               inverse: async () => {
-                await pb.collection('bunk_requests').update(id, { status: priorStatus })
+                await pb
+                  .collection('bunk_requests')
+                  .update(id, { status: priorStatus, staff_touched: true })
                 invalidateRequestQueries(queryClient)
               },
             })
@@ -646,7 +668,9 @@ export default function RequestReviewPanel({
               inverse: async () => {
                 await Promise.all(
                   priors.map((p) =>
-                    pb.collection('bunk_requests').update(p.id, { status: p.status })
+                    pb
+                      .collection('bunk_requests')
+                      .update(p.id, { status: p.status, staff_touched: true })
                   )
                 )
                 invalidateRequestQueries(queryClient)

@@ -1280,6 +1280,7 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-approve-1', {
         status: 'resolved',
+        staff_touched: true,
       })
     }, 10000)
 
@@ -1311,6 +1312,7 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-reject-1', {
         status: 'declined',
+        staff_touched: true,
       })
     }, 10000)
   })
@@ -1557,9 +1559,11 @@ describe('RequestReviewPanel', () => {
 
       await waitFor(
         () => {
-          // inverse mutation: PATCH back to pending
+          // inverse mutation: PATCH back to pending; undo is still a staff
+          // action so staff_touched stays true (one-way flag, idempotent re-set)
           expect(updateSpy).toHaveBeenCalledWith('req-undo-2', {
             status: 'pending',
+            staff_touched: true,
           })
         },
         { timeout: 3000 }
@@ -1900,6 +1904,138 @@ describe('RequestReviewPanel', () => {
       expect(pendingPatches.length).toBeGreaterThanOrEqual(2)
     }, 30000)
 
+    /**
+     * Bulk-action A→A skip: when a staff user bulk-approves a selection that
+     * includes rows already in the target status (e.g. status='resolved'),
+     * those rows are no-ops and MUST NOT be PATCHed at all. Only rows that
+     * actually change state get the staff_touched stamp. This keeps the
+     * audit signal honest: bulk-approve on an already-resolved row is not
+     * a "staff edit," it's a non-event.
+     */
+    it('bulk approve skips rows already in target status (no PATCH, no staff_touched)', async () => {
+      window.localStorage.setItem(
+        'kindred-requests-filters-1001',
+        JSON.stringify({
+          filters: {
+            requestTypes: [],
+            statuses: ['pending', 'declined', 'resolved'],
+            searchQuery: '',
+          },
+          sort: { sortBy: 'requester', sortOrder: 'asc' },
+        })
+      )
+
+      const records: BunkRequestsResponse[] = [
+        {
+          id: 'bulk-aa-pending',
+          requester_id: 610,
+          requestee_id: 611,
+          session_id: 1001,
+          year: 2025,
+          status: 'pending',
+          request_type: 'bunk_with',
+          confidence_score: 0.8,
+        } as BunkRequestsResponse,
+        {
+          id: 'bulk-aa-already-resolved',
+          requester_id: 620,
+          requestee_id: 621,
+          session_id: 1001,
+          year: 2025,
+          status: 'resolved',
+          request_type: 'bunk_with',
+          confidence_score: 0.7,
+        } as BunkRequestsResponse,
+      ]
+
+      const { pb } = (await import('../lib/pocketbase')) as unknown as {
+        pb: { collection: ReturnType<typeof vi.fn> }
+      }
+
+      const updateCalls: Array<{ id: string; updates: Partial<BunkRequestsResponse> }> = []
+
+      pb.collection.mockImplementation((name: string) => {
+        if (name === 'bunk_requests') {
+          return {
+            getFullList: vi.fn(async () => records.map((r) => ({ ...r }))),
+            getList: vi.fn(async () => ({
+              items: records.map((r) => ({ ...r })),
+              totalItems: records.length,
+            })),
+            update: vi.fn(async (id: string, updates: Partial<BunkRequestsResponse>) => {
+              updateCalls.push({ id, updates: { ...updates } })
+              const rec = records.find((r) => r.id === id)
+              if (rec) Object.assign(rec, updates)
+              return { ...rec }
+            }),
+          }
+        }
+        return {
+          getFullList: vi.fn().mockResolvedValue([]),
+          getList: vi.fn().mockResolvedValue({ items: [], totalItems: 0 }),
+          update: vi.fn().mockResolvedValue({}),
+        }
+      })
+
+      render(<RequestReviewPanel sessionId={1001} year={2025} />)
+      const user = userEvent.setup()
+
+      // Wait for both rows to render
+      await waitFor(
+        () => {
+          expect(screen.getAllByRole('checkbox').length).toBeGreaterThanOrEqual(3) // select-all + 2 rows
+        },
+        { timeout: 3000 }
+      )
+
+      // Select both rows via row checkboxes (skip already-checked select-all).
+      const allCheckboxes = screen.getAllByRole('checkbox')
+      for (const cb of allCheckboxes) {
+        if ((cb as HTMLInputElement).checked) continue
+        fireEvent.click(cb)
+        const toolbar = screen.queryByRole('toolbar', { name: /bulk actions/i })
+        if (toolbar && within(toolbar).queryByText(/^2 selected$/)) break
+      }
+
+      // Bulk Approve button in the sticky toolbar.
+      const toolbar = await waitFor(
+        () => {
+          const t = screen.queryByRole('toolbar', { name: /bulk actions/i })
+          if (!t) throw new Error('no toolbar yet')
+          if (!within(t).queryByText(/^2 selected$/)) throw new Error('not 2 selected yet')
+          return t
+        },
+        { timeout: 3000 }
+      )
+      const approveBtn = within(toolbar).getByRole('button', { name: /approve/i })
+      await user.click(approveBtn)
+
+      // Confirm in the bulk dialog.
+      const dialog = await screen.findByRole('dialog')
+      const approveConfirm = within(dialog).getByRole('button', { name: 'Approve' })
+      await user.click(approveConfirm)
+
+      // Wait for the pending row's PATCH to land.
+      await waitFor(
+        () => {
+          expect(updateCalls.some((c) => c.id === 'bulk-aa-pending')).toBe(true)
+        },
+        { timeout: 5000 }
+      )
+
+      // Pending row → PATCHed with status=resolved AND staff_touched=true.
+      const pendingPatch = updateCalls.find((c) => c.id === 'bulk-aa-pending')
+      expect(pendingPatch).toBeDefined()
+      expect(pendingPatch!.updates).toMatchObject({
+        status: 'resolved',
+        staff_touched: true,
+      })
+
+      // Already-resolved row → MUST NOT be PATCHed (no-op skip).
+      const noopCalls = updateCalls.filter((c) => c.id === 'bulk-aa-already-resolved')
+      expect(noopCalls).toHaveLength(0)
+    }, 20000)
+
     it('clicking Undo after decline restores status to pending', async () => {
       const { updateSpy, findButtonByTitle, user } = await renderPanelWithRequest({
         id: 'req-undo-3',
@@ -1922,6 +2058,7 @@ describe('RequestReviewPanel', () => {
       await waitFor(() => {
         expect(updateSpy).toHaveBeenCalledWith('req-undo-3', {
           status: 'declined',
+          staff_touched: true,
         })
       })
 
