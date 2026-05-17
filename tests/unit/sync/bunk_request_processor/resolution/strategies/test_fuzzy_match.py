@@ -41,6 +41,7 @@ class TestFuzzyMatchStrategy:
         # Mock parent surname search to return empty by default
         person_repo.name_cache = None
         person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
         return FuzzyMatchStrategy(person_repo, attendee_repo)
 
     def test_nickname_match(self, strategy, mock_repositories):
@@ -90,7 +91,13 @@ class TestFuzzyMatchStrategy:
         assert result.metadata["match_type"] == "nickname"  # Sara/Sarah is in nickname groups
 
     def test_single_name_fuzzy(self, strategy, mock_repositories):
-        """Test fuzzy matching on first name only"""
+        """Single-name nickname-table inference (Mike → Michael) goes PENDING via #1394 gate.
+
+        Previously this returned the session-disambiguated Michael at confidence 0.85
+        (auto-resolve). After #1394, the gate fires on the multi-match → session-
+        disambiguate-to-one path too: "Mike" is neither exact-equal nor JW≥0.90 close
+        to "Michael", so the candidate is surfaced at 0.5 for staff review.
+        """
         person_repo, attendee_repo = mock_repositories
 
         # Search for "Mike" (no last name)
@@ -125,11 +132,12 @@ class TestFuzzyMatchStrategy:
         # Pass session context since repository mocks don't chain well
         result = strategy.resolve("Mike", requester_cm_id=11111, session_cm_id=1000002, year=2025)
 
+        # Gate surfaces the disambiguated candidate at 0.5 (forces PENDING via
+        # disposition rule 8). is_resolved=True so outer resolve() returns it.
         assert result.is_resolved
-        assert result.person.cm_id == 12345  # Chose same session match
-        # Session disambiguation gives 0.85 confidence (same session boost)
-        assert result.confidence == 0.85
-        assert result.metadata["match_type"] == "session_disambiguated"
+        assert result.person.cm_id == 12345  # Session disambiguation picked same-session Michael
+        assert result.confidence == 0.5
+        assert result.metadata["ambiguity_reason"] == "first_name_only_distant_match"
 
     def test_no_fuzzy_match_found(self, strategy, mock_repositories):
         """Test when no fuzzy match is found"""
@@ -629,6 +637,7 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_normalized_name.return_value = []
         person_repo.find_by_first_name.return_value = []
         person_repo.find_by_name.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
         return FuzzyMatchStrategy(person_repository=person_repo, attendee_repository=attendee_repo)
 
     def test_merge_original_with_variants_session_disambiguates_winner(self, strategy, mock_repositories):
@@ -696,14 +705,24 @@ class TestNormalizedSearchMergeFallback:
         )
 
     def test_merge_falls_through_to_variants_when_original_empty(self, strategy, mock_repositories):
-        """When the original first name finds 0 matches, variants must still be tried."""
+        """When the original first name finds 0 matches, variants must still be tried.
+
+        Post-#1394 (first-name-only strict auto-resolve): variant lookup still finds
+        Kate (the fall-through works), but the conservative gate forces ambiguous
+        (PENDING) because Katherine vs Kate is a nickname-form mismatch with
+        JW similarity < 0.90. Staff reviews instead of silently auto-resolving.
+        """
         person_repo, attendee_repo = mock_repositories
         kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
         person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
         attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
-        assert result.is_resolved, "variants must still be tried when original returns empty"
-        assert result.person.cm_id == 200
+        # Variant lookup still found Kate (the fall-through works)
+        # The new gate surfaces Kate at low confidence (0.5) so disposition rule 8 forces PENDING
+        assert result.is_resolved, "gate should surface candidate as resolved-at-low-confidence"
+        assert result.person.cm_id == 200, "the variant-found candidate (Kate) is surfaced"
+        assert result.confidence == 0.5, "low confidence forces PENDING via disposition rule 8"
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
     def test_merge_two_same_session_candidates_returns_ambiguous(self, strategy, mock_repositories):
         """Two same-session Katherines: disambiguation can't pick a unique winner, returns
@@ -720,6 +739,226 @@ class TestNormalizedSearchMergeFallback:
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
         assert not result.is_resolved
         assert len(result.candidates or []) == 2
+
+
+class TestNormalizedSearchSingleNameRecall:
+    """Verify _try_normalized_search single-name fallback finds spelling variations + JW candidates."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_finds_candidate_via_literal_first_name_lookup(self, strategy):
+        """Single-name fallback queries find_by_first_name with the literal target.
+
+        Catheryn → Catherine via the literal first_only lookup (the mock returns
+        Catherine only when queried with the literal 'catheryn', proving the
+        literal-name search fired). The Jaro-Winkler similarity pass is
+        exercised separately below.
+        """
+        catherine = Person(cm_id=2001, first_name="Catherine", last_name="Johnson", preferred_name=None)
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [catherine] if name.lower() == "catheryn" else []
+        )
+        result = strategy._try_normalized_search(
+            "Catheryn",
+            requester_cm_id=9999,
+            session_cm_id=1234,
+            year=2026,
+            candidates=None,
+            attendee_info=None,
+        )
+        assert result.is_resolved
+        assert result.person == catherine
+
+    def test_finds_candidate_via_jaro_winkler(self, strategy):
+        """Cathryn → Catherine via JW similarity scan (no spelling-variation, no nickname hit)."""
+        catherine = Person(cm_id=2002, first_name="Catherine", last_name="Garcia", preferred_name=None)
+        # No first-name match; JW pass via get_all_for_phonetic_matching finds Catherine
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [catherine]
+        result = strategy._try_normalized_search(
+            "Cathryn",
+            requester_cm_id=9999,
+            session_cm_id=1234,
+            year=2026,
+            candidates=None,
+            attendee_info=None,
+        )
+        assert result.is_resolved
+        assert result.person == catherine
+
+
+class TestNormalizedSearchSingleNameGate:
+    """Verify _try_normalized_search blocks distant first-name-only matches."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_blocks_nickname_mismatch_when_single_name_search(self, strategy):
+        """When single-name search finds match that is not exact first-name, force ambiguous."""
+        josephine = Person(cm_id=3001, first_name="Josephine", last_name="Johnson", preferred_name=None)
+        # "Jo" → find nickname/spelling variants → find "Josephine", but "Jo" != "Josephine"
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [josephine] if name.lower() == "josephine" else []
+        )
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [josephine]
+
+        result = strategy._try_normalized_search(
+            "Jo", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        # Gate surfaces the candidate at low confidence (0.5) so disposition rule 8
+        # forces PENDING. is_resolved=True so outer resolve() returns it (ambiguous
+        # would need >1 candidates).
+        assert result.is_resolved
+        assert result.person == josephine
+        assert result.confidence == 0.5
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_allows_exact_preferred_when_single_name_search(self, strategy):
+        """When single-name search matches preferred_name exactly, allow resolution."""
+        madison = Person(cm_id=3002, first_name="Madison", last_name="Reidy", preferred_name="Maddie")
+        # "Maddie" matches preferred_name exactly → must resolve, not block
+        strategy.person_repo.find_by_normalized_name.return_value = [madison]
+
+        result = strategy._try_normalized_search(
+            "Maddie", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == madison
+        assert result.confidence >= 0.75  # Normalized match default
+
+    def test_allows_close_spelling_via_jw_when_single_name_search(self, strategy):
+        """When single-name search finds close spelling (JW >= 0.90), allow resolution."""
+        catherine = Person(cm_id=3003, first_name="Catherine", last_name="Garcia", preferred_name=None)
+        # "Cathryn" vs "Catherine" → JW similarity >= 0.90 → passes gate → resolves
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [catherine]
+
+        result = strategy._try_normalized_search(
+            "Cathryn", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == catherine
+
+    def test_blocks_distant_nickname_when_single_name_search(self, strategy):
+        """When single-name search finds distant nickname (Bobby → Robert), force ambiguous."""
+        robert = Person(cm_id=3004, first_name="Robert", last_name="Chen", preferred_name=None)
+        # "Bobby" → nickname/JW pass finds "Robert", but "Bobby" != "Robert" and JW < 0.90
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [robert] if name.lower() == "robert" else []
+        )
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [robert]
+
+        result = strategy._try_normalized_search(
+            "Bobby", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        # Gate surfaces candidate at low confidence (0.5) → disposition rule 8 forces PENDING
+        assert result.is_resolved
+        assert result.person == robert
+        assert result.confidence == 0.5
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_unchanged_for_full_name_search(self, strategy):
+        """Gate does not apply to full-name search (2+ tokens)."""
+        robert = Person(cm_id=3005, first_name="Robert", last_name="Johnson", preferred_name=None)
+        # "Bobby Johnson" has 2 tokens → gate does not apply → resolves via full-name match
+        strategy.person_repo.find_by_normalized_name.return_value = [robert]
+
+        result = strategy._try_normalized_search(
+            "Bobby Johnson", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == robert
+
+    def test_blocks_session_disambiguated_distant_match_on_substring_path(self, strategy):
+        """Multi-match bypass regression: in batch mode the initial substring scan
+        (`name_lower in full_name_lower`) returns >1 candidates for a short first
+        name like "Jo" (matches Jordan, Joseph, Joanna…). When session disambiguation
+        then narrows to one in-session person whose first name is NOT exact-or-close
+        to the target, the gate must still fire — otherwise the disambiguated person
+        auto-resolves at session_match confidence (~0.85), undermining #1394.
+        """
+        jordan = Person(cm_id=4001, first_name="Jordan", last_name="Smith", preferred_name=None)
+        joseph = Person(cm_id=4002, first_name="Joseph", last_name="Chen", preferred_name=None)
+        candidates = [jordan, joseph]
+        attendee_info = {
+            4001: {"session_cm_id": 1000001},  # same session as requester
+            4002: {"session_cm_id": 1000002},  # other session
+        }
+
+        result = strategy._try_normalized_search(
+            "Jo",
+            requester_cm_id=9999,
+            session_cm_id=1000001,
+            year=2026,
+            candidates=candidates,
+            attendee_info=attendee_info,
+        )
+
+        # Substring scan finds both ("jo" ⊂ "jordan smith", "jo" ⊂ "joseph chen").
+        # Session disambiguation picks Jordan. Gate must demote to PENDING because
+        # "Jo" is neither exact-equal nor JW≥0.90 close to "Jordan".
+        assert result.is_resolved
+        assert result.person == jordan
+        assert result.confidence == 0.5
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_enumeration_prefix_does_not_demote_exact_match(self, strategy):
+        """Gate must compare against parsed.first, not raw name.
+
+        For input '1. Jo' (enumeration-prefixed single name), parse_name strips
+        the prefix and yields parsed.first='Jo'. The gate compares the target
+        token against the candidate's first/preferred name — if it receives the
+        raw '1. Jo', the Jaro-Winkler similarity against 'Jo' is 0.0 and the
+        gate incorrectly demotes a clean exact-name match to PENDING.
+        """
+        jo = Person(cm_id=3006, first_name="Jo", last_name="Garcia", preferred_name=None)
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [jo] if name.lower() == "jo" else []
+        )
+
+        result = strategy._try_normalized_search(
+            "1. Jo", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == jo
+        # Exact first-name match — gate should NOT fire.
+        assert result.confidence != 0.5
+        assert result.metadata.get("ambiguity_reason") != "first_name_only_distant_match"
 
 
 if __name__ == "__main__":

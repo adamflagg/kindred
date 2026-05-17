@@ -575,5 +575,38 @@ class TestPhoneticMatchCacheEfficiency:
         assert person_repo.get_all_for_phonetic_matching.call_count == 1
 
 
+class TestPhoneticMatchFirstNameOnlyRegression:
+    """Document that phonetic strategies do not run for first-name-only parses.
+
+    Regression guard for #1394: if a future refactor opens up phonetic for
+    first-name-only, that decision should be deliberate (phonetic has high
+    false-positive risk on short first names — soundex of 'Jo' matches many
+    same-session campers like Jo, Jordan, June, Joyce, Jeanette).
+    """
+
+    @pytest.fixture
+    def mock_repositories(self):
+        """Create mock repositories"""
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        # Set sensible defaults so resolve() doesn't blow up
+        mock_person_repo.get_all_for_phonetic_matching.return_value = []
+        mock_attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        """Create a PhoneticMatchStrategy with mocked dependencies"""
+        person_repo, attendee_repo = mock_repositories
+        return PhoneticMatchStrategy(person_repo, attendee_repo)
+
+    def test_phonetic_resolve_returns_no_match_for_first_name_only(self, strategy):
+        """Single-token name → resolve() returns 0.0 confidence (no match)."""
+        result = strategy.resolve("Jon", requester_cm_id=9999, session_cm_id=1234, year=2026)
+        assert result.confidence == 0.0
+        assert not result.is_resolved
+        assert not result.is_ambiguous
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
