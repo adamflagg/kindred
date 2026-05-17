@@ -18,6 +18,7 @@ import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
+import { buildFamilyRows } from './PdfExport/familyRows'
 import { ErrorBoundary } from './ErrorBoundary'
 import type {
   ImpossibilityReport,
@@ -632,62 +633,56 @@ export default function PostValidationResultsModal({
   // Unified "Families to contact" list — combines all three contact-action cohorts:
   // got_nothing (entirely-impossible MP campers), violated (not-bunk-with violations),
   // and priority_unmet (priority-flagged requests that didn't land). Sorted by first name.
+  // Sort/filter logic lives in PdfExport/familyRows.ts (shared with PDF export).
+  // Modal re-decorates string detail into JSX for richer inline formatting.
   const familyRows: FamilyRow[] = useMemo(() => {
-    const rows: FamilyRow[] = []
-
-    // Cohort A: got nothing (entirely-impossible MP campers)
-    for (const c of mpImpossible) {
-      rows.push({
-        key: `gn-${c.cm_id}`,
-        name: c.name,
-        cm_id: String(c.cm_id),
-        grade: c.grade,
-        gender: c.gender,
-        cohort: 'got_nothing',
-        detail: (
-          <span>
-            All requests impossible · {c.reason_codes.map(friendlyReasonLabel).join(', ')}
-          </span>
-        ),
-      })
+    const safeReport = impossibilityReport ?? {
+      mp_campers_entirely_impossible: [],
+      flat: [],
+      by_reason: {},
+      total_impossible: 0,
+      affected_campers: 0,
     }
-    // Cohort B: not-bunk-with violations (MSP + staff both kept)
-    for (const v of statistics.negative_request_violations_detail ?? []) {
-      rows.push({
-        key: `nv-${v.requester_cm_id}-${v.target_cm_id}-${v.bunk_cm_id}`,
-        name: v.requester_name,
-        cm_id: v.requester_cm_id,
-        grade: 0,
-        gender: '',
-        cohort: 'violated',
-        detail: (
+    const baseRows = buildFamilyRows(statistics, safeReport)
+    return baseRows.map((r) => {
+      let detail: React.ReactNode
+      if (r.cohort === 'got_nothing') {
+        const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
+          (x) => String(x.cm_id) === r.cm_id,
+        )
+        detail = (
+          <span>
+            All requests impossible · {(c?.reason_codes ?? []).map(friendlyReasonLabel).join(', ')}
+          </span>
+        )
+      } else if (r.cohort === 'violated') {
+        const v = (statistics.negative_request_violations_detail ?? []).find(
+          (x) => `nv-${x.requester_cm_id}-${x.target_cm_id}-${x.bunk_cm_id}` === r.key,
+        )
+        detail = v ? (
           <span>
             Placed with {v.target_name} in{' '}
             <span className="font-mono text-xs">{v.bunk_name}</span>
           </span>
-        ),
-      })
-    }
-    // Cohort C: priority unmet
-    for (const p of statistics.priority_unsuccessfuls ?? []) {
-      rows.push({
-        key: `pu-${p.requester_cm_id}-${p.target_cm_id}`,
-        name: p.requester_name,
-        cm_id: p.requester_cm_id,
-        grade: 0,
-        gender: '',
-        cohort: 'priority_unmet',
-        detail: (
+        ) : (
+          <span>{r.detail}</span>
+        )
+      } else {
+        const p = (statistics.priority_unsuccessfuls ?? []).find(
+          (x) => `pu-${x.requester_cm_id}-${x.target_cm_id}` === r.key,
+        )
+        detail = p ? (
           <span>
             Wanted {p.target_name} ·{' '}
             <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
           </span>
-        ),
-      })
-    }
-    rows.sort((a, b) => a.name.localeCompare(b.name) || a.grade - b.grade)
-    return rows
-  }, [mpImpossible, statistics.negative_request_violations_detail, statistics.priority_unsuccessfuls])
+        ) : (
+          <span>{r.detail}</span>
+        )
+      }
+      return { ...r, detail }
+    })
+  }, [mpImpossible, statistics, impossibilityReport])
 
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length

@@ -163,3 +163,46 @@ describe('BunkPlanReport (PDF) — Cover/Summary page', () => {
     expect(buf.length).toBeGreaterThan(0)
   }, 30000)
 })
+
+describe('BunkPlanReport (PDF) — Families to contact page', () => {
+  it('renders Families to contact with all 3 cohorts in alphabetical order', async () => {
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats({
+          negative_request_violations_detail: [
+            { requester_cm_id: '1', target_cm_id: '2', requester_name: 'Riley Sam', target_name: 'Samuel Johnson', bunk_cm_id: '10', bunk_name: 'Pine 3' },
+          ],
+          priority_unsuccessfuls: [
+            { requester_cm_id: '3', target_cm_id: '4', requester_name: 'Sophia Martinez', target_name: 'Mia Wilson', raw_text: 'top priority' },
+          ],
+        })}
+        impossibilityReport={{
+          by_reason: {},
+          total_impossible: 0,
+          affected_campers: 0,
+          flat: [],
+          mp_campers_entirely_impossible: [
+            { cm_id: 5, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['grade_compatibility'] },
+          ],
+        } as any}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+
+    // Section title visible (uppercase form likely "FAMILIES TO CONTACT" with letter-spacing)
+    expect(stripSpaces(text)).toMatch(/FAMILIESTOCONTACT/)
+    // All three campers visible
+    expect(text).toMatch(/Emma Johnson/)
+    expect(text).toMatch(/Riley Sam/)
+    expect(text).toMatch(/Sophia Martinez/)
+    // Alphabetical: Emma < Riley < Sophia
+    expect(text.indexOf('Emma Johnson')).toBeLessThan(text.indexOf('Riley Sam'))
+    expect(text.indexOf('Riley Sam')).toBeLessThan(text.indexOf('Sophia Martinez'))
+  }, 30000)
+})

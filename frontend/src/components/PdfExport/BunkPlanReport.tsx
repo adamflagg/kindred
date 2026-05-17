@@ -1,6 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
+import { buildFamilyRows, cohortLabel } from './familyRows'
 
 interface Props {
   sessionName: string
@@ -87,6 +88,7 @@ const styles = StyleSheet.create({
   },
   cell: { flex: 1, fontSize: 8 },
   cellWide: { flex: 2, fontSize: 8 },
+  subtitle: { fontSize: 8, color: STONE_600, marginBottom: 6 },
   emptyNote: { fontSize: 8, color: STONE_600, fontStyle: 'italic', marginTop: 4 },
   metaLine: { fontSize: 8, color: STONE_600, marginTop: 6 },
   footer: {
@@ -280,7 +282,38 @@ export function BunkPlanReport({
         />
       </Page>
 
-      {/* ── Page 2 — Action Lists ── */}
+      {/* ── Page 2 — Families to contact (consolidated) ── */}
+      {(() => {
+        const familyRows = buildFamilyRows(statistics, impossibilityReport)
+        if (familyRows.length === 0) return null
+        return (
+          <Page size="LETTER" style={styles.page}>
+            <Text style={styles.sectionTitle}>Families to contact ({familyRows.length})</Text>
+            <Text style={styles.subtitle}>Sorted alphabetically by camper first name. Each row needs a follow-up call.</Text>
+            <View style={styles.tableHead}>
+              <Text style={styles.cell}>Camper</Text>
+              <Text style={styles.cell}>Cohort</Text>
+              <Text style={[styles.cell, { flex: 2 }]}>Detail</Text>
+            </View>
+            {familyRows.map((r) => (
+              <View key={r.key} style={styles.tableRow} wrap={false}>
+                <Text style={styles.cell}>{r.name}</Text>
+                <Text style={styles.cell}>{cohortLabel(r.cohort)}</Text>
+                <Text style={[styles.cell, { flex: 2 }]}>{r.detail}</Text>
+              </View>
+            ))}
+            <Text
+              style={styles.footer}
+              render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+                `Page ${pageNumber} of ${totalPages}`
+              }
+              fixed
+            />
+          </Page>
+        )
+      })()}
+
+      {/* ── Page 3 — Action Lists (legacy) ── */}
       <Page size="LETTER" style={styles.page}>
         {/* Who Got Nothing */}
         <Text style={styles.sectionTitle}>Who Got Nothing</Text>
