@@ -1062,11 +1062,10 @@ export default function PostValidationResultsModal({
 
           {showDetails && (
             <div className="animate-fade-in space-y-2 px-5 pb-4">
-              {SOURCE_FIELD_ORDER
-                .filter((key) => key in statistics.field_stats)
-                .map((fieldName) => {
-                  const stats = statistics.field_stats[fieldName]
-                  return (
+              {SOURCE_FIELD_ORDER.map((fieldName) => {
+                const stats = statistics.field_stats[fieldName]
+                if (!stats) return null
+                return (
                   <div
                     key={fieldName}
                     className="bg-muted/40 flex items-center justify-between rounded-xl p-3"
