@@ -96,9 +96,6 @@ describe('BunkPlanReport (PDF)', () => {
     const flat = stripSpaces(result.text)
 
     expect(flat).toMatch(/BUNKPLANREPORT/)
-    expect(flat).toMatch(/WHOGOTNOTHING/)
-    expect(flat).toMatch(/FAMILIESTOCALL/)
-    expect(flat).toMatch(/PRIORITYUNSUCCESSFULS/)
   }, 30000)
 
   describe('BunkPlanReport (PDF) — Cover/Summary page', () => {

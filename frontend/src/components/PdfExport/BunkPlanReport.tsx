@@ -12,7 +12,12 @@ interface Props {
   impossibilityReport: ImpossibilityReport
   /** Optional branded logo — pass /local/assets/camp-logo.png from caller */
   logoUrl?: string
-  issues?: Array<{ type: string; severity: string; message: string }>
+  issues?: Array<{
+    type: string
+    severity: string
+    message: string
+    details?: Record<string, unknown>
+  }>
 }
 
 // Theme: forest green, amber, cream (generic Tawonga-inspired palette)
@@ -211,7 +216,7 @@ export function BunkPlanReport({
           <Text style={{ width: 50, textAlign: 'right' }}>Rate</Text>
         </View>
         <View style={styles.coverageRow}>
-          <Text style={{ flex: 2, fontSize: 8 }}>Material satisfaction parent</Text>
+          <Text style={{ flex: 2, fontSize: 8 }}>MP satisfaction</Text>
           <Text style={{ width: 50, textAlign: 'right', fontSize: 8 }}>{mpSatisfied}</Text>
           <Text style={{ width: 40, textAlign: 'right', fontSize: 8 }}>{mpTotal}</Text>
           <Text
@@ -320,91 +325,6 @@ export function BunkPlanReport({
         )
       })()}
 
-      {/* ── Page 3 — Action Lists (legacy) ── */}
-      <Page size="LETTER" style={styles.page}>
-        {/* Who Got Nothing */}
-        <Text style={styles.sectionTitle}>Who Got Nothing</Text>
-        {(impossibilityReport.mp_campers_entirely_impossible?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No campers with entirely impossible requests.</Text>
-        ) : (
-          <>
-            <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Camper</Text>
-              <Text style={styles.cell}>Gender</Text>
-              <Text style={styles.cell}>Grade</Text>
-              <Text style={styles.cellWide}>Reason codes</Text>
-            </View>
-            {(impossibilityReport.mp_campers_entirely_impossible ?? []).map((c, i) => (
-              <View
-                key={`imp-${c.cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{c.name}</Text>
-                <Text style={styles.cell}>{c.gender}</Text>
-                <Text style={styles.cell}>{c.grade}</Text>
-                <Text style={styles.cellWide}>{(c.reason_codes ?? []).join(', ') || '—'}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        {/* Families to Call */}
-        <Text style={styles.sectionTitle}>Families to Call</Text>
-        {(statistics.negative_request_violations_detail?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No not-bunk-with violations.</Text>
-        ) : (
-          <>
-            <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Requester</Text>
-              <Text style={styles.cellWide}>Placed with</Text>
-              <Text style={styles.cell}>Bunk</Text>
-            </View>
-            {(statistics.negative_request_violations_detail ?? []).map((v, i) => (
-              <View
-                key={`nbw-${v.requester_cm_id}-${v.target_cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{v.requester_name}</Text>
-                <Text style={styles.cellWide}>{v.target_name}</Text>
-                <Text style={styles.cell}>{v.bunk_name}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        {/* Priority Unsuccessfuls */}
-        <Text style={styles.sectionTitle}>Priority Unsuccessfuls</Text>
-        {(statistics.priority_unsuccessfuls?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No priority-keyword requests went unmet.</Text>
-        ) : (
-          <>
-            <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Requester</Text>
-              <Text style={styles.cellWide}>Requested</Text>
-              <Text style={styles.cellWide}>Original text</Text>
-            </View>
-            {(statistics.priority_unsuccessfuls ?? []).map((p, i) => (
-              <View
-                key={`pu-${p.requester_cm_id}-${p.target_cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{p.requester_name}</Text>
-                <Text style={styles.cellWide}>{p.target_name}</Text>
-                <Text style={styles.cellWide}>{p.raw_text}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
-            `Page ${pageNumber} of ${totalPages} · Action Items`
-          }
-          fixed
-        />
-      </Page>
-
       {/* ── Page 3 — Bunks needing attention / Other issues / Unmet drill-down ── */}
       {(() => {
         const issuesList = issues ?? []
@@ -421,7 +341,7 @@ export function BunkPlanReport({
         // Group bunk-level issues by extracted bunk name
         const bunkMap = new Map<string, typeof bunkLevelIssues>()
         for (const issue of bunkLevelIssues) {
-          const bunk = extractBunkName(issue.message)
+          const bunk = extractBunkName(issue)
           const arr = bunkMap.get(bunk) ?? []
           arr.push(issue)
           bunkMap.set(bunk, arr)

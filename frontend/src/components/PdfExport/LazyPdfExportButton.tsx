@@ -7,6 +7,7 @@
  * control whether the OS save-as dialog appears.
  */
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 
 interface LazyPdfExportButtonProps {
@@ -15,7 +16,12 @@ interface LazyPdfExportButtonProps {
   plannerName: string
   statistics: ValidationStatistics
   impossibilityReport: ImpossibilityReport
-  issues?: Array<{ type: string; severity: string; message: string }>
+  issues?: Array<{
+    type: string
+    severity: string
+    message: string
+    details?: Record<string, unknown>
+  }>
 }
 
 export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
@@ -24,6 +30,8 @@ export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
   async function handleClick() {
     if (busy) return
     setBusy(true)
+    let url: string | null = null
+    let a: HTMLAnchorElement | null = null
     try {
       const [{ pdf }, { BunkPlanReport }] = await Promise.all([
         import('@react-pdf/renderer'),
@@ -31,15 +39,18 @@ export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
       ])
       const filename = `bunk-plan-${props.sessionName.replace(/\s+/g, '-').toLowerCase()}-${props.year}.pdf`
       const blob = await pdf(<BunkPlanReport {...props} />).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
+      url = URL.createObjectURL(blob)
+      a = document.createElement('a')
       a.href = url
       a.download = filename
       document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('PDF export failed', err)
+      toast.error('PDF export failed. Please try again.')
     } finally {
+      if (a && a.parentNode) a.parentNode.removeChild(a)
+      if (url) URL.revokeObjectURL(url)
       setBusy(false)
     }
   }

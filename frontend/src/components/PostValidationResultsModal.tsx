@@ -562,6 +562,10 @@ export default function PostValidationResultsModal({
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
   const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
+  const unmetParentDetail = statistics.unsatisfied_material_parent_detail ?? []
+  // Either bucket (legacy persons array OR detail array) is enough to render
+  // the drill-down — backend may emit just one.
+  const hasUnmetDrilldown = unmetParents.length > 0 || unmetParentDetail.length > 0
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -647,6 +651,9 @@ export default function PostValidationResultsModal({
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
+  // KPI tile + section counts exclude suppressed types so the headline number
+  // matches the sum of what staff actually see below.
+  const visibleIssuesCount = issues.filter((i) => !SUPPRESSED_ISSUE_TYPES.has(i.type)).length
 
   // Bunk-level issues grouped by extracted bunk name (alphabetical).
   const bunkLevelIssues = useMemo(
@@ -656,7 +663,7 @@ export default function PostValidationResultsModal({
   const issuesByBunk = useMemo(() => {
     const map = new Map<string, typeof bunkLevelIssues>()
     for (const issue of bunkLevelIssues) {
-      const bunk = extractBunkName(issue.message)
+      const bunk = extractBunkName(issue)
       const arr = map.get(bunk) ?? []
       arr.push(issue)
       map.set(bunk, arr)
@@ -858,7 +865,9 @@ export default function PostValidationResultsModal({
               />
             </div>
             <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">{issues.length}</p>
+              <p className="text-foreground text-lg leading-tight font-semibold">
+                {visibleIssuesCount}
+              </p>
               <p className="text-muted-foreground text-xs">issues</p>
             </div>
           </div>
@@ -1085,7 +1094,7 @@ export default function PostValidationResultsModal({
       )}
 
       {/* Unmet parent requests drill-down (#1105) */}
-      {unmetParents.length > 0 && (
+      {hasUnmetDrilldown && (
         <div className="border-border/50 border-t">
           <button
             type="button"
@@ -1096,7 +1105,8 @@ export default function PostValidationResultsModal({
           >
             <span className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Unmet parent requests ({unmetParents.length})
+              Unmet parent requests (
+              {unmetParentDetail.length > 0 ? unmetParentDetail.length : unmetParents.length})
             </span>
             {showUnmetParents ? (
               <ChevronUp className="h-4 w-4" />

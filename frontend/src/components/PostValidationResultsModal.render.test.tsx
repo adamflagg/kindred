@@ -387,6 +387,30 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 // #1105: Unmet parent requests drill-down section
 // ---------------------------------------------------------------------------
 
+describe('PostValidationResultsModal — KPI "issues" tile excludes suppressed types', () => {
+  it('counts only non-suppressed issues so the tile matches the sections below', () => {
+    // 2 visible + 3 suppressed = 5 raw; tile should show "2".
+    const issues = [
+      { type: 'capacity_violation', severity: 'error', message: 'Bunk Pine 1 is over capacity' },
+      { type: 'age_spread_warning', severity: 'warning', message: 'Bunk Oak 2 has excessive age' },
+      { type: 'valid_negative_request_violated', severity: 'warning', message: 'suppressed 1' },
+      { type: 'no_requests', severity: 'warning', message: 'suppressed 2' },
+      { type: 'campers_with_unsatisfied_valid_requests', severity: 'warning', message: 'sup 3' },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    const tileLabel = screen.getByText(/^issues$/i)
+    const tileValue = tileLabel.previousElementSibling
+    expect(tileValue?.textContent).toBe('2')
+  })
+})
+
 describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
   it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
     render(
@@ -816,10 +840,28 @@ describe('PostValidationResultsModal — Capacity by gender section', () => {
 
 describe('PostValidationResultsModal — Bunks needing attention', () => {
   it('groups bunk-level issues into one row per bunk with chips', () => {
+    // Real validator emits structured `details.bunk_name` for every
+    // bunk-level issue; the extractor reads that first and falls back to
+    // message parsing only when missing.
     const issues = [
-      { type: 'capacity_violation', severity: 'error', message: 'Pine 3 over capacity (9/8)' },
-      { type: 'grade_ratio_warning', severity: 'warning', message: 'Pine 3 has 75% one grade' },
-      { type: 'age_spread_warning', severity: 'warning', message: 'Oak 2 age gap 26 months' },
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3' },
+      },
+      {
+        type: 'grade_ratio_warning',
+        severity: 'warning',
+        message: 'Bunk Pine 3 has 75.0% of campers from grade 6 (exceeds 50% limit)',
+        details: { bunk_name: 'Pine 3' },
+      },
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2' },
+      },
     ]
     render(
       <PostValidationResultsModal
@@ -1010,6 +1052,32 @@ describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
     expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
     expect(screen.getByText(/Pine 3/)).toBeInTheDocument()
     expect(screen.getByText(/Oak 2/)).toBeInTheDocument()
+  })
+
+  it('renders drill-down when only unsatisfied_material_parent_detail is present (no legacy persons array)', async () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+          ],
+        })}
+      />
+    )
+    await userEvent.click(screen.getByText(/unmet parent requests/i))
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
   })
 })
 

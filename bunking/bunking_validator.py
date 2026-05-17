@@ -1395,6 +1395,7 @@ class BunkingValidator:
                     higher_bunk: Bunk = higher["bunk"]
                     flow_violations.append(
                         {
+                            "bunk_name": lower_bunk.name,
                             "gender": "Boys" if gender == "M" else "Girls",
                             "lower_bunk": lower_bunk.name,
                             "lower_avg_age": round(lower_avg_age, 1),

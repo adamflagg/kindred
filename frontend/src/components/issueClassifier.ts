@@ -22,12 +22,33 @@ export const SUPPRESSED_ISSUE_TYPES = new Set([
   'campers_with_unsatisfied_valid_requests',
 ])
 
+interface IssueLike {
+  type: string
+  message: string
+  details?: Record<string, unknown>
+}
+
 /**
- * Best-effort bunk name extraction from validator-emitted message strings.
- * Validator messages start with "<BunkName> ..." today; if that ever changes,
- * the validator should emit a structured `bunk_name` field instead.
+ * Returns the bunk name associated with an issue.
+ *
+ * Prefers `issue.details.bunk_name` (emitted structurally by the validator
+ * for every bunk-level type). Falls back to format-specific regex parsing of
+ * `issue.message` for older payloads or unexpected shapes.
  */
-export function extractBunkName(issueMessage: string): string {
-  const match = issueMessage.match(/^(\S+(?:\s+\S+)?)\s/)
-  return match?.[1] ?? 'Unknown'
+export function extractBunkName(issue: IssueLike): string {
+  const structured = issue.details?.['bunk_name']
+  if (typeof structured === 'string' && structured.length > 0) return structured
+
+  // Fallback: parse the message. Each bunk-level message format has a known
+  // anchor — match the most specific patterns first.
+  const patterns: RegExp[] = [
+    /^Bunk\s+(.+?)\s+(?:is|has)\s/, // capacity_violation, grade_*, age_spread_warning
+    /^(.+?)\s+\(avg age\s/, // age_flow_inversion
+    /^(.+?)\s+has\s+\d+\s+connected\s/, // isolation_risk
+  ]
+  for (const pattern of patterns) {
+    const match = issue.message.match(pattern)
+    if (match?.[1]) return match[1]
+  }
+  return 'Unknown'
 }
