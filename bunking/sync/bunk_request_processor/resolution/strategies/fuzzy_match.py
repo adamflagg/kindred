@@ -17,7 +17,7 @@ from ...shared import last_name_matches, parse_name
 from ...shared.name_utils import ParsedName
 from ...shared.nickname_groups import SPELLING_VARIATIONS, find_nickname_variations
 from ..interfaces import ResolutionResult
-from .base_match_strategy import BaseMatchStrategy
+from .base_match_strategy import BaseMatchStrategy, _is_exact_or_close_first_name
 
 # Default fallback values when config is missing
 DEFAULT_NICKNAME_BASE = 0.85
@@ -335,6 +335,24 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
+            # Conservative gate (#1394): when search was first-name-only and the
+            # match isn't exact-first / exact-preferred / close-spelling (JW >= 0.90),
+            # force ambiguous so staff reviews instead of silently auto-resolving
+            # to a same-first-name camper that may not be the parent's intent.
+            is_single_name_search = len(name.strip().split()) == 1
+            if is_single_name_search and not _is_exact_or_close_first_name(
+                name, matches[0].first_name, matches[0].preferred_name
+            ):
+                return ResolutionResult(
+                    candidates=matches,
+                    confidence=0.5,
+                    method=self.name,
+                    metadata={
+                        "ambiguity_reason": "first_name_only_distant_match",
+                        "match_type": match_type,
+                        "sub_method": match_type,
+                    },
+                )
             confidence = self._calculate_confidence(
                 matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_normalized=True
             )

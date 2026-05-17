@@ -778,5 +778,103 @@ class TestNormalizedSearchSingleNameRecall:
         assert result.person == catherine or (result.candidates and catherine in result.candidates)
 
 
+class TestNormalizedSearchSingleNameGate:
+    """Verify _try_normalized_search blocks distant first-name-only matches."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_blocks_nickname_mismatch_when_single_name_search(self, strategy):
+        """When single-name search finds match that is not exact first-name, force ambiguous."""
+        josephine = Person(cm_id=3001, first_name="Josephine", last_name="Johnson", preferred_name=None)
+        # "Jo" → find nickname/spelling variants → find "Josephine", but "Jo" != "Josephine"
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [josephine] if name.lower() == "josephine" else []
+        )
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [josephine]
+
+        result = strategy._try_normalized_search(
+            "Jo", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        # Gate blocks: result should have ambiguity_reason, NOT resolved, candidates returned
+        assert not result.is_resolved
+        assert josephine in result.candidates
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_allows_exact_preferred_when_single_name_search(self, strategy):
+        """When single-name search matches preferred_name exactly, allow resolution."""
+        madison = Person(cm_id=3002, first_name="Madison", last_name="Reidy", preferred_name="Maddie")
+        # "Maddie" matches preferred_name exactly → must resolve, not block
+        strategy.person_repo.find_by_normalized_name.return_value = [madison]
+
+        result = strategy._try_normalized_search(
+            "Maddie", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == madison
+        assert result.confidence >= 0.75  # Normalized match default
+
+    def test_allows_close_spelling_via_jw_when_single_name_search(self, strategy):
+        """When single-name search finds close spelling (JW >= 0.90), allow resolution."""
+        catherine = Person(cm_id=3003, first_name="Catherine", last_name="Garcia", preferred_name=None)
+        # "Cathryn" vs "Catherine" → JW similarity >= 0.90 → passes gate → resolves
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [catherine]
+
+        result = strategy._try_normalized_search(
+            "Cathryn", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == catherine
+
+    def test_blocks_distant_nickname_when_single_name_search(self, strategy):
+        """When single-name search finds distant nickname (Bobby → Robert), force ambiguous."""
+        robert = Person(cm_id=3004, first_name="Robert", last_name="Chen", preferred_name=None)
+        # "Bobby" → nickname/JW pass finds "Robert", but "Bobby" != "Robert" and JW < 0.90
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [robert] if name.lower() == "robert" else []
+        )
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [robert]
+
+        result = strategy._try_normalized_search(
+            "Bobby", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        # Gate blocks: result should have ambiguity_reason, NOT resolved, candidates returned
+        assert not result.is_resolved
+        assert robert in result.candidates
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_unchanged_for_full_name_search(self, strategy):
+        """Gate does not apply to full-name search (2+ tokens)."""
+        robert = Person(cm_id=3005, first_name="Robert", last_name="Johnson", preferred_name=None)
+        # "Bobby Johnson" has 2 tokens → gate does not apply → resolves via full-name match
+        strategy.person_repo.find_by_normalized_name.return_value = [robert]
+
+        result = strategy._try_normalized_search(
+            "Bobby Johnson", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == robert
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
