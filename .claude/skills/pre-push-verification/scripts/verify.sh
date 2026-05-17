@@ -14,6 +14,14 @@
 
 set -euo pipefail
 
+# Associative arrays (declare -A) below require bash 4+. macOS ships 3.2 by
+# default — recommend `brew install bash` for contributors on that platform.
+if ((BASH_VERSINFO[0] < 4)); then
+    echo "Error: bash 4+ required (you have $BASH_VERSION)." >&2
+    echo "On macOS, install via Homebrew: brew install bash" >&2
+    exit 1
+fi
+
 # ── Find repo root ──────────────────────────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
@@ -38,8 +46,13 @@ if [[ "${1:-}" == "--all" ]]; then
 fi
 
 # ── Detect changed files ───────────────────────────────────────────────
-# Compare against the merge-base with origin/main (or HEAD if no remote)
-if git rev-parse --verify origin/main &>/dev/null; then
+# Prefer @{push} — the upstream-tracked branch tip — so subsequent pushes
+# only verify *new* unpushed commits, not the whole PR diff. Falls back to
+# merge-base with origin/main for the first push (no upstream yet) or to
+# HEAD~1 outside any remote-tracking branch.
+if BASE=$(git rev-parse --verify --quiet '@{push}' 2>/dev/null); then
+    :  # @{push} found
+elif git rev-parse --verify origin/main &>/dev/null; then
     BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~1")
 else
     BASE="HEAD~1"
@@ -53,6 +66,19 @@ CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only --
 CHANGED_FILES="$CHANGED_FILES"$'\n'$(git diff --diff-filter=ACMRT --name-only 2>/dev/null || true)
 # Deduplicate
 CHANGED_FILES=$(echo "$CHANGED_FILES" | sort -u | grep -v '^$' || true)
+
+# Pre-extract frontend/src changed files (relative to frontend/) for the
+# per-check file filter. Two lists because prettier covers .css/.json too
+# but eslint is configured only for .ts/.tsx (--ext ts,tsx in package.json).
+# Empty list → that check is skipped (tsc + vitest still cover the area).
+CHANGED_FRONTEND_PRETTIER=$(echo "$CHANGED_FILES" \
+    | grep -E '^frontend/src/.*\.(ts|tsx|js|jsx|css|json)$' \
+    | sed 's|^frontend/||' \
+    | grep -v '^$' || true)
+CHANGED_FRONTEND_ESLINT=$(echo "$CHANGED_FILES" \
+    | grep -E '^frontend/src/.*\.(ts|tsx)$' \
+    | sed 's|^frontend/||' \
+    | grep -v '^$' || true)
 
 if [[ -z "$CHANGED_FILES" ]] && [[ "$RUN_ALL" == false ]]; then
     echo -e "${GREEN}No changed files detected. Nothing to verify.${NC}"
@@ -179,21 +205,68 @@ if $HAS_GO; then
     run_check "go test" bash -c "cd pocketbase && go test -race ./... -v"
 fi
 
-# ── Frontend checks ────────────────────────────────────────────────────
+# ── Frontend checks (parallel, file-scoped) ────────────────────────────
+# All four tools run concurrently; stdout+stderr captured per-tool and
+# replayed in stable order so output stays readable. prettier + eslint are
+# scoped to CHANGED_FRONTEND_REL (the files actually touched since BASE);
+# tsc keeps full-project scope (signature changes propagate); vitest uses
+# --changed BASE to run only test files whose dependency graph saw a
+# change. Mirrors the lefthook `pre-push` philosophy.
 if $HAS_FRONTEND; then
-    header "Frontend"
+    header "Frontend (parallel)"
 
-    # Format
-    run_check "prettier" bash -c "cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,json,css}'"
+    LOGDIR=$(mktemp -d)
+    trap 'rm -rf "$LOGDIR"' EXIT
 
-    # Lint
-    run_check "eslint" bash -c "cd frontend && npm run lint"
+    declare -A PIDS=()
 
-    # Type check (both tsconfigs)
-    run_check "tsc type-check" bash -c "cd frontend && npm run type-check"
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,css,json}' ) \
+            >"$LOGDIR/prettier.log" 2>&1 &
+        PIDS[prettier]=$!
+    elif [[ -n "$CHANGED_FRONTEND_PRETTIER" ]]; then
+        # shellcheck disable=SC2086  # word-split is the intent: pass each path
+        ( cd frontend && npx prettier --check $CHANGED_FRONTEND_PRETTIER ) \
+            >"$LOGDIR/prettier.log" 2>&1 &
+        PIDS[prettier]=$!
+    else
+        echo "  (no prettier-eligible frontend/src files changed — skipping prettier)"
+    fi
 
-    # Tests
-    run_check "vitest" bash -c "cd frontend && npx vitest run"
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npm run lint ) >"$LOGDIR/eslint.log" 2>&1 &
+        PIDS[eslint]=$!
+    elif [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
+        # shellcheck disable=SC2086
+        ( cd frontend && npx eslint --report-unused-disable-directives $CHANGED_FRONTEND_ESLINT ) \
+            >"$LOGDIR/eslint.log" 2>&1 &
+        PIDS[eslint]=$!
+    else
+        echo "  (no .ts/.tsx files changed — skipping eslint)"
+    fi
+
+    ( cd frontend && npm run type-check ) >"$LOGDIR/tsc.log" 2>&1 &
+    PIDS[tsc]=$!
+
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx vitest run ) >"$LOGDIR/vitest.log" 2>&1 &
+    else
+        ( cd frontend && npx vitest run --changed "$BASE" ) >"$LOGDIR/vitest.log" 2>&1 &
+    fi
+    PIDS[vitest]=$!
+
+    for name in prettier eslint tsc vitest; do
+        pid="${PIDS[$name]:-}"
+        [[ -z "$pid" ]] && continue
+        if wait "$pid"; then
+            pass "$name"
+        else
+            fail "$name"
+            FAILURES+=("$name")
+            echo "── $name output ──"
+            cat "$LOGDIR/$name.log"
+        fi
+    done
 fi
 
 # ── Migration checks ───────────────────────────────────────────────────
