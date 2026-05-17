@@ -1088,3 +1088,38 @@ describe('PostValidationResultsModal — Capacity by gender section', () => {
     expect(screen.queryByText(/capacity by gender/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — Bunks needing attention', () => {
+  it('groups bunk-level issues into one row per bunk with chips', () => {
+    const issues = [
+      { type: 'capacity_violation', severity: 'error', message: 'Pine 3 over capacity (9/8)' },
+      { type: 'grade_ratio_warning', severity: 'warning', message: 'Pine 3 has 75% one grade' },
+      { type: 'age_spread_warning', severity: 'warning', message: 'Oak 2 age gap 26 months' },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    expect(screen.getByText(/bunks needing attention/i)).toBeInTheDocument()
+    // Pine 3 appears in both the bunk row and the issues list — use getAllByText
+    expect(screen.getAllByText(/Pine 3/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Oak 2/).length).toBeGreaterThan(0)
+  })
+
+  it('hides section when no bunk-level issues', () => {
+    const issues = [{ type: 'unassigned_campers', severity: 'error', message: '2 unassigned' }]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    expect(screen.queryByText(/bunks needing attention/i)).not.toBeInTheDocument()
+  })
+})

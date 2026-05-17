@@ -277,6 +277,28 @@ export function getIssueTypeLabel(type: string): string {
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
+// Issue types that are bunk-scoped and should appear in the "Bunks needing
+// attention" section. Kept at module scope so Task 15 PDF code can import
+// them from this file without circular deps (or extract to a shared util then).
+// NOTE: extractBunkName parses the first 1-2 tokens of the validator message
+// string. This is fragile — if the validator changes its message format, this
+// breaks silently. The long-term fix is for the validator to emit a structured
+// `bunk_name` field in the issue payload.
+export const BUNK_LEVEL_ISSUE_TYPES = new Set([
+  'capacity_violation',
+  'age_spread_warning',
+  'grade_ratio_warning',
+  'grade_spread_warning',
+  'grade_adjacency_warning',
+  'age_flow_inversion',
+  'isolation_risk',
+])
+
+export function extractBunkName(issueMessage: string): string {
+  const match = issueMessage.match(/^(\S+(?:\s+\S+)?)\s/)
+  return match?.[1] ?? 'Unknown'
+}
+
 // Satisfaction ring component - the visual centerpiece
 function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {
   const percentage = Math.round(rate * 100)
@@ -597,6 +619,22 @@ export default function PostValidationResultsModal({
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
+
+  // Bunk-level issues grouped by extracted bunk name (alphabetical).
+  const bunkLevelIssues = useMemo(
+    () => issues.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type)),
+    [issues]
+  )
+  const issuesByBunk = useMemo(() => {
+    const map = new Map<string, typeof bunkLevelIssues>()
+    for (const issue of bunkLevelIssues) {
+      const bunk = extractBunkName(issue.message)
+      const arr = map.get(bunk) ?? []
+      arr.push(issue)
+      map.set(bunk, arr)
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [bunkLevelIssues])
 
   const getOverallStatus = () => {
     let base: {
@@ -1017,6 +1055,46 @@ export default function PostValidationResultsModal({
                 )
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bunks needing attention */}
+      {issuesByBunk.length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-orange-900">Bunks needing attention</h3>
+                <p className="mt-0.5 text-xs text-orange-800/80">
+                  {issuesByBunk.length} bunk{issuesByBunk.length === 1 ? '' : 's'} have warnings
+                </p>
+              </div>
+              <span className="rounded-full bg-orange-200/80 px-2.5 py-1 text-xs font-medium text-orange-900">
+                {issuesByBunk.length}
+              </span>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm">
+              {issuesByBunk.map(([bunkName, bunkIssues]) => (
+                <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
+                  <div className="font-medium text-stone-900">{bunkName}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {bunkIssues.map((iss, idx) => (
+                      <span
+                        key={idx}
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          iss.type === 'capacity_violation'
+                            ? 'bg-red-200 text-red-900'
+                            : 'bg-amber-200 text-amber-900'
+                        }`}
+                      >
+                        {getIssueTypeLabel(iss.type)}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
