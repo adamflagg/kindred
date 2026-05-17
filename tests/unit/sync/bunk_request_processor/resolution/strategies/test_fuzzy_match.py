@@ -765,11 +765,10 @@ class TestNormalizedSearchSingleNameRecall:
     def test_finds_candidate_via_literal_first_name_lookup(self, strategy):
         """Single-name fallback queries find_by_first_name with the literal target.
 
-        Catheryn → Catherine via the Phase 1 literal lookup (the mock returns
-        Catherine only when queried with the literal 'catheryn', proving Phase 1
-        fired). Phase 2 SPELLING_VARIATIONS is currently subsumed by
-        find_nickname_variations and adds no new search terms; the Phase 3 JW
-        pass is exercised separately below.
+        Catheryn → Catherine via the literal first_only lookup (the mock returns
+        Catherine only when queried with the literal 'catheryn', proving the
+        literal-name search fired). The Jaro-Winkler similarity pass is
+        exercised separately below.
         """
         catherine = Person(cm_id=2001, first_name="Catherine", last_name="Johnson", preferred_name=None)
         strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (

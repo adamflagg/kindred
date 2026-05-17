@@ -319,13 +319,11 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # the wrong person silently (see PR for cascade analysis).
             if is_single_name_search:
                 first_only = parsed.first
-                # Phase 1: literal + nickname variations (existing behavior)
+                # Step 1: literal first_only + nickname variations. SPELLING_VARIATIONS
+                # is intentionally NOT consulted here — find_nickname_variations already
+                # merges its values in (see nickname_groups._add), so a separate pass
+                # would be a no-op after dedup.
                 search_terms: list[str] = [first_only, *find_nickname_variations(first_only)]
-                # Phase 2: spelling variations from SPELLING_VARIATIONS dict
-                spelling_variants = SPELLING_VARIATIONS.get(first_only.lower(), [])
-                for sv in spelling_variants:
-                    if sv not in search_terms:
-                        search_terms.append(sv)
                 seen_cm_ids: set[int] = set()
                 merged: list[Person] = []
                 for variant in search_terms:
@@ -339,9 +337,8 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                             seen_cm_ids.add(p.cm_id)
                             merged.append(p)
 
-                # Phase 3: Jaro-Winkler pass — find candidates whose first or preferred
-                # name has JW similarity >= 0.90 to the search term. Catches spelling
-                # variants not in SPELLING_VARIATIONS (e.g. Cathryn ≈ Catherine).
+                # Step 2: Jaro-Winkler pass — catch typo/spelling variants whose first
+                # or preferred name has JW similarity >= 0.90 (e.g. Cathryn ≈ Catherine).
                 first_lower = first_only.lower()
                 if candidates:
                     pool = candidates
