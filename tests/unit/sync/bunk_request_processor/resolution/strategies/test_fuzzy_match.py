@@ -698,14 +698,23 @@ class TestNormalizedSearchMergeFallback:
         )
 
     def test_merge_falls_through_to_variants_when_original_empty(self, strategy, mock_repositories):
-        """When the original first name finds 0 matches, variants must still be tried."""
+        """When the original first name finds 0 matches, variants must still be tried.
+
+        Post-#1394 (first-name-only strict auto-resolve): variant lookup still finds
+        Kate (the fall-through works), but the conservative gate forces ambiguous
+        (PENDING) because Katherine vs Kate is a nickname-form mismatch with
+        JW similarity < 0.90. Staff reviews instead of silently auto-resolving.
+        """
         person_repo, attendee_repo = mock_repositories
         kate = Person(cm_id=200, first_name="Kate", last_name="Chen")
         person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
         attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
-        assert result.is_resolved, "variants must still be tried when original returns empty"
-        assert result.person.cm_id == 200
+        # Variant lookup still found Kate (the fall-through works) — verified via candidates
+        assert kate in (result.candidates or []), "variant lookup must still find Kate"
+        # But the new gate forces ambiguous because Katherine != Kate (JW < 0.90)
+        assert result.is_ambiguous, "first-name-only nickname-form mismatch should be PENDING"
+        assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
     def test_merge_two_same_session_candidates_returns_ambiguous(self, strategy, mock_repositories):
         """Two same-session Katherines: disambiguation can't pick a unique winner, returns
