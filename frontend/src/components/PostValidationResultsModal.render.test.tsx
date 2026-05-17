@@ -980,3 +980,58 @@ describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
     expect(screen.getByText(/Oak 2/)).toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — KPI tiles use MSP signal', () => {
+  it('shows material parent satisfaction percentage when MP requests exist', () => {
+    const stats = makeStats({
+      material_parent_requests: 12,
+      satisfied_material_parent_requests: 10,
+      material_parent_request_satisfaction_rate: 0.83,
+      total_requests: 50,
+      satisfied_requests: 30,
+      request_satisfaction_rate: 0.6,
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+    expect(screen.getByText(/83\s*%/)).toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Impossible by reason kicker', () => {
+  it('renders the "see Pre-Check or export PDF" kicker', () => {
+    const impossibilityReport = makeImpossibilityReport({
+      by_reason: {
+        grade_compatibility: [
+          {
+            request_id: 'r1',
+            reason_code: 'grade_compatibility',
+            reason_message: 'wide',
+            request_type: 'bunk_with',
+            requester: { cm_id: 1, name: 'X', grade: 5, gender: 'F' },
+            requestee: null,
+            detail: {},
+            bucket: null,
+          },
+        ],
+      },
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    expect(
+      screen.getByText(/see Pre-Check or export PDF for full per-camper detail/i),
+    ).toBeInTheDocument()
+  })
+})

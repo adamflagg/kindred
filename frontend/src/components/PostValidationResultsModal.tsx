@@ -987,9 +987,9 @@ export default function PostValidationResultsModal({
       {impossibilityReport && Object.keys(impossibilityReport.by_reason).length > 0 && (
         <div className="px-5 pt-3">
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <h3 className="font-semibold text-stone-900">Impossible by reason</h3>
+            <h3 className="text-sm font-semibold text-stone-900">Impossible by reason</h3>
             <p className="mt-0.5 text-xs text-stone-500">
-              Why these requests can&rsquo;t be satisfied — from the latest pre-check
+              Summary only — see Pre-Check or export PDF for full per-camper detail
             </p>
             <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {Object.entries(impossibilityReport.by_reason).map(([code, items]) => (
