@@ -379,8 +379,7 @@ class BunkingValidator:
             gender_key = "female" if bunk.gender == "F" else "male" if bunk.gender == "M" else None
             if gender_key is None:
                 continue
-            bunk_cap = getattr(bunk, "max_size", DEFAULT_BUNK_CAPACITY) or DEFAULT_BUNK_CAPACITY
-            capacity_by_gender[gender_key]["capacity"] += bunk_cap
+            capacity_by_gender[gender_key]["capacity"] += getattr(bunk, "max_size", DEFAULT_BUNK_CAPACITY)
         for person in persons:
             if person.campminder_id not in assignments_by_person:
                 continue
