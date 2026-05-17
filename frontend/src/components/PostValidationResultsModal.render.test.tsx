@@ -897,16 +897,41 @@ describe('PostValidationResultsModal — Families to contact', () => {
   it('combines impossibility, not-bunk-with violations, and priority unmet sorted by first name', () => {
     const impossibilityReport = makeImpossibilityReport({
       mp_campers_entirely_impossible: [
-        { cm_id: 1001, name: 'Olivia Chen', grade: 4, gender: 'F', reason_codes: ['pair_no_shared_bunk'] },
-        { cm_id: 1002, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['grade_compatibility'] },
+        {
+          cm_id: 1001,
+          name: 'Olivia Chen',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['pair_no_shared_bunk'],
+        },
+        {
+          cm_id: 1002,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+        },
       ],
     })
     const stats = makeStats({
       negative_request_violations_detail: [
-        { requester_cm_id: '1003', target_cm_id: '1004', requester_name: 'Riley Sam', target_name: 'Samuel Johnson', bunk_cm_id: '2001', bunk_name: 'Pine 3' },
+        {
+          requester_cm_id: '1003',
+          target_cm_id: '1004',
+          requester_name: 'Riley Sam',
+          target_name: 'Samuel Johnson',
+          bunk_cm_id: '2001',
+          bunk_name: 'Pine 3',
+        },
       ],
       priority_unsuccessfuls: [
-        { requester_cm_id: '1005', target_cm_id: '1006', requester_name: 'Sophia Martinez', target_name: 'Mia Wilson', raw_text: 'top priority' },
+        {
+          requester_cm_id: '1005',
+          target_cm_id: '1006',
+          requester_name: 'Sophia Martinez',
+          target_name: 'Mia Wilson',
+          raw_text: 'top priority',
+        },
       ],
     })
     render(
@@ -965,7 +990,14 @@ describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
         onClose={() => {}}
         results={makeResults({
           unsatisfied_material_parent_detail: [
-            { requester_cm_id: '1', requester_name: 'Emma Johnson', target_cm_id: '2', target_name: 'Liam Garcia', requester_bunk_name: 'Pine 3', target_bunk_name: 'Oak 2' },
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
           ],
           // Keep the legacy persons array so the section still renders
           unsatisfied_material_parent_persons: [{ cm_id: 1, name: 'Emma Johnson' }],
@@ -1031,7 +1063,7 @@ describe('PostValidationResultsModal — Impossible by reason kicker', () => {
       />
     )
     expect(
-      screen.getByText(/see Pre-Check or export PDF for full per-camper detail/i),
+      screen.getByText(/see Pre-Check or export PDF for full per-camper detail/i)
     ).toBeInTheDocument()
   })
 })

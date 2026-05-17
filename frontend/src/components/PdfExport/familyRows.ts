@@ -14,7 +14,7 @@ export type FamilyRowData = {
 
 export function buildFamilyRows(
   statistics: ValidationStatistics,
-  impossibilityReport: ImpossibilityReport,
+  impossibilityReport: ImpossibilityReport
 ): FamilyRowData[] {
   const rows: FamilyRowData[] = []
 
@@ -56,4 +56,8 @@ export function buildFamilyRows(
 }
 
 export const cohortLabel = (c: FamilyCohort): string =>
-  c === 'got_nothing' ? 'Got nothing' : c === 'violated' ? 'Not-bunk-with violated' : 'Priority unmet'
+  c === 'got_nothing'
+    ? 'Got nothing'
+    : c === 'violated'
+      ? 'Not-bunk-with violated'
+      : 'Priority unmet'

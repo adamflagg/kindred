@@ -294,7 +294,9 @@ export function BunkPlanReport({
         return (
           <Page size="LETTER" style={styles.page}>
             <Text style={styles.sectionTitle}>Families to contact ({familyRows.length})</Text>
-            <Text style={styles.subtitle}>Sorted alphabetically by camper first name. Each row needs a follow-up call.</Text>
+            <Text style={styles.subtitle}>
+              Sorted alphabetically by camper first name. Each row needs a follow-up call.
+            </Text>
             <View style={styles.tableHead}>
               <Text style={styles.cell}>Camper</Text>
               <Text style={styles.cell}>Cohort</Text>
@@ -516,7 +518,9 @@ export function BunkPlanReport({
             }>
             return (
               <View key={code} style={styles.reasonGroup} wrap>
-                <Text style={styles.reasonHead}>{friendlyReasonLabel(code)} ({list.length})</Text>
+                <Text style={styles.reasonHead}>
+                  {friendlyReasonLabel(code)} ({list.length})
+                </Text>
                 <View style={styles.tableHead}>
                   <Text style={styles.cell}>Requester</Text>
                   <Text style={styles.cell}>Target</Text>

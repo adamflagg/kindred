@@ -21,11 +21,7 @@ import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
 import { buildFamilyRows } from './PdfExport/familyRows'
 import { ErrorBoundary } from './ErrorBoundary'
-import type {
-  ImpossibilityReport,
-  EntirelyImpossibleMpCamper,
-  ValidationStatistics,
-} from '../services/solver'
+import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -278,9 +274,6 @@ export function getIssueTypeLabel(type: string): string {
   }
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
-
-// Re-export for consumers that currently import from this module
-export { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from './issueClassifier'
 
 // Satisfaction ring component - the visual centerpiece
 function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {
@@ -566,9 +559,6 @@ export default function PostValidationResultsModal({
     if (!isOpen) setSelectedCamperId(null)
   }, [isOpen])
 
-  const mpImpossible: EntirelyImpossibleMpCamper[] =
-    impossibilityReport?.mp_campers_entirely_impossible ?? []
-
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
   const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
@@ -620,7 +610,7 @@ export default function PostValidationResultsModal({
       let detail: React.ReactNode
       if (r.cohort === 'got_nothing') {
         const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
-          (x) => String(x.cm_id) === r.cm_id,
+          (x) => String(x.cm_id) === r.cm_id
         )
         detail = (
           <span>
@@ -629,24 +619,22 @@ export default function PostValidationResultsModal({
         )
       } else if (r.cohort === 'violated') {
         const v = (statistics.negative_request_violations_detail ?? []).find(
-          (x) => `nv-${x.requester_cm_id}-${x.target_cm_id}-${x.bunk_cm_id}` === r.key,
+          (x) => `nv-${x.requester_cm_id}-${x.target_cm_id}-${x.bunk_cm_id}` === r.key
         )
         detail = v ? (
           <span>
-            Placed with {v.target_name} in{' '}
-            <span className="font-mono text-xs">{v.bunk_name}</span>
+            Placed with {v.target_name} in <span className="font-mono text-xs">{v.bunk_name}</span>
           </span>
         ) : (
           <span>{r.detail}</span>
         )
       } else {
         const p = (statistics.priority_unsuccessfuls ?? []).find(
-          (x) => `pu-${x.requester_cm_id}-${x.target_cm_id}` === r.key,
+          (x) => `pu-${x.requester_cm_id}-${x.target_cm_id}` === r.key
         )
         detail = p ? (
           <span>
-            Wanted {p.target_name} ·{' '}
-            <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
+            Wanted {p.target_name} · <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
           </span>
         ) : (
           <span>{r.detail}</span>
@@ -654,7 +642,7 @@ export default function PostValidationResultsModal({
       }
       return { ...r, detail }
     })
-  }, [mpImpossible, statistics, impossibilityReport])
+  }, [statistics, impossibilityReport])
 
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
@@ -898,7 +886,7 @@ export default function PostValidationResultsModal({
             </div>
             <ul className="mt-3 divide-y divide-red-100 text-sm">
               {familyRows.map((row) => (
-                <li key={row.key} className="flex items-center justify-between py-2 gap-2">
+                <li key={row.key} className="flex items-center justify-between gap-2 py-2">
                   <div className="min-w-0">
                     <button
                       type="button"
@@ -908,7 +896,7 @@ export default function PostValidationResultsModal({
                       {row.name}
                     </button>
                     {row.grade > 0 && (
-                      <span className="text-stone-500 text-xs">
+                      <span className="text-xs text-stone-500">
                         {' '}
                         · {row.grade}
                         {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
@@ -978,7 +966,9 @@ export default function PostValidationResultsModal({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-stone-900">Capacity by gender</h3>
-                <p className="mt-0.5 text-xs text-stone-500">Bunk fill compared to enrolled camper count</p>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Bunk fill compared to enrolled camper count
+                </p>
               </div>
             </div>
             <div className="mt-2">
@@ -987,14 +977,24 @@ export default function PostValidationResultsModal({
                 if (!capByGender) return null
                 const cap = capByGender[g]
                 const pct = cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
-                const barColor = cap.assigned > cap.capacity ? 'bg-red-500' : pct >= 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                const barColor =
+                  cap.assigned > cap.capacity
+                    ? 'bg-red-500'
+                    : pct >= 90
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
                 return (
                   <div key={g} className="flex items-center gap-2 py-1.5">
-                    <span className="w-14 text-xs font-medium capitalize text-stone-700">{g}</span>
+                    <span className="w-14 text-xs font-medium text-stone-700 capitalize">{g}</span>
                     <div className="h-2 flex-1 overflow-hidden rounded bg-stone-200">
-                      <div className={`h-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                      <div
+                        className={`h-full ${barColor}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
                     </div>
-                    <span className="min-w-[80px] text-right text-xs text-stone-600">{cap.assigned} / {cap.capacity}</span>
+                    <span className="min-w-[80px] text-right text-xs text-stone-600">
+                      {cap.assigned} / {cap.capacity}
+                    </span>
                   </div>
                 )
               })}
@@ -1060,7 +1060,12 @@ export default function PostValidationResultsModal({
             </div>
             <div className="mt-3 space-y-2">
               {groupedOtherIssues.map(([type, group]) => (
-                <IssueGroup key={type} type={type} issues={group.issues} severity={group.severity} />
+                <IssueGroup
+                  key={type}
+                  type={type}
+                  issues={group.issues}
+                  severity={group.severity}
+                />
               ))}
             </div>
           </div>
@@ -1108,20 +1113,21 @@ export default function PostValidationResultsModal({
               {(() => {
                 const detail = statistics.unsatisfied_material_parent_detail ?? []
                 // When detail isn't available, fall back to plain names so older sessions still render.
-                const rows = detail.length > 0
-                  ? [...detail].sort((a, b) => a.requester_name.localeCompare(b.requester_name))
-                  : unmetParents.map((p) => ({
-                      requester_cm_id: String(p.cm_id),
-                      requester_name: p.name,
-                      target_cm_id: '',
-                      target_name: '',
-                      requester_bunk_name: '',
-                      target_bunk_name: '',
-                    }))
+                const rows =
+                  detail.length > 0
+                    ? [...detail].sort((a, b) => a.requester_name.localeCompare(b.requester_name))
+                    : unmetParents.map((p) => ({
+                        requester_cm_id: String(p.cm_id),
+                        requester_name: p.name,
+                        target_cm_id: '',
+                        target_name: '',
+                        requester_bunk_name: '',
+                        target_bunk_name: '',
+                      }))
                 return rows.map((r) => (
                   <li
                     key={`${r.requester_cm_id}-${r.target_cm_id}`}
-                    className="text-foreground text-sm py-1"
+                    className="text-foreground py-1 text-sm"
                   >
                     <span className="font-medium">{r.requester_name}</span>
                     {r.target_name && (
@@ -1131,7 +1137,11 @@ export default function PostValidationResultsModal({
                       </>
                     )}
                     {r.requester_bunk_name && r.target_bunk_name && (
-                      <span className="text-xs text-stone-500"> · <span className="font-mono">{r.requester_bunk_name}</span> vs <span className="font-mono">{r.target_bunk_name}</span></span>
+                      <span className="text-xs text-stone-500">
+                        {' '}
+                        · <span className="font-mono">{r.requester_bunk_name}</span> vs{' '}
+                        <span className="font-mono">{r.target_bunk_name}</span>
+                      </span>
                     )}
                   </li>
                 ))
@@ -1185,8 +1195,8 @@ export default function PostValidationResultsModal({
                       {Math.round(stats.satisfaction_rate * 100)}%
                     </span>
                   </div>
-                  )
-                })}
+                )
+              })}
 
               {/* Capacity info */}
               {statistics.bunks_over_capacity > 0 && (

@@ -833,8 +833,9 @@ class BunkingValidator:
                     continue
                 requester_asgn = assignments_by_person.get(pid)
                 target_asgn = assignments_by_person.get(req.requested_person_cm_id)
-                requester_bunk = bunk_by_id.get(requester_asgn.bunk_cm_id) if requester_asgn else None
-                target_bunk = bunk_by_id.get(target_asgn.bunk_cm_id) if target_asgn else None
+                bunks_map = bunk_by_id or {}
+                requester_bunk = bunks_map.get(requester_asgn.bunk_cm_id) if requester_asgn else None
+                target_bunk = bunks_map.get(target_asgn.bunk_cm_id) if target_asgn else None
                 unsatisfied_material_parent_detail.append(
                     {
                         "requester_cm_id": str(req.requester_person_cm_id),
