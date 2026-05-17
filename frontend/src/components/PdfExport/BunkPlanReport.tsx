@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
+import { friendlyReasonLabel } from '../impossibility/reasonHints'
 
 interface Props {
   sessionName: string
@@ -140,41 +141,11 @@ export function BunkPlanReport({
   const mpRate = statistics.material_parent_request_satisfaction_rate
   const mpTotal = statistics.material_parent_requests ?? 0
   const mpSatisfied = statistics.satisfied_material_parent_requests ?? 0
-  const overallRate = mpTotal > 0 ? mpRate : statistics.request_satisfaction_rate
-  const totalIssues =
-    (impossibilityReport.mp_campers_entirely_impossible?.length ?? 0) +
-    (statistics.negative_request_violations_detail?.length ?? 0) +
-    (statistics.priority_unsuccessfuls?.length ?? 0)
 
   // Unmet parent persons sorted alphabetically for page 3
   const unmetParents = [...(statistics.unsatisfied_material_parent_persons ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   )
-
-  // Coverage table rows
-  const coverageRows = [
-    {
-      label: 'All requests',
-      total: statistics.total_requests,
-      satisfied: statistics.satisfied_requests,
-      rate: statistics.request_satisfaction_rate,
-    },
-    {
-      label: 'Parent priority',
-      total: mpTotal,
-      satisfied: mpSatisfied,
-      rate: mpRate ?? 0,
-    },
-    ...Object.entries(statistics.field_stats)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 4)
-      .map(([label, s]) => ({
-        label,
-        total: s.total,
-        satisfied: s.satisfied,
-        rate: s.satisfaction_rate,
-      })),
-  ]
 
   const generatedAt = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -184,83 +155,116 @@ export function BunkPlanReport({
 
   return (
     <Document>
-      {/* ── Page 1 — Executive Summary ── */}
+      {/* ── Page 1 — Cover / Executive Summary (MSP-focused) ── */}
       <Page size="LETTER" style={styles.page}>
         {/* Brand header */}
         <View style={styles.brandHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             <View>
-              <Text style={styles.brandTitle}>Bunk Plan Report</Text>
+              <Text style={styles.brandTitle}>
+                Bunk Plan Report — {sessionName} · {year}
+              </Text>
               <Text style={styles.brandSubtitle}>
-                Generated {generatedAt} · Prepared by {plannerName}
+                Generated {generatedAt} by {plannerName}
               </Text>
             </View>
           </View>
-          <View style={styles.sessionBlock}>
-            <Text style={styles.sessionName}>{sessionName}</Text>
-            <Text style={styles.sessionYear}>{year}</Text>
-          </View>
         </View>
 
-        {/* KPI tiles */}
+        {/* KPI tiles — MSP-focused */}
         <Text style={styles.sectionTitle}>Executive Summary</Text>
         <View style={styles.kpiRow}>
           <View style={styles.kpi}>
-            <Text style={[styles.kpiValue, { color: coverageColor(overallRate ?? 0) }]}>
-              {pct(overallRate)}
+            <Text style={[styles.kpiValue, { color: coverageColor(mpRate ?? 0) }]}>
+              {pct(mpRate)}
             </Text>
-            <Text style={styles.kpiLabel}>Parent request{'\n'}satisfaction</Text>
+            <Text style={styles.kpiLabel}>MSP{'\n'}satisfaction</Text>
           </View>
           <View style={styles.kpi}>
-            <Text style={styles.kpiValue}>{statistics.assigned_campers}</Text>
+            <Text style={styles.kpiValue}>
+              {statistics.assigned_campers}/{statistics.total_campers}
+            </Text>
             <Text style={styles.kpiLabel}>Campers{'\n'}assigned</Text>
           </View>
           <View style={styles.kpi}>
             <Text style={styles.kpiValue}>
               {mpSatisfied}/{mpTotal || '—'}
             </Text>
-            <Text style={styles.kpiLabel}>Priority requests{'\n'}met</Text>
-          </View>
-          <View style={styles.kpi}>
-            <Text style={[styles.kpiValue, { color: totalIssues > 0 ? '#dc2626' : GREEN }]}>
-              {totalIssues}
-            </Text>
-            <Text style={styles.kpiLabel}>Action items{'\n'}flagged</Text>
+            <Text style={styles.kpiLabel}>MSP reqs{'\n'}met</Text>
           </View>
         </View>
 
-        {/* Coverage by category */}
-        <Text style={styles.sectionTitle}>Coverage by Category</Text>
+        {/* Coverage — MSP only */}
+        <Text style={styles.sectionTitle}>Coverage (MSP)</Text>
         <View style={styles.tableHead}>
           <Text style={{ flex: 2 }}>Category</Text>
-          <Text style={{ width: 40, textAlign: 'right' }}>Satisfied</Text>
-          <Text style={{ width: 30, textAlign: 'right' }}>Total</Text>
+          <Text style={{ width: 50, textAlign: 'right' }}>Satisfied</Text>
+          <Text style={{ width: 40, textAlign: 'right' }}>Total</Text>
           <Text style={{ width: 50, textAlign: 'right' }}>Rate</Text>
         </View>
-        {coverageRows.map((row, i) => (
-          <View
-            key={`cov-${i}`}
-            style={
-              i % 2 === 0 ? styles.coverageRow : { ...styles.coverageRow, backgroundColor: CREAM }
-            }
+        <View style={styles.coverageRow}>
+          <Text style={{ flex: 2, fontSize: 8 }}>Material satisfaction parent</Text>
+          <Text style={{ width: 50, textAlign: 'right', fontSize: 8 }}>{mpSatisfied}</Text>
+          <Text style={{ width: 40, textAlign: 'right', fontSize: 8 }}>{mpTotal}</Text>
+          <Text
+            style={{
+              width: 50,
+              textAlign: 'right',
+              fontSize: 8,
+              color: coverageColor(mpRate ?? 0),
+              fontWeight: 'bold',
+            }}
           >
-            <Text style={{ flex: 2, fontSize: 8 }}>{row.label}</Text>
-            <Text style={{ width: 40, textAlign: 'right', fontSize: 8 }}>{row.satisfied}</Text>
-            <Text style={{ width: 30, textAlign: 'right', fontSize: 8 }}>{row.total}</Text>
-            <Text
-              style={{
-                width: 50,
-                textAlign: 'right',
-                fontSize: 8,
-                color: coverageColor(row.rate),
-                fontWeight: 'bold',
-              }}
-            >
-              {pct(row.rate)}
-            </Text>
-          </View>
-        ))}
+            {pct(mpRate)}
+          </Text>
+        </View>
+
+        {/* Impossible by reason */}
+        <Text style={styles.sectionTitle}>Impossible by Reason</Text>
+        {Object.keys(impossibilityReport.by_reason ?? {}).length === 0 ? (
+          <Text style={styles.emptyNote}>No impossible requests.</Text>
+        ) : (
+          <>
+            <View style={styles.tableHead}>
+              <Text style={{ flex: 2 }}>Reason</Text>
+              <Text style={{ width: 50, textAlign: 'right' }}>Count</Text>
+            </View>
+            {Object.entries(impossibilityReport.by_reason ?? {}).map(([code, items], i) => (
+              <View
+                key={`reason-${code}`}
+                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
+              >
+                <Text style={{ flex: 2, fontSize: 8 }}>{friendlyReasonLabel(code)}</Text>
+                <Text style={{ width: 50, textAlign: 'right', fontSize: 8 }}>
+                  {(items as unknown[]).length}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Capacity by gender */}
+        {statistics.capacity_by_gender && (
+          <>
+            <Text style={styles.sectionTitle}>Capacity by Gender</Text>
+            <View style={styles.tableHead}>
+              <Text style={{ flex: 2 }}>Gender</Text>
+              <Text style={{ width: 60, textAlign: 'right' }}>Assigned</Text>
+              <Text style={{ width: 60, textAlign: 'right' }}>Capacity</Text>
+            </View>
+            {Object.entries(statistics.capacity_by_gender).map(([gender, data], i) => (
+              <View
+                key={`cap-${gender}`}
+                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
+              >
+                <Text style={{ flex: 2, fontSize: 8, textTransform: 'capitalize' }}>{gender}</Text>
+                <Text style={{ width: 60, textAlign: 'right', fontSize: 8 }}>{data.assigned}</Text>
+                <Text style={{ width: 60, textAlign: 'right', fontSize: 8 }}>{data.capacity}</Text>
+              </View>
+            ))}
+          </>
+        )}
 
         <Text style={styles.metaLine}>
           Bunks: {statistics.bunks_at_capacity} at capacity · {statistics.bunks_under_capacity}{' '}

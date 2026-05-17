@@ -101,6 +101,48 @@ describe('BunkPlanReport (PDF)', () => {
     expect(flat).toMatch(/PRIORITYUNSUCCESSFULS/)
   }, 30000)
 
+describe('BunkPlanReport (PDF) — Cover/Summary page', () => {
+  it('renders MSP-focused KPIs + coverage table + impossibility summary + capacity by gender', async () => {
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats({
+          total_campers: 130,
+          assigned_campers: 128,
+          material_parent_requests: 48,
+          satisfied_material_parent_requests: 42,
+          material_parent_request_satisfaction_rate: 0.875,
+          capacity_by_gender: { female: { capacity: 65, assigned: 62 }, male: { capacity: 85, assigned: 66 } },
+        })}
+        impossibilityReport={{
+          by_reason: { grade_compatibility: [{}, {}, {}, {}, {}, {}, {}] },
+          total_impossible: 7,
+          affected_campers: 5,
+          flat: [],
+          mp_campers_entirely_impossible: [],
+        } as any}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const flat = stripSpaces(result.text)
+
+    // KPI section title (might be "EXECUTIVE SUMMARY" or "EXECUTIVESUMMARY" depending on letter-spacing strip)
+    expect(flat).toMatch(/EXECUTIVESUMMARY/)
+    // KPI values
+    expect(result.text).toMatch(/88\s*%|87\s*%/) // 0.875 → 88% rounded
+    // Section heads (stripped of whitespace + uppercased)
+    expect(flat).toMatch(/COVERAGE/i)
+    expect(flat).toMatch(/CAPACITYBYGENDER/)
+    expect(flat).toMatch(/IMPOSSIBLEBYREASON/)
+    // Friendly reason label (NOT uppercased — appears as regular cell text)
+    expect(result.text).toMatch(/Grade range too wide|grade_compatibility/i)
+  }, 30000)
+})
+
   it('handles empty action lists gracefully', async () => {
     const buf = await renderToBuffer(
       <BunkPlanReport
