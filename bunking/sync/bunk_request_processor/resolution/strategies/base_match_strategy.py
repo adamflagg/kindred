@@ -10,6 +10,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any
 
+import jellyfish
+
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ..interfaces import ResolutionResult, ResolutionStrategy
@@ -274,6 +276,11 @@ class BaseMatchStrategy(ResolutionStrategy):
 # by _try_jaro_winkler_first_name (which targets full-name matching).
 _FIRST_NAME_CLOSE_SPELLING_THRESHOLD = 0.90
 
+# Confidence value the gate stamps on demoted candidates. Chosen so disposition
+# rule 8 routes the result to PENDING regardless of bunk_with vs not_bunk_with
+# request type (both thresholds sit at 0.80+).
+GATE_DEMOTION_CONFIDENCE = 0.5
+
 
 def _is_exact_or_close_first_name(target_first: str, cand_first: str, cand_pref: str | None) -> bool:
     """Gate for first-name-only auto-resolve.
@@ -287,8 +294,6 @@ def _is_exact_or_close_first_name(target_first: str, cand_first: str, cand_pref:
     distant fuzzy matches to ambiguous (PENDING) when the AI provided only
     a first name to work with.
     """
-    import jellyfish
-
     t = target_first.strip().lower()
     f = (cand_first or "").strip().lower()
     p = (cand_pref or "").strip().lower()

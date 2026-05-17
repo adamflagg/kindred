@@ -465,7 +465,7 @@ class TestIsExactOrCloseFirstName:
             _is_exact_or_close_first_name,
         )
 
-        # Cathryn vs Catherine — JW similarity ~0.92
+        # Cathryn vs Catherine — JW similarity ~0.905 (just above the 0.90 gate)
         assert _is_exact_or_close_first_name("Cathryn", "Catherine", None) is True
 
     def test_distant_nickname_form_mismatch_fails(self):
@@ -473,7 +473,7 @@ class TestIsExactOrCloseFirstName:
             _is_exact_or_close_first_name,
         )
 
-        # Bobby vs Robert — completely different string, JW ~0.30
+        # Bobby vs Robert — completely different string, JW ~0.41
         assert _is_exact_or_close_first_name("Bobby", "Robert", None) is False
 
     def test_distant_nickname_form_mismatch_fails_against_preferred_too(self):
@@ -481,7 +481,7 @@ class TestIsExactOrCloseFirstName:
             _is_exact_or_close_first_name,
         )
 
-        # Jo vs Josephine — JW ~0.50, fails gate
+        # Jo vs Josephine — JW ~0.79, still below 0.90 gate
         assert _is_exact_or_close_first_name("Jo", "Josephine", "Josephine") is False
 
     def test_close_spelling_against_preferred(self):
