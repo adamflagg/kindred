@@ -441,5 +441,78 @@ class TestBaseMatchStrategyIntegration:
         assert result.person.cm_id == 12345
 
 
+class TestIsExactOrCloseFirstName:
+    """Gate helper for first-name-only auto-resolve decisions."""
+
+    def test_exact_first_name_match_case_insensitive(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        assert _is_exact_or_close_first_name("Liam", "Liam", None) is True
+        assert _is_exact_or_close_first_name("liam", "LIAM", None) is True
+
+    def test_exact_preferred_name_match(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # Madison "Maddie" — target "Maddie" matches preferred, not first
+        assert _is_exact_or_close_first_name("Maddie", "Madison", "Maddie") is True
+
+    def test_close_spelling_via_jaro_winkler_passes(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # Cathryn vs Catherine — JW similarity ~0.92
+        assert _is_exact_or_close_first_name("Cathryn", "Catherine", None) is True
+
+    def test_distant_nickname_form_mismatch_fails(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # Bobby vs Robert — completely different string, JW ~0.30
+        assert _is_exact_or_close_first_name("Bobby", "Robert", None) is False
+
+    def test_distant_nickname_form_mismatch_fails_against_preferred_too(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # Jo vs Josephine — JW ~0.50, fails gate
+        assert _is_exact_or_close_first_name("Jo", "Josephine", "Josephine") is False
+
+    def test_close_spelling_against_preferred(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        # Target close to preferred (JW("Liz", "Lizzy") ~0.906, passes gate)
+        assert _is_exact_or_close_first_name("Liz", "Elizabeth", "Lizzy") is True
+
+    def test_empty_target_fails(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        assert _is_exact_or_close_first_name("", "Liam", None) is False
+
+    def test_empty_candidate_first_fails(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        assert _is_exact_or_close_first_name("Liam", "", None) is False
+
+    def test_none_preferred_handled(self):
+        from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
+            _is_exact_or_close_first_name,
+        )
+
+        assert _is_exact_or_close_first_name("Liam", "Liam", None) is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

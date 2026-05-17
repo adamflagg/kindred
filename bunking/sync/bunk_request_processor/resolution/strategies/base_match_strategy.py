@@ -267,3 +267,35 @@ class BaseMatchStrategy(ResolutionStrategy):
             method=self.name,
             metadata=metadata,
         )
+
+
+# Module-level helper — gate for first-name-only auto-resolve decisions.
+# Threshold of 0.90 deliberately tighter than the general JW threshold used
+# by _try_jaro_winkler_first_name (which targets full-name matching).
+_FIRST_NAME_CLOSE_SPELLING_THRESHOLD = 0.90
+
+
+def _is_exact_or_close_first_name(target_first: str, cand_first: str, cand_pref: str | None) -> bool:
+    """Gate for first-name-only auto-resolve.
+
+    Returns True when the target first-name token is:
+      - exactly equal to candidate's first_name (case-insensitive), OR
+      - exactly equal to candidate's preferred_name (case-insensitive), OR
+      - close in spelling (Jaro-Winkler similarity >= 0.90) to either.
+
+    Used by _try_normalized_search to demote nickname-table inferences and
+    distant fuzzy matches to ambiguous (PENDING) when the AI provided only
+    a first name to work with.
+    """
+    import jellyfish  # local import to mirror existing pattern in fuzzy_match.py:538
+
+    t = target_first.strip().lower()
+    f = (cand_first or "").strip().lower()
+    p = (cand_pref or "").strip().lower()
+    if not t or not f:
+        return False
+    if t == f or (p and t == p):
+        return True
+    sim_f = jellyfish.jaro_winkler_similarity(t, f)
+    sim_p = jellyfish.jaro_winkler_similarity(t, p) if p else 0.0
+    return max(sim_f, sim_p) >= _FIRST_NAME_CLOSE_SPELLING_THRESHOLD
