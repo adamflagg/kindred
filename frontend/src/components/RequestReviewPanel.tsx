@@ -530,7 +530,10 @@ export default function RequestReviewPanel({
 
   const updateRequestMutation = useMutation<BunkRequestsResponse, Error, UpdateRequestVars>({
     mutationFn: async ({ id, updates }: UpdateRequestVars) => {
-      return pb.collection('bunk_requests').update(id, updates)
+      // GUI-originated write → flip staff_touched true so the audit signal
+      // sticks for any subsequent reader. One-way flag, idempotent re-set.
+      // Issue #1458.
+      return pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
     },
     onSuccess: (_data, variables) => {
       invalidateRequestQueries(queryClient)
@@ -551,7 +554,11 @@ export default function RequestReviewPanel({
       ids: string[]
       updates: Partial<BunkRequestsResponse>
     }) => {
-      return Promise.all(ids.map((id) => pb.collection('bunk_requests').update(id, updates)))
+      return Promise.all(
+        ids.map((id) =>
+          pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
+        )
+      )
     },
     onSuccess: () => {
       invalidateRequestQueries(queryClient)
@@ -592,7 +599,9 @@ export default function RequestReviewPanel({
               id,
               label: `Reverted ${labelVerb} of ${requesterName}`,
               inverse: async () => {
-                await pb.collection('bunk_requests').update(id, { status: priorStatus })
+                await pb
+                  .collection('bunk_requests')
+                  .update(id, { status: priorStatus, staff_touched: true })
                 invalidateRequestQueries(queryClient)
               },
             })
@@ -646,7 +655,9 @@ export default function RequestReviewPanel({
               inverse: async () => {
                 await Promise.all(
                   priors.map((p) =>
-                    pb.collection('bunk_requests').update(p.id, { status: p.status })
+                    pb
+                      .collection('bunk_requests')
+                      .update(p.id, { status: p.status, staff_touched: true })
                   )
                 )
                 invalidateRequestQueries(queryClient)

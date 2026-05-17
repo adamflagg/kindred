@@ -326,6 +326,7 @@ export type BunkRequestsRecord<
   source_field: string
   source_fields?: null | Tsource_fields
   source_fragment?: string
+  staff_touched?: boolean
   status: BunkRequestsStatusOptions
   updated: IsoAutoDateString
   was_dropped_for_spread?: boolean

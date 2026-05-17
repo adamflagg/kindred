@@ -313,7 +313,7 @@ describe('AllCamperRequestsModal inline actions', () => {
     expect(screen.getByText(/approve this request\?/i)).toBeTruthy()
   })
 
-  it('confirming Approve calls pb.update with status=resolved (no request_locked)', async () => {
+  it('confirming Approve calls pb.update with status=resolved + staff_touched=true', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -322,11 +322,12 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'resolved',
+        staff_touched: true,
       })
     )
   })
 
-  it('confirming Decline calls pb.update with status=declined (no request_locked)', async () => {
+  it('confirming Decline calls pb.update with status=declined + staff_touched=true', async () => {
     bunkRequestsFixture = [pendingBunkWith]
     personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
     renderModal()
@@ -335,6 +336,7 @@ describe('AllCamperRequestsModal inline actions', () => {
     await waitFor(() =>
       expect(updateMock).toHaveBeenCalledWith('req1', {
         status: 'declined',
+        staff_touched: true,
       })
     )
   })
@@ -611,5 +613,53 @@ describe('AllCamperRequestsModal — target picker', () => {
 
     // Must NOT find a CamperLink (no resolved target)
     expect(screen.queryByRole('link', { name: /Liam Garcia/i })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// staff_touched badge (issue #1458)
+// ---------------------------------------------------------------------------
+describe('AllCamperRequestsModal — staff_touched badge', () => {
+  it('renders a "staff edited" badge on cards with staff_touched=true', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r-touched',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        confidence_score: 0.9,
+        source_field: 'bunk_with',
+        source_fragment: 'Liam Garcia',
+        parse_notes: 'n',
+        staff_touched: true,
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    expect(await screen.findByText(/staff edited/i)).toBeInTheDocument()
+  })
+
+  it('does not render a "staff edited" badge when staff_touched is false/undefined', async () => {
+    bunkRequestsFixture = [
+      {
+        id: 'r-pristine',
+        request_type: 'bunk_with',
+        requestee_id: 1000002,
+        requested_person_name: 'Liam Garcia',
+        status: 'resolved',
+        confidence_score: 0.9,
+        source_field: 'bunk_with',
+        source_fragment: 'Liam Garcia',
+        parse_notes: 'n',
+        year: 2026,
+      },
+    ]
+    personsFixture = [{ cm_id: 1000002, first_name: 'Liam', last_name: 'Garcia', year: 2026 }]
+    renderModal()
+    // Wait for card to render
+    await screen.findByText('Liam Garcia')
+    expect(screen.queryByText(/staff edited/i)).toBeNull()
   })
 })

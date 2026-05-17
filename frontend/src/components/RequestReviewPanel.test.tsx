@@ -1280,6 +1280,7 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-approve-1', {
         status: 'resolved',
+        staff_touched: true,
       })
     }, 10000)
 
@@ -1311,6 +1312,7 @@ describe('RequestReviewPanel', () => {
 
       expect(updateSpy).toHaveBeenCalledWith('req-reject-1', {
         status: 'declined',
+        staff_touched: true,
       })
     }, 10000)
   })
@@ -1557,9 +1559,11 @@ describe('RequestReviewPanel', () => {
 
       await waitFor(
         () => {
-          // inverse mutation: PATCH back to pending
+          // inverse mutation: PATCH back to pending; undo is still a staff
+          // action so staff_touched stays true (one-way flag, idempotent re-set)
           expect(updateSpy).toHaveBeenCalledWith('req-undo-2', {
             status: 'pending',
+            staff_touched: true,
           })
         },
         { timeout: 3000 }
@@ -1922,6 +1926,7 @@ describe('RequestReviewPanel', () => {
       await waitFor(() => {
         expect(updateSpy).toHaveBeenCalledWith('req-undo-3', {
           status: 'declined',
+          staff_touched: true,
         })
       })
 

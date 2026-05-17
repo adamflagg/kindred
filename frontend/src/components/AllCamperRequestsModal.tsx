@@ -65,6 +65,14 @@ function RequestCard({
             {request.status}
             {request.disposition_reason ? ` · ${formatReason(request.disposition_reason)}` : ''}
           </span>
+          {request.staff_touched && (
+            <span
+              title="A staff user has manually edited this request — the source/notes shown reflect the pipeline's original parse, not the current state."
+              className="border-border bg-muted text-muted-foreground inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+            >
+              Staff edited
+            </span>
+          )}
           {onAction && (
             <div className="flex items-center gap-1">
               <button
@@ -159,7 +167,9 @@ export function AllCamperRequestsModal({
 
   const updateRequestMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) =>
-      pb.collection('bunk_requests').update(id, updates),
+      // GUI-originated write → flip staff_touched true so the audit signal
+      // sticks for any subsequent reader. Issue #1458.
+      pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.camperRequestSummary(requesterCmId, year),
