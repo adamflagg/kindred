@@ -14,6 +14,7 @@ Tests verify:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -1220,6 +1221,15 @@ class TestBatchResolveCoords:
 
 class TestPersonIdCache:
     """Test TTL caching of active person IDs (module-level cache)."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_person_id_cache(self) -> Generator[None, None, None]:
+        """Module-level cache leaks across test files; clear before and after each test."""
+        from api.services.geo_service import clear_person_id_cache
+
+        clear_person_id_cache()
+        yield
+        clear_person_id_cache()
 
     @pytest.fixture
     def mock_pb(self) -> MagicMock:
