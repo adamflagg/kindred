@@ -989,6 +989,38 @@ export default function PostValidationResultsModal({
         </div>
       )}
 
+      {/* Capacity by gender */}
+      {statistics.capacity_by_gender && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-stone-900">Capacity by gender</h3>
+                <p className="mt-0.5 text-xs text-stone-500">Bunk fill compared to enrolled camper count</p>
+              </div>
+            </div>
+            <div className="mt-2">
+              {(['female', 'male'] as const).map((g) => {
+                const capByGender = statistics.capacity_by_gender
+                if (!capByGender) return null
+                const cap = capByGender[g]
+                const pct = cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
+                const barColor = cap.assigned > cap.capacity ? 'bg-red-500' : pct >= 90 ? 'bg-amber-500' : 'bg-emerald-500'
+                return (
+                  <div key={g} className="flex items-center gap-2 py-1.5">
+                    <span className="w-14 text-xs font-medium capitalize text-stone-700">{g}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded bg-stone-200">
+                      <div className={`h-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                    <span className="min-w-[80px] text-right text-xs text-stone-600">{cap.assigned} / {cap.capacity}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Issues List (if any) */}
       {hasIssues && (
         <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">

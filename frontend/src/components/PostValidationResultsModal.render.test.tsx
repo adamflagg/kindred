@@ -1055,3 +1055,36 @@ describe('PostValidationResultsModal — Details by request source order', () =>
     ])
   })
 })
+
+describe('PostValidationResultsModal — Capacity by gender section', () => {
+  it('renders female and male capacity bars from statistics.capacity_by_gender', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          capacity_by_gender: {
+            female: { capacity: 65, assigned: 62 },
+            male: { capacity: 85, assigned: 66 },
+          },
+        })}
+      />
+    )
+    expect(screen.getByText(/capacity by gender/i)).toBeInTheDocument()
+    expect(screen.getByText(/62.*\/.*65/)).toBeInTheDocument()
+    expect(screen.getByText(/66.*\/.*85/)).toBeInTheDocument()
+  })
+
+  it('hides Capacity by gender when field is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/capacity by gender/i)).not.toBeInTheDocument()
+  })
+})
