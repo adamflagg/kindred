@@ -164,6 +164,47 @@ describe('BunkPlanReport (PDF) — Cover/Summary page', () => {
   }, 30000)
 })
 
+describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
+  it('renders Bunks needing attention, Other issues, and Unmet drill-down on one page', async () => {
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats({
+          unsatisfied_material_parent_detail: [
+            { requester_cm_id: '1', requester_name: 'Emma Johnson', target_cm_id: '2', target_name: 'Liam Garcia', requester_bunk_name: 'Pine 3', target_bunk_name: 'Oak 2' },
+          ],
+        })}
+        impossibilityReport={{
+          by_reason: {},
+          total_impossible: 0,
+          affected_campers: 0,
+          flat: [],
+          mp_campers_entirely_impossible: [],
+        } as any}
+        issues={[
+          { type: 'capacity_violation', severity: 'error', message: 'Pine 3 over capacity' },
+          { type: 'unassigned_campers', severity: 'error', message: '2 unassigned' },
+        ]}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+    const flat = stripSpaces(text)
+
+    expect(flat).toMatch(/BUNKSNEEDINGATTENTION/)
+    expect(text).toMatch(/Pine 3/)
+    expect(flat).toMatch(/OTHERISSUES/)
+    expect(text).toMatch(/unassigned/i)
+    expect(flat).toMatch(/UNMET/)
+    expect(text).toMatch(/Emma Johnson/)
+    expect(text).toMatch(/Liam Garcia/)
+  }, 30000)
+})
+
 describe('BunkPlanReport (PDF) — Families to contact page', () => {
   it('renders Families to contact with all 3 cohorts in alphabetical order', async () => {
     const buf = await renderToBuffer(

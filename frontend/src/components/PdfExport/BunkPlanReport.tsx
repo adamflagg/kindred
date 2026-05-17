@@ -2,6 +2,7 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { buildFamilyRows, cohortLabel } from './familyRows'
+import { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from '../issueClassifier'
 
 interface Props {
   sessionName: string
@@ -11,6 +12,7 @@ interface Props {
   impossibilityReport: ImpossibilityReport
   /** Optional branded logo — pass /local/assets/camp-logo.png from caller */
   logoUrl?: string
+  issues?: Array<{ type: string; severity: string; message: string }>
 }
 
 // Theme: forest green, amber, cream (generic Tawonga-inspired palette)
@@ -139,6 +141,7 @@ export function BunkPlanReport({
   statistics,
   impossibilityReport,
   logoUrl,
+  issues,
 }: Props) {
   const mpRate = statistics.material_parent_request_satisfaction_rate
   const mpTotal = statistics.material_parent_requests ?? 0
@@ -398,7 +401,103 @@ export function BunkPlanReport({
         />
       </Page>
 
-      {/* ── Page 3 — Full unmet alphabetical list ── */}
+      {/* ── Page 3 — Bunks needing attention / Other issues / Unmet drill-down ── */}
+      {(() => {
+        const issuesList = issues ?? []
+        const bunkLevelIssues = issuesList.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type))
+        const otherIssues = issuesList.filter(
+          (i) => !BUNK_LEVEL_ISSUE_TYPES.has(i.type) && !SUPPRESSED_ISSUE_TYPES.has(i.type)
+        )
+        const unmetDetail = statistics.unsatisfied_material_parent_detail ?? []
+
+        if (bunkLevelIssues.length === 0 && otherIssues.length === 0 && unmetDetail.length === 0) {
+          return null
+        }
+
+        // Group bunk-level issues by extracted bunk name
+        const bunkMap = new Map<string, typeof bunkLevelIssues>()
+        for (const issue of bunkLevelIssues) {
+          const bunk = extractBunkName(issue.message)
+          const arr = bunkMap.get(bunk) ?? []
+          arr.push(issue)
+          bunkMap.set(bunk, arr)
+        }
+        const issuesByBunk = [...bunkMap.entries()].sort(([a], [b]) => a.localeCompare(b))
+
+        // Group other issues by type
+        const otherMap = new Map<string, typeof otherIssues>()
+        for (const issue of otherIssues) {
+          const arr = otherMap.get(issue.type) ?? []
+          arr.push(issue)
+          otherMap.set(issue.type, arr)
+        }
+        const groupedOther = [...otherMap.entries()]
+
+        const sortedUnmet = [...unmetDetail].sort((a, b) =>
+          a.requester_name.localeCompare(b.requester_name)
+        )
+
+        return (
+          <Page size="LETTER" style={styles.page} wrap>
+            {issuesByBunk.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>
+                  Bunks needing attention ({issuesByBunk.length})
+                </Text>
+                {issuesByBunk.map(([bunkName, items]) => (
+                  <View key={bunkName} style={styles.tableRow} wrap={false}>
+                    <Text style={[styles.cell, { fontWeight: 700 }]}>{bunkName}</Text>
+                    <Text style={[styles.cell, { flex: 3 }]}>
+                      {items.map((it) => it.type.replace(/_/g, ' ')).join(', ')}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {groupedOther.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Other issues</Text>
+                {groupedOther.map(([type, items]) => (
+                  <View key={type} style={styles.tableRow} wrap={false}>
+                    <Text style={styles.cell}>{type.replace(/_/g, ' ')}</Text>
+                    <Text style={styles.cell}>{items.length}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {sortedUnmet.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Unmet parent requests</Text>
+                {sortedUnmet.map((r) => (
+                  <View
+                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
+                    style={styles.tableRow}
+                    wrap={false}
+                  >
+                    <Text style={styles.cell}>{r.requester_name}</Text>
+                    <Text style={styles.cell}>wanted {r.target_name}</Text>
+                    <Text style={styles.cell}>
+                      {r.requester_bunk_name} vs {r.target_bunk_name}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            <Text
+              style={styles.footer}
+              render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+                `Page ${pageNumber} of ${totalPages}`
+              }
+              fixed
+            />
+          </Page>
+        )
+      })()}
+
+      {/* ── Page 4 — Full unmet alphabetical list ── */}
       <Page size="LETTER" style={styles.page}>
         <Text style={styles.sectionTitle}>Unmet Parent Requests (full list)</Text>
         {unmetParents.length === 0 ? (

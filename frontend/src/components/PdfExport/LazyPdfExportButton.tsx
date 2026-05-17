@@ -15,6 +15,7 @@ interface LazyPdfExportButtonProps {
   plannerName: string
   statistics: ValidationStatistics
   impossibilityReport: ImpossibilityReport
+  issues?: Array<{ type: string; severity: string; message: string }>
 }
 
 export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {

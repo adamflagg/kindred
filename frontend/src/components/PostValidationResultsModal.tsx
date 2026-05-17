@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
+import { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from './issueClassifier'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -278,37 +279,8 @@ export function getIssueTypeLabel(type: string): string {
   return labels[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
 }
 
-// Issue types that are bunk-scoped and should appear in the "Bunks needing
-// attention" section. Kept at module scope so Task 15 PDF code can import
-// them from this file without circular deps (or extract to a shared util then).
-// NOTE: extractBunkName parses the first 1-2 tokens of the validator message
-// string. This is fragile — if the validator changes its message format, this
-// breaks silently. The long-term fix is for the validator to emit a structured
-// `bunk_name` field in the issue payload.
-export const BUNK_LEVEL_ISSUE_TYPES = new Set([
-  'capacity_violation',
-  'age_spread_warning',
-  'grade_ratio_warning',
-  'grade_spread_warning',
-  'grade_adjacency_warning',
-  'age_flow_inversion',
-  'isolation_risk',
-])
-
-// Issue types surfaced in dedicated sections (Families to contact, Unmet
-// drill-down). These are suppressed from the "Other issues" residual so they
-// don't double-render. Exported so Task 15 PDF code can reuse the same set.
-export const SUPPRESSED_ISSUE_TYPES = new Set([
-  'valid_negative_request_violated', // → Families to contact (Task 9)
-  'no_requests', // → Families to contact "Got nothing"
-  'valid_request_unsatisfied', // → Unmet parent drill-down (Task 10)
-  'campers_with_unsatisfied_valid_requests', // same
-])
-
-export function extractBunkName(issueMessage: string): string {
-  const match = issueMessage.match(/^(\S+(?:\s+\S+)?)\s/)
-  return match?.[1] ?? 'Unknown'
-}
+// Re-export for consumers that currently import from this module
+export { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from './issueClassifier'
 
 // Satisfaction ring component - the visual centerpiece
 function SatisfactionRing({ rate, size = 120 }: { rate: number; size?: number }) {
@@ -796,6 +768,7 @@ export default function PostValidationResultsModal({
               mp_campers_entirely_impossible: [],
             }
           }
+          issues={results.issues}
         />
       </div>
       <button
