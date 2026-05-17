@@ -29,6 +29,7 @@ class PersonLike(Protocol):
     name: str
     grade: int | None
     age: float | None
+    gender: str | None
 
 
 class BunkLike(Protocol):
@@ -70,6 +71,7 @@ class MockPerson:
     name: str
     grade: int | None = None
     age: float | None = None
+    gender: str | None = None
 
 
 @dataclass
@@ -2494,3 +2496,36 @@ def test_unsatisfied_material_parent_detail_populated_with_requester_target_and_
     assert entry["target_name"] == "Liam Garcia"
     assert entry["requester_bunk_name"] == "Pine 3"
     assert entry["target_bunk_name"] == "Oak 2"
+
+
+def test_capacity_by_gender_aggregates_bunks_and_assignments():
+    """capacity_by_gender splits bunks/assignments by bunk.gender (F/M)."""
+    session = _mock_session(cm_id="10000001", name="CapacityFixture")
+    persons = [
+        MockPerson(campminder_id=f"2{i:03d}", name=f"P{i}", grade=5, gender=("F" if i < 3 else "M")) for i in range(6)
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Female Pine 1", max_size=8, gender="F"),
+        MockBunk(campminder_id="3002", name="Female Pine 2", max_size=8, gender="F"),
+        MockBunk(campminder_id="3003", name="Male Oak 1", max_size=10, gender="M"),
+    ]
+    assignments = [
+        _mock_assignment("2000", "3001"),
+        _mock_assignment("2001", "3001"),
+        _mock_assignment("2002", "3002"),
+        _mock_assignment("2003", "3003"),
+        _mock_assignment("2004", "3003"),
+        _mock_assignment("2005", "3003"),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=[],
+    )
+    cap = result.statistics.capacity_by_gender
+    assert cap["female"]["capacity"] == 16  # 2 F bunks × 8
+    assert cap["female"]["assigned"] == 3  # 3 F campers assigned
+    assert cap["male"]["capacity"] == 10  # 1 M bunk × 10
+    assert cap["male"]["assigned"] == 3

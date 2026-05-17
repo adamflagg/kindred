@@ -212,6 +212,14 @@ class ValidationStatistics(BaseModel):
     mp_campers_with_at_least_one_satisfied: int = 0
     mp_campers_with_all_satisfied: int = 0
 
+    # Per-gender bunk capacity and assigned-camper counts.
+    # Splits bunks and assignments by bunk.gender (F/M) so the post-check
+    # modal and PDF can render capacity-vs-assigned per gender.
+    capacity_by_gender: dict[str, dict[str, int]] = Field(
+        default_factory=lambda: {"female": {"capacity": 0, "assigned": 0}, "male": {"capacity": 0, "assigned": 0}},
+        description="Per-gender bunk capacity and assigned-camper counts. Keys: 'female', 'male'.",
+    )
+
 
 class ValidationResult(BaseModel):
     """Complete validation result with statistics and issues."""
@@ -358,6 +366,30 @@ class BunkingValidator:
         stats.used_capacity = stats.assigned_campers
         if stats.total_capacity > 0:
             stats.capacity_utilization_rate = stats.used_capacity / stats.total_capacity
+
+        # Per-gender capacity and assigned counts.
+        # bunk.gender is "F" or "M"; unknown/other genders are skipped.
+        # Falls back to DEFAULT_BUNK_CAPACITY for real Bunk objects (no max_size column);
+        # MockBunk in tests supplies max_size directly so per-bunk variance is captured.
+        capacity_by_gender: dict[str, dict[str, int]] = {
+            "female": {"capacity": 0, "assigned": 0},
+            "male": {"capacity": 0, "assigned": 0},
+        }
+        for bunk in bunks:
+            gender_key = "female" if bunk.gender == "F" else "male" if bunk.gender == "M" else None
+            if gender_key is None:
+                continue
+            bunk_cap = getattr(bunk, "max_size", DEFAULT_BUNK_CAPACITY) or DEFAULT_BUNK_CAPACITY
+            capacity_by_gender[gender_key]["capacity"] += bunk_cap
+        for person in persons:
+            if person.campminder_id not in assignments_by_person:
+                continue
+            person_gender = getattr(person, "gender", None)
+            gender_key = "female" if person_gender == "F" else "male" if person_gender == "M" else None
+            if gender_key is None:
+                continue
+            capacity_by_gender[gender_key]["assigned"] += 1
+        stats.capacity_by_gender = capacity_by_gender
 
         return ValidationResult(statistics=stats, issues=issues, session_id=session.campminder_id, scenario=scenario)
 
