@@ -710,10 +710,11 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_first_name.side_effect = lambda name, year=None: [kate] if name.lower() == "kate" else []
         attendee_repo.bulk_get_sessions_for_persons.side_effect = lambda cm_ids, year: dict.fromkeys(cm_ids, 1000001)
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
-        # Variant lookup still found Kate (the fall-through works) — verified via candidates
-        assert kate in (result.candidates or []), "variant lookup must still find Kate"
-        # But the new gate forces ambiguous because Katherine != Kate (JW < 0.90)
-        assert result.is_ambiguous, "first-name-only nickname-form mismatch should be PENDING"
+        # Variant lookup still found Kate (the fall-through works)
+        # The new gate surfaces Kate at low confidence (0.5) so disposition rule 8 forces PENDING
+        assert result.is_resolved, "gate should surface candidate as resolved-at-low-confidence"
+        assert result.person.cm_id == 200, "the variant-found candidate (Kate) is surfaced"
+        assert result.confidence == 0.5, "low confidence forces PENDING via disposition rule 8"
         assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
     def test_merge_two_same_session_candidates_returns_ambiguous(self, strategy, mock_repositories):
@@ -821,9 +822,12 @@ class TestNormalizedSearchSingleNameGate:
             "Jo", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
         )
 
-        # Gate blocks: result should have ambiguity_reason, NOT resolved, candidates returned
-        assert not result.is_resolved
-        assert josephine in result.candidates
+        # Gate surfaces the candidate at low confidence (0.5) so disposition rule 8
+        # forces PENDING. is_resolved=True so outer resolve() returns it (ambiguous
+        # would need >1 candidates).
+        assert result.is_resolved
+        assert result.person == josephine
+        assert result.confidence == 0.5
         assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
     def test_allows_exact_preferred_when_single_name_search(self, strategy):
@@ -866,9 +870,10 @@ class TestNormalizedSearchSingleNameGate:
             "Bobby", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
         )
 
-        # Gate blocks: result should have ambiguity_reason, NOT resolved, candidates returned
-        assert not result.is_resolved
-        assert robert in result.candidates
+        # Gate surfaces candidate at low confidence (0.5) → disposition rule 8 forces PENDING
+        assert result.is_resolved
+        assert result.person == robert
+        assert result.confidence == 0.5
         assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
 
     def test_unchanged_for_full_name_search(self, strategy):

@@ -337,14 +337,16 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         if len(matches) == 1:
             # Conservative gate (#1394): when search was first-name-only and the
             # match isn't exact-first / exact-preferred / close-spelling (JW >= 0.90),
-            # force ambiguous so staff reviews instead of silently auto-resolving
-            # to a same-first-name camper that may not be the parent's intent.
+            # surface the candidate to staff at low confidence so disposition rule 8
+            # forces PENDING. Keeps `is_resolved=True` so the outer resolve() returns
+            # this result (ambiguous would require >1 candidates and would otherwise
+            # be discarded, dropping the candidate from staff view).
             is_single_name_search = len(name.strip().split()) == 1
             if is_single_name_search and not _is_exact_or_close_first_name(
                 name, matches[0].first_name, matches[0].preferred_name
             ):
                 return ResolutionResult(
-                    candidates=matches,
+                    person=matches[0],
                     confidence=0.5,
                     method=self.name,
                     metadata={
