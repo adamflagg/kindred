@@ -7,6 +7,7 @@ Confidence values are loaded from PocketBase config to avoid hardcoding."""
 
 from __future__ import annotations
 
+import jellyfish
 from typing import Any
 
 from ...analysis import RelationshipAnalyzer
@@ -286,7 +287,13 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             name_parts = name.strip().split()
             if len(name_parts) == 1:
                 first_only = name_parts[0]
-                search_terms = [first_only, *find_nickname_variations(first_only)]
+                # Phase 1: literal + nickname variations (existing behavior)
+                search_terms: list[str] = [first_only, *find_nickname_variations(first_only)]
+                # Phase 2: spelling variations from SPELLING_VARIATIONS dict
+                spelling_variants = SPELLING_VARIATIONS.get(first_only.lower(), [])
+                for sv in spelling_variants:
+                    if sv not in search_terms:
+                        search_terms.append(sv)
                 seen_cm_ids: set[int] = set()
                 merged: list[Person] = []
                 for variant in search_terms:
@@ -299,6 +306,27 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                         if p.cm_id not in seen_cm_ids:
                             seen_cm_ids.add(p.cm_id)
                             merged.append(p)
+
+                # Phase 3: Jaro-Winkler pass — find candidates whose first or preferred
+                # name has JW similarity >= 0.90 to the search term. Catches spelling
+                # variants not in SPELLING_VARIATIONS (e.g. Cathryn ≈ Catherine).
+                first_lower = first_only.lower()
+                if candidates:
+                    pool = candidates
+                else:
+                    pool = self.person_repo.get_all_for_phonetic_matching(year=year)
+                pool = self._filter_self_references(pool, requester_cm_id)
+                for p in pool:
+                    if p.cm_id in seen_cm_ids:
+                        continue
+                    pf = (p.first_name or "").lower()
+                    pp = (p.preferred_name or "").lower() if p.preferred_name else ""
+                    sim_f = jellyfish.jaro_winkler_similarity(first_lower, pf) if pf else 0.0
+                    sim_p = jellyfish.jaro_winkler_similarity(first_lower, pp) if pp else 0.0
+                    if max(sim_f, sim_p) >= 0.90:
+                        seen_cm_ids.add(p.cm_id)
+                        merged.append(p)
+
                 if merged:
                     matches = merged
                     match_type = "first_name_merged"

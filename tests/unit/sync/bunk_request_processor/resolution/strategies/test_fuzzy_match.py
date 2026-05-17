@@ -41,6 +41,7 @@ class TestFuzzyMatchStrategy:
         # Mock parent surname search to return empty by default
         person_repo.name_cache = None
         person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
         return FuzzyMatchStrategy(person_repo, attendee_repo)
 
     def test_nickname_match(self, strategy, mock_repositories):
@@ -629,6 +630,7 @@ class TestNormalizedSearchMergeFallback:
         person_repo.find_by_normalized_name.return_value = []
         person_repo.find_by_first_name.return_value = []
         person_repo.find_by_name.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
         return FuzzyMatchStrategy(person_repository=person_repo, attendee_repository=attendee_repo)
 
     def test_merge_original_with_variants_session_disambiguates_winner(self, strategy, mock_repositories):
@@ -720,6 +722,60 @@ class TestNormalizedSearchMergeFallback:
         result = strategy.resolve("Katherine", requester_cm_id=999, session_cm_id=1000001, year=2026)
         assert not result.is_resolved
         assert len(result.candidates or []) == 2
+
+
+class TestNormalizedSearchSingleNameRecall:
+    """Verify _try_normalized_search single-name fallback finds spelling variations + JW candidates."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.find_by_normalized_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return FuzzyMatchStrategy(person_repo, attendee_repo)
+
+    def test_finds_candidate_via_spelling_variation(self, strategy):
+        """Catheryn → Catherine via SPELLING_VARIATIONS lookup (fictional names)."""
+        catherine = Person(cm_id=2001, first_name="Catherine", last_name="Johnson", preferred_name=None)
+        # find_by_first_name returns Catherine when queried with any of the spelling variants
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [catherine] if name.lower() in ("catheryn", "catherine") else []
+        )
+        result = strategy._try_normalized_search(
+            "Catheryn",
+            requester_cm_id=9999,
+            session_cm_id=1234,
+            year=2026,
+            candidates=None,
+            attendee_info=None,
+        )
+        assert result.person == catherine or (result.candidates and catherine in result.candidates)
+
+    def test_finds_candidate_via_jaro_winkler(self, strategy):
+        """Cathryn → Catherine via JW similarity scan (no spelling-variation, no nickname hit)."""
+        catherine = Person(cm_id=2002, first_name="Catherine", last_name="Garcia", preferred_name=None)
+        # No first-name match; JW pass via get_all_for_phonetic_matching finds Catherine
+        strategy.person_repo.get_all_for_phonetic_matching.return_value = [catherine]
+        result = strategy._try_normalized_search(
+            "Cathryn",
+            requester_cm_id=9999,
+            session_cm_id=1234,
+            year=2026,
+            candidates=None,
+            attendee_info=None,
+        )
+        assert result.person == catherine or (result.candidates and catherine in result.candidates)
 
 
 if __name__ == "__main__":
