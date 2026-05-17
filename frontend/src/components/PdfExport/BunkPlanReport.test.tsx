@@ -247,3 +247,41 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
     expect(text.indexOf('Riley Sam')).toBeLessThan(text.indexOf('Sophia Martinez'))
   }, 30000)
 })
+
+describe('BunkPlanReport (PDF) — Impossibility detail pages', () => {
+  it('renders full impossibility detail grouped by reason with friendly labels', async () => {
+    const items = [
+      { request_id: 'r1', reason_code: 'grade_compatibility', reason_message: 'wide', request_type: 'bunk_with', requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' }, requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' }, detail: {}, bucket: null },
+      { request_id: 'r2', reason_code: 'grade_compatibility', reason_message: 'wide', request_type: 'bunk_with', requester: { cm_id: 3, name: 'Olivia Chen', grade: 4, gender: 'F' }, requestee: { cm_id: 4, name: 'Riley Sam', grade: 9, gender: 'F' }, detail: {}, bucket: null },
+    ]
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats()}
+        impossibilityReport={{
+          by_reason: { grade_compatibility: items },
+          total_impossible: 2,
+          affected_campers: 4,
+          flat: items,
+          mp_campers_entirely_impossible: [],
+        } as any}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+    const flat = stripSpaces(text)
+
+    expect(flat).toMatch(/IMPOSSIBILITYDETAIL/)
+    // Reason heading with count
+    expect(text).toMatch(/Grade range too wide \(2\)/)
+    // Each requester + requestee visible
+    expect(text).toMatch(/Emma Johnson/)
+    expect(text).toMatch(/Liam Garcia/)
+    expect(text).toMatch(/Olivia Chen/)
+    expect(text).toMatch(/Riley Sam/)
+  }, 30000)
+})

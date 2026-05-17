@@ -121,6 +121,8 @@ const styles = StyleSheet.create({
   },
   barFill: { height: 6, backgroundColor: GREEN, borderRadius: 2 },
   amberFill: { height: 6, backgroundColor: AMBER, borderRadius: 2 },
+  reasonGroup: { marginBottom: 10 },
+  reasonHead: { fontSize: 11, fontWeight: 700, color: STONE_950, marginBottom: 4 },
 })
 
 function pct(rate: number | undefined): string {
@@ -497,7 +499,58 @@ export function BunkPlanReport({
         )
       })()}
 
-      {/* ── Page 4 — Full unmet alphabetical list ── */}
+      {/* ── Pages 4–N — Full impossibility detail (one page, wraps) ── */}
+      {Object.keys(impossibilityReport.by_reason).length > 0 && (
+        <Page size="LETTER" style={styles.page} wrap>
+          <Text style={styles.sectionTitle}>Impossibility detail</Text>
+          {Object.entries(impossibilityReport.by_reason).map(([code, items]) => {
+            const list = items as Array<{
+              request_id: string
+              reason_code: string
+              reason_message: string
+              request_type: string
+              requester: { cm_id: number; name: string; grade: number; gender: string }
+              requestee: { cm_id: number; name: string; grade: number; gender: string } | null
+              detail: Record<string, unknown>
+              bucket: string | null
+            }>
+            return (
+              <View key={code} style={styles.reasonGroup} wrap>
+                <Text style={styles.reasonHead}>{friendlyReasonLabel(code)} ({list.length})</Text>
+                <View style={styles.tableHead}>
+                  <Text style={styles.cell}>Requester</Text>
+                  <Text style={styles.cell}>Target</Text>
+                  <Text style={styles.cell}>Source</Text>
+                </View>
+                {list.map((it, idx) => (
+                  <View key={`${code}-${idx}`} style={styles.tableRow} wrap={false}>
+                    <Text style={styles.cell}>
+                      {it.requester?.name
+                        ? `${it.requester.name} (${it.requester.grade}${it.requester.gender ? `, ${it.requester.gender}` : ''})`
+                        : '—'}
+                    </Text>
+                    <Text style={styles.cell}>
+                      {it.requestee?.name
+                        ? `${it.requestee.name} (${it.requestee.grade}${it.requestee.gender ? `, ${it.requestee.gender}` : ''})`
+                        : '—'}
+                    </Text>
+                    <Text style={styles.cell}>{it.request_type ?? '—'}</Text>
+                  </View>
+                ))}
+              </View>
+            )
+          })}
+          <Text
+            style={styles.footer}
+            render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+              `Page ${pageNumber} of ${totalPages}`
+            }
+            fixed
+          />
+        </Page>
+      )}
+
+      {/* ── Last page — Full unmet alphabetical list ── */}
       <Page size="LETTER" style={styles.page}>
         <Text style={styles.sectionTitle}>Unmet Parent Requests (full list)</Text>
         {unmetParents.length === 0 ? (
