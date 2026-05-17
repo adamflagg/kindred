@@ -827,10 +827,12 @@ class BunkingValidator:
             for req in reqs:
                 if not req.requested_person_cm_id:
                     continue
+                # Fall back to a Person {pid} label when person_by_id is incomplete
+                # (degraded-data scenarios e.g. partial sync). Mirrors the sibling
+                # `unsatisfied_material_parent_persons` block above so the modal's
+                # count stays accurate when one variant has data the other lacks.
                 requester = person_by_id.get(pid)
                 target = person_by_id.get(req.requested_person_cm_id)
-                if not requester or not target:
-                    continue
                 requester_asgn = assignments_by_person.get(pid)
                 target_asgn = assignments_by_person.get(req.requested_person_cm_id)
                 bunks_map = bunk_by_id or {}
@@ -839,9 +841,9 @@ class BunkingValidator:
                 unsatisfied_material_parent_detail.append(
                     {
                         "requester_cm_id": str(req.requester_person_cm_id),
-                        "requester_name": requester.name,
+                        "requester_name": requester.name if requester else f"Person {pid}",
                         "target_cm_id": str(req.requested_person_cm_id),
-                        "target_name": target.name,
+                        "target_name": (target.name if target else f"Person {req.requested_person_cm_id}"),
                         "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
                         "target_bunk_name": target_bunk.name if target_bunk else "unassigned",
                     }

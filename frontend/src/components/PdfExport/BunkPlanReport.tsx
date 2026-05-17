@@ -2,7 +2,12 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { buildFamilyRows, cohortLabel } from './familyRows'
-import { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from '../issueClassifier'
+import {
+  BUNK_LEVEL_ISSUE_TYPES,
+  SUPPRESSED_ISSUE_TYPES,
+  extractBunkName,
+  type PostCheckIssue,
+} from '../issueClassifier'
 
 interface Props {
   sessionName: string
@@ -12,12 +17,7 @@ interface Props {
   impossibilityReport: ImpossibilityReport
   /** Optional branded logo — pass /local/assets/camp-logo.png from caller */
   logoUrl?: string
-  issues?: Array<{
-    type: string
-    severity: string
-    message: string
-    details?: Record<string, unknown>
-  }>
+  issues?: PostCheckIssue[]
 }
 
 // Theme: forest green, amber, cream (generic Tawonga-inspired palette)
@@ -357,8 +357,13 @@ export function BunkPlanReport({
         }
         const groupedOther = [...otherMap.entries()]
 
-        const sortedUnmet = [...unmetDetail].sort((a, b) =>
-          a.requester_name.localeCompare(b.requester_name)
+        // Tiebreak on requester_cm_id then target_cm_id so same-name requesters
+        // (Emma Johnson #1 vs Emma Johnson #2) render in deterministic order.
+        const sortedUnmet = [...unmetDetail].sort(
+          (a, b) =>
+            a.requester_name.localeCompare(b.requester_name) ||
+            a.requester_cm_id.localeCompare(b.requester_cm_id) ||
+            a.target_cm_id.localeCompare(b.target_cm_id)
         )
 
         return (

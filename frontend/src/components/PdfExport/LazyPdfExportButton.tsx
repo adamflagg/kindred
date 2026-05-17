@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
+import type { PostCheckIssue } from '../issueClassifier'
 
 interface LazyPdfExportButtonProps {
   sessionName: string
@@ -16,12 +17,23 @@ interface LazyPdfExportButtonProps {
   plannerName: string
   statistics: ValidationStatistics
   impossibilityReport: ImpossibilityReport
-  issues?: Array<{
-    type: string
-    severity: string
-    message: string
-    details?: Record<string, unknown>
-  }>
+  issues?: PostCheckIssue[]
+  /** Optional branded logo URL (e.g. /local/assets/camp-logo.png) for the PDF cover. */
+  logoUrl?: string
+}
+
+// Lowercase, hyphenate whitespace, strip anything outside [a-z0-9-_] so the
+// resulting <a download="..."> attribute is safe on Windows/macOS/Linux and in
+// Safari/Chrome/Firefox. Falls back to "session" if the input is all-junk.
+function sanitizeForFilename(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return cleaned || 'session'
 }
 
 export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
@@ -37,7 +49,7 @@ export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
         import('@react-pdf/renderer'),
         import('./BunkPlanReport'),
       ])
-      const filename = `bunk-plan-${props.sessionName.replace(/\s+/g, '-').toLowerCase()}-${props.year}.pdf`
+      const filename = `bunk-plan-${sanitizeForFilename(props.sessionName)}-${props.year}.pdf`
       const blob = await pdf(<BunkPlanReport {...props} />).toBlob()
       url = URL.createObjectURL(blob)
       a = document.createElement('a')
@@ -50,7 +62,12 @@ export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
       toast.error('PDF export failed. Please try again.')
     } finally {
       if (a && a.parentNode) a.parentNode.removeChild(a)
-      if (url) URL.revokeObjectURL(url)
+      // Defer revoke so the browser has a tick to start fetching the blob.
+      // Safari and older Firefox can cancel the download otherwise.
+      if (url) {
+        const blobUrl = url
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 0)
+      }
       setBusy(false)
     }
   }

@@ -29,6 +29,18 @@ interface IssueLike {
 }
 
 /**
+ * Canonical post-check issue shape returned by the validator/API.
+ * Imported by PostValidationResultsModal, BunkPlanReport, and LazyPdfExportButton
+ * so a future field (e.g. `affected_ids`) only needs to land in one place.
+ */
+export interface PostCheckIssue {
+  type: string
+  severity: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+/**
  * Returns the bunk name associated with an issue.
  *
  * Prefers `issue.details.bunk_name` (emitted structurally by the validator

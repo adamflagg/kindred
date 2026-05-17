@@ -2498,6 +2498,70 @@ def test_unsatisfied_material_parent_detail_populated_with_requester_target_and_
     assert entry["target_bunk_name"] == "Oak 2"
 
 
+def test_unsatisfied_material_parent_detail_falls_back_when_person_missing():
+    """When requester or target is absent from `persons`, the detail row must still
+    appear with a `Person {pid}` fallback name — mirroring the sibling
+    `unsatisfied_material_parent_persons` block at validator L815-816.
+
+    Silently dropping the row (the old behavior) caused the modal's count to
+    under-report in any degraded-data scenario where a sync gap meant some person
+    rows weren't present locally.
+    """
+    session = _mock_session(cm_id="10000001", name="DetailFallback")
+    # Only the target (2002) is in the persons list; requester (2001) is missing.
+    persons = [MockPerson(campminder_id="2002", name="Liam Garcia", grade=5)]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Pine 3", max_size=8),
+        MockBunk(campminder_id="3002", name="Oak 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("2001", "3001"),
+        _mock_assignment("2002", "3002"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # A second request where the TARGET is missing instead.
+        MockBunkRequest(
+            requester_person_cm_id="2002",
+            requested_person_cm_id="2003",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    by_requester = {entry["requester_cm_id"]: entry for entry in detail}
+
+    assert "2001" in by_requester, (
+        "Detail row dropped when requester was missing from persons — should use "
+        "Person {pid} fallback like the sibling persons block does."
+    )
+    assert by_requester["2001"]["requester_name"] == "Person 2001"
+    assert by_requester["2001"]["target_name"] == "Liam Garcia"
+
+    assert "2002" in by_requester, (
+        "Detail row dropped when target was missing from persons — should use Person {pid} fallback for target."
+    )
+    assert by_requester["2002"]["requester_name"] == "Liam Garcia"
+    assert by_requester["2002"]["target_name"] == "Person 2003"
+
+
 def test_capacity_by_gender_aggregates_bunks_and_assignments():
     """capacity_by_gender splits bunks/assignments by bunk.gender (F/M)."""
     session = _mock_session(cm_id="10000001", name="CapacityFixture")

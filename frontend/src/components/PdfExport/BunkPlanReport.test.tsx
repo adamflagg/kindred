@@ -214,6 +214,60 @@ describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
     expect(text).toMatch(/Emma Johnson/)
     expect(text).toMatch(/Liam Garcia/)
   }, 30000)
+
+  // #8 — Two requesters can share a name (Emma Johnson #1 and Emma Johnson #2
+  // at a 600-camper session). Sort by name alone leaves order non-deterministic;
+  // tiebreak on requester_cm_id (then target_cm_id) so the PDF is reproducible.
+  it('produces deterministic unmet order when requesters share a name (cm_id tiebreak)', async () => {
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats({
+          unsatisfied_material_parent_detail: [
+            // Same requester_name; cm_id "1002" should sort AFTER "1001".
+            // Bunk names differ so we can read the order out of the PDF text.
+            {
+              requester_cm_id: '1002',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2002',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 7',
+              target_bunk_name: 'Oak 2',
+            },
+            {
+              requester_cm_id: '1001',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2001',
+              target_name: 'Olivia Chen',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 5',
+            },
+          ],
+        })}
+        impossibilityReport={
+          {
+            by_reason: {},
+            total_impossible: 0,
+            affected_campers: 0,
+            flat: [],
+            mp_campers_entirely_impossible: [],
+          } as any
+        }
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+
+    // Both rows render — and the cm_id="1001" row (Pine 3 / Olivia Chen) must
+    // come before the cm_id="1002" row (Pine 7 / Liam Garcia).
+    expect(text).toMatch(/Pine 3/)
+    expect(text).toMatch(/Pine 7/)
+    expect(text.indexOf('Pine 3')).toBeLessThan(text.indexOf('Pine 7'))
+  }, 30000)
 })
 
 describe('BunkPlanReport (PDF) — Families to contact page', () => {

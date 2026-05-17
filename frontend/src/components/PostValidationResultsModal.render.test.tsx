@@ -454,7 +454,47 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     )
 
     // Pin both the literal label and the rendered count.
+    // Legacy persons-array path: count is unique-camper count, so label
+    // disambiguates from the request-count meaning used in the detail path.
+    expect(screen.getByText('Campers with unmet parent requests (2)')).toBeInTheDocument()
+  })
+
+  // #6 — Same badge label was being applied to two different denominators:
+  // request count (new detail path) and unique-requester count (legacy persons
+  // path). Disambiguate the label so the number matches the noun.
+  it('uses request-count label when detail array is present', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '3',
+              target_name: 'Olivia Chen',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+          ],
+        })}
+      />
+    )
+
+    // 2 requests across 1 camper — label reads as REQUESTS, count = 2.
     expect(screen.getByText('Unmet parent requests (2)')).toBeInTheDocument()
+    // The campers-with-requests label is NOT used when detail is present.
+    expect(screen.queryByText(/Campers with unmet parent requests/i)).not.toBeInTheDocument()
   })
 
   it('shows camper names after expanding the drill-down section', async () => {

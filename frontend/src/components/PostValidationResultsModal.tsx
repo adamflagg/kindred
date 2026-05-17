@@ -1,5 +1,10 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { BUNK_LEVEL_ISSUE_TYPES, SUPPRESSED_ISSUE_TYPES, extractBunkName } from './issueClassifier'
+import {
+  BUNK_LEVEL_ISSUE_TYPES,
+  SUPPRESSED_ISSUE_TYPES,
+  extractBunkName,
+  type PostCheckIssue,
+} from './issueClassifier'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -24,17 +29,11 @@ import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { useAuth } from '../contexts/AuthContext'
-
-interface Issue {
-  type: string
-  severity: string
-  message: string
-  details?: Record<string, unknown>
-}
+import { getLogoPath } from '../config/branding'
 
 interface ValidationResults {
   statistics: ValidationStatistics
-  issues: Issue[]
+  issues: PostCheckIssue[]
   validated_at: string
 }
 
@@ -89,7 +88,7 @@ interface ParsedIssue {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function exported for testing
-export function parseIssueMessage(issue: Issue): ParsedIssue {
+export function parseIssueMessage(issue: PostCheckIssue): ParsedIssue {
   const msg = issue.message
 
   // Handle unsatisfied request messages
@@ -402,7 +401,7 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
 }
 
 // Single issue item with visual structure
-function IssueItem({ issue }: { issue: Issue }) {
+function IssueItem({ issue }: { issue: PostCheckIssue }) {
   const parsed = parseIssueMessage(issue)
 
   const getBadgeStyles = () => {
@@ -450,14 +449,14 @@ function IssueItem({ issue }: { issue: Issue }) {
   )
 }
 
-// Issue group component with expand/collapse
+// PostCheckIssue group component with expand/collapse
 function IssueGroup({
   type,
   issues,
   severity,
 }: {
   type: string
-  issues: Issue[]
+  issues: PostCheckIssue[]
   severity: string
 }) {
   const [isExpanded, setIsExpanded] = useState(issues.length <= 3)
@@ -587,7 +586,7 @@ export default function PostValidationResultsModal({
     [issues]
   )
   const groupedOtherIssues = useMemo(() => {
-    const byType = new Map<string, { issues: Issue[]; severity: string }>()
+    const byType = new Map<string, { issues: PostCheckIssue[]; severity: string }>()
     for (const issue of otherIssues) {
       const existing = byType.get(issue.type)
       if (existing) existing.issues.push(issue)
@@ -764,6 +763,7 @@ export default function PostValidationResultsModal({
             }
           }
           issues={results.issues}
+          {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
         />
       </div>
       <button
@@ -1105,8 +1105,11 @@ export default function PostValidationResultsModal({
           >
             <span className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Unmet parent requests (
-              {unmetParentDetail.length > 0 ? unmetParentDetail.length : unmetParents.length})
+              {/* Detail path counts REQUESTS; legacy persons path counts unique
+                  CAMPERS — disambiguate the label so the noun matches the number. */}
+              {unmetParentDetail.length > 0
+                ? `Unmet parent requests (${unmetParentDetail.length})`
+                : `Campers with unmet parent requests (${unmetParents.length})`}
             </span>
             {showUnmetParents ? (
               <ChevronUp className="h-4 w-4" />
