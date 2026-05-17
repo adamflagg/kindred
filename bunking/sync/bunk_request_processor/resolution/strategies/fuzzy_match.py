@@ -7,8 +7,9 @@ Confidence values are loaded from PocketBase config to avoid hardcoding."""
 
 from __future__ import annotations
 
-import jellyfish
 from typing import Any
+
+import jellyfish
 
 from ...analysis import RelationshipAnalyzer
 from ...core.models import Person
