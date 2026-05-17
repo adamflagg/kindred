@@ -1,35 +1,13 @@
 /**
- * LazyPdfExportButton — defers loading @react-pdf/renderer (~1 MB) until
- * the user explicitly clicks "Export PDF". This keeps the renderer bundle
- * out of the main chunk entirely.
+ * LazyPdfExportButton — single-click download.
  *
- * Two-phase render:
- *  1. Initial: plain "Export PDF" button (zero PDF overhead).
- *  2. After click: React.lazy loads PDFDownloadLink + BunkPlanReport together,
- *     shown behind a Suspense fallback.
+ * Lazy-loads @react-pdf/renderer and BunkPlanReport on first click,
+ * generates the PDF as a Blob, and triggers a browser download via a
+ * synthetic <a> click. Browser settings (e.g. "always ask where to save")
+ * control whether the OS save-as dialog appears.
  */
-import { Suspense, lazy, useState } from 'react'
-import type { ComponentProps } from 'react'
+import { useState } from 'react'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
-
-// Lazy-loaded inner component — imports BOTH @react-pdf/renderer and BunkPlanReport
-// so neither ends up in the main bundle.
-const PdfDownloadLink = lazy(async () => {
-  const [{ PDFDownloadLink }, mod] = await Promise.all([
-    import('@react-pdf/renderer'),
-    import('./BunkPlanReport'),
-  ])
-  return {
-    default: ({
-      filename,
-      ...reportProps
-    }: ComponentProps<typeof mod.BunkPlanReport> & { filename: string }) => (
-      <PDFDownloadLink document={<mod.BunkPlanReport {...reportProps} />} fileName={filename}>
-        {({ loading }: { loading: boolean }) => (loading ? 'Preparing PDF…' : 'Download PDF')}
-      </PDFDownloadLink>
-    ),
-  }
-})
 
 interface LazyPdfExportButtonProps {
   sessionName: string
@@ -40,26 +18,39 @@ interface LazyPdfExportButtonProps {
 }
 
 export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
-  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  if (!armed) {
-    return (
-      <button
-        type="button"
-        onClick={() => setArmed(true)}
-        className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-      >
-        Export PDF
-      </button>
-    )
+  async function handleClick() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const [{ pdf }, { BunkPlanReport }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./BunkPlanReport'),
+      ])
+      const filename = `bunk-plan-${props.sessionName.replace(/\s+/g, '-').toLowerCase()}-${props.year}.pdf`
+      const blob = await pdf(<BunkPlanReport {...props} />).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <Suspense fallback={<span className="text-sm text-stone-500">Loading PDF renderer…</span>}>
-      <PdfDownloadLink
-        {...props}
-        filename={`bunk-plan-${props.sessionName.replace(/\s+/g, '-').toLowerCase()}-${props.year}.pdf`}
-      />
-    </Suspense>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+    >
+      {busy ? 'Preparing PDF…' : 'Export PDF'}
+    </button>
   )
 }
