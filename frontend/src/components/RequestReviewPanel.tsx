@@ -554,10 +554,23 @@ export default function RequestReviewPanel({
       ids: string[]
       updates: Partial<BunkRequestsResponse>
     }) => {
+      // A→A skip: bulk actions select rows en masse, and the selection may
+      // include rows already in the target state (e.g. bulk-approve over a
+      // mix of pending and already-resolved). For those, the PATCH would be
+      // a no-op — skip entirely so staff_touched stays honest (audit signal
+      // = "a human actually changed this row," not "a human clicked while
+      // this row was in the selection"). Issue #1458.
+      const updateKeys = Object.keys(updates) as Array<keyof BunkRequestsResponse>
       return Promise.all(
-        ids.map((id) =>
-          pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
-        )
+        ids
+          .filter((id) => {
+            const current = requests.find((r: BunkRequestsResponse) => r.id === id)
+            if (!current) return true // unknown row — let server decide
+            return updateKeys.some((k) => current[k] !== updates[k])
+          })
+          .map((id) =>
+            pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true })
+          )
       )
     },
     onSuccess: () => {

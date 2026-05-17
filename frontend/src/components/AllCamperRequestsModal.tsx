@@ -165,10 +165,13 @@ export function AllCamperRequestsModal({
 
   const handleConfirmCancel = useCallback(() => setConfirmPopover(null), [setConfirmPopover])
 
+  // SINGLE CHOKEPOINT for all bunk_requests writes from this modal — including
+  // the ConfirmActionPopover approve/decline path, which calls
+  // updateRequestMutation.mutate() rather than pb.collection().update() directly.
+  // Any new GUI-originated update path in this component MUST go through this
+  // mutation so the staff_touched: true stamp is applied uniformly. Issue #1458.
   const updateRequestMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<BunkRequestsResponse> }) =>
-      // GUI-originated write → flip staff_touched true so the audit signal
-      // sticks for any subsequent reader. Issue #1458.
       pb.collection('bunk_requests').update(id, { ...updates, staff_touched: true }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
