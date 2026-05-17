@@ -18,7 +18,7 @@ from ...shared import last_name_matches, parse_name
 from ...shared.name_utils import ParsedName
 from ...shared.nickname_groups import SPELLING_VARIATIONS, find_nickname_variations
 from ..interfaces import ResolutionResult
-from .base_match_strategy import BaseMatchStrategy, _is_exact_or_close_first_name
+from .base_match_strategy import GATE_DEMOTION_CONFIDENCE, BaseMatchStrategy, _is_exact_or_close_first_name
 
 # Default fallback values when config is missing
 DEFAULT_NICKNAME_BASE = 0.85
@@ -271,11 +271,11 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             cascade.
             """
             if is_single_name_search and not _is_exact_or_close_first_name(
-                name, person.first_name, person.preferred_name
+                parsed.first, person.first_name, person.preferred_name
             ):
                 return ResolutionResult(
                     person=person,
-                    confidence=0.5,
+                    confidence=GATE_DEMOTION_CONFIDENCE,
                     method=self.name,
                     metadata={
                         "ambiguity_reason": "first_name_only_distant_match",

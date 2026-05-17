@@ -762,12 +762,18 @@ class TestNormalizedSearchSingleNameRecall:
         person_repo.get_all_for_phonetic_matching.return_value = []
         return FuzzyMatchStrategy(person_repo, attendee_repo)
 
-    def test_finds_candidate_via_spelling_variation(self, strategy):
-        """Catheryn → Catherine via SPELLING_VARIATIONS lookup (fictional names)."""
+    def test_finds_candidate_via_literal_first_name_lookup(self, strategy):
+        """Single-name fallback queries find_by_first_name with the literal target.
+
+        Catheryn → Catherine via the Phase 1 literal lookup (the mock returns
+        Catherine only when queried with the literal 'catheryn', proving Phase 1
+        fired). Phase 2 SPELLING_VARIATIONS is currently subsumed by
+        find_nickname_variations and adds no new search terms; the Phase 3 JW
+        pass is exercised separately below.
+        """
         catherine = Person(cm_id=2001, first_name="Catherine", last_name="Johnson", preferred_name=None)
-        # find_by_first_name returns Catherine when queried with any of the spelling variants
         strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
-            [catherine] if name.lower() in ("catheryn", "catherine") else []
+            [catherine] if name.lower() == "catheryn" else []
         )
         result = strategy._try_normalized_search(
             "Catheryn",
@@ -777,7 +783,8 @@ class TestNormalizedSearchSingleNameRecall:
             candidates=None,
             attendee_info=None,
         )
-        assert result.person == catherine or (result.candidates and catherine in result.candidates)
+        assert result.is_resolved
+        assert result.person == catherine
 
     def test_finds_candidate_via_jaro_winkler(self, strategy):
         """Cathryn → Catherine via JW similarity scan (no spelling-variation, no nickname hit)."""
@@ -792,7 +799,8 @@ class TestNormalizedSearchSingleNameRecall:
             candidates=None,
             attendee_info=None,
         )
-        assert result.person == catherine or (result.candidates and catherine in result.candidates)
+        assert result.is_resolved
+        assert result.person == catherine
 
 
 class TestNormalizedSearchSingleNameGate:
@@ -928,6 +936,30 @@ class TestNormalizedSearchSingleNameGate:
         assert result.person == jordan
         assert result.confidence == 0.5
         assert result.metadata.get("ambiguity_reason") == "first_name_only_distant_match"
+
+    def test_enumeration_prefix_does_not_demote_exact_match(self, strategy):
+        """Gate must compare against parsed.first, not raw name.
+
+        For input '1. Jo' (enumeration-prefixed single name), parse_name strips
+        the prefix and yields parsed.first='Jo'. The gate compares the target
+        token against the candidate's first/preferred name — if it receives the
+        raw '1. Jo', the Jaro-Winkler similarity against 'Jo' is 0.0 and the
+        gate incorrectly demotes a clean exact-name match to PENDING.
+        """
+        jo = Person(cm_id=3006, first_name="Jo", last_name="Garcia", preferred_name=None)
+        strategy.person_repo.find_by_first_name.side_effect = lambda name, year=None: (
+            [jo] if name.lower() == "jo" else []
+        )
+
+        result = strategy._try_normalized_search(
+            "1. Jo", requester_cm_id=9999, session_cm_id=1234, year=2026, candidates=None, attendee_info=None
+        )
+
+        assert result.is_resolved
+        assert result.person == jo
+        # Exact first-name match — gate should NOT fire.
+        assert result.confidence != 0.5
+        assert result.metadata.get("ambiguity_reason") != "first_name_only_distant_match"
 
 
 if __name__ == "__main__":
