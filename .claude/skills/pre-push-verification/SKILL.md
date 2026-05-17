@@ -59,11 +59,20 @@ Python: `ruff format` must run before `ruff check`. Formatting changes can intro
 ### mypy uses `--explicit-package-bases`
 The lefthook pre-push hook runs `uv run mypy . --explicit-package-bases`. Always include that flag. Without it, mypy may fail to resolve cross-package imports.
 
-### Frontend lint uses `npm run lint`, not raw eslint
-The `package.json` script (`npm run lint`) includes the correct flags (`--ext ts,tsx --report-unused-disable-directives`). Do not call `npx eslint` directly with different flags.
+### Frontend lint runs on changed files only
+The script passes only `.ts`/`.tsx` files changed since `@{push}` (or merge-base on first push) to `npx eslint --report-unused-disable-directives`. This matches `npm run lint`'s ruleset but skips the directory walk. Prettier is similarly file-scoped (`.ts/.tsx/.js/.jsx/.css/.json`). If you need a full-repo lint, run `npm run lint` from `frontend/` directly.
 
 ### Frontend type-check checks TWO tsconfigs
-`npm run type-check` runs `tsc --noEmit && tsc --noEmit -p tsconfig.node.json`. Both must pass. If you only run one, you may miss errors in Vite config files.
+`npm run type-check` runs `tsc --noEmit && tsc --noEmit -p tsconfig.node.json`. Both must pass. If you only run one, you may miss errors in Vite config files. Type-check is NOT file-scoped — signature changes propagate, so it always runs over the whole project.
+
+### Frontend vitest runs only affected tests
+The script runs `npx vitest run --changed $BASE`, which uses vitest's dependency graph to skip test files whose source dependencies are unchanged. On small PRs this cuts a 4000+ test run to dozens. Use `--all` to bypass.
+
+### Frontend checks run in parallel
+prettier, eslint, tsc, and vitest run concurrently with per-tool output captured to a tempdir; results replay in stable order after all complete. Wall time ≈ slowest single check, not sum.
+
+### `BASE` defaults to `@{push}`
+The "what changed" reference for both file detection and `vitest --changed` is `git @{push}` (the upstream-tracked tip), so subsequent pushes on a PR only re-verify new unpushed commits. First push to a new branch falls back to `merge-base HEAD origin/main`. Outside any remote-tracking branch, falls back to `HEAD~1`.
 
 ### Python tests run only unit tests on push
 The pre-push hook runs `uv run pytest tests/unit/ -v --tb=short`, not the full test suite. Integration tests require a running server and are not part of pre-push.
