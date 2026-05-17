@@ -1018,3 +1018,40 @@ describe('PostValidationResultsModal — PDF export button (TG-5)', () => {
     expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — Details by request source order', () => {
+  it('renders source-field rows in fixed backend order, not by count', async () => {
+    const stats = makeStats({
+      field_stats: {
+        socialize_with: { total: 100, satisfied: 50, satisfaction_rate: 0.5 },
+        share_bunk_with: { total: 10, satisfied: 8, satisfaction_rate: 0.8 },
+        do_not_share_with: { total: 5, satisfied: 4, satisfaction_rate: 0.8 },
+        bunking_notes: { total: 20, satisfied: 15, satisfaction_rate: 0.75 },
+        internal_notes: { total: 15, satisfied: 10, satisfaction_rate: 0.67 },
+      },
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+    // Expand the "Details by request source" collapsible
+    await userEvent.click(screen.getByText(/details by request source/i))
+
+    // Get the visible row labels in render order
+    const labels = screen.getAllByText(
+      /Bunk Request Form|Do NOT Share Bunk With|Bunking Notes|Internal Notes|Social With Checkbox/
+    )
+    const order = labels.map((el) => el.textContent)
+    expect(order).toEqual([
+      'Bunk Request Form',
+      'Do NOT Share Bunk With',
+      'Bunking Notes',
+      'Internal Notes',
+      'Social With Checkbox',
+    ])
+  })
+})

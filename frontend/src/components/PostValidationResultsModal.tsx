@@ -349,6 +349,16 @@ const GRADE_COLORS = [
   'bg-rose-400', // fifth+
 ]
 
+// Fixed display order for "Details by request source" collapsible.
+// Iteration order must be stable and independent of per-field totals.
+const SOURCE_FIELD_ORDER = [
+  'share_bunk_with',
+  'do_not_share_with',
+  'bunking_notes',
+  'internal_notes',
+  'socialize_with',
+] as const
+
 // Mini segmented grade bar component
 function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']> }) {
   // Format grade as ordinal (5 -> 5th, 2 -> 2nd, etc.)
@@ -1052,9 +1062,11 @@ export default function PostValidationResultsModal({
 
           {showDetails && (
             <div className="animate-fade-in space-y-2 px-5 pb-4">
-              {Object.entries(statistics.field_stats)
-                .sort(([, a], [, b]) => b.total - a.total)
-                .map(([fieldName, stats]) => (
+              {SOURCE_FIELD_ORDER
+                .filter((key) => key in statistics.field_stats)
+                .map((fieldName) => {
+                  const stats = statistics.field_stats[fieldName]
+                  return (
                   <div
                     key={fieldName}
                     className="bg-muted/40 flex items-center justify-between rounded-xl p-3"
@@ -1079,7 +1091,8 @@ export default function PostValidationResultsModal({
                       {Math.round(stats.satisfaction_rate * 100)}%
                     </span>
                   </div>
-                ))}
+                  )
+                })}
 
               {/* Capacity info */}
               {statistics.bunks_over_capacity > 0 && (
