@@ -14,6 +14,14 @@
 
 set -euo pipefail
 
+# Associative arrays (declare -A) below require bash 4+. macOS ships 3.2 by
+# default — recommend `brew install bash` for contributors on that platform.
+if ((BASH_VERSINFO[0] < 4)); then
+    echo "Error: bash 4+ required (you have $BASH_VERSION)." >&2
+    echo "On macOS, install via Homebrew: brew install bash" >&2
+    exit 1
+fi
+
 # ── Find repo root ──────────────────────────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
@@ -212,7 +220,11 @@ if $HAS_FRONTEND; then
 
     declare -A PIDS=()
 
-    if [[ -n "$CHANGED_FRONTEND_PRETTIER" ]]; then
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx prettier --check 'src/**/*.{ts,tsx,js,jsx,css,json}' ) \
+            >"$LOGDIR/prettier.log" 2>&1 &
+        PIDS[prettier]=$!
+    elif [[ -n "$CHANGED_FRONTEND_PRETTIER" ]]; then
         # shellcheck disable=SC2086  # word-split is the intent: pass each path
         ( cd frontend && npx prettier --check $CHANGED_FRONTEND_PRETTIER ) \
             >"$LOGDIR/prettier.log" 2>&1 &
@@ -221,7 +233,10 @@ if $HAS_FRONTEND; then
         echo "  (no prettier-eligible frontend/src files changed — skipping prettier)"
     fi
 
-    if [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npm run lint ) >"$LOGDIR/eslint.log" 2>&1 &
+        PIDS[eslint]=$!
+    elif [[ -n "$CHANGED_FRONTEND_ESLINT" ]]; then
         # shellcheck disable=SC2086
         ( cd frontend && npx eslint --report-unused-disable-directives $CHANGED_FRONTEND_ESLINT ) \
             >"$LOGDIR/eslint.log" 2>&1 &
@@ -233,7 +248,11 @@ if $HAS_FRONTEND; then
     ( cd frontend && npm run type-check ) >"$LOGDIR/tsc.log" 2>&1 &
     PIDS[tsc]=$!
 
-    ( cd frontend && npx vitest run --changed "$BASE" ) >"$LOGDIR/vitest.log" 2>&1 &
+    if [[ "$RUN_ALL" == true ]]; then
+        ( cd frontend && npx vitest run ) >"$LOGDIR/vitest.log" 2>&1 &
+    else
+        ( cd frontend && npx vitest run --changed "$BASE" ) >"$LOGDIR/vitest.log" 2>&1 &
+    fi
     PIDS[vitest]=$!
 
     for name in prettier eslint tsc vitest; do
