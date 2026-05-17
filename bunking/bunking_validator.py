@@ -151,6 +151,17 @@ class ValidationStatistics(BaseModel):
     # Persons with ≥1 unmet material parent request — used by the Check Bunking
     # modal drill-down (#1105). Each entry is {cm_id, name}.
     unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
+    # One entry per unsatisfied MP request with requester_cm_id, requester_name,
+    # target_cm_id, target_name, requester_bunk_name, target_bunk_name.
+    # Powers the enriched 'Unmet parent requests' drill-down in the post-check modal.
+    unsatisfied_material_parent_detail: list[dict[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "One entry per unsatisfied MP request with requester_cm_id, requester_name, "
+            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. "
+            "Powers the enriched 'Unmet parent requests' drill-down in the post-check modal."
+        ),
+    )
 
     # Best-effort parent (socialize_with-source only) — emitted for modal display, drives no alarm.
     best_effort_parent_requests: int = 0
@@ -773,6 +784,37 @@ class BunkingValidator:
             person = person_by_id.get(pid)
             unmet_persons.append({"cm_id": cm_id, "name": person.name if person else f"Person {pid}"})
         stats.unsatisfied_material_parent_persons = sorted(unmet_persons, key=lambda entry: entry["name"])
+
+        # Per-request detail for unsatisfied MP requests — one entry per request (not per requester).
+        # Reuses material_parent_by_person, satisfied_material_parent_by_person, person_by_id,
+        # assignments_by_person, and bunk_by_id — no new lookups needed.
+        unsatisfied_material_parent_detail: list[dict[str, str]] = []
+        for pid, reqs in material_parent_by_person.items():
+            if not reqs or satisfied_material_parent_by_person.get(pid):
+                # Camper has ≥1 satisfied MP request → canonical "satisfied" bucket, skip all.
+                continue
+            for req in reqs:
+                if not req.requested_person_cm_id:
+                    continue
+                requester = person_by_id.get(pid)
+                target = person_by_id.get(req.requested_person_cm_id)
+                if not requester or not target:
+                    continue
+                requester_asgn = assignments_by_person.get(pid)
+                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
+                requester_bunk = bunk_by_id.get(requester_asgn.bunk_cm_id) if requester_asgn else None
+                target_bunk = bunk_by_id.get(target_asgn.bunk_cm_id) if target_asgn else None
+                unsatisfied_material_parent_detail.append(
+                    {
+                        "requester_cm_id": str(req.requester_person_cm_id),
+                        "requester_name": requester.name,
+                        "target_cm_id": str(req.requested_person_cm_id),
+                        "target_name": target.name,
+                        "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
+                        "target_bunk_name": target_bunk.name if target_bunk else "unassigned",
+                    }
+                )
+        stats.unsatisfied_material_parent_detail = unsatisfied_material_parent_detail
 
         # Camper-level two-tier MP coverage.
         # mp_campers_total = distinct requesters with ≥1 MP request.

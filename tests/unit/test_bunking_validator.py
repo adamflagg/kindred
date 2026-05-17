@@ -2449,3 +2449,48 @@ def test_priority_unsuccessfuls_empty_when_all_priority_requests_satisfied():
     )
 
     assert result.statistics.priority_unsuccessfuls == []
+
+
+def test_unsatisfied_material_parent_detail_populated_with_requester_target_and_bunks():
+    """Each unsatisfied MP request appears in detail list with requester+target names and bunk names."""
+    session = _mock_session(cm_id="10000001", name="DetailFixture")
+    persons = [
+        MockPerson(campminder_id="2001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="2002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Pine 3", max_size=8),
+        MockBunk(campminder_id="3002", name="Oak 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("2001", "3001"),  # Emma in Pine 3
+        _mock_assignment("2002", "3002"),  # Liam in Oak 2
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    assert len(detail) == 1
+    entry = detail[0]
+    assert entry["requester_cm_id"] == "2001"
+    assert entry["requester_name"] == "Emma Johnson"
+    assert entry["target_cm_id"] == "2002"
+    assert entry["target_name"] == "Liam Garcia"
+    assert entry["requester_bunk_name"] == "Pine 3"
+    assert entry["target_bunk_name"] == "Oak 2"
