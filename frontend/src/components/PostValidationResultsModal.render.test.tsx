@@ -387,6 +387,30 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 // #1105: Unmet parent requests drill-down section
 // ---------------------------------------------------------------------------
 
+describe('PostValidationResultsModal — KPI "issues" tile excludes suppressed types', () => {
+  it('counts only non-suppressed issues so the tile matches the sections below', () => {
+    // 2 visible + 3 suppressed = 5 raw; tile should show "2".
+    const issues = [
+      { type: 'capacity_violation', severity: 'error', message: 'Bunk Pine 1 is over capacity' },
+      { type: 'age_spread_warning', severity: 'warning', message: 'Bunk Oak 2 has excessive age' },
+      { type: 'valid_negative_request_violated', severity: 'warning', message: 'suppressed 1' },
+      { type: 'no_requests', severity: 'warning', message: 'suppressed 2' },
+      { type: 'campers_with_unsatisfied_valid_requests', severity: 'warning', message: 'sup 3' },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    const tileLabel = screen.getByText(/^issues$/i)
+    const tileValue = tileLabel.previousElementSibling
+    expect(tileValue?.textContent).toBe('2')
+  })
+})
+
 describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
   it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
     render(
@@ -430,7 +454,47 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
     )
 
     // Pin both the literal label and the rendered count.
+    // Legacy persons-array path: count is unique-camper count, so label
+    // disambiguates from the request-count meaning used in the detail path.
+    expect(screen.getByText('Campers with unmet parent requests (2)')).toBeInTheDocument()
+  })
+
+  // #6 — Same badge label was being applied to two different denominators:
+  // request count (new detail path) and unique-requester count (legacy persons
+  // path). Disambiguate the label so the number matches the noun.
+  it('uses request-count label when detail array is present', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '3',
+              target_name: 'Olivia Chen',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+          ],
+        })}
+      />
+    )
+
+    // 2 requests across 1 camper — label reads as REQUESTS, count = 2.
     expect(screen.getByText('Unmet parent requests (2)')).toBeInTheDocument()
+    // The campers-with-requests label is NOT used when detail is present.
+    expect(screen.queryByText(/Campers with unmet parent requests/i)).not.toBeInTheDocument()
   })
 
   it('shows camper names after expanding the drill-down section', async () => {
@@ -491,168 +555,6 @@ vi.mock('./CamperDetailsPanel', () => ({
     <div data-testid="camper-details-panel" data-camper-id={camperId} onClick={onClose} />
   ),
 }))
-
-// ---------------------------------------------------------------------------
-// Task 4.3 — "Campers who got nothing" section
-// ---------------------------------------------------------------------------
-
-describe('PostValidationResultsModal — Campers who got nothing section (TG-4.3)', () => {
-  it('renders named tiles for entirely-impossible MP campers', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={makeImpossibilityReport({
-          mp_campers_entirely_impossible: [
-            { cm_id: 1001, name: 'Emma Johnson', gender: 'Girls', grade: 7, reason_codes: [] },
-            { cm_id: 1002, name: 'Liam Garcia', gender: 'Boys', grade: 4, reason_codes: [] },
-          ],
-        })}
-      />
-    )
-    expect(screen.getByText('Campers who got nothing')).toBeInTheDocument()
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
-  })
-
-  it('does not render "Campers who got nothing" when the list is empty', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={makeImpossibilityReport({ mp_campers_entirely_impossible: [] })}
-      />
-    )
-    expect(screen.queryByText('Campers who got nothing')).not.toBeInTheDocument()
-  })
-
-  it('does not render "Campers who got nothing" when impossibilityReport is absent', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-      />
-    )
-    expect(screen.queryByText('Campers who got nothing')).not.toBeInTheDocument()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Task 4.4 — "Families to call" section
-// ---------------------------------------------------------------------------
-
-describe('PostValidationResultsModal — Families to call section (TG-4.4)', () => {
-  it('renders Families to call list with named rows for not_bunk_with violations', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          negative_request_violations_detail: [
-            {
-              requester_cm_id: '1003',
-              target_cm_id: '1004',
-              requester_name: 'Riley Sam',
-              target_name: 'Samuel Johnson',
-              bunk_cm_id: '2003',
-              bunk_name: 'Pine 3',
-            },
-          ],
-        })}
-      />
-    )
-    expect(screen.getByText('Families to call')).toBeInTheDocument()
-    expect(screen.getByText('Riley Sam')).toBeInTheDocument()
-    expect(screen.getByText('Samuel Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Pine 3')).toBeInTheDocument()
-  })
-
-  it('does not render "Families to call" when negative_request_violations_detail is absent', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-      />
-    )
-    expect(screen.queryByText('Families to call')).not.toBeInTheDocument()
-  })
-
-  it('does not render "Families to call" when negative_request_violations_detail is empty', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({ negative_request_violations_detail: [] })}
-      />
-    )
-    expect(screen.queryByText('Families to call')).not.toBeInTheDocument()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Task 4.5 — "Priority unsuccessfuls" section
-// ---------------------------------------------------------------------------
-
-describe('PostValidationResultsModal — Priority unsuccessfuls section (TG-4.5)', () => {
-  it('renders Priority unsuccessfuls with parent wording snippets', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          priority_unsuccessfuls: [
-            {
-              requester_cm_id: '1005',
-              target_cm_id: '1006',
-              requester_name: 'Sophia Martinez',
-              target_name: 'Mia Wilson',
-              raw_text: 'Mia is our top priority',
-            },
-          ],
-        })}
-      />
-    )
-    expect(screen.getByText('Priority unsuccessfuls')).toBeInTheDocument()
-    expect(screen.getByText('Sophia Martinez')).toBeInTheDocument()
-    expect(screen.getByText('Mia Wilson')).toBeInTheDocument()
-    expect(screen.getByText(/Mia is our top priority/)).toBeInTheDocument()
-  })
-
-  it('does not render "Priority unsuccessfuls" when the list is absent', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-      />
-    )
-    expect(screen.queryByText('Priority unsuccessfuls')).not.toBeInTheDocument()
-  })
-
-  it('does not render "Priority unsuccessfuls" when the list is empty', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({ priority_unsuccessfuls: [] })}
-      />
-    )
-    expect(screen.queryByText('Priority unsuccessfuls')).not.toBeInTheDocument()
-  })
-})
 
 // ---------------------------------------------------------------------------
 // Task 4.6 — "Impossibility by reason" section
@@ -769,70 +671,6 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     expect(screen.queryByText(/impossible request/i)).not.toBeInTheDocument()
   })
 
-  it('renders camper count and total impossible request count as separate, independent texts', () => {
-    // The camper count is "entirely-impossible MP campers" (zero parent reqs
-    // honored), while total_impossible spans ALL impossible requests in the
-    // scenario (including partially-impossible kids not named here). Combining
-    // them into "X campers had Y impossible requests" implies the Y belong to
-    // the X, which is wrong. Render them as two distinct statements.
-    const report = makeReport(
-      [
-        { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
-        { cm_id: 2, name: 'Liam Garcia', grade: 5, gender: 'M', reason_codes: ['malformed'] },
-        {
-          cm_id: 3,
-          name: 'Olivia Chen',
-          grade: 6,
-          gender: 'F',
-          reason_codes: ['grade_compatibility'],
-        },
-      ],
-      5
-    )
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={report}
-      />
-    )
-
-    // Primary line: how many campers got zero parent requests honored.
-    expect(
-      screen.getByText(/3 campers won['’]t get any parent request fulfilled/i)
-    ).toBeInTheDocument()
-    // Secondary line: scenario-wide impossible request count, labeled as a
-    // separate fact (not "they had Y").
-    expect(screen.getByText(/5 impossible requests total in this scenario/i)).toBeInTheDocument()
-    // Guard against the misleading combined phrasing.
-    expect(screen.queryByText(/3 campers had 5 impossible requests/i)).not.toBeInTheDocument()
-  })
-
-  it('uses singular grammar when only one camper and one impossible request', () => {
-    const report = makeReport(
-      [{ cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F', reason_codes: ['malformed'] }],
-      1
-    )
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={report}
-      />
-    )
-
-    expect(
-      screen.getByText(/1 camper won['’]t get any parent request fulfilled/i)
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/1 campers/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/1 impossible request total in this scenario/i)).toBeInTheDocument()
-    expect(screen.queryByText(/1 impossible requests/i)).not.toBeInTheDocument()
-  })
-
   it('opens the panel when a camper name in the section is clicked', async () => {
     const report = makeReport([
       { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
@@ -872,55 +710,6 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     const provider = await screen.findByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '9876543')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
-  })
-
-  it('renders the per-camper hint from REASON_HINTS', () => {
-    const report = makeReport([
-      {
-        cm_id: 7,
-        name: 'Samuel Johnson',
-        grade: 5,
-        gender: 'M',
-        reason_codes: ['cross_session'],
-      },
-    ])
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={report}
-      />
-    )
-    expect(
-      screen.getByText(/requested friend is in a different session — confirm intent/)
-    ).toBeInTheDocument()
-  })
-
-  // Scan-it row 1: post-check used to render snake_case reason codes
-  // directly; pre-check has always run them through FRIENDLY_REASON_LABELS.
-  it('renders reason chips with the friendly label, not the raw snake_case code', () => {
-    const report = makeReport([
-      {
-        cm_id: 8,
-        name: 'Liam Garcia',
-        grade: 4,
-        gender: 'M',
-        reason_codes: ['grade_compatibility'],
-      },
-    ])
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-        impossibilityReport={report}
-      />
-    )
-    expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
-    expect(screen.queryByText('grade_compatibility')).not.toBeInTheDocument()
   })
 
   it('shows a small "pre-check unavailable" notice when preCheckError is true and no report is in', () => {
@@ -1016,5 +805,373 @@ describe('PostValidationResultsModal — PDF export button (TG-5)', () => {
   it('shows an Export PDF button before any PDF code loads', () => {
     render(<PostValidationResultsModal {...makeBaseProps()} />)
     expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Details by request source order', () => {
+  it('renders source-field rows in fixed backend order, not by count', async () => {
+    const stats = makeStats({
+      field_stats: {
+        socialize_with: { total: 100, satisfied: 50, satisfaction_rate: 0.5 },
+        share_bunk_with: { total: 10, satisfied: 8, satisfaction_rate: 0.8 },
+        do_not_share_with: { total: 5, satisfied: 4, satisfaction_rate: 0.8 },
+        bunking_notes: { total: 20, satisfied: 15, satisfaction_rate: 0.75 },
+        internal_notes: { total: 15, satisfied: 10, satisfaction_rate: 0.67 },
+      },
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+    // Expand the "Details by request source" collapsible
+    await userEvent.click(screen.getByText(/details by request source/i))
+
+    // Get the visible row labels in render order
+    const labels = screen.getAllByText(
+      /Bunk Request Form|Do NOT Share Bunk With|Bunking Notes|Internal Notes|Social With Checkbox/
+    )
+    const order = labels.map((el) => el.textContent)
+    expect(order).toEqual([
+      'Bunk Request Form',
+      'Do NOT Share Bunk With',
+      'Bunking Notes',
+      'Internal Notes',
+      'Social With Checkbox',
+    ])
+  })
+})
+
+describe('PostValidationResultsModal — Capacity by gender section', () => {
+  it('renders female and male capacity bars from statistics.capacity_by_gender', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          capacity_by_gender: {
+            female: { capacity: 65, assigned: 62 },
+            male: { capacity: 85, assigned: 66 },
+          },
+        })}
+      />
+    )
+    expect(screen.getByText(/capacity by gender/i)).toBeInTheDocument()
+    expect(screen.getByText(/62.*\/.*65/)).toBeInTheDocument()
+    expect(screen.getByText(/66.*\/.*85/)).toBeInTheDocument()
+  })
+
+  it('hides Capacity by gender when field is absent', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/capacity by gender/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Bunks needing attention', () => {
+  it('groups bunk-level issues into one row per bunk with chips', () => {
+    // Real validator emits structured `details.bunk_name` for every
+    // bunk-level issue; the extractor reads that first and falls back to
+    // message parsing only when missing.
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3' },
+      },
+      {
+        type: 'grade_ratio_warning',
+        severity: 'warning',
+        message: 'Bunk Pine 3 has 75.0% of campers from grade 6 (exceeds 50% limit)',
+        details: { bunk_name: 'Pine 3' },
+      },
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2' },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    expect(screen.getByText(/bunks needing attention/i)).toBeInTheDocument()
+    // Pine 3 appears in both the bunk row and the issues list — use getAllByText
+    expect(screen.getAllByText(/Pine 3/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Oak 2/).length).toBeGreaterThan(0)
+  })
+
+  it('hides section when no bunk-level issues', () => {
+    const issues = [{ type: 'unassigned_campers', severity: 'error', message: '2 unassigned' }]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    // The "Other issues" subtitle mentions "Bunks needing attention" — use a
+    // heading-role query to verify the Bunks section heading itself is absent.
+    expect(
+      screen.queryByRole('heading', { name: /bunks needing attention/i })
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Other issues residual', () => {
+  it('hides suppressed types and renders only residual camper-level types', () => {
+    const issues = [
+      { type: 'valid_negative_request_violated', severity: 'error', message: 'X separated' },
+      { type: 'unassigned_campers', severity: 'error', message: '2 unassigned' },
+      { type: 'no_requests', severity: 'warning', message: 'Liam got nothing' },
+      { type: 'level_regression', severity: 'warning', message: 'Samuel regressed' },
+      { type: 'valid_request_unsatisfied', severity: 'warning', message: 'Emma unmet' },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ ...makeResults(), issues }}
+      />
+    )
+    expect(screen.getByText(/other issues/i)).toBeInTheDocument()
+    expect(screen.getByText(/unassigned campers/i)).toBeInTheDocument()
+    expect(screen.getByText(/level regression/i)).toBeInTheDocument()
+    // Suppressed types absent (their typeLabels via getIssueTypeLabel):
+    // valid_negative_request_violated → "Valid Negative Request Violated"
+    expect(screen.queryByText(/valid negative request violated/i)).not.toBeInTheDocument()
+    // no_requests → "No Requests"
+    expect(screen.queryByText(/^no requests$/i)).not.toBeInTheDocument()
+  })
+
+  it('hides Other issues entirely when no residual issues', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/^other issues$/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Families to contact', () => {
+  it('combines impossibility, not-bunk-with violations, and priority unmet sorted by first name', () => {
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1001,
+          name: 'Olivia Chen',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['pair_no_shared_bunk'],
+        },
+        {
+          cm_id: 1002,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+        },
+      ],
+    })
+    const stats = makeStats({
+      negative_request_violations_detail: [
+        {
+          requester_cm_id: '1003',
+          target_cm_id: '1004',
+          requester_name: 'Riley Sam',
+          target_name: 'Samuel Johnson',
+          bunk_cm_id: '2001',
+          bunk_name: 'Pine 3',
+        },
+      ],
+      priority_unsuccessfuls: [
+        {
+          requester_cm_id: '1005',
+          target_cm_id: '1006',
+          requester_name: 'Sophia Martinez',
+          target_name: 'Mia Wilson',
+          raw_text: 'top priority',
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    expect(screen.getByText(/families to contact/i)).toBeInTheDocument()
+    const rowOrder = screen.getAllByRole('listitem').map((el) => el.textContent ?? '')
+    const indexOf = (name: string) => rowOrder.findIndex((t) => t.includes(name))
+    expect(indexOf('Emma Johnson')).toBeLessThan(indexOf('Olivia Chen'))
+    expect(indexOf('Olivia Chen')).toBeLessThan(indexOf('Riley Sam'))
+    expect(indexOf('Riley Sam')).toBeLessThan(indexOf('Sophia Martinez'))
+    expect(screen.getAllByText(/got nothing/i).length).toBe(2)
+    expect(screen.getByText(/not-bunk-with violated/i)).toBeInTheDocument()
+    expect(screen.getByText(/priority unmet/i)).toBeInTheDocument()
+  })
+
+  it('hides section when all three sources are empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/families to contact/i)).not.toBeInTheDocument()
+  })
+
+  it('removes the old "Campers who got nothing", "Families to call", and "Priority unsuccessfuls" sections', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/campers who got nothing/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/families to call/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/priority unsuccessfuls/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
+  it('shows requester wanted target with bunk placements', async () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+          ],
+          // Keep the legacy persons array so the section still renders
+          unsatisfied_material_parent_persons: [{ cm_id: 1, name: 'Emma Johnson' }],
+        })}
+      />
+    )
+    await userEvent.click(screen.getByText(/unmet parent requests/i))
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/Pine 3/)).toBeInTheDocument()
+    expect(screen.getByText(/Oak 2/)).toBeInTheDocument()
+  })
+
+  it('renders drill-down when only unsatisfied_material_parent_detail is present (no legacy persons array)', async () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            {
+              requester_cm_id: '1',
+              requester_name: 'Emma Johnson',
+              target_cm_id: '2',
+              target_name: 'Liam Garcia',
+              requester_bunk_name: 'Pine 3',
+              target_bunk_name: 'Oak 2',
+            },
+          ],
+        })}
+      />
+    )
+    await userEvent.click(screen.getByText(/unmet parent requests/i))
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — KPI tiles use MSP signal', () => {
+  it('shows material parent satisfaction percentage when MP requests exist', () => {
+    const stats = makeStats({
+      material_parent_requests: 12,
+      satisfied_material_parent_requests: 10,
+      material_parent_request_satisfaction_rate: 0.83,
+      total_requests: 50,
+      satisfied_requests: 30,
+      request_satisfaction_rate: 0.6,
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+    expect(screen.getByText(/83\s*%/)).toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — Impossible by reason kicker', () => {
+  it('renders the "see Pre-Check or export PDF" kicker', () => {
+    const impossibilityReport = makeImpossibilityReport({
+      by_reason: {
+        grade_compatibility: [
+          {
+            request_id: 'r1',
+            reason_code: 'grade_compatibility',
+            reason_message: 'wide',
+            request_type: 'bunk_with',
+            requester: { cm_id: 1, name: 'X', grade: 5, gender: 'F' },
+            requestee: null,
+            detail: {},
+            bucket: null,
+          },
+        ],
+      },
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    expect(
+      screen.getByText(/see Pre-Check or export PDF for full per-camper detail/i)
+    ).toBeInTheDocument()
   })
 })

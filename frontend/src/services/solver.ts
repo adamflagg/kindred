@@ -157,6 +157,20 @@ export interface ValidationStatistics {
   mp_campers_total?: number
   mp_campers_with_at_least_one_satisfied?: number
   mp_campers_with_all_satisfied?: number
+  /** TG-polish: one entry per unsatisfied MP request, with names + bunk placement. */
+  unsatisfied_material_parent_detail?: Array<{
+    requester_cm_id: string
+    requester_name: string
+    target_cm_id: string
+    target_name: string
+    requester_bunk_name: string
+    target_bunk_name: string
+  }>
+  /** TG-polish: per-gender bunk capacity + assigned counts. */
+  capacity_by_gender?: {
+    female: { capacity: number; assigned: number }
+    male: { capacity: number; assigned: number }
+  }
 }
 
 // Shared cache type for the pre-check query — written by PreValidateRequestsButton

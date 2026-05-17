@@ -29,6 +29,7 @@ class PersonLike(Protocol):
     name: str
     grade: int | None
     age: float | None
+    gender: str | None
 
 
 class BunkLike(Protocol):
@@ -70,6 +71,7 @@ class MockPerson:
     name: str
     grade: int | None = None
     age: float | None = None
+    gender: str | None = None
 
 
 @dataclass
@@ -2449,3 +2451,152 @@ def test_priority_unsuccessfuls_empty_when_all_priority_requests_satisfied():
     )
 
     assert result.statistics.priority_unsuccessfuls == []
+
+
+def test_unsatisfied_material_parent_detail_populated_with_requester_target_and_bunks():
+    """Each unsatisfied MP request appears in detail list with requester+target names and bunk names."""
+    session = _mock_session(cm_id="10000001", name="DetailFixture")
+    persons = [
+        MockPerson(campminder_id="2001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="2002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Pine 3", max_size=8),
+        MockBunk(campminder_id="3002", name="Oak 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("2001", "3001"),  # Emma in Pine 3
+        _mock_assignment("2002", "3002"),  # Liam in Oak 2
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    assert len(detail) == 1
+    entry = detail[0]
+    assert entry["requester_cm_id"] == "2001"
+    assert entry["requester_name"] == "Emma Johnson"
+    assert entry["target_cm_id"] == "2002"
+    assert entry["target_name"] == "Liam Garcia"
+    assert entry["requester_bunk_name"] == "Pine 3"
+    assert entry["target_bunk_name"] == "Oak 2"
+
+
+def test_unsatisfied_material_parent_detail_falls_back_when_person_missing():
+    """When requester or target is absent from `persons`, the detail row must still
+    appear with a `Person {pid}` fallback name — mirroring the sibling
+    `unsatisfied_material_parent_persons` block at validator L815-816.
+
+    Silently dropping the row (the old behavior) caused the modal's count to
+    under-report in any degraded-data scenario where a sync gap meant some person
+    rows weren't present locally.
+    """
+    session = _mock_session(cm_id="10000001", name="DetailFallback")
+    # Only the target (2002) is in the persons list; requester (2001) is missing.
+    persons = [MockPerson(campminder_id="2002", name="Liam Garcia", grade=5)]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Pine 3", max_size=8),
+        MockBunk(campminder_id="3002", name="Oak 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("2001", "3001"),
+        _mock_assignment("2002", "3002"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="2001",
+            requested_person_cm_id="2002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+        # A second request where the TARGET is missing instead.
+        MockBunkRequest(
+            requester_person_cm_id="2002",
+            requested_person_cm_id="2003",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    by_requester = {entry["requester_cm_id"]: entry for entry in detail}
+
+    assert "2001" in by_requester, (
+        "Detail row dropped when requester was missing from persons — should use "
+        "Person {pid} fallback like the sibling persons block does."
+    )
+    assert by_requester["2001"]["requester_name"] == "Person 2001"
+    assert by_requester["2001"]["target_name"] == "Liam Garcia"
+
+    assert "2002" in by_requester, (
+        "Detail row dropped when target was missing from persons — should use Person {pid} fallback for target."
+    )
+    assert by_requester["2002"]["requester_name"] == "Liam Garcia"
+    assert by_requester["2002"]["target_name"] == "Person 2003"
+
+
+def test_capacity_by_gender_aggregates_bunks_and_assignments():
+    """capacity_by_gender splits bunks/assignments by bunk.gender (F/M).
+
+    Capacity is `n_bunks × DEFAULT_BUNK_CAPACITY` per gender — the real Bunk
+    model has no per-bunk size column (removed in Phase 2), so capacity is
+    headcount-based, not policy-driven.
+    """
+    from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+
+    session = _mock_session(cm_id="10000001", name="CapacityFixture")
+    persons = [
+        MockPerson(campminder_id=f"2{i:03d}", name=f"P{i}", grade=5, gender=("F" if i < 3 else "M")) for i in range(6)
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="Female Pine 1", gender="F"),
+        MockBunk(campminder_id="3002", name="Female Pine 2", gender="F"),
+        MockBunk(campminder_id="3003", name="Male Oak 1", gender="M"),
+    ]
+    assignments = [
+        _mock_assignment("2000", "3001"),
+        _mock_assignment("2001", "3001"),
+        _mock_assignment("2002", "3002"),
+        _mock_assignment("2003", "3003"),
+        _mock_assignment("2004", "3003"),
+        _mock_assignment("2005", "3003"),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=[],
+    )
+    cap = result.statistics.capacity_by_gender
+    assert cap["female"]["capacity"] == 2 * DEFAULT_BUNK_CAPACITY  # 2 F bunks
+    assert cap["female"]["assigned"] == 3  # 3 F campers assigned
+    assert cap["male"]["capacity"] == 1 * DEFAULT_BUNK_CAPACITY  # 1 M bunk
+    assert cap["male"]["assigned"] == 3

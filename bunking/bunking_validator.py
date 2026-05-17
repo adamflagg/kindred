@@ -151,6 +151,17 @@ class ValidationStatistics(BaseModel):
     # Persons with ≥1 unmet material parent request — used by the Check Bunking
     # modal drill-down (#1105). Each entry is {cm_id, name}.
     unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
+    # One entry per unsatisfied MP request with requester_cm_id, requester_name,
+    # target_cm_id, target_name, requester_bunk_name, target_bunk_name.
+    # Powers the enriched 'Unmet parent requests' drill-down in the post-check modal.
+    unsatisfied_material_parent_detail: list[dict[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "One entry per unsatisfied MP request with requester_cm_id, requester_name, "
+            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. "
+            "Powers the enriched 'Unmet parent requests' drill-down in the post-check modal."
+        ),
+    )
 
     # Best-effort parent (socialize_with-source only) — emitted for modal display, drives no alarm.
     best_effort_parent_requests: int = 0
@@ -200,6 +211,14 @@ class ValidationStatistics(BaseModel):
     mp_campers_total: int = 0
     mp_campers_with_at_least_one_satisfied: int = 0
     mp_campers_with_all_satisfied: int = 0
+
+    # Per-gender bunk capacity and assigned-camper counts.
+    # Splits bunks and assignments by bunk.gender (F/M) so the post-check
+    # modal and PDF can render capacity-vs-assigned per gender.
+    capacity_by_gender: dict[str, dict[str, int]] = Field(
+        default_factory=lambda: {"female": {"capacity": 0, "assigned": 0}, "male": {"capacity": 0, "assigned": 0}},
+        description="Per-gender bunk capacity and assigned-camper counts. Keys: 'female', 'male'.",
+    )
 
 
 class ValidationResult(BaseModel):
@@ -347,6 +366,30 @@ class BunkingValidator:
         stats.used_capacity = stats.assigned_campers
         if stats.total_capacity > 0:
             stats.capacity_utilization_rate = stats.used_capacity / stats.total_capacity
+
+        # Per-gender capacity and assigned counts.
+        # bunk.gender is "F" or "M"; unknown/other genders are skipped.
+        # Capacity is n_bunks × DEFAULT_BUNK_CAPACITY — the real Bunk model has no
+        # per-bunk size column (removed in Phase 2 cleanup), so this is headcount-based.
+        # If per-bunk variance is ever needed, add a max_size column and read it here.
+        capacity_by_gender: dict[str, dict[str, int]] = {
+            "female": {"capacity": 0, "assigned": 0},
+            "male": {"capacity": 0, "assigned": 0},
+        }
+        for bunk in bunks:
+            gender_key = "female" if bunk.gender == "F" else "male" if bunk.gender == "M" else None
+            if gender_key is None:
+                continue
+            capacity_by_gender[gender_key]["capacity"] += DEFAULT_BUNK_CAPACITY
+        for person in persons:
+            if person.campminder_id not in assignments_by_person:
+                continue
+            person_gender = getattr(person, "gender", None)
+            gender_key = "female" if person_gender == "F" else "male" if person_gender == "M" else None
+            if gender_key is None:
+                continue
+            capacity_by_gender[gender_key]["assigned"] += 1
+        stats.capacity_by_gender = capacity_by_gender
 
         return ValidationResult(statistics=stats, issues=issues, session_id=session.campminder_id, scenario=scenario)
 
@@ -773,6 +816,40 @@ class BunkingValidator:
             person = person_by_id.get(pid)
             unmet_persons.append({"cm_id": cm_id, "name": person.name if person else f"Person {pid}"})
         stats.unsatisfied_material_parent_persons = sorted(unmet_persons, key=lambda entry: entry["name"])
+
+        # Per-request detail for unsatisfied MP requests — one entry per request (not per requester).
+        # Reuses material_parent_by_person, satisfied_material_parent_by_person, person_by_id,
+        # assignments_by_person, and bunk_by_id — no new lookups needed.
+        unsatisfied_material_parent_detail: list[dict[str, str]] = []
+        for pid, reqs in material_parent_by_person.items():
+            if not reqs or satisfied_material_parent_by_person.get(pid):
+                # Camper has ≥1 satisfied MP request → canonical "satisfied" bucket, skip all.
+                continue
+            for req in reqs:
+                if not req.requested_person_cm_id:
+                    continue
+                # Fall back to a Person {pid} label when person_by_id is incomplete
+                # (degraded-data scenarios e.g. partial sync). Mirrors the sibling
+                # `unsatisfied_material_parent_persons` block above so the modal's
+                # count stays accurate when one variant has data the other lacks.
+                requester = person_by_id.get(pid)
+                target = person_by_id.get(req.requested_person_cm_id)
+                requester_asgn = assignments_by_person.get(pid)
+                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
+                bunks_map = bunk_by_id or {}
+                requester_bunk = bunks_map.get(requester_asgn.bunk_cm_id) if requester_asgn else None
+                target_bunk = bunks_map.get(target_asgn.bunk_cm_id) if target_asgn else None
+                unsatisfied_material_parent_detail.append(
+                    {
+                        "requester_cm_id": str(req.requester_person_cm_id),
+                        "requester_name": requester.name if requester else f"Person {pid}",
+                        "target_cm_id": str(req.requested_person_cm_id),
+                        "target_name": (target.name if target else f"Person {req.requested_person_cm_id}"),
+                        "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
+                        "target_bunk_name": target_bunk.name if target_bunk else "unassigned",
+                    }
+                )
+        stats.unsatisfied_material_parent_detail = unsatisfied_material_parent_detail
 
         # Camper-level two-tier MP coverage.
         # mp_campers_total = distinct requesters with ≥1 MP request.
@@ -1321,6 +1398,7 @@ class BunkingValidator:
                     higher_bunk: Bunk = higher["bunk"]
                     flow_violations.append(
                         {
+                            "bunk_name": lower_bunk.name,
                             "gender": "Boys" if gender == "M" else "Girls",
                             "lower_bunk": lower_bunk.name,
                             "lower_avg_age": round(lower_avg_age, 1),

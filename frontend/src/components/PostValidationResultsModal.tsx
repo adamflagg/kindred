@@ -1,5 +1,11 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import {
+  BUNK_LEVEL_ISSUE_TYPES,
+  SUPPRESSED_ISSUE_TYPES,
+  extractBunkName,
+  type PostCheckIssue,
+} from './issueClassifier'
+import {
   CheckCircle2,
   AlertTriangle,
   AlertCircle,
@@ -17,26 +23,17 @@ import { Modal } from './ui/Modal'
 import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
-import { friendlyReasonLabel, camperActionHints } from './impossibility/reasonHints'
+import { friendlyReasonLabel } from './impossibility/reasonHints'
+import { buildFamilyRows } from './PdfExport/familyRows'
 import { ErrorBoundary } from './ErrorBoundary'
-import type {
-  ImpossibilityReport,
-  EntirelyImpossibleMpCamper,
-  ValidationStatistics,
-} from '../services/solver'
+import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { useAuth } from '../contexts/AuthContext'
-
-interface Issue {
-  type: string
-  severity: string
-  message: string
-  details?: Record<string, unknown>
-}
+import { getLogoPath } from '../config/branding'
 
 interface ValidationResults {
   statistics: ValidationStatistics
-  issues: Issue[]
+  issues: PostCheckIssue[]
   validated_at: string
 }
 
@@ -91,7 +88,7 @@ interface ParsedIssue {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- Utility function exported for testing
-export function parseIssueMessage(issue: Issue): ParsedIssue {
+export function parseIssueMessage(issue: PostCheckIssue): ParsedIssue {
   const msg = issue.message
 
   // Handle unsatisfied request messages
@@ -349,6 +346,16 @@ const GRADE_COLORS = [
   'bg-rose-400', // fifth+
 ]
 
+// Fixed display order for "Details by request source" collapsible.
+// Iteration order must be stable and independent of per-field totals.
+const SOURCE_FIELD_ORDER = [
+  'share_bunk_with',
+  'do_not_share_with',
+  'bunking_notes',
+  'internal_notes',
+  'socialize_with',
+] as const
+
 // Mini segmented grade bar component
 function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']> }) {
   // Format grade as ordinal (5 -> 5th, 2 -> 2nd, etc.)
@@ -374,11 +381,11 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
         })}
       </div>
       {/* Grade labels with counts */}
-      <div className="flex flex-shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         {ratio.grades.map((g, i) => (
           <span key={g.grade} className="flex items-center gap-1 text-sm">
             <span
-              className={`h-2 w-2 flex-shrink-0 rounded-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]}`}
             />
             <span
               className={`w-5 text-right font-semibold tabular-nums ${i === 0 ? 'text-foreground' : 'text-foreground/70'}`}
@@ -394,7 +401,7 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
 }
 
 // Single issue item with visual structure
-function IssueItem({ issue }: { issue: Issue }) {
+function IssueItem({ issue }: { issue: PostCheckIssue }) {
   const parsed = parseIssueMessage(issue)
 
   const getBadgeStyles = () => {
@@ -412,9 +419,7 @@ function IssueItem({ issue }: { issue: Issue }) {
   if (parsed.gradeRatio) {
     return (
       <div className="flex items-center gap-3 px-3 py-2">
-        <span className="text-foreground w-12 flex-shrink-0 text-sm font-medium">
-          {parsed.primary}
-        </span>
+        <span className="text-foreground w-12 shrink-0 text-sm font-medium">{parsed.primary}</span>
         <GradeRatioBar ratio={parsed.gradeRatio} />
       </div>
     )
@@ -442,14 +447,14 @@ function IssueItem({ issue }: { issue: Issue }) {
   )
 }
 
-// Issue group component with expand/collapse
+// PostCheckIssue group component with expand/collapse
 function IssueGroup({
   type,
   issues,
   severity,
 }: {
   type: string
-  issues: Issue[]
+  issues: PostCheckIssue[]
   severity: string
 }) {
   const [isExpanded, setIsExpanded] = useState(issues.length <= 3)
@@ -521,6 +526,16 @@ function IssueGroup({
   )
 }
 
+type FamilyRow = {
+  key: string
+  name: string
+  cm_id: string
+  grade: number
+  gender: string
+  cohort: 'got_nothing' | 'violated' | 'priority_unmet'
+  detail: React.ReactNode
+}
+
 export default function PostValidationResultsModal({
   isOpen,
   onClose,
@@ -541,13 +556,13 @@ export default function PostValidationResultsModal({
     if (!isOpen) setSelectedCamperId(null)
   }, [isOpen])
 
-  const mpImpossible: EntirelyImpossibleMpCamper[] =
-    impossibilityReport?.mp_campers_entirely_impossible ?? []
-  const totalImpossibleRequests = impossibilityReport?.total_impossible ?? 0
-
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
   const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
+  const unmetParentDetail = statistics.unsatisfied_material_parent_detail ?? []
+  // Either bucket (legacy persons array OR detail array) is enough to render
+  // the drill-down — backend may emit just one.
+  const hasUnmetDrilldown = unmetParents.length > 0 || unmetParentDetail.length > 0
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -560,33 +575,98 @@ export default function PostValidationResultsModal({
   const PARENT_SATISFACTION_TARGET = 0.85
   const parentUnderTarget = parentTotal > 0 && satisfactionRate < PARENT_SATISFACTION_TARGET
 
-  // Group issues by type and severity
-  const groupedIssues = useMemo(() => {
-    const byType = new Map<string, { issues: Issue[]; severity: string }>()
-
-    for (const issue of issues) {
+  // Residual issues: neither bunk-level nor suppressed (surfaced in dedicated sections).
+  const otherIssues = useMemo(
+    () =>
+      issues.filter(
+        (i) => !SUPPRESSED_ISSUE_TYPES.has(i.type) && !BUNK_LEVEL_ISSUE_TYPES.has(i.type)
+      ),
+    [issues]
+  )
+  const groupedOtherIssues = useMemo(() => {
+    const byType = new Map<string, { issues: PostCheckIssue[]; severity: string }>()
+    for (const issue of otherIssues) {
       const existing = byType.get(issue.type)
-      if (existing) {
-        existing.issues.push(issue)
-      } else {
-        byType.set(issue.type, { issues: [issue], severity: issue.severity })
-      }
+      if (existing) existing.issues.push(issue)
+      else byType.set(issue.type, { issues: [issue], severity: issue.severity })
     }
+    return [...byType.entries()]
+  }, [otherIssues])
 
-    // Sort by severity (errors first, then warnings, then info)
-    const severityOrder: Record<string, number> = {
-      error: 0,
-      warning: 1,
-      info: 2,
+  // Unified "Families to contact" list — combines all three contact-action cohorts:
+  // got_nothing (entirely-impossible MP campers), violated (not-bunk-with violations),
+  // and priority_unmet (priority-flagged requests that didn't land). Sorted by first name.
+  // Sort/filter logic lives in PdfExport/familyRows.ts (shared with PDF export).
+  // Modal re-decorates string detail into JSX for richer inline formatting.
+  const familyRows: FamilyRow[] = useMemo(() => {
+    const safeReport = impossibilityReport ?? {
+      mp_campers_entirely_impossible: [],
+      flat: [],
+      by_reason: {},
+      total_impossible: 0,
+      affected_campers: 0,
     }
-    return [...byType.entries()].sort((a, b) => {
-      return (severityOrder[a[1].severity] ?? 3) - (severityOrder[b[1].severity] ?? 3)
+    const baseRows = buildFamilyRows(statistics, safeReport)
+    return baseRows.map((r) => {
+      let detail: React.ReactNode
+      if (r.cohort === 'got_nothing') {
+        const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
+          (x) => String(x.cm_id) === r.cm_id
+        )
+        detail = (
+          <span>
+            All requests impossible · {(c?.reason_codes ?? []).map(friendlyReasonLabel).join(', ')}
+          </span>
+        )
+      } else if (r.cohort === 'violated') {
+        const v = (statistics.negative_request_violations_detail ?? []).find(
+          (x) => `nv-${x.requester_cm_id}-${x.target_cm_id}-${x.bunk_cm_id}` === r.key
+        )
+        detail = v ? (
+          <span>
+            Placed with {v.target_name} in <span className="font-mono text-xs">{v.bunk_name}</span>
+          </span>
+        ) : (
+          <span>{r.detail}</span>
+        )
+      } else {
+        const p = (statistics.priority_unsuccessfuls ?? []).find(
+          (x) => `pu-${x.requester_cm_id}-${x.target_cm_id}` === r.key
+        )
+        detail = p ? (
+          <span>
+            Wanted {p.target_name} · <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
+          </span>
+        ) : (
+          <span>{r.detail}</span>
+        )
+      }
+      return { ...r, detail }
     })
-  }, [issues])
+  }, [statistics, impossibilityReport])
 
   const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
+  // KPI tile + section counts exclude suppressed types so the headline number
+  // matches the sum of what staff actually see below.
+  const visibleIssuesCount = issues.filter((i) => !SUPPRESSED_ISSUE_TYPES.has(i.type)).length
+
+  // Bunk-level issues grouped by extracted bunk name (alphabetical).
+  const bunkLevelIssues = useMemo(
+    () => issues.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type)),
+    [issues]
+  )
+  const issuesByBunk = useMemo(() => {
+    const map = new Map<string, typeof bunkLevelIssues>()
+    for (const issue of bunkLevelIssues) {
+      const bunk = extractBunkName(issue)
+      const arr = map.get(bunk) ?? []
+      arr.push(issue)
+      map.set(bunk, arr)
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [bunkLevelIssues])
 
   const getOverallStatus = () => {
     let base: {
@@ -680,6 +760,8 @@ export default function PostValidationResultsModal({
               mp_campers_entirely_impossible: [],
             }
           }
+          issues={results.issues}
+          {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
         />
       </div>
       <button
@@ -781,66 +863,72 @@ export default function PostValidationResultsModal({
               />
             </div>
             <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">{issues.length}</p>
+              <p className="text-foreground text-lg leading-tight font-semibold">
+                {visibleIssuesCount}
+              </p>
               <p className="text-muted-foreground text-xs">issues</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* TG-4.3: "Campers who got nothing" — reformatted ImpossibilityCohortSection.
-          Preserves the existing text copy ("won't get any parent request fulfilled",
-          "impossible requests total") so pre-existing tests keep passing.
-          Named card approach per Option B visual language. */}
-      {mpImpossible.length > 0 && (
+      {/* TG-9: "Families to contact" — unified action list consolidating:
+          - Cohort A: entirely-impossible MP campers (got nothing)
+          - Cohort B: not-bunk-with violations (families to call)
+          - Cohort C: priority-flagged requests that didn't land
+          All rows sorted alphabetically by camper first name. */}
+      {familyRows.length > 0 && (
         <div className="px-5 pt-4">
           <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-red-800">Campers who got nothing</h3>
-                <p className="mt-0.5 text-xs text-red-700/80">
-                  {mpImpossible.length} camper{mpImpossible.length === 1 ? '' : 's'} won&rsquo;t get
-                  any parent request fulfilled
-                </p>
-                <p className="text-xs text-red-700/60">
-                  {totalImpossibleRequests} impossible request
-                  {totalImpossibleRequests === 1 ? '' : 's'} total in this scenario
+                <h3 className="text-sm font-semibold text-red-900">Families to contact</h3>
+                <p className="mt-0.5 text-xs text-red-800/80">
+                  {familyRows.length} follow-up call{familyRows.length === 1 ? '' : 's'} recommended
                 </p>
               </div>
-              <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-800">
-                {mpImpossible.length}
+              <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
+                {familyRows.length}
               </span>
             </div>
-            <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              {mpImpossible.map((c) => (
-                <li
-                  key={c.cm_id}
-                  className="flex items-center justify-between rounded-lg bg-white px-3 py-2"
-                >
-                  <div className="flex-1">
+            <ul className="mt-3 divide-y divide-red-100 text-sm">
+              {familyRows.map((row) => (
+                <li key={row.key} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
                     <button
                       type="button"
                       className="text-left font-medium text-stone-900 hover:text-red-700"
-                      onClick={() => setSelectedCamperId(String(c.cm_id))}
+                      onClick={() => setSelectedCamperId(row.cm_id)}
                     >
-                      {c.name}
+                      {row.name}
                     </button>
-                    {c.reason_codes.length > 0 && (
-                      <span className="ml-2 text-xs text-stone-500">
-                        {camperActionHints(c.reason_codes)}
+                    {row.grade > 0 && (
+                      <span className="text-xs text-stone-500">
+                        {' '}
+                        · {row.grade}
+                        {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
+                          ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
+                          'th'}{' '}
+                        · {row.gender}
                       </span>
                     )}
+                    <div className="text-xs text-stone-600">{row.detail}</div>
                   </div>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    {c.reason_codes.map((code) => (
-                      <span
-                        key={code}
-                        className="rounded-full bg-amber-200 px-2 py-0.5 text-xs text-amber-900"
-                      >
-                        {friendlyReasonLabel(code)}
-                      </span>
-                    ))}
-                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      row.cohort === 'got_nothing'
+                        ? 'bg-red-100 text-red-800'
+                        : row.cohort === 'violated'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-pink-100 text-pink-800'
+                    }`}
+                  >
+                    {row.cohort === 'got_nothing'
+                      ? 'Got nothing'
+                      : row.cohort === 'violated'
+                        ? 'Not-bunk-with violated'
+                        : 'Priority unmet'}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -862,9 +950,9 @@ export default function PostValidationResultsModal({
       {impossibilityReport && Object.keys(impossibilityReport.by_reason).length > 0 && (
         <div className="px-5 pt-3">
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <h3 className="font-semibold text-stone-900">Impossible by reason</h3>
+            <h3 className="text-sm font-semibold text-stone-900">Impossible by reason</h3>
             <p className="mt-0.5 text-xs text-stone-500">
-              Why these requests can&rsquo;t be satisfied — from the latest pre-check
+              Summary only — see Pre-Check or export PDF for full per-camper detail
             </p>
             <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {Object.entries(impossibilityReport.by_reason).map(([code, items]) => (
@@ -878,100 +966,80 @@ export default function PostValidationResultsModal({
         </div>
       )}
 
-      {/* TG-4.4: "Families to call" — not_bunk_with violations detail list.
-          Shows requester/target pairs and the bunk where they both ended up. */}
-      {(statistics.negative_request_violations_detail ?? []).length > 0 && (
-        <div className="px-5 pt-3">
-          <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-amber-900">Families to call</h3>
-                <p className="text-xs text-amber-800/80">
-                  Material <em>do not bunk with</em> wasn&rsquo;t honored — heads-up calls
-                  recommended
-                </p>
-              </div>
-              <span className="rounded-full bg-amber-200/80 px-2.5 py-1 text-xs font-medium text-amber-900">
-                {(statistics.negative_request_violations_detail ?? []).length}
-              </span>
-            </div>
-            <ul className="mt-3 divide-y divide-amber-100 text-sm">
-              {(statistics.negative_request_violations_detail ?? []).map((v) => (
-                <li
-                  key={`${v.requester_cm_id}-${v.target_cm_id}-${v.bunk_cm_id}`}
-                  className="flex items-center justify-between py-2"
-                >
-                  <div>
-                    <button
-                      type="button"
-                      className="font-medium hover:text-amber-800"
-                      onClick={() => setSelectedCamperId(v.requester_cm_id)}
-                    >
-                      {v.requester_name}
-                    </button>
-                    <span> placed with </span>
-                    <button
-                      type="button"
-                      className="font-medium hover:text-amber-800"
-                      onClick={() => setSelectedCamperId(v.target_cm_id)}
-                    >
-                      {v.target_name}
-                    </button>
-                  </div>
-                  <span className="font-mono text-xs text-stone-500">{v.bunk_name}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {/* TG-4.5: "Priority unsuccessfuls" — priority-keyword-flagged requests that
-          didn't land. Uses priority_keyword_detected from TG-3 (PR #1474). */}
-      {(statistics.priority_unsuccessfuls ?? []).length > 0 && (
+      {/* Capacity by gender */}
+      {statistics.capacity_by_gender && (
         <div className="px-5 pt-3">
           <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-stone-900">Priority unsuccessfuls</h3>
-                <p className="text-xs text-stone-600">
-                  Parents explicitly marked these as priority — request didn&rsquo;t land
+                <h3 className="text-sm font-semibold text-stone-900">Capacity by gender</h3>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Bunk fill compared to enrolled camper count
                 </p>
               </div>
-              <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
-                {(statistics.priority_unsuccessfuls ?? []).length}
-              </span>
             </div>
-            <ul className="mt-3 divide-y divide-stone-200 text-sm">
-              {(statistics.priority_unsuccessfuls ?? []).map((p, idx) => (
-                <li
-                  key={`${p.requester_cm_id}-${p.target_cm_id}-${idx}`}
-                  className="flex items-center justify-between py-2"
-                >
-                  <div>
-                    <button
-                      type="button"
-                      className="font-medium hover:text-stone-700"
-                      onClick={() => setSelectedCamperId(p.requester_cm_id)}
-                    >
-                      {p.requester_name}
-                    </button>
-                    <span> wanted </span>
-                    <button
-                      type="button"
-                      className="font-medium hover:text-stone-700"
-                      onClick={() => setSelectedCamperId(p.target_cm_id)}
-                    >
-                      {p.target_name}
-                    </button>
-                    <span className="text-xs text-stone-500 italic">
-                      {' '}
-                      &middot; &ldquo;{p.raw_text}&rdquo;
+            <div className="mt-2">
+              {Object.entries(statistics.capacity_by_gender ?? {}).map(([g, cap]) => {
+                const pct = cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
+                const barColor =
+                  cap.assigned > cap.capacity
+                    ? 'bg-red-500'
+                    : pct >= 90
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                return (
+                  <div key={g} className="flex items-center gap-2 py-1.5">
+                    <span className="w-14 text-xs font-medium text-stone-700 capitalize">{g}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded bg-stone-200">
+                      <div
+                        className={`h-full ${barColor}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
+                    </div>
+                    <span className="min-w-[80px] text-right text-xs text-stone-600">
+                      {cap.assigned} / {cap.capacity}
                     </span>
                   </div>
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">
-                    unmet
-                  </span>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bunks needing attention */}
+      {issuesByBunk.length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-orange-900">Bunks needing attention</h3>
+                <p className="mt-0.5 text-xs text-orange-800/80">
+                  {issuesByBunk.length} bunk{issuesByBunk.length === 1 ? '' : 's'} have warnings
+                </p>
+              </div>
+              <span className="rounded-full bg-orange-200/80 px-2.5 py-1 text-xs font-medium text-orange-900">
+                {issuesByBunk.length}
+              </span>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm">
+              {issuesByBunk.map(([bunkName, bunkIssues]) => (
+                <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
+                  <div className="font-medium text-stone-900">{bunkName}</div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {bunkIssues.map((iss, idx) => (
+                      <span
+                        key={idx}
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          iss.type === 'capacity_violation'
+                            ? 'bg-red-200 text-red-900'
+                            : 'bg-amber-200 text-amber-900'
+                        }`}
+                      >
+                        {getIssueTypeLabel(iss.type)}
+                      </span>
+                    ))}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -979,17 +1047,37 @@ export default function PostValidationResultsModal({
         </div>
       )}
 
-      {/* Issues List (if any) */}
-      {hasIssues && (
-        <div className="max-h-64 space-y-2 overflow-y-auto px-5 py-4">
-          {groupedIssues.map(([type, { issues: typeIssues, severity }]) => (
-            <IssueGroup key={type} type={type} issues={typeIssues} severity={severity} />
-          ))}
+      {/* Other issues — residual types not covered by Families to contact or Bunks needing attention */}
+      {groupedOtherIssues.length > 0 && (
+        <div className="px-5 pt-3">
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-stone-900">Other issues</h3>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Items not covered by Families to contact or Bunks needing attention
+                </p>
+              </div>
+              <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
+                {groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)}
+              </span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {groupedOtherIssues.map(([type, group]) => (
+                <IssueGroup
+                  key={type}
+                  type={type}
+                  issues={group.issues}
+                  severity={group.severity}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Success state message */}
-      {!hasIssues && (
+      {issues.length === 0 && (
         <div className="px-5 py-6 text-center">
           <div className="bg-forest-500/10 mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl">
             <Sparkles className="text-forest-500 h-6 w-6" />
@@ -1001,7 +1089,7 @@ export default function PostValidationResultsModal({
       )}
 
       {/* Unmet parent requests drill-down (#1105) */}
-      {unmetParents.length > 0 && (
+      {hasUnmetDrilldown && (
         <div className="border-border/50 border-t">
           <button
             type="button"
@@ -1012,7 +1100,11 @@ export default function PostValidationResultsModal({
           >
             <span className="flex items-center gap-2">
               <Users className="h-4 w-4" />
-              Unmet parent requests ({unmetParents.length})
+              {/* Detail path counts REQUESTS; legacy persons path counts unique
+                  CAMPERS — disambiguate the label so the noun matches the number. */}
+              {unmetParentDetail.length > 0
+                ? `Unmet parent requests (${unmetParentDetail.length})`
+                : `Campers with unmet parent requests (${unmetParents.length})`}
             </span>
             {showUnmetParents ? (
               <ChevronUp className="h-4 w-4" />
@@ -1026,11 +1118,42 @@ export default function PostValidationResultsModal({
               id="unmet-parent-requests-list"
               className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4"
             >
-              {unmetParents.map((person) => (
-                <li key={person.cm_id} className="text-foreground text-sm">
-                  {person.name}
-                </li>
-              ))}
+              {(() => {
+                const detail = statistics.unsatisfied_material_parent_detail ?? []
+                // When detail isn't available, fall back to plain names so older sessions still render.
+                const rows =
+                  detail.length > 0
+                    ? [...detail].sort((a, b) => a.requester_name.localeCompare(b.requester_name))
+                    : unmetParents.map((p) => ({
+                        requester_cm_id: String(p.cm_id),
+                        requester_name: p.name,
+                        target_cm_id: '',
+                        target_name: '',
+                        requester_bunk_name: '',
+                        target_bunk_name: '',
+                      }))
+                return rows.map((r) => (
+                  <li
+                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
+                    className="text-foreground py-1 text-sm"
+                  >
+                    <span className="font-medium">{r.requester_name}</span>
+                    {r.target_name && (
+                      <>
+                        <span className="text-stone-500"> wanted </span>
+                        <span className="font-medium">{r.target_name}</span>
+                      </>
+                    )}
+                    {r.requester_bunk_name && r.target_bunk_name && (
+                      <span className="text-xs text-stone-500">
+                        {' '}
+                        · <span className="font-mono">{r.requester_bunk_name}</span> vs{' '}
+                        <span className="font-mono">{r.target_bunk_name}</span>
+                      </span>
+                    )}
+                  </li>
+                ))
+              })()}
             </ul>
           )}
         </div>
@@ -1052,9 +1175,10 @@ export default function PostValidationResultsModal({
 
           {showDetails && (
             <div className="animate-fade-in space-y-2 px-5 pb-4">
-              {Object.entries(statistics.field_stats)
-                .sort(([, a], [, b]) => b.total - a.total)
-                .map(([fieldName, stats]) => (
+              {SOURCE_FIELD_ORDER.map((fieldName) => {
+                const stats = statistics.field_stats[fieldName]
+                if (!stats) return null
+                return (
                   <div
                     key={fieldName}
                     className="bg-muted/40 flex items-center justify-between rounded-xl p-3"
@@ -1079,7 +1203,8 @@ export default function PostValidationResultsModal({
                       {Math.round(stats.satisfaction_rate * 100)}%
                     </span>
                   </div>
-                ))}
+                )
+              })}
 
               {/* Capacity info */}
               {statistics.bunks_over_capacity > 0 && (

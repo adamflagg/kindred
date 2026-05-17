@@ -1,35 +1,15 @@
 /**
- * LazyPdfExportButton — defers loading @react-pdf/renderer (~1 MB) until
- * the user explicitly clicks "Export PDF". This keeps the renderer bundle
- * out of the main chunk entirely.
+ * LazyPdfExportButton — single-click download.
  *
- * Two-phase render:
- *  1. Initial: plain "Export PDF" button (zero PDF overhead).
- *  2. After click: React.lazy loads PDFDownloadLink + BunkPlanReport together,
- *     shown behind a Suspense fallback.
+ * Lazy-loads @react-pdf/renderer and BunkPlanReport on first click,
+ * generates the PDF as a Blob, and triggers a browser download via a
+ * synthetic <a> click. Browser settings (e.g. "always ask where to save")
+ * control whether the OS save-as dialog appears.
  */
-import { Suspense, lazy, useState } from 'react'
-import type { ComponentProps } from 'react'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
-
-// Lazy-loaded inner component — imports BOTH @react-pdf/renderer and BunkPlanReport
-// so neither ends up in the main bundle.
-const PdfDownloadLink = lazy(async () => {
-  const [{ PDFDownloadLink }, mod] = await Promise.all([
-    import('@react-pdf/renderer'),
-    import('./BunkPlanReport'),
-  ])
-  return {
-    default: ({
-      filename,
-      ...reportProps
-    }: ComponentProps<typeof mod.BunkPlanReport> & { filename: string }) => (
-      <PDFDownloadLink document={<mod.BunkPlanReport {...reportProps} />} fileName={filename}>
-        {({ loading }: { loading: boolean }) => (loading ? 'Preparing PDF…' : 'Download PDF')}
-      </PDFDownloadLink>
-    ),
-  }
-})
+import type { PostCheckIssue } from '../issueClassifier'
 
 interface LazyPdfExportButtonProps {
   sessionName: string
@@ -37,29 +17,69 @@ interface LazyPdfExportButtonProps {
   plannerName: string
   statistics: ValidationStatistics
   impossibilityReport: ImpossibilityReport
+  issues?: PostCheckIssue[]
+  /** Optional branded logo URL (e.g. /local/assets/camp-logo.png) for the PDF cover. */
+  logoUrl?: string
+}
+
+// Lowercase, hyphenate whitespace, strip anything outside [a-z0-9-_] so the
+// resulting <a download="..."> attribute is safe on Windows/macOS/Linux and in
+// Safari/Chrome/Firefox. Falls back to "session" if the input is all-junk.
+function sanitizeForFilename(raw: string): string {
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-_]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return cleaned || 'session'
 }
 
 export function LazyPdfExportButton(props: LazyPdfExportButtonProps) {
-  const [armed, setArmed] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  if (!armed) {
-    return (
-      <button
-        type="button"
-        onClick={() => setArmed(true)}
-        className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-      >
-        Export PDF
-      </button>
-    )
+  async function handleClick() {
+    if (busy) return
+    setBusy(true)
+    let url: string | null = null
+    let a: HTMLAnchorElement | null = null
+    try {
+      const [{ pdf }, { BunkPlanReport }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./BunkPlanReport'),
+      ])
+      const filename = `bunk-plan-${sanitizeForFilename(props.sessionName)}-${props.year}.pdf`
+      const blob = await pdf(<BunkPlanReport {...props} />).toBlob()
+      url = URL.createObjectURL(blob)
+      a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+    } catch (err) {
+      console.error('PDF export failed', err)
+      toast.error('PDF export failed. Please try again.')
+    } finally {
+      if (a && a.parentNode) a.parentNode.removeChild(a)
+      // Defer revoke so the browser has a tick to start fetching the blob.
+      // Safari and older Firefox can cancel the download otherwise.
+      if (url) {
+        const blobUrl = url
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 0)
+      }
+      setBusy(false)
+    }
   }
 
   return (
-    <Suspense fallback={<span className="text-sm text-stone-500">Loading PDF renderer…</span>}>
-      <PdfDownloadLink
-        {...props}
-        filename={`bunk-plan-${props.sessionName.replace(/\s+/g, '-').toLowerCase()}-${props.year}.pdf`}
-      />
-    </Suspense>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={busy}
+      className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+    >
+      {busy ? 'Preparing PDF…' : 'Export PDF'}
+    </button>
   )
 }

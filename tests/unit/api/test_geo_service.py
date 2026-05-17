@@ -14,6 +14,7 @@ Tests verify:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -23,12 +24,15 @@ if TYPE_CHECKING:
     from api.services.geo_service import GeoService
 
 
-# Reset the module-level _PERSON_ID_CACHE before every test in this file so
-# cached results from one test don't bleed into another's call-count assertions.
+# Reset the module-level _PERSON_ID_CACHE before AND after every test in this
+# file so cached results don't bleed into another test's call-count assertions
+# (within file) or into other test files that share the same pytest process.
 @pytest.fixture(autouse=True)
-def _reset_geo_module_cache() -> None:
+def _reset_geo_module_cache() -> Generator[None]:
     from api.services.geo_service import clear_person_id_cache
 
+    clear_person_id_cache()
+    yield
     clear_person_id_cache()
 
 
@@ -1220,6 +1224,15 @@ class TestBatchResolveCoords:
 
 class TestPersonIdCache:
     """Test TTL caching of active person IDs (module-level cache)."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_person_id_cache(self) -> Generator[None]:
+        """Module-level cache leaks across test files; clear before and after each test."""
+        from api.services.geo_service import clear_person_id_cache
+
+        clear_person_id_cache()
+        yield
+        clear_person_id_cache()
 
     @pytest.fixture
     def mock_pb(self) -> MagicMock:

@@ -1,5 +1,13 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
+import { friendlyReasonLabel } from '../impossibility/reasonHints'
+import { buildFamilyRows, cohortLabel } from './familyRows'
+import {
+  BUNK_LEVEL_ISSUE_TYPES,
+  SUPPRESSED_ISSUE_TYPES,
+  extractBunkName,
+  type PostCheckIssue,
+} from '../issueClassifier'
 
 interface Props {
   sessionName: string
@@ -9,6 +17,7 @@ interface Props {
   impossibilityReport: ImpossibilityReport
   /** Optional branded logo — pass /local/assets/camp-logo.png from caller */
   logoUrl?: string
+  issues?: PostCheckIssue[]
 }
 
 // Theme: forest green, amber, cream (generic Tawonga-inspired palette)
@@ -86,6 +95,7 @@ const styles = StyleSheet.create({
   },
   cell: { flex: 1, fontSize: 8 },
   cellWide: { flex: 2, fontSize: 8 },
+  subtitle: { fontSize: 8, color: STONE_600, marginBottom: 6 },
   emptyNote: { fontSize: 8, color: STONE_600, fontStyle: 'italic', marginTop: 4 },
   metaLine: { fontSize: 8, color: STONE_600, marginTop: 6 },
   footer: {
@@ -116,6 +126,8 @@ const styles = StyleSheet.create({
   },
   barFill: { height: 6, backgroundColor: GREEN, borderRadius: 2 },
   amberFill: { height: 6, backgroundColor: AMBER, borderRadius: 2 },
+  reasonGroup: { marginBottom: 10 },
+  reasonHead: { fontSize: 11, fontWeight: 700, color: STONE_950, marginBottom: 4 },
 })
 
 function pct(rate: number | undefined): string {
@@ -136,45 +148,16 @@ export function BunkPlanReport({
   statistics,
   impossibilityReport,
   logoUrl,
+  issues,
 }: Props) {
   const mpRate = statistics.material_parent_request_satisfaction_rate
   const mpTotal = statistics.material_parent_requests ?? 0
   const mpSatisfied = statistics.satisfied_material_parent_requests ?? 0
-  const overallRate = mpTotal > 0 ? mpRate : statistics.request_satisfaction_rate
-  const totalIssues =
-    (impossibilityReport.mp_campers_entirely_impossible?.length ?? 0) +
-    (statistics.negative_request_violations_detail?.length ?? 0) +
-    (statistics.priority_unsuccessfuls?.length ?? 0)
 
   // Unmet parent persons sorted alphabetically for page 3
   const unmetParents = [...(statistics.unsatisfied_material_parent_persons ?? [])].sort((a, b) =>
     a.name.localeCompare(b.name)
   )
-
-  // Coverage table rows
-  const coverageRows = [
-    {
-      label: 'All requests',
-      total: statistics.total_requests,
-      satisfied: statistics.satisfied_requests,
-      rate: statistics.request_satisfaction_rate,
-    },
-    {
-      label: 'Parent priority',
-      total: mpTotal,
-      satisfied: mpSatisfied,
-      rate: mpRate ?? 0,
-    },
-    ...Object.entries(statistics.field_stats)
-      .sort(([, a], [, b]) => b.total - a.total)
-      .slice(0, 4)
-      .map(([label, s]) => ({
-        label,
-        total: s.total,
-        satisfied: s.satisfied,
-        rate: s.satisfaction_rate,
-      })),
-  ]
 
   const generatedAt = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -184,83 +167,116 @@ export function BunkPlanReport({
 
   return (
     <Document>
-      {/* ── Page 1 — Executive Summary ── */}
+      {/* ── Page 1 — Cover / Executive Summary (MSP-focused) ── */}
       <Page size="LETTER" style={styles.page}>
         {/* Brand header */}
         <View style={styles.brandHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {logoUrl && <Image src={logoUrl} style={styles.logo} />}
             <View>
-              <Text style={styles.brandTitle}>Bunk Plan Report</Text>
+              <Text style={styles.brandTitle}>
+                Bunk Plan Report — {sessionName} · {year}
+              </Text>
               <Text style={styles.brandSubtitle}>
-                Generated {generatedAt} · Prepared by {plannerName}
+                Generated {generatedAt} by {plannerName}
               </Text>
             </View>
           </View>
-          <View style={styles.sessionBlock}>
-            <Text style={styles.sessionName}>{sessionName}</Text>
-            <Text style={styles.sessionYear}>{year}</Text>
-          </View>
         </View>
 
-        {/* KPI tiles */}
+        {/* KPI tiles — MSP-focused */}
         <Text style={styles.sectionTitle}>Executive Summary</Text>
         <View style={styles.kpiRow}>
           <View style={styles.kpi}>
-            <Text style={[styles.kpiValue, { color: coverageColor(overallRate ?? 0) }]}>
-              {pct(overallRate)}
+            <Text style={[styles.kpiValue, { color: coverageColor(mpRate ?? 0) }]}>
+              {pct(mpRate)}
             </Text>
-            <Text style={styles.kpiLabel}>Parent request{'\n'}satisfaction</Text>
+            <Text style={styles.kpiLabel}>MSP{'\n'}satisfaction</Text>
           </View>
           <View style={styles.kpi}>
-            <Text style={styles.kpiValue}>{statistics.assigned_campers}</Text>
+            <Text style={styles.kpiValue}>
+              {statistics.assigned_campers}/{statistics.total_campers}
+            </Text>
             <Text style={styles.kpiLabel}>Campers{'\n'}assigned</Text>
           </View>
           <View style={styles.kpi}>
             <Text style={styles.kpiValue}>
               {mpSatisfied}/{mpTotal || '—'}
             </Text>
-            <Text style={styles.kpiLabel}>Priority requests{'\n'}met</Text>
-          </View>
-          <View style={styles.kpi}>
-            <Text style={[styles.kpiValue, { color: totalIssues > 0 ? '#dc2626' : GREEN }]}>
-              {totalIssues}
-            </Text>
-            <Text style={styles.kpiLabel}>Action items{'\n'}flagged</Text>
+            <Text style={styles.kpiLabel}>MSP reqs{'\n'}met</Text>
           </View>
         </View>
 
-        {/* Coverage by category */}
-        <Text style={styles.sectionTitle}>Coverage by Category</Text>
+        {/* Coverage — MSP only */}
+        <Text style={styles.sectionTitle}>Coverage (MSP)</Text>
         <View style={styles.tableHead}>
           <Text style={{ flex: 2 }}>Category</Text>
-          <Text style={{ width: 40, textAlign: 'right' }}>Satisfied</Text>
-          <Text style={{ width: 30, textAlign: 'right' }}>Total</Text>
+          <Text style={{ width: 50, textAlign: 'right' }}>Satisfied</Text>
+          <Text style={{ width: 40, textAlign: 'right' }}>Total</Text>
           <Text style={{ width: 50, textAlign: 'right' }}>Rate</Text>
         </View>
-        {coverageRows.map((row, i) => (
-          <View
-            key={`cov-${i}`}
-            style={
-              i % 2 === 0 ? styles.coverageRow : { ...styles.coverageRow, backgroundColor: CREAM }
-            }
+        <View style={styles.coverageRow}>
+          <Text style={{ flex: 2, fontSize: 8 }}>MP satisfaction</Text>
+          <Text style={{ width: 50, textAlign: 'right', fontSize: 8 }}>{mpSatisfied}</Text>
+          <Text style={{ width: 40, textAlign: 'right', fontSize: 8 }}>{mpTotal}</Text>
+          <Text
+            style={{
+              width: 50,
+              textAlign: 'right',
+              fontSize: 8,
+              color: coverageColor(mpRate ?? 0),
+              fontWeight: 'bold',
+            }}
           >
-            <Text style={{ flex: 2, fontSize: 8 }}>{row.label}</Text>
-            <Text style={{ width: 40, textAlign: 'right', fontSize: 8 }}>{row.satisfied}</Text>
-            <Text style={{ width: 30, textAlign: 'right', fontSize: 8 }}>{row.total}</Text>
-            <Text
-              style={{
-                width: 50,
-                textAlign: 'right',
-                fontSize: 8,
-                color: coverageColor(row.rate),
-                fontWeight: 'bold',
-              }}
-            >
-              {pct(row.rate)}
-            </Text>
-          </View>
-        ))}
+            {pct(mpRate)}
+          </Text>
+        </View>
+
+        {/* Impossible by reason */}
+        <Text style={styles.sectionTitle}>Impossible by Reason</Text>
+        {Object.keys(impossibilityReport.by_reason ?? {}).length === 0 ? (
+          <Text style={styles.emptyNote}>No impossible requests.</Text>
+        ) : (
+          <>
+            <View style={styles.tableHead}>
+              <Text style={{ flex: 2 }}>Reason</Text>
+              <Text style={{ width: 50, textAlign: 'right' }}>Count</Text>
+            </View>
+            {Object.entries(impossibilityReport.by_reason ?? {}).map(([code, items], i) => (
+              <View
+                key={`reason-${code}`}
+                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
+              >
+                <Text style={{ flex: 2, fontSize: 8 }}>{friendlyReasonLabel(code)}</Text>
+                <Text style={{ width: 50, textAlign: 'right', fontSize: 8 }}>
+                  {(items as unknown[]).length}
+                </Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* Capacity by gender */}
+        {statistics.capacity_by_gender && (
+          <>
+            <Text style={styles.sectionTitle}>Capacity by Gender</Text>
+            <View style={styles.tableHead}>
+              <Text style={{ flex: 2 }}>Gender</Text>
+              <Text style={{ width: 60, textAlign: 'right' }}>Assigned</Text>
+              <Text style={{ width: 60, textAlign: 'right' }}>Capacity</Text>
+            </View>
+            {Object.entries(statistics.capacity_by_gender).map(([gender, data], i) => (
+              <View
+                key={`cap-${gender}`}
+                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
+              >
+                <Text style={{ flex: 2, fontSize: 8, textTransform: 'capitalize' }}>{gender}</Text>
+                <Text style={{ width: 60, textAlign: 'right', fontSize: 8 }}>{data.assigned}</Text>
+                <Text style={{ width: 60, textAlign: 'right', fontSize: 8 }}>{data.capacity}</Text>
+              </View>
+            ))}
+          </>
+        )}
 
         <Text style={styles.metaLine}>
           Bunks: {statistics.bunks_at_capacity} at capacity · {statistics.bunks_under_capacity}{' '}
@@ -276,92 +292,194 @@ export function BunkPlanReport({
         />
       </Page>
 
-      {/* ── Page 2 — Action Lists ── */}
-      <Page size="LETTER" style={styles.page}>
-        {/* Who Got Nothing */}
-        <Text style={styles.sectionTitle}>Who Got Nothing</Text>
-        {(impossibilityReport.mp_campers_entirely_impossible?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No campers with entirely impossible requests.</Text>
-        ) : (
-          <>
+      {/* ── Page 2 — Families to contact (consolidated) ── */}
+      {(() => {
+        const familyRows = buildFamilyRows(statistics, impossibilityReport)
+        if (familyRows.length === 0) return null
+        return (
+          <Page size="LETTER" style={styles.page}>
+            <Text style={styles.sectionTitle}>Families to contact ({familyRows.length})</Text>
+            <Text style={styles.subtitle}>
+              Sorted alphabetically by camper first name. Each row needs a follow-up call.
+            </Text>
             <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Camper</Text>
-              <Text style={styles.cell}>Gender</Text>
-              <Text style={styles.cell}>Grade</Text>
-              <Text style={styles.cellWide}>Reason codes</Text>
+              <Text style={styles.cell}>Camper</Text>
+              <Text style={styles.cell}>Cohort</Text>
+              <Text style={[styles.cell, { flex: 2 }]}>Detail</Text>
             </View>
-            {(impossibilityReport.mp_campers_entirely_impossible ?? []).map((c, i) => (
-              <View
-                key={`imp-${c.cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{c.name}</Text>
-                <Text style={styles.cell}>{c.gender}</Text>
-                <Text style={styles.cell}>{c.grade}</Text>
-                <Text style={styles.cellWide}>{(c.reason_codes ?? []).join(', ') || '—'}</Text>
+            {familyRows.map((r) => (
+              <View key={r.key} style={styles.tableRow} wrap={false}>
+                <Text style={styles.cell}>{r.name}</Text>
+                <Text style={styles.cell}>{cohortLabel(r.cohort)}</Text>
+                <Text style={[styles.cell, { flex: 2 }]}>{r.detail}</Text>
               </View>
             ))}
-          </>
-        )}
+            <Text
+              style={styles.footer}
+              render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+                `Page ${pageNumber} of ${totalPages}`
+              }
+              fixed
+            />
+          </Page>
+        )
+      })()}
 
-        {/* Families to Call */}
-        <Text style={styles.sectionTitle}>Families to Call</Text>
-        {(statistics.negative_request_violations_detail?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No not-bunk-with violations.</Text>
-        ) : (
-          <>
-            <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Requester</Text>
-              <Text style={styles.cellWide}>Placed with</Text>
-              <Text style={styles.cell}>Bunk</Text>
-            </View>
-            {(statistics.negative_request_violations_detail ?? []).map((v, i) => (
-              <View
-                key={`nbw-${v.requester_cm_id}-${v.target_cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{v.requester_name}</Text>
-                <Text style={styles.cellWide}>{v.target_name}</Text>
-                <Text style={styles.cell}>{v.bunk_name}</Text>
+      {/* ── Page 3 — Bunks needing attention / Other issues / Unmet drill-down ── */}
+      {(() => {
+        const issuesList = issues ?? []
+        const bunkLevelIssues = issuesList.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type))
+        const otherIssues = issuesList.filter(
+          (i) => !BUNK_LEVEL_ISSUE_TYPES.has(i.type) && !SUPPRESSED_ISSUE_TYPES.has(i.type)
+        )
+        const unmetDetail = statistics.unsatisfied_material_parent_detail ?? []
+
+        if (bunkLevelIssues.length === 0 && otherIssues.length === 0 && unmetDetail.length === 0) {
+          return null
+        }
+
+        // Group bunk-level issues by extracted bunk name
+        const bunkMap = new Map<string, typeof bunkLevelIssues>()
+        for (const issue of bunkLevelIssues) {
+          const bunk = extractBunkName(issue)
+          const arr = bunkMap.get(bunk) ?? []
+          arr.push(issue)
+          bunkMap.set(bunk, arr)
+        }
+        const issuesByBunk = [...bunkMap.entries()].sort(([a], [b]) => a.localeCompare(b))
+
+        // Group other issues by type
+        const otherMap = new Map<string, typeof otherIssues>()
+        for (const issue of otherIssues) {
+          const arr = otherMap.get(issue.type) ?? []
+          arr.push(issue)
+          otherMap.set(issue.type, arr)
+        }
+        const groupedOther = [...otherMap.entries()]
+
+        // Tiebreak on requester_cm_id then target_cm_id so same-name requesters
+        // (Emma Johnson #1 vs Emma Johnson #2) render in deterministic order.
+        const sortedUnmet = [...unmetDetail].sort(
+          (a, b) =>
+            a.requester_name.localeCompare(b.requester_name) ||
+            a.requester_cm_id.localeCompare(b.requester_cm_id) ||
+            a.target_cm_id.localeCompare(b.target_cm_id)
+        )
+
+        return (
+          <Page size="LETTER" style={styles.page} wrap>
+            {issuesByBunk.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>
+                  Bunks needing attention ({issuesByBunk.length})
+                </Text>
+                {issuesByBunk.map(([bunkName, items]) => (
+                  <View key={bunkName} style={styles.tableRow} wrap={false}>
+                    <Text style={[styles.cell, { fontWeight: 700 }]}>{bunkName}</Text>
+                    <Text style={[styles.cell, { flex: 3 }]}>
+                      {items.map((it) => it.type.replace(/_/g, ' ')).join(', ')}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {groupedOther.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Other issues</Text>
+                {groupedOther.map(([type, items]) => (
+                  <View key={type} style={styles.tableRow} wrap={false}>
+                    <Text style={styles.cell}>{type.replace(/_/g, ' ')}</Text>
+                    <Text style={styles.cell}>{items.length}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {sortedUnmet.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Unmet parent requests</Text>
+                {sortedUnmet.map((r) => (
+                  <View
+                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
+                    style={styles.tableRow}
+                    wrap={false}
+                  >
+                    <Text style={styles.cell}>{r.requester_name}</Text>
+                    <Text style={styles.cell}>wanted {r.target_name}</Text>
+                    <Text style={styles.cell}>
+                      {r.requester_bunk_name} vs {r.target_bunk_name}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            )}
+
+            <Text
+              style={styles.footer}
+              render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+                `Page ${pageNumber} of ${totalPages}`
+              }
+              fixed
+            />
+          </Page>
+        )
+      })()}
+
+      {/* ── Pages 4–N — Full impossibility detail (one page, wraps) ── */}
+      {Object.keys(impossibilityReport.by_reason).length > 0 && (
+        <Page size="LETTER" style={styles.page} wrap>
+          <Text style={styles.sectionTitle}>Impossibility detail</Text>
+          {Object.entries(impossibilityReport.by_reason).map(([code, items]) => {
+            const list = items as Array<{
+              request_id: string
+              reason_code: string
+              reason_message: string
+              request_type: string
+              requester: { cm_id: number; name: string; grade: number; gender: string }
+              requestee: { cm_id: number; name: string; grade: number; gender: string } | null
+              detail: Record<string, unknown>
+              bucket: string | null
+            }>
+            return (
+              <View key={code} style={styles.reasonGroup} wrap>
+                <Text style={styles.reasonHead}>
+                  {friendlyReasonLabel(code)} ({list.length})
+                </Text>
+                <View style={styles.tableHead}>
+                  <Text style={styles.cell}>Requester</Text>
+                  <Text style={styles.cell}>Target</Text>
+                  <Text style={styles.cell}>Source</Text>
+                </View>
+                {list.map((it, idx) => (
+                  <View key={`${code}-${idx}`} style={styles.tableRow} wrap={false}>
+                    <Text style={styles.cell}>
+                      {it.requester?.name
+                        ? `${it.requester.name} (${it.requester.grade}${it.requester.gender ? `, ${it.requester.gender}` : ''})`
+                        : '—'}
+                    </Text>
+                    <Text style={styles.cell}>
+                      {it.requestee?.name
+                        ? `${it.requestee.name} (${it.requestee.grade}${it.requestee.gender ? `, ${it.requestee.gender}` : ''})`
+                        : '—'}
+                    </Text>
+                    <Text style={styles.cell}>{it.request_type ?? '—'}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </>
-        )}
+            )
+          })}
+          <Text
+            style={styles.footer}
+            render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+              `Page ${pageNumber} of ${totalPages}`
+            }
+            fixed
+          />
+        </Page>
+      )}
 
-        {/* Priority Unsuccessfuls */}
-        <Text style={styles.sectionTitle}>Priority Unsuccessfuls</Text>
-        {(statistics.priority_unsuccessfuls?.length ?? 0) === 0 ? (
-          <Text style={styles.emptyNote}>No priority-keyword requests went unmet.</Text>
-        ) : (
-          <>
-            <View style={styles.tableHead}>
-              <Text style={styles.cellWide}>Requester</Text>
-              <Text style={styles.cellWide}>Requested</Text>
-              <Text style={styles.cellWide}>Original text</Text>
-            </View>
-            {(statistics.priority_unsuccessfuls ?? []).map((p, i) => (
-              <View
-                key={`pu-${p.requester_cm_id}-${p.target_cm_id}`}
-                style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}
-              >
-                <Text style={styles.cellWide}>{p.requester_name}</Text>
-                <Text style={styles.cellWide}>{p.target_name}</Text>
-                <Text style={styles.cellWide}>{p.raw_text}</Text>
-              </View>
-            ))}
-          </>
-        )}
-
-        <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
-            `Page ${pageNumber} of ${totalPages} · Action Items`
-          }
-          fixed
-        />
-      </Page>
-
-      {/* ── Page 3 — Full unmet alphabetical list ── */}
+      {/* ── Last page — Full unmet alphabetical list ── */}
       <Page size="LETTER" style={styles.page}>
         <Text style={styles.sectionTitle}>Unmet Parent Requests (full list)</Text>
         {unmetParents.length === 0 ? (
