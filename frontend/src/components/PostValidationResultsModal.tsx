@@ -1137,11 +1137,37 @@ export default function PostValidationResultsModal({
               id="unmet-parent-requests-list"
               className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4"
             >
-              {unmetParents.map((person) => (
-                <li key={person.cm_id} className="text-foreground text-sm">
-                  {person.name}
-                </li>
-              ))}
+              {(() => {
+                const detail = statistics.unsatisfied_material_parent_detail ?? []
+                // When detail isn't available, fall back to plain names so older sessions still render.
+                const rows = detail.length > 0
+                  ? [...detail].sort((a, b) => a.requester_name.localeCompare(b.requester_name))
+                  : unmetParents.map((p) => ({
+                      requester_cm_id: String(p.cm_id),
+                      requester_name: p.name,
+                      target_cm_id: '',
+                      target_name: '',
+                      requester_bunk_name: '',
+                      target_bunk_name: '',
+                    }))
+                return rows.map((r) => (
+                  <li
+                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
+                    className="text-foreground text-sm py-1"
+                  >
+                    <span className="font-medium">{r.requester_name}</span>
+                    {r.target_name && (
+                      <>
+                        <span className="text-stone-500"> wanted </span>
+                        <span className="font-medium">{r.target_name}</span>
+                      </>
+                    )}
+                    {r.requester_bunk_name && r.target_bunk_name && (
+                      <span className="text-xs text-stone-500"> · <span className="font-mono">{r.requester_bunk_name}</span> vs <span className="font-mono">{r.target_bunk_name}</span></span>
+                    )}
+                  </li>
+                ))
+              })()}
             </ul>
           )}
         </div>

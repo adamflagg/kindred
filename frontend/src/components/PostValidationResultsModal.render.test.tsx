@@ -955,3 +955,28 @@ describe('PostValidationResultsModal — Families to contact', () => {
     expect(screen.queryByText(/priority unsuccessfuls/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
+  it('shows requester wanted target with bunk placements', async () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          unsatisfied_material_parent_detail: [
+            { requester_cm_id: '1', requester_name: 'Emma Johnson', target_cm_id: '2', target_name: 'Liam Garcia', requester_bunk_name: 'Pine 3', target_bunk_name: 'Oak 2' },
+          ],
+          // Keep the legacy persons array so the section still renders
+          unsatisfied_material_parent_persons: [{ cm_id: 1, name: 'Emma Johnson' }],
+        })}
+      />
+    )
+    await userEvent.click(screen.getByText(/unmet parent requests/i))
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/Pine 3/)).toBeInTheDocument()
+    expect(screen.getByText(/Oak 2/)).toBeInTheDocument()
+  })
+})
