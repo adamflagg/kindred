@@ -369,8 +369,9 @@ class BunkingValidator:
 
         # Per-gender capacity and assigned counts.
         # bunk.gender is "F" or "M"; unknown/other genders are skipped.
-        # Falls back to DEFAULT_BUNK_CAPACITY for real Bunk objects (no max_size column);
-        # MockBunk in tests supplies max_size directly so per-bunk variance is captured.
+        # Capacity is n_bunks × DEFAULT_BUNK_CAPACITY — the real Bunk model has no
+        # per-bunk size column (removed in Phase 2 cleanup), so this is headcount-based.
+        # If per-bunk variance is ever needed, add a max_size column and read it here.
         capacity_by_gender: dict[str, dict[str, int]] = {
             "female": {"capacity": 0, "assigned": 0},
             "male": {"capacity": 0, "assigned": 0},
@@ -379,7 +380,7 @@ class BunkingValidator:
             gender_key = "female" if bunk.gender == "F" else "male" if bunk.gender == "M" else None
             if gender_key is None:
                 continue
-            capacity_by_gender[gender_key]["capacity"] += getattr(bunk, "max_size", DEFAULT_BUNK_CAPACITY)
+            capacity_by_gender[gender_key]["capacity"] += DEFAULT_BUNK_CAPACITY
         for person in persons:
             if person.campminder_id not in assignments_by_person:
                 continue

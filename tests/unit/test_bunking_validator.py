@@ -2563,15 +2563,22 @@ def test_unsatisfied_material_parent_detail_falls_back_when_person_missing():
 
 
 def test_capacity_by_gender_aggregates_bunks_and_assignments():
-    """capacity_by_gender splits bunks/assignments by bunk.gender (F/M)."""
+    """capacity_by_gender splits bunks/assignments by bunk.gender (F/M).
+
+    Capacity is `n_bunks × DEFAULT_BUNK_CAPACITY` per gender — the real Bunk
+    model has no per-bunk size column (removed in Phase 2), so capacity is
+    headcount-based, not policy-driven.
+    """
+    from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+
     session = _mock_session(cm_id="10000001", name="CapacityFixture")
     persons = [
         MockPerson(campminder_id=f"2{i:03d}", name=f"P{i}", grade=5, gender=("F" if i < 3 else "M")) for i in range(6)
     ]
     bunks = [
-        MockBunk(campminder_id="3001", name="Female Pine 1", max_size=8, gender="F"),
-        MockBunk(campminder_id="3002", name="Female Pine 2", max_size=8, gender="F"),
-        MockBunk(campminder_id="3003", name="Male Oak 1", max_size=10, gender="M"),
+        MockBunk(campminder_id="3001", name="Female Pine 1", gender="F"),
+        MockBunk(campminder_id="3002", name="Female Pine 2", gender="F"),
+        MockBunk(campminder_id="3003", name="Male Oak 1", gender="M"),
     ]
     assignments = [
         _mock_assignment("2000", "3001"),
@@ -2589,7 +2596,7 @@ def test_capacity_by_gender_aggregates_bunks_and_assignments():
         requests=[],
     )
     cap = result.statistics.capacity_by_gender
-    assert cap["female"]["capacity"] == 16  # 2 F bunks × 8
+    assert cap["female"]["capacity"] == 2 * DEFAULT_BUNK_CAPACITY  # 2 F bunks
     assert cap["female"]["assigned"] == 3  # 3 F campers assigned
-    assert cap["male"]["capacity"] == 10  # 1 M bunk × 10
+    assert cap["male"]["capacity"] == 1 * DEFAULT_BUNK_CAPACITY  # 1 M bunk
     assert cap["male"]["assigned"] == 3

@@ -381,11 +381,11 @@ function GradeRatioBar({ ratio }: { ratio: NonNullable<ParsedIssue['gradeRatio']
         })}
       </div>
       {/* Grade labels with counts */}
-      <div className="flex flex-shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         {ratio.grades.map((g, i) => (
           <span key={g.grade} className="flex items-center gap-1 text-sm">
             <span
-              className={`h-2 w-2 flex-shrink-0 rounded-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]}`}
+              className={`h-2 w-2 shrink-0 rounded-full ${GRADE_COLORS[Math.min(i, GRADE_COLORS.length - 1)]}`}
             />
             <span
               className={`w-5 text-right font-semibold tabular-nums ${i === 0 ? 'text-foreground' : 'text-foreground/70'}`}
@@ -419,9 +419,7 @@ function IssueItem({ issue }: { issue: PostCheckIssue }) {
   if (parsed.gradeRatio) {
     return (
       <div className="flex items-center gap-3 px-3 py-2">
-        <span className="text-foreground w-12 flex-shrink-0 text-sm font-medium">
-          {parsed.primary}
-        </span>
+        <span className="text-foreground w-12 shrink-0 text-sm font-medium">{parsed.primary}</span>
         <GradeRatioBar ratio={parsed.gradeRatio} />
       </div>
     )
@@ -917,7 +915,7 @@ export default function PostValidationResultsModal({
                     <div className="text-xs text-stone-600">{row.detail}</div>
                   </div>
                   <span
-                    className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                       row.cohort === 'got_nothing'
                         ? 'bg-red-100 text-red-800'
                         : row.cohort === 'violated'
@@ -981,10 +979,7 @@ export default function PostValidationResultsModal({
               </div>
             </div>
             <div className="mt-2">
-              {(['female', 'male'] as const).map((g) => {
-                const capByGender = statistics.capacity_by_gender
-                if (!capByGender) return null
-                const cap = capByGender[g]
+              {Object.entries(statistics.capacity_by_gender ?? {}).map(([g, cap]) => {
                 const pct = cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
                 const barColor =
                   cap.assigned > cap.capacity
