@@ -34,116 +34,8 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
     def resolve(
         self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
     ) -> ResolutionResult:
-        """Attempt to disambiguate names using school information.
-
-        This strategy is typically used when other strategies return
-        multiple candidates. It uses school information to narrow down
-        the possibilities.
-
-        Args:
-            name: Name to resolve
-            requester_cm_id: Person making the request
-            session_cm_id: Optional session context
-            year: Year context for resolution
-
-        Returns:
-            ResolutionResult with disambiguation outcome
-        """
-        # Parse the name
-        parsed = parse_name(name)
-        if not parsed.is_complete:
-            # Can't do school disambiguation without full name
-            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "incomplete_name"})
-
-        # Find candidates by name, filtering by year to avoid historical duplicates
-        candidates = self.person_repo.find_by_name(parsed.first.title(), parsed.last.title(), year=year)
-
-        # Filter out self-references
-        candidates = [c for c in candidates if c.cm_id != requester_cm_id]
-
-        if not candidates:
-            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_matches"})
-
-        if len(candidates) == 1:
-            # Only one candidate - no disambiguation needed
-            return ResolutionResult(
-                person=candidates[0],
-                confidence=0.90,  # High confidence for exact match
-                method=self.name,
-                metadata={"match_type": "single_exact_match"},
-            )
-
-        # Multiple candidates - try school disambiguation
-
-        # Get requester's school information
-        requester = self.person_repo.find_by_cm_id(requester_cm_id)
-        if not requester or not requester.school:
-            # Can't disambiguate without requester's school
-            return ResolutionResult(
-                candidates=candidates,
-                confidence=0.0,
-                method=self.name,
-                metadata={"ambiguity_reason": "no_requester_school", "match_count": len(candidates)},
-            )
-
-        # Check which candidates share the requester's school (with location matching)
-        same_school_candidates = [
-            c
-            for c in candidates
-            if c.school
-            and self._schools_match(
-                candidate_school=c.school,
-                requester_school=requester.school,
-                candidate_city=c.city,
-                requester_city=requester.city,
-                candidate_state=c.state,
-                requester_state=requester.state,
-            )
-        ]
-
-        if not same_school_candidates:
-            # No candidates from same school
-            return ResolutionResult(
-                candidates=candidates,
-                confidence=0.0,
-                method=self.name,
-                metadata={"ambiguity_reason": "no_same_school_matches", "match_count": len(candidates)},
-            )
-
-        if len(same_school_candidates) == 1:
-            # Exactly one candidate from same school
-            result = self._try_grade_disambiguation(same_school_candidates, requester, session_cm_id, year)
-            if result.is_resolved:
-                return result
-
-            # Return the school match even without grade disambiguation
-            return ResolutionResult(
-                person=same_school_candidates[0],
-                confidence=0.75,  # Good confidence for school match
-                method=self.name,
-                metadata={
-                    "match_type": "same_school",
-                    "match_count": len(same_school_candidates),
-                    "school": requester.school,
-                },
-            )
-
-        # Multiple candidates from same school - try grade disambiguation
-        result = self._try_grade_disambiguation(same_school_candidates, requester, session_cm_id, year)
-        if result.is_resolved:
-            return result
-
-        # Still ambiguous even with school
-        return ResolutionResult(
-            candidates=same_school_candidates,
-            confidence=0.5,
-            method=self.name,
-            metadata={
-                "ambiguity_reason": "multiple_same_school_matches",
-                "match_count": len(candidates),
-                "requester_school": requester.school,
-            },
-        )
+        """School-based disambiguation resolution (simple API without pre-loaded data)."""
+        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
 
     # School name abbreviation mappings for normalization
     SCHOOL_ABBREVIATIONS: ClassVar[dict[str, str]] = {
@@ -272,23 +164,51 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         return True
 
     def _try_grade_disambiguation(
-        self, candidates: list[Person], requester: Person, session_cm_id: int | None, year: int | None
+        self,
+        candidates: list[Person],
+        requester_cm_id: int,
+        requester_grade: int | None = None,
+        requester_school: str | None = None,
+        session_cm_id: int | None = None,
+        year: int | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
-        """Try to disambiguate using grade level"""
-        if not requester.grade:
+        """Try to disambiguate using grade level.
+
+        Accepts pre-loaded requester_grade/requester_school directly (fast path when
+        attendee_info is available) or falls back to a DB lookup via person_repo when
+        they are not provided.
+        """
+        # Resolve requester grade/school if not supplied directly
+        if requester_grade is None or requester_school is None:
+            if attendee_info and requester_cm_id in attendee_info:
+                requester_grade = requester_grade or attendee_info[requester_cm_id].get("grade")
+                requester_school = requester_school or attendee_info[requester_cm_id].get("school")
+            else:
+                requester_person = self.person_repo.find_by_cm_id(requester_cm_id)
+                if requester_person:
+                    requester_grade = requester_grade or requester_person.grade
+                    requester_school = requester_school or requester_person.school
+
+        if not requester_grade:
             return ResolutionResult(confidence=0.0, method=self.name)
 
         # Filter candidates in same grade
-        same_grade_candidates = [c for c in candidates if c.grade and c.grade == requester.grade]
+        same_grade_candidates = [c for c in candidates if c.grade and c.grade == requester_grade]
 
         if len(same_grade_candidates) == 1:
             # Verify session if possible
             confidence = 0.85  # High confidence for school + grade match
 
             if year and session_cm_id:
-                # Check if candidate is in same session
-                sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([same_grade_candidates[0].cm_id], year)
-                candidate_session = sessions_map.get(same_grade_candidates[0].cm_id)
+                candidate_cm_id = same_grade_candidates[0].cm_id
+                if attendee_info and candidate_cm_id in attendee_info:
+                    # Use pre-loaded session data
+                    candidate_session = attendee_info[candidate_cm_id].get("session_cm_id")
+                else:
+                    # Fall back to DB lookup
+                    sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([candidate_cm_id], year)
+                    candidate_session = sessions_map.get(candidate_cm_id)
 
                 if candidate_session == session_cm_id:
                     confidence = 0.90  # Very high for school + grade + session
@@ -299,13 +219,17 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 person=same_grade_candidates[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "same_school_same_grade", "school": requester.school, "grade": requester.grade},
+                metadata={
+                    "match_type": "same_school_same_grade",
+                    "school": requester_school,
+                    "grade": requester_grade,
+                },
             )
 
         # Try candidates in adjacent grades
-        # requester.grade is not None (checked at line 274)
-        assert requester.grade is not None
-        close_grade_candidates = [c for c in candidates if c.grade and abs(c.grade - requester.grade) <= 1]
+        # requester_grade is not None (checked above)
+        assert requester_grade is not None
+        close_grade_candidates = [c for c in candidates if c.grade and abs(c.grade - requester_grade) <= 1]
 
         if len(close_grade_candidates) == 1:
             # close_grade_candidates[0].grade is not None (filtered above)
@@ -316,20 +240,20 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 method=self.name,
                 metadata={
                     "match_type": "same_school_close_grade",
-                    "grade_diff": abs(close_grade_candidates[0].grade - requester.grade),
+                    "school": requester_school,
+                    "grade_diff": abs(close_grade_candidates[0].grade - requester_grade),
                 },
             )
 
         if close_grade_candidates:
             # Find the closest grade match
             # All candidates in close_grade_candidates have grade not None (filtered above)
-            # requester.grade is also not None (checked at line 303)
-            assert requester.grade is not None
-            requester_grade_val = requester.grade  # Capture for lambda
+            # requester_grade is also not None (checked above)
+            requester_grade_val = requester_grade  # Capture for lambda
             closest = min(close_grade_candidates, key=lambda c: abs((c.grade or 0) - requester_grade_val))
-            # Check if it's uniquely closest
             assert closest.grade is not None
-            grade_diff = abs(closest.grade - requester.grade)
+            # Check if it's uniquely closest
+            grade_diff = abs(closest.grade - requester_grade)
             same_distance = [
                 c
                 for c in close_grade_candidates
@@ -341,7 +265,11 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                     person=closest,
                     confidence=0.65,  # Lower confidence for grade proximity
                     method=self.name,
-                    metadata={"match_type": "same_school_closest_grade", "grade_diff": grade_diff},
+                    metadata={
+                        "match_type": "same_school_closest_grade",
+                        "school": requester_school,
+                        "grade_diff": grade_diff,
+                    },
                 )
 
         return ResolutionResult(confidence=0.0, method=self.name)
@@ -356,9 +284,10 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         attendee_info: dict[int, dict[str, Any]] | None = None,
         all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
-        """Resolve using pre-loaded candidates and attendee info.
+        """Resolve using pre-loaded candidates and attendee info (canonical body).
 
-        This optimized method uses pre-loaded data to avoid database queries.
+        When candidates and all_persons are both None, falls back to a database
+        query — this is the path taken when called via the resolve() shim.
         """
         # Parse the name
         parsed = parse_name(name)
@@ -369,14 +298,30 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         # Use all_persons as fallback when candidates is empty (single-name targets)
         school_pool = candidates or all_persons
 
-        # If no pool to search, can't do school disambiguation
+        # If no pre-loaded pool, fall back to database candidate lookup
         if not school_pool:
-            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_candidates"})
+            db_candidates = self.person_repo.find_by_name(parsed.first.title(), parsed.last.title(), year=year)
+            db_candidates = [c for c in db_candidates if c.cm_id != requester_cm_id]
+            if not db_candidates:
+                return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_matches"})
+            if len(db_candidates) == 1:
+                return ResolutionResult(
+                    person=db_candidates[0],
+                    confidence=0.90,
+                    method=self.name,
+                    metadata={"match_type": "single_exact_match"},
+                )
+            # Continue with DB-loaded candidates as the pool
+            school_pool = db_candidates
 
-        # Filter candidates by name match (case-insensitive)
+        # Filter candidates by name match (case-insensitive), including preferred names
+        # (e.g., "Bobby" matches a person with first_name="Robert", preferred_name="Bobby")
         first_l, last_l = parsed.first.lower(), parsed.last.lower()
         matching_candidates = [
-            c for c in school_pool if c.first_name.lower() == first_l and c.last_name.lower() == last_l
+            c
+            for c in school_pool
+            if (c.first_name.lower() == first_l or (c.preferred_name and c.preferred_name.lower() == first_l))
+            and c.last_name.lower() == last_l
         ]
 
         # Filter out self-references
@@ -450,8 +395,14 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
 
         if len(same_school_candidates) == 1:
             # Exactly one candidate from same school
-            result = self._try_grade_disambiguation_with_context(
-                same_school_candidates, requester_cm_id, requester_grade, session_cm_id, year, attendee_info
+            result = self._try_grade_disambiguation(
+                same_school_candidates,
+                requester_cm_id,
+                requester_grade=requester_grade,
+                requester_school=requester_school,
+                session_cm_id=session_cm_id,
+                year=year,
+                attendee_info=attendee_info,
             )
             if result.is_resolved:
                 return result
@@ -469,8 +420,14 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
             )
 
         # Multiple candidates from same school - try grade disambiguation
-        result = self._try_grade_disambiguation_with_context(
-            same_school_candidates, requester_cm_id, requester_grade, session_cm_id, year, attendee_info
+        result = self._try_grade_disambiguation(
+            same_school_candidates,
+            requester_cm_id,
+            requester_grade=requester_grade,
+            requester_school=requester_school,
+            session_cm_id=session_cm_id,
+            year=year,
+            attendee_info=attendee_info,
         )
         if result.is_resolved:
             return result
@@ -486,82 +443,3 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 "requester_school": requester_school,
             },
         )
-
-    def _try_grade_disambiguation_with_context(
-        self,
-        candidates: list[Person],
-        requester_cm_id: int,
-        requester_grade: int | None,
-        session_cm_id: int | None,
-        year: int | None,
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try to disambiguate using grade level with pre-loaded data"""
-        if not requester_grade:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        # Filter candidates in same grade
-        same_grade_candidates = [c for c in candidates if c.grade and c.grade == requester_grade]
-
-        if len(same_grade_candidates) == 1:
-            # Verify session if possible
-            confidence = 0.85  # High confidence for school + grade match
-
-            if year and session_cm_id and attendee_info:
-                # Check if candidate is in same session using pre-loaded data
-                candidate_cm_id = same_grade_candidates[0].cm_id
-                if candidate_cm_id in attendee_info:
-                    candidate_session = attendee_info[candidate_cm_id].get("session_cm_id")
-
-                    if candidate_session == session_cm_id:
-                        confidence = 0.90  # Very high for school + grade + session
-                    elif candidate_session is not None:
-                        confidence = 0.75  # Lower if different session
-
-            return ResolutionResult(
-                person=same_grade_candidates[0],
-                confidence=confidence,
-                method=self.name,
-                metadata={"match_type": "same_school_same_grade", "grade": requester_grade},
-            )
-
-        # Try candidates in adjacent grades
-        # requester_grade is not None (checked at line 486)
-        assert requester_grade is not None
-        close_grade_candidates = [c for c in candidates if c.grade and abs(c.grade - requester_grade) <= 1]
-
-        if len(close_grade_candidates) == 1:
-            # close_grade_candidates[0].grade is not None (filtered above)
-            assert close_grade_candidates[0].grade is not None
-            return ResolutionResult(
-                person=close_grade_candidates[0],
-                confidence=0.70,  # Lower confidence for adjacent grade
-                method=self.name,
-                metadata={
-                    "match_type": "same_school_close_grade",
-                    "grade_diff": abs(close_grade_candidates[0].grade - requester_grade),
-                },
-            )
-
-        if close_grade_candidates:
-            # Find the closest grade match
-            # All candidates in close_grade_candidates have grade not None (filtered above)
-            closest = min(close_grade_candidates, key=lambda c: abs((c.grade or 0) - requester_grade))
-            assert closest.grade is not None
-            # Check if it's uniquely closest
-            grade_diff = abs(closest.grade - requester_grade)
-            same_distance = [
-                c
-                for c in close_grade_candidates
-                if c.grade is not None and abs(c.grade - requester_grade) == grade_diff
-            ]
-
-            if len(same_distance) == 1:
-                return ResolutionResult(
-                    person=closest,
-                    confidence=0.65,  # Lower confidence for grade proximity
-                    method=self.name,
-                    metadata={"match_type": "same_school_closest_grade", "grade_diff": grade_diff},
-                )
-
-        return ResolutionResult(confidence=0.0, method=self.name)
