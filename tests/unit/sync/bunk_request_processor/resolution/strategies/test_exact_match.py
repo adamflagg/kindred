@@ -16,6 +16,7 @@ project_root = test_dir.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import Person
+from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
 from bunking.sync.bunk_request_processor.resolution.strategies.exact_match import ExactMatchStrategy
 
 
@@ -694,31 +695,21 @@ class TestClassifySessionHelper:
     """Test the static _classify_session helper that all 4 multi-enrollment-aware paths use."""
 
     def test_returns_unknown_when_sessions_none(self):
-        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
-
         assert ExactMatchStrategy._classify_session(None, 1000001) is SessionMatch.UNKNOWN
 
     def test_returns_unknown_when_sessions_empty(self):
-        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
-
         assert ExactMatchStrategy._classify_session([], 1000001) is SessionMatch.UNKNOWN
 
     def test_returns_same_when_requester_session_in_list(self):
-        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
-
         assert ExactMatchStrategy._classify_session([1000001, 1000002], 1000001) is SessionMatch.SAME
         # Multi-enrollment: requester session is second in list
         assert ExactMatchStrategy._classify_session([1000002, 1000001], 1000001) is SessionMatch.SAME
 
     def test_returns_different_when_requester_session_not_in_list(self):
-        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
-
         assert ExactMatchStrategy._classify_session([1000002, 1000003], 1000001) is SessionMatch.DIFFERENT
 
     def test_enum_values_match_metadata_strings(self):
         """SessionMatch.value must match the strings stamped into metadata['session_match']."""
-        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
-
         assert SessionMatch.SAME.value == "exact"
         assert SessionMatch.DIFFERENT.value == "different"
         assert SessionMatch.UNKNOWN.value == "unknown"
