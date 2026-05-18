@@ -38,15 +38,19 @@ only) once individual streams are picked up.
 | Retire `solution.calculate_satisfied_requests` | #1397 | #1438 | ✅ shipped 2026-05-15 |
 | **Stream 4 — mutual-request boost** | #1382 | — | ⬜ **Phase 3 — next build** |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
-| Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
-| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ unblocked (#1429 merged) |
-| Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ⬜ surfaced 2026-05-15 during priority-deletion scoping; non-blocking but every per-domain cleanup re-discovers the same V1↔V2 drift |
-| Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
-| Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | — | ⬜ cleanup (sibling of #1424) |
-| age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | — | ⬜ cleanup; prereq for #1398 age_preference coverage |
-| Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | — | ⬜ debug-UX polish |
-| Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | — | ⬜ staff-UX polish |
-| Exclude impossible requests from `all_camper_rate` ("Optimized") + surface in post-check modal | #1442 | — | ⬜ symmetry with #1429 + post-solve visibility |
+| Penalty-driven MP-coverage investigation | #1396 | — | ✅ closed not-planned 2026-05-17 (Phase-2 bound-trajectory chart shows the plateau directly; counterfactuals moot) |
+| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ✅ closed 2026-05-17 — audit deliverable at `docs/plans/audit-1426-impossibility.md` (local); no remaining hand-rolled logic to migrate |
+| Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ✅ closed not-planned 2026-05-17 — see "Parked — V1/V2 models consolidation" section below |
+| Schematize `grade_spread.max_spread` | #1424 | — | ✅ closed not-planned 2026-05-18 |
+| Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | #1455 | ✅ shipped 2026-05-15 (folded into priority-field deletion) |
+| age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | #1466 | ✅ shipped 2026-05-15 |
+| Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | #1465 | ✅ shipped 2026-05-15 |
+| Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | #1464 | ✅ shipped 2026-05-16 |
+| Exclude impossible requests from `all_camper_rate` ("Optimized") + surface in post-check modal | #1442 | #1463, #1464 | ✅ shipped 2026-05-15 |
+| Retire dead `DirectSolverOutput.analysis` path | #1437 | #1453 | ✅ shipped 2026-05-15 |
+| Tighten `request_validation_summary` to a `RequestValidationSummary` TypedDict | #1386 | #1487 | ✅ shipped 2026-05-18 |
+| Remove unreachable per-bunk branch in `age_preference` sat-var builder | #1467 | — | ✅ shipped 2026-05-16 |
+| Thread config through penalty accessors in evaluators | #1332 | — | ✅ shipped 2026-05-18 |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
 Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
@@ -1053,3 +1057,20 @@ Until one of these triggers, the priority-deletion-style per-domain cleanup (Pha
   `priority` drift example is now moot (deleted via PR #1455). Refactor
   deferred until an integration-level solver-pass test exists or a
   non-cosmetic drift forces the issue.
+- **2026-05-18** — Stocktake against actual GitHub state. The cleanup wave
+  flagged on 2026-05-15 all shipped or closed: **#1432** in #1455 (folded
+  into priority-field deletion), **#1433** in #1466 (bidirectional
+  age_preference sat var), **#1440** in #1465, **#1441** in #1464, **#1442**
+  in #1463/#1464, **#1424** closed not-planned, **#1426** closed with audit
+  deliverable at `docs/plans/audit-1426-impossibility.md` (no remaining
+  hand-rolled impossibility logic), **#1396** closed not-planned (Phase-2
+  bound-trajectory chart visualizes the plateau directly; the original
+  counterfactual experiments were superseded). Additional solver follow-ups
+  merged in the same window that weren't tracked here: **#1437** (retire
+  dead `DirectSolverOutput.analysis` path, PR #1453), **#1386** (tighten
+  `request_validation_summary` to a TypedDict, PR #1487), **#1467** (remove
+  unreachable per-bunk branch in `age_preference` sat-var builder), and
+  **#1332** (thread config through penalty accessors). Table at the top of
+  this doc updated; only **Stream 4 (#1382 — Phase 3, mutual-request boost)**
+  and **Stream 3 (#1381 — Phase 4)** remain genuinely open. Stream 4 is the
+  next build.
