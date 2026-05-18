@@ -226,6 +226,22 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         max_value=1,
     ),
     # =========================================================================
+    # OBJECTIVE FUNCTION - Mutual-request boost (Stream 4 / #1382)
+    # =========================================================================
+    "objective.mutual_request_boost": ConfigKey(
+        key="objective.mutual_request_boost",
+        config_type=ConfigType.FLOAT,
+        required=True,
+        description=(
+            "Multiplier applied to bunk_with requests when both directions exist "
+            "(A→B AND B→A both filed as bunk_with). Always on; set to 1.0 to disable "
+            "the boost without removing the code path. Stacks multiplicatively with "
+            "source_multipliers and diminishing-returns weights."
+        ),
+        min_value=0.0,
+        max_value=10.0,
+    ),
+    # =========================================================================
     # SOLVER SETTINGS
     # =========================================================================
     "solver.auto_apply_enabled": ConfigKey(

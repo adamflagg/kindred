@@ -147,6 +147,24 @@ class ObjectiveEvaluator:
         """
         # Config values (same as solver)
         enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
+        mutual_request_boost = self.config.get_float("objective.mutual_request_boost", default=2.0)
+
+        # Mirror solver's mutual-pair detection on the dict-shaped requests
+        # the evaluator consumes. Same rules as compute_mutual_bunk_with_pairs:
+        # skip non-bunk_with, self-loops, null requestees.
+        mutual_bunk_with_pairs: set[frozenset[int]] = set()
+        bunk_with_edges: set[tuple[int, int]] = set()
+        for r in requests:
+            if r.get("request_type") != RequestType.BUNK_WITH.value:
+                continue
+            req_id = r.get("requester_id")
+            tgt_id = r.get("requestee_id")
+            if not req_id or not tgt_id or int(req_id) == int(tgt_id):
+                continue
+            bunk_with_edges.add((int(req_id), int(tgt_id)))
+        for a, b in bunk_with_edges:
+            if (b, a) in bunk_with_edges:
+                mutual_bunk_with_pairs.add(frozenset({a, b}))
 
         # Source field multipliers (same as solver)
         source_multipliers = {
@@ -246,6 +264,13 @@ class ObjectiveEvaluator:
                 else:
                     multiplier = 1.0
                 base_weight = base_weight * multiplier
+
+                # Stream 4 (#1382): mutual bunk_with boost (mirrors solver).
+                if request.get("request_type") == RequestType.BUNK_WITH.value:
+                    req_id = request.get("requester_id")
+                    tgt_id = request.get("requestee_id")
+                    if req_id and tgt_id and frozenset({int(req_id), int(tgt_id)}) in mutual_bunk_with_pairs:
+                        base_weight = base_weight * mutual_request_boost
 
                 # Apply diminishing returns based on satisfaction order (always-on)
                 order_idx = satisfied_count_for_person - 1
