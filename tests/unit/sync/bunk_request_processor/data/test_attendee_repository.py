@@ -417,11 +417,10 @@ class TestAttendeeRepository:
         """
         mock_client, mock_attendees, _ = mock_pb_client
 
-        def make_attendee(person_id, session_cm_id, year, session_type="main", status_id=2):
+        def make_attendee(person_id, session_cm_id, year, session_type="main"):
             mock = Mock()
             mock.person_id = person_id
             mock.year = year
-            mock.status_id = status_id
             session_mock = Mock()
             session_mock.cm_id = session_cm_id
             session_mock.session_type = session_type
@@ -431,7 +430,7 @@ class TestAttendeeRepository:
         # Person 12345 enrolled in TWO bunking sessions; person 67890 in one
         mock_attendees.get_full_list.return_value = [
             make_attendee(12345, 1000001, 2025, session_type="main"),
-            make_attendee(12345, 1000002, 2025, session_type="main"),
+            make_attendee(12345, 1000002, 2025, session_type="ag"),
             make_attendee(67890, 1000003, 2025, session_type="main"),
             # Non-bunking session — must be excluded
             make_attendee(12345, 9000001, 2025, session_type="family_camp"),
@@ -453,9 +452,11 @@ class TestAttendeeRepository:
         assert "year = 2025" in args["query_params"]["filter"]
         assert args["query_params"]["expand"] == "session"
 
-    def test_bulk_get_all_sessions_for_persons_empty_input(self, repository):
+    def test_bulk_get_all_sessions_for_persons_empty_input(self, repository, mock_pb_client):
         """Empty input returns empty dict without DB hit."""
+        _, mock_attendees, _ = mock_pb_client
         assert repository.bulk_get_all_sessions_for_persons([], 2025) == {}
+        mock_attendees.get_full_list.assert_not_called()
 
 
 class TestBulkGetSessionsFiltersBunkingSessions:
