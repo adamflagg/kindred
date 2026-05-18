@@ -36,7 +36,7 @@ dependencies = [
     "openai>=2.0.0",
     "ortools>=9.15",
     # Data processing
-    "pandas>=3.0.2",
+    "pandas>=3.0.3",
     "tzdata>=2026.2",
     "numpy>=1.26.0",
     "networkx>=3.6.1",
