@@ -389,8 +389,13 @@ class ExactMatchStrategy(BaseMatchStrategy):
             if len(matches) == 1:
                 confidence = 0.90  # Base for parent surname match
                 if session_cm_id and attendee_info:
-                    match_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
-                    if match_session != session_cm_id:
+                    match_info = attendee_info.get(matches[0].cm_id, {})
+                    match_sessions = match_info.get("session_cm_ids", [])
+                    match_session = match_info.get("session_cm_id")
+                    in_same_session = (match_sessions and session_cm_id in match_sessions) or (
+                        match_session == session_cm_id
+                    )
+                    if not in_same_session:
                         confidence = 0.80  # Lower for different session
 
                 return ResolutionResult(
