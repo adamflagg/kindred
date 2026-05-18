@@ -384,13 +384,17 @@ jobs:
   # integration tests pass.
   build-and-scan:
     name: Build & Scan (${{ matrix.image }})
-    needs: [detect-changes, verify-ci, smoke-test]
+    # SPECULATIVE: runs in parallel with verify-ci. CI on main almost always
+    # passes (PR CI gated the merge; squash-merge produces a tree-equal commit),
+    # so the EV strongly favors building now. The push gate (promote) still
+    # requires verify-ci, so a CI failure here just wastes runner-minutes on
+    # a build that won't ship.
+    needs: [detect-changes, smoke-test]
     if: |
       always() &&
       needs.detect-changes.outputs.should_build == 'true' &&
-      (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
-      !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
+      !(needs.smoke-test.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -667,10 +671,17 @@ jobs:
   # layers, just manifest copies). Skipped on PR validation and dry-run.
   promote:
     name: Promote staging tags
-    needs: [detect-changes, build-and-scan, integration-test]
+    # SAFETY GATE: build-and-scan now runs speculatively (no verify-ci dep),
+    # so promote MUST explicitly require verify-ci to succeed before shipping.
+    # The `|| skipped` is intentional and load-bearing — verify-ci is skipped
+    # on workflow_dispatch and schedule events, which are legitimate non-PR
+    # triggers where we trust the operator/scheduler. On `push` to main,
+    # verify-ci runs and must succeed.
+    needs: [detect-changes, verify-ci, build-and-scan, integration-test]
     if: |
       always() &&
       needs.detect-changes.outputs.should_build == 'true' &&
+      (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
       needs.build-and-scan.result == 'success' &&
       needs.integration-test.result == 'success' &&
       github.event_name != 'pull_request' &&
