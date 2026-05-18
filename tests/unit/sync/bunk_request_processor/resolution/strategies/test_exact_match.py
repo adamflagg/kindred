@@ -218,6 +218,39 @@ class TestExactMatchStrategy:
         # Lower confidence without year context
         assert result.confidence == 0.90
 
+    def test_path_c_known_different_via_session_cm_ids_only(self, strategy, mock_repositories):
+        """Path C (#1501): direct-match unique-path elif must classify via session_cm_ids.
+
+        Before fix: target with session_cm_ids=[X,Y] (neither matches) and no singular
+        session_cm_id falls through to else branch -> 'unknown' 0.90.
+        After fix: classifier returns DIFFERENT -> 'different' 0.85.
+        """
+        person_repo, _ = mock_repositories
+
+        person = Person(cm_id=12345, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person]
+
+        attendee_info = {
+            # Target: only session_cm_ids populated (no singular key), neither matches requester
+            12345: {"session_cm_ids": [1000099, 1000888]},
+            # Requester has singular session
+            67890: {"session_cm_id": 1000002},
+        }
+
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        # DIFFERENT -> 0.85 (was 'unknown' 0.90 before fix)
+        assert result.confidence == 0.85
+        assert result.metadata.get("session_match") == "different"
+
     def test_multi_match_disambiguation_uses_session_cm_ids(self, strategy):
         """Multi-match disambiguation should check session_cm_ids, not just session_cm_id."""
         target_a = Person(cm_id=2000001, first_name="Erez", last_name="Costello")
@@ -608,7 +641,7 @@ class TestResolveSessionHandling:
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
         attendee_info = {
             1000001: {"session_cm_id": 1000010},
-            1234567: {"session_cm_id": 1000010},  # same session
+            1234567: {"session_cm_id": 1000010, "session_cm_ids": [1000010]},  # same session
         }
 
         result = strategy.resolve(
@@ -628,7 +661,7 @@ class TestResolveSessionHandling:
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
         attendee_info = {
             1000001: {"session_cm_id": 1000010},
-            1234567: {"session_cm_id": 1000020},  # different session
+            1234567: {"session_cm_id": 1000020, "session_cm_ids": [1000020]},  # different session
         }
 
         result = strategy.resolve(

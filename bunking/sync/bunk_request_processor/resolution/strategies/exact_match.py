@@ -101,32 +101,19 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     session_cm_id = requester_info.get("session_cm_id")
 
                 if session_cm_id:
-                    match_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
-                    if self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.95,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "exact"},
-                        )
-                    elif match_session is not None:
-                        # Target enrolled in a different bunking session
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.85,  # Lower confidence for different session
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "different"},
-                        )
-                    else:
-                        # No session data for target in enrolled-only map.
-                        # Could be cancelled, waitlisted, or not enrolled.
-                        # Disposition handled by ConflictDetector.
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.90,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "unknown"},
-                        )
+                    person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
+                    match = self._classify_session(person_sessions, session_cm_id)
+                    confidence_map = {
+                        SessionMatch.SAME: 0.95,
+                        SessionMatch.DIFFERENT: 0.85,
+                        SessionMatch.UNKNOWN: 0.90,
+                    }
+                    return ResolutionResult(
+                        person=matches[0],
+                        confidence=confidence_map[match],
+                        method=self.name,
+                        metadata={"sub_method": "unique", "session_match": match.value},
+                    )
                 else:
                     # No session context available
                     return ResolutionResult(
