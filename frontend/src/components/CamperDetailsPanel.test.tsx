@@ -1355,6 +1355,20 @@ describe('CamperDetailsPanel', () => {
       const backdrop = container.querySelector('[data-testid="panel-backdrop"]')
       expect(backdrop?.className).toContain('pointer-events-none')
     })
+
+    it('main render path backdrop also has pointer-events-none', async () => {
+      // Set up mocks so the camper resolves — hitting the main render path, not
+      // the loading or not-found path that the default empty-mock tests exercise.
+      setupDeclinedRequestMocks()
+      const { container } = render(
+        <CamperDetailsPanel camperId={String(EMMA.cm_id)} onClose={vi.fn()} />
+      )
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      const backdrop = container.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop?.className).toContain('pointer-events-none')
+    })
   })
 
   describe('CamperDetailsPanel layout — action bar awareness', () => {

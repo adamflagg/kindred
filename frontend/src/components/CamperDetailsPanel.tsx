@@ -749,7 +749,7 @@ export default function CamperDetailsPanel({
         />
         <div
           data-panel="camper-details"
-          className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] flex w-[28rem] items-center justify-center border-l ${
+          className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] flex w-[28rem] items-center justify-center border-l transition-[bottom] duration-200 ease-out ${
             animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
           } ${actionBarBottom}`}
           onAnimationEnd={handleAnimationEnd}
@@ -776,7 +776,7 @@ export default function CamperDetailsPanel({
         />
         <div
           data-panel="camper-details"
-          className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] w-[28rem] border-l p-6 ${
+          className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] w-[28rem] border-l p-6 transition-[bottom] duration-200 ease-out ${
             animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
           } ${actionBarBottom}`}
           onAnimationEnd={handleAnimationEnd}
@@ -1336,13 +1336,13 @@ export default function CamperDetailsPanel({
       {/* Backdrop - click to close panel */}
       <div
         data-testid="panel-backdrop"
-        className="fixed inset-0 z-[59]"
+        className="pointer-events-none fixed inset-0 z-[59]"
         onClick={handleClose}
         aria-hidden="true"
       />
       <div
         data-panel="camper-details"
-        className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] w-[28rem] border-l ${
+        className={`bg-card shadow-lodge-xl border-border fixed top-0 right-0 z-[60] w-[28rem] border-l transition-[bottom] duration-200 ease-out ${
           animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
         } ${actionBarBottom}`}
         onAnimationEnd={handleAnimationEnd}

@@ -175,7 +175,7 @@ function AddMemberPicker({
         createPortal(
           <div
             ref={dropdownRef}
-            className="bg-background fixed z-50 min-w-[220px] rounded-lg border shadow-lg"
+            className="bg-background fixed z-50 w-[260px] rounded-lg border shadow-lg"
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
             <input
@@ -535,7 +535,7 @@ function LockGroupPanel({
     <div
       data-panel="lock-group"
       className={clsx(
-        'bg-background fixed top-0 left-0 z-50 w-96 border-r shadow-xl',
+        'bg-background fixed top-0 left-0 z-50 w-96 border-r shadow-xl transition-[bottom] duration-200 ease-out',
         isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left',
         isActionBarVisible ? 'bottom-20' : 'bottom-0'
       )}
