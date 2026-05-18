@@ -71,7 +71,8 @@ jobs:
         echo "Documentation check complete!"
 
     - name: Markdownlint
-      run: npx --yes markdownlint-cli2 "**/*.md"
+      # Version pinned to match package.json; bump both when upgrading.
+      run: npx --yes markdownlint-cli2@0.22.1 "**/*.md"
 
     - name: Summary
       run: |
