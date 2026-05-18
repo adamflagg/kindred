@@ -134,16 +134,21 @@ jobs:
           # Per-image triggers — used to decide whether each matrix runner
           # does a full rebuild or just retags :latest -> :test-<sha>.
           # Be conservative: anything COPY'd into the Dockerfile triggers a rebuild.
+          # .dockerignore controls what gets COPY'd into every image, so an
+          # edit (especially one that excludes a previously-included file) must
+          # trigger a rebuild for every image to catch the regression.
           caddy:
             - 'frontend/**'
             - 'config/branding*.json'
             - 'docker/Caddyfile'
             - 'docker/Dockerfile.caddy'
             - 'docker/healthcheck/**'
+            - '.dockerignore'
           pocketbase:
             - 'pocketbase/**'
             - 'docker/Dockerfile.pocketbase'
             - 'docker/healthcheck/**'
+            - '.dockerignore'
           api:
             - 'api/**'
             - 'bunking/**'
@@ -152,15 +157,16 @@ jobs:
             - 'pyproject.toml'
             - 'uv.lock'
             - 'docker/Dockerfile.api'
+            - '.dockerignore'
           init:
             - 'pocketbase/**'
             - 'docker/init-entrypoint.sh'
             - 'docker/Dockerfile.init'
+            - '.dockerignore'
           # Deployment-metadata changes — affect how images run together but not
           # image content. Triggers integration-test + promote without rebuilds.
           deployment:
             - 'docker-compose*.yml'
-            - '.dockerignore'
 
     - name: Compute short SHA for staging tag
       id: short-sha
@@ -485,6 +491,9 @@ jobs:
 
     # === Fast path: source unchanged, retag :latest -> :test-<sha> ===
     # Skips checkout, kindred-local clone, DHI login, buildx setup, full build.
+    # Assumes :latest is single-platform linux/amd64 (see build step --platform);
+    # imagetools create copies the manifest reference verbatim, so a multi-arch
+    # :latest would carry through unchanged.
     # Errors loudly if :latest doesn't exist (e.g. brand-new image) — workflow_dispatch
     # forces should_build=true via REBUILD_ALL, so this only hits when an existing
     # image had its :latest deleted manually.
@@ -592,12 +601,20 @@ jobs:
           .
         echo "Pushed $STAGING_TAG"
 
+    # Trivy gated on full-build path only. Retag path reuses an already-scanned
+    # :latest digest; the weekly cron-triggered REBUILD_ALL re-scans against the
+    # current CVE DB. Also: .trivyignore lives at the repo root, so without the
+    # checkout from the build path, --ignorefile would silently no-op and the
+    # currently-suppressed CRITICAL CVEs would block every retag run.
+    # SARIF upload step below auto-skips via `steps.trivy-scan.outcome != 'skipped'`.
     - name: Install Trivy
+      if: matrix.should_build == 'true'
       uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
       with:
         version: v0.69.3
 
     - name: Scan ${{ matrix.image }} with Trivy
+      if: matrix.should_build == 'true'
       id: trivy-scan
       env:
         SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
@@ -816,7 +833,10 @@ jobs:
   # Summary job
   summary:
     name: Build Summary
-    needs: [build-and-scan, integration-test, promote]
+    # verify-ci is in needs so a CI failure (which would skip promote via the
+    # gate above) surfaces here as a workflow failure instead of being masked
+    # by the promote=skipped branch below logging "passed".
+    needs: [verify-ci, build-and-scan, integration-test, promote]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -827,6 +847,7 @@ jobs:
 
     - name: Check build status
       env:
+        VERIFY_CI_RESULT: ${{ needs.verify-ci.result }}
         BUILD_RESULT: ${{ needs.build-and-scan.result }}
         TEST_RESULT: ${{ needs.integration-test.result }}
         PROMOTE_RESULT: ${{ needs.promote.result }}
@@ -834,8 +855,9 @@ jobs:
         DRY_RUN: ${{ github.event.inputs.dry_run }}
         GH_USERNAME: ${{ env.USERNAME }}
       run: |
-        # Treat skipped as OK (no-changes path, or PR/dry-run for promote)
-        for RES_NAME in BUILD_RESULT TEST_RESULT PROMOTE_RESULT; do
+        # Treat skipped as OK (no-changes path, PR/dry-run for promote, or
+        # workflow_dispatch/schedule for verify-ci).
+        for RES_NAME in VERIFY_CI_RESULT BUILD_RESULT TEST_RESULT PROMOTE_RESULT; do
           RES="${!RES_NAME}"
           if [ "$RES" != "success" ] && [ "$RES" != "skipped" ]; then
             echo "$RES_NAME failed: $RES"
@@ -849,9 +871,13 @@ jobs:
           echo "CD validation passed (PR mode - staging tags pushed, no promote)"
         elif [ "$DRY_RUN" == "true" ]; then
           echo "CD dry-run passed (staging tags pushed, no promote)"
-        else
+        elif [ "$PROMOTE_RESULT" == "success" ]; then
           echo "All CD checks passed; images promoted to :latest and :sha-NNN"
           for IMG in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
             echo "  - ghcr.io/${GH_USERNAME}/${IMG}"
           done
+        else
+          # build/test succeeded but promote was skipped — most commonly because
+          # verify-ci failed (its gate on promote). Surface this clearly.
+          echo "Build + integration-test succeeded but promote was skipped (verify_ci=$VERIFY_CI_RESULT, promote=$PROMOTE_RESULT). Images NOT promoted to :latest."
         fi
