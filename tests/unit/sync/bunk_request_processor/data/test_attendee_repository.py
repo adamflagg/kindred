@@ -409,6 +409,54 @@ class TestAttendeeRepository:
         # Should request expand for session
         assert args["query_params"]["expand"] == "session"
 
+    def test_bulk_get_all_sessions_for_persons(self, repository, mock_pb_client):
+        """Test getting ALL bunking sessions per person (multi-enrollment aware).
+
+        Unlike bulk_get_sessions_for_persons (which collapses to one session
+        per person), returns the full list of bunking enrollments.
+        """
+        mock_client, mock_attendees, _ = mock_pb_client
+
+        def make_attendee(person_id, session_cm_id, year, session_type="main", status_id=2):
+            mock = Mock()
+            mock.person_id = person_id
+            mock.year = year
+            mock.status_id = status_id
+            session_mock = Mock()
+            session_mock.cm_id = session_cm_id
+            session_mock.session_type = session_type
+            mock.expand = {"session": session_mock}
+            return mock
+
+        # Person 12345 enrolled in TWO bunking sessions; person 67890 in one
+        mock_attendees.get_full_list.return_value = [
+            make_attendee(12345, 1000001, 2025, session_type="main"),
+            make_attendee(12345, 1000002, 2025, session_type="main"),
+            make_attendee(67890, 1000003, 2025, session_type="main"),
+            # Non-bunking session — must be excluded
+            make_attendee(12345, 9000001, 2025, session_type="family_camp"),
+        ]
+
+        sessions = repository.bulk_get_all_sessions_for_persons([12345, 67890], 2025)
+
+        # Person 12345 has BOTH bunking enrollments returned (multi-enrollment)
+        assert sorted(sessions[12345]) == [1000001, 1000002]
+        # Family-camp session is NOT included
+        assert 9000001 not in sessions[12345]
+        # Person 67890 has one enrollment
+        assert sessions[67890] == [1000003]
+
+        # Verify query shape
+        args = mock_attendees.get_full_list.call_args[1]
+        assert "person_id = 12345" in args["query_params"]["filter"]
+        assert "person_id = 67890" in args["query_params"]["filter"]
+        assert "year = 2025" in args["query_params"]["filter"]
+        assert args["query_params"]["expand"] == "session"
+
+    def test_bulk_get_all_sessions_for_persons_empty_input(self, repository):
+        """Empty input returns empty dict without DB hit."""
+        assert repository.bulk_get_all_sessions_for_persons([], 2025) == {}
+
 
 class TestBulkGetSessionsFiltersBunkingSessions:
     """Tests that bulk_get_sessions_for_persons only returns bunking-relevant sessions.

@@ -282,6 +282,74 @@ class AttendeeRepository:
             logger.exception("bulk_get_sessions_chunk failed for %d person IDs (year=%d)", len(person_cm_ids), year)
             return {}
 
+    def bulk_get_all_sessions_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, list[int]]:
+        """Get ALL bunking-relevant session enrollments per person.
+
+        Unlike `bulk_get_sessions_for_persons` (which collapses to one session
+        per person via status-priority tiebreak), returns the full list of
+        bunking enrollments. Used by name-resolution matchers that need
+        multi-enrollment awareness.
+
+        Chunks at _BULK_CHUNK_SIZE (100) to avoid PocketBase OR clause length limits.
+        Filters to VALID_BUNKING_SESSION_TYPES.
+        """
+        if not person_cm_ids:
+            return {}
+
+        sessions_dict: dict[int, list[int]] = {}
+        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
+            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+            chunk_result = self._bulk_get_all_sessions_chunk(chunk, year)
+            for cm_id, session_list in chunk_result.items():
+                sessions_dict.setdefault(cm_id, []).extend(session_list)
+
+        return sessions_dict
+
+    def _bulk_get_all_sessions_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, list[int]]:
+        """Get all bunking sessions for a single chunk of person IDs.
+
+        Mirrors `_bulk_get_sessions_chunk` but appends instead of overwriting,
+        so multi-enrolled campers get every bunking session returned.
+        """
+        from .session_repository import VALID_BUNKING_SESSION_TYPES
+
+        try:
+            or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]
+            or_clause = " || ".join(or_conditions)
+
+            items = self.pb.collection("attendees").get_full_list(
+                query_params={
+                    "filter": f"({or_clause}) && year = {year}",
+                    "expand": "session",
+                },
+            )
+
+            sessions_dict: dict[int, list[int]] = {}
+            for item in items:
+                person_cm_id = getattr(item, "person_id", None)
+                session_cm_id = self._get_session_cm_id(item)
+                if not person_cm_id or not session_cm_id:
+                    continue
+
+                session = get_session_from_expand(item)
+                session_type = getattr(session, "session_type", None) if session else None
+                if session_type not in VALID_BUNKING_SESSION_TYPES:
+                    continue
+
+                bucket = sessions_dict.setdefault(person_cm_id, [])
+                if session_cm_id not in bucket:
+                    bucket.append(session_cm_id)
+
+            return sessions_dict
+
+        except Exception:
+            logger.exception(
+                "bulk_get_all_sessions_chunk failed for %d person IDs (year=%d)",
+                len(person_cm_ids),
+                year,
+            )
+            return {}
+
     def bulk_get_enrollment_for_persons(self, person_cm_ids: list[int], year: int) -> dict[int, EnrollmentInfo]:
         """Get enrollment info including status_id for each person.
 
