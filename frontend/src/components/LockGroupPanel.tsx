@@ -391,7 +391,7 @@ function LockGroupPanel({
       // Then delete the group
       return await pb.collection('locked_groups').delete(groupId)
     },
-    onSuccess: () => {
+    onSuccess: (_data, deletedGroupId) => {
       void queryClient.invalidateQueries({
         queryKey: ['locked-groups', scenarioId, sessionPbId, currentYear],
       })
@@ -404,6 +404,9 @@ function LockGroupPanel({
       void queryClient.invalidateQueries({
         queryKey: ['locked-group-members-panel', scenarioId, sessionPbId],
       })
+      if (deletedGroupId === selectedGroupId) {
+        onGroupSelect?.(null)
+      }
     },
   })
 
@@ -618,6 +621,7 @@ function LockGroupPanel({
                             }}
                             className="hover:bg-muted rounded p-1"
                             title="Delete group"
+                            aria-label="Delete group"
                           >
                             <Trash2 className="text-destructive h-4 w-4" />
                           </button>

@@ -17,8 +17,10 @@ vi.mock('@tanstack/react-query', async () => {
   return {
     ...actual,
     useQuery: () => ({ data: mockQueryData, isLoading: false }),
-    useMutation: () => ({
-      mutate: () => {},
+    useMutation: (options: { onSuccess?: (data: unknown, variables: unknown) => void }) => ({
+      mutate: (variables: unknown) => {
+        options?.onSuccess?.(undefined, variables)
+      },
       mutateAsync: () => Promise.resolve(),
       isPending: false,
     }),
@@ -220,5 +222,46 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
     expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
     fireEvent.mouseDown(document.body)
     expect(screen.queryByPlaceholderText(/filter campers/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('LockGroupPanel — deleting the selected group clears selectedGroupId', () => {
+  const testGroup = {
+    id: 'group-abc',
+    name: 'Emma Squad',
+    color: '#ff0000',
+    scenario_id: 'scn-1',
+    session_pb_id: 'sess-1',
+    year: 2026,
+    collectionId: 'col1',
+    collectionName: 'locked_groups',
+    created: '',
+    updated: '',
+  }
+
+  it('calls onGroupSelect(null) when the selected group is deleted', () => {
+    const onGroupSelect = vi.fn()
+    mockQueryData = [testGroup]
+    mockContext.membersByGroup = { 'group-abc': [] }
+
+    // Mock window.confirm to return true (user confirms deletion)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        onGroupSelect={onGroupSelect}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete group' }))
+
+    expect(onGroupSelect).toHaveBeenCalledWith(null)
+
+    vi.restoreAllMocks()
   })
 })
