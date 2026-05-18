@@ -38,15 +38,16 @@ only) once individual streams are picked up.
 | Retire `solution.calculate_satisfied_requests` | #1397 | #1438 | ✅ shipped 2026-05-15 |
 | **Stream 4 — mutual-request boost** | #1382 | — | ⬜ **Phase 3 — next build** |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
-| Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
-| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ unblocked (#1429 merged) |
-| Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ⬜ surfaced 2026-05-15 during priority-deletion scoping; non-blocking but every per-domain cleanup re-discovers the same V1↔V2 drift |
-| Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
-| Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | — | ⬜ cleanup (sibling of #1424) |
-| age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | — | ⬜ cleanup; prereq for #1398 age_preference coverage |
-| Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | — | ⬜ debug-UX polish |
-| Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | — | ⬜ staff-UX polish |
-| Exclude impossible requests from `all_camper_rate` ("Optimized") + surface in post-check modal | #1442 | — | ⬜ symmetry with #1429 + post-solve visibility |
+| Penalty-driven MP-coverage investigation | #1396 | — | ✅ closed 2026-05-17 — deferred to post-`solver-config-it` baseline; soft MSO path likely deleted in cleanup |
+| Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ✅ closed 2026-05-17 — substantive piece (`target_not_in_solver` predicate) shipped via #1391's precheck-impossible-mp substream; remainder folds into V1/V2 refactor |
+| Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ✅ closed not-planned 2026-05-17 — finding parked in "V1/V2 models consolidation" section below |
+| Schematize `grade_spread.max_spread` | #1424 | — | ✅ closed 2026-05-18 — folded into Grade Spread Phase 2 cleanup (per `solver-config-decisions.md`) |
+| Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | #1455 | ✅ shipped 2026-05-15 |
+| age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | #1466 | ✅ shipped 2026-05-15 |
+| Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | #1465 | ✅ shipped 2026-05-15 |
+| Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | #1464 | ✅ shipped 2026-05-16 |
+| Exclude impossible requests from `all_camper_rate` ("Optimized") — solver-side math | #1442 | #1463 | ✅ shipped 2026-05-15 |
+| Validator-side parity (post-check denominator gating) | #1520 | — | ⬜ small — see "First drift instance observed" in V1/V2 Parked section |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
 Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
@@ -895,6 +896,10 @@ Revisit when **any** of these become true:
 
 Until one of these triggers, the priority-deletion-style per-domain cleanup (Phase 1.5 via `solver-config-it`) handles V1-side fields as they're individually retired (priority already gone via #1455). The duplication shrinks on its own as each domain wraps.
 
+### First drift instance observed (2026-05-18)
+
+Post-#1442 (solver-side impossibility gating), the post-check modal shows ~92% (152/166) where the solver-side JSON shows ~97% (151/155) for the same solve. Root cause: `bunking/bunking_validator.py:789-795` (V1 path) computes `material_parent_requests` independently from raw resolved requests and never gates on the impossibility report. Filed as **#1520** (tactical validator-side gating, scope-matched to #1463) rather than a V1/V2 trigger; the drift instance is captured here so the reviewer picking up #1520 can decide whether to fold the validator gating into a larger V1/V2 consolidation pass or ship narrow.
+
 ---
 
 ## Cross-references
@@ -1053,3 +1058,11 @@ Until one of these triggers, the priority-deletion-style per-domain cleanup (Pha
   `priority` drift example is now moot (deleted via PR #1455). Refactor
   deferred until an integration-level solver-pass test exists or a
   non-cosmetic drift forces the issue.
+- **2026-05-18** — Roadmap table refreshed: 7 issues marked ✅ shipped/closed
+  that the doc previously listed as ⬜ open (#1396, #1424, #1426, #1432,
+  #1433, #1440, #1441, #1442, #1451). Only #1382 (Phase 3 mutual-request
+  boost) and #1381 (Phase 4 variable-count attack) remain genuinely open
+  among the work-item table. New "First drift instance observed" entry
+  added to the V1/V2 Parked section noting the post-check denominator
+  divergence (`bunking_validator.py` doesn't gate on impossibility — filed
+  as tactical issue, also flagged as candidate V1/V2 trigger).
