@@ -144,6 +144,12 @@ jobs:
 
     - name: Compute short SHA for staging tag
       id: short-sha
+      # Run even if earlier steps failed. short_sha only reads github.* context,
+      # not prior step outputs, so it can always compute. Required so the
+      # should-build safety fallback (which also uses always()) doesn't produce
+      # a should_build=true / short_sha="" inconsistency that would let
+      # downstream jobs push to malformed :test- tags.
+      if: always()
       env:
         # On PR, github.sha is the merge-commit SHA; use the PR head SHA so the
         # staging tag matches what's actually built and matches GIT_SHA build-arg.
