@@ -6,6 +6,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -557,6 +558,96 @@ class TestExactMatchParentSurname:
 
         assert result.is_resolved
         assert result.confidence == 0.90  # base preserved when no session context
+
+    def test_parent_surname_candidates_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Parent-surname candidates branch: UNKNOWN session preserves 0.90 base.
+
+        attendee_info has no session_cm_ids entry for the target (cancelled, waitlisted,
+        or otherwise absent from enrolled-only map). Classifier returns UNKNOWN; downgrade
+        to 0.80 must only happen for DIFFERENT, not UNKNOWN.
+        """
+        person_repo, _ = mock_repositories
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        # attendee_info present but target has no session data -> UNKNOWN
+        attendee_info: dict[int, dict[str, Any]] = {67890: {"session_cm_ids": [1000002]}}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            candidates=[person],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        assert result.confidence == 0.90  # UNKNOWN preserves base, only DIFFERENT downgrades to 0.80
+
+    def test_path_a_name_cache_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Path A (name_cache parent-surname): UNKNOWN session preserves 0.90 base."""
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        mock_cache = Mock()
+        mock_cache.find_by_parent_surname.return_value = [person]
+        person_repo.name_cache = mock_cache
+
+        # Target absent from enrolled-only map -> UNKNOWN
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # UNKNOWN preserves base
+
+    def test_path_b_via_db_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Path B (via_db parent-surname): UNKNOWN session preserves 0.90 base."""
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # Target absent from enrolled-only map -> UNKNOWN
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # UNKNOWN preserves base
 
 
 class TestExactMatchPreferredName:

@@ -377,7 +377,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 confidence = 0.90  # Base for parent surname match
                 if session_cm_id and attendee_info:
                     person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
-                    if self._classify_session(person_sessions, session_cm_id) is not SessionMatch.SAME:
+                    if self._classify_session(person_sessions, session_cm_id) is SessionMatch.DIFFERENT:
                         confidence = 0.80  # Lower for different session
 
                 return ResolutionResult(
@@ -417,7 +417,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             confidence = 0.90  # Base for parent-surname match (lower than direct-match base 0.95)
             if year and session_cm_id:
                 sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
-                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is not SessionMatch.SAME:
+                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is SessionMatch.DIFFERENT:
                     confidence = 0.80  # Lower for different session
             return ResolutionResult(
                 person=matches[0],
@@ -477,7 +477,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             confidence = 0.90  # Base for parent-surname match (lower than direct-match base 0.95)
             if year and session_cm_id:
                 sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
-                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is not SessionMatch.SAME:
+                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is SessionMatch.DIFFERENT:
                     confidence = 0.80  # Lower for different session
             return ResolutionResult(
                 person=matches[0],
