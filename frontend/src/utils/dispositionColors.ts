@@ -142,7 +142,8 @@ export const formatReason = formatDispositionReason
  *   branch below. The all-camper audit modal renders full history via its own
  *   code path, unaffected by this predicate (issue #1447).
  * - Pending rows: only for triage reasons (needs_review, target_waitlisted,
- *   undirected_preference, self_referential). Other pending rows stay chip-only.
+ *   undirected_preference, self_referential, enrollment_change). Other pending
+ *   rows stay chip-only.
  */
 export function shouldShowReasonInStatus(
   status: string,

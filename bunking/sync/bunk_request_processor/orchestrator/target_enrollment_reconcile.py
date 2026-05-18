@@ -10,10 +10,11 @@ directions:
 
   REVERSE (reopen direction):
     Declined BRs whose disposition_reason ∈ {target_not_attending,
-    session_mismatch} AND whose target is now actively enrolled in the BR's
-    session → flip to pending with disposition_reason="enrollment_change".
-    Only these two reasons are eligible; other declines (self_referential,
-    requester_not_attending, empty/manual-decline) stay declined.
+    session_mismatch, target_not_enrolled} AND whose target is now actively
+    enrolled in the BR's session → flip to pending with
+    disposition_reason="enrollment_change". Only these three reasons are
+    eligible; other declines (self_referential, requester_not_attending,
+    empty/manual-decline) stay declined.
 
 Active enrollment is keyed per-session: a person can be enrolled in
 multiple sessions in the same year, and a separate cancelled/withdrawn row
@@ -42,7 +43,12 @@ logger = get_logger(__name__)
 
 # Decline reasons that are eligible for reopen when the target re-enrolls.
 # Other reasons (self_referential, requester_not_attending, empty/manual) stay declined.
-_REOPEN_ELIGIBLE_REASONS: frozenset[str] = frozenset({"target_not_attending", "session_mismatch"})
+# target_not_enrolled is included because it signals the target had no bunking session at
+# the time of decline (emitted by disposition_rules.py); once they enroll, the BR should
+# reopen just like target_not_attending.
+_REOPEN_ELIGIBLE_REASONS: frozenset[str] = frozenset(
+    {"target_not_attending", "session_mismatch", "target_not_enrolled"}
+)
 
 
 @dataclass(frozen=True)
@@ -209,7 +215,7 @@ def _attendee_session_cm_id(attendee: Any) -> int | None:
     session = expand.get("session") if isinstance(expand, dict) else getattr(expand, "session", None)
     if session is None:
         return None
-    cm_id = getattr(session, "cm_id", None)
+    cm_id = session.get("cm_id") if isinstance(session, dict) else getattr(session, "cm_id", None)
     if cm_id is None:
         return None
     return int(cm_id)

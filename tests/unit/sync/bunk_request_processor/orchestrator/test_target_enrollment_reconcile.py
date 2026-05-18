@@ -29,6 +29,7 @@ import pytest
 
 from bunking.sync.bunk_request_processor.orchestrator.target_enrollment_reconcile import (
     TargetReconcileAction,
+    _attendee_session_cm_id,
     apply_target_reconcile,
     compute_target_reconcile_actions,
     run_target_reconcile_phase,
@@ -283,6 +284,46 @@ class TestComputeTargetReconcileActionsReopenDirection:
 
         assert actions == []
 
+    def test_reopens_target_not_enrolled_decline_when_target_now_enrolled(self) -> None:
+        """Emma Johnson (1001) was declined with target_not_enrolled (no bunking session).
+        She has since enrolled in session 100 → eligible for reopen the same as
+        target_not_attending."""
+        bunk_requests = [
+            {
+                "id": "br1",
+                "requestee_id": 1001,
+                "session_id": 100,
+                "status": "declined",
+                "disposition_reason": "target_not_enrolled",
+            },
+        ]
+
+        actions = compute_target_reconcile_actions(
+            bunk_requests=bunk_requests,
+            active_sessions_by_cm_id={1001: {100}},
+        )
+
+        assert actions == [TargetReconcileAction(bunk_request_id="br1", action="reopen", reason="enrollment_change")]
+
+    def test_no_reopen_for_target_not_enrolled_when_still_not_enrolled(self) -> None:
+        """target_not_enrolled reason with target still absent → no action."""
+        bunk_requests = [
+            {
+                "id": "br1",
+                "requestee_id": 1001,
+                "session_id": 100,
+                "status": "declined",
+                "disposition_reason": "target_not_enrolled",
+            },
+        ]
+
+        actions = compute_target_reconcile_actions(
+            bunk_requests=bunk_requests,
+            active_sessions_by_cm_id={},
+        )
+
+        assert actions == []
+
     def test_non_declined_brs_are_not_reopen_candidates(self) -> None:
         """resolved and pending BRs are candidates for the decline direction only."""
         bunk_requests = [
@@ -520,6 +561,50 @@ def _make_br(
     br.status = status
     br.disposition_reason = disposition_reason
     return br
+
+
+# ---------------------------------------------------------------------------
+# _attendee_session_cm_id helper tests — dict-shaped expand / session
+# ---------------------------------------------------------------------------
+
+
+class TestAttendeeSessionCmId:
+    """Regression: _attendee_session_cm_id must handle dict-shaped expand and session.
+
+    PocketBase responses may return expand as a dict where values are either
+    dicts or objects. The helper must handle all four combinations.
+    """
+
+    def test_both_expand_and_session_dict_shaped(self) -> None:
+        """expand = {"session": {"cm_id": 100}} — both are dicts."""
+        a = MagicMock()
+        a.expand = {"session": {"cm_id": 100}}
+        assert _attendee_session_cm_id(a) == 100
+
+    def test_expand_dict_session_object_shaped(self) -> None:
+        """expand is dict, session is object (existing path also works)."""
+        a = MagicMock()
+        session = MagicMock()
+        session.cm_id = 200
+        a.expand = {"session": session}
+        assert _attendee_session_cm_id(a) == 200
+
+    def test_expand_missing_returns_none(self) -> None:
+        """No expand attribute at all → None."""
+        a = MagicMock(spec=[])  # no attributes by default
+        assert _attendee_session_cm_id(a) is None
+
+    def test_session_missing_in_expand_returns_none(self) -> None:
+        """expand dict has no 'session' key → None."""
+        a = MagicMock()
+        a.expand = {}
+        assert _attendee_session_cm_id(a) is None
+
+    def test_dict_session_without_cm_id_returns_none(self) -> None:
+        """expand = {"session": {}} (no cm_id key) → None."""
+        a = MagicMock()
+        a.expand = {"session": {}}
+        assert _attendee_session_cm_id(a) is None
 
 
 # ---------------------------------------------------------------------------
