@@ -42,6 +42,7 @@ type ExpandedMember = LockedGroupMembersResponse & {
           first_name?: string
           last_name?: string
           preferred_name?: string
+          gender?: string
         }
         session?: {
           id: string
@@ -88,6 +89,7 @@ interface AddMemberPickerProps {
   sessionCampers: Camper[]
   getCamperLockGroup: (cmId: number) => unknown
   addCamperToGroup: (camper: Camper, groupId: string) => Promise<void>
+  members: ExpandedMember[]
 }
 
 function AddMemberPicker({
@@ -95,6 +97,7 @@ function AddMemberPicker({
   sessionCampers,
   getCamperLockGroup,
   addCamperToGroup,
+  members,
 }: AddMemberPickerProps) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
@@ -102,14 +105,26 @@ function AddMemberPicker({
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
 
+  // Determine if the group has a homogeneous gender so we can filter the picker.
+  // Mixed-gender groups (AG cabin pattern) or empty groups show all eligible campers.
+  const lockedGender = useMemo<string | null>(() => {
+    const genders = new Set<string>()
+    for (const m of members) {
+      const g = m.expand?.attendee?.expand?.person?.gender
+      if (g) genders.add(g)
+    }
+    return genders.size === 1 ? (Array.from(genders)[0] ?? null) : null
+  }, [members])
+
   const eligible = useMemo(
     () =>
       sessionCampers.filter(
         (c) =>
           !getCamperLockGroup(c.person_cm_id) &&
+          (lockedGender === null || c.gender === lockedGender) &&
           (c.name ?? '').toLowerCase().includes(filter.toLowerCase())
       ),
-    [sessionCampers, getCamperLockGroup, filter]
+    [sessionCampers, getCamperLockGroup, lockedGender, filter]
   )
 
   // Recompute position when opening
@@ -743,6 +758,7 @@ function LockGroupPanel({
                           sessionCampers={sessionCampers}
                           getCamperLockGroup={getCamperLockGroup}
                           addCamperToGroup={addCamperToGroup}
+                          members={members}
                         />
                       </div>
                     )}

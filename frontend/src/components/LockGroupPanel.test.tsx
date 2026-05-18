@@ -231,6 +231,105 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
   })
 })
 
+describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
+  // Member records injected into mockQueryData so membersByGroup['group-abc'] is populated.
+  // The mock returns the same data for both the groups and members queries, so both the
+  // group object and member objects appear in `groups` — member records have no `name`/`color`
+  // and render as additional unnamed group cards, but that doesn't affect picker assertions.
+  const maleOnlyMembers = [
+    {
+      id: 'mem-1',
+      group: 'group-abc',
+      attendee: 'att-1',
+      expand: { attendee: { expand: { person: { id: 'p1', cm_id: 9001, gender: 'M' } } } },
+    },
+    {
+      id: 'mem-2',
+      group: 'group-abc',
+      attendee: 'att-2',
+      expand: { attendee: { expand: { person: { id: 'p2', cm_id: 9002, gender: 'M' } } } },
+    },
+  ]
+  const mixedMembers = [
+    {
+      id: 'mem-3',
+      group: 'group-abc',
+      attendee: 'att-3',
+      expand: { attendee: { expand: { person: { id: 'p3', cm_id: 9003, gender: 'M' } } } },
+    },
+    {
+      id: 'mem-4',
+      group: 'group-abc',
+      attendee: 'att-4',
+      expand: { attendee: { expand: { person: { id: 'p4', cm_id: 9004, gender: 'F' } } } },
+    },
+  ]
+  const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
+
+  it('locks picker to "M" when all current members are male', () => {
+    mockQueryData = [testGroup, ...maleOnlyMembers]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Riley Sam', gender: 'M' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Sophia Lee', gender: 'F' } as never,
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /sophia lee/i })).not.toBeInTheDocument()
+  })
+
+  it('does NOT lock picker gender when group has mixed-gender members (AG cabin)', () => {
+    mockQueryData = [testGroup, ...mixedMembers]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Riley Sam', gender: 'M' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Sophia Lee', gender: 'F' } as never,
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sophia lee/i })).toBeInTheDocument()
+  })
+
+  it('does NOT lock picker gender when group is empty', () => {
+    mockQueryData = [testGroup] // no members injected → membersByGroup['group-abc'] = []
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Riley Sam', gender: 'M' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Sophia Lee', gender: 'F' } as never,
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sophia lee/i })).toBeInTheDocument()
+  })
+})
+
 describe('LockGroupPanel — deleting the selected group clears selectedGroupId', () => {
   const testGroup = {
     id: 'group-abc',
