@@ -90,7 +90,7 @@ describe('LockGroupPanel layout', () => {
 describe('LockGroupPanel — α visual treatment on selected group', () => {
   const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
 
-  it('applies the group color as a left stripe on the selected group header', () => {
+  it('applies the group color as a tinted background on the selected group header', () => {
     mockQueryData = [testGroup]
     const { container } = render(
       <LockGroupPanel
@@ -103,12 +103,13 @@ describe('LockGroupPanel — α visual treatment on selected group', () => {
     )
     const header = container.querySelector<HTMLElement>('[data-group-id="group-abc"]')
     expect(header).not.toBeNull()
+    // Stripe is always present (group identity); selection adds the tint
     expect(header?.className).toContain('border-l-4')
-    // React serialises hex to rgb(...) in jsdom; use the JS style property instead of getAttribute.
     expect(header?.style.borderLeftColor).toBeTruthy()
+    expect(header?.style.backgroundColor).toBeTruthy()
   })
 
-  it('does NOT apply the stripe when the group is not selected', () => {
+  it('keeps the stripe but omits the tint when the group is not selected', () => {
     mockQueryData = [testGroup]
     const { container } = render(
       <LockGroupPanel
@@ -119,8 +120,11 @@ describe('LockGroupPanel — α visual treatment on selected group', () => {
         selectedGroupId={null}
       />
     )
-    const header = container.querySelector('[data-group-id="group-abc"]')
+    const header = container.querySelector<HTMLElement>('[data-group-id="group-abc"]')
     expect(header).not.toBeNull()
-    expect(header?.className).not.toContain('border-l-4')
+    // Stripe still present, but no tint
+    expect(header?.className).toContain('border-l-4')
+    expect(header?.style.borderLeftColor).toBeTruthy()
+    expect(header?.style.backgroundColor).toBeFalsy()
   })
 })
