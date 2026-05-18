@@ -1175,3 +1175,288 @@ describe('PostValidationResultsModal — Impossible by reason kicker', () => {
     ).toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Issue #1481 Item 1 — Bunks needing attention: chip rows expand on click
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — bunk chip row expand on click (#1481)', () => {
+  const bunkIssues = [
+    {
+      type: 'capacity_violation',
+      severity: 'error',
+      message: 'Bunk Pine 3 is over capacity (9/8)',
+      details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+    },
+    {
+      type: 'grade_ratio_warning',
+      severity: 'warning',
+      message: 'Bunk Pine 3 has 75.0% of campers from grade 5 (exceeds 67% limit)',
+      details: {
+        bunk_name: 'Pine 3',
+        grade: 5,
+        count: 6,
+        total: 8,
+        percentage: 75.0,
+        max_allowed: 67,
+        all_grades: { '5': 6, '4': 2 },
+      },
+    },
+  ]
+
+  it('default view shows chip labels, not numeric detail lines', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats(),
+          issues: bunkIssues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    // Chip labels visible
+    expect(screen.getByText(/capacity violation/i)).toBeInTheDocument()
+    // Detail line text NOT visible before click (the number "9 of 8" or "1 over")
+    expect(screen.queryByText(/9 of 8|1 over/i)).not.toBeInTheDocument()
+  })
+
+  it('clicking a bunk row expands to reveal numeric detail lines', async () => {
+    const user = userEvent.setup()
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats(),
+          issues: bunkIssues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    // Click the bunk row (by bunk name)
+    await user.click(screen.getByText('Pine 3'))
+    // Capacity detail line should now be visible with numbers
+    expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
+  })
+
+  it('clicking the bunk row again collapses the detail', async () => {
+    const user = userEvent.setup()
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats(),
+          issues: bunkIssues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    await user.click(screen.getByText('Pine 3'))
+    // Expanded — detail visible
+    expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
+    // Click again to collapse
+    await user.click(screen.getByText('Pine 3'))
+    expect(screen.queryByText(/9.*8|1 over/i)).not.toBeInTheDocument()
+  })
+
+  it('age_spread detail shows months and limit after expand', async () => {
+    const user = userEvent.setup()
+    const issues = [
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    await user.click(screen.getByText('Oak 2'))
+    // Expect "26" and "24" and "months" in the rendered output
+    expect(screen.getByText(/26.*month|month.*26/i)).toBeInTheDocument()
+    expect(screen.getByText(/24/)).toBeInTheDocument()
+  })
+
+  it('falls back to raw message when details are absent', async () => {
+    const user = userEvent.setup()
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Maple 1 is over capacity',
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    await user.click(screen.getByText('Maple 1'))
+    expect(screen.getByText('Bunk Maple 1 is over capacity')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Issue #1481 Item 2 — Sub-label section-aware breakdown
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
+  it('shows "no issues to review" when issues list is empty', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 0,
+          satisfied_material_parent_requests: 0,
+          material_parent_request_satisfaction_rate: 0,
+          campers_with_unsatisfied_material_parent_requests: 0,
+          request_satisfaction_rate: 0.5,
+        })}
+      />
+    )
+    // The "Needs Attention" tier is triggered by rate 0.5 — sub-label shows empty state
+    expect(screen.getByText(/no issues to review/i)).toBeInTheDocument()
+  })
+
+  it('shows section-aware breakdown with families, bunks, and other counts', () => {
+    // 1 family row (got_nothing camper), 1 bunk issue, 1 other issue
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000001,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+        },
+      ],
+      by_reason: {},
+    })
+    const issues = [
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
+      },
+      {
+        type: 'unassigned_camper',
+        severity: 'error',
+        message: 'Liam Garcia is not assigned to any bunk',
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats({
+            request_satisfaction_rate: 0.5,
+            material_parent_requests: 0,
+            satisfied_material_parent_requests: 0,
+            material_parent_request_satisfaction_rate: 0,
+            campers_with_unsatisfied_material_parent_requests: 0,
+          }),
+          issues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // Sub-label is in the header <p class="text-muted-foreground text-sm">
+    // It should contain sections for family/bunk separated by "·"
+    const sublabelMatches = screen.getAllByText(/famil.*bunk|bunk.*famil/i)
+    expect(sublabelMatches.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('omits zero-count sections from breakdown', () => {
+    // Only bunk issues — no family rows, no other issues
+    const issues = [
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats({
+            request_satisfaction_rate: 0.5,
+            material_parent_requests: 0,
+            satisfied_material_parent_requests: 0,
+            material_parent_request_satisfaction_rate: 0,
+            campers_with_unsatisfied_material_parent_requests: 0,
+          }),
+          issues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    // "0 families" or "0 other" should NOT appear
+    expect(screen.queryByText(/0 famil/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/0 other/i)).not.toBeInTheDocument()
+    // "1 bunk" should appear somewhere in the document (the sub-label)
+    const bunkMatches = screen.getAllByText(/1 bunk/i)
+    expect(bunkMatches.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not show raw issues.length as the sub-label', () => {
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats({
+            request_satisfaction_rate: 0.5,
+            material_parent_requests: 0,
+            satisfied_material_parent_requests: 0,
+            material_parent_request_satisfaction_rate: 0,
+            campers_with_unsatisfied_material_parent_requests: 0,
+          }),
+          issues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    // The old label "2 issues to review" should not appear
+    expect(screen.queryByText(/2 issues? to review/i)).not.toBeInTheDocument()
+  })
+})

@@ -1,10 +1,11 @@
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   BUNK_LEVEL_ISSUE_TYPES,
   SUPPRESSED_ISSUE_TYPES,
   extractBunkName,
   type PostCheckIssue,
 } from './issueClassifier'
+import { formatBunkIssueDetail } from '../utils/validationIssueFormatter'
 import {
   CheckCircle2,
   AlertTriangle,
@@ -552,6 +553,18 @@ export default function PostValidationResultsModal({
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  const [expandedBunks, setExpandedBunks] = useState<Set<string>>(new Set())
+  const toggleBunkExpand = useCallback((bunkName: string) => {
+    setExpandedBunks((prev) => {
+      const next = new Set(prev)
+      if (next.has(bunkName)) {
+        next.delete(bunkName)
+      } else {
+        next.add(bunkName)
+      }
+      return next
+    })
+  }, [])
   useEffect(() => {
     if (!isOpen) setSelectedCamperId(null)
   }, [isOpen])
@@ -693,9 +706,18 @@ export default function PostValidationResultsModal({
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
     } else if (satisfactionRate >= 0.5) {
+      const parts: string[] = []
+      if (familyRows.length > 0)
+        parts.push(`${familyRows.length} ${familyRows.length === 1 ? 'family' : 'families'}`)
+      if (issuesByBunk.length > 0)
+        parts.push(`${issuesByBunk.length} ${issuesByBunk.length === 1 ? 'bunk' : 'bunks'}`)
+      const otherCount = groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)
+      if (otherCount > 0) parts.push(`${otherCount} other`)
+      if (hasUnmetDrilldown && parts.length === 0) parts.push('unmet parent requests')
+      const sublabel = parts.length > 0 ? parts.join(' · ') : 'no issues to review'
       base = {
         label: 'Needs Attention',
-        sublabel: `${hasIssues ? issues.length : 0} issue${issues.length !== 1 ? 's' : ''} to review`,
+        sublabel,
         icon: AlertCircle,
         gradient: 'from-amber-500/15 to-amber-400/5',
         iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
@@ -1023,25 +1045,49 @@ export default function PostValidationResultsModal({
               </span>
             </div>
             <ul className="mt-3 space-y-2 text-sm">
-              {issuesByBunk.map(([bunkName, bunkIssues]) => (
-                <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
-                  <div className="font-medium text-stone-900">{bunkName}</div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {bunkIssues.map((iss, idx) => (
-                      <span
-                        key={idx}
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          iss.type === 'capacity_violation'
-                            ? 'bg-red-200 text-red-900'
-                            : 'bg-amber-200 text-amber-900'
-                        }`}
-                      >
-                        {getIssueTypeLabel(iss.type)}
-                      </span>
-                    ))}
-                  </div>
-                </li>
-              ))}
+              {issuesByBunk.map(([bunkName, bunkIssues]) => {
+                const isExpanded = expandedBunks.has(bunkName)
+                return (
+                  <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 text-left"
+                      onClick={() => toggleBunkExpand(bunkName)}
+                      aria-expanded={isExpanded}
+                    >
+                      <span className="font-medium text-stone-900">{bunkName}</span>
+                      {isExpanded ? (
+                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+                      )}
+                    </button>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {bunkIssues.map((iss, idx) => (
+                        <span
+                          key={idx}
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            iss.type === 'capacity_violation'
+                              ? 'bg-red-200 text-red-900'
+                              : 'bg-amber-200 text-amber-900'
+                          }`}
+                        >
+                          {getIssueTypeLabel(iss.type)}
+                        </span>
+                      ))}
+                    </div>
+                    {isExpanded && (
+                      <ul className="mt-2 space-y-1 border-t border-stone-100 pt-2">
+                        {bunkIssues.map((iss, idx) => (
+                          <li key={idx} className="text-xs text-stone-600">
+                            {formatBunkIssueDetail(iss)}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         </div>
