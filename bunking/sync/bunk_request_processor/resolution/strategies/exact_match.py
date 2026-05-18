@@ -12,6 +12,16 @@ from ...shared import last_name_matches, parse_name
 from ..interfaces import ResolutionResult, SessionMatch
 from .base_match_strategy import BaseMatchStrategy
 
+# Confidence values for Path C (direct-match unique branch), keyed by SessionMatch:
+# - SAME (target enrolled in requester's session)        -> 0.95 high-confidence match
+# - DIFFERENT (target in known other session)            -> 0.85 likely-correct but session mismatch
+# - UNKNOWN (no session data; cancelled/waitlisted/etc.) -> 0.90 — ConflictDetector handles downstream
+_DIRECT_MATCH_CONFIDENCE: dict[SessionMatch, float] = {
+    SessionMatch.SAME: 0.95,
+    SessionMatch.DIFFERENT: 0.85,
+    SessionMatch.UNKNOWN: 0.90,
+}
+
 
 class ExactMatchStrategy(BaseMatchStrategy):
     """Strategy for exact name matching.
@@ -103,14 +113,9 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 if session_cm_id:
                     person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
                     match = self._classify_session(person_sessions, session_cm_id)
-                    confidence_map = {
-                        SessionMatch.SAME: 0.95,
-                        SessionMatch.DIFFERENT: 0.85,
-                        SessionMatch.UNKNOWN: 0.90,
-                    }
                     return ResolutionResult(
                         person=matches[0],
-                        confidence=confidence_map[match],
+                        confidence=_DIRECT_MATCH_CONFIDENCE[match],
                         method=self.name,
                         metadata={"sub_method": "unique", "session_match": match.value},
                     )
