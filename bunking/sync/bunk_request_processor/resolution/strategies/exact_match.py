@@ -101,13 +101,8 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     session_cm_id = requester_info.get("session_cm_id")
 
                 if session_cm_id:
-                    # Check match's session — use all sessions if available,
-                    # fall back to single session for backward compatibility
-                    match_info = attendee_info.get(matches[0].cm_id, {})
-                    match_sessions = match_info.get("session_cm_ids", [])
-                    match_session = match_info.get("session_cm_id")
-
-                    if (match_sessions and session_cm_id in match_sessions) or (match_session == session_cm_id):
+                    match_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
+                    if self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.95,
@@ -201,6 +196,23 @@ class ExactMatchStrategy(BaseMatchStrategy):
             metadata={"ambiguity_reason": "multiple_matches_no_year", "match_count": len(matches)},
         )
 
+    @staticmethod
+    def _is_same_session_via_attendee_info(
+        person_cm_id: int,
+        session_cm_id: int,
+        attendee_info: dict[int, dict[str, Any]],
+    ) -> bool:
+        """Check if a person is enrolled in the given session, using pre-loaded attendee_info.
+
+        Prefers session_cm_ids (multi-enrollment) when available, falls back to singular
+        session_cm_id for backward compatibility.
+        """
+        info = attendee_info.get(person_cm_id, {})
+        match_sessions = info.get("session_cm_ids", [])
+        if match_sessions:
+            return session_cm_id in match_sessions
+        return info.get("session_cm_id") == session_cm_id
+
     def _disambiguate_with_session(
         self,
         matches: list[Person],
@@ -228,15 +240,9 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     metadata={"ambiguity_reason": "multiple_matches_no_session", "match_count": len(matches)},
                 )
 
-            # Filter by same session using pre-loaded data (check session_cm_ids first for multi-enrolled)
-            def _is_same_session(m: Person) -> bool:
-                info = attendee_info.get(m.cm_id, {})
-                match_sessions = info.get("session_cm_ids", [])
-                if match_sessions:
-                    return session_cm_id in match_sessions
-                return info.get("session_cm_id") == session_cm_id
-
-            same_session_matches = [m for m in matches if _is_same_session(m)]
+            same_session_matches = [
+                m for m in matches if self._is_same_session_via_attendee_info(m.cm_id, session_cm_id, attendee_info)
+            ]
 
             if len(same_session_matches) == 1:
                 return ResolutionResult(
@@ -389,8 +395,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             if len(matches) == 1:
                 confidence = 0.90  # Base for parent surname match
                 if session_cm_id and attendee_info:
-                    match_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
-                    if match_session != session_cm_id:
+                    if not self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
                         confidence = 0.80  # Lower for different session
 
                 return ResolutionResult(

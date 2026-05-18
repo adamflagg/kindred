@@ -598,5 +598,92 @@ class TestResolveSessionHandling:
         assert result.confidence == 0.90
 
 
+class TestParentSurnameSessionCmIds:
+    """Tests that _try_parent_surname_match consults session_cm_ids, not just session_cm_id."""
+
+    @pytest.fixture
+    def strategy(self):
+        person_repo = Mock()
+        attendee_repo = Mock()
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.name_cache = None
+        person_repo.find_by_name.return_value = []
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_parent_surname_fast_path_uses_session_cm_ids(self, strategy):
+        """parent-surname fast path must check session_cm_ids, not just session_cm_id.
+
+        Bug: when the matched person has session_cm_id pointing to a *different* session
+        but session_cm_ids includes the requester's session, the match should be
+        confidence=0.90 (same-session), NOT confidence=0.80 (different-session).
+        """
+        # Camper "Emma Garcia" whose parent surname is "Johnson"
+        camper = Person(
+            cm_id=2000001,
+            first_name="Emma",
+            last_name="Garcia",
+            parent_names=json.dumps([{"first": "Liam", "last": "Johnson", "relationship": "Father"}]),
+        )
+        # Requester is in session 1000010
+        # Camper's primary session_cm_id is 1000020, but session_cm_ids includes 1000010
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            2000001: {
+                "session_cm_id": 1000020,  # primary session is different
+                "session_cm_ids": [1000020, 1000010],  # but multi-enrolled, includes requester's session
+            },
+        }
+
+        result = strategy.resolve(
+            name="Emma Johnson",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[camper],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 2000001
+        # Multi-enrolled camper IS in the same session — should use base confidence (0.90),
+        # not the penalized different-session confidence (0.80)
+        assert result.confidence == 0.90, (
+            f"Expected 0.90 (same-session via session_cm_ids) but got {result.confidence}. "
+            "Bug: _try_parent_surname_match only checks session_cm_id (singular)."
+        )
+
+    def test_parent_surname_fast_path_still_penalises_truly_different_session(self, strategy):
+        """When session_cm_ids has no overlap with requester's session, confidence stays 0.80."""
+        camper = Person(
+            cm_id=2000001,
+            first_name="Olivia",
+            last_name="Chen",
+            parent_names=json.dumps([{"first": "Wei", "last": "Smith", "relationship": "Mother"}]),
+        )
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            2000001: {
+                "session_cm_id": 1000020,
+                "session_cm_ids": [1000020, 1000030],  # neither is requester's 1000010
+            },
+        }
+
+        result = strategy.resolve(
+            name="Olivia Smith",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[camper],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 2000001
+        assert result.confidence == 0.80  # correctly penalised
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
