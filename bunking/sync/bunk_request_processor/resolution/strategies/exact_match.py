@@ -136,30 +136,14 @@ class ExactMatchStrategy(BaseMatchStrategy):
                         effective_session = db_requester_info["session_cm_id"]
 
                 if effective_session:
-                    sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([matches[0].cm_id], year)
-                    match_session = sessions_map.get(matches[0].cm_id)
-
-                    if match_session == effective_session:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.95,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "exact"},
-                        )
-                    elif match_session is not None:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.85,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "different"},
-                        )
-                    else:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.90,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "unknown"},
-                        )
+                    sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
+                    match = self._classify_session(sessions_map.get(matches[0].cm_id), effective_session)
+                    return ResolutionResult(
+                        person=matches[0],
+                        confidence=_DIRECT_MATCH_CONFIDENCE[match],
+                        method=self.name,
+                        metadata={"sub_method": "unique", "session_match": match.value},
+                    )
                 else:
                     return ResolutionResult(
                         person=matches[0],

@@ -176,8 +176,8 @@ class TestExactMatchStrategy:
         person = Person(cm_id=12345, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person]
 
-        # Mock person is in the provided session
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {12345: 1000002}
+        # Mock person is in the provided session (Path E uses bulk_get_all_sessions_for_persons)
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000002]}
 
         # Test with explicit session
         result = strategy.resolve("John Smith", requester_cm_id=67890, session_cm_id=1000002, year=2025)
@@ -279,6 +279,35 @@ class TestExactMatchStrategy:
         assert result.confidence == 0.95
         assert result.person.cm_id == 2000001
         assert result.metadata.get("session_match") == "exact"
+
+    def test_path_e_resolve_elif_year_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path E (#1501 scope expansion): resolve() elif-year DB fallback for single direct match.
+
+        Same bug shape as Path A: singular bulk_get_sessions_for_persons collapses
+        multi-enrolled target to one session, mis-classifies SAME-via-secondary as DIFFERENT.
+        Fix: use bulk_get_all_sessions_for_persons + _classify_session.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person = Person(cm_id=12345, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person]
+
+        # Multi-enrollment: target in [1000099, 1000002], requester wants 1000002
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        # No attendee_info -> forces elif year branch (Path E)
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
 
 
 class TestExactMatchParentSurname:
