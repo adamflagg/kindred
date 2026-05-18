@@ -199,4 +199,26 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
     await Promise.resolve()
     expect(addCamperToGroup).toHaveBeenCalledWith(liam, 'group-abc')
   })
+
+  it('closes the picker when clicking outside', () => {
+    mockQueryData = [testGroup]
+    mockContext.groups = [testGroup] as never
+    mockContext.membersByGroup = { 'group-abc': [] }
+    mockContext.selectedGroupId = 'group-abc'
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-2', person_cm_id: 1000002, name: 'Liam Garcia' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByPlaceholderText(/filter campers/i)).not.toBeInTheDocument()
+  })
 })

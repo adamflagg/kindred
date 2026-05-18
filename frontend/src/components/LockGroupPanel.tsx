@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Trash2, Users, ChevronRight, AlertTriangle, Plus } from 'lucide-react'
 import clsx from 'clsx'
@@ -97,6 +98,9 @@ function AddMemberPicker({
 }: AddMemberPickerProps) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
 
   const eligible = useMemo(
     () =>
@@ -108,6 +112,30 @@ function AddMemberPicker({
     [sessionCampers, getCamperLockGroup, filter]
   )
 
+  // Recompute position when opening
+  useEffect(() => {
+    if (!open) return
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+    }
+  }, [open])
+
+  // Outside-click dismissal
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (triggerRef.current?.contains(target) || dropdownRef.current?.contains(target)) {
+        return
+      }
+      setOpen(false)
+      setFilter('')
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
   const handleSelect = (camper: Camper) => {
     void addCamperToGroup(camper, groupId)
     setOpen(false)
@@ -117,6 +145,8 @@ function AddMemberPicker({
   return (
     <div className="relative mt-3">
       <button
+        ref={triggerRef}
+        type="button"
         onClick={() => setOpen((o) => !o)}
         className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
         aria-label="Add member"
@@ -125,35 +155,43 @@ function AddMemberPicker({
         Add member
       </button>
 
-      {open && (
-        <div className="bg-background absolute z-10 mt-1 w-full rounded-lg border shadow-lg">
-          <input
-            autoFocus
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Search campers…"
-            className="w-full rounded-t-lg border-b px-3 py-2 text-sm outline-none"
-          />
-          <div className="max-h-48 overflow-y-auto">
-            {eligible.length === 0 ? (
-              <p className="text-muted-foreground px-3 py-2 text-sm">
-                All session campers are already in a group.
-              </p>
-            ) : (
-              eligible.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => handleSelect(c)}
-                  className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
-                >
-                  {c.name}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+      {open &&
+        dropdownPos !== null &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="bg-background fixed z-50 min-w-[220px] rounded-lg border shadow-lg"
+            style={{ top: dropdownPos.top, left: dropdownPos.left }}
+          >
+            <input
+              autoFocus
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Filter campers…"
+              className="w-full rounded-t-lg border-b px-3 py-2 text-sm outline-none"
+            />
+            <div className="max-h-48 overflow-y-auto">
+              {eligible.length === 0 ? (
+                <p className="text-muted-foreground px-3 py-2 text-sm">
+                  All session campers are already in a group.
+                </p>
+              ) : (
+                eligible.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleSelect(c)}
+                    className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
+                  >
+                    {c.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }
