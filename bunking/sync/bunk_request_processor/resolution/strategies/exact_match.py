@@ -449,10 +449,8 @@ class ExactMatchStrategy(BaseMatchStrategy):
         if len(matches) == 1:
             confidence = 0.90  # Slightly lower than direct match (0.95)
             if year and session_cm_id:
-                sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([matches[0].cm_id], year)
-                if sessions_map.get(matches[0].cm_id) == session_cm_id:
-                    confidence = 0.90
-                else:
+                sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
+                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is not SessionMatch.SAME:
                     confidence = 0.80  # Lower for different session
             return ResolutionResult(
                 person=matches[0],

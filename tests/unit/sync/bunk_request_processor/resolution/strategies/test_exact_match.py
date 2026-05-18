@@ -369,6 +369,49 @@ class TestExactMatchParentSurname:
         assert result.person.cm_id == 12345
         assert result.metadata.get("sub_method") == "parent_surname"
 
+    def test_path_a_name_cache_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path A (#1501): name_cache parent-surname match where target is multi-enrolled.
+
+        Target enrolled in [X, requester_session]. The OLD bulk_get_sessions_for_persons
+        returned only the primary (X), causing a same-session match to be downgraded to
+        0.80 'different'. Fix: bulk_get_all_sessions_for_persons returns both, classifier
+        sees requester_session in list -> SAME -> 0.90.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        # Direct match fails (different surname)
+        person_repo.find_by_name.return_value = []
+
+        # Person 12345 has parent surname "Smith", actual surname "Johnson"
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        # name_cache available (so we hit Path A, not Path B)
+        mock_cache = Mock()
+        mock_cache.find_by_parent_surname.return_value = [person]
+        person_repo.name_cache = mock_cache
+
+        # NEW bulk method returns multi-enrollment: target in sessions [1000099, 1000002]
+        # where 1000002 is requester's session
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        # SAME via session_cm_ids -> 0.90 (was 0.80 before the fix)
+        assert result.confidence == 0.90
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
+
 
 class TestExactMatchPreferredName:
     """Test preferred_name matching in ExactMatchStrategy."""
