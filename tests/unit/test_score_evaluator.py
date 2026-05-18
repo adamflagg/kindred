@@ -239,11 +239,11 @@ class TestEvaluateScenarioScore:
 
         def get_float_side_effect(key, default=0.0):
             values = {
-                "objective.source_multipliers.share_bunk_with": 1.5,
+                "objective.source_multipliers.share_bunk_with": 1.75,
                 "objective.source_multipliers.do_not_share_with": 1.5,
-                "objective.source_multipliers.bunking_notes": 1.2,
+                "objective.source_multipliers.bunking_notes": 1.0,
                 "objective.source_multipliers.internal_notes": 1.0,
-                "objective.source_multipliers.socialize_preference": 0.8,
+                "objective.source_multipliers.socialize_preference": 0.6,
             }
             return values.get(key, default)
 
@@ -439,11 +439,11 @@ class TestEvaluateScenarioScore:
 
         # Two satisfied requests for person 1; different source_field multipliers
         # so the slot-0 vs slot-1 difference shows up in the score.
-        # bunk_with → 1.5x, internal_notes → 1.0x.
+        # bunk_with → 1.75x, internal_notes → 1.0x.
         # If first-pick flag works, the bunk_with request lands in slot-0:
-        #   slot-0: 40*1.5*10 = 600, slot-1: 40*1.0*5 = 200 → total 800.
+        #   slot-0: 40*1.75*10 = 700, slot-1: 40*1.0*5 = 200 → total 900.
         # If we flip the flag (internal_notes is first-pick instead):
-        #   slot-0: 40*1.0*10 = 400, slot-1: 40*1.5*5 = 300 → total 700.
+        #   slot-0: 40*1.0*10 = 400, slot-1: 40*1.75*5 = 350 → total 750.
         bunk_with_first = [
             {
                 "requester_id": 1,
@@ -468,8 +468,8 @@ class TestEvaluateScenarioScore:
         result_a = evaluate_scenario_score(bunk_with_first, assignments, persons, bunks, config=mock_config)
         result_b = evaluate_scenario_score(internal_notes_first, assignments, persons, bunks, config=mock_config)
 
-        assert result_a.request_satisfaction_score == 800
-        assert result_b.request_satisfaction_score == 700
+        assert result_a.request_satisfaction_score == 900
+        assert result_b.request_satisfaction_score == 750
         assert result_a.request_satisfaction_score > result_b.request_satisfaction_score
 
     def test_source_field_multiplier(self, mock_config):
@@ -479,7 +479,7 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.5x multiplier (share_bunk_with)
+                "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.75x multiplier (share_bunk_with)
             }
         ]
         socialize_request = [
@@ -487,7 +487,7 @@ class TestEvaluateScenarioScore:
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "source_field": SourceField.SOCIALIZE_WITH,  # 0.8x multiplier (socialize_preference)
+                "source_field": SourceField.SOCIALIZE_WITH,  # 0.6x multiplier (socialize_preference)
             }
         ]
         assignments = [
@@ -503,7 +503,7 @@ class TestEvaluateScenarioScore:
         share_result = evaluate_scenario_score(share_bunk_request, assignments, persons, bunks, config=mock_config)
         socialize_result = evaluate_scenario_score(socialize_request, assignments, persons, bunks, config=mock_config)
 
-        # BUNK_WITH (1.5x) should score higher than SOCIALIZE_WITH (0.8x)
+        # BUNK_WITH (1.75x) should score higher than SOCIALIZE_WITH (0.6x)
         assert share_result.request_satisfaction_score > socialize_result.request_satisfaction_score
 
     def test_field_scores_breakdown(self, mock_config):

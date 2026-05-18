@@ -30,35 +30,44 @@ spec.loader.exec_module(aos)
 
 
 def test_request_weight_mp_bunk_with_mutual_first_pick() -> None:
-    """MP bunk_with at slot 0 with mutual boost: 40 × 1.5 × 2.0 × 10 = 1200."""
+    """MP bunk_with at slot 0 with mutual boost: 40 × 1.75 × 2.0 × 10 = 1400."""
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("bunk_with", slot=0, mutual=True, config=cfg) == 1200
+    assert aos.request_weight("bunk_with", slot=0, mutual=True, config=cfg) == 1400
 
 
 def test_request_weight_mp_bunk_with_one_way_first_pick() -> None:
-    """MP bunk_with at slot 0, one-directional: 40 × 1.5 × 1.0 × 10 = 600."""
+    """MP bunk_with at slot 0, one-directional: 40 × 1.75 × 1.0 × 10 = 700.
+
+    Strictly above ``not_bunk_with`` at the same slot (600) — enforces the
+    MP-above-STAFF priority hierarchy. Prior parity at 600 (both at 1.5x)
+    violated the stated priority stack.
+    """
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("bunk_with", slot=0, mutual=False, config=cfg) == 600
+    assert aos.request_weight("bunk_with", slot=0, mutual=False, config=cfg) == 700
+    # Strict hierarchy check: one-way MP bunk_with > STAFF not_bunk_with at same slot.
+    assert aos.request_weight("bunk_with", slot=0, mutual=False, config=cfg) > aos.request_weight(
+        "not_bunk_with", slot=0, mutual=False, config=cfg
+    )
 
 
 def test_request_weight_mp_bunk_with_one_way_second() -> None:
-    """MP bunk_with at slot 1, one-directional: 40 × 1.5 × 1.0 × 5 = 300."""
+    """MP bunk_with at slot 1, one-directional: 40 × 1.75 × 1.0 × 5 = 350."""
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("bunk_with", slot=1, mutual=False, config=cfg) == 300
+    assert aos.request_weight("bunk_with", slot=1, mutual=False, config=cfg) == 350
 
 
 def test_request_weight_mp_bunk_with_one_way_third_plus() -> None:
-    """MP bunk_with at slot 2+, one-directional: 40 × 1.5 × 1.0 × 1 = 60."""
+    """MP bunk_with at slot 2+, one-directional: 40 × 1.75 × 1.0 × 1 = 70."""
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("bunk_with", slot=2, mutual=False, config=cfg) == 60
+    assert aos.request_weight("bunk_with", slot=2, mutual=False, config=cfg) == 70
     # Slot 5 still caps at the third+ multiplier (1):
-    assert aos.request_weight("bunk_with", slot=5, mutual=False, config=cfg) == 60
+    assert aos.request_weight("bunk_with", slot=5, mutual=False, config=cfg) == 70
 
 
 def test_request_weight_mp_bunk_with_mutual_second() -> None:
-    """MP bunk_with at slot 1 with mutual boost: 40 × 1.5 × 2.0 × 5 = 600."""
+    """MP bunk_with at slot 1 with mutual boost: 40 × 1.75 × 2.0 × 5 = 700."""
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("bunk_with", slot=1, mutual=True, config=cfg) == 600
+    assert aos.request_weight("bunk_with", slot=1, mutual=True, config=cfg) == 700
 
 
 def test_request_weight_socialize_with_first_pick() -> None:
@@ -83,9 +92,18 @@ def test_request_weight_not_bunk_with_first_pick() -> None:
 
 
 def test_request_weight_internal_notes_first_pick() -> None:
-    """STAFF internal_notes at slot 0: 40 × 0.8 × 1.0 × 10 = 320."""
+    """STAFF internal_notes at slot 0: 40 × 1.0 × 1.0 × 10 = 400.
+
+    Equalized with ``bunking_notes`` (both 1.0x → both 400) — staff notes are a
+    single bucket, not two tiers. Prior 0.8x produced 320 with no business
+    rationale for the split.
+    """
     cfg = aos.ObjectiveConfig()
-    assert aos.request_weight("internal_notes", slot=0, mutual=False, config=cfg) == 320
+    assert aos.request_weight("internal_notes", slot=0, mutual=False, config=cfg) == 400
+    # Equalization check: internal_notes and bunking_notes are tied.
+    assert aos.request_weight("internal_notes", slot=0, mutual=False, config=cfg) == aos.request_weight(
+        "bunking_notes", slot=0, mutual=False, config=cfg
+    )
 
 
 def test_request_weight_unknown_source_raises() -> None:
@@ -158,44 +176,44 @@ def test_bonus_age_spread_preferred() -> None:
 
 
 def test_archetype_a_loner_mutual_total() -> None:
-    """Archetype A: 1 MP bunk_with, mutual, slot 0 = 1200 earnable."""
+    """Archetype A: 1 MP bunk_with, mutual, slot 0 = 1400 earnable."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["A_loner_mutual"]
-    assert aos.archetype_total_weight(arch, cfg) == 1200
+    assert aos.archetype_total_weight(arch, cfg) == 1400
 
 
 def test_archetype_b_loner_oneway_total() -> None:
-    """Archetype B: 1 MP bunk_with, one-way, slot 0 = 600 earnable."""
+    """Archetype B: 1 MP bunk_with, one-way, slot 0 = 700 earnable."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["B_loner_oneway"]
-    assert aos.archetype_total_weight(arch, cfg) == 600
+    assert aos.archetype_total_weight(arch, cfg) == 700
 
 
 def test_archetype_c_cluster_star_all_mutual_total() -> None:
-    """Archetype C: 3 MP bunk_with all mutual, slots 0/1/2 = 1200+600+120 = 1920 earnable."""
+    """Archetype C: 3 MP bunk_with all mutual, slots 0/1/2 = 1400+700+140 = 2240 earnable."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["C_cluster_star"]
-    # slot 0 mutual: 40×1.5×2×10 = 1200
-    # slot 1 mutual: 40×1.5×2×5  = 600
-    # slot 2 mutual: 40×1.5×2×1  = 120
-    assert aos.archetype_total_weight(arch, cfg) == 1920
+    # slot 0 mutual: 40×1.75×2×10 = 1400
+    # slot 1 mutual: 40×1.75×2×5  = 700
+    # slot 2 mutual: 40×1.75×2×1  = 140
+    assert aos.archetype_total_weight(arch, cfg) == 2240
 
 
 def test_archetype_d_mixed_multi_total() -> None:
-    """Archetype D (residual): 3 MP, 1 mutual + 2 one-way = 1200+300+60 = 1560 earnable."""
+    """Archetype D (residual): 3 MP, 1 mutual + 2 one-way = 1400+350+70 = 1820 earnable."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["D_mixed_multi"]
-    # slot 0 mutual:  40×1.5×2×10 = 1200
-    # slot 1 one-way: 40×1.5×1×5  = 300
-    # slot 2 one-way: 40×1.5×1×1  = 60
-    assert aos.archetype_total_weight(arch, cfg) == 1560
+    # slot 0 mutual:  40×1.75×2×10 = 1400
+    # slot 1 one-way: 40×1.75×1×5  = 350
+    # slot 2 one-way: 40×1.75×1×1  = 70
+    assert aos.archetype_total_weight(arch, cfg) == 1820
 
 
 def test_archetype_e_popular_target_total_own() -> None:
-    """Archetype E: popular-target camper's own 2 MP one-way requests = 600+300 = 900 earnable from her side."""
+    """Archetype E: popular-target camper's own 2 MP one-way requests = 700+350 = 1050 earnable from her side."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["E_popular_target_own"]
-    assert aos.archetype_total_weight(arch, cfg) == 900
+    assert aos.archetype_total_weight(arch, cfg) == 1050
 
 
 # ---------------------------------------------------------------------------
@@ -204,27 +222,27 @@ def test_archetype_e_popular_target_total_own() -> None:
 
 
 def test_threshold_ratio_loner_oneway_vs_grade_ratio() -> None:
-    """Archetype B (600) vs grade_ratio (5000): 8.33× below — solver only honors if 'free'."""
+    """Archetype B (700) vs grade_ratio (5000): 7.14× below — solver only honors if 'free'."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["B_loner_oneway"]
     ratio = aos.threshold_ratio(arch, "grade_ratio", cfg)
-    assert round(ratio, 2) == 8.33
+    assert round(ratio, 2) == 7.14
 
 
 def test_threshold_ratio_loner_mutual_vs_grade_ratio() -> None:
-    """Archetype A (1200) vs grade_ratio (5000): 4.17× below."""
+    """Archetype A (1400) vs grade_ratio (5000): 3.57× below."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["A_loner_mutual"]
     ratio = aos.threshold_ratio(arch, "grade_ratio", cfg)
-    assert round(ratio, 2) == 4.17
+    assert round(ratio, 2) == 3.57
 
 
 def test_threshold_ratio_cluster_star_vs_grade_ratio() -> None:
-    """Archetype C (1920) vs grade_ratio (5000): 2.60× below — cluster placement can override a single ratio violation when stacked."""
+    """Archetype C (2240) vs grade_ratio (5000): 2.23× below — cluster placement can override a single ratio violation when stacked."""
     cfg = aos.ObjectiveConfig()
     arch = aos.ARCHETYPES["C_cluster_star"]
     ratio = aos.threshold_ratio(arch, "grade_ratio", cfg)
-    assert round(ratio, 2) == 2.60
+    assert round(ratio, 2) == 2.23
 
 
 # ---------------------------------------------------------------------------
@@ -233,12 +251,12 @@ def test_threshold_ratio_cluster_star_vs_grade_ratio() -> None:
 
 
 def test_render_request_weight_table_smoke() -> None:
-    """The weight table renders with all expected rows and contains the canonical 1200 figure."""
+    """The weight table renders with all expected rows and contains canonical figures."""
     cfg = aos.ObjectiveConfig()
     md = aos.render_request_weight_table(cfg)
     assert "bunk_with" in md
-    assert "1200" in md
-    assert "600" in md
+    assert "1400" in md  # MP bunk_with slot 0 mutual
+    assert "700" in md  # MP bunk_with slot 0 one-way
     assert "240" in md  # socialize_with
 
 
@@ -257,8 +275,8 @@ def test_render_archetype_table_smoke() -> None:
     cfg = aos.ObjectiveConfig()
     md = aos.render_archetype_table(cfg)
     assert "A_loner_mutual" in md or "Loner mutual" in md
-    assert "1200" in md
-    assert "1920" in md  # cluster_star
+    assert "1400" in md  # A loner_mutual total
+    assert "2240" in md  # C cluster_star total
 
 
 def test_render_archetype_table_header_uses_config() -> None:

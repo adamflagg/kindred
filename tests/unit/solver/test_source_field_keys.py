@@ -67,16 +67,16 @@ class TestScoreEvaluatorCanonicalKeys:
             "constraint.cabin_capacity.standard": 12,
         }.get(key, default)
         config.get_float.side_effect = lambda key, default=1.0: {
-            "objective.source_multipliers.share_bunk_with": 1.5,
+            "objective.source_multipliers.share_bunk_with": 1.75,
             "objective.source_multipliers.do_not_share_with": 1.5,
-            "objective.source_multipliers.bunking_notes": 1.2,
+            "objective.source_multipliers.bunking_notes": 1.0,
             "objective.source_multipliers.internal_notes": 1.0,
-            "objective.source_multipliers.socialize_preference": 0.8,
+            "objective.source_multipliers.socialize_preference": 0.6,
         }.get(key, default)
         return config
 
     def test_source_multiplier_applied_with_canonical_source_field(self, mock_config):
-        """A request with canonical source_field="Share Bunk With" must get the 1.5x multiplier."""
+        """A request with canonical source_field="Share Bunk With" must get the 1.75x multiplier."""
         from bunking.solver.score_evaluator import evaluate_scenario_score
 
         share_result = evaluate_scenario_score(
@@ -100,10 +100,10 @@ class TestScoreEvaluatorCanonicalKeys:
             config=mock_config,
         )
 
-        # base_weight(40) * source_multiplier(1.5) = 60 (weighted_score)
-        # slot-0 → FIRST_REQUEST_MULTIPLIER(10): 60 * 10 = 600
+        # base_weight(40) * source_multiplier(1.75) = 70 (weighted_score)
+        # slot-0 → FIRST_REQUEST_MULTIPLIER(10): 70 * 10 = 700
         # Priority was deleted — base_weight replaces priority * 10.
-        assert share_result.request_satisfaction_score == 600
+        assert share_result.request_satisfaction_score == 700
 
     def test_field_scores_keyed_by_canonical_values(self, mock_config):
         """field_scores breakdown must use canonical SourceField values as keys."""
@@ -176,7 +176,7 @@ class TestDirectSolverCanonicalKeys:
 
         config = MagicMock()
         config.get_float.side_effect = lambda key, default=1.0: {
-            "objective.source_multipliers.share_bunk_with": 1.5,
+            "objective.source_multipliers.share_bunk_with": 1.75,
         }.get(key, default)
         config.get_int.return_value = 0
 
@@ -195,4 +195,4 @@ class TestDirectSolverCanonicalKeys:
         )
 
         multiplier = solver._get_csv_field_multiplier(request)
-        assert multiplier == 1.5
+        assert multiplier == 1.75
