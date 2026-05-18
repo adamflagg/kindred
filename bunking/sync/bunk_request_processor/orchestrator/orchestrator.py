@@ -74,7 +74,7 @@ from ..social.social_graph import SocialGraph
 from ..validation.request_type_validator import validate_request_type_for_field
 from ..validation.rules.self_reference import SelfReferenceRule
 from .reconciliation import log_obr_reconciliation
-from .target_decline import run_target_decline_phase
+from .target_enrollment_reconcile import run_target_reconcile_phase
 
 logger = get_logger(__name__)
 
@@ -278,8 +278,9 @@ class RequestOrchestrator:
             "ai_high_confidence": 0,
             "ai_manual_review": 0,
             "phase1_failed": 0,
-            # Phase C target-decline sidecar (#1069)
+            # Phase C bidirectional enrollment reconciliation (#1069, #1375)
             "target_declined_count": 0,
+            "target_reopened_count": 0,
             "target_declined_errors": 0,
         }
         self._phase1_first_error: str | None = None
@@ -1642,23 +1643,29 @@ class RequestOrchestrator:
         # full pipeline math is verifiable from the log alone.
         log_obr_reconciliation(self._stats)
 
-        # Phase C (#1069): sweep bunk_requests for stale rows where the
-        # requestee is no longer attending or now in a different session,
-        # and decline them in place. Sidecar: usually empty, never fails
-        # the pipeline. Skipped under dry_run since it issues real writes.
+        # Phase C (#1069, #1375): bidirectional enrollment reconciliation.
+        # Forward: sweep non-declined BRs whose requestee is no longer attending
+        # or now in a different session → decline in place.
+        # Reverse: sweep eligible declined BRs whose target is now actively
+        # enrolled in the BR's session → reopen with disposition_reason=
+        # "enrollment_change". Sidecar: usually empty, never fails the pipeline.
+        # Skipped under dry_run since it issues real writes.
         if dry_run:
-            logger.info("=== Skipping Phase C target-decline (dry_run=True) ===")
+            logger.info("=== Skipping Phase C target-reconcile (dry_run=True) ===")
         else:
             try:
-                target_decline_stats = run_target_decline_phase(self.pb, self.year)
-                self._stats["target_declined_count"] = target_decline_stats.get("declined_count", 0)
-                self._stats["target_declined_errors"] = target_decline_stats.get("error_count", 0)
+                target_reconcile_stats = run_target_reconcile_phase(self.pb, self.year)
+                self._stats["target_declined_count"] = target_reconcile_stats.get("declined_count", 0)
+                self._stats["target_reopened_count"] = target_reconcile_stats.get("reopened_count", 0)
+                self._stats["target_declined_errors"] = target_reconcile_stats.get("error_count", 0)
             except Exception:
-                logger.exception("target_decline phase raised; continuing")
+                logger.exception("target_reconcile phase raised; continuing")
                 self._stats["target_declined_errors"] = 1
+                self._stats["target_reopened_count"] = 0
             logger.info(
-                f"Phase C target-decline: "
+                f"Phase C target-reconcile: "
                 f"declined={self._stats['target_declined_count']}, "
+                f"reopened={self._stats['target_reopened_count']}, "
                 f"errors={self._stats['target_declined_errors']}"
             )
 

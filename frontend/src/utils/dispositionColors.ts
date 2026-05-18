@@ -30,12 +30,13 @@ export const PENDING_REASONS = new Set([
   'target_waitlisted',
   'undirected_preference',
   'self_referential',
+  'enrollment_change',
 ])
 
 /**
  * Declined disposition reasons emitted by the pipeline rules engine
  * (`bunking/sync/bunk_request_processor/disposition/disposition_rules.py`) or
- * by Phase C target-decline (`orchestrator/target_decline.py`).
+ * by Phase C enrollment reconciliation (`orchestrator/target_enrollment_reconcile.py`).
  *
  * Manual UI declines (RequestReviewPanel, AllCamperRequestsModal) intentionally
  * write `status: 'declined'` with **no** `disposition_reason`. The pipeline has
@@ -105,6 +106,7 @@ const DISPOSITION_DISPLAY_NAMES: Record<string, string> = {
   target_waitlisted: 'Waitlisted',
   undirected_preference: 'Unclear age preference',
   self_referential: 'Self-reference — review',
+  enrollment_change: 'Enrollment changed — review',
   // Declined
   session_mismatch: 'Different sessions',
   target_not_attending: 'Not attending',
