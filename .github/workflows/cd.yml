@@ -213,13 +213,16 @@ jobs:
             exit 1
           fi
 
-          # Adaptive sleep: short for first 30s, medium for next 60s, long after
-          if [ "$i" -le 6 ]; then
-            sleep 5
-          elif [ "$i" -le 10 ]; then
-            sleep 15
-          else
-            sleep 30
+          # Adaptive sleep: short for first 30s, medium for next 60s, long after.
+          # Skip on final iteration — no point sleeping before the timeout exit.
+          if [ "$i" -lt 30 ]; then
+            if [ "$i" -le 6 ]; then
+              sleep 5
+            elif [ "$i" -le 10 ]; then
+              sleep 15
+            else
+              sleep 30
+            fi
           fi
         done
 
