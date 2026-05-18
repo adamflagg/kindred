@@ -923,9 +923,33 @@ stay ungated by design. **V1/V2 consolidation deferred** — the narrow path
 restores parity now and the structural divergence remains as a future trigger
 when a non-cosmetic field-validator drift surfaces.
 
-Known overhead: the validation route now does a second V2 data fetch
-alongside the existing V1 fetches. Acceptable for correctness; a longer-term
-refactor would consolidate validation onto the V2 data path.
+**Known overhead introduced by #1520.** `api/routers/validation.py` now does
+a parallel V2 fetch (`fetch_session_data_v2`) alongside its existing V1
+fetches — same PB collections (attendees, bunks, requests, assignments,
+bunk_plans) pulled twice with different shapes. Roughly **5 extra PB
+`get_full_list` round-trips per `/api/validate-bunking` call**. On a typical
+S2-sized session that's on the order of 100–500ms additional latency,
+dominated by PB call latency, not by `validate_impossibility` itself (which
+runs predicates over an in-memory list and is sub-ms).
+
+Two optimization paths if the overhead bites:
+
+- **Short-term — frontend passes precomputed IDs.** The post-check modal
+  already has a `preCheckQuery` that fetches `/api/solver/pre-validate` and
+  caches the impossibility report. Threading `impossible_request_ids` through
+  `ValidateBunkingRequest` lets the route skip the recompute when the caller
+  provides them. Validator keeps the route-side compute as a fallback so
+  legacy/scripted callers stay correct. Small change, no V1/V2 reshape.
+- **Long-term — V1/V2 validation route consolidation.** Refactor
+  `validation.py` to fetch via `fetch_session_data_v2` exclusively; the
+  validator either stays V1 behind a V2→V1 adapter or migrates to V2 directly.
+  This is the parked V1/V2 consolidation work — the #1520 fix doesn't trigger
+  it (the narrow path restored parity), but if the validation route gains
+  another structurally similar concern it becomes the forcing function.
+
+Neither is filed today. The overhead hasn't been measured in production yet;
+file if SolverDebug page latency or staff-modal-perceived lag actually
+regresses.
 
 ---
 
