@@ -56,13 +56,17 @@ jobs:
     name: Detect Changed Files
     runs-on: ubuntu-latest
     outputs:
-      api: ${{ steps.filter.outputs.api }}
-      docker: ${{ steps.filter.outputs.docker }}
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
       short_sha: ${{ steps.short-sha.outputs.short_sha }}
-      # Single source of truth for "is a Docker build needed for this commit".
-      # Downstream jobs (build-and-scan, integration-test, promote) gate on this.
-      should_build: ${{ steps.should-build.outputs.should_build }}
+      # Per-image rebuild decisions — matrix entries read these to choose
+      # between full rebuild and a fast retag from :latest.
+      build_caddy: ${{ steps.decide-builds.outputs.build_caddy }}
+      build_pocketbase: ${{ steps.decide-builds.outputs.build_pocketbase }}
+      build_api: ${{ steps.decide-builds.outputs.build_api }}
+      build_init: ${{ steps.decide-builds.outputs.build_init }}
+      # Global gate — true if any image rebuild OR deployment-metadata changes
+      # warrant running the matrix + integration-test + promote pipeline at all.
+      should_build: ${{ steps.decide-builds.outputs.should_build }}
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
@@ -127,18 +131,34 @@ jobs:
       with:
         base: ${{ steps.get-base-sha.outputs.base_sha }}
         filters: |
+          # Per-image triggers — used to decide whether each matrix runner
+          # does a full rebuild or just retags :latest -> :test-<sha>.
+          # Be conservative: anything COPY'd into the Dockerfile triggers a rebuild.
+          caddy:
+            - 'frontend/**'
+            - 'config/branding*.json'
+            - 'docker/Caddyfile'
+            - 'docker/Dockerfile.caddy'
+            - 'docker/healthcheck/**'
+          pocketbase:
+            - 'pocketbase/**'
+            - 'docker/Dockerfile.pocketbase'
+            - 'docker/healthcheck/**'
           api:
             - 'api/**'
             - 'bunking/**'
             - 'campminder/**'
-            - 'pocketbase/**'
-            - 'frontend/**'
-            - 'config/*.json'
+            - 'config/**'
             - 'pyproject.toml'
             - 'uv.lock'
-            - 'docker/**'
-          docker:
-            - 'docker/**'
+            - 'docker/Dockerfile.api'
+          init:
+            - 'pocketbase/**'
+            - 'docker/init-entrypoint.sh'
+            - 'docker/Dockerfile.init'
+          # Deployment-metadata changes — affect how images run together but not
+          # image content. Triggers integration-test + promote without rebuilds.
+          deployment:
             - 'docker-compose*.yml'
             - '.dockerignore'
 
@@ -166,28 +186,61 @@ jobs:
         echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         echo "Staging tag will be: :test-$SHORT_SHA"
 
-    - name: Decide if Docker build is needed
-      id: should-build
-      # Run even if earlier steps failed so downstream jobs get a definitive
-      # signal. If filter outputs are empty (detect failed), force-build as
-      # a safety fallback.
+    - name: Decide per-image build vs retag
+      id: decide-builds
+      # Always-run + safety fallback: if per-image filter outputs are empty
+      # (detect failed), force all rebuilds. Otherwise compute per-image
+      # build flags from filter outputs + the "rebuild everything" triggers
+      # (initial commit, workflow_dispatch, schedule).
       if: always()
       env:
+        CHANGES_CADDY: ${{ steps.filter.outputs.caddy }}
+        CHANGES_POCKETBASE: ${{ steps.filter.outputs.pocketbase }}
         CHANGES_API: ${{ steps.filter.outputs.api }}
-        CHANGES_DOCKER: ${{ steps.filter.outputs.docker }}
+        CHANGES_INIT: ${{ steps.filter.outputs.init }}
+        CHANGES_DEPLOYMENT: ${{ steps.filter.outputs.deployment }}
         CHANGES_INITIAL: ${{ steps.get-base-sha.outputs.initial_commit }}
         EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [ -z "$CHANGES_API" ] && [ -z "$CHANGES_DOCKER" ]; then
-          echo "::warning::Change detection failed — building all images as safety fallback"
+        # Safety fallback: empty filter outputs mean detection failed.
+        DETECT_FAILED=false
+        if [ -z "$CHANGES_CADDY" ] && [ -z "$CHANGES_POCKETBASE" ] && \
+           [ -z "$CHANGES_API" ] && [ -z "$CHANGES_INIT" ]; then
+          echo "::warning::Per-image filter outputs empty — forcing all rebuilds as safety fallback"
+          DETECT_FAILED=true
+        fi
+
+        # "Rebuild everything" triggers: first commit, manual dispatch, weekly
+        # CVE scan, or detect-changes failure. These force build_X=true for every image.
+        REBUILD_ALL=false
+        if [ "$DETECT_FAILED" == "true" ] || [ "$CHANGES_INITIAL" == "true" ] || \
+           [ "$EVENT_NAME" == "workflow_dispatch" ] || [ "$EVENT_NAME" == "schedule" ]; then
+          REBUILD_ALL=true
+        fi
+
+        ANY_REBUILD=false
+        for IMG in caddy pocketbase api init; do
+          UPPER=$(echo "$IMG" | tr a-z A-Z)
+          VAR="CHANGES_${UPPER}"
+          if [ "$REBUILD_ALL" == "true" ] || [ "${!VAR}" == "true" ]; then
+            echo "build_${IMG}=true" >> $GITHUB_OUTPUT
+            ANY_REBUILD=true
+            echo "  ${IMG}: REBUILD"
+          else
+            echo "build_${IMG}=false" >> $GITHUB_OUTPUT
+            echo "  ${IMG}: retag from :latest"
+          fi
+        done
+
+        # should_build (global gate): run the matrix pipeline if any image needs
+        # a rebuild OR deployment metadata (compose/dockerignore) changed
+        # (we re-test the existing :latest images against the new compose).
+        if [ "$ANY_REBUILD" == "true" ] || [ "$CHANGES_DEPLOYMENT" == "true" ]; then
           echo "should_build=true" >> $GITHUB_OUTPUT
-        elif [ "$CHANGES_API" == "true" ] || [ "$CHANGES_DOCKER" == "true" ] || \
-             [ "$CHANGES_INITIAL" == "true" ] || \
-             [ "$EVENT_NAME" == "workflow_dispatch" ] || [ "$EVENT_NAME" == "schedule" ]; then
-          echo "should_build=true" >> $GITHUB_OUTPUT
+          echo "Matrix pipeline will run"
         else
           echo "should_build=false" >> $GITHUB_OUTPUT
-          echo "No relevant file changes — downstream jobs will skip"
+          echo "No relevant changes — entire matrix pipeline skips"
         fi
 
   # Verify CI passed before building/pushing images
@@ -406,30 +459,66 @@ jobs:
         include:
           - image: kindred-caddy
             dockerfile: docker/Dockerfile.caddy
+            should_build: ${{ needs.detect-changes.outputs.build_caddy }}
           - image: kindred-pocketbase
             dockerfile: docker/Dockerfile.pocketbase
+            should_build: ${{ needs.detect-changes.outputs.build_pocketbase }}
           - image: kindred-api
             dockerfile: docker/Dockerfile.api
+            should_build: ${{ needs.detect-changes.outputs.build_api }}
           - image: kindred-init
             dockerfile: docker/Dockerfile.init
+            should_build: ${{ needs.detect-changes.outputs.build_init }}
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
       with:
         egress-policy: audit
 
+    # Always needed: GHCR login for both build-push and imagetools-create.
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # === Fast path: source unchanged, retag :latest -> :test-<sha> ===
+    # Skips checkout, kindred-local clone, DHI login, buildx setup, full build.
+    # Errors loudly if :latest doesn't exist (e.g. brand-new image) — workflow_dispatch
+    # forces should_build=true via REBUILD_ALL, so this only hits when an existing
+    # image had its :latest deleted manually.
+    - name: Retag ${{ matrix.image }} from :latest
+      if: matrix.should_build == 'false'
+      env:
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
+        IMAGE: ${{ matrix.image }}
+      run: |
+        STAGING_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
+        LATEST_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:latest"
+        echo "Source unchanged — retagging $LATEST_TAG -> $STAGING_TAG"
+        if ! docker buildx imagetools create -t "$STAGING_TAG" "$LATEST_TAG"; then
+          echo "::error::Retag failed. :latest may not exist for ${IMAGE}. Rerun with workflow_dispatch to force a full build."
+          exit 1
+        fi
+        echo "Retagged"
+
+    # === Slow path: source changed, full build ===
     - name: Checkout code
+      if: matrix.should_build == 'true'
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
         persist-credentials: false
 
     - name: Clone private config for branding assets
+      if: matrix.should_build == 'true'
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Prepare local assets for Docker build
+      if: matrix.should_build == 'true'
       run: |
         mkdir -p local/assets
         if [ -f local/assets/camp-logo.png ]; then
@@ -438,14 +527,8 @@ jobs:
           echo "No local assets (kindred-local not available); using default branding"
         fi
 
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-
     - name: Log in to Docker Hardened Images registry
+      if: matrix.should_build == 'true'
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
         registry: dhi.io
@@ -453,6 +536,7 @@ jobs:
         password: ${{ secrets.DHI_TOKEN }}
 
     - name: Get version and build date
+      if: matrix.should_build == 'true'
       id: version
       run: |
         VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
@@ -461,9 +545,11 @@ jobs:
         echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
+      if: matrix.should_build == 'true'
       uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
     - name: Build and push ${{ matrix.image }} to staging tag
+      if: matrix.should_build == 'true'
       env:
         INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
         BUILD_VERSION: ${{ steps.version.outputs.version }}
