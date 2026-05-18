@@ -3,14 +3,8 @@ import React, { useEffect, useRef, useState } from 'react'
 
 import { copyText } from '../../../utils/copyText'
 
-import { buildComparisonSummary } from './buildComparisonSummary'
-import {
-  COMPARABLE_METRICS,
-  formatMetric,
-  getMetric,
-  type MetricGroup,
-  type MetricInterpretation,
-} from './metricRegistry'
+import { buildComparisonSummary, type DeltaDirection } from './buildComparisonSummary'
+import { COMPARABLE_METRICS, formatMetric, getMetric, type MetricGroup } from './metricRegistry'
 import { pickStat } from './pickStat'
 
 import type { SolverRun } from '../../../hooks/useSolverRuns'
@@ -21,33 +15,12 @@ interface Props {
   onClear: () => void
 }
 
-function deltaClass(
-  metricKey: string,
-  delta: number | null,
-  runA: SolverRun,
-  runB: SolverRun
-): string {
-  if (delta === null) return 'text-gray-400'
-  const meta = getMetric(metricKey)
-  if (delta === 0) return 'text-gray-500'
-  const interpretation = effectiveInterpretation(meta, runA, runB)
-  if (interpretation === 'context') return 'text-gray-500 font-semibold'
-  const better =
-    (interpretation === 'lower-better' && delta < 0) ||
-    (interpretation === 'higher-better' && delta > 0)
-  return better ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold'
-}
-
-function formatDelta(metricKey: string, delta: number | null): string {
-  if (delta === null) return '—'
-  const meta = getMetric(metricKey)
-  const sign = delta >= 0 ? '+' : ''
-  const arrow = delta > 0 ? ' ↑' : delta < 0 ? ' ↓' : ''
-  if (meta.format === 'percent') return `${sign}${(delta * 100).toFixed(2)}%${arrow}`
-  if (meta.format === 'duration') return `${sign}${delta.toFixed(1)}s${arrow}`
-  if (meta.format === 'decimal')
-    return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 2 })}${arrow}`
-  return `${sign}${delta.toLocaleString('en-US', { maximumFractionDigits: 0 })}${arrow}`
+const DIRECTION_CLASS: Record<DeltaDirection, string> = {
+  improved: 'text-green-700 font-semibold',
+  regressed: 'text-red-700 font-semibold',
+  context: 'text-gray-500 font-semibold',
+  unchanged: 'text-gray-500',
+  missing: 'text-gray-400',
 }
 
 function shouldHighlight(
@@ -65,27 +38,6 @@ function shouldHighlight(
     pickStat(runA.stats, meta.key) !== pickStat(runA.stats, fromKey) ||
     pickStat(runB.stats, meta.key) !== pickStat(runB.stats, fromKey)
   )
-}
-
-function configSnapshotsMatch(runA: SolverRun, runB: SolverRun): boolean {
-  const a = runA.details?.config_snapshot
-  const b = runB.details?.config_snapshot
-  if (!a || !b) return false
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) return false
-  return keysA.every((k) => a[k] === b[k])
-}
-
-function effectiveInterpretation(
-  meta: ReturnType<typeof getMetric>,
-  runA: SolverRun,
-  runB: SolverRun
-): MetricInterpretation {
-  if (meta.key === 'objective_value' && configSnapshotsMatch(runA, runB)) {
-    return 'higher-better'
-  }
-  return meta.interpretation
 }
 
 const GROUP_LABELS: Record<MetricGroup, string> = {
@@ -117,6 +69,8 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
   const aCount = runA.details?.session_attendee_count
   const bCount = runB.details?.session_attendee_count
   const drift = aCount !== undefined && bCount !== undefined && aCount !== bCount
+
+  const summary = buildComparisonSummary(runA, runB)
 
   // Group metrics by their `group` field, preserving COMPARABLE_METRICS order within each group
   const byGroup: Record<MetricGroup, string[]> = {
@@ -188,11 +142,14 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                 </tr>
                 {keys.map((key) => {
                   const meta = getMetric(key)
+                  const delta = summary.deltas[key]
                   const va = pickStat(runA.stats, key)
                   const vb = pickStat(runB.stats, key)
-                  const delta = va != null && vb != null ? vb - va : null
                   const isChild = meta.parent != null
                   const rowBg = shouldHighlight(meta, runA, runB) ? 'bg-yellow-50' : ''
+                  const directionClass = delta
+                    ? DIRECTION_CLASS[delta.direction]
+                    : DIRECTION_CLASS['missing']
                   return (
                     <tr key={key} className={`hover:bg-forest-50/30 ${rowBg}`}>
                       <td
@@ -207,8 +164,8 @@ export function PinnedComparisonPanel({ runA, runB, onClear }: Props) {
                       <td className="px-3 py-2 text-right text-gray-600">
                         {formatMetric(key, vb)}
                       </td>
-                      <td className={`px-5 py-2 text-right ${deltaClass(key, delta, runA, runB)}`}>
-                        {formatDelta(key, delta)}
+                      <td className={`px-5 py-2 text-right ${directionClass}`}>
+                        {delta?.delta_formatted ?? '—'}
                       </td>
                     </tr>
                   )

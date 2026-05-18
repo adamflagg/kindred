@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import * as comparisonModule from './buildComparisonSummary'
 import { getMetric } from './metricRegistry'
 import { PinnedComparisonPanel } from './PinnedComparisonPanel'
 
@@ -247,6 +248,18 @@ describe('PinnedComparisonPanel', () => {
 
     const branchesCell = screen.getByText('Branches').closest('td')!
     expect(branchesCell.getAttribute('title')).toBe(getMetric('num_branches').description)
+  })
+
+  it('table calls buildComparisonSummary for its row data (coupling test)', () => {
+    // Verifies structural coupling: the panel must call buildComparisonSummary
+    // to compute table row data, not its own parallel implementation.
+    // Spies on the named export; fails if the panel computes deltas independently.
+    const spy = vi.spyOn(comparisonModule, 'buildComparisonSummary')
+    render(<PinnedComparisonPanel runA={a} runB={b} onClear={vi.fn()} />)
+    // Panel must call buildComparisonSummary eagerly at render time for the table
+    // (the Copy JSON click handler also calls it, but that's a separate interaction).
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
   })
 
   it('renders constraint-type values from constraint_type_breakdown (#mockup-parity)', () => {
