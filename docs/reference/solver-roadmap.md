@@ -103,13 +103,20 @@ best-bound trajectory is in place, so the post-merge sweep can be evaluated
 against a real "converging vs. stuck" signal rather than just final objective
 shuffle.
 
-**Phase 4 — Compound & consolidate (NEXT BUILD).** Stream 3 variable-count attack
-(#1381), **re-scoped first**: #1391 + #1427 already removed `both_in_bunk`
-(the old lever 3b) and the duplicate MP sat vars, so the blast radius is far
-smaller than the original estimate — lever 3a (sparse `person_in_bunk`
-gender filter) is the main remaining win, and Phase 2's compression-ratio
-metric tells you exactly what is left to cut. Plus the Group 55 tail
-(#1396, #1397) and Stream 6 substreams (#1426 audit, then 6a–6f).
+**Phase 4 — Compound & consolidate (NEXT BUILD).** Stream 3 variable-count
+attack (#1381), **re-scoped 2026-05-18** (see Stream 3 section below). Three
+sub-phases:
+
+- **Phase A** — read the most recent S2 `presolve_compression_ratio` from
+  PB (~30 min, no code) to decide whether lever 3a is justified.
+- **Phase B** — ship lever 3e (drop `req_satisfied` for impossible requests).
+  Tiny, low-risk, useful regardless of Phase A outcome.
+- **Phase C** — *conditional on Phase A* — sparse `person_in_bunk` +
+  `person_bunk_assignment` refactor; 11 constraint modules to update.
+
+Original lever 3b is moot (eaten by #1395), 3c shipped via Stream 1, and 3d/3f
+deferred per the re-scope rationale table. Stream 6 substreams 6a–6f remain
+incremental and unfiled.
 
 **Parallel / immediate (not gated):** #1398 golden alignment test shipped in
 #1434 (2026-05-14); #1397 retire-`calculate_satisfied_requests` shipped in
@@ -421,10 +428,116 @@ prioritizes them.
 
 ## Stream 3 — Variable-Count Attack Surface
 
-**Status:** Newly proposed. Compound savings; biggest blast radius of
-the four streams.
+**Status:** Re-scoped 2026-05-18 after Phase 0 (Stream 1 hard MSO),
+Phase 1 (pre-check honesty), and the sat-var unification in #1427
+removed roughly half the model bulk. The original spec is preserved
+below with strikethrough; the live re-scope is in **"Re-scope
+(2026-05-18)"** before the legacy section.
 
-### Motivation
+### Re-scope (2026-05-18)
+
+#### What changed
+
+The 2026-05-15 verification sweep showed S2 model size collapsed from
+**11,657 → 5,215 variables (−55%)** and **23,644 → 12,060 constraints
+(−49%)** after #1427's sat-var unification. The roadmap's original
+"5,561 booleans post-presolve, 9,750 pre-presolve" baseline is stale,
+and several of the original levers were eaten in the process:
+
+- Lever 3b (`both_in_bunk`) — **moot**, removed in #1395 (orphaned by
+  #1391)
+- Lever 3c (hard MSO) — **shipped** as Stream 1 (#1391)
+- The ~250 duplicate MP sat vars from the original spec — **gone**
+  via #1427's `request_satisfied_vars` unification
+
+The original compound-impact framing (**5,561 → ~3,000, −46%**) was
+predicated on 3a + 3b + Stream 1 together. With 3b moot and Stream 1
+shipped, lever 3a is the **only remaining mechanical lever of size**,
+and even its real value depends on a number nobody has measured yet:
+the **current** pre-presolve count post-#1427. Phase 2's
+`presolve_compression_ratio` metric (#1436) was built to answer
+exactly this.
+
+#### Phased re-scope
+
+**Phase A — Measure before modeling (~30 min, no code change).** Read
+the most recent S2 `solver_runs.stats.presolve_compression_ratio`
+from PB. Three branches:
+
+- **Ratio ≥ 0.3** (presolve eliminates ≥30%): lever 3a is worth the
+  foundational-layer touch. Proceed to Phase C.
+- **Ratio 0.15–0.3**: judgment call — fewer BoolVars to save, but
+  also smaller cleanup. Defer pending a real performance complaint.
+- **Ratio < 0.15** (model already tight): Stream 3 collapses to Phase
+  B only, and the rest of #1381 closes as "no remaining attack
+  surface." File a closing comment with the ratio number.
+
+This is not a tracked sub-issue — it's a sub-30-min `gh pr view`
+moment whoever picks Stream 3 up does first.
+
+**Phase B — Lever 3e warmup (small PR, any time).** Drop
+`req_satisfied` BoolVars for requests already in
+`impossibility_report.flat` (the per-request set is now the canonical
+post-#1429 source of truth). Tiny — ~10 LOC plus a test, no risk,
+behaviour-neutral since impossible requests already don't contribute
+to the objective. Worth shipping whether or not we proceed to 3a; it
+also establishes a clean "missing key → 0" pattern that Phase C will
+need at scale.
+
+**Phase C — Lever 3a (sparse `person_in_bunk` + `person_bunk_assignment`),
+conditional on Phase A.** Refactor
+`direct_solver.py:_create_assignment_variables` to skip cross-gender
+and cross-session (person, bunk) pairs at model-build. **11 constraint
+modules** consume `ctx.assignments[(p, b)]` directly via tuple-key
+access and will all need either a `.get(...)` guard or a range-filter
+update to handle missing keys; the readers are:
+`age_grade_flow.py`, `age_preference.py`, `age_spread.py`,
+`cabin_capacity.py`, `cabin_occupancy.py`, `gender.py`,
+`grade_adjacency.py`, `grade_ratio.py`, `grade_spread.py`,
+`group_locks.py`, `level_progression.py`. Gender constraint becomes
+mostly a no-op (the forced-zero cases never get created); residual
+gender enforcement stays for unknown-gender persons. Estimated savings
+on S2: ~1,640 BoolVars cross-gender plus whatever cross-session pairs
+exist in multi-session mode (related sessions). Risk: foundational
+modeling layer; new test fixtures required for gender-mismatch paths
+because today's tests pass trivially against the dense-then-forced-zero
+encoding.
+
+#### Dropped from scope (with rationale)
+
+| # | Status | Rationale |
+|---|---|---|
+| 3b | **Closed** | `both_in_bunk` removed by #1395; no sparse-encoding lever exists on a structure that no longer exists. |
+| 3c | **Shipped** | Hard MSO landed in #1391 (Stream 1 / Phase 0). |
+| 3d | **Deferred** | Fixed-assignment pass for 1-bunk-eligible campers overlaps with Stream 6b (group_locks impossibility) and the per-session value is unclear without measurement. Reassess after Phase A if AG-only / grade-locked camper counts justify the orchestration work. |
+| 3f | **Deferred** | `grade_ratio` bool_and → `AddAllowedAssignments` is a risky modeling rewrite with no concrete evidence the chains are the bottleneck. The Phase 2 best-bound trajectory shows the plateau is **bound movement**, not branching cost, so the case for tighter LP relaxation here is weak. File a separate issue if a future plateau analysis points back at grade_ratio specifically. |
+
+#### Why not just close Stream 3?
+
+Phase 0 + Phase 1 + #1427 ate enough that the burden of proof has
+flipped: Stream 3 used to be "obvious win," now it's "show me the
+compression ratio first." That's a meaningful re-scope, not a
+cancellation — Phase A is cheap, Phase B is tiny and worth doing
+either way, and Phase C remains the largest single-PR opportunity if
+the metric supports it. Closing the issue without Phase A would mean
+shipping #1381 on stale numbers.
+
+#### GitHub issue
+
+#1381 stays open; this section IS the re-scope referenced in the
+status table. No sub-issues filed — Phases A/B/C are intentionally
+inline-only until Phase A's number forces a decision (per
+[memory: don't file speculative-refactor issues]).
+
+---
+
+### Original spec (preserved for historical context)
+
+> The text below is the pre-2026-05-18 version of Stream 3 and is
+> retained so the original sizing math, lever inventory, and risk
+> framing remain traceable. Everything live is in the re-scope above.
+
+#### Motivation (original)
 
 For S2 (193 persons × 17 bunks), the pre-presolve model would have
 ~9,750 boolean variables. CP-SAT presolve compresses to 5,561 (~43%
@@ -441,7 +554,7 @@ to eliminate junk) yields:
 - Tighter LP relaxation
 - Clearer model when debugging
 
-### Boolean variable bulk (estimated, S2)
+#### Boolean variable bulk (estimated, S2, ORIGINAL — pre-#1427)
 
 | Source | Pre-presolve count | Code ref |
 |---|---|---|
@@ -453,7 +566,7 @@ to eliminate junk) yields:
 | **Total before presolve** | **~9,750** | |
 | **Post-presolve (reported)** | **5,561** | |
 
-### Levers, ranked by leverage
+#### Levers, ranked by leverage (ORIGINAL)
 
 | # | Lever | Estimated savings | Risk | Effort |
 |---|---|---|---|---|
@@ -464,13 +577,16 @@ to eliminate junk) yields:
 | 3e | **Drop `req_satisfied` for already-impossible requests** | −~4 per session (small) | None | Tiny |
 | 3f | **Convert `grade_ratio` bool_and chains to `AddAllowedAssignments`** (CP-SAT table constraints are tighter than `bool_and`) | Possibly significant, hard to estimate without prototyping | Medium — modeling rewrite | Medium PR |
 
-### Compound impact
+#### Compound impact (ORIGINAL)
 
 Stages 3a + 3b + Stream 1 (hard MSO) together could reduce booleans
 from **5,561 → ~3,000** (−46%) on S2, with corresponding linear
 constraint reductions. S4 (303 persons × 26 bunks) compounds higher.
 
-### Why 3a is the single best lever
+> Re-scope note: with 3b moot and Stream 1 shipped, the compound case
+> reduces to lever 3a alone — see the re-scope above.
+
+#### Why 3a is the single best lever (ORIGINAL — still mostly true)
 
 Camp bunks are single-gender. Currently the model creates a BoolVar
 for "girl placed in boys' bunk" for every (F-person, M-bunk) pair —
@@ -479,17 +595,18 @@ presolve. Limiting `person_in_bunk` creation to (person, eligible_bunk)
 pairs at model-build time eliminates the largest single source of
 pre-presolve redundancy.
 
-### Code refs
+#### Code refs (ORIGINAL — `bunk_requests.py` ref stale)
 
 - `bunking/solver/direct_solver.py:_create_assignment_variables` —
   source of the 3,281 BoolVars
-- `bunking/solver/constraints/bunk_requests.py` — `both_in_bunk` /
-  `separated` loops
+- ~~`bunking/solver/constraints/bunk_requests.py` — `both_in_bunk` /
+  `separated` loops~~ — gone post-#1395; replaced by the canonical
+  `get_or_create_request_sat_var` builder
 - `bunking/solver/direct_solver.py:_validate_requests` (lines
   355-438) — impossibility classification already provides the
   filter list for 3e
 
-### Risks
+#### Risks (ORIGINAL — still applies to Phase C)
 
 1. Refactoring `_create_assignment_variables` touches the foundational
    modeling layer. Many downstream functions assume the `assignments`
@@ -500,20 +617,16 @@ pre-presolve redundancy.
    creates the BoolVar and the gender constraint forces it to 0 —
    the test passes trivially). Need new test fixtures.
 
-### Out of scope
+#### Out of scope (ORIGINAL — unchanged)
 
 - Custom CP-SAT search-strategy injection. Stays with default workers
   for now.
 - Wholesale switch from CP-SAT to LP-based solver. Out of scope
   permanently for this codebase.
 
-### GitHub issue
+#### GitHub issue
 
-#1381. **Re-scope before starting** — #1391 + #1427 already eliminated
-`both_in_bunk` (the old lever 3b) and the duplicate MP sat vars; lever 3a
-(sparse `person_in_bunk`) is the main remaining win. Gated on Phase 2's
-presolve-compression-ratio metric. See Phase 4 in "Status & phased
-sequencing" above.
+#1381. Re-scope is the section above this one.
 
 ---
 
