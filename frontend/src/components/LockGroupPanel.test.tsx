@@ -101,6 +101,9 @@ beforeEach(() => {
   mockGroupsState = {}
   mockMembersState = {}
   mockContext.isActionBarVisible = false
+  mockContext.isLockPanelOpen = true
+  mockContext.groups = []
+  mockContext.membersByGroup = {}
   mockContext.selectedGroupId = null
   mockContext.getCamperLockGroup = () => null
   mockContext.addCamperToGroup = vi.fn()
