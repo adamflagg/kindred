@@ -17,6 +17,7 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
 from bunking.auth_middleware import AuthUser
 from bunking.bunking_validator import BunkingValidator, HistoricalBunkingRecord
+from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.models import (
     Bunk,
@@ -27,6 +28,7 @@ from bunking.models import (
 )
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
+from bunking.solver.impossibility import validate_impossibility
 
 from ..constants.collections import (
     ATTENDEES,
@@ -41,6 +43,7 @@ from ..constants.collections import (
 from ..constants.filters import ACTIVE_ENROLLED_FILTER
 from ..dependencies import pb
 from ..schemas import ValidateBunkingRequest
+from ..services.data_fetcher import fetch_session_data_v2, prepare_direct_solver_input
 from ..services.session_context import build_session_context
 from ..utils.pb_error import pb_error_to_http
 from ..utils.session_metrics import get_person_from_expand, get_session_from_expand
@@ -376,6 +379,29 @@ async def validate_bunking(
             logger.warning(f"Failed to fetch historical bunking data: {e}")
             # Continue without historical data - level regression won't be checked
 
+        # #1520: Compute the impossibility set so post-check rate metrics gate on
+        # solver-actionable requests, matching the solver-side gating shipped in
+        # PR #1463. Mirrors the path `api.routers.solver.pre_validate_solver` uses
+        # so both endpoints agree on what counts as impossible. The doubled fetch
+        # (V1 above + V2 here) is acceptable overhead for now; a longer-term
+        # consolidation would route validation through the same V2 data path.
+        impossible_request_ids: set[str] = set()
+        try:
+            v2_attendees, v2_bunks, v2_requests, v2_assignments, v2_bunk_plans = await fetch_session_data_v2(
+                request.session_cm_id, ctx.year, pb, scenario=request.scenario
+            )
+            solver_input = prepare_direct_solver_input(
+                v2_attendees, v2_bunks, v2_requests, v2_assignments, v2_bunk_plans
+            )
+            impossibility_report = validate_impossibility(solver_input, ConfigLoader.get_instance())
+            impossible_request_ids = {item.request_id for item in impossibility_report.flat}
+        except Exception as e:
+            # Impossibility computation is metric-gating only — if it fails, log
+            # and fall through with ungated metrics so the validator still returns
+            # a usable result. The legacy ungated behavior was the pre-#1520
+            # default; failing closed (raising) would regress a working endpoint.
+            logger.warning(f"Impossibility gating skipped for session {ctx.session_cm_id}: {e}")
+
         # Run validation
         validator = BunkingValidator()
 
@@ -390,6 +416,7 @@ async def validate_bunking(
             bunk_plans=bunk_plans_for_validator,
             attendees=attendees_for_validator,
             historical_bunking=historical_bunking or None,
+            impossible_request_ids=impossible_request_ids or None,
         )
 
         return validation_result.model_dump()

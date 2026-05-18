@@ -251,6 +251,7 @@ class BunkingValidator:
         bunk_plans: list[Any] | None = None,
         attendees: list[Any] | None = None,
         historical_bunking: list[HistoricalBunkingRecord] | None = None,
+        impossible_request_ids: set[str] | None = None,
     ) -> ValidationResult:
         """
         Perform comprehensive validation of bunking assignments.
@@ -303,7 +304,15 @@ class BunkingValidator:
 
         # Validate request satisfaction
         bunk_by_id: dict[str, Bunk] = {b.campminder_id: b for b in bunks}
-        self._validate_requests(requests, assignments_by_person, person_by_id, stats, issues, bunk_by_id=bunk_by_id)
+        self._validate_requests(
+            requests,
+            assignments_by_person,
+            person_by_id,
+            stats,
+            issues,
+            bunk_by_id=bunk_by_id,
+            impossible_request_ids=impossible_request_ids,
+        )
 
         # Validate age/grade spreads
         self._validate_spreads(bunks, assignments_by_bunk, person_by_id, stats, issues)
@@ -433,8 +442,24 @@ class BunkingValidator:
         stats: ValidationStatistics,
         issues: list[ValidationIssue],
         bunk_by_id: dict[str, Bunk] | None = None,
+        impossible_request_ids: set[str] | None = None,
     ) -> None:
-        """Validate request satisfaction - tracking by source field."""
+        """Validate request satisfaction - tracking by source field.
+
+        Aggregate rate metrics (``material_parent_*``, ``staff_*``, ``total_*``,
+        ``mp_campers_*``) gate on ``impossible_request_ids`` so the post-check
+        denominators match the solver-side ones produced by PR #1463
+        (``direct_solver._check_must_satisfy_one_violations``). Without that
+        gating, structurally-impossible requests (cross-gender pairs, oldest-grade
+        kid asking for "older", etc.) drag the validator's rates below the
+        solver's even though no feasible assignment can fix them.
+        See #1520.
+
+        Issue listings (``valid_request_unsatisfied`` warnings,
+        ``unsatisfied_material_parent_persons`` drill-down) intentionally stay
+        ungated — the staff modal still surfaces every unmet request so
+        per-camper detail remains visible.
+        """
         # Valid statuses are 'resolved' (accepted/approved)
         valid_statuses = {"resolved"}
 
@@ -785,10 +810,21 @@ class BunkingValidator:
         total_alerting_requests = sum(len(reqs) for reqs in alerting_requests_by_person.values())
         total_satisfied_alerting_requests = sum(len(reqs) for reqs in satisfied_alerting_by_person.values())
 
+        # #1520: gate aggregate counters on the impossibility set so the
+        # post-check denominators match solver-side (PR #1463). Empty/None set
+        # = legacy ungated behavior (preserved for callers that don't compute
+        # impossibility).
+        _impossible_ids: set[str] = impossible_request_ids or set()
+
+        def _gated(reqs: list[BunkRequest]) -> list[BunkRequest]:
+            if not _impossible_ids:
+                return reqs
+            return [r for r in reqs if getattr(r, "id", None) not in _impossible_ids]
+
         # Material parent (bunk_with source_field) stats.
-        stats.material_parent_requests = sum(len(reqs) for reqs in material_parent_by_person.values())
+        stats.material_parent_requests = sum(len(_gated(reqs)) for reqs in material_parent_by_person.values())
         stats.satisfied_material_parent_requests = sum(
-            len(reqs) for reqs in satisfied_material_parent_by_person.values()
+            len(_gated(reqs)) for reqs in satisfied_material_parent_by_person.values()
         )
         if stats.material_parent_requests > 0:
             stats.material_parent_request_satisfaction_rate = (
@@ -852,19 +888,21 @@ class BunkingValidator:
         stats.unsatisfied_material_parent_detail = unsatisfied_material_parent_detail
 
         # Camper-level two-tier MP coverage.
-        # mp_campers_total = distinct requesters with ≥1 MP request.
-        # at_least_one = requester has ≥1 satisfied MP request.
-        # all_satisfied = requester has ≥1 MP request AND every MP request is satisfied.
-        stats.mp_campers_total = sum(1 for reqs in material_parent_by_person.values() if reqs)
+        # mp_campers_total = distinct requesters with ≥1 *possible* MP request.
+        # at_least_one = requester has ≥1 satisfied (possible) MP request.
+        # all_satisfied = requester has ≥1 MP request AND every *possible* MP request is satisfied.
+        # #1520: counts gate on impossibility so a camper whose entire MP set is
+        # impossible drops out of the denominator (matches solver-side parity).
+        stats.mp_campers_total = sum(1 for reqs in material_parent_by_person.values() if _gated(reqs))
         stats.mp_campers_with_at_least_one_satisfied = sum(
             1
             for pid, reqs in material_parent_by_person.items()
-            if reqs and satisfied_material_parent_by_person.get(pid)
+            if _gated(reqs) and _gated(satisfied_material_parent_by_person.get(pid, []))
         )
         stats.mp_campers_with_all_satisfied = sum(
             1
             for pid, reqs in material_parent_by_person.items()
-            if reqs and len(satisfied_material_parent_by_person.get(pid, [])) == len(reqs)
+            if _gated(reqs) and len(_gated(satisfied_material_parent_by_person.get(pid, []))) == len(_gated(reqs))
         )
 
         # Best-effort parent (socialize_with source_field) stats.
@@ -877,8 +915,10 @@ class BunkingValidator:
                 stats.satisfied_best_effort_parent_requests / stats.best_effort_parent_requests
             )
 
-        stats.staff_requests = sum(len(reqs) for reqs in staff_requests_by_person.values())
-        stats.satisfied_staff_requests = sum(len(reqs) for reqs in satisfied_staff_by_person.values())
+        # #1520: staff requests gate on impossibility too, so `total_requests`
+        # (= MP + staff) stays internally consistent.
+        stats.staff_requests = sum(len(_gated(reqs)) for reqs in staff_requests_by_person.values())
+        stats.satisfied_staff_requests = sum(len(_gated(reqs)) for reqs in satisfied_staff_by_person.values())
         if stats.staff_requests > 0:
             stats.staff_request_satisfaction_rate = stats.satisfied_staff_requests / stats.staff_requests
 

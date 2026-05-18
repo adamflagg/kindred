@@ -5,6 +5,12 @@ emerged from the May 2026 stuck-core investigation. Each stream gets a
 dedicated GitHub issue; specs and plans live in `docs/superpowers/` (local
 only) once individual streams are picked up.
 
+> **Updated 2026-05-18 (post-#1523, post-#1520).** Stream 4 (mutual-request
+> boost, Phase 3) shipped. The #1520 validator-side parity fix also shipped.
+> Only **Stream 3 (#1381 — Phase 4, variable-count attack surface)** remains
+> genuinely open as planned work; Stream 6 substreams 6a–6f stay incremental
+> and unfiled until a real need surfaces.
+
 > **Why this doc exists.** The May 12 investigation surfaced four
 > distinct improvements at once (camp-policy fix, observability gap,
 > variable-count attack surface, objective tuning). The investigation
@@ -36,8 +42,8 @@ only) once individual streams are picked up.
 | Stream 2 Tier 2 — plateau-diagnostic metrics | none (spec in-doc) | #1436 | ✅ shipped 2026-05-14 |
 | Golden sat-var ↔ predicate alignment test | #1398 | #1434 | ✅ shipped 2026-05-14 (Option 2 — bunk_with/not_bunk_with only) |
 | Retire `solution.calculate_satisfied_requests` | #1397 | #1438 | ✅ shipped 2026-05-15 |
-| **Stream 4 — mutual-request boost** | #1382 | — | ⬜ **Phase 3 — next build** |
-| Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
+| Stream 4 — mutual-request boost | #1382 | #1523 | ✅ shipped 2026-05-18 (Phase 3) |
+| Stream 3 — variable-count attack surface | #1381 | — | ⬜ **Phase 4 — next build (re-scope first)** |
 | Penalty-driven MP-coverage investigation | #1396 | — | ✅ closed not-planned 2026-05-17 (Phase-2 bound-trajectory chart shows the plateau directly; counterfactuals moot) |
 | Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ✅ closed 2026-05-17 — audit deliverable at `docs/plans/audit-1426-impossibility.md` (local); no remaining hand-rolled logic to migrate |
 | Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ✅ closed not-planned 2026-05-17 — see "Parked — V1/V2 models consolidation" section below |
@@ -47,7 +53,7 @@ only) once individual streams are picked up.
 | Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | #1465 | ✅ shipped 2026-05-15 |
 | Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | #1464 | ✅ shipped 2026-05-16 |
 | Exclude impossible requests from `all_camper_rate` ("Optimized") + surface in post-check modal | #1442 | #1463, #1464 | ✅ shipped 2026-05-15 |
-| Validator-side parity (post-check denominator gating) | #1520 | — | ⬜ small — see "First drift instance observed" in V1/V2 Parked section |
+| Validator-side parity (post-check denominator gating) | #1520 | (this PR) | ✅ shipped 2026-05-18 — narrow tactical path; V1/V2 consolidation still deferred |
 | Retire dead `DirectSolverOutput.analysis` path | #1437 | #1453 | ✅ shipped 2026-05-15 |
 | Tighten `request_validation_summary` to a `RequestValidationSummary` TypedDict | #1386 | #1487 | ✅ shipped 2026-05-18 |
 | Remove unreachable per-bunk branch in `age_preference` sat-var builder | #1467 | — | ✅ shipped 2026-05-16 |
@@ -89,14 +95,15 @@ issue. (Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on Tier 1
 alone; the remaining Tier 2/Tier 3 metrics stay tracked in the Stream 2
 tables and are picked up only when a specific question demands them.)
 
-**Phase 3 — Mutual-request boost (NEXT BUILD — Stream 4 / #1382).** Highest-
-leverage plateau intervention: reshapes the objective toward reciprocated
-pairs so that when Stage 4's hard constraint binds, it preferentially honors
-mutual requests. Well-scoped (~80–120 LOC). Phase 2's best-bound trajectory
-is now in place, so a Phase 3 sweep can be evaluated against a real
-"converging vs. stuck" signal rather than just final objective shuffle.
+**Phase 3 — Mutual-request boost (SHIPPED — Stream 4 / #1382, PR #1523, 2026-05-18).**
+Highest-leverage plateau intervention: reshapes the objective toward
+reciprocated pairs so that when Stage 4's hard constraint binds, it
+preferentially honors mutual requests. Well-scoped (~80–120 LOC). Phase 2's
+best-bound trajectory is in place, so the post-merge sweep can be evaluated
+against a real "converging vs. stuck" signal rather than just final objective
+shuffle.
 
-**Phase 4 — Compound & consolidate.** Stream 3 variable-count attack
+**Phase 4 — Compound & consolidate (NEXT BUILD).** Stream 3 variable-count attack
 (#1381), **re-scoped first**: #1391 + #1427 already removed `both_in_bunk`
 (the old lever 3b) and the duplicate MP sat vars, so the blast radius is far
 smaller than the original estimate — lever 3a (sparse `person_in_bunk`
@@ -607,7 +614,7 @@ Add `objective.mutual_request_boost = 2.0` to admin GUI. Defaults to
 
 ### GitHub issue
 
-#1382. This is Phase 3 — the next *build* after Tier 2 (Phase 2) lands.
+#1382. **Shipped** in PR #1523 (2026-05-18) as Phase 3.
 
 ---
 
@@ -900,9 +907,25 @@ Revisit when **any** of these become true:
 
 Until one of these triggers, the priority-deletion-style per-domain cleanup (Phase 1.5 via `solver-config-it`) handles V1-side fields as they're individually retired (priority already gone via #1455). The duplication shrinks on its own as each domain wraps.
 
-### First drift instance observed (2026-05-18)
+### First drift instance observed (2026-05-18) — RESOLVED narrow
 
-Post-#1442 (solver-side impossibility gating), the post-check modal shows ~92% (152/166) where the solver-side JSON shows ~97% (151/155) for the same solve. Root cause: `bunking/bunking_validator.py:789-795` (V1 path) computes `material_parent_requests` independently from raw resolved requests and never gates on the impossibility report. Filed as **#1520** (tactical validator-side gating, scope-matched to #1463) rather than a V1/V2 trigger; the drift instance is captured here so the reviewer picking up #1520 can decide whether to fold the validator gating into a larger V1/V2 consolidation pass or ship narrow.
+Post-#1442 (solver-side impossibility gating), the post-check modal showed
+~92% (152/166) where the solver-side JSON showed ~97% (151/155) for the same
+solve. Root cause: `bunking/bunking_validator.py:789-795` (V1 path) computed
+`material_parent_requests` independently from raw resolved requests and never
+gated on the impossibility report. Filed as **#1520** and shipped 2026-05-18
+on the **narrow tactical** path: validator gained an `impossible_request_ids`
+kwarg, `api/routers/validation.py` computes it via the same
+`fetch_session_data_v2` → `prepare_direct_solver_input` →
+`validate_impossibility` path `pre_validate_solver` uses, and threads IDs to
+the validator. Validator stays V1-pure; issue listings (per-camper warnings)
+stay ungated by design. **V1/V2 consolidation deferred** — the narrow path
+restores parity now and the structural divergence remains as a future trigger
+when a non-cosmetic field-validator drift surfaces.
+
+Known overhead: the validation route now does a second V2 data fetch
+alongside the existing V1 fetches. Acceptable for correctness; a longer-term
+refactor would consolidate validation onto the V2 data path.
 
 ---
 
@@ -1082,3 +1105,24 @@ Post-#1442 (solver-side impossibility gating), the post-check modal shows ~92% (
   instance — `bunking_validator.py` doesn't gate the post-check denominator
   on impossibility, producing 92% (validator) vs 97% (solver) on the same
   run. Logged in the V1/V2 Parked section as candidate trigger.
+- **2026-05-18** — **Stream 4 (#1382, mutual-request boost) shipped in
+  PR #1523** — Phase 3 complete. Boost detects reciprocated `bunk_with`
+  pairs and applies a configurable `objective.mutual_request_boost`
+  multiplier in `score_evaluator`; symmetric so model symmetry is
+  preserved. Phase 2's best-bound trajectory is the post-merge
+  measurement signal. **Phase 4 (Stream 3 / #1381, variable-count attack
+  surface, re-scope first)** is the next build — lever 3a (sparse
+  `person_in_bunk` gender filter) is the main remaining win since #1391
+  + #1427 already ate `both_in_bunk`.
+- **2026-05-18** — **#1520 (validator-side parity) shipped** on the
+  narrow tactical path. `bunking_validator.validate_bunking()` gained an
+  `impossible_request_ids: set[str] | None` kwarg; aggregate counters
+  (`material_parent_*`, `staff_*`, `total_*`, `mp_campers_*`) gate on it
+  so post-check denominators match the solver-side gating from #1463.
+  `api/routers/validation.py` computes the set via the same
+  `fetch_session_data_v2` → `prepare_direct_solver_input` →
+  `validate_impossibility` path `pre_validate_solver` uses. Issue
+  listings stay ungated by design — per-camper warnings still surface
+  every unmet request. The first-drift entry in the V1/V2 Parked
+  section is now resolved; V1/V2 consolidation remains deferred until
+  a non-cosmetic field-validator drift forces it.
