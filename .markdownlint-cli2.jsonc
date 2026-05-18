@@ -11,20 +11,15 @@
     "MD025": true,  // multiple top-level H1s in same doc
     "MD024": { "siblings_only": true } // duplicate headings — siblings only
   },
+  // Use .gitignore to automatically exclude gitignored paths (node_modules,
+  // .venv, dist, build, docs/plans, CLAUDE.local.md, docs/camp, etc.).
+  "gitignore": true,
   "globs": ["**/*.md"],
   "ignores": [
-    // Dependency directories
-    "**/node_modules/**",
-    "node_modules",
-    ".venv",
-    "dist",
-    "build",
-    // Local-only working artifacts (gitignored)
+    // docs/superpowers is in .gitignore but has a tracked file; keep explicit.
     "docs/superpowers",
-    "docs/plans",
-    // Local Claude skill files (not project docs)
-    ".claude",
-    // Private symlinked config (lives in kindred-local, not this repo)
-    "CLAUDE.local.md"
+    // .claude/skills/** is un-gitignored (tracked); keep explicit to avoid
+    // linting skill reference docs that aren't project documentation.
+    ".claude"
   ]
 }
