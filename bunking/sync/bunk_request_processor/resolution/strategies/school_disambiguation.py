@@ -314,10 +314,14 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
             # Continue with DB-loaded candidates as the pool
             school_pool = db_candidates
 
-        # Filter candidates by name match (case-insensitive)
+        # Filter candidates by name match (case-insensitive), including preferred names
+        # (e.g., "Bobby" matches a person with first_name="Robert", preferred_name="Bobby")
         first_l, last_l = parsed.first.lower(), parsed.last.lower()
         matching_candidates = [
-            c for c in school_pool if c.first_name.lower() == first_l and c.last_name.lower() == last_l
+            c
+            for c in school_pool
+            if (c.first_name.lower() == first_l or (c.preferred_name and c.preferred_name.lower() == first_l))
+            and c.last_name.lower() == last_l
         ]
 
         # Filter out self-references
