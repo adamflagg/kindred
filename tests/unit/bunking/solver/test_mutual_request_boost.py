@@ -23,6 +23,7 @@ from bunking.solver.direct_solver import (
     FIRST_REQUEST_MULTIPLIER,
     SECOND_REQUEST_MULTIPLIER,
     compute_mutual_bunk_with_pairs,
+    find_mutual_pairs,
 )
 from bunking.solver.objective_evaluator import ObjectiveEvaluator
 
@@ -53,7 +54,37 @@ def _group(reqs: list[DirectBunkRequest]) -> dict[int, list[DirectBunkRequest]]:
 
 
 # ---------------------------------------------------------------------------
-# compute_mutual_bunk_with_pairs — helper that detects reciprocal pairs.
+# find_mutual_pairs — shared helper. Takes pre-filtered directed edges, returns
+# the unordered pairs that appear in both directions. Both solver-side
+# (compute_mutual_bunk_with_pairs) and evaluator-side detection sit on top.
+# ---------------------------------------------------------------------------
+
+
+def test_find_mutual_pairs_detects_reciprocal_edges():
+    assert find_mutual_pairs([(1, 2), (2, 1)]) == {frozenset({1, 2})}
+
+
+def test_find_mutual_pairs_ignores_one_way_edges():
+    assert find_mutual_pairs([(1, 2), (3, 4)]) == set()
+
+
+def test_find_mutual_pairs_handles_multiple_disjoint_pairs():
+    edges = [(1, 2), (2, 1), (3, 4), (4, 3)]
+    assert find_mutual_pairs(edges) == {frozenset({1, 2}), frozenset({3, 4})}
+
+
+def test_find_mutual_pairs_empty_input():
+    assert find_mutual_pairs([]) == set()
+
+
+def test_find_mutual_pairs_dedupes_repeated_edges():
+    """Repeated directed edges collapse via set semantics; the result is the
+    same as if each direction appeared once."""
+    assert find_mutual_pairs([(1, 2), (1, 2), (2, 1), (2, 1)]) == {frozenset({1, 2})}
+
+
+# ---------------------------------------------------------------------------
+# compute_mutual_bunk_with_pairs — bunk_with-specific wrapper over find_mutual_pairs.
 # ---------------------------------------------------------------------------
 
 
@@ -316,3 +347,117 @@ def test_add_objective_consumes_mutual_request_boost():
     assert "compute_mutual_bunk_with_pairs" in src or "mutual_bunk_with_pairs" in src, (
         "add_objective must use the precomputed mutual pairs set"
     )
+
+
+# ---------------------------------------------------------------------------
+# score_evaluator.py — third evaluator path, must mirror the same boost as
+# the solver (else baseline-regression goldens silently drift on reciprocal
+# pairs). The boost is "always-on" so it has to land here too.
+# ---------------------------------------------------------------------------
+
+
+class _ScoreEvalConfig:
+    """Config stub for score_evaluator tests. Keeps source multipliers at 1.0
+    so the test math reduces to BASE × mutual × slot."""
+
+    def __init__(self, mutual_boost: float = 2.0):
+        self._values: dict[str, Any] = {
+            "objective.enable_first_boost": 1,
+            "objective.mutual_request_boost": mutual_boost,
+            "objective.source_multipliers.share_bunk_with": 1.0,
+            "objective.source_multipliers.do_not_share_with": 1.0,
+            "objective.source_multipliers.bunking_notes": 1.0,
+            "objective.source_multipliers.internal_notes": 1.0,
+            "objective.source_multipliers.socialize_preference": 1.0,
+            "constraint.grade_spread.max_spread": 99,
+            "constraint.grade_spread.penalty": 0,
+            "constraint.cabin_minimum_occupancy.penalty": 0,
+            "constraint.cabin_capacity.penalty": 0,
+            "constraint.cabin_capacity.standard": 12,
+        }
+
+    def get_int(self, key: str, default: int = 0) -> int:
+        v = self._values.get(key, default)
+        return int(v) if v is not None else default
+
+    def get_float(self, key: str, default: float = 0.0) -> float:
+        v = self._values.get(key, default)
+        return float(v) if v is not None else default
+
+    def get_str(self, key: str, default: str = "") -> str:
+        v = self._values.get(key, default)
+        return str(v) if v is not None else default
+
+    def get_bool(self, key: str, default: bool = False) -> bool:
+        v = self._values.get(key, default)
+        return bool(v) if v is not None else default
+
+
+def _se_req(requester: int, requestee: int, request_type: str = "bunk_with") -> dict[str, Any]:
+    return {
+        "id": f"r{requester}_{requestee}",
+        "requester_id": requester,
+        "requestee_id": requestee,
+        "request_type": request_type,
+        "is_first_requested": True,
+        "source_field": None,
+    }
+
+
+def test_score_evaluator_mutual_bunk_with_doubles_weight():
+    """score_evaluator must apply the mutual boost — without this the third
+    evaluator path silently undercounts mutual pairs vs. the solver and
+    objective_evaluator. Both A↔B in the same bunk; default boost 2.0."""
+    from bunking.solver.score_evaluator import evaluate_scenario_score
+
+    requests = [_se_req(1, 2), _se_req(2, 1)]
+    assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
+    persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
+    bunks = [{"cm_id": 100, "max_size": 12}]
+    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+
+    expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 2.0 * FIRST_REQUEST_MULTIPLIER)
+    assert result.request_satisfaction_score == 2 * expected_per_request
+
+
+def test_score_evaluator_one_way_bunk_with_no_boost():
+    """One-way request gets no boost — baseline slot-0 weight only."""
+    from bunking.solver.score_evaluator import evaluate_scenario_score
+
+    requests = [_se_req(1, 2)]
+    assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
+    persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
+    bunks = [{"cm_id": 100, "max_size": 12}]
+    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+
+    expected = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
+    assert result.request_satisfaction_score == expected
+
+
+def test_score_evaluator_disabled_boost_via_config_1():
+    """objective.mutual_request_boost=1.0 disables the boost in-place."""
+    from bunking.solver.score_evaluator import evaluate_scenario_score
+
+    requests = [_se_req(1, 2), _se_req(2, 1)]
+    assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
+    persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
+    bunks = [{"cm_id": 100, "max_size": 12}]
+    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig(mutual_boost=1.0))
+
+    expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
+    assert result.request_satisfaction_score == 2 * expected_per_request
+
+
+def test_score_evaluator_not_bunk_with_never_boosts():
+    """Reciprocal not_bunk_with must NOT be boosted (symmetric by intent)."""
+    from bunking.solver.score_evaluator import evaluate_scenario_score
+
+    requests = [_se_req(1, 2, "not_bunk_with"), _se_req(2, 1, "not_bunk_with")]
+    # Place in different bunks so both not_bunk_with are satisfied.
+    assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 200}]
+    persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
+    bunks = [{"cm_id": 100, "max_size": 12}, {"cm_id": 200, "max_size": 12}]
+    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+
+    expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
+    assert result.request_satisfaction_score == 2 * expected_per_request

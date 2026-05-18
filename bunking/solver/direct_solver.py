@@ -72,6 +72,15 @@ SECOND_REQUEST_MULTIPLIER = 5
 THIRD_PLUS_REQUEST_MULTIPLIER = 1
 
 
+def find_mutual_pairs(directed_edges: Iterable[tuple[int, int]]) -> set[frozenset[int]]:
+    """Given directed (a, b) edges, return the set of unordered {a, b} pairs
+    where both (a, b) and (b, a) are present. Caller is responsible for
+    filtering edges to the relevant subset (request type, validity, etc.).
+    """
+    edges = set(directed_edges)
+    return {frozenset({a, b}) for a, b in edges if (b, a) in edges}
+
+
 def compute_mutual_bunk_with_pairs(
     requests_by_person: Mapping[int, Iterable[DirectBunkRequest]],
 ) -> set[frozenset[int]]:
@@ -84,22 +93,14 @@ def compute_mutual_bunk_with_pairs(
     is a conflict, not an agreement, and reciprocal not_bunk_with is symmetric
     by intent (penalty already treats both directions equally).
     """
-    bunk_with_edges: set[tuple[int, int]] = set()
-    for reqs in requests_by_person.values():
-        for r in reqs:
-            if r.request_type != RequestType.BUNK_WITH.value:
-                continue
-            if r.requested_person_cm_id is None:
-                continue
-            if r.requester_person_cm_id == r.requested_person_cm_id:
-                continue
-            bunk_with_edges.add((r.requester_person_cm_id, r.requested_person_cm_id))
-
-    mutual: set[frozenset[int]] = set()
-    for a, b in bunk_with_edges:
-        if (b, a) in bunk_with_edges:
-            mutual.add(frozenset({a, b}))
-    return mutual
+    return find_mutual_pairs(
+        (r.requester_person_cm_id, r.requested_person_cm_id)
+        for reqs in requests_by_person.values()
+        for r in reqs
+        if r.request_type == RequestType.BUNK_WITH.value
+        and r.requested_person_cm_id is not None
+        and r.requester_person_cm_id != r.requested_person_cm_id
+    )
 
 
 class DirectBunkingSolver:

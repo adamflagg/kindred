@@ -44,7 +44,10 @@ migrate(
       tooltip:
         "Extra weight when both families name each other as bunk-with picks. 2.0 doubles the request's objective score; 1.0 disables the boost.",
       section: "request-weighting",
-      display_order: 2,
+      // request-weighting already has display_order 1–4 from
+      // 1500000100_priority_deletion.js (enable_first_boost + first/second/
+      // third multipliers). Place mutual boost after those.
+      display_order: 5,
       business_category: "solver",
       component_type: "number",
       component_config: {},

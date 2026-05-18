@@ -8,6 +8,7 @@ Components evaluated:
 1. Request satisfaction (bunk_with, not_bunk_with) with:
    - First-pick boost (is_first_requested → 10x slot-0 multiplier)
    - Source field multipliers
+   - Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
    - Diminishing returns (always-on, module constants)
 2. Age/grade flow bonuses (target grade distribution)
 3. Grade spread penalties (soft constraint)
@@ -30,6 +31,7 @@ from bunking.solver.direct_solver import (
     FIRST_REQUEST_MULTIPLIER,
     SECOND_REQUEST_MULTIPLIER,
     THIRD_PLUS_REQUEST_MULTIPLIER,
+    find_mutual_pairs,
 )
 from bunking.solver.penalties import (
     grade_spread_penalty,
@@ -150,21 +152,17 @@ class ObjectiveEvaluator:
         mutual_request_boost = self.config.get_float("objective.mutual_request_boost", default=2.0)
 
         # Mirror solver's mutual-pair detection on the dict-shaped requests
-        # the evaluator consumes. Same rules as compute_mutual_bunk_with_pairs:
-        # skip non-bunk_with, self-loops, null requestees.
-        mutual_bunk_with_pairs: set[frozenset[int]] = set()
-        bunk_with_edges: set[tuple[int, int]] = set()
-        for r in requests:
-            if r.get("request_type") != RequestType.BUNK_WITH.value:
-                continue
-            req_id = r.get("requester_id")
-            tgt_id = r.get("requestee_id")
-            if not req_id or not tgt_id or int(req_id) == int(tgt_id):
-                continue
-            bunk_with_edges.add((int(req_id), int(tgt_id)))
-        for a, b in bunk_with_edges:
-            if (b, a) in bunk_with_edges:
-                mutual_bunk_with_pairs.add(frozenset({a, b}))
+        # the evaluator consumes. Shared with compute_mutual_bunk_with_pairs
+        # via find_mutual_pairs — feed bunk_with edges only, skip self-loops
+        # and null requestees.
+        mutual_bunk_with_pairs = find_mutual_pairs(
+            (int(r["requester_id"]), int(r["requestee_id"]))
+            for r in requests
+            if r.get("request_type") == RequestType.BUNK_WITH.value
+            and r.get("requester_id")
+            and r.get("requestee_id")
+            and int(r["requester_id"]) != int(r["requestee_id"])
+        )
 
         # Source field multipliers (same as solver)
         source_multipliers = {
