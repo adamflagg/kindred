@@ -58,52 +58,8 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
     def resolve(
         self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
     ) -> ResolutionResult:
-        """Attempt phonetic name resolution.
-
-        Args:
-            name: Name to resolve
-            requester_cm_id: Person making the request
-            session_cm_id: Optional session context
-            year: Year context for resolution
-
-        Returns:
-            ResolutionResult with match outcome
-        """
-        parsed = parse_name(name)
-        if not parsed.first:
-            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "empty_name"})
-
-        # Try Soundex matching for full names
-        if parsed.is_complete:
-            # Fetch all persons ONCE and reuse across all phonetic algorithms
-            # This is a key optimization - previously each _try_* method fetched independently
-            all_persons = self.person_repo.get_all_for_phonetic_matching(year=year)
-
-            # Convert to list for helper methods (maintains backward compatibility)
-            name_parts = [parsed.first, parsed.last]
-            result = self._try_soundex_match(name_parts, requester_cm_id, session_cm_id, year, all_persons)
-            if result.is_resolved or result.is_ambiguous:
-                return result
-
-            # Try Metaphone matching as fallback
-            result = self._try_metaphone_match(name_parts, requester_cm_id, session_cm_id, year, all_persons)
-            if result.is_resolved or result.is_ambiguous:
-                return result
-
-            # Try nickname matching as final fallback
-            result = self._try_nickname_match(name_parts, requester_cm_id, session_cm_id, year, all_persons)
-            if result.is_resolved or result.is_ambiguous:
-                return result
-
-            # Try parent surname phonetic matching (e.g., "Emma Smidt" → Smith parent)
-            result = self._try_parent_surname_phonetic_match(
-                name_parts, requester_cm_id, session_cm_id, year, all_persons
-            )
-            if result.is_resolved or result.is_ambiguous:
-                return result
-
-        # No phonetic match found
-        return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_phonetic_match"})
+        """Phonetic name resolution (simple API without pre-loaded data)."""
+        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
 
     def _try_soundex_match(
         self,
@@ -111,9 +67,18 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         requester_cm_id: int,
         session_cm_id: int | None,
         year: int | None,
-        all_persons: list[Person],
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
-        """Try matching using Soundex algorithm"""
+        """Try matching using Soundex algorithm.
+
+        When candidates is provided, uses the pre-loaded pool; otherwise fetches from the person
+        repository. When attendee_info is provided, uses pre-loaded session data for confidence
+        and disambiguation.
+        """
+        if candidates is None:
+            candidates = self.person_repo.get_all_for_phonetic_matching(year=year)
+
         first_name = name_parts[0]
         last_name = name_parts[-1]
 
@@ -123,7 +88,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         matches = [
             person
-            for person in all_persons
+            for person in candidates
             if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex
         ]
 
@@ -134,7 +99,9 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
-            confidence = self._calculate_confidence(matches[0], requester_cm_id, session_cm_id, year, is_soundex=True)
+            confidence = self._calculate_confidence(
+                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_soundex=True
+            )
             return ResolutionResult(
                 person=matches[0],
                 confidence=confidence,
@@ -144,7 +111,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         # Multiple matches - try to disambiguate with session
         if year and session_cm_id:
-            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year)
+            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
                     result.metadata["match_type"] = "soundex_with_session"
@@ -168,9 +135,18 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         requester_cm_id: int,
         session_cm_id: int | None,
         year: int | None,
-        all_persons: list[Person],
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
-        """Try matching using Metaphone algorithm"""
+        """Try matching using Metaphone algorithm.
+
+        When candidates is provided, uses the pre-loaded pool; otherwise fetches from the person
+        repository. When attendee_info is provided, uses pre-loaded session data for confidence
+        and disambiguation.
+        """
+        if candidates is None:
+            candidates = self.person_repo.get_all_for_phonetic_matching(year=year)
+
         first_name = name_parts[0]
         last_name = name_parts[-1]
 
@@ -180,7 +156,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         matches = [
             person
-            for person in all_persons
+            for person in candidates
             if self._metaphone(person.first_name) == first_metaphone
             and self._metaphone(person.last_name) == last_metaphone
         ]
@@ -192,7 +168,9 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
-            confidence = self._calculate_confidence(matches[0], requester_cm_id, session_cm_id, year, is_metaphone=True)
+            confidence = self._calculate_confidence(
+                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_metaphone=True
+            )
             return ResolutionResult(
                 person=matches[0],
                 confidence=confidence,
@@ -202,7 +180,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         # Multiple matches - try to disambiguate
         if year and session_cm_id:
-            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year)
+            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
                     result.metadata["match_type"] = "metaphone_with_session"
@@ -226,14 +204,22 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         requester_cm_id: int,
         session_cm_id: int | None,
         year: int | None,
-        all_persons: list[Person],
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
         """Try matching using nickname groups.
 
         _names_match_with_nicknames() is called during phonetic search.
 
         This allows matching 'Mike Smith' -> 'Michael Smith', 'Kate Johnson' -> 'Katherine Johnson', etc.
+
+        When candidates is provided, uses the pre-loaded pool; otherwise fetches from the person
+        repository. When attendee_info is provided, uses pre-loaded session data for confidence
+        and disambiguation.
         """
+        if candidates is None:
+            candidates = self.person_repo.get_all_for_phonetic_matching(year=year)
+
         search_first = name_parts[0].lower()
         search_last = name_parts[-1].lower()
 
@@ -245,7 +231,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         nickname_groups = get_nickname_groups()
 
         matches = []
-        for person in all_persons:
+        for person in candidates:
             person_first = person.first_name.lower() if person.first_name else ""
             person_last = person.last_name.lower() if person.last_name else ""
 
@@ -264,7 +250,9 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
-            confidence = self._calculate_confidence(matches[0], requester_cm_id, session_cm_id, year, is_nickname=True)
+            confidence = self._calculate_confidence(
+                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_nickname=True
+            )
             return ResolutionResult(
                 person=matches[0],
                 confidence=confidence,
@@ -274,7 +262,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         # Multiple matches - try to disambiguate with session
         if year and session_cm_id:
-            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year)
+            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
                     result.metadata["match_type"] = "nickname_with_session"
@@ -298,13 +286,21 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         requester_cm_id: int,
         session_cm_id: int | None,
         year: int | None,
-        all_persons: list[Person],
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
         """Try matching using phonetic comparison of last name against parent surnames.
+
+        When candidates is provided, uses the pre-loaded pool; otherwise fetches from the person
+        repository. When attendee_info is provided, uses pre-loaded session data for confidence
+        and disambiguation.
 
         Example: "Emma Smidt" → matches camper Emma Johnson whose parent is "Smith"
         because "Smidt" sounds like "Smith" (Soundex or Metaphone match).
         """
+        if candidates is None:
+            candidates = self.person_repo.get_all_for_phonetic_matching(year=year)
+
         first_name = name_parts[0]
         last_name = name_parts[-1]
 
@@ -317,7 +313,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         first_variations.update(v.lower() for v in find_nickname_variations(first_name))
 
         matches = []
-        for person in all_persons:
+        for person in candidates:
             # Check first name matches (including nicknames)
             person_first = person.first_name.lower() if person.first_name else ""
             if person_first not in first_variations:
@@ -342,7 +338,9 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
-            confidence = self._calculate_confidence(matches[0], requester_cm_id, session_cm_id, year, is_soundex=True)
+            confidence = self._calculate_confidence(
+                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_soundex=True
+            )
             # Reduce confidence for parent surname phonetic match
             confidence = min(confidence - 0.05, 0.80)
             return ResolutionResult(
@@ -358,7 +356,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
         # Multiple matches - try to disambiguate with session
         if year and session_cm_id:
-            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year)
+            result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
                     result.metadata["match_type"] = "parent_surname_phonetic"
@@ -414,15 +412,28 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         return jellyfish.metaphone(name)
 
     def _disambiguate_with_session(
-        self, matches: list[Person], requester_cm_id: int, session_cm_id: int, year: int
+        self,
+        matches: list[Person],
+        requester_cm_id: int,
+        session_cm_id: int,
+        year: int,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
     ) -> ResolutionResult:
-        """Try to disambiguate using session information"""
-        # Get sessions for all matches
-        match_cm_ids = [m.cm_id for m in matches]
-        sessions_map = self.attendee_repo.bulk_get_sessions_for_persons(match_cm_ids, year)
+        """Try to disambiguate using session information.
 
-        # Filter by same session
-        same_session_matches = [m for m in matches if sessions_map.get(m.cm_id) == session_cm_id]
+        When attendee_info is provided, uses pre-loaded session data; otherwise queries
+        the attendee repository.
+        """
+        if attendee_info is not None:
+            same_session_matches = [
+                m
+                for m in matches
+                if m.cm_id in attendee_info and attendee_info[m.cm_id].get("session_cm_id") == session_cm_id
+            ]
+        else:
+            match_cm_ids = [m.cm_id for m in matches]
+            sessions_map = self.attendee_repo.bulk_get_sessions_for_persons(match_cm_ids, year)
+            same_session_matches = [m for m in matches if sessions_map.get(m.cm_id) == session_cm_id]
 
         if len(same_session_matches) == 1:
             return ResolutionResult(
@@ -440,12 +451,16 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         requester_cm_id: int,
         session_cm_id: int | None,
         year: int | None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
         is_soundex: bool = False,
         is_metaphone: bool = False,
         is_nickname: bool = False,
     ) -> float:
-        """Calculate confidence based on match type and session verification"""
-        # Base confidence by algorithm (from config with fallback to defaults)
+        """Calculate confidence based on match type and session verification.
+
+        When attendee_info is provided, uses pre-loaded session data; otherwise queries
+        the attendee repository.
+        """
         if is_soundex:
             base_confidence = float(self._get_confidence("soundex_base", DEFAULT_SOUNDEX_BASE))
         elif is_metaphone:
@@ -455,13 +470,15 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         else:
             base_confidence = float(self._get_confidence("default_base", DEFAULT_CONFIDENCE))
 
-        # Verify session if possible
         if year and session_cm_id:
-            sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([person.cm_id], year)
-            person_session = sessions_map.get(person.cm_id)
+            person_session: int | None
+            if attendee_info is not None and person.cm_id in attendee_info:
+                person_session = attendee_info[person.cm_id].get("session_cm_id")
+            else:
+                sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([person.cm_id], year)
+                person_session = sessions_map.get(person.cm_id)
             return self._apply_session_adjustment_simple(base_confidence, person_session, session_cm_id)
 
-        # No session info - apply slight penalty
         penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
         return base_confidence + penalty
 
@@ -475,319 +492,55 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         attendee_info: dict[int, dict[str, Any]] | None = None,
         all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
-        """Resolve using pre-loaded candidates and attendee info.
+        """Phonetic name resolution — canonical implementation.
 
-        This optimized method uses pre-loaded data to avoid database queries.
+        When candidates/all_persons are provided, uses the pre-loaded pool for batch
+        optimization (no DB queries). Otherwise falls back to fetching from the person
+        repository. When attendee_info is provided, uses pre-loaded session data for
+        confidence calculation and disambiguation.
         """
         parsed = parse_name(name)
         if not parsed.first:
             return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "empty_name"})
 
-        # Use all_persons for phonetic matching when candidates is empty (single-name targets)
-        # This avoids the expensive fallback to resolve() which re-fetches all persons
+        if not parsed.is_complete:
+            # No last name — phonetic matching requires both first and last
+            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_phonetic_match"})
+
+        # Use all_persons as fallback pool when candidates not provided (single-name targets
+        # may pass all_persons but no filtered candidates).  If neither is provided, fetch
+        # from the repository once and share across all helpers.
         phonetic_pool = candidates or all_persons
+        if phonetic_pool is None:
+            phonetic_pool = self.person_repo.get_all_for_phonetic_matching(year=year)
 
-        # If we still have no pool to search, we can't do phonetic matching
-        if not phonetic_pool:
-            return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_candidates"})
+        name_parts = [parsed.first, parsed.last]
 
-        # Try phonetic matching with pre-loaded data
-        if parsed.is_complete:
-            # Convert to list for helper methods
-            name_parts = [parsed.first, parsed.last]
-            # Try Soundex matching
-            result = self._try_soundex_match_with_context(
-                name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
-            )
-            if result.is_resolved or result.is_ambiguous:
-                return result
+        # Try Soundex matching
+        result = self._try_soundex_match(name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info)
+        if result.is_resolved or result.is_ambiguous:
+            return result
 
-            # Try Metaphone matching as fallback
-            result = self._try_metaphone_match_with_context(
-                name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
-            )
-            if result.is_resolved or result.is_ambiguous:
-                return result
+        # Try Metaphone matching as fallback
+        result = self._try_metaphone_match(
+            name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
+        )
+        if result.is_resolved or result.is_ambiguous:
+            return result
 
-            # Try parent surname phonetic matching
-            result = self._try_parent_surname_phonetic_match_with_context(
-                name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
-            )
-            if result.is_resolved or result.is_ambiguous:
-                return result
+        # Try nickname phonetic matching (e.g., "Mike Smith" → "Michael Smith")
+        result = self._try_nickname_match(
+            name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
+        )
+        if result.is_resolved or result.is_ambiguous:
+            return result
+
+        # Try parent surname phonetic matching (e.g., "Emma Smidt" → Smith parent)
+        result = self._try_parent_surname_phonetic_match(
+            name_parts, requester_cm_id, session_cm_id, year, phonetic_pool, attendee_info
+        )
+        if result.is_resolved or result.is_ambiguous:
+            return result
 
         # No phonetic match found
         return ResolutionResult(confidence=0.0, method=self.name, metadata={"reason": "no_phonetic_match"})
-
-    def _try_soundex_match_with_context(
-        self,
-        name_parts: list[str],
-        requester_cm_id: int,
-        session_cm_id: int | None,
-        year: int | None,
-        candidates: list[Person],
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try matching using Soundex algorithm with pre-loaded candidates"""
-        first_name = name_parts[0]
-        last_name = name_parts[-1]
-
-        # Generate Soundex codes
-        first_soundex = self._soundex(first_name)
-        last_soundex = self._soundex(last_name)
-
-        # Filter candidates by Soundex match
-        matches = [
-            person
-            for person in candidates
-            if self._soundex(person.first_name) == first_soundex and self._soundex(person.last_name) == last_soundex
-        ]
-
-        # Filter out self-references
-        matches = self._filter_self_references(matches, requester_cm_id)
-
-        if not matches:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        if len(matches) == 1:
-            confidence = self._calculate_confidence_with_context(
-                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_soundex=True
-            )
-            return ResolutionResult(
-                person=matches[0],
-                confidence=confidence,
-                method=self.name,
-                metadata={"match_type": "soundex", "algorithm": "soundex"},
-            )
-
-        # Multiple matches - try to disambiguate with session
-        if year and session_cm_id and attendee_info:
-            result = self._disambiguate_with_session_context(
-                matches, requester_cm_id, session_cm_id, year, attendee_info
-            )
-            if result.is_resolved:
-                if result.metadata is not None:
-                    result.metadata["match_type"] = "soundex_with_session"
-                    result.metadata["algorithm"] = "soundex"
-                return result
-
-        return ResolutionResult(
-            candidates=matches,
-            confidence=0.4,
-            method=self.name,
-            metadata={
-                "ambiguity_reason": "multiple_soundex_matches",
-                "match_count": len(matches),
-                "algorithm": "soundex",
-            },
-        )
-
-    def _try_metaphone_match_with_context(
-        self,
-        name_parts: list[str],
-        requester_cm_id: int,
-        session_cm_id: int | None,
-        year: int | None,
-        candidates: list[Person],
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try matching using Metaphone algorithm with pre-loaded candidates"""
-        first_name = name_parts[0]
-        last_name = name_parts[-1]
-
-        # Generate Metaphone codes
-        first_metaphone = self._metaphone(first_name)
-        last_metaphone = self._metaphone(last_name)
-
-        # Filter candidates by Metaphone match
-        matches = [
-            person
-            for person in candidates
-            if self._metaphone(person.first_name) == first_metaphone
-            and self._metaphone(person.last_name) == last_metaphone
-        ]
-
-        # Filter out self-references
-        matches = self._filter_self_references(matches, requester_cm_id)
-
-        if not matches:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        if len(matches) == 1:
-            confidence = self._calculate_confidence_with_context(
-                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_metaphone=True
-            )
-            return ResolutionResult(
-                person=matches[0],
-                confidence=confidence,
-                method=self.name,
-                metadata={"match_type": "metaphone", "algorithm": "metaphone"},
-            )
-
-        # Multiple matches - try to disambiguate
-        if year and session_cm_id and attendee_info:
-            result = self._disambiguate_with_session_context(
-                matches, requester_cm_id, session_cm_id, year, attendee_info
-            )
-            if result.is_resolved:
-                if result.metadata is not None:
-                    result.metadata["match_type"] = "metaphone_with_session"
-                    result.metadata["algorithm"] = "metaphone"
-                return result
-
-        return ResolutionResult(
-            candidates=matches,
-            confidence=0.35,
-            method=self.name,
-            metadata={
-                "ambiguity_reason": "multiple_metaphone_matches",
-                "match_count": len(matches),
-                "algorithm": "metaphone",
-            },
-        )
-
-    def _disambiguate_with_session_context(
-        self,
-        matches: list[Person],
-        requester_cm_id: int,
-        session_cm_id: int,
-        year: int,
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try to disambiguate using session information from pre-loaded data"""
-        # Filter by same session using pre-loaded attendee info
-        same_session_matches = []
-        if attendee_info is not None:
-            same_session_matches = [
-                m
-                for m in matches
-                if m.cm_id in attendee_info and attendee_info[m.cm_id].get("session_cm_id") == session_cm_id
-            ]
-
-        if len(same_session_matches) == 1:
-            return ResolutionResult(
-                person=same_session_matches[0],
-                confidence=self._get_confidence("session_match", DEFAULT_SESSION_MATCH),
-                method=self.name,
-                metadata={"session_match": "exact"},
-            )
-
-        return ResolutionResult(confidence=0.0, method=self.name)
-
-    def _calculate_confidence_with_context(
-        self,
-        person: Person,
-        requester_cm_id: int,
-        session_cm_id: int | None,
-        year: int | None,
-        attendee_info: dict[int, dict[str, Any]] | None,
-        is_soundex: bool = False,
-        is_metaphone: bool = False,
-    ) -> float:
-        """Calculate confidence based on match type and session verification using pre-loaded data"""
-        # Base confidence by algorithm (from config with fallback to defaults)
-        if is_soundex:
-            base_confidence = float(self._get_confidence("soundex_base", DEFAULT_SOUNDEX_BASE))
-        elif is_metaphone:
-            base_confidence = float(self._get_confidence("metaphone_base", DEFAULT_METAPHONE_BASE))
-        else:
-            base_confidence = float(self._get_confidence("default_base", DEFAULT_CONFIDENCE))
-
-        # Verify session if possible using pre-loaded data
-        if year and session_cm_id and attendee_info is not None and person.cm_id in attendee_info:
-            person_session = attendee_info[person.cm_id].get("session_cm_id")
-            return self._apply_session_adjustment_simple(base_confidence, person_session, session_cm_id)
-
-        # No session info - apply slight penalty
-        penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
-        return base_confidence + penalty
-
-    def _try_parent_surname_phonetic_match_with_context(
-        self,
-        name_parts: list[str],
-        requester_cm_id: int,
-        session_cm_id: int | None,
-        year: int | None,
-        candidates: list[Person],
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try matching using phonetic comparison of last name against parent surnames.
-
-        Uses pre-loaded candidates for O(1) lookups.
-
-        Example: "Emma Smidt" → matches camper Emma Johnson whose parent is "Smith"
-        because "Smidt" sounds like "Smith" (Soundex or Metaphone match).
-        """
-        first_name = name_parts[0]
-        last_name = name_parts[-1]
-
-        # Generate phonetic codes for the search last name
-        last_soundex = self._soundex(last_name)
-        last_metaphone = self._metaphone(last_name)
-
-        # Get nickname variations for first name
-        first_variations = {first_name.lower()}
-        first_variations.update(v.lower() for v in find_nickname_variations(first_name))
-
-        matches = []
-        for person in candidates:
-            # Check first name matches (including nicknames)
-            person_first = person.first_name.lower() if person.first_name else ""
-            if person_first not in first_variations:
-                # Also check preferred name
-                person_pref = (person.preferred_name or "").lower()
-                if person_pref not in first_variations:
-                    continue
-
-            # Check if any parent surname phonetically matches
-            for parent_surname in person.parent_last_names:
-                parent_soundex = self._soundex(parent_surname)
-                parent_metaphone = self._metaphone(parent_surname)
-
-                if last_soundex == parent_soundex or last_metaphone == parent_metaphone:
-                    if person.cm_id != requester_cm_id:
-                        matches.append(person)
-                    break  # Found a match, no need to check other parent surnames
-
-        if not matches:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        if len(matches) == 1:
-            confidence = self._calculate_confidence_with_context(
-                matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_soundex=True
-            )
-            # Reduce confidence for parent surname phonetic match
-            confidence = min(confidence - 0.05, 0.80)
-            return ResolutionResult(
-                person=matches[0],
-                confidence=confidence,
-                method=self.name,
-                metadata={
-                    "match_type": "parent_surname_phonetic",
-                    "algorithm": "soundex+metaphone",
-                    "search_surname": last_name,
-                },
-            )
-
-        # Multiple matches - try to disambiguate with session
-        if year and session_cm_id and attendee_info:
-            result = self._disambiguate_with_session_context(
-                matches, requester_cm_id, session_cm_id, year, attendee_info
-            )
-            if result.is_resolved:
-                if result.metadata is not None:
-                    result.metadata["match_type"] = "parent_surname_phonetic"
-                    result.metadata["algorithm"] = "soundex+metaphone"
-                result.confidence = min(result.confidence - 0.05, 0.80)
-                return result
-
-        return ResolutionResult(
-            candidates=matches,
-            confidence=0.40,
-            method=self.name,
-            metadata={
-                "ambiguity_reason": "multiple_parent_surname_phonetic_matches",
-                "match_count": len(matches),
-                "algorithm": "soundex+metaphone",
-            },
-        )
