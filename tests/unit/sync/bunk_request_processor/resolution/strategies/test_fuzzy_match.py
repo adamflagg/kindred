@@ -323,8 +323,8 @@ class TestFuzzyMatchParentSurname:
         assert result.person.cm_id == 12345
         assert result.metadata.get("match_type") == "parent_surname"
 
-    def test_parent_surname_with_context_method(self, strategy, mock_repositories):
-        """Test parent surname matching with resolve_with_context method"""
+    def test_parent_surname_via_resolve(self, strategy, mock_repositories):
+        """Test parent surname matching with resolve method"""
         person_repo, _ = mock_repositories
 
         # Pre-loaded candidate with parent surname
@@ -338,7 +338,7 @@ class TestFuzzyMatchParentSurname:
 
         person_repo.find_by_name.return_value = []
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             "Emma Smith", requester_cm_id=67890, session_cm_id=1000002, year=2025, candidates=[person], attendee_info={}
         )
 
@@ -398,7 +398,7 @@ class TestFuzzyMatchJaroWinklerFirstName:
     def test_jaro_winkler_first_name_charlie_charlotte(self, strategy):
         """JW catches close first-name variants not in nickname dict."""
         candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Garcia")]
-        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Charlie Garcia", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
         assert result.metadata.get("match_type") == "jaro_winkler_first_name"
@@ -406,27 +406,27 @@ class TestFuzzyMatchJaroWinklerFirstName:
     def test_jaro_winkler_first_name_zoey_zoe(self, strategy):
         """Zoey/Zoe should match via JW."""
         candidates = [Person(cm_id=100, first_name="Zoe", last_name="Chen")]
-        result = strategy.resolve_with_context("Zoey Chen", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Zoey Chen", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
 
     def test_jaro_winkler_rejects_short_dissimilar(self, strategy):
         """Short dissimilar names should not match."""
         candidates = [Person(cm_id=100, first_name="May", last_name="Garcia")]
-        result = strategy.resolve_with_context("Max Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Max Garcia", requester_cm_id=999, candidates=candidates)
         assert not result.is_resolved
 
     def test_jaro_winkler_checks_preferred_name(self, strategy):
         """JW should also match against preferred_name."""
         candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Garcia", preferred_name="Charli")]
-        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Charlie Garcia", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
 
     def test_jaro_winkler_requires_last_name_match(self, strategy):
         """JW first name match requires last name to also match."""
         candidates = [Person(cm_id=100, first_name="Charlotte", last_name="Johnson")]
-        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Charlie Garcia", requester_cm_id=999, candidates=candidates)
         assert not result.is_resolved
 
     def test_jaro_winkler_multiple_matches_ambiguous(self, strategy):
@@ -435,7 +435,7 @@ class TestFuzzyMatchJaroWinklerFirstName:
             Person(cm_id=100, first_name="Charlotte", last_name="Garcia"),
             Person(cm_id=200, first_name="Charlene", last_name="Garcia"),
         ]
-        result = strategy.resolve_with_context("Charlie Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Charlie Garcia", requester_cm_id=999, candidates=candidates)
         assert result.is_ambiguous
         assert len(result.candidates) == 2
 
@@ -467,7 +467,7 @@ class TestJaroWinklerFullPoolFallback:
             Person(cm_id=1000099, first_name="Other", last_name="Person"),
         ]
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Olivia Jonson",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -487,7 +487,7 @@ class TestJaroWinklerFullPoolFallback:
         target = Person(cm_id=1000002, first_name="Olivia", last_name="Completely-Different")
         all_persons = [target]
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Olivia Jonson",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -505,7 +505,7 @@ class TestJaroWinklerFullPoolFallback:
         candidate = Person(cm_id=1000002, first_name="Olivia", last_name="Johnson")
         other_person = Person(cm_id=1000003, first_name="Olivia", last_name="Jonson-Match")
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Olivia Johnson",  # exact match on candidate
             requester_cm_id=1000001,
             year=2026,
@@ -522,7 +522,7 @@ class TestJaroWinklerFullPoolFallback:
         """Empty candidates AND empty all_persons → unresolved, no crash."""
         strategy, _, _ = strategy_with_repos
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Olivia Jonson",
             requester_cm_id=1000001,
             year=2026,
@@ -539,7 +539,7 @@ class TestJaroWinklerFullPoolFallback:
         self_person = Person(cm_id=1000001, first_name="Olivia", last_name="Johnson")
         all_persons = [self_person]
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Olivia Jonson",
             requester_cm_id=1000001,
             year=2026,
@@ -593,7 +593,16 @@ class TestFuzzyMatchDefaultOverrideMechanism:
         )
 
         class ConcreteBase(BaseMatchStrategy):
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
+            ):
                 return ResolutionResult(confidence=0.0, method=self.name)
 
         mock_person_repo = Mock()

@@ -10,7 +10,6 @@ the bunk_with/not_bunk_with thresholds — it's not a tunable knob."""
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from typing import Any
 
 import jellyfish
@@ -70,17 +69,6 @@ class BaseMatchStrategy(ResolutionStrategy):
         """Strategy name for logging"""
         return self._strategy_name
 
-    @abstractmethod
-    def resolve(
-        self,
-        name: str,
-        requester_cm_id: int,
-        session_cm_id: int | None = None,
-        year: int | None = None,
-    ) -> ResolutionResult:
-        """Attempt to resolve a name. Must be implemented by subclasses."""
-        pass
-
     def _filter_self_references(self, matches: list[Person], requester_cm_id: int) -> list[Person]:
         """Filter out the requester from the matches list.
 
@@ -92,48 +80,6 @@ class BaseMatchStrategy(ResolutionStrategy):
             Filtered list without the requester
         """
         return [m for m in matches if m.cm_id != requester_cm_id]
-
-    def _disambiguate_with_session_context(
-        self,
-        matches: list[Person],
-        requester_cm_id: int,
-        session_cm_id: int,
-        year: int,
-        attendee_info: dict[int, dict[str, Any]] | None,
-    ) -> ResolutionResult:
-        """Try to disambiguate using session information from pre-loaded data.
-
-        Args:
-            matches: List of candidate persons
-            requester_cm_id: The person making the request
-            session_cm_id: The session to match against
-            year: Year context
-            attendee_info: Pre-loaded attendee info {person_cm_id: {'session_cm_id': ...}}
-
-        Returns:
-            ResolutionResult - resolved if exactly one match in same session
-        """
-        if not attendee_info:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        # Filter by same session using pre-loaded attendee info
-        same_session_matches = []
-        for m in matches:
-            person_info = attendee_info.get(m.cm_id)
-            if person_info and person_info.get("session_cm_id") == session_cm_id:
-                same_session_matches.append(m)
-
-        if len(same_session_matches) == 1:
-            # Get session_match confidence from config with fallback
-            confidence = self.config.get("session_match", DEFAULT_SESSION_MATCH)
-            return ResolutionResult(
-                person=same_session_matches[0],
-                confidence=confidence,
-                method=self.name,
-                metadata={"session_match": "exact"},
-            )
-
-        return ResolutionResult(confidence=0.0, method=self.name)
 
     def _calculate_base_confidence(self, match_type: str) -> float:
         """Calculate base confidence for a match type from config.

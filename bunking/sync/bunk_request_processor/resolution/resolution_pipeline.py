@@ -59,83 +59,6 @@ class ResolutionPipeline:
         """
         self._person_sessions = person_sessions
 
-    def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Attempt to resolve a name using configured strategies.
-
-        Args:
-            name: Name to resolve
-            requester_cm_id: Person making the request
-            session_cm_id: Optional session context override
-            year: Year context for resolution
-
-        Returns:
-            ResolutionResult with the best outcome
-        """
-        # Check cache first
-        if self.cache:
-            cached_result = self.cache.get_cached_resolution(name, requester_cm_id, session_cm_id or 0, year or 0)
-            if cached_result:
-                return cached_result
-
-        # Get session context if not provided
-        if session_cm_id is None and year:
-            attendee_info = self.attendee_repo.get_by_person_and_year(requester_cm_id, year)
-            if attendee_info:
-                session_cm_id = attendee_info["session_cm_id"]
-
-        # Try each strategy in order
-        best_result = ResolutionResult()
-
-        for strategy in self.strategies:
-            try:
-                result = strategy.resolve(
-                    name=name, requester_cm_id=requester_cm_id, session_cm_id=session_cm_id, year=year
-                )
-
-                # If we got a definitive match with high confidence, use it
-                if result.is_resolved and result.confidence >= max(0.8, self.minimum_confidence):
-                    best_result = result
-                    break
-
-                # Track best result so far
-                if result.confidence > best_result.confidence:
-                    best_result = result
-
-                # If we have an ambiguous result, keep it unless we find better
-                if result.is_ambiguous and not best_result.is_ambiguous:
-                    best_result = result
-
-            except Exception:  # noqa: S112 — intentional continue on error
-                # Log error but continue with other strategies
-                continue
-
-        # Apply minimum confidence threshold
-        if best_result.is_resolved and best_result.confidence < self.minimum_confidence:
-            # Convert to unresolved if below threshold
-            best_result.person = None
-            if best_result.metadata is None:
-                best_result.metadata = {}
-            best_result.metadata["below_threshold"] = True
-
-        # Cache the result
-        if self.cache and best_result.confidence > 0:
-            self.cache.cache_resolution(name, requester_cm_id, session_cm_id or 0, year or 0, best_result)
-
-        return best_result
-
-    def _generate_cache_key(self, name: str, requester_cm_id: int, session_cm_id: int | None, year: int | None) -> str:
-        """Generate a cache key for resolution results"""
-        parts = [
-            "resolution",
-            name.lower().strip(),
-            str(requester_cm_id),
-            str(session_cm_id or "none"),
-            str(year or "none"),
-        ]
-        return ":".join(parts)
-
     def batch_resolve(self, requests: list[tuple[str, int, int | None, int | None]]) -> list[ResolutionResult]:
         """Batch resolve multiple names efficiently.
 
@@ -304,24 +227,15 @@ class ResolutionPipeline:
 
             for strategy in self.strategies:
                 try:
-                    # Check if strategy supports batch context
-                    if hasattr(strategy, "resolve_with_context"):
-                        # Pass pre-loaded data to strategy
-                        # attendee_info format: {cm_id: {'session_cm_id': ..., 'school': ..., etc.}}
-                        result = strategy.resolve_with_context(
-                            name=name,
-                            requester_cm_id=requester_cm_id,
-                            session_cm_id=session_cm_id,
-                            year=year,
-                            candidates=candidates,
-                            attendee_info=attendee_info,
-                            all_persons=all_persons_for_phonetic,
-                        )
-                    else:
-                        # Fall back to regular resolve
-                        result = strategy.resolve(
-                            name=name, requester_cm_id=requester_cm_id, session_cm_id=session_cm_id, year=year
-                        )
+                    result = strategy.resolve(
+                        name=name,
+                        requester_cm_id=requester_cm_id,
+                        session_cm_id=session_cm_id,
+                        year=year,
+                        candidates=candidates,
+                        attendee_info=attendee_info,
+                        all_persons=all_persons_for_phonetic,
+                    )
 
                     # Log detailed result info
                     logger.debug(

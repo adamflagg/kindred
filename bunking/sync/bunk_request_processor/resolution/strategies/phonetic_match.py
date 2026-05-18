@@ -55,12 +55,6 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         super().__init__(person_repository, attendee_repository, config)
         self._strategy_name = "phonetic_match"
 
-    def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Phonetic name resolution (simple API without pre-loaded data)."""
-        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
-
     def _try_soundex_match(
         self,
         name_parts: list[str],
@@ -482,7 +476,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
         return base_confidence + penalty
 
-    def resolve_with_context(
+    def resolve(
         self,
         name: str,
         requester_cm_id: int,

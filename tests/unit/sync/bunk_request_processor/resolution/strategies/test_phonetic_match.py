@@ -454,8 +454,8 @@ class TestPhoneticMatchParentSurname:
         assert result.person.cm_id == 12345
         assert result.metadata.get("match_type") == "parent_surname_phonetic"
 
-    def test_parent_surname_phonetic_with_context(self, strategy, mock_repositories):
-        """Test parent surname phonetic matching with resolve_with_context"""
+    def test_parent_surname_phonetic_via_resolve(self, strategy, mock_repositories):
+        """Test parent surname phonetic matching with resolve"""
         person_repo, _ = mock_repositories
 
         # Pre-loaded candidate with parent surname
@@ -467,7 +467,7 @@ class TestPhoneticMatchParentSurname:
             parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
         )
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             "Emma Smidt",  # Phonetically similar to Smith
             requester_cm_id=67890,
             session_cm_id=1000002,

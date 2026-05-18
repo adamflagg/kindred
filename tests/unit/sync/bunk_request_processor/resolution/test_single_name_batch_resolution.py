@@ -29,7 +29,7 @@ from bunking.sync.bunk_request_processor.resolution.strategies.school_disambigua
 
 
 class TestSingleNameBatchResolution:
-    """Test that resolve_with_context falls back to resolve() when candidates is empty list."""
+    """Test that resolve falls back to resolve() when candidates is empty list."""
 
     @pytest.fixture
     def mock_repositories(self):
@@ -47,11 +47,11 @@ class TestSingleNameBatchResolution:
         return mock_person_repo, mock_attendee_repo
 
     def test_fuzzy_match_falls_back_with_empty_candidates(self, mock_repositories):
-        """FuzzyMatchStrategy.resolve_with_context should fall back to resolve()
+        """FuzzyMatchStrategy.resolve should fall back to resolve()
         when candidates is an empty list [], not just when None.
 
         This is the bug case: batch_resolve gives [] for single names,
-        but resolve_with_context checks `if candidates is None:` which is False for [].
+        but resolve checks `if candidates is None:` which is False for [].
         """
         person_repo, attendee_repo = mock_repositories
 
@@ -83,9 +83,9 @@ class TestSingleNameBatchResolution:
 
         strategy = FuzzyMatchStrategy(person_repo, attendee_repo)
 
-        # Call resolve_with_context with empty candidates list []
+        # Call resolve with empty candidates list []
         # This simulates what happens when batch_resolve() is called with single name "Mike"
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Mike",  # Single name
             requester_cm_id=67890,
             session_cm_id=1000002,
@@ -97,12 +97,12 @@ class TestSingleNameBatchResolution:
         # Should fall back to resolve() and find Michael via nickname
         # BUG: Currently returns confidence 0.0 because it doesn't fall back
         assert result.is_resolved or result.is_ambiguous, (
-            "resolve_with_context should fall back to resolve() when candidates=[] "
+            "resolve should fall back to resolve() when candidates=[] "
             "and attempt to resolve via nickname/fuzzy matching"
         )
 
     def test_phonetic_match_falls_back_with_empty_candidates(self, mock_repositories):
-        """PhoneticMatchStrategy.resolve_with_context uses all_persons fallback
+        """PhoneticMatchStrategy.resolve uses all_persons fallback
         when candidates is an empty list [].
 
         Note: Implementation now uses all_persons parameter instead of calling resolve().
@@ -117,9 +117,9 @@ class TestSingleNameBatchResolution:
 
         strategy = PhoneticMatchStrategy(person_repo, attendee_repo)
 
-        # Call resolve_with_context with empty candidates list []
+        # Call resolve with empty candidates list []
         # Pass all_persons as the fallback pool (replaces resolve() fallback)
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="John Smyth",  # Phonetically similar to Smith
             requester_cm_id=67890,
             session_cm_id=1000002,
@@ -131,11 +131,11 @@ class TestSingleNameBatchResolution:
 
         # Should use all_persons fallback and find Smith via phonetic matching
         assert result.is_resolved or result.is_ambiguous, (
-            "resolve_with_context should use all_persons fallback when candidates=[] and attempt phonetic matching"
+            "resolve should use all_persons fallback when candidates=[] and attempt phonetic matching"
         )
 
     def test_school_disambiguation_falls_back_with_empty_candidates(self, mock_repositories):
-        """SchoolDisambiguationStrategy.resolve_with_context uses all_persons fallback
+        """SchoolDisambiguationStrategy.resolve uses all_persons fallback
         when candidates is an empty list [].
 
         Note: Implementation now uses all_persons parameter instead of calling resolve().
@@ -166,9 +166,9 @@ class TestSingleNameBatchResolution:
 
         strategy = SchoolDisambiguationStrategy(person_repo, attendee_repo)
 
-        # Call resolve_with_context with empty candidates list []
+        # Call resolve with empty candidates list []
         # Pass all_persons as the fallback pool (replaces resolve() fallback)
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="John Smith",
             requester_cm_id=11111,
             session_cm_id=1000002,
@@ -181,7 +181,7 @@ class TestSingleNameBatchResolution:
         # Should use all_persons fallback and try school disambiguation
         # Note: Resolution may find john1 (same school) or be ambiguous
         assert result.is_resolved or result.is_ambiguous, (
-            "resolve_with_context should use all_persons fallback when candidates=[] and attempt school disambiguation"
+            "resolve should use all_persons fallback when candidates=[] and attempt school disambiguation"
         )
 
 
