@@ -7,7 +7,7 @@ Pre-solve checks to identify potential issues before running the solver.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from ortools.sat.python import cp_model
 
@@ -22,6 +22,33 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+class _RequestValidationSummaryBase(TypedDict, total=True):
+    # Required keys set by _validate_requests before check_feasibility is called
+    total_requests: int
+    possible_requests: int
+    impossible_requests: int
+    impossible_by_reason: dict[str, dict[str, int]]
+    affected_campers: int
+
+
+class RequestValidationSummary(_RequestValidationSummaryBase, total=False):
+    # Optional keys written post-solve in direct_solver.py
+    unsatisfied_no_possible: int
+    unsatisfied_material_parent_unmet: int
+    unsatisfied_other_unmet: int
+    mp_constraint_bug_signal: int
+    mp_set_entirely_impossible_count: int
+    mp_set_entirely_impossible_cm_ids: list[int]
+    mp_requests_total: int
+    mp_requests_satisfied: int
+    mp_campers_total: int
+    mp_campers_satisfied: int
+    all_campers_total: int
+    all_campers_satisfied: int
+    all_requests_total: int
+    all_requests_satisfied: int
+
+
 def check_feasibility(
     bunks: list[DirectBunk],
     person_ids: list[int],
@@ -30,7 +57,7 @@ def check_feasibility(
     person_idx_map: dict[int, int],
     possible_requests: dict[int, list[DirectBunkRequest]],
     impossible_requests: dict[int, list[DirectBunkRequest]],
-    request_validation_summary: dict[str, Any],
+    request_validation_summary: RequestValidationSummary,
 ) -> None:
     """Perform pre-solve feasibility checks and log warnings.
 

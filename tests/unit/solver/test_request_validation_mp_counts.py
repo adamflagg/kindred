@@ -8,11 +8,11 @@ the 'all requests' and 'MP requests' scopes on top.
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
 from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.feasibility import RequestValidationSummary
 
 # --- Test fixture builders -------------------------------------------------
 
@@ -69,7 +69,7 @@ def _run_post_solve_with_fixed_assignments(
     bunks: list[DirectBunk],
     requests: list[DirectBunkRequest],
     assignments: dict[int, int],
-) -> dict[str, Any]:
+) -> RequestValidationSummary:
     """Build a DirectBunkingSolver, install fixed assignments, invoke the
     post-solve diagnostic helper directly, and return its
     request_validation_summary.

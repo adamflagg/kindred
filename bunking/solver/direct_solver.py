@@ -42,6 +42,7 @@ from .constraints.grade_spread import add_grade_spread_constraints, add_grade_sp
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
+from .feasibility import RequestValidationSummary
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
@@ -297,7 +298,7 @@ class DirectBunkingSolver:
             for person_cm_id, reqs in self.input.requests_by_person.items()
             if person_cm_id in self.person_idx_map
         )
-        self.request_validation_summary: dict[str, Any] = {
+        self.request_validation_summary: RequestValidationSummary = {
             "total_requests": total_requests,
             "possible_requests": total_requests - report.total_impossible,
             "impossible_requests": report.total_impossible,
