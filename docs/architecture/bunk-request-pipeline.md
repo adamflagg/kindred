@@ -343,7 +343,7 @@ process_requests(raw_requests, clear_existing, progress_callback)
     │   │   └─ Reciprocal Detection: A→B + B→A gets confidence boost (+0.10)
     │   └─ _save_bunk_requests() → PocketBase bunk_requests table
     │
-    └── 14. MARK ORIGINALS AS PROCESSED
+    └── 12. MARK ORIGINALS AS PROCESSED
         └─ Set processed=UTC_timestamp on all source original_bunk_requests
         └─ Prevents reprocessing on next run
 ```
@@ -835,8 +835,6 @@ Input: original_bunk_requests rows
 #### Supporting Services
 | File | Purpose |
 |---|---|
-| `bunk_request_processor/services/placeholder_expander.py` | Expand group references via resolver registry (sibling, bunkmate, classmate, congregation) |
-| `bunk_request_processor/services/group_resolvers.py` | GroupResolver protocol, 4 resolver implementations, registry builder |
 | `bunk_request_processor/services/staff_note_parser.py` | Extract staff attribution from bunking_notes |
 | `bunk_request_processor/services/request_builder.py` | Build final BunkRequest with status/priority/metadata |
 | `bunk_request_processor/services/request_deduplication.py` | Remove duplicate requests |

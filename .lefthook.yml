@@ -66,6 +66,7 @@ pre-commit:
     markdownlint:
       glob: "**/*.md"
       run: npx markdownlint-cli2 {staged_files}
+      stage_fixed: true
 
 
 # ─── Commit-msg: conventional commit validation ──────────────────────
@@ -125,6 +126,10 @@ pre-push:
         - "pocketbase/pb_hooks/*.js"
         - "pocketbase/package.json"
       run: npm run lint
+
+    markdownlint:
+      glob: "**/*.md"
+      run: npx markdownlint-cli2 "**/*.md"
 
     # Verify generated API types match the current Python schema.
     # Regenerates to a temp directory (no on-disk mutation) so this can run

@@ -1,7 +1,8 @@
 {
+  "name": "kindred",
   "devDependencies": {
     "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^21.0.0",
-    "markdownlint-cli2": "^0.17.2"
+    "markdownlint-cli2": "^0.22.1"
   }
 }

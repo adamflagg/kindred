@@ -69,7 +69,10 @@ jobs:
         done
         
         echo "Documentation check complete!"
-    
+
+    - name: Markdownlint
+      run: npx --yes markdownlint-cli2 "**/*.md"
+
     - name: Summary
       run: |
         echo "## Documentation Check Complete"

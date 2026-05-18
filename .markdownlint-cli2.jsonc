@@ -20,7 +20,7 @@
     "dist",
     "build",
     // Local-only working artifacts (gitignored)
-    "docs/superpowers/specs",
+    "docs/superpowers",
     "docs/plans",
     // Local Claude skill files (not project docs)
     ".claude",
