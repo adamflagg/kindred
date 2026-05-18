@@ -4,13 +4,26 @@ This module provides functionality to evaluate the "solver score" for any
 given assignment state, allowing comparison of scenarios without running
 the full solver.
 
-The scoring logic mirrors the solver's objective function:
-1. Request satisfaction (bunk_with, not_bunk_with, age_preference)
+The scoring logic *approximately* mirrors the solver's objective function
+for diagnostic and scenario-comparison purposes. Components:
+
+1. Request satisfaction reward — `bunk_with`, `not_bunk_with`, and
+   `age_preference`. NOTE: `age_preference` is included here as a
+   diagnostic reward, but the live solver's CP-SAT objective
+   (`direct_solver.py:562-583`) does NOT include `age_preference` terms.
+   In the solver, MP `age_preference` is enforced as a HARD constraint via
+   `parent_paramount` (forcing indicators), and non-MP `age_preference`
+   has no solver representation at all. This evaluator's score therefore
+   over-counts relative to the solver's true objective when an assignment
+   satisfies `age_preference` requests; that is intentional for analysis.
 2. First-pick boost (is_first_requested → 10x slot-0 multiplier)
 3. Source field multipliers (keyed by canonical SourceField values)
 4. Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
 5. Diminishing returns for multiple satisfied requests per person
 6. Soft constraint penalties (grade spread, capacity violations, etc.)
+
+See `docs/reference/objective-sensitivity.md` for the per-component
+magnitudes and the canonical solver-objective composition.
 """
 
 from __future__ import annotations
