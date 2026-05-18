@@ -31,12 +31,6 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         """Strategy name for logging"""
         return "school_disambiguation"
 
-    def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """School-based disambiguation resolution (simple API without pre-loaded data)."""
-        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
-
     # School name abbreviation mappings for normalization
     SCHOOL_ABBREVIATIONS: ClassVar[dict[str, str]] = {
         "middle school": "ms",
@@ -274,7 +268,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
 
         return ResolutionResult(confidence=0.0, method=self.name)
 
-    def resolve_with_context(
+    def resolve(
         self,
         name: str,
         requester_cm_id: int,
@@ -284,11 +278,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
         attendee_info: dict[int, dict[str, Any]] | None = None,
         all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
-        """Resolve using pre-loaded candidates and attendee info (canonical body).
-
-        When candidates and all_persons are both None, falls back to a database
-        query — this is the path taken when called via the resolve() shim.
-        """
+        """Resolve using pre-loaded candidates and attendee info."""
         # Parse the name
         parsed = parse_name(name)
         if not parsed.is_complete:

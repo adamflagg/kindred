@@ -69,12 +69,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         self.relationship_analyzer = relationship_analyzer
 
     def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Attempt fuzzy name resolution (simple API without pre-loaded data)."""
-        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
-
-    def resolve_with_context(
         self,
         name: str,
         requester_cm_id: int,
@@ -199,7 +193,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         match_type = "normalized"
 
         # Detect single-name search via parse_name so the gate's notion of "single
-        # name" matches the upstream `parsed.is_complete` branch in resolve_with_context.
+        # name" matches the upstream `parsed.is_complete` branch in resolve().
         # Raw `name.strip().split()` would miss enumeration prefixes (e.g. "1. Jo"
         # splits to 2 tokens but parse_name strips the prefix to yield a first-only
         # result).

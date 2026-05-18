@@ -10,7 +10,7 @@ GAP being tested:
 
 Architecture context:
   - batch_resolve() pre-loads Person objects via find_by_name()
-  - These candidates are passed to strategies via resolve_with_context()
+  - These candidates are passed to strategies via resolve()
   - Person objects will have city/state when loaded from DB
   - City/state matching enables MORE local resolution, reducing AI calls
 
@@ -87,10 +87,10 @@ class TestSchoolDisambiguationWithLocation:
     share the same name but are in different locations.
     """
 
-    def test_resolve_with_context_uses_location_from_candidates(self):
+    def test_resolve_uses_location_from_candidates(self):
         """When candidates have city/state, use them for disambiguation.
 
-        This tests the resolve_with_context path which receives pre-loaded
+        This tests the resolve path which receives pre-loaded
         Person objects from batch_resolve(). The candidates should include
         city/state from the DB, enabling location-based filtering.
         """
@@ -134,8 +134,8 @@ class TestSchoolDisambiguationWithLocation:
 
         strategy = SchoolDisambiguationStrategy(person_repo, attendee_repo)
 
-        # Use resolve_with_context (the batch path) with pre-loaded candidates
-        result = strategy.resolve_with_context(
+        # Use resolve (the batch path) with pre-loaded candidates
+        result = strategy.resolve(
             name="Emma Wilson",
             requester_cm_id=100,
             session_cm_id=12345,
@@ -191,7 +191,7 @@ class TestSchoolDisambiguationWithLocation:
 
         strategy = SchoolDisambiguationStrategy(person_repo, attendee_repo)
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Mike Johnson",
             requester_cm_id=100,
             session_cm_id=12345,
@@ -249,7 +249,7 @@ class TestSchoolDisambiguationWithLocation:
 
         strategy = SchoolDisambiguationStrategy(person_repo, attendee_repo)
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Emma Wilson",
             requester_cm_id=100,
             session_cm_id=12345,

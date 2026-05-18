@@ -36,12 +36,6 @@ class ExactMatchStrategy(BaseMatchStrategy):
         self._strategy_name = "exact_match"
 
     def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Exact name resolution (simple API without pre-loaded data)."""
-        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
-
-    def resolve_with_context(
         self,
         name: str,
         requester_cm_id: int,

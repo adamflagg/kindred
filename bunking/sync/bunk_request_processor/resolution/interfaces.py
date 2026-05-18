@@ -65,28 +65,6 @@ class ResolutionStrategy(ABC):
 
     @abstractmethod
     def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Attempt to resolve a name to a Person.
-
-        Args:
-            name: The name to resolve
-            requester_cm_id: The person making the request
-            session_cm_id: Optional session context
-            year: Year context for the resolution
-
-        Returns:
-            ResolutionResult with the outcome
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Strategy name for logging and debugging"""
-        pass
-
-    def resolve_with_context(
         self,
         name: str,
         requester_cm_id: int,
@@ -96,22 +74,15 @@ class ResolutionStrategy(ABC):
         attendee_info: dict[int, dict[str, Any]] | None = None,
         all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
-        """Resolve a name with pre-loaded context data.
+        """Resolve a name to a Person.
 
-        This is an optional method for batch optimization. If not implemented,
-        the pipeline will fall back to the regular resolve method.
-
-        Args:
-            name: Name to resolve
-            requester_cm_id: Person making the request
-            session_cm_id: Optional session context
-            year: Year context for resolution
-            candidates: Pre-loaded candidate persons for this name
-            attendee_info: Pre-loaded attendee info dict {cm_id: {'session_cm_id': ..., 'school': ..., etc.}}
-            all_persons: All persons in the system, for fallback phonetic matching
-
-        Returns:
-            ResolutionResult with the outcome
+        When candidates/attendee_info/all_persons are provided, uses pre-loaded data
+        for batch optimization. Otherwise falls back to database queries.
         """
-        # Default implementation falls back to regular resolve
-        return self.resolve(name, requester_cm_id, session_cm_id, year)
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Strategy name for logging and debugging"""
+        pass

@@ -29,7 +29,16 @@ def create_concrete_strategy(config=None):
     class ConcreteMatchStrategy(BaseMatchStrategy):
         """Concrete implementation for testing base class methods."""
 
-        def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
+        def resolve(
+            self,
+            name,
+            requester_cm_id,
+            session_cm_id=None,
+            year=None,
+            candidates=None,
+            attendee_info=None,
+            all_persons=None,
+        ):
             """Dummy resolve implementation - not used in base class tests."""
             return ResolutionResult(confidence=0.0, method=self.name)
 
@@ -90,101 +99,6 @@ class TestBaseMatchStrategyFilterSelfReferences:
         result = base_strategy._filter_self_references([], 12345)
 
         assert result == []
-
-
-class TestBaseMatchStrategyDisambiguateWithSessionContext:
-    """Test _disambiguate_with_session_context method"""
-
-    @pytest.fixture
-    def base_strategy(self):
-        """Create a BaseMatchStrategy with session_match confidence config"""
-        return create_concrete_strategy(config={"session_match": 0.85})
-
-    def test_resolves_single_match_in_same_session(self, base_strategy):
-        """Should resolve when exactly one candidate is in same session"""
-        matches = [
-            Person(cm_id=12345, first_name="John", last_name="Smith"),
-            Person(cm_id=67890, first_name="John", last_name="Smythe"),
-        ]
-        session_cm_id = 1000002
-        attendee_info = {
-            12345: {"session_cm_id": 1000002},  # Same session
-            67890: {"session_cm_id": 1000003},  # Different session
-        }
-
-        result = base_strategy._disambiguate_with_session_context(
-            matches=matches,
-            requester_cm_id=99999,
-            session_cm_id=session_cm_id,
-            year=2025,
-            attendee_info=attendee_info,
-        )
-
-        assert result.is_resolved
-        assert result.person.cm_id == 12345
-        assert result.confidence == 0.85  # From config
-        assert result.metadata.get("session_match") == "exact"
-
-    def test_returns_unresolved_when_multiple_in_same_session(self, base_strategy):
-        """Should return unresolved when multiple candidates in same session"""
-        matches = [
-            Person(cm_id=12345, first_name="John", last_name="Smith"),
-            Person(cm_id=67890, first_name="John", last_name="Smythe"),
-        ]
-        session_cm_id = 1000002
-        attendee_info = {
-            12345: {"session_cm_id": 1000002},  # Same session
-            67890: {"session_cm_id": 1000002},  # Also same session
-        }
-
-        result = base_strategy._disambiguate_with_session_context(
-            matches=matches,
-            requester_cm_id=99999,
-            session_cm_id=session_cm_id,
-            year=2025,
-            attendee_info=attendee_info,
-        )
-
-        assert not result.is_resolved
-        assert result.confidence == 0.0
-
-    def test_returns_unresolved_when_none_in_same_session(self, base_strategy):
-        """Should return unresolved when no candidates in same session"""
-        matches = [
-            Person(cm_id=12345, first_name="John", last_name="Smith"),
-            Person(cm_id=67890, first_name="John", last_name="Smythe"),
-        ]
-        session_cm_id = 1000002
-        attendee_info = {
-            12345: {"session_cm_id": 1000003},  # Different session
-            67890: {"session_cm_id": 1000004},  # Also different session
-        }
-
-        result = base_strategy._disambiguate_with_session_context(
-            matches=matches,
-            requester_cm_id=99999,
-            session_cm_id=session_cm_id,
-            year=2025,
-            attendee_info=attendee_info,
-        )
-
-        assert not result.is_resolved
-        assert result.confidence == 0.0
-
-    def test_handles_missing_attendee_info(self, base_strategy):
-        """Should handle None attendee_info gracefully"""
-        matches = [Person(cm_id=12345, first_name="John", last_name="Smith")]
-
-        result = base_strategy._disambiguate_with_session_context(
-            matches=matches,
-            requester_cm_id=99999,
-            session_cm_id=1000002,
-            year=2025,
-            attendee_info=None,
-        )
-
-        assert not result.is_resolved
-        assert result.confidence == 0.0
 
 
 class TestBaseMatchStrategyCalculateBaseConfidence:
@@ -409,36 +323,6 @@ class TestBaseMatchStrategyIntegration:
             attendee_info=attendee_info,
         )
         assert adjusted == pytest.approx(0.90)  # 0.85 + 0.05 boost
-
-    def test_filter_then_disambiguate_workflow(self, base_strategy):
-        """Test workflow: filter self, then disambiguate"""
-        requester_cm_id = 99999
-        session_cm_id = 1000002
-        matches = [
-            Person(cm_id=99999, first_name="Self", last_name="Requester"),
-            Person(cm_id=12345, first_name="John", last_name="Smith"),
-            Person(cm_id=67890, first_name="John", last_name="Smythe"),
-        ]
-        attendee_info = {
-            12345: {"session_cm_id": 1000002},  # Same session
-            67890: {"session_cm_id": 1000003},  # Different session
-        }
-
-        # Filter out self
-        filtered = base_strategy._filter_self_references(matches, requester_cm_id)
-        assert len(filtered) == 2
-
-        # Disambiguate by session
-        result = base_strategy._disambiguate_with_session_context(
-            matches=filtered,
-            requester_cm_id=requester_cm_id,
-            session_cm_id=session_cm_id,
-            year=2025,
-            attendee_info=attendee_info,
-        )
-
-        assert result.is_resolved
-        assert result.person.cm_id == 12345
 
 
 class TestIsExactOrCloseFirstName:

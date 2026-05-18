@@ -27,7 +27,14 @@ class MockStrategy(ResolutionStrategy):
         self._result = result
 
     def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
+        self,
+        name: str,
+        requester_cm_id: int,
+        session_cm_id: int | None = None,
+        year: int | None = None,
+        candidates: list[Person] | None = None,
+        attendee_info: dict[int, dict[str, Any]] | None = None,
+        all_persons: list[Person] | None = None,
     ) -> ResolutionResult:
         return self._result
 
@@ -50,8 +57,11 @@ class TestResolutionPipeline:
     def pipeline(self, mock_repositories):
         """Create a ResolutionPipeline with mocked dependencies"""
         person_repo, attendee_repo = mock_repositories
-        # Mock attendee repo to return None by default (no session found)
-        attendee_repo.get_by_person_and_year.return_value = None
+        # Mock repos for batch_resolve path
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        person_repo.find_by_name.return_value = []
+        person_repo.find_by_first_name.return_value = []
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
         return ResolutionPipeline(person_repo, attendee_repo)
 
     def test_single_strategy_success(self, pipeline):
@@ -65,7 +75,7 @@ class TestResolutionPipeline:
         pipeline.add_strategy(strategy)
 
         # Test resolution
-        final_result = pipeline.resolve("John Doe", requester_cm_id=67890, year=2025)
+        final_result = pipeline.batch_resolve([("John Doe", 67890, None, 2025)])[0]
 
         assert final_result.is_resolved
         assert final_result.person.cm_id == 12345
@@ -86,7 +96,7 @@ class TestResolutionPipeline:
         pipeline.add_strategy(MockStrategy("fuzzy", success_result))
 
         # Test resolution
-        final_result = pipeline.resolve("John Doe", requester_cm_id=67890, year=2025)
+        final_result = pipeline.batch_resolve([("John Doe", 67890, None, 2025)])[0]
 
         assert final_result.is_resolved
         assert final_result.person.cm_id == 12345
@@ -103,7 +113,7 @@ class TestResolutionPipeline:
         pipeline.add_strategy(MockStrategy("fuzzy", fail2))
 
         # Test resolution
-        final_result = pipeline.resolve("Unknown Person", requester_cm_id=67890, year=2025)
+        final_result = pipeline.batch_resolve([("Unknown Person", 67890, None, 2025)])[0]
 
         assert not final_result.is_resolved
         assert final_result.person is None
@@ -127,7 +137,7 @@ class TestResolutionPipeline:
         pipeline.add_strategy(MockStrategy("exact", ambiguous_result))
 
         # Test resolution
-        final_result = pipeline.resolve("John Smith", requester_cm_id=11111, year=2025)
+        final_result = pipeline.batch_resolve([("John Smith", 11111, None, 2025)])[0]
 
         assert not final_result.is_resolved
         assert final_result.is_ambiguous
@@ -144,7 +154,7 @@ class TestResolutionPipeline:
         pipeline.set_minimum_confidence(0.6)
 
         # Test resolution
-        final_result = pipeline.resolve("John Doe", requester_cm_id=67890, year=2025)
+        final_result = pipeline.batch_resolve([("John Doe", 67890, None, 2025)])[0]
 
         # Should not be considered resolved due to low confidence
         assert not final_result.is_resolved
@@ -164,7 +174,7 @@ class TestResolutionPipeline:
         mock_cache.get_cached_resolution.return_value = cached_result
 
         # Test resolution
-        final_result = pipeline.resolve("John Doe", requester_cm_id=67890, year=2025)
+        final_result = pipeline.batch_resolve([("John Doe", 67890, None, 2025)])[0]
 
         assert final_result.is_resolved
         assert final_result.person.cm_id == 12345
@@ -174,14 +184,12 @@ class TestResolutionPipeline:
         mock_cache.get_cached_resolution.assert_called_once()
 
     def test_session_context_passed_to_strategies(self, pipeline, mock_repositories):
-        """Test that session context is passed through to strategies"""
+        """Test that session context is derived from bulk_get_sessions_for_persons and passed to strategies"""
         _, attendee_repo = mock_repositories
 
-        # Mock getting session for requester
-        attendee_repo.get_by_person_and_year.return_value = {
-            "person_cm_id": 67890,
-            "session_cm_id": 1000002,
-            "year": 2025,
+        # Mock bulk session lookup to return session for requester
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {
+            67890: 1000002,
         }
 
         # Create mock strategy that tracks calls
@@ -191,13 +199,16 @@ class TestResolutionPipeline:
 
         pipeline.add_strategy(mock_strategy)
 
-        # Test resolution
-        pipeline.resolve("John Doe", requester_cm_id=67890, year=2025)
+        # Test resolution (session_cm_id=None so pipeline derives it from pre-loaded data)
+        pipeline.batch_resolve([("John Doe", 67890, None, 2025)])
 
-        # Verify strategy was called with session context
-        mock_strategy.resolve.assert_called_once_with(
-            name="John Doe", requester_cm_id=67890, session_cm_id=1000002, year=2025
-        )
+        # Verify strategy was called once and received the derived session context
+        mock_strategy.resolve.assert_called_once()
+        call_kwargs = mock_strategy.resolve.call_args.kwargs
+        assert call_kwargs["name"] == "John Doe"
+        assert call_kwargs["requester_cm_id"] == 67890
+        assert call_kwargs["session_cm_id"] == 1000002
+        assert call_kwargs["year"] == 2025
 
     def test_strategy_ordering(self, pipeline):
         """Test that strategies are tried in order"""
@@ -225,7 +236,7 @@ class TestResolutionPipeline:
         pipeline.add_strategy(make_strategy("ai", False))  # Should not be called
 
         # Test resolution
-        result = pipeline.resolve("Test User", requester_cm_id=67890, year=2025)
+        result = pipeline.batch_resolve([("Test User", 67890, None, 2025)])[0]
 
         # Verify order and early termination
         assert call_order == ["exact", "fuzzy", "phonetic"]
@@ -285,11 +296,15 @@ class TestBatchResolveFirstNameInitialPattern:
             def name(self):
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 self.captured_candidates = candidates
                 # If we got exactly one candidate, return it as resolved
@@ -335,11 +350,15 @@ class TestBatchResolveFirstNameInitialPattern:
             def name(self):
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 self.captured_candidates = candidates
                 if candidates and len(candidates) > 1:
@@ -381,11 +400,15 @@ class TestBatchResolveFirstNameInitialPattern:
             def name(self):
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 self.captured_candidates = candidates
                 if candidates and len(candidates) == 1:
@@ -465,11 +488,15 @@ class TestBatchResolveAttendeeInfoFormat:
             def name(self):
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 self.captured_attendee_info = attendee_info
                 if candidates:
@@ -526,11 +553,15 @@ class TestBatchResolveAttendeeInfoFormat:
             def name(self):
                 return "capturing"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 self.captured_attendee_info = attendee_info
                 return ResolutionResult(
@@ -594,11 +625,15 @@ class TestBatchResolveAttendeeInfoFormat:
             def name(self):
                 return "session_disambiguator"
 
-            def resolve(self, name, requester_cm_id, session_cm_id=None, year=None):
-                return ResolutionResult()
-
-            def resolve_with_context(  # type: ignore[override]
-                self, name, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons=None
+            def resolve(
+                self,
+                name,
+                requester_cm_id,
+                session_cm_id=None,
+                year=None,
+                candidates=None,
+                attendee_info=None,
+                all_persons=None,
             ):
                 if not candidates or len(candidates) <= 1:
                     return ResolutionResult(
@@ -695,11 +730,6 @@ class TestBatchResolvePreloadedPersonSessions:
                 return "capturing"
 
             def resolve(
-                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-            ) -> ResolutionResult:
-                return ResolutionResult()
-
-            def resolve_with_context(
                 self,
                 name: str,
                 requester_cm_id: int,
@@ -754,11 +784,6 @@ class TestBatchResolvePreloadedPersonSessions:
                 return "capturing"
 
             def resolve(
-                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-            ) -> ResolutionResult:
-                return ResolutionResult()
-
-            def resolve_with_context(
                 self,
                 name: str,
                 requester_cm_id: int,
@@ -805,11 +830,6 @@ class TestBatchResolvePreloadedPersonSessions:
                 return "capturing"
 
             def resolve(
-                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-            ) -> ResolutionResult:
-                return ResolutionResult()
-
-            def resolve_with_context(
                 self,
                 name: str,
                 requester_cm_id: int,
@@ -863,11 +883,6 @@ class TestBatchResolvePreloadedPersonSessions:
                 return "capturing"
 
             def resolve(
-                self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-            ) -> ResolutionResult:
-                return ResolutionResult()
-
-            def resolve_with_context(
                 self,
                 name: str,
                 requester_cm_id: int,
