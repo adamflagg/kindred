@@ -566,7 +566,10 @@ export default function PostValidationResultsModal({
     })
   }, [])
   useEffect(() => {
-    if (!isOpen) setSelectedCamperId(null)
+    if (!isOpen) {
+      setSelectedCamperId(null)
+      setExpandedBunks(new Set())
+    }
   }, [isOpen])
 
   // Need to compute these even when modal is closed since Modal might render conditionally
@@ -711,7 +714,7 @@ export default function PostValidationResultsModal({
       if (issuesByBunk.length > 0)
         parts.push(`${issuesByBunk.length} ${issuesByBunk.length === 1 ? 'bunk' : 'bunks'}`)
       const otherCount = groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)
-      if (otherCount > 0) parts.push(`${otherCount} other`)
+      if (otherCount > 0) parts.push(`${otherCount} other issue${otherCount === 1 ? '' : 's'}`)
       if (hasUnmetDrilldown && parts.length === 0) parts.push('unmet parent requests')
       const sublabel = parts.length > 0 ? parts.join(' · ') : 'no issues to review'
       base = {

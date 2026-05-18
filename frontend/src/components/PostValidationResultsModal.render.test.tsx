@@ -1309,6 +1309,53 @@ describe('PostValidationResultsModal — bunk chip row expand on click (#1481)',
     await user.click(screen.getByText('Maple 1'))
     expect(screen.getByText('Bunk Maple 1 is over capacity')).toBeInTheDocument()
   })
+
+  it('resets expandedBunks when the modal closes, so reopening starts collapsed', async () => {
+    // Otherwise an expanded bunk stays expanded across close/reopen, leaking UI
+    // state between sessions the same way selectedCamperId did before its fix.
+    const user = userEvent.setup()
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+    ]
+    const { rerender } = render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    // Expand the bunk row.
+    await user.click(screen.getByText('Pine 3'))
+    // Verify it is expanded (detail text visible).
+    expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
+
+    // Close the modal.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={false}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+
+    // Reopen — the detail panel should NOT come back with the stale expansion.
+    rerender(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    expect(screen.queryByText(/9.*8|1 over/i)).not.toBeInTheDocument()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1458,5 +1505,71 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
     )
     // The old label "2 issues to review" should not appear
     expect(screen.queryByText(/2 issues? to review/i)).not.toBeInTheDocument()
+  })
+
+  it('uses singular "other issue" when otherCount === 1', () => {
+    // One non-bunk issue → should render "1 other issue", not "1 other issues"
+    const issues = [
+      {
+        type: 'unassigned_camper',
+        severity: 'error',
+        message: 'Liam Garcia is not assigned to any bunk',
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats({
+            request_satisfaction_rate: 0.5,
+            material_parent_requests: 0,
+            satisfied_material_parent_requests: 0,
+            material_parent_request_satisfaction_rate: 0,
+            campers_with_unsatisfied_material_parent_requests: 0,
+          }),
+          issues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    expect(screen.getAllByText(/1 other issue(?!s)/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/1 other issues/i)).not.toBeInTheDocument()
+  })
+
+  it('uses plural "other issues" when otherCount > 1', () => {
+    // Two non-bunk issues → should render "2 other issues", not "2 other"
+    const issues = [
+      {
+        type: 'unassigned_camper',
+        severity: 'error',
+        message: 'Liam Garcia is not assigned to any bunk',
+      },
+      {
+        type: 'unassigned_camper',
+        severity: 'error',
+        message: 'Olivia Chen is not assigned to any bunk',
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{
+          statistics: makeStats({
+            request_satisfaction_rate: 0.5,
+            material_parent_requests: 0,
+            satisfied_material_parent_requests: 0,
+            material_parent_request_satisfaction_rate: 0,
+            campers_with_unsatisfied_material_parent_requests: 0,
+          }),
+          issues,
+          validated_at: '2025-06-01T12:00:00Z',
+        }}
+      />
+    )
+    expect(screen.getAllByText(/2 other issues/i).length).toBeGreaterThanOrEqual(1)
   })
 })
