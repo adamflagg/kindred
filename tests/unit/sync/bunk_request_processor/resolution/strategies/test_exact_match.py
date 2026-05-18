@@ -6,6 +6,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -16,6 +17,7 @@ project_root = test_dir.parent.parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from bunking.sync.bunk_request_processor.core.models import Person
+from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
 from bunking.sync.bunk_request_processor.resolution.strategies.exact_match import ExactMatchStrategy
 
 
@@ -36,6 +38,7 @@ class TestExactMatchStrategy:
         # Mock attendee repo to return None by default (no session found)
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         # Mock parent surname search to return empty by default
         # Set name_cache to None so it falls through to DB method
         person_repo.name_cache = None
@@ -102,10 +105,10 @@ class TestExactMatchStrategy:
         person2 = Person(cm_id=67890, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person1, person2]
 
-        # Mock session lookups
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {
-            12345: 1000002,  # Session 1
-            67890: 1000003,  # Session 2
+        # Mock session lookups (new list-based bulk method: {cm_id: list[int]})
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {
+            12345: [1000002],  # Session 1
+            67890: [1000003],  # Session 2
         }
 
         # Requester is in session 1
@@ -133,8 +136,8 @@ class TestExactMatchStrategy:
         person2 = Person(cm_id=67890, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person1, person2]
 
-        # Both in same session
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {12345: 1000002, 67890: 1000002}
+        # Both in same session (new list-based bulk method: {cm_id: list[int]})
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000002], 67890: [1000002]}
 
         # Requester also in session
         attendee_repo.get_by_person_and_year.return_value = {
@@ -174,8 +177,8 @@ class TestExactMatchStrategy:
         person = Person(cm_id=12345, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person]
 
-        # Mock person is in the provided session
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {12345: 1000002}
+        # Mock person is in the provided session (Path E uses bulk_get_all_sessions_for_persons)
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000002]}
 
         # Test with explicit session
         result = strategy.resolve("John Smith", requester_cm_id=67890, session_cm_id=1000002, year=2025)
@@ -216,6 +219,39 @@ class TestExactMatchStrategy:
         # Lower confidence without year context
         assert result.confidence == 0.90
 
+    def test_path_c_known_different_via_session_cm_ids_only(self, strategy, mock_repositories):
+        """Path C (#1501): direct-match unique-path elif must classify via session_cm_ids.
+
+        Before fix: target with session_cm_ids=[X,Y] (neither matches) and no singular
+        session_cm_id falls through to else branch -> 'unknown' 0.90.
+        After fix: classifier returns DIFFERENT -> 'different' 0.85.
+        """
+        person_repo, _ = mock_repositories
+
+        person = Person(cm_id=12345, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person]
+
+        attendee_info = {
+            # Target: only session_cm_ids populated (no singular key), neither matches requester
+            12345: {"session_cm_ids": [1000099, 1000888]},
+            # Requester has singular session
+            67890: {"session_cm_id": 1000002},
+        }
+
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        # DIFFERENT -> 0.85 (was 'unknown' 0.90 before fix)
+        assert result.confidence == 0.85
+        assert result.metadata.get("session_match") == "different"
+
     def test_multi_match_disambiguation_uses_session_cm_ids(self, strategy):
         """Multi-match disambiguation should check session_cm_ids, not just session_cm_id."""
         target_a = Person(cm_id=2000001, first_name="Erez", last_name="Costello")
@@ -245,6 +281,35 @@ class TestExactMatchStrategy:
         assert result.person.cm_id == 2000001
         assert result.metadata.get("session_match") == "exact"
 
+    def test_path_e_resolve_elif_year_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path E (#1501 scope expansion): resolve() elif-year DB fallback for single direct match.
+
+        Same bug shape as Path A: singular bulk_get_sessions_for_persons collapses
+        multi-enrolled target to one session, mis-classifies SAME-via-secondary as DIFFERENT.
+        Fix: use bulk_get_all_sessions_for_persons + _classify_session.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person = Person(cm_id=12345, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person]
+
+        # Multi-enrollment: target in [1000099, 1000002], requester wants 1000002
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        # No attendee_info -> forces elif year branch (Path E)
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
+
 
 class TestExactMatchParentSurname:
     """Test parent surname matching in ExactMatchStrategy"""
@@ -262,6 +327,7 @@ class TestExactMatchParentSurname:
         person_repo, attendee_repo = mock_repositories
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         # Default to empty - tests will override as needed
         person_repo.find_by_name.return_value = []
         # Set name_cache to None so it falls through to DB method
@@ -366,6 +432,223 @@ class TestExactMatchParentSurname:
         assert result.person.cm_id == 12345
         assert result.metadata.get("sub_method") == "parent_surname"
 
+    def test_path_a_name_cache_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path A (#1501): name_cache parent-surname match where target is multi-enrolled.
+
+        Target enrolled in [X, requester_session]. The OLD bulk_get_sessions_for_persons
+        returned only the primary (X), causing a same-session match to be downgraded to
+        0.80 'different'. Fix: bulk_get_all_sessions_for_persons returns both, classifier
+        sees requester_session in list -> SAME -> 0.90.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        # Direct match fails (different surname)
+        person_repo.find_by_name.return_value = []
+
+        # Person 12345 has parent surname "Smith", actual surname "Johnson"
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        # name_cache available (so we hit Path A, not Path B)
+        mock_cache = Mock()
+        mock_cache.find_by_parent_surname.return_value = [person]
+        person_repo.name_cache = mock_cache
+
+        # NEW bulk method returns multi-enrollment: target in sessions [1000099, 1000002]
+        # where 1000002 is requester's session
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        # SAME via session_cm_ids -> 0.90 (was 0.80 before the fix)
+        assert result.confidence == 0.90
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
+
+    def test_path_b_via_db_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path B (#1501): _try_parent_surname_match_via_db with multi-enrolled target.
+
+        Before fix: Path B accepts session_cm_id but never uses it, returns 0.90 always.
+        After fix: target in [X, requester_session] -> SAME -> 0.90 base preserved.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []  # No direct match
+        person_repo.name_cache = None  # Force Path B (via_db)
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # Multi-enrollment: target in [1000099, requester_session]
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # SAME -> 0.90 base preserved
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
+
+    def test_path_b_via_db_different_session_downgrades(self, strategy, mock_repositories):
+        """Path B (#1501): when target's sessions don't include requester's, confidence -> 0.80.
+
+        Before fix: returned 0.90 regardless. After: DIFFERENT -> 0.80.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000888]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.80  # DIFFERENT -> 0.80 (was 0.90 before fix)
+
+    def test_path_b_via_db_no_session_context_keeps_base(self, strategy, mock_repositories):
+        """Path B with no session_cm_id/year preserves base 0.90 (no downgrade)."""
+        person_repo, _ = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # No session_cm_id passed
+        result = strategy.resolve("Emma Smith", requester_cm_id=67890, year=2025)
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # base preserved when no session context
+
+    def test_parent_surname_candidates_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Parent-surname candidates branch: UNKNOWN session preserves 0.90 base.
+
+        attendee_info has no session_cm_ids entry for the target (cancelled, waitlisted,
+        or otherwise absent from enrolled-only map). Classifier returns UNKNOWN; downgrade
+        to 0.80 must only happen for DIFFERENT, not UNKNOWN.
+        """
+        person_repo, _ = mock_repositories
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        # attendee_info present but target has no session data -> UNKNOWN
+        attendee_info: dict[int, dict[str, Any]] = {67890: {"session_cm_ids": [1000002]}}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            candidates=[person],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 12345
+        assert result.confidence == 0.90  # UNKNOWN preserves base, only DIFFERENT downgrades to 0.80
+
+    def test_path_a_name_cache_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Path A (name_cache parent-surname): UNKNOWN session preserves 0.90 base."""
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+
+        mock_cache = Mock()
+        mock_cache.find_by_parent_surname.return_value = [person]
+        person_repo.name_cache = mock_cache
+
+        # Target absent from enrolled-only map -> UNKNOWN
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # UNKNOWN preserves base
+
+    def test_path_b_via_db_unknown_session_keeps_base(self, strategy, mock_repositories):
+        """Path B (via_db parent-surname): UNKNOWN session preserves 0.90 base."""
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # Target absent from enrolled-only map -> UNKNOWN
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # UNKNOWN preserves base
+
 
 class TestExactMatchPreferredName:
     """Test preferred_name matching in ExactMatchStrategy."""
@@ -381,6 +664,7 @@ class TestExactMatchPreferredName:
         person_repo, attendee_repo = mock_repositories
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         person_repo.name_cache = None
         person_repo.find_by_first_and_parent_surname.return_value = []
         person_repo.get_all_for_phonetic_matching.return_value = []
@@ -439,6 +723,7 @@ class TestResolveSessionHandling:
         mock_attendee_repo = Mock()
         mock_attendee_repo.get_by_person_and_year.return_value = None
         mock_attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        mock_attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         mock_person_repo.name_cache = None
         mock_person_repo.find_by_first_and_parent_surname.return_value = []
         mock_person_repo.get_all_for_phonetic_matching.return_value = []
@@ -476,7 +761,7 @@ class TestResolveSessionHandling:
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
         attendee_info = {
             1000001: {"session_cm_id": 1000010},
-            1234567: {"session_cm_id": 1000010},  # same session
+            1234567: {"session_cm_id": 1000010, "session_cm_ids": [1000010]},  # same session
         }
 
         result = strategy.resolve(
@@ -496,7 +781,7 @@ class TestResolveSessionHandling:
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
         attendee_info = {
             1000001: {"session_cm_id": 1000010},
-            1234567: {"session_cm_id": 1000020},  # different session
+            1234567: {"session_cm_id": 1000020, "session_cm_ids": [1000020]},  # different session
         }
 
         result = strategy.resolve(
@@ -607,6 +892,7 @@ class TestParentSurnameSessionCmIds:
         attendee_repo = Mock()
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         person_repo.name_cache = None
         person_repo.find_by_name.return_value = []
         person_repo.find_by_first_and_parent_surname.return_value = []
@@ -683,6 +969,117 @@ class TestParentSurnameSessionCmIds:
         assert result.is_resolved
         assert result.person.cm_id == 2000001
         assert result.confidence == 0.80  # correctly penalised
+
+
+class TestPathDDisambiguate:
+    """Tests for Path D: _disambiguate_with_session multi-enrollment fixes (#1501)."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_path_d_disambiguate_db_multi_enrollment(self, strategy, mock_repositories):
+        """Path D (#1501): _disambiguate_with_session DB fallback uses bulk_get_all_sessions.
+
+        Two persons named "John Smith" both match. One is multi-enrolled in
+        [1000099, requester_session]. The DB fallback should select that match
+        as same-session via the new bulk method.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_a = Person(cm_id=11111, first_name="John", last_name="Smith")
+        person_b = Person(cm_id=22222, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person_a, person_b]
+
+        # Requester session lookup via DB
+        attendee_repo.get_by_person_and_year.return_value = {"session_cm_id": 1000002}
+
+        # NEW bulk method: person_a primary is 1000099 but secondary is 1000002 (multi-enrolled)
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {
+            11111: [1000099, 1000002],  # Multi-enrolled, includes requester session
+            22222: [1000888],  # Different session only
+        }
+
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,  # Forces DB fallback
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 11111  # Multi-enrolled match selected
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+
+    def test_path_d_disambiguate_db_impossible_uses_target_sessions_list(self, strategy, mock_repositories):
+        """When _disambiguate_with_session DB fallback finds no same-session match for a
+        singleton input, IMPOSSIBLE metadata carries 'target_sessions' (list) not
+        'target_session' (int).
+
+        Note: _disambiguate_with_session is called directly with 1 match here because
+        resolve() routes single matches through a separate path.
+        """
+        _, attendee_repo = mock_repositories
+
+        person_a = Person(cm_id=11111, first_name="John", last_name="Smith")
+
+        attendee_repo.get_by_person_and_year.return_value = None  # session_cm_id provided directly
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {11111: [1000099, 1000888]}
+
+        # Call _disambiguate_with_session directly with 1 match and no attendee_info
+        result = strategy._disambiguate_with_session(
+            matches=[person_a],
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,
+        )
+
+        # No same-session matches -> IMPOSSIBLE (singleton match branch)
+        assert result.metadata.get("impossible") is True
+        assert result.metadata.get("impossible_reason") == "target_in_different_session"
+        # NEW: list, not int
+        assert result.metadata.get("target_sessions") == [1000099, 1000888]
+        assert "target_session" not in result.metadata  # Old singular key removed
+
+
+class TestClassifySessionHelper:
+    """Test the static _classify_session helper that all 4 multi-enrollment-aware paths use."""
+
+    def test_returns_unknown_when_sessions_none(self):
+        assert ExactMatchStrategy._classify_session(None, 1000001) is SessionMatch.UNKNOWN
+
+    def test_returns_unknown_when_sessions_empty(self):
+        assert ExactMatchStrategy._classify_session([], 1000001) is SessionMatch.UNKNOWN
+
+    def test_returns_same_when_requester_session_in_list(self):
+        assert ExactMatchStrategy._classify_session([1000001, 1000002], 1000001) is SessionMatch.SAME
+        # Multi-enrollment: requester session is second in list
+        assert ExactMatchStrategy._classify_session([1000002, 1000001], 1000001) is SessionMatch.SAME
+
+    def test_returns_different_when_requester_session_not_in_list(self):
+        assert ExactMatchStrategy._classify_session([1000002, 1000003], 1000001) is SessionMatch.DIFFERENT
+
+    def test_enum_values_match_metadata_strings(self):
+        """SessionMatch.value must match the strings stamped into metadata['session_match']."""
+        assert SessionMatch.SAME.value == "exact"
+        assert SessionMatch.DIFFERENT.value == "different"
+        assert SessionMatch.UNKNOWN.value == "unknown"
 
 
 if __name__ == "__main__":

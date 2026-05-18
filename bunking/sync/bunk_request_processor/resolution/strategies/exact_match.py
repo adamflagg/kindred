@@ -9,8 +9,18 @@ from typing import Any
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
-from ..interfaces import ResolutionResult
+from ..interfaces import ResolutionResult, SessionMatch
 from .base_match_strategy import BaseMatchStrategy
+
+# Confidence values for Path C (direct-match unique branch), keyed by SessionMatch:
+# - SAME (target enrolled in requester's session)        -> 0.95 high-confidence match
+# - DIFFERENT (target in known other session)            -> 0.85 likely-correct but session mismatch
+# - UNKNOWN (no session data; cancelled/waitlisted/etc.) -> 0.90 — ConflictDetector handles downstream
+_DIRECT_MATCH_CONFIDENCE: dict[SessionMatch, float] = {
+    SessionMatch.SAME: 0.95,
+    SessionMatch.DIFFERENT: 0.85,
+    SessionMatch.UNKNOWN: 0.90,
+}
 
 
 class ExactMatchStrategy(BaseMatchStrategy):
@@ -101,32 +111,14 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     session_cm_id = requester_info.get("session_cm_id")
 
                 if session_cm_id:
-                    match_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
-                    if self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.95,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "exact"},
-                        )
-                    elif match_session is not None:
-                        # Target enrolled in a different bunking session
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.85,  # Lower confidence for different session
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "different"},
-                        )
-                    else:
-                        # No session data for target in enrolled-only map.
-                        # Could be cancelled, waitlisted, or not enrolled.
-                        # Disposition handled by ConflictDetector.
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.90,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "unknown"},
-                        )
+                    person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
+                    match = self._classify_session(person_sessions, session_cm_id)
+                    return ResolutionResult(
+                        person=matches[0],
+                        confidence=_DIRECT_MATCH_CONFIDENCE[match],
+                        method=self.name,
+                        metadata={"sub_method": "unique", "session_match": match.value},
+                    )
                 else:
                     # No session context available
                     return ResolutionResult(
@@ -144,30 +136,14 @@ class ExactMatchStrategy(BaseMatchStrategy):
                         effective_session = db_requester_info["session_cm_id"]
 
                 if effective_session:
-                    sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([matches[0].cm_id], year)
-                    match_session = sessions_map.get(matches[0].cm_id)
-
-                    if match_session == effective_session:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.95,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "exact"},
-                        )
-                    elif match_session is not None:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.85,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "different"},
-                        )
-                    else:
-                        return ResolutionResult(
-                            person=matches[0],
-                            confidence=0.90,
-                            method=self.name,
-                            metadata={"sub_method": "unique", "session_match": "unknown"},
-                        )
+                    sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
+                    match = self._classify_session(sessions_map.get(matches[0].cm_id), effective_session)
+                    return ResolutionResult(
+                        person=matches[0],
+                        confidence=_DIRECT_MATCH_CONFIDENCE[match],
+                        method=self.name,
+                        metadata={"sub_method": "unique", "session_match": match.value},
+                    )
                 else:
                     return ResolutionResult(
                         person=matches[0],
@@ -197,21 +173,19 @@ class ExactMatchStrategy(BaseMatchStrategy):
         )
 
     @staticmethod
-    def _is_same_session_via_attendee_info(
-        person_cm_id: int,
-        session_cm_id: int,
-        attendee_info: dict[int, dict[str, Any]],
-    ) -> bool:
-        """Check if a person is enrolled in the given session, using pre-loaded attendee_info.
+    def _classify_session(
+        person_sessions: list[int] | None,
+        requester_session: int,
+    ) -> SessionMatch:
+        """Classify target's session vs requester's, multi-enrollment aware.
 
-        Prefers session_cm_ids (multi-enrollment) when available, falls back to singular
-        session_cm_id for backward compatibility.
+        Both data sources (attendee_info dict's session_cm_ids and the new
+        bulk_get_all_sessions_for_persons map) collapse to list[int] | None
+        at the call site.
         """
-        info = attendee_info.get(person_cm_id, {})
-        match_sessions = info.get("session_cm_ids", [])
-        if match_sessions:
-            return session_cm_id in match_sessions
-        return info.get("session_cm_id") == session_cm_id
+        if not person_sessions:
+            return SessionMatch.UNKNOWN
+        return SessionMatch.SAME if requester_session in person_sessions else SessionMatch.DIFFERENT
 
     def _disambiguate_with_session(
         self,
@@ -241,7 +215,10 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 )
 
             same_session_matches = [
-                m for m in matches if self._is_same_session_via_attendee_info(m.cm_id, session_cm_id, attendee_info)
+                m
+                for m in matches
+                if self._classify_session(attendee_info.get(m.cm_id, {}).get("session_cm_ids"), session_cm_id)
+                is SessionMatch.SAME
             ]
 
             if len(same_session_matches) == 1:
@@ -265,7 +242,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             else:
                 # No matches in same session - mark as IMPOSSIBLE
                 if len(matches) == 1:
-                    target_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
+                    target_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids", [])
                     return ResolutionResult(
                         person=matches[0],
                         confidence=0.0,
@@ -274,7 +251,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
                             "sub_method": "exact_different_session",
-                            "target_session": target_session,
+                            "target_sessions": target_sessions,
                             "requester_session": session_cm_id,
                         },
                     )
@@ -305,9 +282,13 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 )
 
             match_cm_ids = [m.cm_id for m in matches]
-            sessions_map = self.attendee_repo.bulk_get_sessions_for_persons(match_cm_ids, year)
+            sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons(match_cm_ids, year)
 
-            same_session_matches = [m for m in matches if sessions_map.get(m.cm_id) == session_cm_id]
+            same_session_matches = [
+                m
+                for m in matches
+                if self._classify_session(sessions_map.get(m.cm_id), session_cm_id) is SessionMatch.SAME
+            ]
 
             if len(same_session_matches) == 1:
                 return ResolutionResult(
@@ -338,7 +319,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
                             "sub_method": "exact_different_session",
-                            "target_session": sessions_map.get(matches[0].cm_id),
+                            "target_sessions": sessions_map.get(matches[0].cm_id, []),
                             "requester_session": session_cm_id,
                         },
                     )
@@ -395,7 +376,8 @@ class ExactMatchStrategy(BaseMatchStrategy):
             if len(matches) == 1:
                 confidence = 0.90  # Base for parent surname match
                 if session_cm_id and attendee_info:
-                    if not self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
+                    person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
+                    if self._classify_session(person_sessions, session_cm_id) is SessionMatch.DIFFERENT:
                         confidence = 0.80  # Lower for different session
 
                 return ResolutionResult(
@@ -432,12 +414,10 @@ class ExactMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
-            confidence = 0.90  # Slightly lower than direct match (0.95)
+            confidence = 0.90  # Base for parent-surname match (lower than direct-match base 0.95)
             if year and session_cm_id:
-                sessions_map = self.attendee_repo.bulk_get_sessions_for_persons([matches[0].cm_id], year)
-                if sessions_map.get(matches[0].cm_id) == session_cm_id:
-                    confidence = 0.90
-                else:
+                sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
+                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is SessionMatch.DIFFERENT:
                     confidence = 0.80  # Lower for different session
             return ResolutionResult(
                 person=matches[0],
@@ -494,9 +474,14 @@ class ExactMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(matches) == 1:
+            confidence = 0.90  # Base for parent-surname match (lower than direct-match base 0.95)
+            if year and session_cm_id:
+                sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons([matches[0].cm_id], year)
+                if self._classify_session(sessions_map.get(matches[0].cm_id), session_cm_id) is SessionMatch.DIFFERENT:
+                    confidence = 0.80  # Lower for different session
             return ResolutionResult(
                 person=matches[0],
-                confidence=0.90,
+                confidence=confidence,
                 method=self.name,
                 metadata={
                     "sub_method": "parent_surname",

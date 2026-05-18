@@ -6,9 +6,22 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from ..core.models import Person
+
+
+class SessionMatch(Enum):
+    """Tri-state classification for target's session vs requester's session.
+
+    Values match the existing metadata["session_match"] strings so call sites
+    can stamp `match.value` directly into ResolutionResult metadata.
+    """
+
+    SAME = "exact"
+    DIFFERENT = "different"
+    UNKNOWN = "unknown"
 
 
 @dataclass
