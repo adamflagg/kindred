@@ -412,6 +412,90 @@ class TestExactMatchParentSurname:
         assert result.confidence == 0.90
         attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
 
+    def test_path_b_via_db_multi_enrollment_same_session(self, strategy, mock_repositories):
+        """Path B (#1501): _try_parent_surname_match_via_db with multi-enrolled target.
+
+        Before fix: Path B accepts session_cm_id but never uses it, returns 0.90 always.
+        After fix: target in [X, requester_session] -> SAME -> 0.90 base preserved.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []  # No direct match
+        person_repo.name_cache = None  # Force Path B (via_db)
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # Multi-enrollment: target in [1000099, requester_session]
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000002]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # SAME -> 0.90 base preserved
+        attendee_repo.bulk_get_all_sessions_for_persons.assert_called_once_with([12345], 2025)
+
+    def test_path_b_via_db_different_session_downgrades(self, strategy, mock_repositories):
+        """Path B (#1501): when target's sessions don't include requester's, confidence -> 0.80.
+
+        Before fix: returned 0.90 regardless. After: DIFFERENT -> 0.80.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000099, 1000888]}
+
+        result = strategy.resolve(
+            "Emma Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+        )
+
+        assert result.is_resolved
+        assert result.confidence == 0.80  # DIFFERENT -> 0.80 (was 0.90 before fix)
+
+    def test_path_b_via_db_no_session_context_keeps_base(self, strategy, mock_repositories):
+        """Path B with no session_cm_id/year preserves base 0.90 (no downgrade)."""
+        person_repo, _ = mock_repositories
+
+        person_repo.find_by_name.return_value = []
+        person_repo.name_cache = None
+
+        person = Person(
+            cm_id=12345,
+            first_name="Emma",
+            last_name="Johnson",
+            parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
+        )
+        person_repo.get_all_for_phonetic_matching.return_value = [person]
+
+        # No session_cm_id passed
+        result = strategy.resolve("Emma Smith", requester_cm_id=67890, year=2025)
+
+        assert result.is_resolved
+        assert result.confidence == 0.90  # base preserved when no session context
+
 
 class TestExactMatchPreferredName:
     """Test preferred_name matching in ExactMatchStrategy."""
