@@ -60,6 +60,9 @@ jobs:
       docker: ${{ steps.filter.outputs.docker }}
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
       short_sha: ${{ steps.short-sha.outputs.short_sha }}
+      # Single source of truth for "is a Docker build needed for this commit".
+      # Downstream jobs (build-and-scan, integration-test, promote) gate on this.
+      should_build: ${{ steps.should-build.outputs.should_build }}
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
@@ -156,6 +159,30 @@ jobs:
         SHORT_SHA=$(echo "$FULL_SHA" | cut -c1-7)
         echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
         echo "Staging tag will be: :test-$SHORT_SHA"
+
+    - name: Decide if Docker build is needed
+      id: should-build
+      # Run even if earlier steps failed so downstream jobs get a definitive
+      # signal. If filter outputs are empty (detect failed), force-build as
+      # a safety fallback.
+      if: always()
+      env:
+        CHANGES_API: ${{ steps.filter.outputs.api }}
+        CHANGES_DOCKER: ${{ steps.filter.outputs.docker }}
+        CHANGES_INITIAL: ${{ steps.get-base-sha.outputs.initial_commit }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        if [ -z "$CHANGES_API" ] && [ -z "$CHANGES_DOCKER" ]; then
+          echo "::warning::Change detection failed — building all images as safety fallback"
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        elif [ "$CHANGES_API" == "true" ] || [ "$CHANGES_DOCKER" == "true" ] || \
+             [ "$CHANGES_INITIAL" == "true" ] || \
+             [ "$EVENT_NAME" == "workflow_dispatch" ] || [ "$EVENT_NAME" == "schedule" ]; then
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_build=false" >> $GITHUB_OUTPUT
+          echo "No relevant file changes — downstream jobs will skip"
+        fi
 
   # Verify CI passed before building/pushing images
   # CI runs concurrently with CD on main pushes; this polls until it completes.
@@ -354,6 +381,7 @@ jobs:
     needs: [detect-changes, verify-ci, smoke-test]
     if: |
       always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
       (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
       !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
@@ -380,45 +408,18 @@ jobs:
       with:
         egress-policy: audit
 
-    - name: Check if build needed
-      id: check
-      env:
-        DETECT_RESULT: ${{ needs.detect-changes.result }}
-        CHANGES_API: ${{ needs.detect-changes.outputs.api }}
-        CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
-        CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
-        EVENT_NAME: ${{ github.event_name }}
-      run: |
-        # If detect-changes failed, outputs are empty — build everything as safety fallback.
-        if [ "$DETECT_RESULT" != "success" ]; then
-          echo "::warning::Change detection failed — building all images as safety fallback"
-          echo "build=true" >> $GITHUB_OUTPUT
-        elif [ "$CHANGES_API" == "true" ] || \
-             [ "$EVENT_NAME" == "workflow_dispatch" ] || \
-             [ "$EVENT_NAME" == "schedule" ] || \
-             [ "$CHANGES_DOCKER" == "true" ] || \
-             [ "$CHANGES_INITIAL" == "true" ]; then
-          echo "build=true" >> $GITHUB_OUTPUT
-        else
-          echo "build=false" >> $GITHUB_OUTPUT
-          echo "Skipping build - no changes detected"
-        fi
-
     - name: Checkout code
-      if: steps.check.outputs.build == 'true'
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
         persist-credentials: false
 
     - name: Clone private config for branding assets
-      if: steps.check.outputs.build == 'true'
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Prepare local assets for Docker build
-      if: steps.check.outputs.build == 'true'
       run: |
         mkdir -p local/assets
         if [ -f local/assets/camp-logo.png ]; then
@@ -428,7 +429,6 @@ jobs:
         fi
 
     - name: Log in to GitHub Container Registry
-      if: steps.check.outputs.build == 'true'
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
         registry: ${{ env.REGISTRY }}
@@ -436,7 +436,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Log in to Docker Hardened Images registry
-      if: steps.check.outputs.build == 'true'
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
         registry: dhi.io
@@ -444,7 +443,6 @@ jobs:
         password: ${{ secrets.DHI_TOKEN }}
 
     - name: Get version and build date
-      if: steps.check.outputs.build == 'true'
       id: version
       run: |
         VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
@@ -453,11 +451,9 @@ jobs:
         echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
 
     - name: Set up Docker Buildx
-      if: steps.check.outputs.build == 'true'
       uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
     - name: Build and push ${{ matrix.image }} to staging tag
-      if: steps.check.outputs.build == 'true'
       env:
         INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
         BUILD_VERSION: ${{ steps.version.outputs.version }}
@@ -501,14 +497,12 @@ jobs:
         echo "Pushed $STAGING_TAG"
 
     - name: Install Trivy
-      if: steps.check.outputs.build == 'true'
       uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
       with:
         version: v0.69.3
 
     - name: Scan ${{ matrix.image }} with Trivy
       id: trivy-scan
-      if: steps.check.outputs.build == 'true'
       env:
         SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
         IMAGE: ${{ matrix.image }}
@@ -529,7 +523,7 @@ jobs:
         echo "No CRITICAL vulnerabilities in ${IMAGE}"
 
     - name: Upload Trivy SARIF
-      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
+      if: always() && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
       with:
@@ -544,6 +538,7 @@ jobs:
     needs: [detect-changes, build-and-scan]
     if: |
       always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
       needs.build-and-scan.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -669,6 +664,7 @@ jobs:
     needs: [detect-changes, build-and-scan, integration-test]
     if: |
       always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
       needs.build-and-scan.result == 'success' &&
       needs.integration-test.result == 'success' &&
       github.event_name != 'pull_request' &&
