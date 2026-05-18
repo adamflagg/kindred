@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo } from 'react'
+import { Fragment, useState, useMemo, useCallback } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, AlertTriangle, Heart } from 'lucide-react'
 import clsx from 'clsx'
@@ -139,7 +139,12 @@ function LockGroupActionBar({
   onGroupCreated,
 }: LockGroupActionBarProps) {
   const queryClient = useQueryClient()
-  const { groups } = useLockGroupContext()
+  const { groups, selectedGroupId, addCamperToGroup } = useLockGroupContext()
+  const selectedGroup = useMemo(
+    () => (selectedGroupId ? groups.find((g) => g.id === selectedGroupId) : undefined),
+    [groups, selectedGroupId]
+  )
+  const isAddMode = !!selectedGroup
 
   // Conflict-confirm hook — warns when a pending camper is already in another group
   const conflictConfirm = useGroupConflictConfirm()
@@ -248,6 +253,15 @@ function LockGroupActionBar({
     }
   }
 
+  const handleAddToExisting = useCallback(async () => {
+    if (!selectedGroup) return
+    for (const camper of pendingCampers) {
+      // addCamperToGroup already handles conflict-confirm + toasts + invalidations
+      await addCamperToGroup(camper, selectedGroup.id)
+    }
+    onClearPending()
+  }, [selectedGroup, pendingCampers, addCamperToGroup, onClearPending])
+
   // Don't show if no pending campers
   if (pendingCampers.length === 0) {
     return null
@@ -265,7 +279,21 @@ function LockGroupActionBar({
 
   return (
     <Fragment>
-      <div className="bg-background shadow-lodge-lg fixed right-0 bottom-0 left-0 z-40 border-t">
+      <div
+        data-panel="lock-action-bar"
+        className={clsx(
+          'bg-background shadow-lodge-lg fixed right-0 bottom-0 left-0 z-40 border-t',
+          isAddMode && 'border-l-4'
+        )}
+        style={
+          isAddMode && selectedGroup
+            ? {
+                borderLeftColor: selectedGroup.color,
+                backgroundColor: `${selectedGroup.color}1a` /* ~10% alpha */,
+              }
+            : undefined
+        }
+      >
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
             {/* Left: Selection info */}
@@ -273,8 +301,19 @@ function LockGroupActionBar({
               <div className="flex items-center gap-2">
                 <Users className="text-primary h-5 w-5" />
                 <span className="font-medium">
-                  {pendingCampers.length} camper
-                  {pendingCampers.length !== 1 ? 's' : ''} selected
+                  {isAddMode && selectedGroup ? (
+                    <>
+                      Add {pendingCampers.length} to{' '}
+                      <span style={{ color: selectedGroup.color }}>
+                        {selectedGroup.name || 'Unnamed Group'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      {pendingCampers.length} camper{pendingCampers.length !== 1 ? 's' : ''}{' '}
+                      selected
+                    </>
+                  )}
                 </span>
               </div>
               {pendingCampers.length < 2 && (
@@ -293,33 +332,38 @@ function LockGroupActionBar({
 
             {/* Right: Name input, color picker and actions */}
             <div className="flex items-center gap-3">
-              {/* Optional group name input - shows auto-generated name as placeholder */}
-              <input
-                type="text"
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder={defaultName || 'Group name'}
-                className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
-              />
-
-              <div className="bg-border h-6 w-px" />
-
-              {/* Inline color picker */}
-              <div className="flex items-center gap-1.5">
-                {GROUP_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    onClick={() => setSelectedColor(color)}
-                    className={clsx(
-                      'h-6 w-6 rounded-full transition-all',
-                      selectedColor === color && 'ring-foreground scale-110 ring-2 ring-offset-2'
-                    )}
-                    style={{ backgroundColor: color }}
+              {!isAddMode && (
+                <>
+                  {/* Optional group name input - shows auto-generated name as placeholder */}
+                  <input
+                    type="text"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder={defaultName || 'Group name'}
+                    className="bg-background focus:ring-primary/50 w-44 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:outline-none"
                   />
-                ))}
-              </div>
 
-              <div className="bg-border h-6 w-px" />
+                  <div className="bg-border h-6 w-px" />
+
+                  {/* Inline color picker */}
+                  <div className="flex items-center gap-1.5">
+                    {GROUP_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setSelectedColor(color)}
+                        className={clsx(
+                          'h-6 w-6 rounded-full transition-all',
+                          selectedColor === color &&
+                            'ring-foreground scale-110 ring-2 ring-offset-2'
+                        )}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="bg-border h-6 w-px" />
+                </>
+              )}
 
               <button
                 onClick={onClearPending}
@@ -327,14 +371,26 @@ function LockGroupActionBar({
               >
                 Clear
               </button>
-              <button
-                onClick={handleCreateGroup}
-                disabled={!canCreate}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Heart className="h-4 w-4" />
-                {createGroupMutation.isPending ? 'Creating...' : 'Create Group'}
-              </button>
+              {isAddMode && selectedGroup ? (
+                <button
+                  onClick={() => void handleAddToExisting()}
+                  disabled={pendingCampers.length === 0}
+                  className="text-primary-foreground inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ backgroundColor: selectedGroup.color }}
+                >
+                  <Heart className="h-4 w-4" />
+                  Add to group
+                </button>
+              ) : (
+                <button
+                  onClick={handleCreateGroup}
+                  disabled={!canCreate}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Heart className="h-4 w-4" />
+                  {createGroupMutation.isPending ? 'Creating...' : 'Create Group'}
+                </button>
+              )}
             </div>
           </div>
         </div>
