@@ -239,10 +239,13 @@ from S2.
 
 ### Safety gate
 
-`unsatisfied_no_possible` from `feasibility.py:196` counts campers whose
-ENTIRE MP set is structurally impossible. The gate is enforced upstream
-by `_validate_requests` in `direct_solver.py`, which classifies a
-request as impossible when any of the following holds:
+The authoritative input-property metric for "camper's entire MP set is
+structurally impossible" is `mp_set_entirely_impossible_count` (added
+in #1429). The legacy `unsatisfied_no_possible` field is a *post-solve
+outcome* that varies with budget — see **#1527** for the misnomer
+investigation and proposed rename/delete. The gate itself is enforced
+upstream by `_validate_requests` in `direct_solver.py`, which classifies
+a request as impossible when any of the following holds:
 
 - `target_not_in_solver` — requestee absent from `person_idx_map`
 - `cross_session` — `bunk_with` across sessions (boundary forbids)
@@ -1263,3 +1266,39 @@ regresses.
   every unmet request. The first-drift entry in the V1/V2 Parked
   section is now resolved; V1/V2 consolidation remains deferred until
   a non-cosmetic field-validator drift forces it.
+- **2026-05-18** — **Phase 3 measured impact (S4, session 1235406).**
+  Cross-SHA sweep: v5.5.0 prod (1×, no boost — SHA `ec49e204`) vs.
+  current main (5× boost). Both at 30/60/180 s budgets, 304 persons,
+  26 bunks, ~373 MP requests, 200/204 MP campers (4-camper enrollment
+  delta from PR #1515).
+
+  | Budget | v5.5.0 MP req rate | main 5× MP req rate | Δ | v5.5.0 gap | 5× gap |
+  |---|---|---|---|---|---|
+  | 30 s | 280/377 = 74.27% | 349/373 = 93.6% | **+19.3 pp** | 68.78% | 2.04% |
+  | 60 s | 325/377 = 86.21% | 356/373 = 95.4% | **+9.2 pp** | 14.71% | 1.40% |
+  | 180 s | 351/377 = 93.10% | 355/373 = 95.2% | +2.1 pp | 4.09% | 1.00% |
+
+  MP campers: **204/204 (100%) at every v5.5.0 budget** too — hard MSO
+  from #1391 was already saturated pre-boost on S4. The boost moves
+  *request-level* coverage, not camper-level.
+
+  **Headline:** boost is primarily a **convergence accelerator**, not a
+  ceiling-raiser. v5.5.0 reaches 93.10% MP at 180 s; current main 5×
+  reaches 93.6% at 30 s — Phase 3 compresses 180 s of v5.5.0 work into
+  30 s on the harder bed. Production-relevant budgets (30-60 s) see
+  the largest gains; long budgets converge to the same ceiling.
+
+  **Mechanism:** LP root gap collapsed **74.10% → 4.09%** at 30 s under
+  the boost-shaped objective. LP relaxation tightness explains most of
+  the speedup — solver enters its first solution near the basin.
+  `num_solutions_found = 1` across all 6 runs; boost doesn't help
+  the solver explore multiple incumbents (that's a Phase 4 lever).
+
+  Side-finding: `unsatisfied_no_possible` trajectory 12 → 3 → 1 across
+  budgets revealed the metric is a post-solve outcome, not an input
+  property — filed as #1527.
+
+  **Saturated-bed caveat:** S2 (session 1235404, 192×17) is at ceiling
+  for the boost (323/344 = 93.9% from 30 s budget onward at both 2× and
+  5×; residual 21 unmet are partial-tails of multi-MP campers, none
+  mutual). S4 is the right bed for any future coverage-moving lever.
