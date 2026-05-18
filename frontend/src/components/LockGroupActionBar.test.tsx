@@ -6,7 +6,7 @@
  * Also confirms the root carries data-panel="lock-action-bar" so #1372's
  * click-outside whitelist matches.
  */
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const addCamperToGroup = vi.fn().mockResolvedValue(undefined)
@@ -138,10 +138,10 @@ describe('LockGroupActionBar — Add branch (selectedGroupId set)', () => {
       />
     )
     const cta = screen.getByRole('button', { name: /add to group/i })
-    await fireEvent.click(cta)
-    // Let the queued microtasks flush
-    await Promise.resolve()
-    expect(addCamperToGroup).toHaveBeenCalledTimes(2)
+    fireEvent.click(cta)
+    await waitFor(() => {
+      expect(addCamperToGroup).toHaveBeenCalledTimes(2)
+    })
     expect(addCamperToGroup).toHaveBeenNthCalledWith(1, pendingList[0], 'group-abc')
     expect(addCamperToGroup).toHaveBeenNthCalledWith(2, pendingList[1], 'group-abc')
     expect(onClearPending).toHaveBeenCalled()
@@ -160,8 +160,10 @@ describe('LockGroupActionBar — Add branch (selectedGroupId set)', () => {
       />
     )
     const cta = screen.getByRole('button', { name: /add to group/i })
-    await fireEvent.click(cta)
-    await Promise.resolve()
+    fireEvent.click(cta)
+    await waitFor(() => {
+      expect(addCamperToGroup).toHaveBeenCalled()
+    })
     expect(createMock).not.toHaveBeenCalled()
   })
 })
