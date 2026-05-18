@@ -312,8 +312,10 @@ class RequestRepository:
                 for k, v in request.metadata.items()
                 # disposition_reason and resolution_method are promoted to top-level columns above.
                 # match_type is intentionally stripped as defensive cleanup for legacy DB rows from
-                # pre-PR-D writes; new writes use sub_method which stays in metadata. Can be removed
-                # in a future PR once a re-sync confirms no legacy rows still have it.
+                # pre-PR-D writes; can be removed in a future PR once a re-sync confirms no legacy
+                # rows still have it. sub_method is intentionally NOT stripped: it is a diagnostic
+                # field retained in metadata (unlike disposition_reason/resolution_method which are
+                # promoted to columns), so it must pass through.
                 if k not in ("disposition_reason", "resolution_method", "match_type")
             }
             data["metadata"] = json.dumps(cleaned)
