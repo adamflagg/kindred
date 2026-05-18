@@ -4,7 +4,7 @@
  * The panel must reserve bottom space (pb-20) when the action bar is visible,
  * so the fixed-bottom bar isn't covered by the panel.
  */
-import { render } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Controls what useQuery returns — swap per test to inject group data.
@@ -41,7 +41,8 @@ const mockContext: {
   scenarioId: string
   sessionPbId: string
   isDraftMode: boolean
-  getCamperLockGroup: () => unknown
+  getCamperLockGroup: (cmId: number) => unknown
+  addCamperToGroup: ReturnType<typeof vi.fn>
 } = {
   isActionBarVisible: false,
   isLockPanelOpen: true,
@@ -54,6 +55,7 @@ const mockContext: {
   sessionPbId: 'sess-1',
   isDraftMode: true,
   getCamperLockGroup: () => null,
+  addCamperToGroup: vi.fn(),
 }
 vi.mock('../contexts/LockGroupContext', () => ({
   useLockGroupContext: () => mockContext,
@@ -65,6 +67,8 @@ beforeEach(() => {
   mockQueryData = []
   mockContext.isActionBarVisible = false
   mockContext.selectedGroupId = null
+  mockContext.getCamperLockGroup = () => null
+  mockContext.addCamperToGroup = vi.fn()
 })
 
 describe('LockGroupPanel layout', () => {
@@ -126,5 +130,73 @@ describe('LockGroupPanel — α visual treatment on selected group', () => {
     expect(header?.className).toContain('border-l-4')
     expect(header?.style.borderLeftColor).toBeTruthy()
     expect(header?.style.backgroundColor).toBeFalsy()
+  })
+})
+
+describe('LockGroupPanel — ＋ Add member picker', () => {
+  const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
+
+  it('renders the Add Member button inside the expanded group body', () => {
+    mockQueryData = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Liam Garcia' } as never,
+        ]}
+      />
+    )
+    expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument()
+  })
+
+  it('filters out campers already in any group from the picker results', () => {
+    mockQueryData = [testGroup]
+    mockContext.getCamperLockGroup = (cmId: number) =>
+      cmId === 1000001 ? ({ id: 'group-abc' } as never) : null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Liam Garcia' } as never,
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    // Liam should be selectable; Emma should not appear in the dropdown
+    expect(screen.queryByRole('button', { name: /emma johnson/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /liam garcia/i })).toBeInTheDocument()
+  })
+
+  it('invokes addCamperToGroup with the selected camper + group id', async () => {
+    const addCamperToGroup = vi.fn().mockResolvedValue(undefined)
+    mockQueryData = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    mockContext.addCamperToGroup = addCamperToGroup
+    const liam = { id: 'pb-2', person_cm_id: 1000002, name: 'Liam Garcia' } as never
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[liam]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    fireEvent.click(screen.getByRole('button', { name: /liam garcia/i }))
+    await Promise.resolve()
+    expect(addCamperToGroup).toHaveBeenCalledWith(liam, 'group-abc')
   })
 })

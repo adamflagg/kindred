@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Trash2, Users, ChevronRight, AlertTriangle } from 'lucide-react'
+import { X, Trash2, Users, ChevronRight, AlertTriangle, Plus } from 'lucide-react'
 import clsx from 'clsx'
 import { pb } from '../lib/pocketbase'
 import { useYear } from '../hooks/useCurrentYear'
@@ -18,15 +18,16 @@ import { isAgSession } from '../utils/sessionTypePredicates'
 type BunkArea = 'all' | 'boys' | 'girls' | 'all-gender'
 
 interface LockGroupPanelProps {
-  isOpen: boolean
-  onClose: () => void
-  sessionPbId: string
-  scenarioId: string
+  isOpen?: boolean
+  onClose?: () => void
+  sessionPbId?: string
+  scenarioId?: string
   selectedGroupId?: string | null
   onGroupSelect?: (groupId: string | null) => void
   requestClose?: boolean // When true, triggers animated close
   selectedArea?: BunkArea
   campers?: Camper[] // All campers - used for area filtering
+  sessionCampers?: Camper[] // All session campers - used for Add Member picker
 }
 
 // Type for members with expanded attendee and person
@@ -81,20 +82,97 @@ function camperMatchesArea(camper: Camper, area: BunkArea): boolean {
   return camper.gender === 'F'
 }
 
+interface AddMemberPickerProps {
+  groupId: string
+  sessionCampers: Camper[]
+  getCamperLockGroup: (cmId: number) => unknown
+  addCamperToGroup: (camper: Camper, groupId: string) => Promise<void>
+}
+
+function AddMemberPicker({
+  groupId,
+  sessionCampers,
+  getCamperLockGroup,
+  addCamperToGroup,
+}: AddMemberPickerProps) {
+  const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+
+  const eligible = useMemo(
+    () =>
+      sessionCampers.filter(
+        (c) =>
+          !getCamperLockGroup(c.person_cm_id) &&
+          (c.name ?? '').toLowerCase().includes(filter.toLowerCase())
+      ),
+    [sessionCampers, getCamperLockGroup, filter]
+  )
+
+  const handleSelect = (camper: Camper) => {
+    void addCamperToGroup(camper, groupId)
+    setOpen(false)
+    setFilter('')
+  }
+
+  return (
+    <div className="relative mt-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
+        aria-label="Add member"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add member
+      </button>
+
+      {open && (
+        <div className="bg-background absolute z-10 mt-1 w-full rounded-lg border shadow-lg">
+          <input
+            autoFocus
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search campers…"
+            className="w-full rounded-t-lg border-b px-3 py-2 text-sm outline-none"
+          />
+          <div className="max-h-48 overflow-y-auto">
+            {eligible.length === 0 ? (
+              <p className="text-muted-foreground px-3 py-2 text-sm">
+                All session campers are already in a group.
+              </p>
+            ) : (
+              eligible.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => handleSelect(c)}
+                  className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
+                >
+                  {c.name}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function LockGroupPanel({
-  isOpen,
-  onClose,
-  sessionPbId,
-  scenarioId,
+  isOpen = false,
+  onClose = () => {},
+  sessionPbId = '',
+  scenarioId = '',
   selectedGroupId,
   onGroupSelect,
   requestClose = false,
   selectedArea = 'all',
   campers = [],
+  sessionCampers = [],
 }: LockGroupPanelProps) {
   const queryClient = useQueryClient()
   const currentYear = useYear()
-  const { isActionBarVisible } = useLockGroupContext()
+  const { isActionBarVisible, getCamperLockGroup, addCamperToGroup } = useLockGroupContext()
 
   // Track expanded group - derive from prop or allow local overrides
   const [localExpandedGroupId, setLocalExpandedGroupId] = useState<string | null>(null)
@@ -616,6 +694,14 @@ function LockGroupPanel({
                             </div>
                           )}
                         </div>
+
+                        {/* Add Member Picker */}
+                        <AddMemberPicker
+                          groupId={group.id}
+                          sessionCampers={sessionCampers}
+                          getCamperLockGroup={getCamperLockGroup}
+                          addCamperToGroup={addCamperToGroup}
+                        />
                       </div>
                     )}
                   </div>

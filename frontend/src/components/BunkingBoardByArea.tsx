@@ -762,6 +762,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             requestClose={requestCloseLockPanel}
             selectedArea={selectedArea}
             campers={campers}
+            sessionCampers={campers}
           />
         </Suspense>
       )}
