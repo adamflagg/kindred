@@ -36,6 +36,7 @@ class TestExactMatchStrategy:
         # Mock attendee repo to return None by default (no session found)
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         # Mock parent surname search to return empty by default
         # Set name_cache to None so it falls through to DB method
         person_repo.name_cache = None
@@ -262,6 +263,7 @@ class TestExactMatchParentSurname:
         person_repo, attendee_repo = mock_repositories
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         # Default to empty - tests will override as needed
         person_repo.find_by_name.return_value = []
         # Set name_cache to None so it falls through to DB method
@@ -381,6 +383,7 @@ class TestExactMatchPreferredName:
         person_repo, attendee_repo = mock_repositories
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         person_repo.name_cache = None
         person_repo.find_by_first_and_parent_surname.return_value = []
         person_repo.get_all_for_phonetic_matching.return_value = []
@@ -439,6 +442,7 @@ class TestResolveSessionHandling:
         mock_attendee_repo = Mock()
         mock_attendee_repo.get_by_person_and_year.return_value = None
         mock_attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        mock_attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         mock_person_repo.name_cache = None
         mock_person_repo.find_by_first_and_parent_surname.return_value = []
         mock_person_repo.get_all_for_phonetic_matching.return_value = []
@@ -607,6 +611,7 @@ class TestParentSurnameSessionCmIds:
         attendee_repo = Mock()
         attendee_repo.get_by_person_and_year.return_value = None
         attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
         person_repo.name_cache = None
         person_repo.find_by_name.return_value = []
         person_repo.find_by_first_and_parent_surname.return_value = []
@@ -683,6 +688,40 @@ class TestParentSurnameSessionCmIds:
         assert result.is_resolved
         assert result.person.cm_id == 2000001
         assert result.confidence == 0.80  # correctly penalised
+
+
+class TestClassifySessionHelper:
+    """Test the static _classify_session helper that all 4 multi-enrollment-aware paths use."""
+
+    def test_returns_unknown_when_sessions_none(self):
+        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
+
+        assert ExactMatchStrategy._classify_session(None, 1000001) is SessionMatch.UNKNOWN
+
+    def test_returns_unknown_when_sessions_empty(self):
+        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
+
+        assert ExactMatchStrategy._classify_session([], 1000001) is SessionMatch.UNKNOWN
+
+    def test_returns_same_when_requester_session_in_list(self):
+        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
+
+        assert ExactMatchStrategy._classify_session([1000001, 1000002], 1000001) is SessionMatch.SAME
+        # Multi-enrollment: requester session is second in list
+        assert ExactMatchStrategy._classify_session([1000002, 1000001], 1000001) is SessionMatch.SAME
+
+    def test_returns_different_when_requester_session_not_in_list(self):
+        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
+
+        assert ExactMatchStrategy._classify_session([1000002, 1000003], 1000001) is SessionMatch.DIFFERENT
+
+    def test_enum_values_match_metadata_strings(self):
+        """SessionMatch.value must match the strings stamped into metadata['session_match']."""
+        from bunking.sync.bunk_request_processor.resolution.interfaces import SessionMatch
+
+        assert SessionMatch.SAME.value == "exact"
+        assert SessionMatch.DIFFERENT.value == "different"
+        assert SessionMatch.UNKNOWN.value == "unknown"
 
 
 if __name__ == "__main__":

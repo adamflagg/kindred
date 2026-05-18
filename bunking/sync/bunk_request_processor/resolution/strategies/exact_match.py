@@ -9,7 +9,7 @@ from typing import Any
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
-from ..interfaces import ResolutionResult
+from ..interfaces import ResolutionResult, SessionMatch
 from .base_match_strategy import BaseMatchStrategy
 
 
@@ -212,6 +212,21 @@ class ExactMatchStrategy(BaseMatchStrategy):
         if match_sessions:
             return session_cm_id in match_sessions
         return info.get("session_cm_id") == session_cm_id
+
+    @staticmethod
+    def _classify_session(
+        person_sessions: list[int] | None,
+        requester_session: int,
+    ) -> SessionMatch:
+        """Classify target's session vs requester's, multi-enrollment aware.
+
+        Both data sources (attendee_info dict's session_cm_ids and the new
+        bulk_get_all_sessions_for_persons map) collapse to list[int] | None
+        at the call site.
+        """
+        if not person_sessions:
+            return SessionMatch.UNKNOWN
+        return SessionMatch.SAME if requester_session in person_sessions else SessionMatch.DIFFERENT
 
     def _disambiguate_with_session(
         self,
