@@ -139,10 +139,11 @@ jobs:
             - '.dockerignore'
 
   # Verify CI passed before building/pushing images
-  # CI runs concurrently with CD on main pushes; this polls until it completes
+  # CI runs concurrently with CD on main pushes; this polls until it completes.
+  # No `needs:` — verify-ci reads no detect-changes outputs, so it can start
+  # polling in parallel with detect-changes (saves ~15s of slop).
   verify-ci:
     name: Verify CI Passed
-    needs: detect-changes
     if: github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
@@ -187,23 +188,19 @@ jobs:
             "
         }
 
-        # Wait for CI Summary (required)
+        # Wait for CI Summary (required). Adaptive backoff: tight early polls
+        # (CI on main reliably finishes in 90-150s), looser after.
+        # Schedule: 6x5s, 4x15s, 30s thereafter -> covers up to ~10 min total.
         echo "=== Verifying CI Summary ==="
         CI_PASSED=false
-        for i in {1..20}; do
+        for i in {1..30}; do
           SUMMARY=$(get_check_summary "CI Summary")
           TOTAL=$(echo "$SUMMARY" | jq -r '.total')
           SUCCESS=$(echo "$SUMMARY" | jq -r '.success')
           FAILED=$(echo "$SUMMARY" | jq -r '.failed')
           PENDING=$(echo "$SUMMARY" | jq -r '.pending')
 
-          echo "  Attempt $i/20: CI runs: $TOTAL (Success: $SUCCESS, Failed: $FAILED, Pending: $PENDING)"
-
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "  No CI Summary checks found yet, waiting..."
-            sleep 30
-            continue
-          fi
+          echo "  Attempt $i/30: CI runs: $TOTAL (Success: $SUCCESS, Failed: $FAILED, Pending: $PENDING)"
 
           if [ "$SUCCESS" -gt 0 ]; then
             echo "CI Summary passed"
@@ -216,11 +213,18 @@ jobs:
             exit 1
           fi
 
-          sleep 30
+          # Adaptive sleep: short for first 30s, medium for next 60s, long after
+          if [ "$i" -le 6 ]; then
+            sleep 5
+          elif [ "$i" -le 10 ]; then
+            sleep 15
+          else
+            sleep 30
+          fi
         done
 
         if [ "$CI_PASSED" != "true" ]; then
-          echo "CI timed out after 10 minutes"
+          echo "CI timed out (max ~10 min wait)"
           exit 1
         fi
 
@@ -243,8 +247,9 @@ jobs:
             exit 1
           else
             echo "Documentation Linting still running, waiting..."
-            for j in {1..10}; do
-              sleep 15
+            for j in {1..15}; do
+              # Adaptive: 5s for first 5 polls, 15s after
+              if [ "$j" -le 5 ]; then sleep 5; else sleep 15; fi
               DOCS_SUMMARY=$(get_check_summary "Documentation Linting")
               DOCS_SUCCESS=$(echo "$DOCS_SUMMARY" | jq -r '.success')
               DOCS_FAILED=$(echo "$DOCS_SUMMARY" | jq -r '.failed')
