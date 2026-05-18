@@ -263,7 +263,7 @@ class TestSchoolDisambiguationWithLocation:
         # The metadata should NOT indicate location matching was used
         if result.is_resolved:
             assert result.metadata is not None
-            assert "same_location" not in str(result.metadata.get("match_type", "")), (
+            assert "same_location" not in str(result.metadata.get("sub_method", "")), (
                 "Should not claim location match when requester has no location"
             )
 

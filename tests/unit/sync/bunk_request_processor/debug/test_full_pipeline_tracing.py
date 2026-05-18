@@ -228,7 +228,7 @@ class TestFullPipelineTracing:
             person=mock_person,
             confidence=0.85,
             method="fuzzy_match",
-            metadata={"pipeline_strategies_tried": attempts, "match_type": "first_name_merged"},
+            metadata={"pipeline_strategies_tried": attempts, "sub_method": "first_name_merged"},
         )
 
         # Re-arm phase2_service / historical_verification_service to return the

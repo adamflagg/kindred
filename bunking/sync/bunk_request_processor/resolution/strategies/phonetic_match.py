@@ -100,7 +100,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "soundex", "algorithm": "soundex"},
+                metadata={"sub_method": "soundex", "algorithm": "soundex"},
             )
 
         # Multiple matches - try to disambiguate with session
@@ -108,7 +108,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
-                    result.metadata["match_type"] = "soundex_with_session"
+                    result.metadata["sub_method"] = "soundex_with_session"
                     result.metadata["algorithm"] = "soundex"
                 return result
 
@@ -169,7 +169,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "metaphone", "algorithm": "metaphone"},
+                metadata={"sub_method": "metaphone", "algorithm": "metaphone"},
             )
 
         # Multiple matches - try to disambiguate
@@ -177,7 +177,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
-                    result.metadata["match_type"] = "metaphone_with_session"
+                    result.metadata["sub_method"] = "metaphone_with_session"
                     result.metadata["algorithm"] = "metaphone"
                 return result
 
@@ -251,7 +251,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "nickname", "algorithm": "nickname"},
+                metadata={"sub_method": "nickname", "algorithm": "nickname"},
             )
 
         # Multiple matches - try to disambiguate with session
@@ -259,7 +259,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
-                    result.metadata["match_type"] = "nickname_with_session"
+                    result.metadata["sub_method"] = "nickname_with_session"
                     result.metadata["algorithm"] = "nickname"
                 return result
 
@@ -342,7 +342,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
                 confidence=confidence,
                 method=self.name,
                 metadata={
-                    "match_type": "parent_surname_phonetic",
+                    "sub_method": "parent_surname_phonetic",
                     "algorithm": "soundex+metaphone",
                     "search_surname": last_name,
                 },
@@ -353,7 +353,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
             result = self._disambiguate_with_session(matches, requester_cm_id, session_cm_id, year, attendee_info)
             if result.is_resolved:
                 if result.metadata is not None:
-                    result.metadata["match_type"] = "parent_surname_phonetic"
+                    result.metadata["sub_method"] = "parent_surname_phonetic"
                     result.metadata["algorithm"] = "soundex+metaphone"
                 result.confidence = min(result.confidence - 0.05, 0.80)
                 return result

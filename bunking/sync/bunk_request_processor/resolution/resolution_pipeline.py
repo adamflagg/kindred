@@ -248,11 +248,10 @@ class ResolutionPipeline:
                     )
                     all_results.append((strategy.name, result))
 
-                    # Derive sub_method from strategy metadata. Strategies already record
-                    # match_type for resolved paths and ambiguity_reason for ambiguous paths;
-                    # an explicit sub_method (set by some paths) wins over both.
+                    # Derive sub_method from strategy metadata. Strategies set sub_method
+                    # for resolved paths and ambiguity_reason for ambiguous paths.
                     meta = result.metadata or {}
-                    sub_method = meta.get("sub_method") or meta.get("match_type") or meta.get("ambiguity_reason")
+                    sub_method = meta.get("sub_method") or meta.get("ambiguity_reason")
                     strategy_attempts.append(
                         {
                             "strategy": strategy.name,

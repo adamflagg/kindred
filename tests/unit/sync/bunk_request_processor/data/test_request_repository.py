@@ -760,7 +760,6 @@ class TestMapToDbDispositionFields:
                 "resolution_method": "should_be_removed",
                 "match_type": "should_be_removed",
                 "disposition_reason": "should_be_removed",
-                "disposition_rule_id": 5,
                 "other_field": "keep_me",
             },
             resolution_method="fuzzy_match",
@@ -777,7 +776,6 @@ class TestMapToDbDispositionFields:
         assert "resolution_method" not in meta
         assert "match_type" not in meta
         assert "disposition_reason" not in meta
-        assert "disposition_rule_id" not in meta
         assert meta["other_field"] == "keep_me"
 
 

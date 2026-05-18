@@ -163,7 +163,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                         person=matches[0],
                         confidence=confidence,
                         method=self.name,
-                        metadata={"match_type": "nickname", "variant": variant},
+                        metadata={"sub_method": "nickname", "variant": variant},
                     )
                 else:
                     return ResolutionResult(
@@ -218,7 +218,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                     method=self.name,
                     metadata={
                         "ambiguity_reason": "first_name_only_distant_match",
-                        "match_type": base_match_type,
                         "sub_method": base_match_type,
                     },
                 )
@@ -318,7 +317,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": match_type, "sub_method": match_type},
+                metadata={"sub_method": match_type},
             )
         else:
             # Try session disambiguation
@@ -392,7 +391,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=all_candidates[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "first_name_only"},
+                metadata={"sub_method": "first_name_only"},
             )
 
         # Try session disambiguation
@@ -457,7 +456,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=all_matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "parent_surname", "inferred_surname": last_name},
+                metadata={"sub_method": "parent_surname", "inferred_surname": last_name},
             )
         else:
             return ResolutionResult(
@@ -527,7 +526,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=same_session[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "session_disambiguated"},
+                metadata={"sub_method": "session_disambiguated"},
             )
 
         return ResolutionResult(confidence=0.0, method=self.name)
@@ -587,7 +586,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": match_type},
+                metadata={"sub_method": match_type},
             )
 
         return ResolutionResult(
@@ -597,7 +596,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             metadata={
                 "ambiguity_reason": "multiple_jaro_winkler_matches",
                 "match_count": len(matches),
-                "match_type": match_type,
+                "sub_method": match_type,
             },
         )
 
@@ -682,7 +681,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 confidence=0.70 + best_score,  # Base 0.70 + relationship boost
                 method=self.name,
                 metadata={
-                    "match_type": "relationship_disambiguated",
+                    "sub_method": "relationship_disambiguated",
                     "relationship_boost": best_score,
                     "relationship_info": relationship_info,
                 },

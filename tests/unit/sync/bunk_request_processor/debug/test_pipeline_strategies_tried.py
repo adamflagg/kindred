@@ -1,6 +1,6 @@
 """Component 4: batch_resolve populates pipeline_strategies_tried on the winning
-ResolutionResult's metadata, with sub_method derived from each strategy's
-existing match_type / ambiguity_reason metadata.
+ResolutionResult's metadata, with sub_method taken from each strategy's
+sub_method / ambiguity_reason metadata.
 
 Downstream debug_pipeline_traces.phase2_resolution[*].pipeline_strategies_tried
 (field already declared in trace_models.Phase2FinalResult) is populated from
@@ -80,15 +80,14 @@ def test_batch_resolve_records_pipeline_strategies_tried(fuzzy_only_pipeline):
         assert key in entry, f"missing key {key!r} in strategy entry {entry!r}"
 
 
-def test_pipeline_strategies_tried_records_sub_method_from_match_type(fuzzy_only_pipeline):
-    """sub_method is derived from the strategy's existing match_type metadata."""
+def test_pipeline_strategies_tried_records_sub_method(fuzzy_only_pipeline):
+    """sub_method is taken directly from the strategy's sub_method metadata."""
     results = fuzzy_only_pipeline.batch_resolve([("Katherine", 999, 1000001, 2026)])
     result = results[0]
 
     strategies = result.metadata.get("pipeline_strategies_tried", [])
-    # Fuzzy merge fallback sets match_type='first_name_merged' (Task 3) → also sets
-    # sub_method='first_name_merged' explicitly. Session-disambiguation single match
-    # sets match_type='session_disambiguated' → sub_method should reflect one of these.
+    # Fuzzy merge fallback sets sub_method='first_name_merged'. Session-disambiguation
+    # single match sets sub_method='session_disambiguated'. Either is valid here.
     fuzzy_entry = next((s for s in strategies if s["strategy"] == "fuzzy_match"), None)
     assert fuzzy_entry is not None
     assert fuzzy_entry["sub_method"] in {

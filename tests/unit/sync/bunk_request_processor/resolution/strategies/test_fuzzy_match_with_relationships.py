@@ -71,7 +71,7 @@ class TestFuzzyMatchWithRelationships:
         assert result.person.cm_id == 12345
         # Base nickname confidence (0.85) + sibling boost (0.25) = 1.1, capped at 0.95
         assert result.confidence == 0.95
-        assert result.metadata["match_type"] == "nickname"
+        assert result.metadata["sub_method"] == "nickname"
 
         # Verify relationship analyzer was called
         mock_relationship_analyzer.analyze_relationships.assert_called_once()

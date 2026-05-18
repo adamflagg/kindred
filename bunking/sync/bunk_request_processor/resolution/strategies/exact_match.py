@@ -112,7 +112,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             person=matches[0],
                             confidence=0.95,
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "exact"},
+                            metadata={"sub_method": "unique", "session_match": "exact"},
                         )
                     elif match_session is not None:
                         # Target enrolled in a different bunking session
@@ -120,7 +120,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             person=matches[0],
                             confidence=0.85,  # Lower confidence for different session
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "different"},
+                            metadata={"sub_method": "unique", "session_match": "different"},
                         )
                     else:
                         # No session data for target in enrolled-only map.
@@ -130,7 +130,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             person=matches[0],
                             confidence=0.90,
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "unknown"},
+                            metadata={"sub_method": "unique", "session_match": "unknown"},
                         )
                 else:
                     # No session context available
@@ -138,7 +138,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                         person=matches[0],
                         confidence=0.90,  # Lower confidence without session verification
                         method=self.name,
-                        metadata={"match_type": "unique", "no_session_info": True},
+                        metadata={"sub_method": "unique", "no_session_info": True},
                     )
             elif year:
                 # No attendee_info: DB fallback for session lookup
@@ -157,28 +157,28 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             person=matches[0],
                             confidence=0.95,
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "exact"},
+                            metadata={"sub_method": "unique", "session_match": "exact"},
                         )
                     elif match_session is not None:
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.85,
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "different"},
+                            metadata={"sub_method": "unique", "session_match": "different"},
                         )
                     else:
                         return ResolutionResult(
                             person=matches[0],
                             confidence=0.90,
                             method=self.name,
-                            metadata={"match_type": "unique", "session_match": "unknown"},
+                            metadata={"sub_method": "unique", "session_match": "unknown"},
                         )
                 else:
                     return ResolutionResult(
                         person=matches[0],
                         confidence=0.90,
                         method=self.name,
-                        metadata={"match_type": "unique", "no_session_info": True},
+                        metadata={"sub_method": "unique", "no_session_info": True},
                     )
             else:
                 # No year context
@@ -186,7 +186,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     person=matches[0],
                     confidence=0.90,  # Lower confidence without year context
                     method=self.name,
-                    metadata={"match_type": "unique"},
+                    metadata={"sub_method": "unique"},
                 )
 
         # Multiple matches - try to disambiguate with session
@@ -243,7 +243,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     person=same_session_matches[0],
                     confidence=0.95,
                     method=self.name,
-                    metadata={"match_type": "unique_same_session", "session_match": "exact"},
+                    metadata={"sub_method": "unique_same_session", "session_match": "exact"},
                 )
             elif len(same_session_matches) > 1:
                 return ResolutionResult(
@@ -267,7 +267,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                         metadata={
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
-                            "match_type": "exact_different_session",
+                            "sub_method": "exact_different_session",
                             "target_session": target_session,
                             "requester_session": session_cm_id,
                         },
@@ -308,7 +308,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     person=same_session_matches[0],
                     confidence=0.95,
                     method=self.name,
-                    metadata={"match_type": "unique_same_session", "session_match": "exact"},
+                    metadata={"sub_method": "unique_same_session", "session_match": "exact"},
                 )
             elif len(same_session_matches) > 1:
                 return ResolutionResult(
@@ -331,7 +331,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                         metadata={
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
-                            "match_type": "exact_different_session",
+                            "sub_method": "exact_different_session",
                             "target_session": sessions_map.get(matches[0].cm_id),
                             "requester_session": session_cm_id,
                         },
@@ -398,7 +398,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                     confidence=confidence,
                     method=self.name,
                     metadata={
-                        "match_type": "parent_surname",
+                        "sub_method": "parent_surname",
                         "parent_last_name": last_name,
                         "camper_last_name": matches[0].last_name,
                     },
@@ -411,7 +411,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 metadata={
                     "ambiguity_reason": "multiple_parent_surname_matches",
                     "match_count": len(matches),
-                    "match_type": "parent_surname",
+                    "sub_method": "parent_surname",
                 },
             )
 
@@ -439,7 +439,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 confidence=confidence,
                 method=self.name,
                 metadata={
-                    "match_type": "parent_surname",
+                    "sub_method": "parent_surname",
                     "parent_last_name": last_name,
                     "camper_last_name": matches[0].last_name,
                 },
@@ -452,7 +452,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             metadata={
                 "ambiguity_reason": "multiple_parent_surname_matches",
                 "match_count": len(matches),
-                "match_type": "parent_surname",
+                "sub_method": "parent_surname",
             },
         )
 
@@ -494,7 +494,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 confidence=0.90,
                 method=self.name,
                 metadata={
-                    "match_type": "parent_surname",
+                    "sub_method": "parent_surname",
                     "parent_last_name": last_name,
                     "camper_last_name": matches[0].last_name,
                 },
@@ -507,6 +507,6 @@ class ExactMatchStrategy(BaseMatchStrategy):
             metadata={
                 "ambiguity_reason": "multiple_parent_surname_matches",
                 "match_count": len(matches),
-                "match_type": "parent_surname",
+                "sub_method": "parent_surname",
             },
         )

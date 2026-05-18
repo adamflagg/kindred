@@ -300,7 +300,7 @@ class TestExactMatchParentSurname:
         assert result.person.last_name == "Johnson"
         # Slightly lower confidence for parent surname match
         assert result.confidence <= 0.90
-        assert result.metadata.get("match_type") == "parent_surname"
+        assert result.metadata.get("sub_method") == "parent_surname"
 
     def test_parent_surname_match_lower_confidence_than_direct(self, strategy, mock_repositories):
         """Test that parent surname matches have lower confidence than direct matches"""
@@ -364,7 +364,7 @@ class TestExactMatchParentSurname:
 
         assert result.is_resolved
         assert result.person.cm_id == 12345
-        assert result.metadata.get("match_type") == "parent_surname"
+        assert result.metadata.get("sub_method") == "parent_surname"
 
 
 class TestExactMatchPreferredName:

@@ -310,7 +310,11 @@ class RequestRepository:
             cleaned = {
                 k: v
                 for k, v in request.metadata.items()
-                if k not in ("disposition_reason", "disposition_rule_id", "resolution_method", "match_type")
+                # disposition_reason and resolution_method are promoted to top-level columns above.
+                # match_type is intentionally stripped as defensive cleanup for legacy DB rows from
+                # pre-PR-D writes; new writes use sub_method which stays in metadata. Can be removed
+                # in a future PR once a re-sync confirms no legacy rows still have it.
+                if k not in ("disposition_reason", "resolution_method", "match_type")
             }
             data["metadata"] = json.dumps(cleaned)
 
