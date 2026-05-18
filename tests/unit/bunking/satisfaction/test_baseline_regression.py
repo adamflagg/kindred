@@ -58,6 +58,12 @@ class _MinimalConfig:
         "objective.first_request_multiplier": 10,
         "objective.second_request_multiplier": 5,
         "objective.third_plus_request_multiplier": 1,
+        # Pin Stream 4 mutual boost off — this baseline is a centralization-
+        # invariant snapshot, not a feature-shipping baseline. The synthetic
+        # fixture contains r6↔r7 (4↔5 bunk_with) which the default 2.0 boost
+        # would inflate. Feature integration coverage lives in
+        # tests/unit/bunking/solver/test_mutual_request_boost.py.
+        "objective.mutual_request_boost": 1.0,
         "objective.source_multipliers.share_bunk_with": 1.5,
         "objective.source_multipliers.do_not_share_with": 1.5,
         "objective.source_multipliers.bunking_notes": 1.2,

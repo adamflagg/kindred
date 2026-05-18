@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from ortools.sat.python import cp_model
@@ -69,6 +70,37 @@ BASE_REQUEST_WEIGHT = 40  # matches old `priority * 10` for typical P4 first-pic
 FIRST_REQUEST_MULTIPLIER = 10  # slot-0 boost
 SECOND_REQUEST_MULTIPLIER = 5
 THIRD_PLUS_REQUEST_MULTIPLIER = 1
+
+
+def find_mutual_pairs(directed_edges: Iterable[tuple[int, int]]) -> set[frozenset[int]]:
+    """Given directed (a, b) edges, return the set of unordered {a, b} pairs
+    where both (a, b) and (b, a) are present. Caller is responsible for
+    filtering edges to the relevant subset (request type, validity, etc.).
+    """
+    edges = set(directed_edges)
+    return {frozenset({a, b}) for a, b in edges if (b, a) in edges}
+
+
+def compute_mutual_bunk_with_pairs(
+    requests_by_person: Mapping[int, Iterable[DirectBunkRequest]],
+) -> set[frozenset[int]]:
+    """Stream 4 (#1382): collect unordered cm_id pairs where both directions
+    are filed as bunk_with — A→B AND B→A. Used by the objective to apply the
+    `objective.mutual_request_boost` multiplier to reciprocated requests.
+
+    Self-loops, null requestees, and non-bunk_with rows are skipped. Reciprocal
+    not_bunk_with is intentionally NOT mutual: a bunk_with↔not_bunk_with pair
+    is a conflict, not an agreement, and reciprocal not_bunk_with is symmetric
+    by intent (penalty already treats both directions equally).
+    """
+    return find_mutual_pairs(
+        (r.requester_person_cm_id, r.requested_person_cm_id)
+        for reqs in requests_by_person.values()
+        for r in reqs
+        if r.request_type == RequestType.BUNK_WITH.value
+        and r.requested_person_cm_id is not None
+        and r.requester_person_cm_id != r.requested_person_cm_id
+    )
 
 
 class DirectBunkingSolver:
@@ -513,6 +545,11 @@ class DirectBunkingSolver:
         # boost in the solver-debug UI.
         enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
 
+        # Stream 4 (#1382): boost reciprocated bunk_with pairs. Always on;
+        # set to 1.0 to disable in-place without removing the code path.
+        mutual_request_boost = self.config.get_float("objective.mutual_request_boost", default=2.0)
+        mutual_bunk_with_pairs = compute_mutual_bunk_with_pairs(self.input.requests_by_person)
+
         for person_cm_id, request_satisfactions in person_request_satisfaction.items():
             if not request_satisfactions:
                 continue
@@ -527,6 +564,14 @@ class DirectBunkingSolver:
                 # Apply source field multiplier based on CSV fields
                 source_multiplier = self._get_csv_field_multiplier(request)
                 base_weight = base_weight * source_multiplier
+
+                if (
+                    request.request_type == RequestType.BUNK_WITH.value
+                    and request.requested_person_cm_id is not None
+                    and frozenset({request.requester_person_cm_id, request.requested_person_cm_id})
+                    in mutual_bunk_with_pairs
+                ):
+                    base_weight = base_weight * mutual_request_boost
 
                 if i == 0:
                     weight = base_weight * FIRST_REQUEST_MULTIPLIER

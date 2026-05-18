@@ -275,11 +275,16 @@ async def evaluate_score(
         session_filter = ctx.session_relation_filter
         session_id_filter = ctx.session_id_filter
 
-        # Fetch bunk requests for the session
+        # Fetch bunk requests for the session. status="resolved" mirrors
+        # data_fetcher.py:140 — the solver only ever scores resolved requests,
+        # so the evaluator (which claims to mirror the solver) must too.
+        # Without this filter, a pending B→A reciprocating a resolved A→B
+        # would phantom-detect mutual and inflate the evaluator score vs. the
+        # solver's objective (Stream 4 / #1382).
         requests_raw = await asyncio.to_thread(
             pb.collection(BUNK_REQUESTS).get_full_list,
             query_params={
-                "filter": f"({session_id_filter}) && year = {year}",
+                "filter": f'({session_id_filter}) && year = {year} && status = "resolved"',
             },
         )
 

@@ -8,6 +8,7 @@ Components evaluated:
 1. Request satisfaction (bunk_with, not_bunk_with) with:
    - First-pick boost (is_first_requested → 10x slot-0 multiplier)
    - Source field multipliers
+   - Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
    - Diminishing returns (always-on, module constants)
 2. Age/grade flow bonuses (target grade distribution)
 3. Grade spread penalties (soft constraint)
@@ -30,6 +31,7 @@ from bunking.solver.direct_solver import (
     FIRST_REQUEST_MULTIPLIER,
     SECOND_REQUEST_MULTIPLIER,
     THIRD_PLUS_REQUEST_MULTIPLIER,
+    find_mutual_pairs,
 )
 from bunking.solver.penalties import (
     grade_spread_penalty,
@@ -147,6 +149,20 @@ class ObjectiveEvaluator:
         """
         # Config values (same as solver)
         enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
+        mutual_request_boost = self.config.get_float("objective.mutual_request_boost", default=2.0)
+
+        # Mirror solver's mutual-pair detection on the dict-shaped requests
+        # the evaluator consumes. Shared with compute_mutual_bunk_with_pairs
+        # via find_mutual_pairs — feed bunk_with edges only, skip self-loops
+        # and null requestees.
+        mutual_bunk_with_pairs = find_mutual_pairs(
+            (int(r["requester_id"]), int(r["requestee_id"]))
+            for r in requests
+            if r.get("request_type") == RequestType.BUNK_WITH.value
+            and r.get("requester_id")
+            and r.get("requestee_id")
+            and int(r["requester_id"]) != int(r["requestee_id"])
+        )
 
         # Source field multipliers (same as solver)
         source_multipliers = {
@@ -246,6 +262,13 @@ class ObjectiveEvaluator:
                 else:
                     multiplier = 1.0
                 base_weight = base_weight * multiplier
+
+                # Stream 4 (#1382): mutual bunk_with boost (mirrors solver).
+                if request.get("request_type") == RequestType.BUNK_WITH.value:
+                    req_id = request.get("requester_id")
+                    tgt_id = request.get("requestee_id")
+                    if req_id and tgt_id and frozenset({int(req_id), int(tgt_id)}) in mutual_bunk_with_pairs:
+                        base_weight = base_weight * mutual_request_boost
 
                 # Apply diminishing returns based on satisfaction order (always-on)
                 order_idx = satisfied_count_for_person - 1

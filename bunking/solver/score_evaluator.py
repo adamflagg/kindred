@@ -8,8 +8,9 @@ The scoring logic mirrors the solver's objective function:
 1. Request satisfaction (bunk_with, not_bunk_with, age_preference)
 2. First-pick boost (is_first_requested → 10x slot-0 multiplier)
 3. Source field multipliers (keyed by canonical SourceField values)
-4. Diminishing returns for multiple satisfied requests per person
-5. Soft constraint penalties (grade spread, capacity violations, etc.)
+4. Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
+5. Diminishing returns for multiple satisfied requests per person
+6. Soft constraint penalties (grade spread, capacity violations, etc.)
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from bunking.solver.direct_solver import (
     FIRST_REQUEST_MULTIPLIER,
     SECOND_REQUEST_MULTIPLIER,
     THIRD_PLUS_REQUEST_MULTIPLIER,
+    find_mutual_pairs,
 )
 from bunking.solver.penalties import (
     grade_spread_penalty,
@@ -105,6 +107,18 @@ def evaluate_scenario_score(
 
     # Get config values
     enable_first_boost = bool(config.get_int("objective.enable_first_boost", default=1))
+    mutual_request_boost = config.get_float("objective.mutual_request_boost", default=2.0)
+
+    # Stream 4 (#1382): pairs where both directions filed bunk_with. Same
+    # detection as solver / objective_evaluator via the shared helper.
+    mutual_bunk_with_pairs = find_mutual_pairs(
+        (int(r["requester_id"]), int(r["requestee_id"]))
+        for r in requests
+        if r.get("request_type") == RequestType.BUNK_WITH.value
+        and r.get("requester_id")
+        and r.get("requestee_id")
+        and int(r["requester_id"]) != int(r["requestee_id"])
+    )
 
     # Source field multipliers
     source_multipliers = {
@@ -187,11 +201,19 @@ def evaluate_scenario_score(
             field_stats[primary_field]["satisfied"] += 1
 
             # Calculate base weight
-            base_weight = BASE_REQUEST_WEIGHT
+            base_weight: float = float(BASE_REQUEST_WEIGHT)
 
             # Apply source field multiplier
             multiplier = max(source_multipliers.get(f, 1.0) for f in source_fields) if source_fields else 1.0
-            weighted_score = int(base_weight * multiplier)
+            base_weight = base_weight * multiplier
+
+            # Stream 4 (#1382): mutual bunk_with boost (mirrors solver).
+            if request_type == RequestType.BUNK_WITH.value:
+                requestee_id = request.get("requestee_id")
+                if requestee_id and frozenset({requester_id, int(requestee_id)}) in mutual_bunk_with_pairs:
+                    base_weight = base_weight * mutual_request_boost
+
+            weighted_score = int(base_weight)
 
             person_satisfaction[requester_id].append((request, weighted_score))
             field_stats[primary_field]["raw_score"] += weighted_score
