@@ -55,7 +55,7 @@ dependencies = [
     "APScheduler>=3.11.2",
     "croniter>=2.0.0",
     # File processing
-    "openpyxl>=3.1.0",
+    "openpyxl>=3.1.5",
     "pypdf>=6.10.2",
     # System
     "psutil>=5.9.0",
