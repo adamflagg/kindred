@@ -41,7 +41,7 @@ A full analytics dashboard for year-over-year operational insight. Organized int
 
 ## Architecture
 
-```
+```text
 CampMinder API  ──►  Go Sync Services  ──┐
                                          │
          React Frontend  ◄──────────────►│──►  4 Docker Containers
@@ -86,9 +86,9 @@ cp .env.example .env        # fill in credentials (see Configuration below)
 
 Once services are up:
 
-- **App**: http://localhost:8080 (Caddy, production-like routing)
-- **Vite dev server**: http://localhost:3000 (HMR for frontend development)
-- **PocketBase Admin**: http://localhost:8080/_/
+- **App**: <http://localhost:8080> (Caddy, production-like routing)
+- **Vite dev server**: <http://localhost:3000> (HMR for frontend development)
+- **PocketBase Admin**: <http://localhost:8080/_/>
 
 Trigger a CampMinder sync:
 
@@ -193,4 +193,4 @@ See [docs/guides/docker-deployment.md](docs/guides/docker-deployment.md) for ful
 **AGPL-3.0-or-later** — see [LICENSE](LICENSE).
 
 - **Nonprofits and educational institutions**: free to use.
-- **Commercial licensing**: contact kindred@flagg.moi
+- **Commercial licensing**: contact <kindred@flagg.moi>

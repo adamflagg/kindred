@@ -28,7 +28,7 @@ The data model represents a unified view of camp operations, bridging CampMinder
 
 ## Entity Relationship Diagram
 
-```
+```text
 persons (1) ----< (N) attendees (N) >---- (1) sessions
    |                      |                       |
    |                      |                       |

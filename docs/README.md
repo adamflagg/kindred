@@ -4,7 +4,7 @@ Minimal documentation for Kindred. **CLAUDE.md is the primary reference.**
 
 ## Structure
 
-```
+```text
 docs/
 ├── architecture/
 │   └── data-model.md           # Database schema reference

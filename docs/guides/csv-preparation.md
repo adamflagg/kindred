@@ -85,8 +85,8 @@ When entering multiple names in a single cell:
 
 **Correct Formats:**
 - Comma-separated: "Sarah Johnson, Emma Wilson, Olivia Davis"
-- Line breaks (if your system supports): 
-  ```
+- Line breaks (if your system supports):
+  ```text
   Sarah Johnson
   Emma Wilson
   Olivia Davis

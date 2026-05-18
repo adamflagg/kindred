@@ -761,7 +761,7 @@ Stores Phase 1 AI parsing results for debugging and prompt iteration.
 
 ## Data Flow Diagram
 
-```
+```text
 CampMinder API
       │
       ▼

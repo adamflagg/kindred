@@ -87,7 +87,7 @@ Request weighting beyond slot-0 is source-field-driven, not priority-driven.
 - Requests are only valid within the EXACT SAME session
 - Cannot bunk across session families (e.g., Session 2a cannot bunk with Session 2b)
 - Session mapping:
-  ```
+  ```text
   1000001: Taste of Camp
   1000002: Session 2 (main)
   1000021: Session 2a
