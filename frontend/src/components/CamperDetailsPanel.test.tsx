@@ -231,6 +231,7 @@ describe('CamperDetailsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockLockGroupContext.isActionBarVisible = false
     // Reset getSatisfiedRequestInfo to the default no-op after each test
     mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
       person_cm_id: personCmId,

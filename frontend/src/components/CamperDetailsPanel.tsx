@@ -598,6 +598,7 @@ export default function CamperDetailsPanel({
   // Lock group context — used to compute friend-group alert and layout
   const { getCamperLockState, getCamperLockGroup, getGroupMembers, isActionBarVisible } =
     useLockGroupContext()
+  const actionBarPadding = isActionBarVisible ? 'pb-20' : ''
 
   // State for the manage-all-requests modal (opened from alert row click)
   const [isAllRequestsModalOpen, setIsAllRequestsModalOpen] = useState(false)
@@ -750,7 +751,7 @@ export default function CamperDetailsPanel({
           data-panel="camper-details"
           className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] flex w-[28rem] items-center justify-center border-l ${
             animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
-          } ${isActionBarVisible ? 'pb-20' : ''}`}
+          } ${actionBarPadding}`}
           onAnimationEnd={handleAnimationEnd}
         >
           <div className="spinner-lodge"></div>
@@ -777,7 +778,7 @@ export default function CamperDetailsPanel({
           data-panel="camper-details"
           className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l p-6 ${
             animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
-          } ${isActionBarVisible ? 'pb-20' : ''}`}
+          } ${actionBarPadding}`}
           onAnimationEnd={handleAnimationEnd}
         >
           <div className="text-muted-foreground text-center">Camper not found</div>
@@ -1343,7 +1344,7 @@ export default function CamperDetailsPanel({
         data-panel="camper-details"
         className={`bg-card shadow-lodge-xl border-border fixed inset-y-0 right-0 z-[60] w-[28rem] border-l ${
           animationPhase === 'entering' ? 'animate-slide-in-right' : 'animate-slide-out-right'
-        } ${isActionBarVisible ? 'pb-20' : ''}`}
+        } ${actionBarPadding}`}
         onAnimationEnd={handleAnimationEnd}
       >
         <div className="flex h-full flex-col">
