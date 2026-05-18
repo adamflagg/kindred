@@ -229,6 +229,27 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
     fireEvent.mouseDown(document.body)
     expect(screen.queryByPlaceholderText(/filter campers/i)).not.toBeInTheDocument()
   })
+
+  it('portaled dropdown uses fixed width w-[260px] to prevent full-viewport stretch', () => {
+    mockQueryData = [testGroup]
+    mockContext.groups = [testGroup] as never
+    mockContext.membersByGroup = { 'group-abc': [] }
+    mockContext.selectedGroupId = 'group-abc'
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-2', person_cm_id: 1000002, name: 'Liam Garcia' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    const dropdown = screen.getByPlaceholderText(/filter campers/i).closest('div[class]')
+    expect(dropdown?.className).toContain('w-[260px]')
+  })
 })
 
 describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
