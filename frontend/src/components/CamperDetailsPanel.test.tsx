@@ -1353,14 +1353,14 @@ describe('CamperDetailsPanel', () => {
       mockLockGroupContext.isActionBarVisible = false
       const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
       const root = container.querySelector('[data-panel="camper-details"]')
-      expect(root?.className).not.toContain('pb-20')
+      expect(root?.classList.contains('pb-20')).toBe(false)
     })
 
     it('adds pb-20 when action bar is visible', () => {
       mockLockGroupContext.isActionBarVisible = true
       const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
       const root = container.querySelector('[data-panel="camper-details"]')
-      expect(root?.className).toContain('pb-20')
+      expect(root?.classList.contains('pb-20')).toBe(true)
     })
   })
 })
