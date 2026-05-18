@@ -214,7 +214,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 confidence=confidence,
                 method=self.name,
                 metadata={
-                    "match_type": "same_school_same_grade",
+                    "sub_method": "same_school_same_grade",
                     "school": requester_school,
                     "grade": requester_grade,
                 },
@@ -233,7 +233,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 confidence=0.70,  # Lower confidence for adjacent grade
                 method=self.name,
                 metadata={
-                    "match_type": "same_school_close_grade",
+                    "sub_method": "same_school_close_grade",
                     "school": requester_school,
                     "grade_diff": abs(close_grade_candidates[0].grade - requester_grade),
                 },
@@ -260,7 +260,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                     confidence=0.65,  # Lower confidence for grade proximity
                     method=self.name,
                     metadata={
-                        "match_type": "same_school_closest_grade",
+                        "sub_method": "same_school_closest_grade",
                         "school": requester_school,
                         "grade_diff": grade_diff,
                     },
@@ -299,7 +299,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                     person=db_candidates[0],
                     confidence=0.90,
                     method=self.name,
-                    metadata={"match_type": "single_exact_match"},
+                    metadata={"sub_method": "single_exact_match"},
                 )
             # Continue with DB-loaded candidates as the pool
             school_pool = db_candidates
@@ -326,7 +326,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 person=matching_candidates[0],
                 confidence=0.90,  # High confidence for exact match
                 method=self.name,
-                metadata={"match_type": "single_exact_match"},
+                metadata={"sub_method": "single_exact_match"},
             )
 
         # Multiple candidates - try school disambiguation
@@ -403,7 +403,7 @@ class SchoolDisambiguationStrategy(ResolutionStrategy):
                 confidence=0.75,  # Good confidence for school match
                 method=self.name,
                 metadata={
-                    "match_type": "same_school",
+                    "sub_method": "same_school",
                     "match_count": len(same_school_candidates),
                     "school": requester_school,
                 },

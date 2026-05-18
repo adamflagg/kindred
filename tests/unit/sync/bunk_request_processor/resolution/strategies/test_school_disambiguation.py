@@ -118,7 +118,7 @@ class TestSchoolDisambiguationStrategy:
         assert result.is_resolved
         assert result.person.cm_id == 12345
         assert result.confidence == 0.90
-        assert result.metadata["match_type"] == "single_exact_match"
+        assert result.metadata["sub_method"] == "single_exact_match"
 
     def test_same_school_disambiguation(self, strategy, mock_repositories):
         """Test successful disambiguation using same school"""
@@ -140,7 +140,7 @@ class TestSchoolDisambiguationStrategy:
         assert result.is_resolved
         assert result.person.cm_id == 12345
         assert result.confidence == 0.85
-        assert result.metadata["match_type"] == "same_school_same_grade"
+        assert result.metadata["sub_method"] == "same_school_same_grade"
 
     def test_multiple_same_school_ambiguous(self, strategy, mock_repositories):
         """Test when multiple candidates from same school with equidistant grades"""
@@ -188,7 +188,7 @@ class TestSchoolDisambiguationStrategy:
         assert result.is_resolved
         assert result.person.cm_id == 12345  # Grade 8, only one within 1 grade
         assert result.confidence == 0.70  # Actual value from implementation
-        assert result.metadata["match_type"] == "same_school_close_grade"
+        assert result.metadata["sub_method"] == "same_school_close_grade"
         assert result.metadata["grade_diff"] == 1
 
     def test_exact_grade_match(self, strategy, mock_repositories):
@@ -211,7 +211,7 @@ class TestSchoolDisambiguationStrategy:
         assert result.is_resolved
         assert result.person.cm_id == 67890  # Exact grade match
         assert result.confidence == 0.85
-        assert result.metadata["match_type"] == "same_school_same_grade"
+        assert result.metadata["sub_method"] == "same_school_same_grade"
 
     def test_no_requester_school(self, strategy, mock_repositories):
         """Test when requester has no school info"""
