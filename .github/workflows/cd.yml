@@ -59,6 +59,10 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       docker: ${{ steps.filter.outputs.docker }}
       initial_commit: ${{ steps.get-base-sha.outputs.initial_commit }}
+      short_sha: ${{ steps.short-sha.outputs.short_sha }}
+      # Single source of truth for "is a Docker build needed for this commit".
+      # Downstream jobs (build-and-scan, integration-test, promote) gate on this.
+      should_build: ${{ steps.should-build.outputs.should_build }}
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
@@ -137,6 +141,54 @@ jobs:
             - 'docker/**'
             - 'docker-compose*.yml'
             - '.dockerignore'
+
+    - name: Compute short SHA for staging tag
+      id: short-sha
+      # Run even if earlier steps failed. short_sha only reads github.* context,
+      # not prior step outputs, so it can always compute. Required so the
+      # should-build safety fallback (which also uses always()) doesn't produce
+      # a should_build=true / short_sha="" inconsistency that would let
+      # downstream jobs push to malformed :test- tags.
+      if: always()
+      env:
+        # On PR, github.sha is the merge-commit SHA; use the PR head SHA so the
+        # staging tag matches what's actually built and matches GIT_SHA build-arg.
+        EVENT_NAME: ${{ github.event_name }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        GH_SHA: ${{ github.sha }}
+      run: |
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          FULL_SHA="$PR_HEAD"
+        else
+          FULL_SHA="$GH_SHA"
+        fi
+        SHORT_SHA=$(echo "$FULL_SHA" | cut -c1-7)
+        echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+        echo "Staging tag will be: :test-$SHORT_SHA"
+
+    - name: Decide if Docker build is needed
+      id: should-build
+      # Run even if earlier steps failed so downstream jobs get a definitive
+      # signal. If filter outputs are empty (detect failed), force-build as
+      # a safety fallback.
+      if: always()
+      env:
+        CHANGES_API: ${{ steps.filter.outputs.api }}
+        CHANGES_DOCKER: ${{ steps.filter.outputs.docker }}
+        CHANGES_INITIAL: ${{ steps.get-base-sha.outputs.initial_commit }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        if [ -z "$CHANGES_API" ] && [ -z "$CHANGES_DOCKER" ]; then
+          echo "::warning::Change detection failed — building all images as safety fallback"
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        elif [ "$CHANGES_API" == "true" ] || [ "$CHANGES_DOCKER" == "true" ] || \
+             [ "$CHANGES_INITIAL" == "true" ] || \
+             [ "$EVENT_NAME" == "workflow_dispatch" ] || [ "$EVENT_NAME" == "schedule" ]; then
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        else
+          echo "should_build=false" >> $GITHUB_OUTPUT
+          echo "No relevant file changes — downstream jobs will skip"
+        fi
 
   # Verify CI passed before building/pushing images
   # CI runs concurrently with CD on main pushes; this polls until it completes.
@@ -324,15 +376,18 @@ jobs:
         npm run type-check
         echo "TypeScript OK"
 
-  # Build, test, then push all 4 Docker images (multi-container architecture)
-  # All images built in one job so integration test can use them together
-  # Following Docker's "test before push" pattern:
-  # https://docs.docker.com/build/ci/github-actions/test-before-push/
-  build-test-push:
-    name: Build, Test & Push
+
+  # Build, scan, and push to per-SHA staging tag.
+  # Four matrix runners build in parallel. Each pushes :test-<short-sha> to ghcr
+  # so the downstream integration-test job can pull all four. The :latest and
+  # :sha-NNN tags are NOT pushed here — that happens in the promote job after
+  # integration tests pass.
+  build-and-scan:
+    name: Build & Scan (${{ matrix.image }})
     needs: [detect-changes, verify-ci, smoke-test]
     if: |
       always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
       (needs.verify-ci.result == 'success' || needs.verify-ci.result == 'skipped') &&
       (needs.smoke-test.result == 'success' || needs.smoke-test.result == 'skipped') &&
       !(needs.verify-ci.result == 'failure' || needs.smoke-test.result == 'failure')
@@ -341,66 +396,45 @@ jobs:
       contents: read
       packages: write
       security-events: write
-
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: kindred-caddy
+            dockerfile: docker/Dockerfile.caddy
+          - image: kindred-pocketbase
+            dockerfile: docker/Dockerfile.pocketbase
+          - image: kindred-api
+            dockerfile: docker/Dockerfile.api
+          - image: kindred-init
+            dockerfile: docker/Dockerfile.init
     steps:
     - name: Harden runner
       uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
       with:
         egress-policy: audit
 
-    - name: Check if build needed
-      id: check
-      env:
-        DETECT_RESULT: ${{ needs.detect-changes.result }}
-        CHANGES_API: ${{ needs.detect-changes.outputs.api }}
-        CHANGES_DOCKER: ${{ needs.detect-changes.outputs.docker }}
-        CHANGES_INITIAL: ${{ needs.detect-changes.outputs.initial_commit }}
-        EVENT_NAME: ${{ github.event_name }}
-      run: |
-        # If detect-changes failed, outputs are empty — build everything as safety fallback.
-        # Worst case: an unnecessary rebuild. Previous worst case: 5 PRs with no images deployed.
-        if [ "$DETECT_RESULT" != "success" ]; then
-          echo "::warning::Change detection failed — building all images as safety fallback"
-          echo "build=true" >> $GITHUB_OUTPUT
-        elif [ "$CHANGES_API" == "true" ] || \
-             [ "$EVENT_NAME" == "workflow_dispatch" ] || \
-             [ "$EVENT_NAME" == "schedule" ] || \
-             [ "$CHANGES_DOCKER" == "true" ] || \
-             [ "$CHANGES_INITIAL" == "true" ]; then
-          echo "build=true" >> $GITHUB_OUTPUT
-        else
-          echo "build=false" >> $GITHUB_OUTPUT
-          echo "Skipping build - no changes detected"
-        fi
-
     - name: Checkout code
-      if: steps.check.outputs.build == 'true'
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       with:
         fetch-depth: 0
         persist-credentials: false
 
     - name: Clone private config for branding assets
-      if: steps.check.outputs.build == 'true'
       uses: ./.github/actions/clone-kindred-local
       with:
         deploy-key: ${{ secrets.KINDRED_LOCAL_DEPLOY_KEY }}
 
     - name: Prepare local assets for Docker build
-      if: steps.check.outputs.build == 'true'
       run: |
-        # Ensure local/ directory exists for Docker COPY (even if empty)
         mkdir -p local/assets
         if [ -f local/assets/camp-logo.png ]; then
           echo "Local assets found (from kindred-local)"
-          ls -la local/assets/
         else
-          echo "No local assets (kindred-local not available)"
-          echo "Using default branding"
+          echo "No local assets (kindred-local not available); using default branding"
         fi
 
     - name: Log in to GitHub Container Registry
-      if: steps.check.outputs.build == 'true'
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
         registry: ${{ env.REGISTRY }}
@@ -408,7 +442,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Log in to Docker Hardened Images registry
-      if: steps.check.outputs.build == 'true'
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
         registry: dhi.io
@@ -416,33 +449,30 @@ jobs:
         password: ${{ secrets.DHI_TOKEN }}
 
     - name: Get version and build date
-      if: steps.check.outputs.build == 'true'
       id: version
       run: |
         VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
         BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
-        echo "Version: $VERSION"
-        echo "Build Date: $BUILD_DATE"
 
     - name: Set up Docker Buildx
-      if: steps.check.outputs.build == 'true'
       uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
-    - name: Build all Docker images (local only)
-      if: steps.check.outputs.build == 'true'
+    - name: Build and push ${{ matrix.image }} to staging tag
       env:
         INPUT_NO_CACHE: ${{ github.event.inputs.no_cache }}
         BUILD_VERSION: ${{ steps.version.outputs.version }}
         BUILD_DATE: ${{ steps.version.outputs.build_date }}
-        # On pull_request runs, github.sha is the merge-commit SHA (refs/pull/N/merge),
-        # not the actual source commit. Use the PR head SHA so build-arg GIT_SHA
-        # stamps the image with the exact source code being tested.
+        # On pull_request runs, github.sha is the merge-commit SHA; use the PR head
+        # SHA so build-arg GIT_SHA stamps the image with the exact source commit.
         BUILD_GIT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
+        IMAGE: ${{ matrix.image }}
+        DOCKERFILE: ${{ matrix.dockerfile }}
       run: |
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-        DOCKERFILES=("docker/Dockerfile.caddy" "docker/Dockerfile.pocketbase" "docker/Dockerfile.api" "docker/Dockerfile.init")
+        STAGING_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
+        echo "Building -> $STAGING_TAG"
 
         NO_CACHE_FLAG=""
         USE_CACHE=true
@@ -451,309 +481,245 @@ jobs:
           USE_CACHE=false
         fi
 
-        for i in "${!IMAGES[@]}"; do
-          echo "=== Building ${IMAGES[$i]} ==="
-
-          CACHE_FROM=""
-          if [ "$USE_CACHE" == "true" ]; then
-            CACHE_FROM="--cache-from type=gha,scope=${IMAGES[$i]}"
-          fi
-          CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGES[$i]}"
-
-          docker buildx build \
-            --platform linux/amd64 \
-            -f "${DOCKERFILES[$i]}" \
-            -t "${REGISTRY}/${USERNAME}/${IMAGES[$i]}:test" \
-            --build-arg VERSION="$BUILD_VERSION" \
-            --build-arg BUILD_DATE="$BUILD_DATE" \
-            --build-arg GIT_SHA="${BUILD_GIT_SHA}" \
-            $CACHE_FROM \
-            $CACHE_TO \
-            $NO_CACHE_FLAG \
-            --load \
-            .
-          echo "${IMAGES[$i]} built"
-        done
-
-        echo "All 4 images built successfully"
-
-    - name: Determine tag suffixes
-      if: steps.check.outputs.build == 'true'
-      id: tags
-      env:
-        INPUT_TAG: ${{ github.event.inputs.tag }}
-        GH_SHA: ${{ github.sha }}
-      run: |
-        TAG_SUFFIXES="latest"
-        # Add immutable SHA tag so the Release workflow can promote from it
-        SHA_TAG="sha-$(echo "$GH_SHA" | cut -c1-7)"
-        TAG_SUFFIXES="${TAG_SUFFIXES},${SHA_TAG}"
-        if [ -n "$INPUT_TAG" ]; then
-          TAG_SUFFIXES="${TAG_SUFFIXES},${INPUT_TAG}"
+        CACHE_FROM=""
+        if [ "$USE_CACHE" == "true" ]; then
+          CACHE_FROM="--cache-from type=gha,scope=${IMAGE}"
         fi
-        echo "tag_suffixes=$TAG_SUFFIXES" >> $GITHUB_OUTPUT
-        echo "Using tag suffixes: $TAG_SUFFIXES"
+        CACHE_TO="--cache-to type=gha,mode=max,scope=${IMAGE}"
 
-    # === Integration Tests (run before push) ===
+        # --push instead of --load: ferries the image to integration-test via ghcr.
+        docker buildx build \
+          --platform linux/amd64 \
+          -f "$DOCKERFILE" \
+          -t "$STAGING_TAG" \
+          --build-arg VERSION="$BUILD_VERSION" \
+          --build-arg BUILD_DATE="$BUILD_DATE" \
+          --build-arg GIT_SHA="$BUILD_GIT_SHA" \
+          $CACHE_FROM \
+          $CACHE_TO \
+          $NO_CACHE_FLAG \
+          --push \
+          .
+        echo "Pushed $STAGING_TAG"
+
+    - name: Install Trivy
+      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+      with:
+        version: v0.69.3
+
+    - name: Scan ${{ matrix.image }} with Trivy
+      id: trivy-scan
+      env:
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
+        IMAGE: ${{ matrix.image }}
+      run: |
+        STAGING_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
+        trivy version
+
+        # SARIF report (HIGH + CRITICAL, non-blocking)
+        trivy image --format sarif --output "trivy-results-${IMAGE}.sarif" \
+          --severity CRITICAL,HIGH --exit-code 0 --ignorefile .trivyignore "$STAGING_TAG"
+
+        # Block on CRITICAL
+        if ! trivy image --format table --severity CRITICAL --exit-code 1 \
+             --skip-db-update --ignorefile .trivyignore "$STAGING_TAG"; then
+          echo "::error::CRITICAL vulnerabilities found in ${IMAGE}"
+          exit 1
+        fi
+        echo "No CRITICAL vulnerabilities in ${IMAGE}"
+
+    - name: Upload Trivy SARIF
+      if: always() && steps.trivy-scan.outcome != 'skipped'
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
+      with:
+        sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
+        category: 'trivy-${{ matrix.image }}'
+        ref: ${{ github.ref }}
+        sha: ${{ github.sha }}
+
+  # Pull all 4 staging-tagged images and run the multi-container compose stack.
+  integration-test:
+    name: Integration Test
+    needs: [detect-changes, build-and-scan]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
+      needs.build-and-scan.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+    - name: Harden runner
+      uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
+      with:
+        egress-policy: audit
+
+    - name: Checkout code (for compose files)
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Create CI environment file
-      if: steps.check.outputs.build == 'true'
       env:
         GH_RUN_ID: ${{ github.run_id }}
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
       run: |
         CI_DIR="/tmp/kindred-ci-${GH_RUN_ID}"
         cat > .env.ci << EOF
         COMPOSE_PROJECT_NAME=kindred-ci-${GH_RUN_ID}
-        IMAGE_TAG=test
+        IMAGE_TAG=test-${SHORT_SHA}
         POCKETBASE_ADMIN_EMAIL=ci@test.local
         POCKETBASE_ADMIN_PASSWORD=ci-test-password
-        # Optional vars (empty to suppress warnings)
         CAMPMINDER_API_KEY=
         CAMPMINDER_PRIMARY_KEY=
         CAMPMINDER_CLIENT_ID=
         CAMPMINDER_SEASON_ID=
         SUB_BUNKING=
         DOMAIN_NAME=
-        # Required by docker-compose.yml's caddy service compose-fail-loud guard.
-        # CI test stack runs in isolation; "0.0.0.0/0 ::/0" explicitly opts into open
-        # so the gate isn't tested here (the gate is for prod, where the var is set
-        # to home/VPN ranges).
         ADMIN_ALLOWLIST="0.0.0.0/0 ::/0"
         EOF
-        # APPDATA_DIR needs shell expansion, add separately
         echo "APPDATA_DIR=${CI_DIR}" >> .env.ci
-        # Remove leading whitespace from heredoc
         sed -i 's/^[[:space:]]*//' .env.ci
-        # Create data directories with correct ownership (65532 = nonroot in distroless)
         mkdir -p ${CI_DIR}/kindred/pocketbase ${CI_DIR}/kindred/config
         sudo chown -R 65532:65532 ${CI_DIR}/kindred
 
-    - name: Start test stack
-      if: steps.check.outputs.build == 'true'
+    - name: Pull staging images
+      env:
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
       run: |
-        # Use multi-container compose with CI override
-        # --wait uses Docker's native healthcheck polling
-        # --wait-timeout 180 allows time for all 4 containers (init runs first, then api/caddy)
+        for IMAGE in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+          docker pull "${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
+        done
+
+    - name: Start test stack
+      run: |
         if docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml up -d --wait --wait-timeout 180; then
-          echo "All services healthy!"
+          echo "All services healthy"
         else
-          echo "Services failed to become healthy within 180 seconds"
+          echo "Services failed to become healthy"
           docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
           docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs --tail=50
           exit 1
         fi
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
 
     - name: Test service endpoints
-      if: steps.check.outputs.build == 'true'
       run: |
-        # Use localhost since port 8080 is exposed directly in docker-compose.ci.yml
-        # (Avoids issues with multiple networks causing concatenated IPs)
-
         test_endpoint() {
           local url=$1
           local name=$2
           local max_retries=5
-          local retry_delay=2
-
-          echo "Testing $name..."
           for i in $(seq 1 $max_retries); do
             if curl -f -s -o /dev/null -w "%{http_code}" "$url" | grep -q "200"; then
-              echo "  $name is responding correctly"
+              echo "$name responding"
               return 0
-            else
-              echo "  Attempt $i/$max_retries failed for $name"
-              if [ $i -lt $max_retries ]; then
-                sleep $retry_delay
-              fi
             fi
+            sleep 2
           done
-          echo "$name failed after $max_retries attempts"
+          echo "$name failed"
           curl -v "$url" || true
           return 1
         }
-
-        echo "=== Testing via Caddy (main entry point) ==="
         test_endpoint "http://localhost:8080/health" "Health check" || exit 1
         test_endpoint "http://localhost:8080/api/config" "FastAPI config" || exit 1
 
-        echo "All integration tests passed!"
-
     - name: Verify non-root user and distroless containers
-      if: steps.check.outputs.build == 'true'
       run: |
         COMPOSE_CMD="docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml"
-
-        # API container has a shell (Wolfi-based for Python) - verify non-root
         CONTAINER_USER=$($COMPOSE_CMD exec -T api id -u)
         if [ "$CONTAINER_USER" = "0" ]; then
-          echo "API container is running as root!"
-          exit 1
+          echo "API running as root!"; exit 1
         fi
-        echo "API container running as UID: $CONTAINER_USER"
+        echo "API running as UID: $CONTAINER_USER"
 
-        # Verify distroless containers have no shell
         if $COMPOSE_CMD exec -T pocketbase /bin/sh -c "echo" 2>/dev/null; then
-          echo "PocketBase container has a shell (should be distroless)"
-          exit 1
+          echo "PocketBase has a shell (should be distroless)"; exit 1
         fi
-        echo "PocketBase is distroless (no shell)"
+        echo "PocketBase is distroless"
 
         if $COMPOSE_CMD exec -T caddy /bin/sh -c "echo" 2>/dev/null; then
-          echo "Caddy container has a shell (should be distroless)"
-          exit 1
+          echo "Caddy has a shell (should be distroless)"; exit 1
         fi
-        echo "Caddy is distroless (no shell)"
+        echo "Caddy is distroless"
 
-    - name: Show logs on test failure
-      if: failure() && steps.check.outputs.build == 'true'
-      run: |
-        echo "=== Docker Compose Status ==="
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml ps
-        echo ""
-        echo "=== All Container Logs ==="
-        docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs
+    - name: Show logs on failure
+      if: failure()
+      run: docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml logs
 
     - name: Stop test stack
-      if: always() && steps.check.outputs.build == 'true'
+      if: always()
       env:
         GH_RUN_ID: ${{ github.run_id }}
       run: |
         docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml down -v || true
-        # Use sudo to clean up files created by container (runs as UID 65532, different from runner)
         sudo rm -rf "/tmp/kindred-ci-${GH_RUN_ID}"
 
-    # === Security Scan (run before push) ===
-    # Consolidated: scans all 4 images in one step instead of 8 separate action invocations.
-    # Generates SARIF reports (HIGH+CRITICAL) and blocks on CRITICAL vulnerabilities.
-    # Trivy DB is downloaded once and reused across all scans.
-    # Replaces a previous `curl | sudo sh` against raw.githubusercontent.com so
-    # we can drop that endpoint from the harden-runner allowlist. setup-trivy
-    # checks out the install script from a pinned commit of aquasecurity/trivy
-    # rather than the floating `main` branch.
-    - name: Install Trivy
-      if: steps.check.outputs.build == 'true'
-      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+  # Retag :test-<sha> -> :latest + :sha-<NNN> (+ optional input tag).
+  # Uses docker buildx imagetools create for in-registry retag (no pull/push of
+  # layers, just manifest copies). Skipped on PR validation and dry-run.
+  promote:
+    name: Promote staging tags
+    needs: [detect-changes, build-and-scan, integration-test]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
+      needs.build-and-scan.result == 'success' &&
+      needs.integration-test.result == 'success' &&
+      github.event_name != 'pull_request' &&
+      github.event.inputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - name: Harden runner
+      uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.19.1
       with:
-        version: v0.69.3
+        egress-policy: audit
 
-    - name: Scan all images with Trivy
-      id: trivy-scan
-      if: steps.check.outputs.build == 'true'
-      run: |
-        trivy version
-
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-        HAS_CRITICAL=false
-
-        for IMAGE in "${IMAGES[@]}"; do
-          FULL_REF="${REGISTRY}/${USERNAME}/${IMAGE}:test"
-          echo ""
-          echo "=== Scanning ${IMAGE} ==="
-
-          # Generate SARIF report (HIGH + CRITICAL, non-blocking)
-          trivy image --format sarif --output "trivy-results-${IMAGE}.sarif" \
-            --severity CRITICAL,HIGH --exit-code 0 --ignorefile .trivyignore "$FULL_REF"
-
-          # Check for CRITICAL vulnerabilities (scan all images before failing)
-          if ! trivy image --format table --severity CRITICAL --exit-code 1 \
-               --skip-db-update --ignorefile .trivyignore "$FULL_REF"; then
-            echo "^^^ CRITICAL vulnerabilities found in ${IMAGE}!"
-            HAS_CRITICAL=true
-          fi
-        done
-
-        echo ""
-        if [ "$HAS_CRITICAL" = "true" ]; then
-          echo "One or more images have CRITICAL vulnerabilities. Blocking push."
-          exit 1
-        fi
-        echo "No CRITICAL vulnerabilities found."
-
-    # upload-sarif requires separate steps per category (GitHub Actions limitation)
-    # Uses always() so SARIF results are uploaded even when criticals block the push
-    - name: Upload Trivy results - Caddy
-      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
-        sarif_file: 'trivy-results-kindred-caddy.sarif'
-        category: 'trivy-kindred-caddy'
-        ref: ${{ github.ref }}
-        sha: ${{ github.sha }}
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload Trivy results - API
-      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
-      with:
-        sarif_file: 'trivy-results-kindred-api.sarif'
-        category: 'trivy-kindred-api'
-        ref: ${{ github.ref }}
-        sha: ${{ github.sha }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
-    - name: Upload Trivy results - PocketBase
-      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
-      with:
-        sarif_file: 'trivy-results-kindred-pocketbase.sarif'
-        category: 'trivy-kindred-pocketbase'
-        ref: ${{ github.ref }}
-        sha: ${{ github.sha }}
-
-    - name: Upload Trivy results - Init
-      if: always() && steps.check.outputs.build == 'true' && steps.trivy-scan.outcome != 'skipped'
-      continue-on-error: true
-      uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
-      with:
-        sarif_file: 'trivy-results-kindred-init.sarif'
-        category: 'trivy-kindred-init'
-        ref: ${{ github.ref }}
-        sha: ${{ github.sha }}
-
-    # === Push to Registry (only if tests pass and not dry-run/PR) ===
-    # Tag and push the already-built :test images instead of rebuilding
-    - name: Push Docker images
-      if: |
-        steps.check.outputs.build == 'true' &&
-        github.event_name != 'pull_request' &&
-        github.event.inputs.dry_run != 'true'
+    - name: Retag staging -> release tags
       env:
-        TAG_SUFFIXES: ${{ steps.tags.outputs.tag_suffixes }}
+        INPUT_TAG: ${{ github.event.inputs.tag }}
+        SHORT_SHA: ${{ needs.detect-changes.outputs.short_sha }}
       run: |
-        IMAGES=("kindred-caddy" "kindred-pocketbase" "kindred-api" "kindred-init")
-        IFS=',' read -ra SUFFIXES <<< "$TAG_SUFFIXES"
+        TARGETS=("latest" "sha-${SHORT_SHA}")
+        if [ -n "$INPUT_TAG" ]; then
+          TARGETS+=("$INPUT_TAG")
+        fi
 
-        for IMAGE in "${IMAGES[@]}"; do
-          TEST_IMAGE="${REGISTRY}/${USERNAME}/${IMAGE}:test"
-          for SUFFIX in "${SUFFIXES[@]}"; do
-            FULL_TAG="${REGISTRY}/${USERNAME}/${IMAGE}:${SUFFIX}"
-            echo "Pushing: ${FULL_TAG}"
-            docker tag "$TEST_IMAGE" "$FULL_TAG"
-            docker push "$FULL_TAG"
+        for IMAGE in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+          SOURCE="${REGISTRY}/${USERNAME}/${IMAGE}:test-${SHORT_SHA}"
+          for TARGET in "${TARGETS[@]}"; do
+            DEST="${REGISTRY}/${USERNAME}/${IMAGE}:${TARGET}"
+            echo "Retagging ${SOURCE} -> ${DEST}"
+            docker buildx imagetools create -t "$DEST" "$SOURCE"
           done
         done
 
-        echo "All images pushed successfully"
-
-    - name: Skip push (dry-run or PR)
-      if: |
-        steps.check.outputs.build == 'true' &&
-        (github.event_name == 'pull_request' || github.event.inputs.dry_run == 'true')
-      env:
-        EVENT_NAME: ${{ github.event_name }}
-      run: |
-        if [ "$EVENT_NAME" == "pull_request" ]; then
-          echo "PR validation mode - images built and tested but NOT pushed"
-        else
-          echo "Dry-run mode - images built and tested but NOT pushed"
-        fi
-        echo "   To push, trigger manually without dry_run or merge to main"
+        echo "All images promoted"
 
   # Summary job
   summary:
     name: Build Summary
-    needs: [build-test-push]
+    needs: [build-and-scan, integration-test, promote]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -764,42 +730,31 @@ jobs:
 
     - name: Check build status
       env:
-        BUILD_RESULT: ${{ needs.build-test-push.result }}
+        BUILD_RESULT: ${{ needs.build-and-scan.result }}
+        TEST_RESULT: ${{ needs.integration-test.result }}
+        PROMOTE_RESULT: ${{ needs.promote.result }}
         EVENT_NAME: ${{ github.event_name }}
         DRY_RUN: ${{ github.event.inputs.dry_run }}
         GH_USERNAME: ${{ env.USERNAME }}
       run: |
-        if [ "$BUILD_RESULT" != "success" ] && [ "$BUILD_RESULT" != "skipped" ]; then
-          echo "Build, test, or push failed!"
-          exit 1
-        fi
+        # Treat skipped as OK (no-changes path, or PR/dry-run for promote)
+        for RES_NAME in BUILD_RESULT TEST_RESULT PROMOTE_RESULT; do
+          RES="${!RES_NAME}"
+          if [ "$RES" != "success" ] && [ "$RES" != "skipped" ]; then
+            echo "$RES_NAME failed: $RES"
+            exit 1
+          fi
+        done
 
         if [ "$BUILD_RESULT" == "skipped" ]; then
           echo "Docker build skipped (no relevant file changes)"
         elif [ "$EVENT_NAME" == "pull_request" ]; then
-          echo "CD validation passed (PR mode - no push)"
-          echo ""
-          echo "This PR's CD changes have been validated:"
-          echo "- All 4 Docker images built successfully"
-          echo "- Integration tests passed (multi-container stack)"
-          echo "- Security scan completed"
-          echo ""
-          echo "Images will be pushed when this PR merges to main."
+          echo "CD validation passed (PR mode - staging tags pushed, no promote)"
         elif [ "$DRY_RUN" == "true" ]; then
-          echo "CD dry-run passed (no push)"
-          echo ""
-          echo "Validated:"
-          echo "- All 4 Docker images built successfully"
-          echo "- Integration tests passed (multi-container stack)"
-          echo "- Security scan completed"
-          echo ""
-          echo "To push, run again without dry_run or merge to main."
+          echo "CD dry-run passed (staging tags pushed, no promote)"
         else
-          echo "All CD checks passed successfully!"
-          echo ""
-          echo "Images pushed:"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-caddy (Caddy reverse proxy + frontend)"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-pocketbase (PocketBase database)"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-api (FastAPI solver/metrics)"
-          echo "- ghcr.io/${GH_USERNAME}/kindred-init (One-shot admin + OIDC setup)"
+          echo "All CD checks passed; images promoted to :latest and :sha-NNN"
+          for IMG in kindred-caddy kindred-pocketbase kindred-api kindred-init; do
+            echo "  - ghcr.io/${GH_USERNAME}/${IMG}"
+          done
         fi
