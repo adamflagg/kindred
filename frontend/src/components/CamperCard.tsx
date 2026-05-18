@@ -63,6 +63,8 @@ function CamperCard({
     addCamperToGroup,
     getCamperLockGroup,
     getGroupMembers,
+    setSelectedGroupId,
+    setIsLockPanelOpen,
   } = useLockGroupContext()
 
   // Get bunk request context
@@ -124,8 +126,14 @@ function CamperCard({
       } else if (lockState === 'none') {
         // Not in a group - add to pending selection
         addPendingCamper(camper)
+      } else if (lockState === 'locked') {
+        // Jump to the camper's existing group in the panel
+        const group = getCamperLockGroup(camper.person_cm_id)
+        if (group) {
+          setSelectedGroupId(group.id)
+          setIsLockPanelOpen(true)
+        }
       }
-      // If locked, do nothing (can't add locked campers to new groups)
       return
     }
 

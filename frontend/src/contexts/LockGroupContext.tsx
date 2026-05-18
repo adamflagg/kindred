@@ -43,6 +43,8 @@ interface LockGroupContextValue {
   clearPendingCampers: () => void
   isPending: (camperId: string) => boolean
   getPendingAnimationDelay: (camperId: string) => number // Per-camper delay for synced glow
+  // Derived: visible whenever there are pending campers
+  isActionBarVisible: boolean
 
   // Lock groups data
   groups: LockedGroupsResponse[]
@@ -55,7 +57,12 @@ interface LockGroupContextValue {
   getCamperLockState: (camperCmId: number) => 'none' | 'pending' | 'locked'
   getCamperLockGroupColor: (camperCmId: number) => string | undefined
   getGroupMembers: (groupId: string) => number[] // Returns person CM IDs
-  addCamperToGroup: (camper: Camper, groupId: string) => Promise<void> // Add camper directly to existing group
+  // Add camper directly to existing group. Returns true on success (PB write
+  // confirmed) and false on any failure path: not in draft mode, missing
+  // attendee id, conflict cancelled by staff, or PB error. Callers iterating
+  // over multiple campers should check the return value before clearing
+  // pending state.
+  addCamperToGroup: (camper: Camper, groupId: string) => Promise<boolean>
 
   // UI state
   selectedGroupId: string | null
@@ -283,10 +290,13 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     [membersByGroup]
   )
 
-  // Add camper directly to an existing lock group
+  // Add camper directly to an existing lock group. Returns true iff the PB
+  // write succeeded; false for every "didn't happen" path (not draft, missing
+  // attendee id, conflict cancelled, PB error) so iterating callers can avoid
+  // clearing pending state on partial failure.
   const addCamperToGroup = useCallback(
-    async (camper: Camper, groupId: string) => {
-      if (!isDraftMode) return
+    async (camper: Camper, groupId: string): Promise<boolean> => {
+      if (!isDraftMode) return false
 
       // Get the attendee PB ID from the camper
       const attendeePbId = camper.attendee_id ?? camper.id
@@ -294,7 +304,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
       if (!attendeePbId) {
         console.error('Camper missing attendee_id')
         toast.error('Cannot add camper: missing attendee ID')
-        return
+        return false
       }
 
       // If camper is already in a different group in this scenario, confirm with staff
@@ -310,7 +320,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
           targetGroupName,
           scenarioId,
         })
-        if (outcome === 'cancelled') return
+        if (outcome === 'cancelled') return false
       }
 
       try {
@@ -337,9 +347,11 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         const group = groups.find((g) => g.id === groupId)
         const groupName = group?.name ?? 'friend group'
         toast.success(`Added ${camper.name} to ${groupName}`)
+        return true
       } catch (error) {
         console.error('Failed to add camper to group:', error)
         toast.error('Failed to add camper to group')
+        return false
       }
     },
     [
@@ -354,9 +366,12 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     ]
   )
 
+  const isActionBarVisible = pendingCampers.length > 0
+
   const value: LockGroupContextValue = {
     // Pending campers
     pendingCampers,
+    isActionBarVisible,
     addPendingCamper,
     removePendingCamper,
     clearPendingCampers,

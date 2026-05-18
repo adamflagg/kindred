@@ -111,24 +111,27 @@ vi.mock('../hooks', async () => {
   }
 })
 
+// Mutable mock for LockGroupContext so tests can toggle isActionBarVisible
+const mockLockGroupContext: { isActionBarVisible: boolean } & Record<string, unknown> = {
+  isActionBarVisible: false,
+  isDraftMode: false,
+  groups: [],
+  pendingCampers: [],
+  addPendingCamper: vi.fn(),
+  removePendingCamper: vi.fn(),
+  getPendingAnimationDelay: () => 0,
+  addCamperToGroup: vi.fn(),
+  getCamperLockGroup: () => null,
+  getCamperLockState: () => 'none' as const,
+  getCamperLockGroupColor: () => undefined,
+  getGroupMembers: () => [],
+  createLockGroup: vi.fn(),
+  deleteLockGroup: vi.fn(),
+  isLoading: false,
+}
 // Mock LockGroupContext — CamperDetailsPanel uses it for alert derivation
 vi.mock('../contexts/LockGroupContext', () => ({
-  useLockGroupContext: () => ({
-    isDraftMode: false,
-    groups: [],
-    pendingCampers: [],
-    addPendingCamper: vi.fn(),
-    removePendingCamper: vi.fn(),
-    getPendingAnimationDelay: () => 0,
-    addCamperToGroup: vi.fn(),
-    getCamperLockGroup: () => null,
-    getCamperLockState: () => 'none' as const,
-    getCamperLockGroupColor: () => undefined,
-    getGroupMembers: () => [],
-    createLockGroup: vi.fn(),
-    deleteLockGroup: vi.fn(),
-    isLoading: false,
-  }),
+  useLockGroupContext: () => mockLockGroupContext,
 }))
 
 // ---------------------------------------------------------------------------
@@ -228,6 +231,7 @@ describe('CamperDetailsPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockLockGroupContext.isActionBarVisible = false
     // Reset getSatisfiedRequestInfo to the default no-op after each test
     mockGetSatisfiedRequestInfo = vi.fn((personCmId: number) => ({
       person_cm_id: personCmId,
@@ -1342,6 +1346,50 @@ describe('CamperDetailsPanel', () => {
       })
       expect(screen.queryByText(/Social With/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/Marked social-with-best/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('CamperDetailsPanel — backdrop is click-through', () => {
+    it('backdrop has pointer-events-none so clicks fall through to underlying elements', () => {
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const backdrop = container.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop?.className).toContain('pointer-events-none')
+    })
+
+    it('main render path backdrop also has pointer-events-none', async () => {
+      // Set up mocks so the camper resolves — hitting the main render path, not
+      // the loading or not-found path that the default empty-mock tests exercise.
+      setupDeclinedRequestMocks()
+      const { container } = render(
+        <CamperDetailsPanel camperId={String(EMMA.cm_id)} onClose={vi.fn()} />
+      )
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      const backdrop = container.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop?.className).toContain('pointer-events-none')
+    })
+  })
+
+  describe('CamperDetailsPanel layout — action bar awareness', () => {
+    it('has top-0 and bottom-0 classes when action bar is hidden', () => {
+      mockLockGroupContext.isActionBarVisible = false
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const root = container.querySelector('[data-panel="camper-details"]')
+      expect(root?.classList.contains('top-0')).toBe(true)
+      expect(root?.classList.contains('bottom-0')).toBe(true)
+      expect(root?.classList.contains('pb-20')).toBe(false)
+      expect(root?.classList.contains('bottom-20')).toBe(false)
+    })
+
+    it('adds bottom-20 (shrinks panel) when action bar is visible instead of padding', () => {
+      mockLockGroupContext.isActionBarVisible = true
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const root = container.querySelector('[data-panel="camper-details"]')
+      expect(root?.classList.contains('top-0')).toBe(true)
+      expect(root?.classList.contains('bottom-20')).toBe(true)
+      expect(root?.classList.contains('pb-20')).toBe(false)
+      expect(root?.classList.contains('bottom-0')).toBe(false)
     })
   })
 })
