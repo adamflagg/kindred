@@ -167,3 +167,29 @@ describe('LockGroupActionBar — Add branch (selectedGroupId set)', () => {
     expect(createMock).not.toHaveBeenCalled()
   })
 })
+
+describe('LockGroupActionBar — add-mode background is layered, not replaced', () => {
+  it('keeps bg-background class and uses backgroundImage (not backgroundColor) for the tint', () => {
+    mockSelectedGroupId = 'group-abc'
+    const { container } = render(
+      <LockGroupActionBar
+        pendingCampers={pendingList as unknown as Camper[]}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    const root = container.querySelector('[data-panel="lock-action-bar"]') as HTMLElement | null
+    expect(root).not.toBeNull()
+    // Solid base bg must still be present
+    expect(root?.classList.contains('bg-background')).toBe(true)
+    // Inline override must NOT replace it
+    expect(root?.style.backgroundColor).toBe('')
+    // Tint is layered via backgroundImage
+    expect(root?.style.backgroundImage).toContain('linear-gradient')
+    // Stripe still set
+    expect(root?.style.borderLeftColor).toBeTruthy()
+  })
+})

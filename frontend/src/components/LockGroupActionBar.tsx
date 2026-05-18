@@ -289,7 +289,7 @@ function LockGroupActionBar({
           isAddMode && selectedGroup
             ? {
                 borderLeftColor: selectedGroup.color,
-                backgroundColor: `${selectedGroup.color}1a` /* ~10% alpha */,
+                backgroundImage: `linear-gradient(${selectedGroup.color}40, ${selectedGroup.color}40)`,
               }
             : undefined
         }
