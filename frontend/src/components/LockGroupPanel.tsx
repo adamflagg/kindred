@@ -459,8 +459,19 @@ function LockGroupPanel({
                   >
                     {/* Group Header */}
                     <div
-                      className="hover:bg-muted/50 cursor-pointer border-l-4 p-4 transition-colors"
-                      style={{ borderLeftColor: group.color }}
+                      data-group-id={group.id}
+                      className={clsx(
+                        'hover:bg-muted/50 cursor-pointer p-4 transition-colors',
+                        selectedGroupId === group.id && 'border-l-4'
+                      )}
+                      style={
+                        selectedGroupId === group.id
+                          ? {
+                              borderLeftColor: group.color,
+                              backgroundColor: `${group.color}1a`,
+                            }
+                          : undefined
+                      }
                       onClick={() => {
                         setExpandedGroupId(isExpanded ? null : group.id)
                         onGroupSelect?.(isExpanded ? null : group.id)
