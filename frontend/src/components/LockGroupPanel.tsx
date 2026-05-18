@@ -94,7 +94,7 @@ function LockGroupPanel({
 }: LockGroupPanelProps) {
   const queryClient = useQueryClient()
   const currentYear = useYear()
-  useLockGroupContext() // Keep context subscription for future use
+  const { isActionBarVisible } = useLockGroupContext()
 
   // Track expanded group - derive from prop or allow local overrides
   const [localExpandedGroupId, setLocalExpandedGroupId] = useState<string | null>(null)
@@ -402,7 +402,8 @@ function LockGroupPanel({
       data-panel="lock-group"
       className={clsx(
         'bg-background fixed inset-y-0 left-0 z-50 w-96 border-r shadow-xl',
-        isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left'
+        isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left',
+        isActionBarVisible && 'pb-20'
       )}
     >
       <div className="flex h-full flex-col">

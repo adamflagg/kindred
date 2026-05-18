@@ -43,6 +43,8 @@ interface LockGroupContextValue {
   clearPendingCampers: () => void
   isPending: (camperId: string) => boolean
   getPendingAnimationDelay: (camperId: string) => number // Per-camper delay for synced glow
+  // Derived: visible whenever there are pending campers
+  isActionBarVisible: boolean
 
   // Lock groups data
   groups: LockedGroupsResponse[]
@@ -354,9 +356,12 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
     ]
   )
 
+  const isActionBarVisible = pendingCampers.length > 0
+
   const value: LockGroupContextValue = {
     // Pending campers
     pendingCampers,
+    isActionBarVisible,
     addPendingCamper,
     removePendingCamper,
     clearPendingCampers,

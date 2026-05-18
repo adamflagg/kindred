@@ -111,24 +111,27 @@ vi.mock('../hooks', async () => {
   }
 })
 
+// Mutable mock for LockGroupContext so tests can toggle isActionBarVisible
+const mockLockGroupContext: { isActionBarVisible: boolean } & Record<string, unknown> = {
+  isActionBarVisible: false,
+  isDraftMode: false,
+  groups: [],
+  pendingCampers: [],
+  addPendingCamper: vi.fn(),
+  removePendingCamper: vi.fn(),
+  getPendingAnimationDelay: () => 0,
+  addCamperToGroup: vi.fn(),
+  getCamperLockGroup: () => null,
+  getCamperLockState: () => 'none' as const,
+  getCamperLockGroupColor: () => undefined,
+  getGroupMembers: () => [],
+  createLockGroup: vi.fn(),
+  deleteLockGroup: vi.fn(),
+  isLoading: false,
+}
 // Mock LockGroupContext — CamperDetailsPanel uses it for alert derivation
 vi.mock('../contexts/LockGroupContext', () => ({
-  useLockGroupContext: () => ({
-    isDraftMode: false,
-    groups: [],
-    pendingCampers: [],
-    addPendingCamper: vi.fn(),
-    removePendingCamper: vi.fn(),
-    getPendingAnimationDelay: () => 0,
-    addCamperToGroup: vi.fn(),
-    getCamperLockGroup: () => null,
-    getCamperLockState: () => 'none' as const,
-    getCamperLockGroupColor: () => undefined,
-    getGroupMembers: () => [],
-    createLockGroup: vi.fn(),
-    deleteLockGroup: vi.fn(),
-    isLoading: false,
-  }),
+  useLockGroupContext: () => mockLockGroupContext,
 }))
 
 // ---------------------------------------------------------------------------
@@ -1342,6 +1345,22 @@ describe('CamperDetailsPanel', () => {
       })
       expect(screen.queryByText(/Social With/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/Marked social-with-best/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('CamperDetailsPanel layout — action bar awareness', () => {
+    it('has no bottom-padding class when action bar is hidden', () => {
+      mockLockGroupContext.isActionBarVisible = false
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const root = container.querySelector('[data-panel="camper-details"]')
+      expect(root?.className).not.toContain('pb-20')
+    })
+
+    it('adds pb-20 when action bar is visible', () => {
+      mockLockGroupContext.isActionBarVisible = true
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const root = container.querySelector('[data-panel="camper-details"]')
+      expect(root?.className).toContain('pb-20')
     })
   })
 })
