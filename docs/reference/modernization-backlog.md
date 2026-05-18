@@ -49,6 +49,7 @@ Baseline is strong: Pydantic v2 everywhere, `datetime.UTC` adopted, modern gener
 | **LOW** | `@dataclass(slots=True, kw_only=True, frozen=True)` defaults | 41 `@dataclass` files | — | Mostly small DTOs, not hot paths. Apply opportunistically. |
 | **LOW** | `typing.TypeIs` (replaces `TypeGuard`) / `typing.ReadOnly` TypedDict fields | `geo_normalizer/normalizer.py:20` for ReadOnly; no `TypeGuard` in codebase | 1 | 3.13+. Low leverage here. |
 | **LOW** | `copy.replace()` | (unused; no `dataclasses.replace` callsites either) | 0 | 3.13+. No current use case. |
+| **LOW** | Enable ruff `PLC0415` (import-outside-toplevel) | repo-wide; surfaced by PR #1529 review (`test_analyze_objective_sensitivity.py` had `import pytest` inside a test body) | 1 known | Catches imports inside function bodies. Currently not in `ruff.toml`'s enabled rules. Likely a handful of pre-existing offenders to clean up before enabling. |
 
 ### Not applicable / already adopted
 
