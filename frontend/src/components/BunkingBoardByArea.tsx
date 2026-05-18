@@ -522,14 +522,20 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Uses document-level handler to avoid blocking right-clicks and other interactions
   const handleGlobalClick = useCallback(
     (e: MouseEvent) => {
+      // Ctrl/Meta-click is reserved for the friend-group selection workflow;
+      // never dismiss panels on those.
+      if (e.ctrlKey || e.metaKey) return
+
       const target = e.target as HTMLElement
 
       // Don't close if clicking on:
-      // 1. A panel itself
+      // 1. Either side panel or the bottom action bar ([data-panel="lock-action-bar"])
       // 2. An interactive element (button, link, input, etc.)
       // 3. Context menu, dropdown, or other UI elements
       // 4. Camper/bunk cards (user is interacting with the board)
-      const isOnPanel = target.closest('[data-panel="camper-details"], [data-panel="lock-group"]')
+      const isOnPanel = target.closest(
+        '[data-panel="camper-details"], [data-panel="lock-group"], [data-panel="lock-action-bar"]'
+      )
       const isOnFloatingBadge = target.closest('[data-floating-badge]')
       const isInteractive = target.closest(
         'button, a, input, select, textarea, [role="button"], [role="menu"], [role="menuitem"]'
