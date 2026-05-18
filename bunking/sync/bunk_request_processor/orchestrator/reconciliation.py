@@ -36,8 +36,9 @@ _RECONCILIATION_KEYS = (
     "status_resolved",
     "status_pending",
     "status_declined",
-    # Phase C target-decline sidecar (#1069)
+    # Phase C bidirectional enrollment reconciliation (#1069, #1375)
     "target_declined_count",
+    "target_reopened_count",
     "target_declined_errors",
 )
 
@@ -76,6 +77,7 @@ def format_obr_reconciliation(stats: dict[str, Any]) -> str:
         f" / {s['status_pending']} pending"
         f" / {s['status_declined']} declined)"
         f" | Phase C: {s['target_declined_count']} target-declined"
+        f" / {s['target_reopened_count']} target-reopened"
         f" ({s['target_declined_errors']} errors)"
     )
 
