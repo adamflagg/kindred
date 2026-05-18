@@ -74,22 +74,28 @@ beforeEach(() => {
 })
 
 describe('LockGroupPanel layout', () => {
-  it('has no bottom-padding class when action bar is hidden', () => {
+  it('has top-0 and bottom-0 classes when action bar is hidden', () => {
     mockContext.isActionBarVisible = false
     const { container } = render(
       <LockGroupPanel isOpen={true} onClose={() => {}} sessionPbId="sess-1" scenarioId="scn-1" />
     )
     const root = container.querySelector('[data-panel="lock-group"]')
+    expect(root?.className).toContain('top-0')
+    expect(root?.className).toContain('bottom-0')
     expect(root?.className).not.toContain('pb-20')
+    expect(root?.className).not.toContain('bottom-20')
   })
 
-  it('adds pb-20 to the panel root when action bar is visible', () => {
+  it('adds bottom-20 (shrinks panel) when action bar is visible instead of padding', () => {
     mockContext.isActionBarVisible = true
     const { container } = render(
       <LockGroupPanel isOpen={true} onClose={() => {}} sessionPbId="sess-1" scenarioId="scn-1" />
     )
     const root = container.querySelector('[data-panel="lock-group"]')
-    expect(root?.className).toContain('pb-20')
+    expect(root?.className).toContain('top-0')
+    expect(root?.className).toContain('bottom-20')
+    expect(root?.className).not.toContain('pb-20')
+    expect(root?.className).not.toContain('bottom-0')
   })
 })
 

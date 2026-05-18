@@ -520,9 +520,9 @@ function LockGroupPanel({
     <div
       data-panel="lock-group"
       className={clsx(
-        'bg-background fixed inset-y-0 left-0 z-50 w-96 border-r shadow-xl',
+        'bg-background fixed top-0 left-0 z-50 w-96 border-r shadow-xl',
         isClosing ? 'animate-slide-out-left' : 'animate-slide-in-left',
-        isActionBarVisible && 'pb-20'
+        isActionBarVisible ? 'bottom-20' : 'bottom-0'
       )}
     >
       <div className="flex h-full flex-col">

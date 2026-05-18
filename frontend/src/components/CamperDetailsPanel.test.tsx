@@ -1350,18 +1350,24 @@ describe('CamperDetailsPanel', () => {
   })
 
   describe('CamperDetailsPanel layout — action bar awareness', () => {
-    it('has no bottom-padding class when action bar is hidden', () => {
+    it('has top-0 and bottom-0 classes when action bar is hidden', () => {
       mockLockGroupContext.isActionBarVisible = false
       const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
       const root = container.querySelector('[data-panel="camper-details"]')
+      expect(root?.classList.contains('top-0')).toBe(true)
+      expect(root?.classList.contains('bottom-0')).toBe(true)
       expect(root?.classList.contains('pb-20')).toBe(false)
+      expect(root?.classList.contains('bottom-20')).toBe(false)
     })
 
-    it('adds pb-20 when action bar is visible', () => {
+    it('adds bottom-20 (shrinks panel) when action bar is visible instead of padding', () => {
       mockLockGroupContext.isActionBarVisible = true
       const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
       const root = container.querySelector('[data-panel="camper-details"]')
-      expect(root?.classList.contains('pb-20')).toBe(true)
+      expect(root?.classList.contains('top-0')).toBe(true)
+      expect(root?.classList.contains('bottom-20')).toBe(true)
+      expect(root?.classList.contains('pb-20')).toBe(false)
+      expect(root?.classList.contains('bottom-0')).toBe(false)
     })
   })
 })
