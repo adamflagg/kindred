@@ -39,6 +39,7 @@ class TestFormatObrReconciliation:
             "status_pending": 242,
             "status_declined": 152,
             "target_declined_count": 7,
+            "target_reopened_count": 2,
             "target_declined_errors": 0,
         }
 
@@ -50,7 +51,7 @@ class TestFormatObrReconciliation:
             " | 1016 AI-parsed (948 success, 68 permanent parse failures) + 537 direct-mapped"
             " | 2397 pre-dedup requests -> 94 dedup + 3 self-referential kept for review"
             " | 2303 BRs created (1909 resolved / 242 pending / 152 declined)"
-            " | Phase C: 7 target-declined (0 errors)"
+            " | Phase C: 7 target-declined / 2 target-reopened (0 errors)"
         )
         assert line == expected
 

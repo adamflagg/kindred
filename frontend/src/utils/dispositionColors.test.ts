@@ -327,6 +327,35 @@ describe('confidence constants', () => {
   })
 })
 
+describe('enrollment_change disposition reason', () => {
+  it('classifies enrollment_change as a PENDING (triage) reason', () => {
+    expect(PENDING_REASONS.has('enrollment_change')).toBe(true)
+    expect(RESOLVED_REASONS.has('enrollment_change')).toBe(false)
+    expect(DECLINED_REASONS.has('enrollment_change')).toBe(false)
+  })
+
+  it('uses amber/warning badge classes for enrollment_change', () => {
+    expect(getDispositionClasses('enrollment_change')).toBe(
+      'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400'
+    )
+  })
+
+  it('has a friendly display name (not a raw underscore-replaced fallback)', () => {
+    const display = formatDispositionReason('enrollment_change')
+    expect(display).not.toBe('enrollment change')
+    expect(display.length).toBeGreaterThan(0)
+  })
+
+  it('shows the reason line in the Status cell for PENDING rows', () => {
+    expect(shouldShowReasonInStatus('pending', 'enrollment_change')).toBe(true)
+    expect(shouldShowReasonInStatus('PENDING', 'enrollment_change')).toBe(true)
+  })
+
+  it('has pending sort rank', () => {
+    expect(getDispositionSortRank('enrollment_change')).toBe(1)
+  })
+})
+
 describe('self_referential disposition reason (issue #941)', () => {
   it('classifies self_referential as a PENDING (triage) reason', () => {
     expect(PENDING_REASONS.has('self_referential')).toBe(true)
