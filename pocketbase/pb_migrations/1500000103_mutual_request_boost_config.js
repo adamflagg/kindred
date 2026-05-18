@@ -38,7 +38,10 @@ migrate(
       data_type: "float",
       source: "default_config",
       default_value: 2.0,
-      min_value: 0.0,
+      // Hard floor at 1.0 — anything lower would inversely downweight
+      // reciprocated requests vs. one-way ones (opposite of intent).
+      // Disable = "set to 1.0", not "set to 0.0". Matches schema.py.
+      min_value: 1.0,
       max_value: 10.0,
       friendly_name: "Mutual Request Boost",
       tooltip:

@@ -238,7 +238,10 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
             "the boost without removing the code path. Stacks multiplicatively with "
             "source_multipliers and diminishing-returns weights."
         ),
-        min_value=0.0,
+        # Hard floor at 1.0 — values below 1.0 would inversely *downweight*
+        # reciprocated requests vs. one-way ones, the opposite of the
+        # feature's intent. Disable is "set to 1.0", not "set to 0.0".
+        min_value=1.0,
         max_value=10.0,
     ),
     # =========================================================================

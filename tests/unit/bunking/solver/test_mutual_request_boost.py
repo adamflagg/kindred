@@ -448,6 +448,19 @@ def test_score_evaluator_disabled_boost_via_config_1():
     assert result.request_satisfaction_score == 2 * expected_per_request
 
 
+def test_mutual_boost_schema_floor_is_one():
+    """Defense-in-depth: schema must not allow values below 1.0. A boost <1.0
+    would inversely downweight reciprocated requests vs. one-way ones — the
+    opposite of the feature's intent. 'Disable' is set-to-1.0, not 0.0."""
+    from bunking.config.schema import CONFIG_SCHEMA
+
+    entry = CONFIG_SCHEMA["objective.mutual_request_boost"]
+    assert entry.min_value == 1.0, (
+        f"mutual_request_boost min_value must be 1.0 (got {entry.min_value}) — "
+        "anything lower inversely downweights mutual pairs"
+    )
+
+
 def test_score_evaluator_not_bunk_with_never_boosts():
     """Reciprocal not_bunk_with must NOT be boosted (symmetric by intent)."""
     from bunking.solver.score_evaluator import evaluate_scenario_score
