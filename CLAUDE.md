@@ -2,18 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Kindred
+## Kindred
 
 Kindred finds campers who belong together and places them in the right cabins. A constraint satisfaction solver for optimizing summer camp cabin assignments using Google OR-Tools with a full CampMinder data integration system.
 
 ---
 
-# 1. Architecture
+## 1. Architecture
 
 ## System Architecture
 
 ### Multi-Container Architecture
-```
+```text
 CampMinder API → Go Sync ─┐
                           │
 React Frontend ──────────┼──→ 4 Docker containers
@@ -59,7 +59,7 @@ See `/docs`:
 
 ---
 
-# 2. Daily Workflow
+## 2. Daily Workflow
 
 ## Quick Development Commands
 
@@ -143,7 +143,7 @@ Surface-specific — see `frontend/CLAUDE.md` (ErrorBoundary + QueryGuard patter
 
 ---
 
-# 3. Domain Knowledge
+## 3. Domain Knowledge
 
 ## Domain References
 
@@ -178,7 +178,7 @@ Internalize these — violating them produces incorrect code or data corruption.
 
 ---
 
-# 4. 🚨 Critical Rules
+## 4. Critical Rules
 
 **These are non-negotiable. They protect parallel-agent work, production data, and release integrity.**
 
@@ -205,7 +205,7 @@ A `PreToolUse` hook (`.claude/hooks/worktree-guard.sh`) blocks direct `git workt
 
 If the user doesn't explicitly confirm BOTH, **create a worktree**.
 
-```
+```text
 Starting new work?
 ├─ Is it a frontend preview AND user confirmed solo work?
 │  └─ YES to BOTH → OK to work in main folder on a branch
@@ -264,7 +264,7 @@ All code, tests, comments, and documentation MUST use fictional data:
 1. **Camper/Family Names**: Use the standard fake name list (Emma Johnson, Liam Garcia, Olivia Chen, etc.)
 2. **Staff Names**: Use names from `config/staff_list.json` (all fictional)
 3. **Schools**: Use fictional school names (Riverside Elementary, Oak Valley Middle, Hillcrest High)
-4. **Phone/Email**: Use obviously fake data (555-0100, test@example.com)
+4. **Phone/Email**: Use obviously fake data (555-0100, <test@example.com>)
 5. **Camp Branding**: Use `{camp_name}` placeholder in prompts, never hardcode camp names
 6. **Session IDs**: Use generic IDs (1000001, 1000002) in examples, not real CampMinder IDs
 

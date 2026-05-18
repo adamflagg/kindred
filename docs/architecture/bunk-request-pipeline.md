@@ -4,7 +4,7 @@ Complete reference for how CSV files become `bunk_requests` records the solver c
 
 ## Overview
 
-```
+```text
 CSV File (CampMinder export)
     │
     ▼
@@ -33,7 +33,7 @@ CSV File (CampMinder export)
 
 ## Data Transformations at a Glance
 
-```
+```text
 CSV Row (1 row per camper)
   ↓ Go: 1 row → up to 5 original_bunk_requests (one per field)
 original_bunk_requests
@@ -61,7 +61,7 @@ BunkRequest → saved to PocketBase bunk_requests table
 
 1. User selects CSV file in the `BunkRequestsUpload` component
 2. `uploadBunkRequestsCSV(file, fetchWithAuth, year?)` sends multipart POST to:
-   ```
+   ```text
    /api/custom/sync/upload-bunk-requests?run_sync=true&run_process_requests=true&year=2025
    ```
 3. Query params control chaining:
@@ -79,7 +79,7 @@ BunkRequest → saved to PocketBase bunk_requests table
 
 **Function:** `handleBunkRequestsUpload` (`api.go:714-826`)
 
-```
+```text
 Multipart POST received
     │
     ├─ readCSVFromMultipart()
@@ -129,7 +129,7 @@ Multipart POST received
 
 **Function:** `processRow` (`bunk_requests.go:187-284`)
 
-```
+```text
 For each CSV row:
     │
     ├─ Extract PersonID (parse as int, skip if invalid)
@@ -183,7 +183,7 @@ For each CSV row:
 
 ### Entry Path
 
-```
+```text
 Go process_requests.go
     → HTTP POST /api/internal/process-requests
         → FastAPI run_process_requests()
@@ -197,7 +197,7 @@ Go process_requests.go
 
 **File:** `bunking/sync/bunk_request_processor/process_requests.py` → `integration/original_requests_loader.py`
 
-```
+```text
 OriginalRequestsLoader(pb, year, session_cm_ids)
     │
     ├─ load_persons_cache()
@@ -235,7 +235,7 @@ OriginalRequestsLoader(pb, year, session_cm_ids)
 
 **File:** `orchestrator/orchestrator.py` — `process_requests()` (lines 939-1161)
 
-```
+```text
 process_requests(raw_requests, clear_existing, progress_callback)
     │
     ├── 1. STAFF NAME DETECTION
@@ -360,7 +360,7 @@ For each `ParsedRequest` that has a `target_name` to resolve:
 
 Tried in order before the resolution pipeline. First match wins.
 
-```
+```text
 A. STAFF NAME FILTER
    └─ IF target is in detected staff/parent name set:
        └─ confidence=0.0, method="staff_filtered", SKIP resolution
@@ -460,7 +460,7 @@ For cases still ambiguous after the pipeline, if NetworkX analyzer is configured
 After Phase 2 resolution, the confidence scorer re-scores each resolved result using a weighted formula. The resolution pipeline's raw confidence (0.95, 0.85, etc.) is replaced by the scorer's output.
 
 **BUNK_WITH formula:**
-```
+```text
 score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × reciprocal_score
 ```
 
@@ -472,7 +472,7 @@ score = 0.70 × name_score + 0.15 × ai_score + 0.10 × context_score + 0.05 × 
 | `reciprocal_score` | Reciprocal pair detection | Hardcoded 0.0 in formula (not implemented). Reciprocal boost (+0.1) applied separately by `reciprocal_detector.py` after request building. |
 
 **NOT_BUNK_WITH formula:**
-```
+```text
 score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
 ```
 
@@ -487,7 +487,7 @@ score = 0.75 × name_score + 0.20 × ai_score + 0.05 × context_score
 Directional mapping: AI extracts OLDER/YOUNGER from reasoning (e.g., "wants to be with older kids"). When the AI recognizes an age preference but cannot determine direction, `age_preference` is None and the request goes to staff review at 0.50 confidence.
 
 **Worked examples:**
-```
+```text
 Same-session exact match (correct):  0.70 × 1.0 + 0.15 × 0.85 + 0.10 × 0.8 = 0.9075 → RESOLVED
 No-session-info exact match (bug):   0.70 × 0.7 + 0.15 × 0.85 + 0.10 × 0.8 = 0.6975 → PENDING (should be 0.9075)
   (resolution returns 0.90, but 0.90 is NOT > 0.9, so name_score = 0.7 "partial" instead of 1.0 "exact")
@@ -538,7 +538,7 @@ See the six parse prompt templates under `config/prompts/parse_*.txt` for the AI
 
 Only invoked for ambiguous results that have candidates but couldn't be uniquely resolved.
 
-```
+```text
 For each ambiguous resolution:
     │
     ├─ Build context:
@@ -748,7 +748,7 @@ Identified from production data analysis (2026-03-18). Pending implementation.
 
 One pipeline with conditional stages + late merge for socialize_with:
 
-```
+```text
 Input: original_bunk_requests rows
   │
   ├─ [if notes fields in scope]: Staff name detection (build global set)

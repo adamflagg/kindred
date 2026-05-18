@@ -40,7 +40,7 @@ Do not backfill gaps left by past consolidation runs — those numbers are "burn
 
 PocketBase parses filters with strict whitespace requirements.
 
-```
+```text
 ✓ field = value          ✗ field=value
 ✓ field != ''            ✗ field!=''
 ✓ created >= '2026-01-01'

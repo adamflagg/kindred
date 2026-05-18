@@ -4,7 +4,7 @@ Copy-paste this into a new Claude Code conversation to refresh `docs/reference/i
 
 ---
 
-```
+```text
 Read docs/reference/issue-triage.md to get the current grouping, then:
 
 1. **Closed issue removal**: Run `gh issue list --state closed --limit 50` and cross-reference against every issue number in the triage doc. Remove any that are now closed. Note which groups lost issues.

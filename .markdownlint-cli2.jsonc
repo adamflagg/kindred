@@ -1,0 +1,30 @@
+{
+  // Markdownlint configuration for kindred
+  // Start permissive — only enable rules that catch genuine doc bugs.
+  // MD040 was the original trigger (PR #1460, pocketbase/CLAUDE.md fenced block missing language tag).
+  "config": {
+    // Disable all rules by default, then enable only the ones we want.
+    "default": false,
+    // ── Rules enabled ────────────────────────────────────────────────────────
+    "MD040": true,  // fenced code blocks must have a language tag
+    "MD034": true,  // bare URLs that should be link-wrapped
+    "MD025": true,  // multiple top-level H1s in same doc
+    "MD024": { "siblings_only": true } // duplicate headings — siblings only
+  },
+  "globs": ["**/*.md"],
+  "ignores": [
+    // Dependency directories
+    "**/node_modules/**",
+    "node_modules",
+    ".venv",
+    "dist",
+    "build",
+    // Local-only working artifacts (gitignored)
+    "docs/superpowers/specs",
+    "docs/plans",
+    // Local Claude skill files (not project docs)
+    ".claude",
+    // Private symlinked config (lives in kindred-local, not this repo)
+    "CLAUDE.local.md"
+  ]
+}

@@ -6,7 +6,7 @@ This guide explains how to deploy Kindred using Docker Compose in a production e
 
 The production deployment uses a **multi-container architecture** with 4 Docker containers:
 
-```
+```text
 Traefik (external) ─┐
                     │
                     ▼
@@ -124,16 +124,16 @@ curl -X POST "http://localhost:8080/api/custom/sync/run?year=2025&service=all"
 ```
 
 2. Access the application:
-- Frontend: https://bunking.yourdomain.com
-- PocketBase Admin: https://bunking.yourdomain.com/_/
+- Frontend: <https://bunking.yourdomain.com>
+- PocketBase Admin: <https://bunking.yourdomain.com/_/>
 
 ## Service URLs (internal)
 
 These are internal container ports. Access via Traefik in production:
 
-- Caddy proxy: http://localhost:8080 (main entry point)
-- PocketBase: http://kindred-pocketbase:8090 (internal network)
-- FastAPI: http://kindred-api:8000 (internal network)
+- Caddy proxy: <http://localhost:8080> (main entry point)
+- PocketBase: <http://kindred-pocketbase:8090> (internal network)
+- FastAPI: <http://kindred-api:8000> (internal network)
 
 ## Routing
 

@@ -347,7 +347,7 @@ df -h
 ### Bunk Requests Sync Errors
 
 #### Missing Methods Error
-```
+```text
 ERROR - Failed to collect requests from row: 'BunkRequestsSync' object has no attribute 'has_prior_year_continuity'
 ```
 **Solution**: Update sync script to latest version with all required methods:

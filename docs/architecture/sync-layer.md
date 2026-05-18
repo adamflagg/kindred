@@ -3,7 +3,7 @@
 ## Overview
 Data flows from CampMinder through a layered sync system:
 
-```
+```text
 CampMinder API
     ↓
 Go: Sync Services (pocketbase/sync/)

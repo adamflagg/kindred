@@ -23,7 +23,7 @@ This document provides actual response examples from the CampMinder API for each
 **Base URL**: `https://api.campminder.com/auth`
 
 **Headers:**
-```
+```text
 Authorization: {API_KEY_VALUE}
 ```
 
@@ -1219,7 +1219,7 @@ All endpoints require:
 
 ### 1. Fetching Related Data
 When syncing persons, you often need to fetch related data in sequence:
-```
+```text
 1. Get persons (with includes for related data)
 2. For each person, check FamilyPersons array
 3. Use family IDs to link siblings
@@ -1228,7 +1228,7 @@ When syncing persons, you often need to fetch related data in sequence:
 
 ### 2. Handling Enrollments
 To get all campers for a session:
-```
+```text
 1. Get session details
 2. Fetch attendees for that session
 3. Filter by status=2 (Enrolled)
@@ -1237,7 +1237,7 @@ To get all campers for a session:
 
 ### 3. Building Bunk Assignments
 Complete bunk assignment flow:
-```
+```text
 1. Get sessions for the season
 2. For each session, get available bunks (bunk plans)
 3. Get attendees for the session

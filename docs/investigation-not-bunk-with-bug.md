@@ -13,7 +13,7 @@ Camper 6325675 (Gabriella Bauer-Kahan) has a raw `not_bunk_with` field containin
 The AI (GPT-4.1-nano) was incorrectly outputting `target_name = "SIBLING"` for plain name inputs like "Amalia Smith".
 
 **Evidence from debug logs:**
-```
+```text
 [AI-PARSE] Input: field='Do Not Share Bunk With' requester='Gabriella Bauer-Kahan' text='Amalia Smith'
 [AI-PARSE] Output: targets=['SIBLING'] request_types=['not_bunk_with']  # WRONG!
 ```
@@ -34,7 +34,7 @@ Removed the SIBLING placeholder entirely from `config/prompts/parse_not_bunk_wit
 - Changed output requirements to `target_name: Person's full name (always extract actual names, never placeholders)`
 
 **After fix:**
-```
+```text
 [AI-PARSE] Input: field='Do Not Share Bunk With' requester='Gabriella Bauer-Kahan' text='Amalia Smith'
 [AI-PARSE] Output: targets=['Amalia Smith'] request_types=['not_bunk_with']  # CORRECT!
 ```
@@ -82,7 +82,7 @@ Note: `source_field` is NOT in the unique index.
 4. Tries to create same (requester=X, requestee=Y, type=not_bunk_with, session=Z) → FAILS with duplicate key
 
 **Example from logs:**
-```
+```text
 Person 19640456 (Bennett Levis) already has:
   requestee_id=14761236, type=not_bunk_with, session=1235406, source=BunkingNotes Notes
 
@@ -103,7 +103,7 @@ Processing tries to create:
 Some names don't resolve because the person doesn't exist in the database.
 
 **Example:**
-```
+```text
 Input: "Addy Kniffin & Pallie Rocchino"
 AI Output: targets=['Addy Kniffin', 'Pallie Rocchino']  # Correct parsing
 
@@ -119,7 +119,7 @@ This is expected behavior when the target person isn't in the database (might no
 Some `original_bunk_requests` records have `requester_id = NULL` even though they have a valid `requester` relation.
 
 **Example:**
-```
+```text
 Record for Noa Segev:
   requester = (relation to persons record with cm_id=17542317)
   requester_id = None  # Should be 17542317
@@ -129,7 +129,7 @@ This doesn't break processing (code uses the relation), but is inconsistent.
 
 ## All 31 not_bunk_with Records (for reference)
 
-```
+```text
 Requester: Kitty Dougherty
 Content: 'Not with Arya Shachar/other Hasner kids if possible'
 
