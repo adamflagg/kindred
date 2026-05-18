@@ -91,7 +91,7 @@ class TestPhoneticMatchStrategy:
         assert result.person.cm_id == 12345
         assert result.person.last_name == "Smythe"
         assert result.confidence == pytest.approx(0.65)  # Base 0.70 - 0.05 for no session
-        assert result.metadata["match_type"] == "soundex"
+        assert result.metadata["sub_method"] == "soundex"
         assert result.metadata["algorithm"] == "soundex"
 
     def test_multiple_soundex_matches(self, strategy, mock_repositories):
@@ -131,7 +131,7 @@ class TestPhoneticMatchStrategy:
         assert result.person.cm_id == 12345
         assert result.person.first_name == "Katherine"
         assert result.confidence == pytest.approx(0.60)  # Base 0.65 - 0.05 (no session info)
-        assert result.metadata["match_type"] == "metaphone"
+        assert result.metadata["sub_method"] == "metaphone"
         assert result.metadata["algorithm"] == "metaphone"
 
     def test_session_disambiguation(self, strategy, mock_repositories):
@@ -156,7 +156,7 @@ class TestPhoneticMatchStrategy:
         assert result.is_resolved
         assert result.person.cm_id == 12345
         assert result.confidence == 0.75
-        assert result.metadata["match_type"] == "soundex_with_session"
+        assert result.metadata["sub_method"] == "soundex_with_session"
         assert result.metadata["session_match"] == "exact"
 
     def test_confidence_boost_same_session(self, strategy, mock_repositories):
@@ -288,7 +288,7 @@ class TestPhoneticMatchNicknameIntegration:
         assert result.person.cm_id == 12345
         assert result.person.first_name == "Michael"
         assert (
-            "nickname" in result.metadata.get("match_type", "").lower()
+            "nickname" in result.metadata.get("sub_method", "").lower()
             or result.metadata.get("algorithm") == "nickname"
         )
 
@@ -427,7 +427,7 @@ class TestPhoneticMatchParentSurname:
         assert result.is_resolved
         assert result.person.cm_id == 12345
         assert result.person.last_name == "Johnson"
-        assert result.metadata.get("match_type") == "parent_surname_phonetic"
+        assert result.metadata.get("sub_method") == "parent_surname_phonetic"
 
     def test_phonetic_match_parent_surname_with_nickname(self, strategy, mock_repositories):
         """Test phonetic parent surname matching with nickname.
@@ -452,10 +452,10 @@ class TestPhoneticMatchParentSurname:
 
         assert result.is_resolved
         assert result.person.cm_id == 12345
-        assert result.metadata.get("match_type") == "parent_surname_phonetic"
+        assert result.metadata.get("sub_method") == "parent_surname_phonetic"
 
-    def test_parent_surname_phonetic_with_context(self, strategy, mock_repositories):
-        """Test parent surname phonetic matching with resolve_with_context"""
+    def test_parent_surname_phonetic_via_resolve(self, strategy, mock_repositories):
+        """Test parent surname phonetic matching with resolve"""
         person_repo, _ = mock_repositories
 
         # Pre-loaded candidate with parent surname
@@ -467,7 +467,7 @@ class TestPhoneticMatchParentSurname:
             parent_names=json.dumps([{"first": "John", "last": "Smith", "relationship": "Father"}]),
         )
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             "Emma Smidt",  # Phonetically similar to Smith
             requester_cm_id=67890,
             session_cm_id=1000002,
@@ -478,7 +478,7 @@ class TestPhoneticMatchParentSurname:
 
         assert result.is_resolved
         assert result.person.cm_id == 12345
-        assert result.metadata.get("match_type") == "parent_surname_phonetic"
+        assert result.metadata.get("sub_method") == "parent_surname_phonetic"
 
     def test_parent_surname_lower_confidence_than_direct(self, strategy, mock_repositories):
         """Test that parent surname phonetic matches have lower confidence"""

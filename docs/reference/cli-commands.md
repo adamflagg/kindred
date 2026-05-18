@@ -266,7 +266,7 @@ Runs example data analysis for demonstration purposes.
 npm run dev
 ```
 Starts Vite development server with hot module replacement.
-- Default: http://localhost:5173
+- Default: <http://localhost:5173>
 - Proxies API requests to PocketBase
 
 ### Build Production Bundle

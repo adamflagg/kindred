@@ -16,7 +16,7 @@ from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import last_name_matches, parse_name
 from ...shared.name_utils import ParsedName
-from ...shared.nickname_groups import SPELLING_VARIATIONS, find_nickname_variations
+from ...shared.nickname_groups import find_nickname_variations
 from ..interfaces import ResolutionResult
 from .base_match_strategy import (
     _FIRST_NAME_CLOSE_SPELLING_THRESHOLD,
@@ -69,12 +69,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         self.relationship_analyzer = relationship_analyzer
 
     def resolve(
-        self, name: str, requester_cm_id: int, session_cm_id: int | None = None, year: int | None = None
-    ) -> ResolutionResult:
-        """Attempt fuzzy name resolution (simple API without pre-loaded data)."""
-        return self.resolve_with_context(name, requester_cm_id, session_cm_id, year)
-
-    def resolve_with_context(
         self,
         name: str,
         requester_cm_id: int,
@@ -104,14 +98,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             if result.is_resolved or result.is_ambiguous:
                 return result
 
-            # 2. Try spelling variations
-            result = self._try_spelling_variations(
-                name_parts, requester_cm_id, session_cm_id, year, candidates, attendee_info
-            )
-            if result.is_resolved or result.is_ambiguous:
-                return result
-
-            # 2b. Try Jaro-Winkler first name similarity
+            # 2. Try Jaro-Winkler first name similarity
             result = self._try_jaro_winkler_first_name(
                 parsed, requester_cm_id, session_cm_id, year, candidates, attendee_info, all_persons
             )
@@ -176,7 +163,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                         person=matches[0],
                         confidence=confidence,
                         method=self.name,
-                        metadata={"match_type": "nickname", "variant": variant},
+                        metadata={"sub_method": "nickname", "variant": variant},
                     )
                 else:
                     return ResolutionResult(
@@ -185,59 +172,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                         method=self.name,
                         metadata={
                             "ambiguity_reason": "multiple_nickname_matches",
-                            "match_count": len(matches),
-                            "variant": variant,
-                        },
-                    )
-
-        return ResolutionResult(confidence=0.0, method=self.name)
-
-    def _try_spelling_variations(
-        self,
-        name_parts: list[str],
-        requester_cm_id: int,
-        session_cm_id: int | None,
-        year: int | None,
-        candidates: list[Person] | None = None,
-        attendee_info: dict[int, dict[str, Any]] | None = None,
-    ) -> ResolutionResult:
-        """Try common spelling variations."""
-        first_name = name_parts[0].lower()
-        last_name = name_parts[-1]
-
-        if first_name not in SPELLING_VARIATIONS:
-            return ResolutionResult(confidence=0.0, method=self.name)
-
-        for variant in SPELLING_VARIATIONS[first_name]:
-            if candidates:
-                matches = [
-                    c
-                    for c in candidates
-                    if c.first_name.title() == variant.title() and last_name_matches(last_name, c.last_name)
-                ]
-            else:
-                matches = self.person_repo.find_by_name(variant.title(), last_name.title(), year=year)
-
-            matches = self._filter_self_references(matches, requester_cm_id)
-
-            if matches:
-                if len(matches) == 1:
-                    confidence = self._calculate_confidence(
-                        matches[0], requester_cm_id, session_cm_id, year, attendee_info, is_spelling=True
-                    )
-                    return ResolutionResult(
-                        person=matches[0],
-                        confidence=confidence,
-                        method=self.name,
-                        metadata={"match_type": "spelling_variation", "variant": variant},
-                    )
-                else:
-                    return ResolutionResult(
-                        candidates=matches,
-                        confidence=0.5,
-                        method=self.name,
-                        metadata={
-                            "ambiguity_reason": "multiple_spelling_matches",
                             "match_count": len(matches),
                             "variant": variant,
                         },
@@ -259,7 +193,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         match_type = "normalized"
 
         # Detect single-name search via parse_name so the gate's notion of "single
-        # name" matches the upstream `parsed.is_complete` branch in resolve_with_context.
+        # name" matches the upstream `parsed.is_complete` branch in resolve().
         # Raw `name.strip().split()` would miss enumeration prefixes (e.g. "1. Jo"
         # splits to 2 tokens but parse_name strips the prefix to yield a first-only
         # result).
@@ -284,7 +218,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                     method=self.name,
                     metadata={
                         "ambiguity_reason": "first_name_only_distant_match",
-                        "match_type": base_match_type,
                         "sub_method": base_match_type,
                     },
                 )
@@ -324,10 +257,9 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             # the wrong person silently (see PR for cascade analysis).
             if is_single_name_search:
                 first_only = parsed.first
-                # Step 1: literal first_only + nickname variations. SPELLING_VARIATIONS
-                # is intentionally NOT consulted here — find_nickname_variations already
-                # merges its values in (see nickname_groups._add), so a separate pass
-                # would be a no-op after dedup.
+                # Step 1: literal first_only + nickname variations. find_nickname_variations
+                # already merges in SPELLING_VARIATIONS values (see nickname_groups._add),
+                # so a separate pass would be redundant.
                 search_terms: list[str] = [first_only, *find_nickname_variations(first_only)]
                 seen_cm_ids: set[int] = set()
                 merged: list[Person] = []
@@ -385,7 +317,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": match_type, "sub_method": match_type},
+                metadata={"sub_method": match_type},
             )
         else:
             # Try session disambiguation
@@ -459,7 +391,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=all_candidates[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "first_name_only"},
+                metadata={"sub_method": "first_name_only"},
             )
 
         # Try session disambiguation
@@ -524,7 +456,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=all_matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "parent_surname", "inferred_surname": last_name},
+                metadata={"sub_method": "parent_surname", "inferred_surname": last_name},
             )
         else:
             return ResolutionResult(
@@ -594,7 +526,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=same_session[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": "session_disambiguated"},
+                metadata={"sub_method": "session_disambiguated"},
             )
 
         return ResolutionResult(confidence=0.0, method=self.name)
@@ -654,7 +586,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 person=matches[0],
                 confidence=confidence,
                 method=self.name,
-                metadata={"match_type": match_type},
+                metadata={"sub_method": match_type},
             )
 
         return ResolutionResult(
@@ -664,7 +596,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             metadata={
                 "ambiguity_reason": "multiple_jaro_winkler_matches",
                 "match_count": len(matches),
-                "match_type": match_type,
+                "sub_method": match_type,
             },
         )
 
@@ -749,7 +681,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 confidence=0.70 + best_score,  # Base 0.70 + relationship boost
                 method=self.name,
                 metadata={
-                    "match_type": "relationship_disambiguated",
+                    "sub_method": "relationship_disambiguated",
                     "relationship_boost": best_score,
                     "relationship_info": relationship_info,
                 },

@@ -21,7 +21,7 @@ NEVER use real camper/parent/staff/school names in tests, fixtures, comments, or
 
 - **Campers**: Emma Johnson, Liam Garcia, Olivia Chen, Riley Sam, Samuel Johnson
 - **Schools**: Riverside Elementary, Oak Valley Middle, Hillcrest High
-- **Phone/email**: 555-0100, test@example.com
+- **Phone/email**: 555-0100, <test@example.com>
 - **IDs**: 1000001, 1000002 (generic, not real CampMinder IDs)
 
 If you find real names in existing tests, replace them in the same PR.

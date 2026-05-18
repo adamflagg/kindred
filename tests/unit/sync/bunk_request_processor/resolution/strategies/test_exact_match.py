@@ -232,7 +232,7 @@ class TestExactMatchStrategy:
             },
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Erez Costello",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -300,7 +300,7 @@ class TestExactMatchParentSurname:
         assert result.person.last_name == "Johnson"
         # Slightly lower confidence for parent surname match
         assert result.confidence <= 0.90
-        assert result.metadata.get("match_type") == "parent_surname"
+        assert result.metadata.get("sub_method") == "parent_surname"
 
     def test_parent_surname_match_lower_confidence_than_direct(self, strategy, mock_repositories):
         """Test that parent surname matches have lower confidence than direct matches"""
@@ -343,8 +343,8 @@ class TestExactMatchParentSurname:
         assert not result.is_resolved
         assert result.person is None
 
-    def test_parent_surname_with_context_method(self, strategy, mock_repositories):
-        """Test parent surname matching with resolve_with_context method"""
+    def test_parent_surname_via_resolve(self, strategy, mock_repositories):
+        """Test parent surname matching with resolve method"""
         person_repo, _ = mock_repositories
 
         # Pre-loaded candidate with parent surname
@@ -358,13 +358,13 @@ class TestExactMatchParentSurname:
 
         person_repo.find_by_name.return_value = []
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             "Emma Smith", requester_cm_id=67890, session_cm_id=1000002, year=2025, candidates=[person], attendee_info={}
         )
 
         assert result.is_resolved
         assert result.person.cm_id == 12345
-        assert result.metadata.get("match_type") == "parent_surname"
+        assert result.metadata.get("sub_method") == "parent_surname"
 
 
 class TestExactMatchPreferredName:
@@ -386,38 +386,38 @@ class TestExactMatchPreferredName:
         person_repo.get_all_for_phonetic_matching.return_value = []
         return ExactMatchStrategy(person_repo, attendee_repo)
 
-    def test_resolve_with_context_matches_preferred_name(self, strategy):
+    def test_resolve_matches_preferred_name(self, strategy):
         """preferred_name should match when first_name doesn't."""
         candidates = [
             Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name="Nick"),
         ]
-        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Nick Garcia", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
 
-    def test_resolve_with_context_preferred_name_none_safe(self, strategy):
+    def test_resolve_preferred_name_none_safe(self, strategy):
         """Candidates with preferred_name=None should not crash."""
         candidates = [
             Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name=None),
         ]
-        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Nick Garcia", requester_cm_id=999, candidates=candidates)
         assert not result.is_resolved  # "Nick" != "Nicholas", no preferred_name
 
-    def test_resolve_with_context_first_name_still_works(self, strategy):
+    def test_resolve_first_name_still_works(self, strategy):
         """Standard first_name matching still works alongside preferred_name."""
         candidates = [
             Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name="Nick"),
         ]
-        result = strategy.resolve_with_context("Nicholas Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Nicholas Garcia", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
 
-    def test_resolve_with_context_preferred_name_case_insensitive(self, strategy):
+    def test_resolve_preferred_name_case_insensitive(self, strategy):
         """preferred_name matching should be case-insensitive via title()."""
         candidates = [
             Person(cm_id=100, first_name="Elizabeth", last_name="Chen", preferred_name="liz"),
         ]
-        result = strategy.resolve_with_context("Liz Chen", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Liz Chen", requester_cm_id=999, candidates=candidates)
         assert result.is_resolved
         assert result.person.cm_id == 100
 
@@ -426,12 +426,12 @@ class TestExactMatchPreferredName:
         candidates = [
             Person(cm_id=100, first_name="Nicholas", last_name="Garcia", preferred_name=""),
         ]
-        result = strategy.resolve_with_context("Nick Garcia", requester_cm_id=999, candidates=candidates)
+        result = strategy.resolve("Nick Garcia", requester_cm_id=999, candidates=candidates)
         assert not result.is_resolved
 
 
-class TestResolveWithContextSessionHandling:
-    """Tests for resolve_with_context: unknown vs different session distinction."""
+class TestResolveSessionHandling:
+    """Tests for resolve: unknown vs different session distinction."""
 
     @pytest.fixture
     def mock_repositories(self):
@@ -457,7 +457,7 @@ class TestResolveWithContextSessionHandling:
             # 1234568 NOT present — cancelled target absent from enrolled-only map
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Emma Johnson",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -479,7 +479,7 @@ class TestResolveWithContextSessionHandling:
             1234567: {"session_cm_id": 1000010},  # same session
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Ivy Smith",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -499,7 +499,7 @@ class TestResolveWithContextSessionHandling:
             1234567: {"session_cm_id": 1000020},  # different session
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Ivy Smith",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -522,7 +522,7 @@ class TestResolveWithContextSessionHandling:
             11444631: {"session_cm_id": 1235405, "session_cm_ids": [1235405]},
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Emily Shapiro",
             requester_cm_id=1000001,
             session_cm_id=1235405,
@@ -547,7 +547,7 @@ class TestResolveWithContextSessionHandling:
             },
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Erez Costello",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -570,7 +570,7 @@ class TestResolveWithContextSessionHandling:
             },
         }
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Erez Costello",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -586,7 +586,7 @@ class TestResolveWithContextSessionHandling:
         """No attendee_info provided → confidence 0.90 (existing behavior)."""
         target = Person(cm_id=1234567, first_name="Ivy", last_name="Smith")
 
-        result = strategy.resolve_with_context(
+        result = strategy.resolve(
             name="Ivy Smith",
             requester_cm_id=1000001,
             session_cm_id=1000010,
@@ -596,6 +596,93 @@ class TestResolveWithContextSessionHandling:
         )
 
         assert result.confidence == 0.90
+
+
+class TestParentSurnameSessionCmIds:
+    """Tests that _try_parent_surname_match consults session_cm_ids, not just session_cm_id."""
+
+    @pytest.fixture
+    def strategy(self):
+        person_repo = Mock()
+        attendee_repo = Mock()
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        person_repo.name_cache = None
+        person_repo.find_by_name.return_value = []
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_parent_surname_fast_path_uses_session_cm_ids(self, strategy):
+        """parent-surname fast path must check session_cm_ids, not just session_cm_id.
+
+        Bug: when the matched person has session_cm_id pointing to a *different* session
+        but session_cm_ids includes the requester's session, the match should be
+        confidence=0.90 (same-session), NOT confidence=0.80 (different-session).
+        """
+        # Camper "Emma Garcia" whose parent surname is "Johnson"
+        camper = Person(
+            cm_id=2000001,
+            first_name="Emma",
+            last_name="Garcia",
+            parent_names=json.dumps([{"first": "Liam", "last": "Johnson", "relationship": "Father"}]),
+        )
+        # Requester is in session 1000010
+        # Camper's primary session_cm_id is 1000020, but session_cm_ids includes 1000010
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            2000001: {
+                "session_cm_id": 1000020,  # primary session is different
+                "session_cm_ids": [1000020, 1000010],  # but multi-enrolled, includes requester's session
+            },
+        }
+
+        result = strategy.resolve(
+            name="Emma Johnson",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[camper],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 2000001
+        # Multi-enrolled camper IS in the same session — should use base confidence (0.90),
+        # not the penalized different-session confidence (0.80)
+        assert result.confidence == 0.90, (
+            f"Expected 0.90 (same-session via session_cm_ids) but got {result.confidence}. "
+            "Bug: _try_parent_surname_match only checks session_cm_id (singular)."
+        )
+
+    def test_parent_surname_fast_path_still_penalises_truly_different_session(self, strategy):
+        """When session_cm_ids has no overlap with requester's session, confidence stays 0.80."""
+        camper = Person(
+            cm_id=2000001,
+            first_name="Olivia",
+            last_name="Chen",
+            parent_names=json.dumps([{"first": "Wei", "last": "Smith", "relationship": "Mother"}]),
+        )
+        attendee_info = {
+            1000001: {"session_cm_id": 1000010},
+            2000001: {
+                "session_cm_id": 1000020,
+                "session_cm_ids": [1000020, 1000030],  # neither is requester's 1000010
+            },
+        }
+
+        result = strategy.resolve(
+            name="Olivia Smith",
+            requester_cm_id=1000001,
+            session_cm_id=1000010,
+            year=2026,
+            candidates=[camper],
+            attendee_info=attendee_info,
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 2000001
+        assert result.confidence == 0.80  # correctly penalised
 
 
 if __name__ == "__main__":

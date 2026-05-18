@@ -4,7 +4,7 @@ Analytics dashboard for camp enrollment, retention, and trends. Separate from th
 
 ## Architecture
 
-```
+```text
 Frontend Pages → React Query hooks → FastAPI Router → Domain Services → MetricsRepository → PocketBase
 ```
 
