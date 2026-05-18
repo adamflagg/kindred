@@ -658,7 +658,6 @@ export default function PostValidationResultsModal({
     })
   }, [statistics, impossibilityReport])
 
-  const hasIssues = issues.length > 0
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
   // KPI tile + section counts exclude suppressed types so the headline number

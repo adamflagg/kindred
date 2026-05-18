@@ -9,7 +9,9 @@ import type { PostCheckIssue } from '../components/issueClassifier'
 
 // Helper to build a minimal PostCheckIssue
 function issue(type: string, message: string, details?: Record<string, unknown>): PostCheckIssue {
-  return { type, severity: 'warning', message, details }
+  const base: PostCheckIssue = { type, severity: 'warning', message }
+  if (details !== undefined) base.details = details
+  return base
 }
 
 describe('formatBunkIssueDetail — capacity_violation', () => {
