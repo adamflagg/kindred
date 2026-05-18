@@ -404,17 +404,32 @@ def _se_req(requester: int, requestee: int, request_type: str = "bunk_with") -> 
     }
 
 
+def _run_score_evaluator(
+    stub: _ScoreEvalConfig,
+    requests: list[dict[str, Any]],
+    assignments: list[dict[str, Any]],
+    persons: list[dict[str, Any]],
+    bunks: list[dict[str, Any]],
+) -> Any:
+    """Install the stub via ConfigLoader.use so the centralized accessors in
+    score_evaluator._calculate_penalties (grade_spread_penalty, etc.) read
+    from it. Without this, CI without a seeded DB fails on missing keys."""
+    from bunking.config import ConfigLoader
+    from bunking.solver.score_evaluator import evaluate_scenario_score
+
+    with ConfigLoader.use(stub):  # type: ignore[arg-type]
+        return evaluate_scenario_score(requests, assignments, persons, bunks, config=stub)
+
+
 def test_score_evaluator_mutual_bunk_with_doubles_weight():
     """score_evaluator must apply the mutual boost — without this the third
     evaluator path silently undercounts mutual pairs vs. the solver and
     objective_evaluator. Both A↔B in the same bunk; default boost 2.0."""
-    from bunking.solver.score_evaluator import evaluate_scenario_score
-
     requests = [_se_req(1, 2), _se_req(2, 1)]
     assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
     persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
     bunks = [{"cm_id": 100, "max_size": 12}]
-    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+    result = _run_score_evaluator(_ScoreEvalConfig(), requests, assignments, persons, bunks)
 
     expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 2.0 * FIRST_REQUEST_MULTIPLIER)
     assert result.request_satisfaction_score == 2 * expected_per_request
@@ -422,13 +437,11 @@ def test_score_evaluator_mutual_bunk_with_doubles_weight():
 
 def test_score_evaluator_one_way_bunk_with_no_boost():
     """One-way request gets no boost — baseline slot-0 weight only."""
-    from bunking.solver.score_evaluator import evaluate_scenario_score
-
     requests = [_se_req(1, 2)]
     assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
     persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
     bunks = [{"cm_id": 100, "max_size": 12}]
-    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+    result = _run_score_evaluator(_ScoreEvalConfig(), requests, assignments, persons, bunks)
 
     expected = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
     assert result.request_satisfaction_score == expected
@@ -436,13 +449,11 @@ def test_score_evaluator_one_way_bunk_with_no_boost():
 
 def test_score_evaluator_disabled_boost_via_config_1():
     """objective.mutual_request_boost=1.0 disables the boost in-place."""
-    from bunking.solver.score_evaluator import evaluate_scenario_score
-
     requests = [_se_req(1, 2), _se_req(2, 1)]
     assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 100}]
     persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
     bunks = [{"cm_id": 100, "max_size": 12}]
-    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig(mutual_boost=1.0))
+    result = _run_score_evaluator(_ScoreEvalConfig(mutual_boost=1.0), requests, assignments, persons, bunks)
 
     expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
     assert result.request_satisfaction_score == 2 * expected_per_request
@@ -463,14 +474,12 @@ def test_mutual_boost_schema_floor_is_one():
 
 def test_score_evaluator_not_bunk_with_never_boosts():
     """Reciprocal not_bunk_with must NOT be boosted (symmetric by intent)."""
-    from bunking.solver.score_evaluator import evaluate_scenario_score
-
     requests = [_se_req(1, 2, "not_bunk_with"), _se_req(2, 1, "not_bunk_with")]
     # Place in different bunks so both not_bunk_with are satisfied.
     assignments = [{"person_cm_id": 1, "bunk_cm_id": 100}, {"person_cm_id": 2, "bunk_cm_id": 200}]
     persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}]
     bunks = [{"cm_id": 100, "max_size": 12}, {"cm_id": 200, "max_size": 12}]
-    result = evaluate_scenario_score(requests, assignments, persons, bunks, config=_ScoreEvalConfig())
+    result = _run_score_evaluator(_ScoreEvalConfig(), requests, assignments, persons, bunks)
 
     expected_per_request = int(BASE_REQUEST_WEIGHT * 1.0 * 1.0 * FIRST_REQUEST_MULTIPLIER)
     assert result.request_satisfaction_score == 2 * expected_per_request
