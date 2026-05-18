@@ -108,6 +108,7 @@ class MockBunkRequest:
     age_preference_target: str | None = None
     priority_keyword_detected: bool = False  # TG-3: True when parent text had an explicit priority keyword
     raw_text: str = ""  # TG-3: parent's original wording snippet
+    id: str | None = None  # PB record id, used for impossibility gating (#1520)
 
 
 @dataclass
@@ -904,6 +905,7 @@ def _mock_request(
     source,  # "family", "staff", or None — legacy column, derived via source_from_field post-#1142
     request_type="bunk_with",
     status="resolved",
+    id=None,
 ):
     return MockBunkRequest(
         requester_person_cm_id=requester,
@@ -912,6 +914,7 @@ def _mock_request(
         status=status,
         source_field=source_field,
         source=source,
+        id=id,
     )
 
 
@@ -2600,3 +2603,180 @@ def test_capacity_by_gender_aggregates_bunks_and_assignments():
     assert cap["female"]["assigned"] == 3  # 3 F campers assigned
     assert cap["male"]["capacity"] == 1 * DEFAULT_BUNK_CAPACITY  # 1 M bunk
     assert cap["male"]["assigned"] == 3
+
+
+# ---------------------------------------------------------------------------
+# #1520 — validator-side impossibility gating
+#
+# Mirrors the solver-side gating in PR #1463 (direct_solver._check_must_satisfy_one_violations).
+# Without this, an impossible parent request (cross-gender pair, oldest-grade kid
+# asking for "older", etc.) drags the post-check denominator down even though the
+# solver had no chance. The reference Taste 1 solve showed 152/166 (validator,
+# ungated) vs 151/155 (solver, gated) — the 11-request denominator delta is the
+# impossibility cohort.
+# ---------------------------------------------------------------------------
+
+
+def test_validator_gates_material_parent_counts_on_impossibility():
+    """When impossible_request_ids is provided, MP counts exclude impossibles
+    from BOTH numerator and denominator."""
+    session = _mock_session(cm_id="10000001", name="ImpossibilityGatingFixture")
+    persons = [_mock_person(str(cm), grade=5) for cm in (20001, 20002, 20003, 20004)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    # 20001+20002 together in 30001; 20003+20004 together in 30002.
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30002"),
+        _mock_assignment("20004", "30002"),
+    ]
+    # 4 MP requests with explicit ids:
+    #   r1: 20001→20002 satisfied
+    #   r2: 20003→20004 satisfied
+    #   r3: 20001→20003 unsatisfied
+    #   r4: 20001→9999  unsatisfied AND impossible (target not on roster)
+    requests = [
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family", id="r1"),
+        _mock_request("20003", "20004", SourceField.BUNK_REQUEST_FORM, "family", id="r2"),
+        _mock_request("20001", "20003", SourceField.BUNK_REQUEST_FORM, "family", id="r3"),
+        _mock_request("20001", "9999", SourceField.BUNK_REQUEST_FORM, "family", id="r4"),
+    ]
+
+    # Baseline (no gating): 4 total, 2 satisfied, rate 50%.
+    ungated = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    assert ungated.statistics.material_parent_requests == 4
+    assert ungated.statistics.satisfied_material_parent_requests == 2
+    assert ungated.statistics.material_parent_request_satisfaction_rate == 0.5
+
+    # Gated (r4 impossible): 3 total, 2 satisfied, rate 2/3.
+    gated = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"r4"},
+    )
+    assert gated.statistics.material_parent_requests == 3
+    assert gated.statistics.satisfied_material_parent_requests == 2
+    assert gated.statistics.material_parent_request_satisfaction_rate == pytest.approx(2 / 3)
+
+
+def test_validator_gates_total_and_staff_requests_on_impossibility():
+    """`total_requests = MP + staff` — gating must apply to both buckets so
+    `request_satisfaction_rate` reflects only solvable requests."""
+    session = _mock_session(cm_id="10000001", name="TotalGatingFixture")
+    persons = [_mock_person(str(cm), grade=5) for cm in (20001, 20002, 20003)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30002"),
+    ]
+    requests = [
+        # MP satisfied
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family", id="mp1"),
+        # MP impossible (target absent)
+        _mock_request("20001", "9999", SourceField.BUNK_REQUEST_FORM, "family", id="mp2"),
+        # Staff satisfied (not_bunk_with, different bunks)
+        _mock_request(
+            "20001",
+            "20003",
+            SourceField.STAFF_NOT_BUNK_WITH,
+            "staff",
+            request_type="not_bunk_with",
+            id="st1",
+        ),
+        # Staff impossible (target absent)
+        _mock_request(
+            "20001",
+            "9998",
+            SourceField.STAFF_NOT_BUNK_WITH,
+            "staff",
+            request_type="not_bunk_with",
+            id="st2",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"mp2", "st2"},
+    )
+    # MP: 1 total / 1 satisfied. Staff: 1 total / 1 satisfied.
+    assert result.statistics.material_parent_requests == 1
+    assert result.statistics.satisfied_material_parent_requests == 1
+    assert result.statistics.staff_requests == 1
+    assert result.statistics.satisfied_staff_requests == 1
+    assert result.statistics.total_requests == 2  # was 4 ungated
+    assert result.statistics.satisfied_requests == 2  # was 2 ungated
+    assert result.statistics.request_satisfaction_rate == 1.0
+
+
+def test_validator_gates_mp_camper_counts_on_impossibility():
+    """A camper whose ONLY MP request is impossible drops out of
+    mp_campers_total — matching solver-side `mp_campers_total` semantics."""
+    session = _mock_session(cm_id="10000001", name="CamperGatingFixture")
+    persons = [_mock_person(str(cm), grade=5) for cm in (20001, 20002, 20003)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30001"),
+        _mock_assignment("20003", "30002"),
+    ]
+    requests = [
+        # 20001's MP request is satisfied → counts toward mp_campers_total + satisfied.
+        _mock_request("20001", "20002", SourceField.BUNK_REQUEST_FORM, "family", id="r1"),
+        # 20003's ONLY MP request is impossible → must NOT count.
+        _mock_request("20003", "9999", SourceField.BUNK_REQUEST_FORM, "family", id="r2"),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"r2"},
+    )
+    # Only 20001 has a possible MP request.
+    assert result.statistics.mp_campers_total == 1
+    assert result.statistics.mp_campers_with_at_least_one_satisfied == 1
+    assert result.statistics.mp_campers_with_all_satisfied == 1
+
+
+def test_validator_no_gating_when_impossibility_set_is_none():
+    """Backward compat: omitting `impossible_request_ids` preserves legacy
+    (ungated) counts so existing callers and tests aren't affected."""
+    session = _mock_session(cm_id="10000001", name="DefaultBehaviorFixture")
+    persons = [_mock_person(str(cm), grade=5) for cm in (20001, 20002)]
+    bunks = [_mock_bunk("30001"), _mock_bunk("30002")]
+    assignments = [
+        _mock_assignment("20001", "30001"),
+        _mock_assignment("20002", "30002"),
+    ]
+    requests = [
+        # Unsatisfied MP request to an absent target — would be impossible at solver
+        # layer, but the validator (without gating) still counts it ungated.
+        _mock_request("20001", "9999", SourceField.BUNK_REQUEST_FORM, "family", id="r1"),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    assert result.statistics.material_parent_requests == 1
+    assert result.statistics.satisfied_material_parent_requests == 0
+    assert result.statistics.material_parent_request_satisfaction_rate == 0.0
+    assert result.statistics.mp_campers_total == 1
