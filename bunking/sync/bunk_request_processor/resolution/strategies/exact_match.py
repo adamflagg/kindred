@@ -173,23 +173,6 @@ class ExactMatchStrategy(BaseMatchStrategy):
         )
 
     @staticmethod
-    def _is_same_session_via_attendee_info(
-        person_cm_id: int,
-        session_cm_id: int,
-        attendee_info: dict[int, dict[str, Any]],
-    ) -> bool:
-        """Check if a person is enrolled in the given session, using pre-loaded attendee_info.
-
-        Prefers session_cm_ids (multi-enrollment) when available, falls back to singular
-        session_cm_id for backward compatibility.
-        """
-        info = attendee_info.get(person_cm_id, {})
-        match_sessions = info.get("session_cm_ids", [])
-        if match_sessions:
-            return session_cm_id in match_sessions
-        return info.get("session_cm_id") == session_cm_id
-
-    @staticmethod
     def _classify_session(
         person_sessions: list[int] | None,
         requester_session: int,
@@ -393,7 +376,8 @@ class ExactMatchStrategy(BaseMatchStrategy):
             if len(matches) == 1:
                 confidence = 0.90  # Base for parent surname match
                 if session_cm_id and attendee_info:
-                    if not self._is_same_session_via_attendee_info(matches[0].cm_id, session_cm_id, attendee_info):
+                    person_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids")
+                    if self._classify_session(person_sessions, session_cm_id) is not SessionMatch.SAME:
                         confidence = 0.80  # Lower for different session
 
                 return ResolutionResult(
