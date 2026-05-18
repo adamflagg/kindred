@@ -439,7 +439,7 @@ export default function SolverProgressModal({
                       {stats.request_validation.impossible_requests} requests skipped
                     </p>
                     <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-                      Campers not enrolled in this session
+                      Open Pre-Check for the breakdown by reason
                     </p>
                   </div>
                 </div>
