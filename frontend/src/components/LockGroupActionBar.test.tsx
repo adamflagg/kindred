@@ -9,7 +9,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const addCamperToGroup = vi.fn().mockResolvedValue(undefined)
+// Default: every add succeeds. Failure-path tests override with mockResolvedValueOnce / mockResolvedValue(false).
+const addCamperToGroup = vi.fn().mockResolvedValue(true)
 const onClearPending = vi.fn()
 const onGroupCreated = vi.fn()
 const createMock = vi.fn().mockResolvedValue({ id: 'new-group' })
@@ -67,7 +68,8 @@ import LockGroupActionBar from './LockGroupActionBar'
 import type { Camper } from '../types/app-types'
 
 beforeEach(() => {
-  addCamperToGroup.mockClear()
+  addCamperToGroup.mockReset()
+  addCamperToGroup.mockResolvedValue(true)
   onClearPending.mockClear()
   onGroupCreated.mockClear()
   createMock.mockClear()
@@ -165,6 +167,128 @@ describe('LockGroupActionBar — Add branch (selectedGroupId set)', () => {
       expect(addCamperToGroup).toHaveBeenCalled()
     })
     expect(createMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('LockGroupActionBar — add-mode partial-failure + re-entrancy guards', () => {
+  it('does NOT clear pending if any addCamperToGroup returns false', async () => {
+    mockSelectedGroupId = 'group-abc'
+    // First add succeeds, second fails (e.g. PB error already toasted internally).
+    addCamperToGroup.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    render(
+      <LockGroupActionBar
+        pendingCampers={pendingList as unknown as Camper[]}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add to group/i }))
+    await waitFor(() => {
+      expect(addCamperToGroup).toHaveBeenCalledTimes(2)
+    })
+    // Both campers were attempted, but pending must remain so the user can retry the failed one.
+    expect(onClearPending).not.toHaveBeenCalled()
+  })
+
+  it('clears pending only when every addCamperToGroup returns true', async () => {
+    mockSelectedGroupId = 'group-abc'
+    addCamperToGroup.mockResolvedValue(true)
+    render(
+      <LockGroupActionBar
+        pendingCampers={pendingList as unknown as Camper[]}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add to group/i }))
+    await waitFor(() => {
+      expect(addCamperToGroup).toHaveBeenCalledTimes(2)
+    })
+    expect(onClearPending).toHaveBeenCalledTimes(1)
+  })
+
+  it('is single-flight: rapid double-click does not duplicate the add loop', async () => {
+    mockSelectedGroupId = 'group-abc'
+    // Slow promises so the in-flight guard is observably engaged when the
+    // second click fires.
+    let resolveFirst: (v: boolean) => void = () => {}
+    let resolveSecond: (v: boolean) => void = () => {}
+    const firstPromise = new Promise<boolean>((r) => {
+      resolveFirst = r
+    })
+    const secondPromise = new Promise<boolean>((r) => {
+      resolveSecond = r
+    })
+    addCamperToGroup
+      .mockReturnValueOnce(firstPromise)
+      .mockReturnValueOnce(secondPromise)
+      .mockResolvedValue(true) // any further calls (there shouldn't be any) resolve true
+
+    render(
+      <LockGroupActionBar
+        pendingCampers={pendingList as unknown as Camper[]}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    const cta = screen.getByRole('button', { name: /add to group/i })
+    fireEvent.click(cta)
+    // Burst-click before the first batch settles.
+    fireEvent.click(cta)
+    fireEvent.click(cta)
+    // Drain the in-flight calls.
+    resolveFirst(true)
+    resolveSecond(true)
+    await waitFor(() => {
+      expect(onClearPending).toHaveBeenCalledTimes(1)
+    })
+    // Exactly one add per pending camper — extra clicks were dropped.
+    expect(addCamperToGroup).toHaveBeenCalledTimes(2)
+    // Create-group path must not have fired either.
+    expect(createMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('LockGroupActionBar — "(select at least 2)" helper visibility', () => {
+  const onePending = [pendingList[0]] as Camper[]
+
+  it('shows helper in CREATE mode with one pending camper', () => {
+    mockSelectedGroupId = null
+    render(
+      <LockGroupActionBar
+        pendingCampers={onePending}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    expect(screen.getByText(/select at least 2/i)).toBeInTheDocument()
+  })
+
+  it('HIDES helper in ADD mode with one pending camper (add-1 is valid)', () => {
+    mockSelectedGroupId = 'group-abc'
+    render(
+      <LockGroupActionBar
+        pendingCampers={onePending}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        year={2026}
+        onClearPending={onClearPending}
+        onGroupCreated={onGroupCreated}
+      />
+    )
+    expect(screen.queryByText(/select at least 2/i)).not.toBeInTheDocument()
   })
 })
 

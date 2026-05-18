@@ -88,7 +88,7 @@ interface AddMemberPickerProps {
   groupId: string
   sessionCampers: Camper[]
   getCamperLockGroup: (cmId: number) => unknown
-  addCamperToGroup: (camper: Camper, groupId: string) => Promise<void>
+  addCamperToGroup: (camper: Camper, groupId: string) => Promise<boolean>
   members: ExpandedMember[]
 }
 
@@ -106,11 +106,14 @@ function AddMemberPicker({
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null)
 
   // Determine if the group has a homogeneous gender so we can filter the picker.
+  // Gender lives on the attendee, not the person — matches getMemberGender() below.
   // Mixed-gender groups (AG cabin pattern) or empty groups show all eligible campers.
   const lockedGender = useMemo<string | null>(() => {
     const genders = new Set<string>()
     for (const m of members) {
-      const g = m.expand?.attendee?.expand?.person?.gender
+      const attendee = m.expand?.attendee
+      const g =
+        attendee && 'gender' in attendee ? (attendee as { gender?: string }).gender : undefined
       if (g) genders.add(g)
     }
     return genders.size === 1 ? (Array.from(genders)[0] ?? null) : null
@@ -127,12 +130,21 @@ function AddMemberPicker({
     [sessionCampers, getCamperLockGroup, lockedGender, filter]
   )
 
-  // Recompute position when opening
+  // Position recompute — runs on open, on window scroll (capture phase to
+  // catch the inner panel scroller), and on resize so the dropdown stays
+  // anchored to the trigger.
   useEffect(() => {
     if (!open) return
-    const rect = triggerRef.current?.getBoundingClientRect()
-    if (rect) {
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+    const recompute = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (rect) setDropdownPos({ top: rect.bottom + 4, left: rect.left })
+    }
+    recompute()
+    window.addEventListener('scroll', recompute, true)
+    window.addEventListener('resize', recompute)
+    return () => {
+      window.removeEventListener('scroll', recompute, true)
+      window.removeEventListener('resize', recompute)
     }
   }, [open])
 
@@ -151,6 +163,21 @@ function AddMemberPicker({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
+  // Escape dismisses the picker. Capture phase so we stop it before outer
+  // modal listeners (e.g. CamperDetailsPanel) react.
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.stopPropagation()
+      setOpen(false)
+      setFilter('')
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [open])
+
   const handleSelect = (camper: Camper) => {
     void addCamperToGroup(camper, groupId)
     setOpen(false)
@@ -165,6 +192,8 @@ function AddMemberPicker({
         onClick={() => setOpen((o) => !o)}
         className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
         aria-label="Add member"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         <Plus className="h-3.5 w-3.5" />
         Add member
@@ -175,6 +204,7 @@ function AddMemberPicker({
         createPortal(
           <div
             ref={dropdownRef}
+            data-panel="lock-group-picker"
             className="bg-background fixed z-50 w-[260px] rounded-lg border shadow-lg"
             style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
@@ -186,7 +216,7 @@ function AddMemberPicker({
               placeholder="Filter campers…"
               className="w-full rounded-t-lg border-b px-3 py-2 text-sm outline-none"
             />
-            <div className="max-h-48 overflow-y-auto">
+            <div role="listbox" className="max-h-48 overflow-y-auto">
               {eligible.length === 0 ? (
                 <p className="text-muted-foreground px-3 py-2 text-sm">
                   All session campers are already in a group.
@@ -196,6 +226,8 @@ function AddMemberPicker({
                   <button
                     key={c.id}
                     type="button"
+                    role="option"
+                    aria-selected={false}
                     onClick={() => handleSelect(c)}
                     className="hover:bg-muted w-full px-3 py-1.5 text-left text-sm"
                   >
@@ -256,7 +288,11 @@ function LockGroupPanel({
   }
 
   // Fetch lock groups for the scenario, session, and year
-  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+  const {
+    data: groups = [],
+    isLoading: groupsLoading,
+    isError: groupsError,
+  } = useQuery({
     queryKey: ['locked-groups-panel', scenarioId, sessionPbId, currentYear],
     queryFn: async () => {
       const result = await pb.collection('locked_groups').getList<LockedGroupsResponse>(1, 500, {
@@ -273,7 +309,11 @@ function LockGroupPanel({
   })
 
   // Fetch all group members with expanded attendee -> person and session
-  const { data: allMembers = [], isLoading: membersLoading } = useQuery({
+  const {
+    data: allMembers = [],
+    isLoading: membersLoading,
+    isError: membersError,
+  } = useQuery({
     queryKey: ['locked-group-members-panel', scenarioId, sessionPbId, groups.length],
     queryFn: async () => {
       if (groups.length === 0) return []
@@ -293,16 +333,19 @@ function LockGroupPanel({
     enabled: isOpen && groups.length > 0,
   })
 
-  // Group members by group ID
-  const membersByGroup = allMembers.reduce<Record<string, ExpandedMember[]>>(
-    (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
-      const groupId = member.group
-      acc[groupId] ??= []
-      acc[groupId].push(member)
-      return acc
-    },
-    {}
-  )
+  // Group members by group ID. Memoized so its object identity is stable
+  // across renders — sortedGroups and filteredGroups depend on it.
+  const membersByGroup = useMemo<Record<string, ExpandedMember[]>>(() => {
+    return allMembers.reduce<Record<string, ExpandedMember[]>>(
+      (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
+        const groupId = member.group
+        acc[groupId] ??= []
+        acc[groupId].push(member)
+        return acc
+      },
+      {}
+    )
+  }, [allMembers])
 
   // Helper to get age from member (year-aware for historical viewing)
   const getMemberAge = useCallback(
@@ -528,6 +571,7 @@ function LockGroupPanel({
   }
 
   const isLoading = groupsLoading || membersLoading
+  const isQueryError = groupsError || membersError
 
   if (!isOpen) return null
 
@@ -558,6 +602,18 @@ function LockGroupPanel({
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="text-muted-foreground p-6 text-center">Loading groups...</div>
+          ) : isQueryError ? (
+            <div data-panel-error className="p-6 text-center">
+              <AlertTriangle className="text-destructive mx-auto mb-4 h-12 w-12" />
+              <p className="text-destructive mb-2 font-medium">Failed to load friend groups</p>
+              <p className="text-muted-foreground text-sm">
+                {groupsError && membersError
+                  ? 'Both groups and members queries failed. Check your connection and try again.'
+                  : groupsError
+                    ? 'Could not load the friend groups list.'
+                    : 'Could not load group membership.'}
+              </p>
+            </div>
           ) : groups.length === 0 ? (
             <div className="p-6 text-center">
               <Users className="text-muted-foreground mx-auto mb-4 h-12 w-12" />

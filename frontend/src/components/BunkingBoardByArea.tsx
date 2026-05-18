@@ -32,6 +32,7 @@ import { Permission } from '../constants/permissions'
 import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
+import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -518,37 +519,12 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Check if any panel is open
   const isAnyPanelOpen = !!selectedCamperId || isLockPanelOpen
 
-  // Close panels when clicking on dead space (nav, page sides, board gaps)
-  // Uses document-level handler to avoid blocking right-clicks and other interactions
+  // Close panels when clicking on dead space (nav, page sides, board gaps).
+  // Predicate is shared with the unit test in clickoutsidePredicate.ts so the
+  // two cannot drift.
   const handleGlobalClick = useCallback(
     (e: MouseEvent) => {
-      // Ctrl/Meta-click is reserved for the friend-group selection workflow;
-      // never dismiss panels on those.
-      if (e.ctrlKey || e.metaKey) return
-
-      const target = e.target as HTMLElement
-
-      // Don't close if clicking on:
-      // 1. Either side panel or the bottom action bar ([data-panel="lock-action-bar"])
-      // 2. An interactive element (button, link, input, etc.)
-      // 3. Context menu, dropdown, or other UI elements
-      // 4. Camper/bunk cards (user is interacting with the board)
-      const isOnPanel = target.closest(
-        '[data-panel="camper-details"], [data-panel="lock-group"], [data-panel="lock-action-bar"]'
-      )
-      const isOnFloatingBadge = target.closest('[data-floating-badge]')
-      const isInteractive = target.closest(
-        'button, a, input, select, textarea, [role="button"], [role="menu"], [role="menuitem"]'
-      )
-      const isContextMenu = target.closest('[data-context-menu]')
-      const isModal = target.closest('[role="dialog"]')
-      const isCard = target.closest('[data-camper-card], [data-bunk-card]')
-
-      if (isOnPanel || isOnFloatingBadge || isInteractive || isContextMenu || isModal || isCard) {
-        return
-      }
-
-      // Close all panels with animation
+      if (shouldKeepPanelsOpen(e)) return
       requestAnimatedCloseDetails()
       requestAnimatedCloseLockPanel()
     },

@@ -7,8 +7,18 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Controls what useQuery returns — swap per test to inject group data.
+// Controls what each useQuery returns — swap per test. Splitting by queryKey
+// prevents the false-positive where groups and members queries share a fixture.
+//
+// `mockQueryData` is kept as a back-compat alias: tests that set it populate
+// BOTH groups and members (matches the legacy single-fixture behavior so old
+// tests keep working). New tests should prefer mockGroups / mockMembers
+// directly, plus mockGroupsState / mockMembersState for loading/error coverage.
+let mockGroups: unknown[] = []
+let mockMembers: unknown[] = []
 let mockQueryData: unknown[] = []
+let mockGroupsState: { isLoading?: boolean; isError?: boolean } = {}
+let mockMembersState: { isLoading?: boolean; isError?: boolean } = {}
 
 // Mock the lazy-loaded panel's React Query consumer.
 vi.mock('@tanstack/react-query', async () => {
@@ -16,7 +26,26 @@ vi.mock('@tanstack/react-query', async () => {
     await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query')
   return {
     ...actual,
-    useQuery: () => ({ data: mockQueryData, isLoading: false }),
+    useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+      const key = String(queryKey[0] ?? '')
+      if (key === 'locked-groups-panel') {
+        return {
+          data: mockGroups.length > 0 ? mockGroups : mockQueryData,
+          isLoading: mockGroupsState.isLoading ?? false,
+          isError: mockGroupsState.isError ?? false,
+          error: mockGroupsState.isError ? new Error('groups query failed') : null,
+        }
+      }
+      if (key === 'locked-group-members-panel') {
+        return {
+          data: mockMembers.length > 0 ? mockMembers : mockQueryData,
+          isLoading: mockMembersState.isLoading ?? false,
+          isError: mockMembersState.isError ?? false,
+          error: mockMembersState.isError ? new Error('members query failed') : null,
+        }
+      }
+      return { data: [], isLoading: false, isError: false, error: null }
+    },
     useMutation: (options: { onSuccess?: (data: unknown, variables: unknown) => void }) => ({
       mutate: (variables: unknown) => {
         options?.onSuccess?.(undefined, variables)
@@ -67,6 +96,10 @@ import LockGroupPanel from './LockGroupPanel'
 
 beforeEach(() => {
   mockQueryData = []
+  mockGroups = []
+  mockMembers = []
+  mockGroupsState = {}
+  mockMembersState = {}
   mockContext.isActionBarVisible = false
   mockContext.selectedGroupId = null
   mockContext.getCamperLockGroup = () => null
@@ -182,8 +215,8 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /add member/i }))
     // Liam should be selectable; Emma should not appear in the dropdown
-    expect(screen.queryByRole('button', { name: /emma johnson/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /liam garcia/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /emma johnson/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /liam garcia/i })).toBeInTheDocument()
   })
 
   it('invokes addCamperToGroup with the selected camper + group id', async () => {
@@ -203,7 +236,7 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /add member/i }))
-    fireEvent.click(screen.getByRole('button', { name: /liam garcia/i }))
+    fireEvent.click(screen.getByRole('option', { name: /liam garcia/i }))
     await Promise.resolve()
     expect(addCamperToGroup).toHaveBeenCalledWith(liam, 'group-abc')
   })
@@ -253,22 +286,25 @@ describe('LockGroupPanel — ＋ Add member picker', () => {
 })
 
 describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
-  // Member records injected into mockQueryData so membersByGroup['group-abc'] is populated.
-  // The mock returns the same data for both the groups and members queries, so both the
-  // group object and member objects appear in `groups` — member records have no `name`/`color`
-  // and render as additional unnamed group cards, but that doesn't affect picker assertions.
+  // Gender lives on the attendee (matches getMemberGender() and the rest of
+  // the codebase). The picker's lockedGender derivation reads attendee.gender
+  // directly — not person.gender — so these fixtures match real PB data.
   const maleOnlyMembers = [
     {
       id: 'mem-1',
       group: 'group-abc',
       attendee: 'att-1',
-      expand: { attendee: { expand: { person: { id: 'p1', cm_id: 9001, gender: 'M' } } } },
+      expand: {
+        attendee: { gender: 'M', expand: { person: { id: 'p1', cm_id: 9001 } } },
+      },
     },
     {
       id: 'mem-2',
       group: 'group-abc',
       attendee: 'att-2',
-      expand: { attendee: { expand: { person: { id: 'p2', cm_id: 9002, gender: 'M' } } } },
+      expand: {
+        attendee: { gender: 'M', expand: { person: { id: 'p2', cm_id: 9002 } } },
+      },
     },
   ]
   const mixedMembers = [
@@ -276,19 +312,24 @@ describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
       id: 'mem-3',
       group: 'group-abc',
       attendee: 'att-3',
-      expand: { attendee: { expand: { person: { id: 'p3', cm_id: 9003, gender: 'M' } } } },
+      expand: {
+        attendee: { gender: 'M', expand: { person: { id: 'p3', cm_id: 9003 } } },
+      },
     },
     {
       id: 'mem-4',
       group: 'group-abc',
       attendee: 'att-4',
-      expand: { attendee: { expand: { person: { id: 'p4', cm_id: 9004, gender: 'F' } } } },
+      expand: {
+        attendee: { gender: 'F', expand: { person: { id: 'p4', cm_id: 9004 } } },
+      },
     },
   ]
   const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
 
-  it('locks picker to "M" when all current members are male', () => {
-    mockQueryData = [testGroup, ...maleOnlyMembers]
+  it('locks picker to "M" when all current members are male (gender on attendee)', () => {
+    mockGroups = [testGroup]
+    mockMembers = maleOnlyMembers
     mockContext.getCamperLockGroup = () => null
     render(
       <LockGroupPanel
@@ -304,12 +345,13 @@ describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /add member/i }))
-    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /sophia lee/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /sophia lee/i })).not.toBeInTheDocument()
   })
 
   it('does NOT lock picker gender when group has mixed-gender members (AG cabin)', () => {
-    mockQueryData = [testGroup, ...mixedMembers]
+    mockGroups = [testGroup]
+    mockMembers = mixedMembers
     mockContext.getCamperLockGroup = () => null
     render(
       <LockGroupPanel
@@ -325,12 +367,13 @@ describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /add member/i }))
-    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sophia lee/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /sophia lee/i })).toBeInTheDocument()
   })
 
   it('does NOT lock picker gender when group is empty', () => {
-    mockQueryData = [testGroup] // no members injected → membersByGroup['group-abc'] = []
+    mockGroups = [testGroup]
+    mockMembers = [] // membersByGroup['group-abc'] = []
     mockContext.getCamperLockGroup = () => null
     render(
       <LockGroupPanel
@@ -346,8 +389,198 @@ describe('LockGroupPanel — gender-scoped AddMemberPicker', () => {
       />
     )
     fireEvent.click(screen.getByRole('button', { name: /add member/i }))
-    expect(screen.getByRole('button', { name: /riley sam/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /sophia lee/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /sophia lee/i })).toBeInTheDocument()
+  })
+})
+
+describe('LockGroupPanel — AddMemberPicker: gender source regression (#1499 issue #2)', () => {
+  // Regression for the bug where lockedGender derived from person.gender
+  // instead of attendee.gender. Real PB data has gender at the attendee level;
+  // person-level gender is not populated, so the picker silently failed to
+  // gender-scope its candidates.
+  const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
+
+  it('ignores person.gender — picker is NOT gender-scoped when only person.gender is present', () => {
+    mockGroups = [testGroup]
+    // Note: gender ONLY on person; attendee has no gender field. Picker must
+    // treat this as "no locked gender" since the canonical source is empty.
+    mockMembers = [
+      {
+        id: 'mem-1',
+        group: 'group-abc',
+        attendee: 'att-1',
+        expand: { attendee: { expand: { person: { id: 'p1', cm_id: 9001, gender: 'M' } } } },
+      },
+    ]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[
+          { id: 'pb-1', person_cm_id: 1000001, name: 'Riley Sam', gender: 'M' } as never,
+          { id: 'pb-2', person_cm_id: 1000002, name: 'Sophia Lee', gender: 'F' } as never,
+        ]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    // Both genders visible — person.gender is NOT the canonical source.
+    expect(screen.getByRole('option', { name: /riley sam/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /sophia lee/i })).toBeInTheDocument()
+  })
+})
+
+describe('LockGroupPanel — query error states (#1499 issue #3)', () => {
+  it('shows an error branch when the groups query fails', () => {
+    mockGroupsState = { isError: true }
+    render(
+      <LockGroupPanel isOpen={true} onClose={() => {}} sessionPbId="sess-1" scenarioId="scn-1" />
+    )
+    const errorPanel = document.querySelector('[data-panel-error]')
+    expect(errorPanel).not.toBeNull()
+    expect(errorPanel?.textContent).toMatch(/failed to load friend groups/i)
+  })
+
+  it('shows an error branch when the members query fails', () => {
+    mockMembersState = { isError: true }
+    render(
+      <LockGroupPanel isOpen={true} onClose={() => {}} sessionPbId="sess-1" scenarioId="scn-1" />
+    )
+    const errorPanel = document.querySelector('[data-panel-error]')
+    expect(errorPanel).not.toBeNull()
+    expect(errorPanel?.textContent).toMatch(/failed to load friend groups/i)
+  })
+
+  it('does NOT show empty-state when error is set', () => {
+    mockGroupsState = { isError: true }
+    // groups stays empty — would have rendered "No friend groups yet"
+    render(
+      <LockGroupPanel isOpen={true} onClose={() => {}} sessionPbId="sess-1" scenarioId="scn-1" />
+    )
+    expect(screen.queryByText(/no friend groups yet/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('LockGroupPanel — AddMemberPicker a11y + portal tagging (#1499 issues #6, #8)', () => {
+  const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
+
+  it('trigger button exposes aria-haspopup="listbox" and aria-expanded toggles with open state', () => {
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    const trigger = screen.getByRole('button', { name: /add member/i })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'listbox')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('Escape key closes the open picker', () => {
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    expect(screen.getByPlaceholderText(/filter campers/i)).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByPlaceholderText(/filter campers/i)).not.toBeInTheDocument()
+  })
+
+  it('portaled dropdown carries data-panel="lock-group-picker" so the board click-outside whitelists it', () => {
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /add member/i }))
+    const dropdown = document.querySelector('[data-panel="lock-group-picker"]')
+    expect(dropdown).not.toBeNull()
+  })
+})
+
+describe('LockGroupPanel — AddMemberPicker reposition on scroll (#1499 issue #5)', () => {
+  const testGroup = { id: 'group-abc', name: 'The Lovins', color: '#ec4899' }
+
+  it('recomputes dropdown position when window scrolls', () => {
+    mockGroups = [testGroup]
+    mockContext.getCamperLockGroup = () => null
+    render(
+      <LockGroupPanel
+        isOpen={true}
+        onClose={() => {}}
+        sessionPbId="sess-1"
+        scenarioId="scn-1"
+        selectedGroupId="group-abc"
+        sessionCampers={[{ id: 'pb-1', person_cm_id: 1000001, name: 'Emma Johnson' } as never]}
+      />
+    )
+    const trigger = screen.getByRole('button', { name: /add member/i })
+    // Force a non-zero rect from getBoundingClientRect so we can observe a change.
+    const originalGetRect = trigger.getBoundingClientRect.bind(trigger)
+    trigger.getBoundingClientRect = () =>
+      ({
+        top: 100,
+        bottom: 120,
+        left: 200,
+        right: 260,
+        width: 60,
+        height: 20,
+        x: 200,
+        y: 100,
+        toJSON: () => ({}),
+      }) as DOMRect
+    fireEvent.click(trigger)
+    const dropdownBefore = document.querySelector('[data-panel="lock-group-picker"]') as HTMLElement
+    expect(dropdownBefore).not.toBeNull()
+    const topBefore = dropdownBefore.style.top
+    expect(topBefore).toBe('124px') // bottom (120) + 4
+
+    // Simulate scroll: trigger has moved up to y=50
+    trigger.getBoundingClientRect = () =>
+      ({
+        top: 50,
+        bottom: 70,
+        left: 200,
+        right: 260,
+        width: 60,
+        height: 20,
+        x: 200,
+        y: 50,
+        toJSON: () => ({}),
+      }) as DOMRect
+    fireEvent.scroll(window)
+    const dropdownAfter = document.querySelector('[data-panel="lock-group-picker"]') as HTMLElement
+    expect(dropdownAfter.style.top).toBe('74px') // bottom (70) + 4
+
+    trigger.getBoundingClientRect = originalGetRect
   })
 })
 

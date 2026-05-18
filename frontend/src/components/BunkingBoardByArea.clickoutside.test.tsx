@@ -4,38 +4,14 @@
  *     (those keys are reserved for the friend-group selection workflow).
  *   - Clicks landing on a [data-panel="lock-action-bar"] element must NOT dismiss
  *     either side panel.
+ *   - Clicks landing on a [data-panel="lock-group-picker"] element (the portaled
+ *     AddMemberPicker dropdown) must NOT dismiss either side panel.
  *
- * Both behaviors are wired in BunkingBoardByArea.handleGlobalClick.
+ * Both behaviors are wired in BunkingBoardByArea.handleGlobalClick via the
+ * shared shouldKeepPanelsOpen predicate.
  */
 import { describe, it, expect } from 'vitest'
-
-/**
- * Mirrors the predicate inside BunkingBoardByArea.handleGlobalClick.
- * If you change either one, change the other.
- *
- * Returns true iff the click should NOT trigger a panel dismiss.
- */
-function shouldKeepPanelsOpen(e: {
-  ctrlKey: boolean
-  metaKey: boolean
-  target: HTMLElement
-}): boolean {
-  if (e.ctrlKey || e.metaKey) return true
-  const t = e.target
-  const isOnPanel = t.closest(
-    '[data-panel="camper-details"], [data-panel="lock-group"], [data-panel="lock-action-bar"]'
-  )
-  const isOnFloatingBadge = t.closest('[data-floating-badge]')
-  const isInteractive = t.closest(
-    'button, a, input, select, textarea, [role="button"], [role="menu"], [role="menuitem"]'
-  )
-  const isContextMenu = t.closest('[data-context-menu]')
-  const isModal = t.closest('[role="dialog"]')
-  const isCard = t.closest('[data-camper-card], [data-bunk-card]')
-  return Boolean(
-    isOnPanel || isOnFloatingBadge || isInteractive || isContextMenu || isModal || isCard
-  )
-}
+import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 
 describe('BunkingBoardByArea click-outside predicate', () => {
   it('keeps panels open on Ctrl+click', () => {
@@ -63,6 +39,19 @@ describe('BunkingBoardByArea click-outside predicate', () => {
     const result = shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: child })
     expect(result).toBe(true)
     bar.remove()
+  })
+
+  it('keeps panels open on click inside the AddMemberPicker portal (lock-group-picker)', () => {
+    const portal = document.createElement('div')
+    portal.setAttribute('data-panel', 'lock-group-picker')
+    // Non-interactive child: a span. Without the data-panel whitelist this
+    // would close the panels.
+    const child = document.createElement('span')
+    portal.appendChild(child)
+    document.body.appendChild(portal)
+    const result = shouldKeepPanelsOpen({ ctrlKey: false, metaKey: false, target: child })
+    expect(result).toBe(true)
+    portal.remove()
   })
 
   it('closes panels on plain click on empty board area', () => {

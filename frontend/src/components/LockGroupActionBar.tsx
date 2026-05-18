@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useCallback } from 'react'
+import { Fragment, useState, useMemo, useCallback, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Users, AlertTriangle, Heart } from 'lucide-react'
 import clsx from 'clsx'
@@ -253,13 +253,30 @@ function LockGroupActionBar({
     }
   }
 
+  // Re-entrancy guard: ref for synchronous check (state would race with
+  // React's render scheduling on rapid double-clicks), state for the
+  // disabled-button re-render.
+  const isAddingRef = useRef(false)
+  const [isAddingToExisting, setIsAddingToExisting] = useState(false)
+
   const handleAddToExisting = useCallback(async () => {
-    if (!selectedGroup) return
-    for (const camper of pendingCampers) {
-      // addCamperToGroup already handles conflict-confirm + toasts + invalidations
-      await addCamperToGroup(camper, selectedGroup.id)
+    if (!selectedGroup || isAddingRef.current) return
+    isAddingRef.current = true
+    setIsAddingToExisting(true)
+    try {
+      let allSucceeded = true
+      for (const camper of pendingCampers) {
+        // addCamperToGroup handles conflict-confirm + toasts + invalidations
+        // and returns false on any "didn't happen" outcome (cancellation,
+        // PB failure, etc.). Only clear pending if every add confirmed.
+        const ok = await addCamperToGroup(camper, selectedGroup.id)
+        if (!ok) allSucceeded = false
+      }
+      if (allSucceeded) onClearPending()
+    } finally {
+      isAddingRef.current = false
+      setIsAddingToExisting(false)
     }
-    onClearPending()
   }, [selectedGroup, pendingCampers, addCamperToGroup, onClearPending])
 
   // Don't show if no pending campers
@@ -316,7 +333,7 @@ function LockGroupActionBar({
                   )}
                 </span>
               </div>
-              {pendingCampers.length < 2 && (
+              {!isAddMode && pendingCampers.length < 2 && (
                 <span className="text-muted-foreground text-sm">(select at least 2)</span>
               )}
               {isOverLimit && (
@@ -374,7 +391,7 @@ function LockGroupActionBar({
               {isAddMode && selectedGroup ? (
                 <button
                   onClick={() => void handleAddToExisting()}
-                  disabled={pendingCampers.length === 0}
+                  disabled={pendingCampers.length === 0 || isAddingToExisting}
                   className="text-primary-foreground inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ backgroundColor: selectedGroup.color }}
                 >
