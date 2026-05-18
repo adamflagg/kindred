@@ -177,7 +177,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             person=matches[0],
                             confidence=0.90,
                             method=self.name,
-                            metadata={"match_type": "unique", "no_session_info": True},
+                            metadata={"match_type": "unique", "session_match": "unknown"},
                         )
                 else:
                     return ResolutionResult(
