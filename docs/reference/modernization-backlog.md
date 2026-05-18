@@ -19,7 +19,11 @@ Reference audit of modern language/tooling features available to Kindred but not
 
 ### Deferred to its own PR
 
-- **`ruff.toml:21`** — `target-version` is still `py312` despite `pyproject.toml` requiring `>=3.14`. Bumping to `py314` activates rules (UP037 quoted annotations, UP043 unnecessary `Generator[..., None, None]` defaults) that fire on ~30+ existing test files. This should be done as **the first follow-up PR** (bump + `ruff check --fix` in one commit). Kept separate so the docs PR stays docs-only.
+**Bundle: "Tell our tools we're on Python 3.14"** — ship these three together as **the first follow-up PR**. All three address the same root cause (tools assuming an older Python and flagging valid 3.14 syntax as errors). Kept separate from the docs PR so it stays docs-only.
+
+1. **`ruff.toml:21`** — `target-version` is still `py312` despite `pyproject.toml` requiring `>=3.14`. Bumping to `py314` activates rules (UP037 quoted annotations, UP043 unnecessary `Generator[..., None, None]` defaults) that fire on ~30+ existing test files. Do bump + `ruff check --fix` in one commit.
+2. **Add `.coderabbit.yaml` with Python-version `path_instructions`** — CodeRabbit's LLM keeps flagging modern 3.14 syntax (PEP 758 `except A, B:` without parens, PEP 649 bare annotations, PEP 695 generic syntax, `dict[str, X]` generics, `typing.TypeIs`, `asyncio.TaskGroup`) as Python 2.x errors. The right fix is a `reviews.path_instructions` block scoped to `**/*.py` that names the codebase's Python floor and the specific PEPs not to flag (20k-char budget per entry; safer than burying the note in CLAUDE.md). Schema: `docs.coderabbit.ai/reference/configuration` → `reviews.path_instructions`.
+3. **Add `AGENTS.md` at repo root** — CodeRabbit auto-scans `**/AGENTS.md` via `knowledge_base.code_guidelines` (alongside `**/CLAUDE.md`, `.cursorrules`, `.windsurfrules`, etc.). AGENTS.md is the cross-agent convention — same Python-version note benefits Codex, Cursor, Copilot, and future agents. The repo currently has neither file. Companion to #2, not a replacement: `.coderabbit.yaml` is review-scoped and harder for the reviewer model to overlook; AGENTS.md is the durable cross-agent home for the same facts.
 
 ### Outstanding quick check
 
