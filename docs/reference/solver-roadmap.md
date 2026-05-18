@@ -20,7 +20,7 @@ only) once individual streams are picked up.
 
 > Supersedes the original "Suggested order" section. The Stream sections
 > below are the detailed *what / why / how* reference; this section is the
-> dependency-ordered *when*, with issue numbers. Updated 2026-05-14.
+> dependency-ordered *when*, with issue numbers. Updated 2026-05-17.
 
 ### Work item → issue → status
 
@@ -33,21 +33,26 @@ only) once individual streams are picked up.
 | Stream 6 — pre-check impossibility framework | (in #1379) | #1391 | ✅ shipped 2026-05-14 |
 | Sat-var unification | #1395 | #1427 | ✅ shipped 2026-05-14 |
 | Stream 6 substream — entirely-impossible MP campers in pre-check + "Acceptable" denominator fix | #1428 | #1429 | ✅ shipped 2026-05-14 |
-| **Stream 2 Tier 2 — plateau-diagnostic metrics** | none (spec in-doc) | #1436 | 🔵 **Phase 2 — in review** |
-| Stream 4 — mutual-request boost | #1382 | — | ⬜ Phase 3 |
+| Stream 2 Tier 2 — plateau-diagnostic metrics | none (spec in-doc) | #1436 | ✅ shipped 2026-05-14 |
+| Golden sat-var ↔ predicate alignment test | #1398 | #1434 | ✅ shipped 2026-05-14 (Option 2 — bunk_with/not_bunk_with only) |
+| Retire `solution.calculate_satisfied_requests` | #1397 | #1438 | ✅ shipped 2026-05-15 |
+| **Stream 4 — mutual-request boost** | #1382 | — | ⬜ **Phase 3 — next build** |
 | Stream 3 — variable-count attack surface | #1381 | — | ⬜ Phase 4 (re-scope first) |
-| Golden sat-var ↔ predicate alignment test | #1398 | #1434 | 🔵 in review (Option 2 — bunk_with/not_bunk_with only) |
-| Retire `solution.calculate_satisfied_requests` | #1397 | — | ⬜ pairs with #1398 |
 | Penalty-driven MP-coverage investigation | #1396 | — | ⬜ low urgency |
 | Audit `direct_solver` for hand-rolled impossibility logic | #1426 | — | ⬜ unblocked (#1429 merged) |
+| Consolidate parallel solver models (`bunking/models.py` vs `bunking/models_v2.py`) | #1451 | — | ⬜ surfaced 2026-05-15 during priority-deletion scoping; non-blocking but every per-domain cleanup re-discovers the same V1↔V2 drift |
 | Schematize `grade_spread.max_spread` | #1424 | — | ⬜ small cleanup, anytime |
 | Schematize/remove `negative_requests.hard_constraint_threshold` (dead `not_bunk_with` hard branch) | #1432 | — | ⬜ cleanup (sibling of #1424) |
 | age_preference `sat_var` built-but-discarded + non-MP age_preference unmodeled | #1433 | — | ⬜ cleanup; prereq for #1398 age_preference coverage |
+| Separate red "totally impossible MP campers" chip on Solver Debug pre-check button | #1440 | — | ⬜ debug-UX polish |
+| Make camper names click-through in impossibility modals + replace "fix parent input" copy | #1441 | — | ⬜ staff-UX polish |
+| Exclude impossible requests from `all_camper_rate` ("Optimized") + surface in post-check modal | #1442 | — | ⬜ symmetry with #1429 + post-solve visibility |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
 Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
-where a tracking issue exists. Phase 2 (Tier 2 metrics) is being implemented
-without an issue — its full spec lives in the Stream 2 section below.
+where a tracking issue exists. Phase 2 (Tier 2 metrics) shipped without a
+tracking issue — its full spec lived in the Stream 2 section and the PR
+(#1436) carried it directly.
 
 ### Phases
 
@@ -63,8 +68,8 @@ rollup as single source of truth, camper-level surfacing in the pre-validate
 modal, and the "Acceptable" metric denominator fixed to exclude
 structurally-impossible campers.
 
-**Phase 2 — Tier 2 metrics (IN REVIEW — PR #1436).** Scoped to three
-plateau-diagnostic metrics only: **best-bound trajectory, LP root gap,
+**Phase 2 — Tier 2 metrics (DONE — #1436, shipped 2026-05-14).** Scoped to
+three plateau-diagnostic metrics only: **best-bound trajectory, LP root gap,
 presolve compression ratio.** *Not* the full Tier 2 list — per-sub-solver
 wall time / symmetry flag / domain-size distribution defer until a specific
 question demands them (the dropped PR3 badges are the cautionary tale:
@@ -73,18 +78,18 @@ remaining solver problem is the **plateau** — `objective_value` flattens by
 ~60 s and only the *bound* moves after; Tier 1 cannot distinguish
 "converging slowly" from "stuck", best-bound trajectory can. Phase 2
 hard-unblocks Phase 4 and makes Phase 3 measurable. **No tracking issue** —
-the three-metric spec is fully captured in the Stream 2 section below, so
-the implementation PR carries it directly rather than re-deriving from a
-filed issue. (Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on
-Tier 1 alone; the remaining Tier 2/Tier 3 metrics stay tracked in the
-Stream 2 tables and are picked up only when a specific question demands them.)
+the three-metric spec lived in the Stream 2 section below, so the
+implementation PR carried it directly rather than re-deriving from a filed
+issue. (Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed on Tier 1
+alone; the remaining Tier 2/Tier 3 metrics stay tracked in the Stream 2
+tables and are picked up only when a specific question demands them.)
 
-**Phase 3 — Mutual-request boost (the build — Stream 4 / #1382).** Highest-
+**Phase 3 — Mutual-request boost (NEXT BUILD — Stream 4 / #1382).** Highest-
 leverage plateau intervention: reshapes the objective toward reciprocated
 pairs so that when Stage 4's hard constraint binds, it preferentially honors
-mutual requests. Well-scoped (~80–120 LOC). Soft-gated on Phase 2 — without
-best-bound trajectory you can't tell whether it broke the plateau or just
-shuffled local optima.
+mutual requests. Well-scoped (~80–120 LOC). Phase 2's best-bound trajectory
+is now in place, so a Phase 3 sweep can be evaluated against a real
+"converging vs. stuck" signal rather than just final objective shuffle.
 
 **Phase 4 — Compound & consolidate.** Stream 3 variable-count attack
 (#1381), **re-scoped first**: #1391 + #1427 already removed `both_in_bunk`
@@ -94,10 +99,10 @@ gender filter) is the main remaining win, and Phase 2's compression-ratio
 metric tells you exactly what is left to cut. Plus the Group 55 tail
 (#1396, #1397) and Stream 6 substreams (#1426 audit, then 6a–6f).
 
-**Parallel / immediate (not gated):** #1398 golden alignment test — do it
-now while #1427 is fresh; it is the drift defense for the sat-var encoding
-that just changed, and #1397 pairs with it. #1424 (`grade_spread.max_spread`
-schematize) is a small standalone cleanup that can land anytime.
+**Parallel / immediate (not gated):** #1398 golden alignment test shipped in
+#1434 (2026-05-14); #1397 retire-`calculate_satisfied_requests` shipped in
+#1438 (2026-05-15). #1424 (`grade_spread.max_spread` schematize) remains a
+small standalone cleanup that can land anytime.
 
 ---
 
@@ -301,8 +306,8 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 
 - **#1395** — `refactor(solver): unify bunk-request sat vars + remove the orphaned one-way helper`. Behaviour-neutral cleanup: deleted the orphaned one-way `add_bunk_request_satisfaction_vars` (dead since #1391 removed `must_satisfy.py`), added the canonical bidirectional `get_or_create_request_sat_var`, and unified `add_objective` + `parent_paramount` onto one shared `request_satisfied_vars` map (~250 fewer duplicate BoolVars on S2). The "free money" framing was stale — the objective was never falsifiable; see the Stream 1 "Reality (#1391)" correction above.
 - **#1396** — `investigation: was historical MP coverage actually penalty-driven?` Three counterfactual experiments to determine whether the 95.73% pre-Stage-4 MP rate came from the soft penalty or from cluster constraints emergently placing friends.
-- **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Cleanup of `solution.py` to delegate to `bunking.satisfaction.predicate`.
-- **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Deferred from #1391 Task 9 (no integration fixture infrastructure).
+- **#1397** — `refactor(solver): retire solution.calculate_satisfied_requests + audit calculate_field_level_stats`. Shipped 2026-05-15 in PR #1438: `solution.py` reduced from ~187 lines to a thin shim; satisfaction computation delegated through a new `bunking/satisfaction/batch.py` helper; `calculate_field_level_stats` deleted.
+- **#1398** — `test(solver): golden alignment test between solve-time sat vars and post-solve predicate`. Shipped 2026-05-14 in PR #1434 (Option 2 — bunk_with/not_bunk_with only; age_preference deferred behind #1433).
 - **#1424** — `refactor(solver): schematize constraint.grade_spread.max_spread`. The key is read in 4 sites but absent from `CONFIG_SCHEMA`; each read leans on a `default=` to swallow the `UnknownKeyError`. Either schematize it or replace with a named constant.
 
 ---
@@ -310,14 +315,13 @@ Tracking: #1379 (closed by #1391 on 2026-05-13).
 ## Stream 2 — Solver Debug Metrics Expansion (Tier 1 + Tier 2)
 
 **Status:** Tier 1 **shipped** — #1380 / PR #1385 (core metrics) and #1388 /
-PR #1425 (per-`RequestBucket` split). Tier 2 — **Phase 2, in review (PR #1436)** (see
-"Status & phased sequencing" above). Scoped to three plateau-diagnostic
-metrics: best-bound trajectory, LP root gap, presolve compression ratio.
-Implemented **without a tracking issue** — Tier 2 was orphaned when #1380
-("Tier 1 + Tier 2") closed on Tier 1 alone, and the three-metric spec is
-fully captured here, so the PR carries it directly. The rest of the Tier 2
-table and the Tier 3 list below stay tracked here and defer until a specific
-question demands them.
+PR #1425 (per-`RequestBucket` split). Tier 2 — **shipped** in PR #1436
+(2026-05-14). Scoped to three plateau-diagnostic metrics: best-bound
+trajectory, LP root gap, presolve compression ratio. Implemented **without a
+tracking issue** — Tier 2 was orphaned when #1380 ("Tier 1 + Tier 2") closed
+on Tier 1 alone, and the three-metric spec lived here, so the PR carried it
+directly. The rest of the Tier 2 table and the Tier 3 list below stay
+tracked here and defer until a specific question demands them.
 
 ### Motivation
 
@@ -744,9 +748,13 @@ predicate registered. Adding a new hard constraint without one fails CI.
 `POST /api/solver/pre-validate` response gains a structured
 `impossibility_report` field replacing the legacy
 `statistics.unsatisfiable_requests`. `PreValidationResultsModal` reads
-the new shape: friendly prose for staff (default), reason-coded
-detail tables for admins (`BUNKING_DEBUG` permission). A chip on
-`SolverDebugPage.SweepPanel` opens the same modal for debug use.
+the new shape and renders both the staff-friendly prose **and** the
+reason-coded detail tables for every viewer — the originally-spec'd
+"`BUNKING_DEBUG` permission" gate never landed (no such permission
+exists in the codebase as of 2026-05-15). The split-view design is
+deferred until a real need for admin-only detail surfaces; the
+detail-table-only path is reachable via the SolverDebugPage chip
+which opens `SolverDebugImpossibilityModal` (the debug variant).
 
 ### Why this is its own stream
 
@@ -852,6 +860,40 @@ Superseded by **"Status & phased sequencing"** near the top of this doc
 - **Variable-attack last** — largest LOC, touches foundational modeling.
   (Held + sharpened: #1391 + #1427 already ate most of its blast radius —
   re-scope in Phase 4.)
+
+---
+
+## Parked — V1/V2 models consolidation (was #1451)
+
+`bunking/models.py` (V1, 416 lines) and `bunking/models_v2.py` (V2, 151 lines)
+both alive against different surfaces. #1451 closed **not-planned** on
+2026-05-17: no end-to-end verification harness exists today to confirm a V1→V2
+migration would be behavior-neutral across the live validator + scenarios
+paths. File now so we don't re-discover the same smell each domain.
+
+### What's alive where (verified 2026-05-17)
+
+| Surface | Live models source | Notes |
+|---|---|---|
+| `DirectBunkingSolver` (production solver) | **V2** (`DirectBunkRequest`, `DirectPerson`, `DirectBunk`, `DirectBunkAssignment`, `DirectSolverInput`, `DirectSolverOutput`, `HistoricalBunkingRecord`) | Touched by `api/services/solver_runner.py`, `api/services/data_fetcher.py`. This is the path the streams above all target. |
+| `POST /api/validate-bunking` (mounted `api/main.py:140`) | **V1** (`Bunk`, `BunkAssignment`, `BunkRequest`, `Person`, `Session`) via `bunking_validator.BunkingValidator` | Live FastAPI endpoint; generated frontend client at `frontend/src/types/api-generated/types.gen.ts:5545,6219`. Post-solve satisfaction analysis against historical bunking, not solving. |
+| `POST /api/scenarios` + 6 sibling routes (mounted `api/main.py:142`) | **V1** (same model set) | Live FastAPI endpoints; full set documented in `frontend/src/types/.openapi-schema.json:540-1033`. Scenario CRUD + score + analyze + solve + clear. |
+| `RequestType` enum (shared symbol) | V1 — re-used by sync tests, solver constraint tests, frontend test mocks | Three test files import only the enum, suggesting at minimum it should be promoted out of V1 into a shared location. |
+| `HistoricalBunkingRecord` — duplicated 3 ways | V1 dataclass at `bunking_validator.py:53`, V2 pydantic at `models_v2.py:98`, plus V1 module surface | Same name, three definitions, different consumers — exactly the drift the original issue warned about, now concrete. |
+
+### Why parked rather than executed
+
+The migration path is plausible (validator-only types stay near the validator, scenario routes likely re-export V2 shapes through their own API schemas), but it's a multi-PR refactor touching three live surfaces — solver, validator endpoint, scenarios endpoints — and **there is no integration-level "solver pass"** (full validator + scenarios + solve round-trip against a snapshotted input) that would catch silent regressions from a model swap. Pydantic field-constraint drift is exactly the failure mode that slips through unit tests; the original issue's 1-5 vs 1-10 `priority` example was caught by code-review eyeballing, not CI. Note: that specific drift is now **moot** — PR #1455 (#1432) deleted `bunk_requests.priority` outright, leaving a no-op validator stub at `models.py:59-64`.
+
+### Pick-up criteria
+
+Revisit when **any** of these become true:
+
+- An integration test exists that round-trips the live `/validate-bunking` + `/scenarios/*` surface and would catch a behavior-equivalent model swap.
+- A non-cosmetic drift between V1 and V2 (a new constraint, a new field with diverging validators) causes a real bug. The drift becomes the forcing function.
+- The larger solver tech-debt refactor (the pass that absorbed #1426's audit doc — see `docs/plans/audit-1426-impossibility.md`) is started — V1/V2 consolidation folds in naturally with the impossibility-predicate cleanup.
+
+Until one of these triggers, the priority-deletion-style per-domain cleanup (Phase 1.5 via `solver-config-it`) handles V1-side fields as they're individually retired (priority already gone via #1455). The duplication shrinks on its own as each domain wraps.
 
 ---
 
@@ -966,3 +1008,48 @@ Superseded by **"Status & phased sequencing"** near the top of this doc
   gap, presolve compression ratio) is fully captured in the Stream 2 section,
   so the PR carries it directly. The remaining Tier 2/Tier 3 metrics stay
   tracked in the Stream 2 tables. Worktree: `tier2-plateau-metrics`.
+- **2026-05-14** — #1434 merged (closes #1398): golden sat-var ↔ predicate
+  alignment test landed (Option 2 scope — bunk_with/not_bunk_with only). The
+  drift-defense net for #1427's unified sat-var encoding is now in CI.
+  age_preference coverage stays deferred behind #1433.
+- **2026-05-14** — #1436 merged: **Phase 2 (Tier 2 plateau-diagnostic
+  metrics) shipped.** Added `bunking/solver/observability.py`, extended
+  `callbacks.py` to record best-bound samples during solve, surfaced in the
+  SolverDebugPage as a new `BoundTrajectoryChart`, plus `metricRegistry`,
+  per-run drill-down rows for LP root gap and presolve compression ratio, and
+  new columns in `SolverRunsTable`. **Phase 3 (Stream 4 mutual-request boost,
+  #1382) is now the next build** — Phase 2's best-bound trajectory is the
+  measurement signal that lets us tell "boost broke the plateau" from
+  "boost shuffled local optima".
+- **2026-05-15** — #1438 merged (closes #1397): `solution.calculate_satisfied_requests`
+  retired; `calculate_field_level_stats` deleted; satisfaction computation
+  routed through a new `bunking/satisfaction/batch.py` helper. `solution.py`
+  shrunk from ~187 lines to a thin shim — behaviour-neutral cleanup.
+- **2026-05-15** — Post-Phase-2 verification sweep against v5.4.0 prod baseline.
+  S2 (Session 2) model size collapsed from 11,657 → 5,215 variables (−55%) and
+  23,644 → 12,060 constraints (−49%) — mostly #1427's sat-var unification (much
+  bigger than the original "~250 dup BoolVars" framing; the reified-linear
+  cascades that fed them dropped too). Gap tightens dramatically on the same
+  budget (60 s: 5.95% → 3.80%; 300 s: 5.49% → 0.95%). Objective stays parked in
+  the 160K–163K range — the plateau pattern Phase 2's bound-trajectory chart was
+  built to make visible. `mp_camper_rate` ("Acceptable") jumped 98 → 100% (the
+  #1429 denominator fix excluding the 3 entirely-impossible MP campers from S2,
+  not a real coverage change). Three follow-up issues filed during the
+  verification: **#1440** (separate red chip for totally-impossible-MP campers
+  on the SolverDebugPage pre-check button), **#1441** (camper-name click-through
+  + replace vague "fix parent input" copy in both impossibility modals; also
+  noted: yellow names aren't currently click-through either, contrary to a
+  passing assumption — scoped both red and yellow in the issue), **#1442**
+  (mirror #1429's denominator fix on `all_camper_rate` "Optimized", plus carry
+  the impossibility roster forward into `PostValidationResultsModal` so staff
+  can see *who* didn't get fulfilled once the rate goes to 100%). Also corrected
+  the Stream 6 doc: the "`BUNKING_DEBUG` permission for admin-only detail
+  tables" never landed; the modal renders the same view for everyone today.
+- **2026-05-17** — #1451 (V1/V2 models consolidation) closed not-planned;
+  finding parked in the new "Parked — V1/V2 models consolidation" section
+  above. Both `models.py` and `models_v2.py` confirmed alive against
+  different surfaces (solver vs. validator endpoint + scenarios endpoints);
+  `HistoricalBunkingRecord` is defined three times. Original 1-5 vs 1-10
+  `priority` drift example is now moot (deleted via PR #1455). Refactor
+  deferred until an integration-level solver-pass test exists or a
+  non-cosmetic drift forces the issue.
