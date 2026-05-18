@@ -248,7 +248,10 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 )
 
             same_session_matches = [
-                m for m in matches if self._is_same_session_via_attendee_info(m.cm_id, session_cm_id, attendee_info)
+                m
+                for m in matches
+                if self._classify_session(attendee_info.get(m.cm_id, {}).get("session_cm_ids"), session_cm_id)
+                is SessionMatch.SAME
             ]
 
             if len(same_session_matches) == 1:
@@ -272,7 +275,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
             else:
                 # No matches in same session - mark as IMPOSSIBLE
                 if len(matches) == 1:
-                    target_session = attendee_info.get(matches[0].cm_id, {}).get("session_cm_id")
+                    target_sessions = attendee_info.get(matches[0].cm_id, {}).get("session_cm_ids", [])
                     return ResolutionResult(
                         person=matches[0],
                         confidence=0.0,
@@ -281,7 +284,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
                             "sub_method": "exact_different_session",
-                            "target_session": target_session,
+                            "target_sessions": target_sessions,
                             "requester_session": session_cm_id,
                         },
                     )
@@ -312,9 +315,13 @@ class ExactMatchStrategy(BaseMatchStrategy):
                 )
 
             match_cm_ids = [m.cm_id for m in matches]
-            sessions_map = self.attendee_repo.bulk_get_sessions_for_persons(match_cm_ids, year)
+            sessions_map = self.attendee_repo.bulk_get_all_sessions_for_persons(match_cm_ids, year)
 
-            same_session_matches = [m for m in matches if sessions_map.get(m.cm_id) == session_cm_id]
+            same_session_matches = [
+                m
+                for m in matches
+                if self._classify_session(sessions_map.get(m.cm_id), session_cm_id) is SessionMatch.SAME
+            ]
 
             if len(same_session_matches) == 1:
                 return ResolutionResult(
@@ -345,7 +352,7 @@ class ExactMatchStrategy(BaseMatchStrategy):
                             "impossible": True,
                             "impossible_reason": "target_in_different_session",
                             "sub_method": "exact_different_session",
-                            "target_session": sessions_map.get(matches[0].cm_id),
+                            "target_sessions": sessions_map.get(matches[0].cm_id, []),
                             "requester_session": session_cm_id,
                         },
                     )

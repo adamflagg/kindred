@@ -104,10 +104,10 @@ class TestExactMatchStrategy:
         person2 = Person(cm_id=67890, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person1, person2]
 
-        # Mock session lookups
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {
-            12345: 1000002,  # Session 1
-            67890: 1000003,  # Session 2
+        # Mock session lookups (new list-based bulk method: {cm_id: list[int]})
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {
+            12345: [1000002],  # Session 1
+            67890: [1000003],  # Session 2
         }
 
         # Requester is in session 1
@@ -135,8 +135,8 @@ class TestExactMatchStrategy:
         person2 = Person(cm_id=67890, first_name="John", last_name="Smith")
         person_repo.find_by_name.return_value = [person1, person2]
 
-        # Both in same session
-        attendee_repo.bulk_get_sessions_for_persons.return_value = {12345: 1000002, 67890: 1000002}
+        # Both in same session (new list-based bulk method: {cm_id: list[int]})
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {12345: [1000002], 67890: [1000002]}
 
         # Requester also in session
         attendee_repo.get_by_person_and_year.return_value = {
@@ -849,6 +849,93 @@ class TestParentSurnameSessionCmIds:
         assert result.is_resolved
         assert result.person.cm_id == 2000001
         assert result.confidence == 0.80  # correctly penalised
+
+
+class TestPathDDisambiguate:
+    """Tests for Path D: _disambiguate_with_session multi-enrollment fixes (#1501)."""
+
+    @pytest.fixture
+    def mock_repositories(self):
+        mock_person_repo = Mock()
+        mock_attendee_repo = Mock()
+        return mock_person_repo, mock_attendee_repo
+
+    @pytest.fixture
+    def strategy(self, mock_repositories):
+        person_repo, attendee_repo = mock_repositories
+        attendee_repo.get_by_person_and_year.return_value = None
+        attendee_repo.bulk_get_sessions_for_persons.return_value = {}
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {}
+        person_repo.name_cache = None
+        person_repo.find_by_first_and_parent_surname.return_value = []
+        person_repo.get_all_for_phonetic_matching.return_value = []
+        return ExactMatchStrategy(person_repo, attendee_repo)
+
+    def test_path_d_disambiguate_db_multi_enrollment(self, strategy, mock_repositories):
+        """Path D (#1501): _disambiguate_with_session DB fallback uses bulk_get_all_sessions.
+
+        Two persons named "John Smith" both match. One is multi-enrolled in
+        [1000099, requester_session]. The DB fallback should select that match
+        as same-session via the new bulk method.
+        """
+        person_repo, attendee_repo = mock_repositories
+
+        person_a = Person(cm_id=11111, first_name="John", last_name="Smith")
+        person_b = Person(cm_id=22222, first_name="John", last_name="Smith")
+        person_repo.find_by_name.return_value = [person_a, person_b]
+
+        # Requester session lookup via DB
+        attendee_repo.get_by_person_and_year.return_value = {"session_cm_id": 1000002}
+
+        # NEW bulk method: person_a primary is 1000099 but secondary is 1000002 (multi-enrolled)
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {
+            11111: [1000099, 1000002],  # Multi-enrolled, includes requester session
+            22222: [1000888],  # Different session only
+        }
+
+        result = strategy.resolve(
+            "John Smith",
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,  # Forces DB fallback
+        )
+
+        assert result.is_resolved
+        assert result.person.cm_id == 11111  # Multi-enrolled match selected
+        assert result.confidence == 0.95
+        assert result.metadata.get("session_match") == "exact"
+
+    def test_path_d_disambiguate_db_impossible_uses_target_sessions_list(self, strategy, mock_repositories):
+        """When _disambiguate_with_session DB fallback finds no same-session match for a
+        singleton input, IMPOSSIBLE metadata carries 'target_sessions' (list) not
+        'target_session' (int).
+
+        Note: _disambiguate_with_session is called directly with 1 match here because
+        resolve() routes single matches through a separate path.
+        """
+        _, attendee_repo = mock_repositories
+
+        person_a = Person(cm_id=11111, first_name="John", last_name="Smith")
+
+        attendee_repo.get_by_person_and_year.return_value = None  # session_cm_id provided directly
+        attendee_repo.bulk_get_all_sessions_for_persons.return_value = {11111: [1000099, 1000888]}
+
+        # Call _disambiguate_with_session directly with 1 match and no attendee_info
+        result = strategy._disambiguate_with_session(
+            matches=[person_a],
+            requester_cm_id=67890,
+            session_cm_id=1000002,
+            year=2025,
+            attendee_info=None,
+        )
+
+        # No same-session matches -> IMPOSSIBLE (singleton match branch)
+        assert result.metadata.get("impossible") is True
+        assert result.metadata.get("impossible_reason") == "target_in_different_session"
+        # NEW: list, not int
+        assert result.metadata.get("target_sessions") == [1000099, 1000888]
+        assert "target_session" not in result.metadata  # Old singular key removed
 
 
 class TestClassifySessionHelper:
