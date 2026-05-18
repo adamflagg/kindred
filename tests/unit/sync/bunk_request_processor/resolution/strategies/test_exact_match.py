@@ -343,7 +343,7 @@ class TestExactMatchParentSurname:
         assert not result.is_resolved
         assert result.person is None
 
-    def test_parent_surname_with_context_method(self, strategy, mock_repositories):
+    def test_parent_surname_via_resolve(self, strategy, mock_repositories):
         """Test parent surname matching with resolve method"""
         person_repo, _ = mock_repositories
 
@@ -430,7 +430,7 @@ class TestExactMatchPreferredName:
         assert not result.is_resolved
 
 
-class TestResolveWithContextSessionHandling:
+class TestResolveSessionHandling:
     """Tests for resolve: unknown vs different session distinction."""
 
     @pytest.fixture

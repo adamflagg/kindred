@@ -323,7 +323,7 @@ class TestFuzzyMatchParentSurname:
         assert result.person.cm_id == 12345
         assert result.metadata.get("match_type") == "parent_surname"
 
-    def test_parent_surname_with_context_method(self, strategy, mock_repositories):
+    def test_parent_surname_via_resolve(self, strategy, mock_repositories):
         """Test parent surname matching with resolve method"""
         person_repo, _ = mock_repositories
 

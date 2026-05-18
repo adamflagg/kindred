@@ -59,17 +59,6 @@ class ResolutionPipeline:
         """
         self._person_sessions = person_sessions
 
-    def _generate_cache_key(self, name: str, requester_cm_id: int, session_cm_id: int | None, year: int | None) -> str:
-        """Generate a cache key for resolution results"""
-        parts = [
-            "resolution",
-            name.lower().strip(),
-            str(requester_cm_id),
-            str(session_cm_id or "none"),
-            str(year or "none"),
-        ]
-        return ":".join(parts)
-
     def batch_resolve(self, requests: list[tuple[str, int, int | None, int | None]]) -> list[ResolutionResult]:
         """Batch resolve multiple names efficiently.
 
