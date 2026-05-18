@@ -1349,6 +1349,14 @@ describe('CamperDetailsPanel', () => {
     })
   })
 
+  describe('CamperDetailsPanel — backdrop is click-through', () => {
+    it('backdrop has pointer-events-none so clicks fall through to underlying elements', () => {
+      const { container } = render(<CamperDetailsPanel camperId="12345" onClose={vi.fn()} />)
+      const backdrop = container.querySelector('[data-testid="panel-backdrop"]')
+      expect(backdrop?.className).toContain('pointer-events-none')
+    })
+  })
+
   describe('CamperDetailsPanel layout — action bar awareness', () => {
     it('has top-0 and bottom-0 classes when action bar is hidden', () => {
       mockLockGroupContext.isActionBarVisible = false

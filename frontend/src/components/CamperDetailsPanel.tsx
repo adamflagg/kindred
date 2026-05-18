@@ -743,7 +743,7 @@ export default function CamperDetailsPanel({
       <>
         <div
           data-testid="panel-backdrop"
-          className="fixed inset-0 z-[59]"
+          className="pointer-events-none fixed inset-0 z-[59]"
           onClick={handleClose}
           aria-hidden="true"
         />
@@ -770,7 +770,7 @@ export default function CamperDetailsPanel({
       <>
         <div
           data-testid="panel-backdrop"
-          className="fixed inset-0 z-[59]"
+          className="pointer-events-none fixed inset-0 z-[59]"
           onClick={handleClose}
           aria-hidden="true"
         />
