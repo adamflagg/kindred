@@ -364,9 +364,7 @@ def _explain_grade_spread_infeasibility(input_data: DirectSolverInput) -> str | 
     """
     person_by_cm = input_data.person_by_cm_id
     for group_id, member_cms in input_data.group_locks.items():
-        grades = sorted(
-            {person_by_cm[cm].grade for cm in member_cms if cm in person_by_cm and person_by_cm[cm].grade is not None}
-        )
+        grades = sorted({person_by_cm[cm].grade for cm in member_cms if cm in person_by_cm})
         if len(grades) > MAX_UNIQUE_GRADES_PER_BUNK:
             return (
                 f"Cannot solve within the {MAX_UNIQUE_GRADES_PER_BUNK}-grade limit: "

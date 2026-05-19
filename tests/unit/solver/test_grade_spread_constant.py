@@ -158,3 +158,35 @@ def test_seed_migration_drops_deleted_keys(deleted_key: str) -> None:
     for quote in ('"', "'"):
         live = f"{quote}{deleted_key}{quote}"
         assert live not in cleaned, f"seed migration still has a live {live} entry"
+
+
+def test_drop_migration_uses_null_subcategory_for_two_part_key() -> None:
+    """The drop migration must filter / reseed ``spread.max_grade`` with NULL,
+    not empty string.
+
+    The seed migration stores 2-part keys with ``subcategory = NULL`` (see
+    ``transformKey`` + the ``subcategory ? ... : subcategory = null`` filter
+    pattern at the bottom of ``1500000011_config.js``). In SQLite,
+    ``column = ""`` does NOT match ``NULL``, so filtering on ``""`` leaves the
+    row stranded on up-migrate and breaks the idempotency check + reseed on
+    down-migrate.
+    """
+    import re
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    drop_path = repo_root / "pocketbase" / "pb_migrations" / "1500000105_drop_grade_spread_config.js"
+    raw = drop_path.read_text(encoding="utf-8")
+
+    # Strip JS comments so the prose explanation of the bug doesn't count.
+    no_line_comments = re.sub(r"//[^\n]*", "", raw)
+    cleaned = re.sub(r"/\*.*?\*/", "", no_line_comments, flags=re.DOTALL)
+
+    assert 'subcategory: ""' not in cleaned, (
+        'drop migration uses subcategory: "" for a 2-part key — should be null. '
+        'Seed stores spread.max_grade with subcategory=NULL; "" does not match NULL.'
+    )
+    assert 'subcategory = ""' not in cleaned, (
+        'drop migration filter uses subcategory = "" — SQLite does not match NULL with "". '
+        "Use ``subcategory = null`` (or build the filter conditionally) for 2-part keys."
+    )

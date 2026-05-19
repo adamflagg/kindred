@@ -20,7 +20,8 @@ for diagnostic and scenario-comparison purposes. Components:
 3. Source field multipliers (keyed by canonical SourceField values)
 4. Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
 5. Diminishing returns for multiple satisfied requests per person
-6. Soft constraint penalties (grade spread, capacity violations, etc.)
+6. Soft constraint penalties (capacity violations, minimum occupancy). Grade
+   spread is hard-enforced by the solver and is not mirrored here.
 
 See `docs/reference/objective-sensitivity.md` for the per-component
 magnitudes and the canonical solver-objective composition.

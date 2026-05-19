@@ -94,3 +94,18 @@ def test_message_names_the_grade_limit_concretely() -> None:
     assert message is not None
     assert "cabin-buddies" in message
     assert "2-grade" in message or "2 unique" in message or "two unique" in message.lower()
+
+
+def test_hook_has_no_dead_grade_none_guard() -> None:
+    """``DirectPerson.grade: int`` is non-Optional — the ``is not None`` guard
+    in the lock-group grade comprehension is unreachable dead code."""
+    import inspect
+
+    from bunking.solver.feasibility import _explain_grade_spread_infeasibility
+
+    source = inspect.getsource(_explain_grade_spread_infeasibility)
+    assert ".grade is not None" not in source, (
+        "DirectPerson.grade is typed `int` (non-Optional). The `is not None` "
+        "guard in the locked-group grade set comprehension is unreachable; "
+        "remove it."
+    )

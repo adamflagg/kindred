@@ -11,9 +11,11 @@ Components evaluated:
    - Mutual-request boost for reciprocated bunk_with (Stream 4 / #1382)
    - Diminishing returns (always-on, module constants)
 2. Age/grade flow bonuses (target grade distribution)
-3. Grade spread penalties (soft constraint)
-4. Cabin capacity penalties (soft constraint)
-5. Minimum occupancy penalties
+3. Cabin capacity penalties (soft constraint)
+4. Minimum occupancy penalties
+
+Grade spread is enforced as a hard solver constraint (see
+``MAX_UNIQUE_GRADES_PER_BUNK``); there is no soft-path penalty to mirror.
 """
 
 from __future__ import annotations

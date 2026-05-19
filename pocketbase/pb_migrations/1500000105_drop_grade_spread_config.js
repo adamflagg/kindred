@@ -20,10 +20,20 @@
  * Metadata fields mirror the seed migration's metadata-builder so the admin
  * GUI re-recognizes the rows after rollback.
  */
+// Build a filter that matches both NULL and "" subcategory for 2-part keys.
+// The seed migration (1500000011_config.js) stores 2-part keys with
+// subcategory = NULL (transformKey returns subcategory: null for 2-part keys);
+// in SQLite, ``subcategory = ""`` does NOT match NULL. Mirror the seed
+// migration's pattern so this drop is symmetric with the create.
+const subcategoryFilter = (subcategory) =>
+  subcategory === null || subcategory === ""
+    ? "subcategory = null"
+    : `subcategory = "${subcategory}"`
+
 migrate(
   (app) => {
     const targets = [
-      { category: "spread", subcategory: "", config_key: "max_grade" },
+      { category: "spread", subcategory: null, config_key: "max_grade" },
       { category: "constraint", subcategory: "grade_spread", config_key: "mode" },
       { category: "constraint", subcategory: "grade_spread", config_key: "penalty" },
     ]
@@ -32,7 +42,7 @@ migrate(
       try {
         record = app.findFirstRecordByFilter(
           "config",
-          `category = "${t.category}" && subcategory = "${t.subcategory}" && config_key = "${t.config_key}"`,
+          `category = "${t.category}" && ${subcategoryFilter(t.subcategory)} && config_key = "${t.config_key}"`,
         )
       } catch {
         // already gone — ignore (findFirstRecordByFilter throws on no match)
@@ -49,7 +59,7 @@ migrate(
     const seeds = [
       {
         category: "spread",
-        subcategory: "",
+        subcategory: null,
         config_key: "max_grade",
         value: 2,
         description: "Maximum grade spread allowed in bunks and bunk requests",
@@ -113,7 +123,7 @@ migrate(
       try {
         existing = app.findFirstRecordByFilter(
           "config",
-          `category = "${seed.category}" && subcategory = "${seed.subcategory}" && config_key = "${seed.config_key}"`,
+          `category = "${seed.category}" && ${subcategoryFilter(seed.subcategory)} && config_key = "${seed.config_key}"`,
         )
       } catch {
         existing = null
