@@ -9,11 +9,11 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const serviceNameOrphanReconciler = "orphan_reconciler"
+const serviceNameStrandedAssignmentCleanup = "stranded_assignment_cleanup"
 
 // msgStrandedProd is the Warn message for the observe-only production audit.
 // Hoisted to a const to keep the call site within the line-length limit.
-const msgStrandedProd = "orphan_reconciler: stranded production assignments detected — " +
+const msgStrandedProd = "stranded_assignment_cleanup: stranded production assignments detected — " +
 	"not deleted (bunk_assignments sync owns prod cleanup)"
 
 // orphanCandidate is the minimal projection of an assignment row needed for
@@ -56,49 +56,49 @@ func findStrandedAssignments(
 	return stranded
 }
 
-// OrphanReconcilerSync silently auto-unassigns scenario draft assignments whose
+// StrandedAssignmentCleanupSync silently auto-unassigns scenario draft assignments whose
 // bunk no longer has a bunk_plan for their session — left stranded when staff
 // reorganize a session's bunk plan — and audits production for the same.
 // Runs as the final step of the sync orchestrator. PocketBase-only — no
 // CampMinder client.
-type OrphanReconcilerSync struct {
+type StrandedAssignmentCleanupSync struct {
 	App   core.App
 	Year  int
 	Debug bool
 	Stats Stats
 }
 
-// NewOrphanReconcilerSync constructs the service.
-func NewOrphanReconcilerSync(app core.App) *OrphanReconcilerSync {
-	return &OrphanReconcilerSync{App: app}
+// NewStrandedAssignmentCleanupSync constructs the service.
+func NewStrandedAssignmentCleanupSync(app core.App) *StrandedAssignmentCleanupSync {
+	return &StrandedAssignmentCleanupSync{App: app}
 }
 
 // Name returns the orchestrator-facing service name.
-func (s *OrphanReconcilerSync) Name() string { return serviceNameOrphanReconciler }
+func (s *StrandedAssignmentCleanupSync) Name() string { return serviceNameStrandedAssignmentCleanup }
 
 // GetStats returns the current stats snapshot.
-func (s *OrphanReconcilerSync) GetStats() Stats { return s.Stats }
+func (s *StrandedAssignmentCleanupSync) GetStats() Stats { return s.Stats }
 
 // SetDebug toggles verbose logging (orchestrator hook).
-func (s *OrphanReconcilerSync) SetDebug(debug bool) { s.Debug = debug }
+func (s *StrandedAssignmentCleanupSync) SetDebug(debug bool) { s.Debug = debug }
 
 // SetYear sets the year for this run (orchestrator hook).
-func (s *OrphanReconcilerSync) SetYear(year int) { s.Year = year }
+func (s *StrandedAssignmentCleanupSync) SetYear(year int) { s.Year = year }
 
 // WasSuccessful indicates whether the last run encountered no errors.
-func (s *OrphanReconcilerSync) WasSuccessful() bool { return s.Stats.Errors == 0 }
+func (s *StrandedAssignmentCleanupSync) WasSuccessful() bool { return s.Stats.Errors == 0 }
 
 // Sync runs the reconciliation against the configured year. When Year is 0
 // (the daily-sync registration path), falls back to CAMPMINDER_SEASON_ID via
 // ParseSeasonYear, matching every other yearless service in this package.
-func (s *OrphanReconcilerSync) Sync(_ context.Context) error {
+func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 	year := s.Year
 	if year == 0 {
 		var err error
 		year, err = ParseSeasonYear()
 		if err != nil {
 			s.Stats.Errors++
-			return fmt.Errorf("orphan_reconciler: year resolution failed: %w", err)
+			return fmt.Errorf("stranded_assignment_cleanup: year resolution failed: %w", err)
 		}
 	}
 	return reconcileOrphanedAssignments(s.App, year, &s.Stats)
@@ -121,11 +121,11 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	plans, err := app.FindRecordsByFilter("bunk_plans", yearFilter, "", 0, 0)
 	if err != nil {
 		stats.Errors++
-		return fmt.Errorf("orphan_reconciler: query bunk_plans: %w", err)
+		return fmt.Errorf("stranded_assignment_cleanup: query bunk_plans: %w", err)
 	}
 	// GATE.
 	if len(plans) == 0 {
-		slog.Warn("orphan_reconciler: skipping — no bunk_plans for year (sync may have failed)", "year", year)
+		slog.Warn("stranded_assignment_cleanup: skipping — no bunk_plans for year (sync may have failed)", "year", year)
 		return nil
 	}
 	validPairs := make(map[string]bool, len(plans))
@@ -144,7 +144,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	)
 	if err != nil {
 		stats.Errors++
-		return fmt.Errorf("orphan_reconciler: query bunk_assignments_draft: %w", err)
+		return fmt.Errorf("stranded_assignment_cleanup: query bunk_assignments_draft: %w", err)
 	}
 	draftByID := make(map[string]*core.Record, len(drafts))
 	draftCandidates := make([]orphanCandidate, 0, len(drafts))
@@ -170,7 +170,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		rec.Set("bunk_plan", "")
 		if saveErr := app.Save(rec); saveErr != nil {
 			stats.Errors++
-			slog.Error("orphan_reconciler: save draft", "id", c.RecordID, "error", saveErr)
+			slog.Error("stranded_assignment_cleanup: save draft", "id", c.RecordID, "error", saveErr)
 			continue
 		}
 		writes++
@@ -188,7 +188,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		// log + flag it (WasSuccessful() will report false) but do NOT return —
 		// a prod-query hiccup must not abort the run or roll back the sweep.
 		stats.Errors++
-		slog.Error("orphan_reconciler: query bunk_assignments", "error", err)
+		slog.Error("stranded_assignment_cleanup: query bunk_assignments", "error", err)
 	} else {
 		prodCandidates := make([]orphanCandidate, 0, len(prod))
 		for _, p := range prod {
@@ -212,11 +212,11 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	// WAL checkpoint after writes.
 	if writes > 0 {
 		if _, err := app.DB().NewQuery("PRAGMA wal_checkpoint(FULL)").Execute(); err != nil {
-			slog.Warn("orphan_reconciler: WAL checkpoint failed", "error", err)
+			slog.Warn("stranded_assignment_cleanup: WAL checkpoint failed", "error", err)
 		}
 	}
 
-	slog.Info("orphan_reconciler complete",
+	slog.Info("stranded_assignment_cleanup complete",
 		"year", year,
 		"stranded_drafts", len(strandedDrafts),
 		"drafts_swept", stats.Updated,

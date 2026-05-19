@@ -475,12 +475,12 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			return handleIndividualSync(e, scheduler, "enrollment_snapshots")
 		}))
 
-	// Orphan reconciler sync
+	// Stranded assignment cleanup sync
 	// Auto-unassigns scenario-draft campers stranded by bunk-plan changes.
 	// PocketBase-only — no CampMinder API call.
-	e.Router.POST("/api/custom/sync/orphan-reconciler",
+	e.Router.POST("/api/custom/sync/stranded-assignment-cleanup",
 		requirePermission("bunking.manage", func(e *core.RequestEvent) error {
-			return handleIndividualSync(e, scheduler, "orphan_reconciler")
+			return handleIndividualSync(e, scheduler, "stranded_assignment_cleanup")
 		}))
 
 	return nil
@@ -896,21 +896,21 @@ func handleSyncStatus(e *core.RequestEvent, scheduler *Scheduler) error {
 		"bunks",
 		"bunk_plans",
 		"bunk_assignments",
-		"staff",                      // Year-scoped staff records (depends on divisions, bunks, persons)
-		"camper_history",             // Computed camper denorm with retention metrics
-		"financial_transactions",     // Year-scoped financial data (depends on sessions, persons, households)
-		"family_camp_derived",        // Computed from person_custom_values, household_custom_values
-		"staff_skills",               // Derived: staff skills extraction
-		"financial_aid_applications", // Derived: FA applications computation
-		"household_demographics",     // Derived: household demographics computation
-		"camper_dietary",             // Derived: camper dietary extraction
-		"camper_transportation",      // Derived: camper transportation extraction
-		"quest_registrations",        // Derived: Quest program registration extraction
-		"staff_applications",         // Derived: staff applications extraction
-		"staff_vehicle_info",         // Derived: staff vehicle info extraction
-		"normalize_geographic",       // Derived: normalize state/country names
-		"enrollment_snapshots",       // Derived: daily enrollment snapshot capture
-		"orphan_reconciler",          // Derived: auto-unassign stranded scenario-draft assignments
+		"staff",                       // Year-scoped staff records (depends on divisions, bunks, persons)
+		"camper_history",              // Computed camper denorm with retention metrics
+		"financial_transactions",      // Year-scoped financial data (depends on sessions, persons, households)
+		"family_camp_derived",         // Computed from person_custom_values, household_custom_values
+		"staff_skills",                // Derived: staff skills extraction
+		"financial_aid_applications",  // Derived: FA applications computation
+		"household_demographics",      // Derived: household demographics computation
+		"camper_dietary",              // Derived: camper dietary extraction
+		"camper_transportation",       // Derived: camper transportation extraction
+		"quest_registrations",         // Derived: Quest program registration extraction
+		"staff_applications",          // Derived: staff applications extraction
+		"staff_vehicle_info",          // Derived: staff vehicle info extraction
+		"normalize_geographic",        // Derived: normalize state/country names
+		"enrollment_snapshots",        // Derived: daily enrollment snapshot capture
+		"stranded_assignment_cleanup", // Derived: auto-unassign stranded scenario-draft assignments
 		"bunk_requests",
 		"process_requests",
 		"multi_workbook_export",

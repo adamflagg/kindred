@@ -717,7 +717,7 @@ def test_assignment_with_dict_style_expand_is_processed() -> None:
 
 
 def _unassigned_draft_row(person_cm_id: int) -> Any:
-    """Scenario draft row where orphan_reconciler cleared the bunk rel.
+    """Scenario draft row where stranded_assignment_cleanup cleared the bunk rel.
 
     Mirrors the post-reconciliation state: person rel + expand intact,
     bunk rel is empty string, no bunk in expand payload. This is the
@@ -756,7 +756,7 @@ def _dangling_bunk_assignment(person_cm_id: int, bunk_rel_id: str) -> Any:
 class TestUnresolvedExpandWarningClassification:
     """Distinguish intentional unassigned (silent) from dangling FK (WARN).
 
-    orphan_reconciler clears `bunk` to '' on draft rows whose (session, bunk)
+    stranded_assignment_cleanup clears `bunk` to '' on draft rows whose (session, bunk)
     pair drops out of bunk_plans — the camper falls back into the Unassigned
     pool by design. Warning about those is log noise. A non-empty bunk rel
     that fails to expand IS real corruption and must still surface.

@@ -279,8 +279,8 @@ export const YEAR_SYNC_TYPES = [
     phase: 'transform' as SyncPhase,
   },
   {
-    id: 'orphan_reconciler',
-    name: 'Orphan Reconciler',
+    id: 'stranded_assignment_cleanup',
+    name: 'Stranded Assignment Cleanup',
     description: 'PB-only · no CampMinder fetch',
     icon: UserX,
     color: 'text-orange-500',

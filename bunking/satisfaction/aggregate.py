@@ -271,7 +271,7 @@ def session_satisfaction(
         person_data = get_person_from_expand(a)
         bunk_data = get_bunk_from_expand(a)
         # Distinguish "intentionally unassigned" from "dangling FK". The
-        # orphan_reconciler clears `bunk` to '' on draft rows whose
+        # stranded_assignment_cleanup clears `bunk` to '' on draft rows whose
         # (session, bunk) pair drops out of bunk_plans so the camper falls
         # back into the Unassigned pool — empty rel is the canonical signal
         # for that, not corruption. A non-empty rel that fails to expand

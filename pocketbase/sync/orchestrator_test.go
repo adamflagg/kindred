@@ -777,11 +777,12 @@ func TestWeeklySyncIncludesDivisions(t *testing.T) {
 	}
 }
 
-// TestGetDailySyncJobsOrphanReconcilerOrdering asserts the daily sync runs
-// orphan_reconciler last and strictly after bunk_plans. The reconciler's gating
-// logic depends on bunk_plans being final before it sweeps stranded drafts, so
-// a regression that drops it or moves it earlier must fail this test.
-func TestGetDailySyncJobsOrphanReconcilerOrdering(t *testing.T) {
+// TestGetDailySyncJobsStrandedAssignmentCleanupOrdering asserts the daily sync
+// runs stranded_assignment_cleanup last and strictly after bunk_plans. The
+// cleanup's gating logic depends on bunk_plans being final before it sweeps
+// stranded drafts, so a regression that drops it or moves it earlier must fail
+// this test.
+func TestGetDailySyncJobsStrandedAssignmentCleanupOrdering(t *testing.T) {
 	jobs := getDailySyncJobs()
 
 	pos := make(map[string]int, len(jobs))
@@ -789,20 +790,20 @@ func TestGetDailySyncJobsOrphanReconcilerOrdering(t *testing.T) {
 		pos[j] = i
 	}
 
-	orphanPos, ok := pos["orphan_reconciler"]
+	cleanupPos, ok := pos["stranded_assignment_cleanup"]
 	if !ok {
-		t.Fatalf("orphan_reconciler missing from daily sync jobs: %v", jobs)
+		t.Fatalf("stranded_assignment_cleanup missing from daily sync jobs: %v", jobs)
 	}
-	if orphanPos != len(jobs)-1 {
-		t.Errorf("orphan_reconciler must run last — got position %d of %d: %v", orphanPos, len(jobs), jobs)
+	if cleanupPos != len(jobs)-1 {
+		t.Errorf("stranded_assignment_cleanup must run last — got position %d of %d: %v", cleanupPos, len(jobs), jobs)
 	}
 
 	bunkPlansPos, ok := pos["bunk_plans"]
 	if !ok {
 		t.Fatalf("bunk_plans missing from daily sync jobs: %v", jobs)
 	}
-	if orphanPos <= bunkPlansPos {
-		t.Errorf("orphan_reconciler (pos %d) must run after bunk_plans (pos %d)", orphanPos, bunkPlansPos)
+	if cleanupPos <= bunkPlansPos {
+		t.Errorf("stranded_assignment_cleanup (pos %d) must run after bunk_plans (pos %d)", cleanupPos, bunkPlansPos)
 	}
 }
 
@@ -1851,25 +1852,26 @@ func TestJobMeta_TransformPhaseJobs(t *testing.T) {
 	}
 }
 
-// TestJobMeta_IncludesOrphanReconciler asserts the orphan reconciler is
+// TestJobMeta_IncludesStrandedAssignmentCleanup asserts the cleanup is
 // registered in syncJobMeta so the phase API (?phase=transform) and the sync
 // dashboard surface it like every other sync job. Its predecessor
-// reconcile_request_lifecycle is registered there; orphan_reconciler must be too.
-func TestJobMeta_IncludesOrphanReconciler(t *testing.T) {
-	if got := GetPhaseForJob("orphan_reconciler"); got != PhaseTransform {
-		t.Errorf("GetPhaseForJob(\"orphan_reconciler\") = %q, want %q", got, PhaseTransform)
+// reconcile_request_lifecycle is registered there; stranded_assignment_cleanup
+// must be too.
+func TestJobMeta_IncludesStrandedAssignmentCleanup(t *testing.T) {
+	if got := GetPhaseForJob("stranded_assignment_cleanup"); got != PhaseTransform {
+		t.Errorf("GetPhaseForJob(\"stranded_assignment_cleanup\") = %q, want %q", got, PhaseTransform)
 	}
 
 	jobs := GetJobsForPhase(PhaseTransform)
 	found := false
 	for _, j := range jobs {
-		if j == "orphan_reconciler" {
+		if j == "stranded_assignment_cleanup" {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("orphan_reconciler missing from GetJobsForPhase(PhaseTransform): %v", jobs)
+		t.Errorf("stranded_assignment_cleanup missing from GetJobsForPhase(PhaseTransform): %v", jobs)
 	}
 }
 
@@ -2392,7 +2394,7 @@ func TestRunSyncWithOptionsPhaseOrdering(t *testing.T) {
 			"financial_aid_applications", "household_demographics",
 			"camper_dietary", "camper_transportation", "quest_registrations",
 			"staff_applications", "staff_vehicle_info", "normalize_geographic",
-			"enrollment_snapshots", "orphan_reconciler",
+			"enrollment_snapshots", "stranded_assignment_cleanup",
 		}
 
 		if len(jobs) != len(expectedOrder) {

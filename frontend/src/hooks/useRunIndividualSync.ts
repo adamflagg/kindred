@@ -37,7 +37,7 @@ export const SYNC_TYPE_NAMES: Record<string, string> = {
   staff_vehicle_info: 'Staff Vehicle Info', // Extracted from SVI- custom fields
   normalize_geographic: 'Normalize Geographic', // Normalizes geographic columns to standard format
   enrollment_snapshots: 'Enrollment Snapshots', // Captures daily enrollment counts per session
-  orphan_reconciler: 'Orphan Reconciler', // Auto-unassigns scenario-draft assignments stranded by bunk_plan changes
+  stranded_assignment_cleanup: 'Stranded Assignment Cleanup', // Auto-unassigns scenario-draft assignments stranded by bunk_plan changes
   bunk_requests: 'Intake Requests',
   process_requests: 'Process Requests',
   // On-demand syncs (not part of daily sync)
