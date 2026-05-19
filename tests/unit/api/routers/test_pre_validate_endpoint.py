@@ -293,6 +293,9 @@ def test_response_includes_by_bucket_count(client: TestClient) -> None:
     Regression guard: a prior hand-rolled response dict omitted this field,
     causing the frontend modal to crash on ``report.by_bucket_count[bucket]``
     when rendering filter chips.
+
+    The endpoint strips immaterial_parent entries (Group 65 #1537), so only
+    material_parent and staff counts appear in the response.
     """
     fake_report = _FakeReport(
         total_impossible=4,
@@ -313,11 +316,88 @@ def test_response_includes_by_bucket_count(client: TestClient) -> None:
     assert resp.status_code == 200, resp.text
     ir = resp.json()["impossibility_report"]
     assert "by_bucket_count" in ir, f"missing by_bucket_count; got keys {list(ir.keys())}"
+    # immaterial_parent is filtered out by _filter_immaterial_from_report
     assert ir["by_bucket_count"] == {
         "material_parent": 2,
-        "immaterial_parent": 1,
         "staff": 1,
     }
+    assert "immaterial_parent" not in ir["by_bucket_count"]
+
+
+def test_pre_validate_excludes_immaterial_from_impossibility_report(client: TestClient) -> None:
+    """IMMATERIAL_PARENT bucket rows are filtered from report.flat and by_reason.
+
+    Group 65 #1537 — socialize_with requests are parent age-pref dropdowns and
+    are not actionable signals for staff. The pre-check modal should not surface
+    them in the impossibility list.
+
+    Fixture: report has 1 bunk_with item (material_parent bucket) and
+    1 socialize_with item (immaterial_parent bucket). After filtering, only
+    the material_parent item remains; total_impossible and affected_campers
+    are re-derived from the filtered set.
+    """
+    from bunking.solver.impossibility import ImpossibleItem
+
+    material_item = ImpossibleItem(
+        request_id="r_bw",
+        reason_code="cross_gender",
+        reason_message="Emma Johnson requested Liam Garcia but they are different genders.",
+        request_type="bunk_with",
+        requester={"cm_id": 10, "name": "Emma Johnson", "grade": 6, "gender": "F"},
+        requestee={"cm_id": 20, "name": "Liam Garcia", "grade": 6, "gender": "M"},
+        detail={},
+        bucket="material_parent",
+    )
+    immaterial_item = ImpossibleItem(
+        request_id="r_sw",
+        reason_code="cross_session",
+        reason_message="Olivia Chen requested Riley Sam but they are in different sessions.",
+        request_type="socialize_with",
+        requester={"cm_id": 30, "name": "Olivia Chen", "grade": 7, "gender": "F"},
+        requestee={"cm_id": 40, "name": "Riley Sam", "grade": 7, "gender": "F"},
+        detail={},
+        bucket="immaterial_parent",
+    )
+    fake_report = _FakeReport(
+        total_impossible=2,
+        affected_campers=2,
+        by_reason={
+            "cross_gender": [material_item],
+            "cross_session": [immaterial_item],
+        },
+        flat=[material_item, immaterial_item],
+        by_bucket_count={"material_parent": 1, "immaterial_parent": 1},
+    )
+
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        _apply_standard_mocks(mock_build_ctx, mock_fetch, mock_prepare, mock_validate, mock_config, report=fake_report)
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    ir = resp.json()["impossibility_report"]
+
+    # flat must contain only the material_parent item
+    flat_buckets = {item.get("bucket") for item in ir["flat"]}
+    assert "immaterial_parent" not in flat_buckets, f"immaterial_parent leaked into flat: {flat_buckets}"
+    assert "material_parent" in flat_buckets, "material_parent item was incorrectly removed"
+
+    # by_reason keys that have immaterial items must be empty or absent
+    for reason_code, items in ir["by_reason"].items():
+        immaterial_in_reason = [i for i in items if i.get("bucket") == "immaterial_parent"]
+        assert immaterial_in_reason == [], (
+            f"immaterial_parent item found in by_reason[{reason_code!r}]: {immaterial_in_reason}"
+        )
+
+    # totals are re-derived from the filtered set
+    assert ir["total_impossible"] == 1, f"expected 1, got {ir['total_impossible']}"
+    assert ir["affected_campers"] == 1, f"expected 1, got {ir['affected_campers']}"
 
 
 def test_response_propagates_self_conflict_bucket(client: TestClient) -> None:
