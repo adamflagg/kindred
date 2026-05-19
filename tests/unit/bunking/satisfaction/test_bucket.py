@@ -10,6 +10,7 @@ from bunking.satisfaction.bucket import (
     COUNTED_BUCKETS,
     RequestBucket,
     classify_request,
+    is_counted_request,
     is_material_parent_request,
 )
 
@@ -81,3 +82,31 @@ class TestIsMaterialParentRequest:
     def test_unknown_source_field_returns_false(self) -> None:
         # Defensive: don't crash on data-hygiene regressions.
         assert is_material_parent_request(_mock_request("nonsense_value")) is False
+
+
+class TestIsCountedRequest:
+    """Tests for is_counted_request helper (MATERIAL_PARENT ∪ STAFF)."""
+
+    @pytest.mark.parametrize(
+        ("source_field", "expected"),
+        [
+            ("bunk_with", True),  # MATERIAL_PARENT — counted
+            ("not_bunk_with", True),  # STAFF — counted
+            ("bunking_notes", True),  # STAFF — counted
+            ("internal_notes", True),  # STAFF — counted
+            ("socialize_with", False),  # IMMATERIAL_PARENT — NOT counted
+        ],
+    )
+    def test_known_source_fields(self, source_field: str, expected: bool) -> None:
+        assert is_counted_request(_mock_request(source_field)) is expected
+
+    def test_none_source_field_returns_false(self) -> None:
+        """Defensive: missing source_field treated as not-counted (mirrors is_material_parent_request)."""
+        assert is_counted_request(_mock_request(None)) is False
+
+    def test_empty_source_field_returns_false(self) -> None:
+        assert is_counted_request(_mock_request("")) is False
+
+    def test_unknown_source_field_returns_false(self) -> None:
+        """Defensive: unknown source_field returns False without crashing."""
+        assert is_counted_request(_mock_request("unknown_field_name")) is False
