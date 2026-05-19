@@ -22,7 +22,7 @@ def _request_with_confidence(score: float | None) -> SimpleNamespace:
         requester_id=1,
         requestee_id=2,
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         confidence_score=score,
     )
 

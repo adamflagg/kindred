@@ -53,7 +53,7 @@ class TestBatchProcessorDisambiguation:
             request_type=RequestType.BUNK_WITH,
             target_name="Emma",
             age_preference=None,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence=0.5,
             csv_position=0,
             metadata={},

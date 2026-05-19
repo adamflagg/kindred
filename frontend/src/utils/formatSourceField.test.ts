@@ -16,9 +16,9 @@ describe('formatSourceField', () => {
 
   describe('DB wire values (SourceField constants)', () => {
     it.each([
-      ['bunk_with', 'Bunk Request Form'],
-      ['not_bunk_with', 'Do NOT Share Bunk With'],
-    ])('maps %s -> %s for backward compat', (input, expected) => {
+      ['bunk_request_form', 'Bunk Request Form'],
+      ['staff_not_bunk_with', 'Do NOT Share Bunk With'],
+    ])('maps %s -> %s', (input, expected) => {
       expect(formatSourceField(input)).toBe(expected)
     })
   })

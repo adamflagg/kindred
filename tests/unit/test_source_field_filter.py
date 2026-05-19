@@ -24,8 +24,8 @@ class TestValidateSourceFields:
             validate_source_fields,
         )
 
-        result = validate_source_fields(["bunk_with"])
-        assert result == ["bunk_with"]
+        result = validate_source_fields(["bunk_request_form"])
+        assert result == ["bunk_request_form"]
 
     def test_valid_multiple_fields(self):
         """Multiple valid fields are accepted."""
@@ -33,7 +33,7 @@ class TestValidateSourceFields:
             validate_source_fields,
         )
 
-        fields = ["bunk_with", "not_bunk_with", "internal_notes"]
+        fields = ["bunk_request_form", "staff_not_bunk_with", "internal_notes"]
         result = validate_source_fields(fields)
         assert result == fields
 
@@ -75,7 +75,7 @@ class TestValidateSourceFields:
         )
 
         with pytest.raises(ValueError) as exc_info:
-            validate_source_fields(["bunk_with", "bogus", "not_bunk_with"])
+            validate_source_fields(["bunk_request_form", "bogus", "staff_not_bunk_with"])
 
         error_msg = str(exc_info.value)
         assert "bogus" in error_msg
@@ -91,7 +91,7 @@ class TestValidateSourceFields:
 
         error_msg = str(exc_info.value)
         # Should mention at least some valid fields
-        assert "bunk_with" in error_msg or "Valid:" in error_msg
+        assert "bunk_request_form" in error_msg or "Valid:" in error_msg
 
 
 class TestSourceFieldFilterIntegration:
@@ -101,55 +101,55 @@ class TestSourceFieldFilterIntegration:
     """
 
     def test_filter_to_single_field(self):
-        """When source_fields=['bunk_with'], only bunk_with records returned."""
+        """When source_fields=['bunk_request_form'], only bunk_request_form records returned."""
         # This test verifies the filtering logic
         # The actual implementation will be in original_requests_loader.py
 
         # Given: records of different field types
         records = [
-            {"field": "bunk_with", "content": "John"},
-            {"field": "not_bunk_with", "content": "Jane"},
-            {"field": "bunk_with", "content": "Bob"},
+            {"field": "bunk_request_form", "content": "John"},
+            {"field": "staff_not_bunk_with", "content": "Jane"},
+            {"field": "bunk_request_form", "content": "Bob"},
             {"field": "bunking_notes", "content": "Note"},
         ]
 
-        # When: filtered to bunk_with only
-        source_fields = ["bunk_with"]
+        # When: filtered to bunk_request_form only
+        source_fields = ["bunk_request_form"]
         filtered = [r for r in records if r["field"] in source_fields]
 
-        # Then: only bunk_with records remain
+        # Then: only bunk_request_form records remain
         assert len(filtered) == 2
-        assert all(r["field"] == "bunk_with" for r in filtered)
+        assert all(r["field"] == "bunk_request_form" for r in filtered)
 
     def test_filter_to_multiple_fields(self):
         """Multiple source fields filter correctly."""
         records = [
-            {"field": "bunk_with", "content": "John"},
-            {"field": "not_bunk_with", "content": "Jane"},
+            {"field": "bunk_request_form", "content": "John"},
+            {"field": "staff_not_bunk_with", "content": "Jane"},
             {"field": "internal_notes", "content": "Note"},
             {"field": "socialize_with", "content": "older"},
         ]
 
-        source_fields = ["bunk_with", "not_bunk_with"]
+        source_fields = ["bunk_request_form", "staff_not_bunk_with"]
         filtered = [r for r in records if r["field"] in source_fields]
 
         assert len(filtered) == 2
-        assert {r["field"] for r in filtered} == {"bunk_with", "not_bunk_with"}
+        assert {r["field"] for r in filtered} == {"bunk_request_form", "staff_not_bunk_with"}
 
     def test_filter_then_limit(self):
         """Limit is applied AFTER source field filter."""
         # This tests the correct filter order: source_field → limit
 
         records = [
-            {"field": "bunk_with", "content": "1"},
-            {"field": "bunk_with", "content": "2"},
-            {"field": "bunk_with", "content": "3"},
-            {"field": "not_bunk_with", "content": "4"},
-            {"field": "not_bunk_with", "content": "5"},
+            {"field": "bunk_request_form", "content": "1"},
+            {"field": "bunk_request_form", "content": "2"},
+            {"field": "bunk_request_form", "content": "3"},
+            {"field": "staff_not_bunk_with", "content": "4"},
+            {"field": "staff_not_bunk_with", "content": "5"},
         ]
 
-        # Filter to bunk_with, then limit to 2
-        source_fields = ["bunk_with"]
+        # Filter to bunk_request_form, then limit to 2
+        source_fields = ["bunk_request_form"]
         limit = 2
 
         filtered = [r for r in records if r["field"] in source_fields]
@@ -163,8 +163,8 @@ class TestSourceFieldFilterIntegration:
     def test_empty_filter_means_all_fields(self):
         """Empty source_fields list means no filter (all fields)."""
         records = [
-            {"field": "bunk_with", "content": "1"},
-            {"field": "not_bunk_with", "content": "2"},
+            {"field": "bunk_request_form", "content": "1"},
+            {"field": "staff_not_bunk_with", "content": "2"},
             {"field": "bunking_notes", "content": "3"},
         ]
 
@@ -194,8 +194,8 @@ class TestSourceFieldFilterCLI:
             help="Source field(s) to process",
         )
 
-        args = parser.parse_args(["--source-field", "bunk_with"])
-        assert args.source_field == ["bunk_with"]
+        args = parser.parse_args(["--source-field", "bunk_request_form"])
+        assert args.source_field == ["bunk_request_form"]
 
     def test_parse_multiple_source_field_args(self):
         """Multiple --source-field flags accumulate."""
@@ -212,15 +212,15 @@ class TestSourceFieldFilterCLI:
         args = parser.parse_args(
             [
                 "--source-field",
-                "bunk_with",
+                "bunk_request_form",
                 "--source-field",
-                "not_bunk_with",
+                "staff_not_bunk_with",
                 "--source-field",
                 "internal_notes",
             ]
         )
 
-        assert args.source_field == ["bunk_with", "not_bunk_with", "internal_notes"]
+        assert args.source_field == ["bunk_request_form", "staff_not_bunk_with", "internal_notes"]
 
     def test_no_source_field_arg_is_none(self):
         """Without --source-field, value is None (means all fields)."""
@@ -246,14 +246,14 @@ class TestSourceFieldWithSessionFilter:
         # This verifies the filter combination logic
 
         records = [
-            {"field": "bunk_with", "session": 1, "content": "A"},
-            {"field": "bunk_with", "session": 2, "content": "B"},
-            {"field": "not_bunk_with", "session": 1, "content": "C"},
-            {"field": "not_bunk_with", "session": 2, "content": "D"},
+            {"field": "bunk_request_form", "session": 1, "content": "A"},
+            {"field": "bunk_request_form", "session": 2, "content": "B"},
+            {"field": "staff_not_bunk_with", "session": 1, "content": "C"},
+            {"field": "staff_not_bunk_with", "session": 2, "content": "D"},
         ]
 
-        # Filter: source_field=bunk_with AND session=2
-        source_fields = ["bunk_with"]
+        # Filter: source_field=bunk_request_form AND session=2
+        source_fields = ["bunk_request_form"]
         session = 2
 
         filtered = [r for r in records if r["field"] in source_fields and r["session"] == session]
@@ -264,14 +264,14 @@ class TestSourceFieldWithSessionFilter:
     def test_filter_order_source_session_limit(self):
         """Filter order is: source_field → session → limit."""
         records = [
-            {"field": "bunk_with", "session": 1, "content": "1"},
-            {"field": "bunk_with", "session": 1, "content": "2"},
-            {"field": "bunk_with", "session": 1, "content": "3"},
-            {"field": "bunk_with", "session": 2, "content": "4"},
-            {"field": "not_bunk_with", "session": 1, "content": "5"},
+            {"field": "bunk_request_form", "session": 1, "content": "1"},
+            {"field": "bunk_request_form", "session": 1, "content": "2"},
+            {"field": "bunk_request_form", "session": 1, "content": "3"},
+            {"field": "bunk_request_form", "session": 2, "content": "4"},
+            {"field": "staff_not_bunk_with", "session": 1, "content": "5"},
         ]
 
-        source_fields = ["bunk_with"]
+        source_fields = ["bunk_request_form"]
         session = 1
         limit = 2
 

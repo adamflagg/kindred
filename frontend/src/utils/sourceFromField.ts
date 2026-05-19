@@ -13,9 +13,9 @@
 type RequestSource = 'family' | 'staff'
 
 const SOURCE_FIELD_MAP: Readonly<Record<string, RequestSource>> = {
-  bunk_with: 'family',
+  bunk_request_form: 'family',
   socialize_with: 'family',
-  not_bunk_with: 'staff',
+  staff_not_bunk_with: 'staff',
   bunking_notes: 'staff',
   internal_notes: 'staff',
   manual: 'staff',

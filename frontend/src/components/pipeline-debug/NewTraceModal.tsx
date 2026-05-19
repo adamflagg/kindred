@@ -341,8 +341,8 @@ export function NewTraceModal({
                   className="border-bark-300 bg-parchment-50 dark:border-bark-600 dark:bg-bark-800 rounded-lg border px-3 py-1.5 text-sm focus:ring-2 focus:ring-amber-500/50 focus:outline-none"
                 >
                   <option value="">All fields</option>
-                  <option value="bunk_with">bunk_with</option>
-                  <option value="not_bunk_with">not_bunk_with</option>
+                  <option value="bunk_request_form">bunk_request_form</option>
+                  <option value="staff_not_bunk_with">staff_not_bunk_with</option>
                   <option value="bunking_notes">bunking_notes</option>
                   <option value="internal_notes">internal_notes</option>
                   <option value="socialize_with">socialize_with</option>

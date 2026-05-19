@@ -1,6 +1,6 @@
 {
   "field_scores": {
-    "bunk_with": {
+    "bunk_request_form": {
       "raw_score": 60,
       "satisfied": 1,
       "total": 2
@@ -15,13 +15,13 @@
       "satisfied": 1,
       "total": 1
     },
-    "not_bunk_with": {
-      "raw_score": 60,
+    "socialize_with": {
+      "raw_score": 32,
       "satisfied": 1,
       "total": 2
     },
-    "socialize_with": {
-      "raw_score": 32,
+    "staff_not_bunk_with": {
+      "raw_score": 60,
       "satisfied": 1,
       "total": 2
     }

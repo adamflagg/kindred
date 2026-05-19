@@ -127,7 +127,7 @@ def _make_pb_trace_record(
         requester_cm_id=requester_cm_id,
         year=2025,
         session_cm_id=1000001,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         trace_data=trace_data or {"pre_phase1": {"action": "parsed"}},
         pinned=False,
         created="2025-06-15T10:00:00Z",

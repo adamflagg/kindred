@@ -322,7 +322,7 @@ class TestRunFromPhaseStopAtPhase:
         mock_record.requester_cm_id = 12345
         mock_record.year = 2025
         mock_record.session_cm_id = 1000001
-        mock_record.source_field = "bunk_with"
+        mock_record.source_field = "bunk_request_form"
         mock_record.original_request = "orig_req_123"
 
         # Mock the trace record returned after flush

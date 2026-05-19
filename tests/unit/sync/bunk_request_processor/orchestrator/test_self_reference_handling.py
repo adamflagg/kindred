@@ -68,7 +68,7 @@ def _create_bunk_request(
         session_cm_id=session_cm_id,
         is_first_requested=(priority >= 4),
         confidence_score=confidence,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         csv_position=1,
         year=2025,
         status=RequestStatus.RESOLVED,

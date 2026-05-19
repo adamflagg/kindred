@@ -38,13 +38,13 @@ def _bunk(cm_id: int, session: int, *, gender: str = "F", capacity: int = 8) -> 
 
 
 def _bunk_with_mp(req_id: str, requester: int, requestee: int, session: int) -> DirectBunkRequest:
-    """MP bunk_with: source_field='bunk_with' makes it material parent per is_material_parent_request."""
+    """MP bunk_with: source_field='bunk_request_form' makes it material parent per is_material_parent_request."""
     return DirectBunkRequest(
         id=req_id,
         requester_person_cm_id=requester,
         requested_person_cm_id=requestee,
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         session_cm_id=session,
         year=2026,
         status="resolved",

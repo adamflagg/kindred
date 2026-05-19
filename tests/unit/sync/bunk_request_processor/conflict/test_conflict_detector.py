@@ -28,7 +28,7 @@ def make_parsed_request(
     parent types "NOT Jake" in the bunk_with column and the AI parses it as
     NOT_BUNK_WITH semantics. source_field and request_type are independent
     axes (input column vs semantic meaning); pairing NOT_BUNK_WITH with
-    source_field="not_bunk_with" would only match the staff-input path, which
+    source_field="staff_not_bunk_with" would only match the staff-input path, which
     isn't what these tests exercise. Once #1142 stage 3 removes the parallel
     `source` field entirely, this helper simplifies further.
     """
@@ -37,7 +37,7 @@ def make_parsed_request(
         request_type=request_type,
         target_name=target_name or text,
         age_preference=None,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         confidence=0.9,
         csv_position=0,
         metadata={},

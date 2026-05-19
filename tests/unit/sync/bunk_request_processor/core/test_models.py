@@ -222,7 +222,7 @@ class TestParsedRequest:
             request_type=RequestType.BUNK_WITH,
             target_name="Johnny Smith",
             age_preference=None,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence=0.95,
             csv_position=0,
             metadata={"ai_model": "gpt-4"},
@@ -278,7 +278,7 @@ class TestBunkRequest:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=0.95,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -334,7 +334,7 @@ class TestBunkRequest:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=1.0,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,  # Needs review
@@ -404,13 +404,13 @@ class TestSourceFromField:
     def test_canonical_family_fields_return_family(self):
         from bunking.sync.bunk_request_processor.core.models import source_from_field
 
-        assert source_from_field("bunk_with") == "family"
+        assert source_from_field("bunk_request_form") == "family"
         assert source_from_field("socialize_with") == "family"
 
     def test_canonical_staff_fields_return_staff(self):
         from bunking.sync.bunk_request_processor.core.models import source_from_field
 
-        assert source_from_field("not_bunk_with") == "staff"
+        assert source_from_field("staff_not_bunk_with") == "staff"
         assert source_from_field("bunking_notes") == "staff"
         assert source_from_field("internal_notes") == "staff"
 

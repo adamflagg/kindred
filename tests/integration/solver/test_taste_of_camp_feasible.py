@@ -107,7 +107,7 @@ def _build_scenario():
             requester=101,
             requestee=102,
             request_type="bunk_with",
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             session=1000001,
         ),
         make_request(
@@ -115,7 +115,7 @@ def _build_scenario():
             requester=102,
             requestee=101,
             request_type="bunk_with",
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             session=1000001,
         ),
     ]

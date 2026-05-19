@@ -13,8 +13,8 @@ describe('SOURCE_FIELD_OPTIONS', () => {
   })
 
   it.each([
-    ['bunk_with', 'Bunk With'],
-    ['not_bunk_with', 'Not Bunk With'],
+    ['bunk_request_form', 'Bunk With'],
+    ['staff_not_bunk_with', 'Not Bunk With'],
     ['bunking_notes', 'Bunking Notes'],
     ['internal_notes', 'Internal Notes'],
     ['socialize_with', 'Socialize With'],
@@ -29,8 +29,8 @@ describe('buildFieldLabelMap', () => {
   it('returns a Record mapping every value to its label', () => {
     const map = buildFieldLabelMap()
     expect(map).toEqual({
-      bunk_with: 'Bunk With',
-      not_bunk_with: 'Not Bunk With',
+      bunk_request_form: 'Bunk With',
+      staff_not_bunk_with: 'Not Bunk With',
       bunking_notes: 'Bunking Notes',
       internal_notes: 'Internal Notes',
       socialize_with: 'Socialize With',

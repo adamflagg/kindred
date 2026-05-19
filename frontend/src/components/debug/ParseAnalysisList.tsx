@@ -9,6 +9,7 @@
 import { Database, FlaskConical, Loader2, RefreshCw, User } from 'lucide-react'
 import { formatSourceField } from './types'
 import type { OriginalRequestWithStatus } from './types'
+import { SourceField } from '../../types/sourceField'
 
 interface ParseAnalysisListProps {
   items: OriginalRequestWithStatus[]
@@ -107,7 +108,7 @@ export function ParseAnalysisList({
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   <span
-                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${item.source_field === 'bunk_with' ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400' : ''} ${item.source_field === 'not_bunk_with' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' : ''} ${item.source_field === 'bunking_notes' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : ''} ${item.source_field === 'internal_notes' ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' : ''} `}
+                    className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold ${item.source_field === SourceField.BUNK_REQUEST_FORM ? 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400' : ''} ${item.source_field === SourceField.STAFF_NOT_BUNK_WITH ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400' : ''} ${item.source_field === SourceField.BUNKING_NOTES ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' : ''} ${item.source_field === SourceField.INTERNAL_NOTES ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400' : ''} `}
                   >
                     {sourceLabel}
                   </span>

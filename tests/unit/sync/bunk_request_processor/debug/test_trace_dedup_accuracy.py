@@ -49,7 +49,7 @@ class TestDedupTraceAccuracy:
             requester_cm_id=100,
             requested_cm_id=200,
             request_type=RequestType.BUNK_WITH,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.90,
             year=2025,
             session_cm_id=1000001,
@@ -142,7 +142,7 @@ class TestDedupTraceAccuracy:
             requester_cm_id=100,
             year=2025,
             session_cm_id=1000001,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
 
         # Record disposition with DEDUPED status

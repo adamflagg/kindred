@@ -25,8 +25,8 @@ SOURCE_FIELD_TO_CONFIG_KEY = _mod.SOURCE_FIELD_TO_CONFIG_KEY
 
 def test_source_field_values_are_v2():
     """SourceField constants must be V2 internal names, not V1 CSV headers."""
-    assert SourceField.BUNK_REQUEST_FORM == "bunk_with"
-    assert SourceField.STAFF_NOT_BUNK_WITH == "not_bunk_with"
+    assert SourceField.BUNK_REQUEST_FORM == "bunk_request_form"
+    assert SourceField.STAFF_NOT_BUNK_WITH == "staff_not_bunk_with"
     assert SourceField.BUNKING_NOTES == "bunking_notes"
     assert SourceField.INTERNAL_NOTES == "internal_notes"
     assert SourceField.SOCIALIZE_WITH == "socialize_with"
@@ -36,14 +36,20 @@ def test_all_processing_fields_is_v2_list():
     """ALL_PROCESSING_FIELDS should be a flat list of V2 names."""
     assert isinstance(ALL_PROCESSING_FIELDS, list)
     assert all(isinstance(f, str) for f in ALL_PROCESSING_FIELDS)
-    assert ALL_PROCESSING_FIELDS == ["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes", "socialize_with"]
+    assert ALL_PROCESSING_FIELDS == [
+        "bunk_request_form",
+        "staff_not_bunk_with",
+        "bunking_notes",
+        "internal_notes",
+        "socialize_with",
+    ]
 
 
 def test_source_field_to_config_key_uses_v2():
     """SOURCE_FIELD_TO_CONFIG_KEY should have V2 keys."""
     for key in SOURCE_FIELD_TO_CONFIG_KEY:
-        assert "_" in key or key == "bunk_with", f"Key '{key}' doesn't look like V2"
-    assert "bunk_with" in SOURCE_FIELD_TO_CONFIG_KEY
+        assert "_" in key, f"Key '{key}' doesn't look like V2"
+    assert "bunk_request_form" in SOURCE_FIELD_TO_CONFIG_KEY
     assert "Share Bunk With" not in SOURCE_FIELD_TO_CONFIG_KEY
 
 

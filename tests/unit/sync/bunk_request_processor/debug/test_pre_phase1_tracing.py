@@ -35,8 +35,8 @@ def _make_row(
         "last_name": last_name,
         "Grade": grade,
         "year": year,
-        "bunk_with": bunk_with,
-        "not_bunk_with": not_bunk_with,
+        "bunk_request_form": bunk_with,
+        "staff_not_bunk_with": not_bunk_with,
         "bunking_notes": bunking_notes,
         "internal_notes": internal_notes,
         "socialize_with": socialize_with,
@@ -78,7 +78,7 @@ class TestPrePhase1TracingSkipEmpty:
         """Empty bunk_with should record skipped_empty trace."""
         row = _make_row(
             bunk_with="",
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 
@@ -99,7 +99,7 @@ class TestPrePhase1TracingNoPreference:
         """'No preference' text should record skipped_no_preference trace."""
         row = _make_row(
             bunk_with="No preference",
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 
@@ -120,7 +120,7 @@ class TestPrePhase1TracingNaOnly:
         """'N/A -' text should record skipped_na_only trace (not matched by is_no_preference)."""
         row = _make_row(
             bunk_with="N/A -",  # Trailing punctuation triggers regex path, not is_no_preference
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 
@@ -141,7 +141,7 @@ class TestPrePhase1TracingNoSession:
         row = _make_row(
             requester_cm_id=99999,  # Not in _person_sessions
             bunk_with="Emma Johnson",
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 
@@ -205,7 +205,7 @@ class TestPrePhase1TracingParsed:
         """Normal bunk_with text should record parsed trace."""
         row = _make_row(
             bunk_with="Emma Johnson",
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 
@@ -227,7 +227,7 @@ class TestPrePhase1TracingNaPrefixStrip:
         """Text with N/A prefix should have na_prefix_stripped=True in trace."""
         row = _make_row(
             bunk_with="N/A; Emma Johnson",
-            original_request_ids={"bunk_with": "orig_req_1"},
+            original_request_ids={"bunk_request_form": "orig_req_1"},
         )
         mock_orchestrator.trace_collector = MagicMock(spec=TraceCollector)
 

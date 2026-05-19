@@ -102,9 +102,9 @@ function FieldRow({
   // Field type color classes
   const fieldColorClass = (() => {
     switch (field.source_field) {
-      case 'bunk_with':
+      case 'bunk_request_form':
         return 'bg-forest-100 text-forest-700 dark:bg-forest-900/40 dark:text-forest-400 border-forest-200 dark:border-forest-800'
-      case 'not_bunk_with':
+      case 'staff_not_bunk_with':
         return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400 border-rose-200 dark:border-rose-800'
       case 'bunking_notes':
         return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200 dark:border-amber-800'

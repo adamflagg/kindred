@@ -68,19 +68,19 @@ VALID_AGE_TARGETS: set[str] = {
 class SourceField:
     """Canonical source field values — V2 internal names used everywhere post-CSV-import.
 
-    Five values describe CSV/form input channels (parent or staff). MANUAL is the
-    sixth canonical value: the admin-UI input channel for staff-created requests
-    via CreateRequestModal. All non-parent channels project to "staff" via
+    Six values describe input channels (parent CSV form, staff CSV form, AI-parsed
+    notes, admin UI). MANUAL is the admin-UI input channel for staff-created
+    requests via CreateRequestModal. All non-parent channels project to "staff" via
     source_from_field().
 
-    Python attribute names disambiguate from RequestType (#1246): each name
-    describes the form field of origin, while the string values remain the
-    persisted V2 wire format ("bunk_with", "not_bunk_with", …) and MUST NOT
-    change without a data migration.
+    Python attribute names AND string values both disambiguate from RequestType
+    (#1246 + Phase 1 of source/type co-evolution): each name and value uniquely
+    identifies the form field of origin, with no overlap with RequestType values
+    ("bunk_with", "not_bunk_with").
     """
 
-    BUNK_REQUEST_FORM = "bunk_with"
-    STAFF_NOT_BUNK_WITH = "not_bunk_with"
+    BUNK_REQUEST_FORM = "bunk_request_form"
+    STAFF_NOT_BUNK_WITH = "staff_not_bunk_with"
     BUNKING_NOTES = "bunking_notes"
     INTERNAL_NOTES = "internal_notes"
     SOCIALIZE_WITH = "socialize_with"
@@ -103,23 +103,23 @@ SOURCE_FIELD_TO_CONFIG_KEY: dict[str, str] = {
 
 # All fields that need processing
 ALL_PROCESSING_FIELDS: list[str] = [
-    "bunk_with",
-    "not_bunk_with",
-    "bunking_notes",
-    "internal_notes",
-    "socialize_with",
+    SourceField.BUNK_REQUEST_FORM,
+    SourceField.STAFF_NOT_BUNK_WITH,
+    SourceField.BUNKING_NOTES,
+    SourceField.INTERNAL_NOTES,
+    SourceField.SOCIALIZE_WITH,
 ]
 
 # Fields that need AI processing (complex text parsing)
 AI_PROCESSING_FIELDS: list[str] = [
-    "bunk_with",
-    "not_bunk_with",
-    "bunking_notes",
-    "internal_notes",
+    SourceField.BUNK_REQUEST_FORM,
+    SourceField.STAFF_NOT_BUNK_WITH,
+    SourceField.BUNKING_NOTES,
+    SourceField.INTERNAL_NOTES,
 ]
 
 # Fields that can be parsed directly without AI (simple dropdown values)
-DIRECT_PARSE_FIELDS: list[str] = ["socialize_with"]
+DIRECT_PARSE_FIELDS: list[str] = [SourceField.SOCIALIZE_WITH]
 
 # Notes fields — additive across uploads, not superseding.
 # Used to scope temporal conflict filtering (ADR 4) and staff name detection (ADR 6).
@@ -208,8 +208,8 @@ def validate_source_fields(fields: list[str]) -> list[str]:
         ValueError: If any field name is invalid
 
     Examples:
-        >>> validate_source_fields(["bunk_with", "not_bunk_with"])
-        ["bunk_with", "not_bunk_with"]
+        >>> validate_source_fields(["bunk_request_form", "staff_not_bunk_with"])
+        ["bunk_request_form", "staff_not_bunk_with"]
         >>> validate_source_fields([])
         []
         >>> validate_source_fields(["invalid"])  # raises ValueError

@@ -470,8 +470,8 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 		{"empty param", "", nil, true},
 
 		// Single fields
-		{"single bunk_with", "bunk_with", []string{"bunk_with"}, true},
-		{"single not_bunk_with", "not_bunk_with", []string{"not_bunk_with"}, true},
+		{"single bunk_request_form", "bunk_request_form", []string{"bunk_request_form"}, true},
+		{"single staff_not_bunk_with", "staff_not_bunk_with", []string{"staff_not_bunk_with"}, true},
 		{"single bunking_notes", "bunking_notes", []string{"bunking_notes"}, true},
 		{"single internal_notes", "internal_notes", []string{"internal_notes"}, true},
 		{"single socialize_with", "socialize_with", []string{"socialize_with"}, true},
@@ -479,32 +479,32 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 		// Multiple fields (comma-separated)
 		{
 			"two fields",
-			"bunk_with,not_bunk_with",
-			[]string{"bunk_with", "not_bunk_with"},
+			"bunk_request_form,staff_not_bunk_with",
+			[]string{"bunk_request_form", "staff_not_bunk_with"},
 			true,
 		},
 		{
 			"all five fields",
-			"bunk_with,not_bunk_with,bunking_notes,internal_notes,socialize_with",
-			[]string{"bunk_with", "not_bunk_with", "bunking_notes", "internal_notes", "socialize_with"},
+			"bunk_request_form,staff_not_bunk_with,bunking_notes,internal_notes,socialize_with",
+			[]string{"bunk_request_form", "staff_not_bunk_with", "bunking_notes", "internal_notes", "socialize_with"},
 			true,
 		},
 		{
 			"with spaces around commas",
-			"bunk_with, not_bunk_with, bunking_notes",
-			[]string{"bunk_with", "not_bunk_with", "bunking_notes"},
+			"bunk_request_form, staff_not_bunk_with, bunking_notes",
+			[]string{"bunk_request_form", "staff_not_bunk_with", "bunking_notes"},
 			true,
 		},
 
 		// Invalid fields
 		{"invalid field", "invalid_field", nil, false},
-		{"one valid one invalid", "bunk_with,invalid", nil, false},
-		{"typo", "bunk_withs", nil, false},
+		{"one valid one invalid", "bunk_request_form,invalid", nil, false},
+		{"typo", "bunk_request_forms", nil, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fields, valid := parseSourceFieldParameter(tt.param)
+			fields, _, valid := parseSourceFieldParameter(tt.param)
 
 			if valid != tt.wantValid {
 				t.Errorf("expected valid=%v, got %v for param %q", tt.wantValid, valid, tt.param)
@@ -524,36 +524,8 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 	}
 }
 
-// parseSourceFieldParameter parses and validates the source_field query parameter
-// Returns slice of valid field names and validity
-func parseSourceFieldParameter(param string) ([]string, bool) {
-	if param == "" {
-		return nil, true // Empty means all fields (default)
-	}
-
-	validFields := map[string]bool{
-		"bunk_with":      true,
-		"not_bunk_with":  true,
-		"bunking_notes":  true,
-		"internal_notes": true,
-		"socialize_with": true,
-	}
-
-	parts := strings.Split(param, ",")
-	fields := make([]string, 0, len(parts))
-	for _, f := range parts {
-		f = strings.TrimSpace(f)
-		if f == "" {
-			continue
-		}
-		if !validFields[f] {
-			return nil, false // Invalid field
-		}
-		fields = append(fields, f)
-	}
-
-	return fields, true
-}
+// parseSourceFieldParameter now lives in api.go (production); TestSourceFieldParameterValidation
+// exercises that single implementation directly.
 
 // TestCustomValuesSyncServices tests that custom values sync services are defined
 func TestCustomValuesSyncServices(t *testing.T) {

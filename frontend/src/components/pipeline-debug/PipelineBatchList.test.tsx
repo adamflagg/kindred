@@ -65,7 +65,7 @@ const mockItems: PipelineSummaryItem[] = [
     requester_cm_id: 12345,
     requester_name: 'Emma Johnson',
     target_name: 'Liam Garcia',
-    source_field: 'bunk_with',
+    source_field: 'bunk_request_form',
     session_cm_id: 1000001,
     request_type: 'BUNK_WITH',
     final_status: 'RESOLVED',
@@ -87,7 +87,7 @@ const mockItems: PipelineSummaryItem[] = [
     requester_cm_id: 12346,
     requester_name: 'Olivia Chen',
     target_name: 'Noah Williams',
-    source_field: 'not_bunk_with',
+    source_field: 'staff_not_bunk_with',
     session_cm_id: 1000001,
     request_type: 'NOT_BUNK_WITH',
     final_status: 'PENDING',
@@ -109,7 +109,7 @@ const mockItems: PipelineSummaryItem[] = [
     requester_cm_id: 12347,
     requester_name: 'Sophia Martinez',
     target_name: 'Unknown Person',
-    source_field: 'bunk_with',
+    source_field: 'bunk_request_form',
     session_cm_id: 1000002,
     request_type: 'BUNK_WITH',
     final_status: 'DECLINED',
@@ -309,10 +309,10 @@ describe('PipelineBatchList', () => {
       render(<PipelineBatchList {...defaultProps} />)
 
       const sourceFilter = screen.getByLabelText(/source/i)
-      await user.selectOptions(sourceFilter, 'bunk_with')
+      await user.selectOptions(sourceFilter, 'bunk_request_form')
 
       expect(defaultProps.onFiltersChange).toHaveBeenCalledWith(
-        expect.objectContaining({ source_field: 'bunk_with' })
+        expect.objectContaining({ source_field: 'bunk_request_form' })
       )
     })
   })
@@ -545,7 +545,7 @@ describe('PipelineBatchList', () => {
       render(
         <PipelineBatchList
           {...defaultProps}
-          filters={{ source_field: 'not_bunk_with' } as PipelineSummaryFilters}
+          filters={{ source_field: 'staff_not_bunk_with' } as PipelineSummaryFilters}
         />
       )
 

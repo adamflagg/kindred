@@ -14,6 +14,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
 import { BunkingStatusPanel } from './BunkingStatusPanel'
+import { SourceField } from '../../types/sourceField'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
 import type { CamperSatisfaction, SatisfactionEntry } from '../../types/satisfaction'
@@ -262,11 +263,11 @@ describe('BunkingStatusPanel — Stage 3b.1 two-column summary line', () => {
     expect(screen.queryByText(/Staff request satisfaction:/i)).toBeNull()
   })
 
-  it('shows Parent line for material parent age preference (source_field=bunk_with)', () => {
+  it('shows Parent line for material parent age preference (source_field=bunk_request_form)', () => {
     const materialAgePref = makeRequest({
       id: 'a1',
       request_type: 'age_preference',
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       age_preference_target: 'older',
     })
     const satisfactionData = { a1: { satisfied: true, detail: null } }
@@ -391,12 +392,12 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
   // restores that resilience: centralized path stays canonical when present;
   // when bucket is undefined, fall back to the row's source_field/source.
 
-  it('renders P badge from source_field=bunk_with when per_request is empty', () => {
+  it('renders P badge from source_field=bunk_request_form when per_request is empty', () => {
     // Simulates /api/satisfaction returning emptyCamperSatisfaction (e.g. 500).
     const ageReq = makeRequest({
       id: 'no-bucket',
       request_type: 'age_preference',
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       age_preference_target: 'older',
     })
     renderPanelWith({
@@ -514,21 +515,21 @@ describe('BunkingStatusPanel — #1172 source_field/source fallback when /api/sa
     expect(screen.getByText(/Staff request satisfaction:/i)).toBeInTheDocument()
   })
 
-  it('derives parent ratio from local bunk_with rows when counted_totals is empty', () => {
-    // Two bunk_with parent rows, /api/satisfaction reports 0/0 (unavailable).
+  it('derives parent ratio from local bunk_request_form rows when counted_totals is empty', () => {
+    // Two bunk_request_form parent rows, /api/satisfaction reports 0/0 (unavailable).
     // Pre-1158 the slice ratio was driven from local rows; restore that as a
     // fallback so a backend hiccup doesn't silently hide the 0/N display.
     const allBunkRequests = [
       makeRequest({
         id: 'p1',
         request_type: 'bunk_with',
-        source_field: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
         requestedPersonName: 'Liam Garcia',
       }),
       makeRequest({
         id: 'p2',
         request_type: 'bunk_with',
-        source_field: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
         requestedPersonName: 'Olivia Chen',
       }),
     ]
@@ -597,7 +598,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       makeRequest({
         id: 'p1',
         request_type: 'bunk_with',
-        source_field: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
         ...({
           targetPerson: { first_name: 'Emma', last_name: 'Johnson', cm_id: 100 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -605,7 +606,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
       makeRequest({
         id: 's1',
         request_type: 'not_bunk_with',
-        source_field: 'not_bunk_with',
+        source_field: SourceField.STAFF_NOT_BUNK_WITH,
         ...({
           targetPerson: { first_name: 'Riley', last_name: 'Sam', cm_id: 200 },
         } as unknown as Partial<EnhancedBunkRequest>),
@@ -717,7 +718,7 @@ describe('BunkingStatusPanel — Stage 3b.1 R3 row list', () => {
     const ageReq = makeRequest({
       id: 'a1',
       request_type: 'age_preference',
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       age_preference_target: 'older',
     })
     const allBunkRequests = [ageReq]

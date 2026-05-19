@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { partitionRequestsBySource } from './partitionRequestsBySource'
+import { SourceField } from '../types/sourceField'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 
 function row(
@@ -10,7 +11,7 @@ function row(
     requester_id: 1000001,
     requestee_id: 1000002,
     request_type: 'bunk_with',
-    source_field: 'bunk_with',
+    source_field: SourceField.BUNK_REQUEST_FORM,
     source: 'family',
     status: 'resolved',
     priority: 1,
@@ -20,8 +21,8 @@ function row(
 }
 
 describe('partitionRequestsBySource', () => {
-  it('routes bunk_with source_field to parent', () => {
-    const r = row({ source_field: 'bunk_with' })
+  it('routes bunk_request_form source_field to parent', () => {
+    const r = row({ source_field: SourceField.BUNK_REQUEST_FORM })
     const { parent, staff, age } = partitionRequestsBySource([r])
     expect(parent).toEqual([r])
     expect(staff).toEqual([])
@@ -29,7 +30,7 @@ describe('partitionRequestsBySource', () => {
   })
 
   it('routes socialize_with source_field to parent (best-effort still parent-rendered)', () => {
-    const r = row({ request_type: 'bunk_with', source_field: 'socialize_with' })
+    const r = row({ request_type: 'bunk_with', source_field: SourceField.SOCIALIZE_WITH })
     const { parent } = partitionRequestsBySource([r])
     expect(parent).toEqual([r])
   })
@@ -37,17 +38,17 @@ describe('partitionRequestsBySource', () => {
   it('routes age_preference of any source_field to age', () => {
     const a = row({
       request_type: 'age_preference',
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       age_preference_target: 'older',
     })
     const b = row({
       request_type: 'age_preference',
-      source_field: 'socialize_with',
+      source_field: SourceField.SOCIALIZE_WITH,
       age_preference_target: 'younger',
     })
     const c = row({
       request_type: 'age_preference',
-      source_field: 'bunking_notes',
+      source_field: SourceField.BUNKING_NOTES,
       source: 'staff',
     })
     const { parent, staff, age } = partitionRequestsBySource([a, b, c])
@@ -56,15 +57,19 @@ describe('partitionRequestsBySource', () => {
     expect(age).toHaveLength(3)
   })
 
-  it('routes not_bunk_with with source_field=bunk_with to parent (post-bug-fix)', () => {
-    const r = row({ request_type: 'not_bunk_with', source_field: 'bunk_with' })
+  it('routes not_bunk_with with source_field=bunk_request_form to parent (post-bug-fix)', () => {
+    const r = row({ request_type: 'not_bunk_with', source_field: SourceField.BUNK_REQUEST_FORM })
     const { parent, staff } = partitionRequestsBySource([r])
     expect(parent).toEqual([r])
     expect(staff).toEqual([])
   })
 
   it('routes not_bunk_with with staff source_field to staff', () => {
-    const r = row({ request_type: 'not_bunk_with', source_field: 'not_bunk_with', source: 'staff' })
+    const r = row({
+      request_type: 'not_bunk_with',
+      source_field: SourceField.STAFF_NOT_BUNK_WITH,
+      source: 'staff',
+    })
     const { parent, staff } = partitionRequestsBySource([r])
     expect(parent).toEqual([])
     expect(staff).toEqual([r])

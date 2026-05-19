@@ -20,6 +20,7 @@ import type {
   SatisfactionEntry,
 } from '../../types/satisfaction'
 import type { BunkRequestsResponse, PersonsResponse } from '../../types/pocketbase-types'
+import { SourceField } from '../../types/sourceField'
 
 /** Augments a request with the resolved targetPerson used for sort + display.
  *  EnhancedBunkRequest itself doesn't declare targetPerson — we attach it in
@@ -109,7 +110,7 @@ export function BunkingStatusPanel({
   )
 
   // Used for both the summary slices and the row partition so material parent
-  // age prefs (source_field='bunk_with') and staff age prefs (source='staff')
+  // age prefs (source_field='bunk_request_form') and staff age prefs (source='staff')
   // contribute to "X/Y met" instead of only rendering as rows below.
   const summaryRequests = useMemo(
     () => [...personRequests, ...resolvedAgePrefs],
@@ -149,7 +150,9 @@ export function BunkingStatusPanel({
     staff.total === 0
   const materialParent = useMemo(() => {
     if (!aggregatorEmpty) return centralizedMaterialParent
-    const bunkWithRows = summaryRequests.filter((r) => r.source_field === 'bunk_with')
+    const bunkWithRows = summaryRequests.filter(
+      (r) => r.source_field === SourceField.BUNK_REQUEST_FORM
+    )
     if (bunkWithRows.length === 0) return centralizedMaterialParent
     const satisfied = bunkWithRows.filter(
       (r) => getRequestSatisfaction(r.id).satisfied === true

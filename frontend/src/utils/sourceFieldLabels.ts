@@ -4,8 +4,8 @@
  * Used by ProcessRequestOptions (checkboxes) and useProcessRequests (toast description).
  */
 export const SOURCE_FIELD_OPTIONS = [
-  { value: 'bunk_with', label: 'Bunk With' },
-  { value: 'not_bunk_with', label: 'Not Bunk With' },
+  { value: 'bunk_request_form', label: 'Bunk With' },
+  { value: 'staff_not_bunk_with', label: 'Not Bunk With' },
   { value: 'bunking_notes', label: 'Bunking Notes' },
   { value: 'internal_notes', label: 'Internal Notes' },
   { value: 'socialize_with', label: 'Socialize With' },

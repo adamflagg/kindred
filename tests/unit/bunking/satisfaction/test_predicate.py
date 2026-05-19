@@ -166,7 +166,7 @@ def test_requestee_id_zero_falls_through_to_requested_person_cm_id() -> None:
         "requestee_id": 0,
         "requested_person_cm_id": 2,
         "request_type": "bunk_with",
-        "source_field": "bunk_with",
+        "source_field": "bunk_request_form",
     }
     # 1 and 2 in same bunk → satisfied. If the falsy `or` swallows 0
     # without falling through, requestee_id_raw becomes None and the
@@ -235,9 +235,9 @@ def test_bunk_with_and_not_bunk_with_are_inverses_when_requester_assigned(
         "requester_id": 1,
         "requestee_id": 2,
         "request_type": "bunk_with",
-        "source_field": "bunk_with",
+        "source_field": "bunk_request_form",
     }
-    not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "not_bunk_with"}
+    not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "staff_not_bunk_with"}
     assert is_request_satisfied(bunk_with, p2b) == (not is_request_satisfied(not_bunk_with, p2b))
 
 
@@ -252,9 +252,9 @@ def test_unassigned_requester_yields_dual_false() -> None:
         "requester_id": 1,
         "requestee_id": 2,
         "request_type": "bunk_with",
-        "source_field": "bunk_with",
+        "source_field": "bunk_request_form",
     }
-    not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "not_bunk_with"}
+    not_bunk_with = {**bunk_with, "request_type": "not_bunk_with", "source_field": "staff_not_bunk_with"}
     assert is_request_satisfied(bunk_with, p2b) is False
     assert is_request_satisfied(not_bunk_with, p2b) is False
 

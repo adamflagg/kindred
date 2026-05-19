@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { mockPerson } from '../test/mockData'
+import { SourceField } from '../types/sourceField'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 
 // Configurable per-collection mock factories
@@ -478,7 +479,7 @@ describe('CamperDetailsPanel', () => {
       requestee_id: 1002,
       request_type: 'bunk_with',
       source: 'family',
-      source_field: 'bunk_with',
+      source_field: 'bunk_request_form',
       status: 'resolved',
       requested_person_name: 'Olivia Chen',
       year: 2025,
@@ -637,14 +638,14 @@ describe('CamperDetailsPanel', () => {
     }
 
     it('renders Parent rows before Staff sub-divider before Staff rows', async () => {
-      // Two requests: one parent (bunk_with Emma→Riley), one staff (not_bunk_with)
+      // Two requests: one parent (bunk_request_form Emma→Riley), one staff (staff_not_bunk_with)
       const bunkRequests: Record<string, unknown>[] = [
         {
           id: 'r3-p1',
           requester_id: 100,
           requestee_id: 200,
           request_type: 'bunk_with',
-          source_field: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
           source: 'family',
           status: 'resolved',
           requested_person_name: 'Riley Sam',
@@ -663,7 +664,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'not_bunk_with',
-          source_field: 'not_bunk_with',
+          source_field: SourceField.STAFF_NOT_BUNK_WITH,
           source: 'staff',
           status: 'resolved',
           requested_person_name: 'Olivia Chen',
@@ -724,7 +725,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 200,
           request_type: 'bunk_with',
-          source_field: 'bunk_with',
+          source_field: 'bunk_request_form',
           source: 'family',
           status: 'resolved',
           requested_person_name: 'Riley Sam',
@@ -759,7 +760,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'age_preference',
-          source_field: 'bunk_with',
+          source_field: 'bunk_request_form',
           source: 'family',
           age_preference_target: 'older',
           status: 'resolved',
@@ -861,7 +862,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'age_preference',
-          source_field: 'bunk_with',
+          source_field: 'bunk_request_form',
           source: 'family',
           age_preference_target: 'older',
           status: 'resolved',
@@ -903,7 +904,7 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText('P')).toBeNull()
     })
 
-    it('#1172: renders P badge from source_field=bunk_with when per_request is empty', async () => {
+    it('#1172: renders P badge from source_field=bunk_request_form when per_request is empty', async () => {
       // Simulate /api/satisfaction unavailable: emptyCamperSatisfaction (per_request: []).
       // Pre-#1158 the badge was driven by the row's own source_field — fall back to
       // that path so a backend hiccup doesn't silently hide the P badge.
@@ -913,7 +914,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'age_preference',
-          source_field: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
           source: 'family',
           age_preference_target: 'older',
           status: 'resolved',
@@ -1002,7 +1003,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 200,
           request_type: 'bunk_with',
-          source_field: 'bunk_with',
+          source_field: 'bunk_request_form',
           source: 'family',
           status: 'resolved',
           requested_person_name: 'Riley Sam',
@@ -1088,7 +1089,7 @@ describe('CamperDetailsPanel', () => {
     function originalBunkRecord(content: string) {
       return {
         id: 'obr-1',
-        field: 'bunk_with' as const,
+        field: 'bunk_request_form' as const,
         content,
         requester: 'pb-emma',
         year: 2025,
@@ -1203,7 +1204,12 @@ describe('CamperDetailsPanel', () => {
   /** Build a minimal original_bunk_requests record with a custom field. */
   function originalBunkRecord(
     id: string,
-    field: 'bunk_with' | 'not_bunk_with' | 'internal_notes' | 'bunking_notes' | 'socialize_with',
+    field:
+      | 'bunk_request_form'
+      | 'staff_not_bunk_with'
+      | 'internal_notes'
+      | 'bunking_notes'
+      | 'socialize_with',
     content: string
   ) {
     return {
@@ -1234,7 +1240,7 @@ describe('CamperDetailsPanel', () => {
 
   describe('Do NOT Share Bunk With section (parent-sourced quick-ref)', () => {
     it('renders the "Do NOT Share Bunk With" section header when negative text exists', async () => {
-      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'not_bunk_with', 'Liam Garcia')])
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'staff_not_bunk_with', 'Liam Garcia')])
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
 
@@ -1245,7 +1251,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('does not render the section when there is no negative text', async () => {
-      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_with', 'Riley Sam')])
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_request_form', 'Riley Sam')])
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
 
@@ -1256,7 +1262,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('does not render the section when negative content is whitespace-only', async () => {
-      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'not_bunk_with', '   ')])
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'staff_not_bunk_with', '   ')])
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
 
@@ -1310,7 +1316,7 @@ describe('CamperDetailsPanel', () => {
     })
 
     it('does not render Staff Notes when neither field is populated', async () => {
-      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_with', 'Riley Sam')])
+      setupOriginalBunkRecords([originalBunkRecord('obr-1', 'bunk_request_form', 'Riley Sam')])
 
       render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} embedded={true} />)
 
