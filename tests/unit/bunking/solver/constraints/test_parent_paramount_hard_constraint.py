@@ -45,7 +45,7 @@ def _mp_request(
         request_type="bunk_with",
         session_cm_id=session_cm_id,
         year=2025,
-        source_field="bunk_with",  # MATERIAL_PARENT bucket
+        source_field="bunk_request_form",  # MATERIAL_PARENT bucket
         confidence_score=1.0,
         status="resolved",
     )

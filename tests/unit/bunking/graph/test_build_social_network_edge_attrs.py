@@ -53,7 +53,7 @@ def test_every_request_edge_has_source_field_and_request_id() -> None:
     attendees = [_attendee(1), _attendee(2), _attendee(3)]
     persons = [_person(1), _person(2), _person(3)]
     requests = [
-        _request("r1", requester_id=1, requestee_id=2, source_field="bunk_with"),
+        _request("r1", requester_id=1, requestee_id=2, source_field="bunk_request_form"),
         _request("r2", requester_id=2, requestee_id=3, source_field=None),  # backfill case
     ]
 

@@ -64,7 +64,7 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requester_id": 1,
             "requestee_id": 2,
             "request_type": "bunk_with",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -73,7 +73,7 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requester_id": 1,
             "requestee_id": 4,
             "request_type": "bunk_with",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
             "year": 2026,
             "session_id": 999,
         },  # unsatisfied
@@ -93,7 +93,7 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requester_id": 3,
             "requestee_id": 4,
             "request_type": "not_bunk_with",
-            "source_field": "not_bunk_with",
+            "source_field": "staff_not_bunk_with",
             "year": 2026,
             "session_id": 999,
         },  # satisfied
@@ -102,7 +102,7 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "requester_id": 3,
             "requestee_id": 1,
             "request_type": "not_bunk_with",
-            "source_field": "not_bunk_with",
+            "source_field": "staff_not_bunk_with",
             "year": 2026,
             "session_id": 999,
         },  # violated

@@ -33,11 +33,11 @@ def _req(source_field: str) -> BunkRequest:
 
 
 def test_resolve_source_known_field_family() -> None:
-    assert _resolve_source(_req("bunk_with")) == "family"
+    assert _resolve_source(_req("bunk_request_form")) == "family"
 
 
 def test_resolve_source_known_field_staff() -> None:
-    assert _resolve_source(_req("not_bunk_with")) == "staff"
+    assert _resolve_source(_req("staff_not_bunk_with")) == "staff"
 
 
 def test_resolve_source_empty_field_falls_back_to_family() -> None:

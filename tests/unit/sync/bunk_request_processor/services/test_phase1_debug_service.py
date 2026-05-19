@@ -66,7 +66,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         mock_original_1 = Mock()
         mock_original_1.id = "orig_req_1"
         mock_original_1.content = "With Emma please"
-        mock_original_1.field = "bunk_with"
+        mock_original_1.field = "bunk_request_form"
         mock_original_1.year = 2025
         mock_original_1.expand = {
             "requester": Mock(
@@ -95,7 +95,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
                     request_type=RequestType.BUNK_WITH,
                     target_name="Emma",
                     age_preference=None,
-                    source_field="bunk_with",
+                    source_field="bunk_request_form",
                     confidence=0.95,
                     csv_position=0,
                     metadata={"keywords_found": ["with"]},
@@ -161,7 +161,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         mock_original = Mock()
         mock_original.id = "orig_req_1"
         mock_original.content = "With Emma please"
-        mock_original.field = "bunk_with"
+        mock_original.field = "bunk_request_form"
         mock_original.expand = {
             "requester": Mock(cm_id=12345, first_name="Liam", last_name="Garcia", preferred_name=None, grade=5)
         }
@@ -209,7 +209,7 @@ class TestPhase1DebugServiceParseSelectedRecords:
         mock_original_2 = Mock()
         mock_original_2.id = "orig_req_2"
         mock_original_2.content = "Not with Jake"
-        mock_original_2.field = "not_bunk_with"
+        mock_original_2.field = "staff_not_bunk_with"
         mock_original_2.expand = {
             "requester": Mock(cm_id=67890, first_name="Olivia", last_name="Chen", preferred_name=None, grade=6)
         }
@@ -341,7 +341,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         mock_original = Mock()
         mock_original.id = "orig_req_1"
         mock_original.content = "With Emma"
-        mock_original.field = "bunk_with"
+        mock_original.field = "bunk_request_form"
         mock_original.year = 2025
         mock_original.expand = {
             "requester": Mock(
@@ -369,7 +369,7 @@ class TestPhase1DebugServiceConvertToParseRequest:
         mock_original = Mock()
         mock_original.id = "orig_req_1"
         mock_original.content = "Not with Jake"
-        mock_original.field = "not_bunk_with"
+        mock_original.field = "staff_not_bunk_with"
         mock_original.year = 2025
         mock_original.expand = {
             "requester": Mock(
@@ -429,7 +429,7 @@ class TestPhase1DebugServiceFormatResults:
                     request_type=RequestType.BUNK_WITH,
                     target_name="Emma",
                     age_preference=None,
-                    source_field="bunk_with",
+                    source_field="bunk_request_form",
                     confidence=0.95,
                     csv_position=0,
                     metadata={
@@ -444,7 +444,7 @@ class TestPhase1DebugServiceFormatResults:
                     request_type=RequestType.BUNK_WITH,
                     target_name="Mia",
                     age_preference=None,
-                    source_field="bunk_with",
+                    source_field="bunk_request_form",
                     confidence=0.90,
                     csv_position=1,
                     metadata={

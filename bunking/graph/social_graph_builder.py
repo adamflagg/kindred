@@ -25,6 +25,7 @@ from bunking.logging_config import get_logger
 from bunking.satisfaction import BucketCount, RequestBucket, camper_satisfaction
 from bunking.satisfaction.aggregate import bucket_status
 from bunking.sync.bunk_request_processor.core.models import RequestType
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 from pocketbase import PocketBase
 
 logger = get_logger(__name__)
@@ -47,10 +48,10 @@ class SocialEdge:
 # Returning "age_preference" would produce an invalid source_field that
 # bucket.classify_request rejects.
 _REQUEST_TYPE_TO_SOURCE_FIELD: dict[str, str] = {
-    "bunk_with": "bunk_with",
-    "not_bunk_with": "not_bunk_with",
-    "socialize_with": "socialize_with",
-    "age_preference": "socialize_with",
+    "bunk_with": SourceField.BUNK_REQUEST_FORM,
+    "not_bunk_with": SourceField.STAFF_NOT_BUNK_WITH,
+    "socialize_with": SourceField.SOCIALIZE_WITH,
+    "age_preference": SourceField.SOCIALIZE_WITH,
 }
 
 

@@ -653,7 +653,7 @@ class TestSingleBunkRequestValidation:
                 requester_person_cm_id=1000,
                 requested_person_cm_id=1001,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 status="resolved",
                 priority=4,
                 session_cm_id=1000001,
@@ -1097,7 +1097,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1134,7 +1134,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1161,7 +1161,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="not_bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1198,7 +1198,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
             DirectBunkRequest(
                 id="r2",
@@ -1207,7 +1207,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
             DirectBunkRequest(
                 id="r3",
@@ -1216,7 +1216,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
         ]
         input_data = self._make_input(persons, requests=requests)

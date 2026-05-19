@@ -139,7 +139,7 @@ def test_mp_objective_request_has_single_sat_var(mock_config: Any) -> None:
     """
     persons = [make_person(1, session=1000, gender="F"), make_person(2, session=1000, gender="F")]
     bunks = [make_bunk(100, session=1000, gender="F"), make_bunk(200, session=1000, gender="F")]
-    req = make_request("mr1", requester=1, requestee=2, request_type="bunk_with", source_field="bunk_with")
+    req = make_request("mr1", requester=1, requestee=2, request_type="bunk_with", source_field="bunk_request_form")
     solver = DirectBunkingSolver(make_input(persons, bunks, [req]), config_service=mock_config)
 
     solver.add_constraints()

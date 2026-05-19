@@ -25,7 +25,7 @@ class TestTraceCollector:
             requester_cm_id=12345,
             year=2025,
             session_cm_id=1000001,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         assert "orig_abc" in tc._traces
         assert tc._traces["orig_abc"].pre_phase1.action == "parsed"
@@ -40,7 +40,7 @@ class TestTraceCollector:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_phase1(
             key="orig_abc",
@@ -62,7 +62,7 @@ class TestTraceCollector:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_pre_phase1(
             key="b",
@@ -71,7 +71,7 @@ class TestTraceCollector:
             requester_cm_id=2,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         assert len(tc._traces) == 2
 
@@ -95,7 +95,7 @@ class TestNoOpTraceCollector:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         noop.record_phase1(key="x", ran=True, parsed_intents=[], token_count=0, processing_time_ms=0, is_valid=True)
         assert noop._traces == {}
@@ -119,7 +119,7 @@ class TestSummaryDataDispositionFields:
             requester_cm_id=1001,
             year=2025,
             session_cm_id=100,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         # Populate disposition via new flattened trace fields
         trace = tc._traces[key]
@@ -141,7 +141,7 @@ class TestSummaryDataDispositionFields:
             "requester_cm_id": 1001,
             "year": 2025,
             "session_cm_id": 100,
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
         }
 
         # Verify the trace data contains disposition fields
@@ -163,7 +163,7 @@ class TestRecordDispositionAndRelated:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_batch_signals(
             key="k",
@@ -182,7 +182,7 @@ class TestRecordDispositionAndRelated:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_conflict_detection(
             key="k",
@@ -201,7 +201,7 @@ class TestRecordDispositionAndRelated:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_disposition(
             key="k",
@@ -220,7 +220,7 @@ class TestRecordDispositionAndRelated:
             requester_cm_id=1,
             year=2025,
             session_cm_id=1,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         tc.record_dedup_save(
             key="k",

@@ -42,7 +42,7 @@ def _make_graph_with_parallel_requests(
         2,
         edge_type="request",
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         request_id="req-parent-1",
         requester_id=1,
         requestee_id=2,
@@ -84,7 +84,7 @@ class TestParallelEdgesPreserved:
         """Both 'bunk_with' and 'bunking_notes' source_field values must survive."""
         builder, g = _make_graph_with_parallel_requests(same_bunk=True)
         source_fields = {data.get("source_field") for _, _, data in g.edges(data=True)}
-        assert "bunk_with" in source_fields, "parent source_field 'bunk_with' was lost"
+        assert "bunk_request_form" in source_fields, "parent source_field 'bunk_request_form' was lost"
         assert "bunking_notes" in source_fields, "staff source_field 'bunking_notes' was lost"
 
     def test_both_request_ids_present(self) -> None:
@@ -180,7 +180,7 @@ def _make_graph_with_parallel_reciprocal_pairs(
         2,
         edge_type="request",
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         request_id="req-parent-1",
         requester_id=1,
         requestee_id=2,
@@ -282,7 +282,7 @@ class TestSingleEdgeUnchanged:
             2,
             edge_type="request",
             request_type="bunk_with",
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             request_id="r1",
             requester_id=1,
             requestee_id=2,

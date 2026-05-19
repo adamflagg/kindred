@@ -85,11 +85,16 @@ class TestBackfillSourceFieldDirect:
         assert _backfill_source_field("age_preference", "internal_notes") == "internal_notes"
 
     def test_known_legacy_types_round_trip(self) -> None:
-        # bunk_with / not_bunk_with / socialize_with all map to themselves
-        # (and are valid source_field values).
-        for rt in ("bunk_with", "not_bunk_with", "socialize_with"):
+        # request_type "bunk_with" / "not_bunk_with" / "socialize_with" map to
+        # the renamed source_field values (and those results must be classifiable).
+        expected = {
+            "bunk_with": "bunk_request_form",
+            "not_bunk_with": "staff_not_bunk_with",
+            "socialize_with": "socialize_with",
+        }
+        for rt, expected_sf in expected.items():
             result = _backfill_source_field(rt, None)
-            assert result == rt
+            assert result == expected_sf, f"request_type {rt!r} → {result!r}, expected {expected_sf!r}"
             classify_request(result)
 
 

@@ -55,7 +55,7 @@ def _make_trace_record_with_data() -> MagicMock:
         requester_cm_id=12345,
         year=2025,
         session_cm_id=1000001,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         trace_data={
             "pre_phase1": {
                 "action": "parsed",

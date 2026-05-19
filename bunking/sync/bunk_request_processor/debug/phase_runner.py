@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 if TYPE_CHECKING:
     from bunking.sync.bunk_request_processor.core.models import ParseRequest, ParseResult
@@ -280,7 +281,7 @@ class PhaseRunner:
                 target_name=target_name,
                 request_type=request_type,
                 age_preference=None,
-                source_field=trace_data.pre_phase1.field_path or "bunk_with",
+                source_field=trace_data.pre_phase1.field_path or SourceField.BUNK_REQUEST_FORM,
                 confidence=intent.get("confidence", 0.0),
                 csv_position=intent.get("csv_position", 0),
                 metadata=intent,
@@ -290,7 +291,7 @@ class PhaseRunner:
         # Build a ParseRequest with enough context for _get_trace_key to resolve
         # the original_request_id. _get_trace_key reads:
         #   parse_request.field_name -> looks up in row_data._original_request_ids
-        source_field = trace_data.pre_phase1.field_path or "bunk_with"
+        source_field = trace_data.pre_phase1.field_path or SourceField.BUNK_REQUEST_FORM
 
         parse_request = ParseRequest(
             request_text=trace_data.pre_phase1.original_text,

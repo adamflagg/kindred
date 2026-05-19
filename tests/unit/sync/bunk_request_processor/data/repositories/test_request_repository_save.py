@@ -27,7 +27,7 @@ def _make_request() -> BunkRequest:
         session_cm_id=1000001,
         is_first_requested=True,
         confidence_score=0.9,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         csv_position=0,
         year=2026,
         status=RequestStatus.RESOLVED,
@@ -46,4 +46,4 @@ def test_map_to_db_omits_source_key() -> None:
         f"Stage 4 violation: write payload still contains 'source' key: {sorted(payload.keys())}"
     )
     assert "source_field" in payload, "source_field must remain in payload"
-    assert payload["source_field"] == "bunk_with"
+    assert payload["source_field"] == "bunk_request_form"

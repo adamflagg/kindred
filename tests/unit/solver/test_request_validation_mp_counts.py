@@ -113,8 +113,8 @@ class TestMPAndAllCamperCounts:
         persons = [_person(1), _person(2), _person(3)]
         bunks = [_bunk(100), _bunk(200)]
         requests = [
-            _req("r1", 1, 2, source_field="bunk_with"),  # MP, satisfied (B in same bunk)
-            _req("r2", 1, 3, source_field="bunk_with"),  # MP, unsatisfied (C in other bunk)
+            _req("r1", 1, 2, source_field="bunk_request_form"),  # MP, satisfied (B in same bunk)
+            _req("r2", 1, 3, source_field="bunk_request_form"),  # MP, unsatisfied (C in other bunk)
         ]
         assignments = {1: 100, 2: 100, 3: 200}
 
@@ -138,7 +138,7 @@ class TestMPAndAllCamperCounts:
         persons = [_person(1), _person(2), _person(3)]
         bunks = [_bunk(100), _bunk(200)]
         requests = [
-            _req("r1", 1, 3, source_field="bunk_with"),  # MP, unsatisfied
+            _req("r1", 1, 3, source_field="bunk_request_form"),  # MP, unsatisfied
             _req("r2", 1, 2, source_field="bunking_notes"),  # STAFF, satisfied
         ]
         assignments = {1: 100, 2: 100, 3: 200}
@@ -159,7 +159,7 @@ class TestMPAndAllCamperCounts:
         persons = [_person(1), _person(2), _person(3)]
         bunks = [_bunk(100), _bunk(200)]
         requests = [
-            _req("r1", 1, 3, source_field="bunk_with"),  # MP, unsatisfied
+            _req("r1", 1, 3, source_field="bunk_request_form"),  # MP, unsatisfied
             _req("r2", 1, 3, source_field="bunking_notes"),  # STAFF, unsatisfied
         ]
         assignments = {1: 100, 2: 100, 3: 200}
@@ -221,9 +221,9 @@ def test_entirely_impossible_mp_camper_excluded_from_mp_campers_total() -> None:
     bunks = [_bunk(10, capacity=10, session_cm_id=500)]
     requests = [
         # Camper 1: only MP request targets cm_id 999 (not in persons) -> impossible.
-        _req("r1", requester_id=1, target_id=999, source_field="bunk_with"),
+        _req("r1", requester_id=1, target_id=999, source_field="bunk_request_form"),
         # Camper 2: MP request to camper 3, satisfiable.
-        _req("r2", requester_id=2, target_id=3, source_field="bunk_with"),
+        _req("r2", requester_id=2, target_id=3, source_field="bunk_request_form"),
     ]
     # Put everyone in the one bunk so r2 is satisfied.
     assignments = {1: 10, 2: 10, 3: 10}
@@ -247,8 +247,8 @@ def test_impossible_mp_request_excluded_from_mp_requests_totals() -> None:
     p2 = _person(2, session_cm_id=500)
     bunks = [_bunk(10, capacity=10, session_cm_id=500)]
     requests = [
-        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),  # impossible
-        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_with"),  # possible + satisfied
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_request_form"),  # impossible
+        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_request_form"),  # possible + satisfied
     ]
     assignments = {1: 10, 2: 10}
 
@@ -274,9 +274,9 @@ def test_entirely_impossible_camper_excluded_from_all_campers_totals() -> None:
     bunks = [_bunk(10, capacity=10, session_cm_id=500)]
     requests = [
         # Camper 1: only request targets a non-roster cm_id -> impossible.
-        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_request_form"),
         # Camper 2: satisfiable MP request.
-        _req("r_ok", requester_id=2, target_id=3, source_field="bunk_with"),
+        _req("r_ok", requester_id=2, target_id=3, source_field="bunk_request_form"),
     ]
     assignments = {1: 10, 2: 10, 3: 10}
 
@@ -299,8 +299,8 @@ def test_impossible_request_excluded_from_all_requests_totals() -> None:
     p2 = _person(2, session_cm_id=500)
     bunks = [_bunk(10, capacity=10, session_cm_id=500)]
     requests = [
-        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_with"),  # impossible
-        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_with"),  # possible + satisfied
+        _req("r_imp", requester_id=1, target_id=999, source_field="bunk_request_form"),  # impossible
+        _req("r_ok", requester_id=1, target_id=2, source_field="bunk_request_form"),  # possible + satisfied
     ]
     assignments = {1: 10, 2: 10}
 
@@ -325,7 +325,7 @@ def test_not_bunk_with_unassigned_target_counts_as_satisfied() -> None:
     requests = [
         # not_bunk_with -> STAFF (non-material); target 2 is on the roster but
         # left out of `assignments` below, so it is unassigned at solve time.
-        _req("r1", 1, 2, source_field="not_bunk_with", request_type="not_bunk_with"),
+        _req("r1", 1, 2, source_field="staff_not_bunk_with", request_type="not_bunk_with"),
     ]
     assignments = {1: 100}  # camper 2 deliberately unassigned
 

@@ -17,6 +17,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.shared.constants import SourceField
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
@@ -33,11 +34,11 @@ class RequestBucket(StrEnum):
 
 
 _BUCKET_MAP: dict[str, RequestBucket] = {
-    "bunk_with": RequestBucket.MATERIAL_PARENT,
-    "socialize_with": RequestBucket.IMMATERIAL_PARENT,
-    "not_bunk_with": RequestBucket.STAFF,
-    "bunking_notes": RequestBucket.STAFF,
-    "internal_notes": RequestBucket.STAFF,
+    SourceField.BUNK_REQUEST_FORM: RequestBucket.MATERIAL_PARENT,
+    SourceField.SOCIALIZE_WITH: RequestBucket.IMMATERIAL_PARENT,
+    SourceField.STAFF_NOT_BUNK_WITH: RequestBucket.STAFF,
+    SourceField.BUNKING_NOTES: RequestBucket.STAFF,
+    SourceField.INTERNAL_NOTES: RequestBucket.STAFF,
 }
 
 

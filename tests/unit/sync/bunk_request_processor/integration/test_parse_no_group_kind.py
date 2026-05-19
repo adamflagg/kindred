@@ -124,7 +124,7 @@ class TestParsedRequestHasNoGroupKind:
             request_type=RequestType.BUNK_WITH,
             target_name="Emma Johnson",
             age_preference=None,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence=0.95,
             csv_position=0,
             metadata={},

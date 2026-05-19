@@ -114,7 +114,7 @@ class TestSourceFieldFilterIntegration:
         ]
 
         # When: filtered to bunk_with only
-        source_fields = ["bunk_with"]
+        source_fields = ["bunk_request_form"]
         filtered = [r for r in records if r["field"] in source_fields]
 
         # Then: only bunk_with records remain
@@ -149,7 +149,7 @@ class TestSourceFieldFilterIntegration:
         ]
 
         # Filter to bunk_with, then limit to 2
-        source_fields = ["bunk_with"]
+        source_fields = ["bunk_request_form"]
         limit = 2
 
         filtered = [r for r in records if r["field"] in source_fields]
@@ -253,7 +253,7 @@ class TestSourceFieldWithSessionFilter:
         ]
 
         # Filter: source_field=bunk_with AND session=2
-        source_fields = ["bunk_with"]
+        source_fields = ["bunk_request_form"]
         session = 2
 
         filtered = [r for r in records if r["field"] in source_fields and r["session"] == session]
@@ -271,7 +271,7 @@ class TestSourceFieldWithSessionFilter:
             {"field": "not_bunk_with", "session": 1, "content": "5"},
         ]
 
-        source_fields = ["bunk_with"]
+        source_fields = ["bunk_request_form"]
         session = 1
         limit = 2
 

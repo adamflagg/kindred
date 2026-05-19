@@ -153,7 +153,7 @@ class TestMustSatisfyDiagnosticSplit:
         # Both campers in session 100 — request is possible. After solve they're in different bunks.
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100)],
-            requests=[_request("r1", 1001, 1002, 100, source_field="bunk_with")],
+            requests=[_request("r1", 1001, 1002, 100, source_field="bunk_request_form")],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
         )
         solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())
@@ -188,7 +188,7 @@ class TestMustSatisfyDiagnosticSplit:
                     1002,
                     100,
                     request_type="not_bunk_with",
-                    source_field="not_bunk_with",
+                    source_field="staff_not_bunk_with",
                 ),
             ],
             bunks=[_bunk(2001, 100)],
@@ -218,14 +218,14 @@ class TestMustSatisfyDiagnosticSplit:
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
-                _request("r1", 1001, 1002, 100, source_field="bunk_with"),
+                _request("r1", 1001, 1002, 100, source_field="bunk_request_form"),
                 _request(
                     "r2",
                     1001,
                     1003,
                     100,
                     request_type="not_bunk_with",
-                    source_field="not_bunk_with",
+                    source_field="staff_not_bunk_with",
                 ),
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
@@ -256,8 +256,8 @@ class TestMustSatisfyDiagnosticSplit:
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
-                _request("r1", 1001, 1002, 100, source_field="bunk_with"),
-                _request("r2", 1001, 1003, 100, source_field="bunk_with"),
+                _request("r1", 1001, 1002, 100, source_field="bunk_request_form"),
+                _request("r2", 1001, 1003, 100, source_field="bunk_request_form"),
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
         )
@@ -311,8 +311,8 @@ class TestMustSatisfyDiagnosticSplit:
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
-                _request("rA", 1001, 1003, 100, source_field="bunk_with", status="pending"),
-                _request("rB", 1002, 1003, 100, source_field="bunk_with", status="declined"),
+                _request("rA", 1001, 1003, 100, source_field="bunk_request_form", status="pending"),
+                _request("rB", 1002, 1003, 100, source_field="bunk_request_form", status="declined"),
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
         )
@@ -351,8 +351,8 @@ class TestMustSatisfyDiagnosticSplit:
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
-                _request("r-resolved", 1001, 1002, 100, source_field="bunk_with", status="resolved"),
-                _request("r-pending", 1001, 1003, 100, source_field="bunk_with", status="pending"),
+                _request("r-resolved", 1001, 1002, 100, source_field="bunk_request_form", status="resolved"),
+                _request("r-pending", 1001, 1003, 100, source_field="bunk_request_form", status="pending"),
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
         )
@@ -395,17 +395,17 @@ class TestMustSatisfyDiagnosticSplit:
                 _person(1007, 100),  # target for 1004
             ],
             requests=[
-                _request("rA", 1001, 2001, 100, source_field="bunk_with"),  # type A
-                _request("rB", 1002, 1005, 100, source_field="bunk_with"),  # type B
+                _request("rA", 1001, 2001, 100, source_field="bunk_request_form"),  # type A
+                _request("rB", 1002, 1005, 100, source_field="bunk_request_form"),  # type B
                 _request(
                     "rC",
                     1003,
                     1006,
                     100,
                     request_type="not_bunk_with",
-                    source_field="not_bunk_with",
+                    source_field="staff_not_bunk_with",
                 ),  # type C
-                _request("rD", 1004, 1007, 100, source_field="bunk_with"),  # satisfied
+                _request("rD", 1004, 1007, 100, source_field="bunk_request_form"),  # satisfied
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100), _bunk(2010, 200)],
         )
@@ -446,8 +446,8 @@ class TestMustSatisfyDiagnosticSplit:
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],
             requests=[
-                _request("r-resolved", 1001, 1002, 100, source_field="bunk_with", status="resolved"),
-                _request("r-pending", 1001, 1003, 100, source_field="bunk_with", status="pending"),
+                _request("r-resolved", 1001, 1002, 100, source_field="bunk_request_form", status="resolved"),
+                _request("r-pending", 1001, 1003, 100, source_field="bunk_request_form", status="pending"),
             ],
             bunks=[_bunk(2001, 100), _bunk(2002, 100)],
         )
@@ -522,7 +522,7 @@ def _make_material_parent_unmet_solver() -> tuple[DirectBunkingSolver, list[Dire
     """
     input_data = DirectSolverInput(
         persons=[_person(1001, 100), _person(1002, 100)],
-        requests=[_request("r1", 1001, 1002, 100, source_field="bunk_with")],
+        requests=[_request("r1", 1001, 1002, 100, source_field="bunk_request_form")],
         bunks=[_bunk(2001, 100), _bunk(2002, 100)],
     )
     solver = DirectBunkingSolver(input_data, ConfigLoader.get_instance())

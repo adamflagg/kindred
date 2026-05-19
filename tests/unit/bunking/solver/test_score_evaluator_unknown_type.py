@@ -53,7 +53,7 @@ def test_unknown_request_type_treated_as_unsatisfied(caplog):
         {
             "id": "r1",
             "request_type": "bunk_with",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
             "requester_id": 1,
             "requestee_id": 2,
             "is_first_requested": True,
@@ -61,7 +61,7 @@ def test_unknown_request_type_treated_as_unsatisfied(caplog):
         {
             "id": "r2",
             "request_type": "future_unknown_type",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
             "requester_id": 1,
             "requestee_id": 3,
             "is_first_requested": True,

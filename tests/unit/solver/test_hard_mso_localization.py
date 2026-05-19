@@ -44,7 +44,7 @@ def _bunk_with_mp(req_id: str, requester: int, requestee: int, session: int) -> 
         requester_person_cm_id=requester,
         requested_person_cm_id=requestee,
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         session_cm_id=session,
         year=2026,
         status="resolved",
