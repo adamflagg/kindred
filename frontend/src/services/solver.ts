@@ -56,6 +56,7 @@ export interface ImpossibilityReportItem {
   reason_code: string
   reason_message: string
   request_type: string
+  source_field?: string | null
   requester: { cm_id: number; name: string; grade: number; gender: string }
   requestee: { cm_id: number; name: string; grade: number; gender: string } | null
   detail: Record<string, unknown>

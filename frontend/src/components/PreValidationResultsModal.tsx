@@ -19,6 +19,7 @@ import type {
 import { CamperNameButton } from './impossibility/CamperNameButton'
 import { camperActionHints, friendlyReasonLabel } from './impossibility/reasonHints'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
+import { isMaterialRequest } from '../utils/requestBucket'
 
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -571,27 +572,39 @@ export default function PreValidationResultsModal({
           </div>
         ) : (
           <>
-            {Object.entries(impossibility_report.by_reason).map(([code, items]) => (
-              <details
-                key={code}
-                open
-                className="rounded-lg border border-amber-200 bg-amber-50 p-3"
-              >
-                <summary
-                  className={`flex items-center justify-between font-semibold text-amber-900 ${summaryClass}`}
+            {Object.entries(impossibility_report.by_reason).map(([code, items]) => {
+              // Defense-in-depth: filter immaterial rows from the age-pref bucket
+              // even if the backend sends them (e.g. a regression at /solver/pre-validate).
+              // Backend already filters at Task 6 (commit 0e1f7de9); this guards the
+              // render layer so a future endpoint regression doesn't silently surface
+              // socialize_with rows as impossible age preferences (Group 65 #1537).
+              const visibleItems =
+                code === 'age_pref_no_eligible_grade'
+                  ? items.filter((item) => isMaterialRequest({ source_field: item.source_field }))
+                  : items
+              if (visibleItems.length === 0) return null
+              return (
+                <details
+                  key={code}
+                  open
+                  className="rounded-lg border border-amber-200 bg-amber-50 p-3"
                 >
-                  <span>{friendlyReasonLabel(code)}</span>
-                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
-                    {items.length}
-                  </span>
-                </summary>
-                <ImpossibilityItems
-                  items={items}
-                  sessionLookup={sessionLookup}
-                  onSelectCamper={setSelectedCamperId}
-                />
-              </details>
-            ))}
+                  <summary
+                    className={`flex items-center justify-between font-semibold text-amber-900 ${summaryClass}`}
+                  >
+                    <span>{friendlyReasonLabel(code)}</span>
+                    <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-white">
+                      {visibleItems.length}
+                    </span>
+                  </summary>
+                  <ImpossibilityItems
+                    items={visibleItems}
+                    sessionLookup={sessionLookup}
+                    onSelectCamper={setSelectedCamperId}
+                  />
+                </details>
+              )
+            })}
           </>
         )}
       </div>

@@ -851,3 +851,70 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
     expect(screen.queryByRole('button', { name: /Phantom Friend/ })).not.toBeInTheDocument()
   })
 })
+
+describe('PreValidationResultsModal — defense-in-depth immaterial filter (Group 65 #1537)', () => {
+  it('filters immaterial age-pref rows from the AGE_PREFERENCE details list', () => {
+    // Simulate a backend regression where by_reason contains a socialize_with
+    // age-pref row (immaterial) alongside a bunk_with row (material).
+    // The modal must suppress the immaterial row even if the backend sends it.
+    const results = {
+      valid: false,
+      errors: [],
+      warnings: [],
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
+      impossibility_report: makeImpossibilityReport({
+        total_impossible: 2,
+        affected_campers: 2,
+        by_reason: {
+          age_pref_no_eligible_grade: [
+            {
+              request_id: 'r1',
+              reason_code: 'age_pref_no_eligible_grade',
+              reason_message: 'no eligible grade',
+              request_type: 'age_preference',
+              source_field: 'socialize_with',
+              requester: { cm_id: 101, name: 'Immaterial Camper', grade: 6, gender: 'F' },
+              requestee: null,
+              detail: { direction: 'older', pool_max_grade: 6 },
+              bucket: 'immaterial_parent' as const,
+            },
+            {
+              request_id: 'r2',
+              reason_code: 'age_pref_no_eligible_grade',
+              reason_message: 'no eligible grade',
+              request_type: 'age_preference',
+              source_field: 'bunk_with',
+              requester: { cm_id: 102, name: 'Material Camper', grade: 6, gender: 'F' },
+              requestee: null,
+              detail: { direction: 'younger', pool_min_grade: 6 },
+              bucket: 'material_parent' as const,
+            },
+          ],
+        },
+        flat: [],
+      }),
+    }
+
+    render(
+      <PreValidationResultsModal
+        sessionCmId={1000001}
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={() => undefined}
+      />
+    )
+
+    // Only the material bunk_with row should render
+    expect(screen.getByRole('button', { name: /Material Camper/ })).toBeInTheDocument()
+    // The immaterial socialize_with row must be suppressed
+    expect(screen.queryByRole('button', { name: /Immaterial Camper/ })).not.toBeInTheDocument()
+  })
+})
