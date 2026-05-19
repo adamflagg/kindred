@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from bunking.config.loader import ConfigLoader
 from bunking.logging_config import get_logger
+from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
@@ -733,7 +734,7 @@ class RequestOrchestrator:
         spread_filter: SpreadFilter | None
         if spread_enabled:
             spread_filter = SpreadFilter(
-                grade_spread=config_loader.get_int("spread.max_grade", default=2),
+                grade_spread=MAX_UNIQUE_GRADES_PER_BUNK,
                 age_spread_months=config_loader.get_int("spread.max_age_months", default=24),
             )
         else:

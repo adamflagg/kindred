@@ -122,30 +122,11 @@ class TestCalculatePenalties:
         assert "over_capacity" not in penalties
         assert "under_occupancy" in penalties
 
-    def test_grade_spread_violation(self, mock_config):
-        """Test grade spread penalty calculation.
-
-        After the B3 fix, penalty scales with the number of EXCESS unique
-        grades rather than counting each violating bunk once. Here the
-        bunk has 4 unique grades {3, 5, 7, 8}; with max=2, excess=2, so
-        penalty = 2 * 100 = 200. Under the old (range-based) formula this
-        was counted as a single violation worth 100.
-        """
-        person_to_bunk = {1: 100, 2: 100, 3: 100, 4: 100}
-        bunk_to_persons = {100: [1, 2, 3, 4]}
-        person_by_cm_id = {
-            1: {"cm_id": 1, "grade": 3},  # 4 unique grades: {3, 5, 7, 8}
-            2: {"cm_id": 2, "grade": 5},
-            3: {"cm_id": 3, "grade": 7},
-            4: {"cm_id": 4, "grade": 8},
-        }
-        bunk_by_cm_id = {100: {"cm_id": 100, "max_size": 12}}
-
-        penalties = _calculate_penalties(person_to_bunk, bunk_to_persons, person_by_cm_id, bunk_by_cm_id, mock_config)
-
-        # 4 unique grades, max=2 → excess=2 → penalty = 2 * 100 = 200.
-        assert "grade_spread" in penalties
-        assert penalties["grade_spread"] == 200
+    # Phase 2 grade-spread cleanup: removed test_grade_spread_violation —
+    # the score evaluator no longer reports a "grade_spread" penalty term.
+    # Solver enforces a hard MAX_UNIQUE_GRADES_PER_BUNK ceiling; if 3+ unique
+    # grades land in one bunk that's a staff manual override on the bunking
+    # board, surfaced by the validator's grade_spread_warning, not by score.
 
     # Phase 2 cabin-capacity cleanup: removed test_over_capacity_violation —
     # the score evaluator no longer reports an "over_capacity" penalty term.
@@ -550,9 +531,9 @@ class TestEvaluateScenarioScore:
     def test_penalties_applied(self, mock_config):
         """Test that penalties are subtracted from total score.
 
-        After the B3 fix, grade_spread counts UNIQUE GRADES not range, so
-        we need at least max_unique_grades+1 distinct grades in one bunk to
-        trigger a penalty. With max=2 we put 3 distinct grades in one bunk.
+        Phase 2 (grade_spread) deleted the grade_spread penalty line; the
+        remaining soft-penalty source available in this fixture is the
+        under-occupancy charge (one bunk holding 3 < PREFERRED_BUNK_OCCUPANCY).
         """
         requests = [
             {
@@ -568,7 +549,7 @@ class TestEvaluateScenarioScore:
             {"person_cm_id": 3, "bunk_cm_id": 100},
         ]
         persons = [
-            {"cm_id": 1, "grade": 3},  # 3 distinct grades → 1 excess
+            {"cm_id": 1, "grade": 3},
             {"cm_id": 2, "grade": 5},
             {"cm_id": 3, "grade": 8},
         ]
@@ -576,9 +557,9 @@ class TestEvaluateScenarioScore:
 
         result = evaluate_scenario_score(requests, assignments, persons, bunks, config=mock_config)
 
-        # Should have grade spread penalty
+        # Should have under-occupancy penalty (3 campers < PREFERRED_BUNK_OCCUPANCY)
         assert result.soft_penalty_score > 0
-        assert "grade_spread" in result.penalties
+        assert "under_occupancy" in result.penalties
         assert result.total_score == result.request_satisfaction_score - result.soft_penalty_score
 
     def test_alternative_field_names(self, mock_config):

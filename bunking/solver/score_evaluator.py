@@ -45,7 +45,6 @@ from bunking.solver.direct_solver import (
     find_mutual_pairs,
 )
 from bunking.solver.penalties import (
-    grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,  # noqa: F401 — re-exported for centralization-invariant tests
 )
@@ -296,28 +295,10 @@ def _calculate_penalties(
     """Calculate soft constraint penalties for the current state."""
     penalties: dict[str, int] = {}
 
-    # Grade spread penalty (B3 fix). Mirrors the OR-Tools cost term in
-    # ``bunking/solver/constraints/grade_spread.py:add_grade_spread_soft_constraint``,
-    # which uses ``excess = max(0, unique_grade_count - max_unique_grades)``
-    # and contributes ``-penalty_weight * excess`` to the objective. The
-    # previous formula counted bunks with ANY range > max_spread once each,
-    # which both over-counted in some cases (range=5 but unique=2) and
-    # under-counted in others (range=2 but unique=3 with two equal-distance
-    # gaps).
-    grade_spread_penalty_weight = grade_spread_penalty()
-    max_unique_grades = config.get_int("constraint.grade_spread.max_spread", default=2)
-
-    total_grade_spread_excess = 0
-    for person_ids in bunk_to_persons.values():
-        unique_grades = {
-            person_by_cm_id[pid].get("grade")
-            for pid in person_ids
-            if pid in person_by_cm_id and person_by_cm_id[pid].get("grade") is not None
-        }
-        total_grade_spread_excess += max(0, len(unique_grades) - max_unique_grades)
-
-    if total_grade_spread_excess > 0:
-        penalties["grade_spread"] = total_grade_spread_excess * grade_spread_penalty_weight
+    # NOTE: grade_spread penalty removed in Phase 2. Solver enforces the
+    # MAX_UNIQUE_GRADES_PER_BUNK ceiling as a hard constraint; the prior B3-fix
+    # mirror was tied to the soft path and is obsolete dead weight under
+    # soft-path deletion.
 
     # NOTE: over_capacity penalty removed in Phase 2. Solver enforces capacity
     # as a hard constraint, so no over-capacity assignments can appear in

@@ -14,7 +14,7 @@ from .cabin_occupancy import (
     add_cabin_minimum_occupancy_soft_penalty,
 )
 from .grade_adjacency import add_grade_adjacency_constraints
-from .grade_spread import add_grade_spread_constraints, add_grade_spread_soft_constraint
+from .grade_spread import add_grade_spread_constraints
 
 __all__ = [
     "ConstraintBuilder",
@@ -27,6 +27,5 @@ __all__ = [
     "add_cabin_minimum_occupancy_soft_penalty",
     "add_grade_adjacency_constraints",
     "add_grade_spread_constraints",
-    "add_grade_spread_soft_constraint",
     "get_or_create_request_sat_var",
 ]

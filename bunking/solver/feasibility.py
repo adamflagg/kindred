@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
 
 if TYPE_CHECKING:
     from bunking.config import ConfigLoader
@@ -338,11 +339,41 @@ def find_infeasibility_cause(
 
         if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
             logger.info(f"FOUND IT! Disabling {constraint} makes the problem feasible.")
+            if constraint == "grade_spread":
+                actionable = _explain_grade_spread_infeasibility(input_data)
+                if actionable is not None:
+                    return actionable
             return f"The {constraint} constraint is causing infeasibility"
 
     # If still infeasible with each individual constraint disabled, try combinations
     logger.info("No single constraint removal fixed it. The issue may be a combination.")
     return "Infeasibility caused by multiple interacting constraints"
+
+
+def _explain_grade_spread_infeasibility(input_data: DirectSolverInput) -> str | None:
+    """Return a staff-actionable diagnosis when a locked group is the culprit.
+
+    The hard ``MAX_UNIQUE_GRADES_PER_BUNK`` ceiling makes one new infeasibility
+    class possible: a locked group spanning more than that many unique grades
+    cannot fit in any bunk. Surface that with the offending grades + the next
+    action (split on the bunking board, or accept the manual override).
+
+    Returns ``None`` if no locked group is over the limit — the caller falls
+    back to the generic ``"The grade_spread constraint is causing
+    infeasibility"`` message in that case.
+    """
+    person_by_cm = input_data.person_by_cm_id
+    for group_id, member_cms in input_data.group_locks.items():
+        grades = sorted(
+            {person_by_cm[cm].grade for cm in member_cms if cm in person_by_cm and person_by_cm[cm].grade is not None}
+        )
+        if len(grades) > MAX_UNIQUE_GRADES_PER_BUNK:
+            return (
+                f"Cannot solve within the {MAX_UNIQUE_GRADES_PER_BUNK}-grade limit: "
+                f"locked group {group_id!r} spans grades {grades} — split the "
+                f"group on the bunking board or accept the manual override."
+            )
+    return None
 
 
 def _probe_mp_feasibility(

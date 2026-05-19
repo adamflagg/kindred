@@ -34,7 +34,6 @@ from bunking.solver.direct_solver import (
     find_mutual_pairs,
 )
 from bunking.solver.penalties import (
-    grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,  # noqa: F401 — re-exported for centralization-invariant tests
 )
@@ -411,12 +410,9 @@ class ObjectiveEvaluator:
         """
         penalties: dict[str, int] = {}
 
-        # Grade spread penalty (if soft mode)
-        grade_spread_mode = self.config.get_str("constraint.grade_spread.mode", default="hard")
-        if grade_spread_mode == "soft":
-            penalty = self._calculate_grade_spread_penalty(bunk_to_persons, person_by_cm_id, bunk_by_cm_id)
-            if penalty > 0:
-                penalties["grade_spread"] = penalty
+        # NOTE: grade_spread soft penalty removed in Phase 2. The constraint is
+        # now a hard cap (MAX_UNIQUE_GRADES_PER_BUNK in solver/constants.py);
+        # there is no soft path for evaluators to mirror.
 
         # NOTE: cabin_capacity soft penalty removed in Phase 2. Solver enforces
         # capacity as a hard constraint, so over-capacity assignments cannot
@@ -429,41 +425,6 @@ class ObjectiveEvaluator:
             penalties["under_occupancy"] = penalty
 
         return penalties
-
-    def _calculate_grade_spread_penalty(
-        self,
-        bunk_to_persons: dict[int, list[int]],
-        person_by_cm_id: dict[int, dict[str, Any]],
-        bunk_by_cm_id: dict[int, dict[str, Any]],
-    ) -> int:
-        """Calculate grade spread soft constraint penalty (B3 fix).
-
-        Mirrors the OR-Tools cost term in
-        ``bunking/solver/constraints/grade_spread.py:add_grade_spread_soft_constraint``,
-        which uses ``excess = max(0, unique_grade_count - max_unique_grades)``
-        and contributes ``-penalty_weight * excess`` to the objective.
-
-        Previously this method computed grade spread as ``max(grades) -
-        min(grades)``, which over-counts whenever non-adjacent grades are
-        present (e.g. ``{5, 5, 5, 10, 10}``: range=5 but only 2 unique
-        grades). The post-solve score therefore disagreed with what the
-        solver was actually optimizing.
-        """
-        max_unique_grades = self.config.get_int("constraint.grade_spread.max_spread", default=2)
-        penalty_per_grade = grade_spread_penalty()
-
-        total_penalty = 0
-
-        for person_ids in bunk_to_persons.values():
-            unique_grades = {
-                person_by_cm_id[pid].get("grade")
-                for pid in person_ids
-                if pid in person_by_cm_id and person_by_cm_id[pid].get("grade") is not None
-            }
-            excess = max(0, len(unique_grades) - max_unique_grades)
-            total_penalty += excess * penalty_per_grade
-
-        return total_penalty
 
     def _calculate_occupancy_penalty(
         self,

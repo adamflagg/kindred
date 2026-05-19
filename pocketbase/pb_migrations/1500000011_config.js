@@ -176,13 +176,12 @@ migrate((app) => {
     // (collapsed to bunking/solver/constants.py).
 
     // Constraint Settings - Age & Grade (unified spread limits)
-    'spread.max_grade': 'Max Grade Spread',
+    // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
+    // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
     'spread.max_age_months': 'Max Age Difference (months)',
     'constraint.age_spread.penalty': 'Age Spread Violation Penalty',
     'constraint.age_spread.preferred_months': 'Preferred Age Spread (months)',
     'constraint.age_spread.preferred_bonus': 'Preferred Age Spread Bonus',
-    'constraint.grade_spread.mode': 'Grade Spread Mode',
-    'constraint.grade_spread.penalty': 'Grade Spread Violation Penalty',
     'constraint.grade_ratio.max_percentage': 'Max Single Grade Percentage',
     'constraint.grade_ratio.penalty': 'Grade Ratio Violation Penalty',
 
@@ -243,13 +242,12 @@ migrate((app) => {
     // Constraint Settings - Cabin Capacity removed in Phase 2 cleanup.
 
     // Constraint Settings - Age & Grade (unified spread limits)
-    'spread.max_grade': 'Maximum grade difference allowed in bunks and bunk requests (e.g., 2 means 6th and 7th grade only)',
+    // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
+    // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
     'spread.max_age_months': 'Maximum age difference in months allowed in bunks and bunk requests',
     'constraint.age_spread.penalty': 'Penalty weight for exceeding age spread limit',
     'constraint.age_spread.preferred_months': 'Cabins at or below this spread earn a bonus (0 = disabled). Must be less than Max Age Difference.',
     'constraint.age_spread.preferred_bonus': 'Objective bonus for each cabin within the preferred age spread. Higher = solver tries harder to form tight age groups.',
-    'constraint.grade_spread.mode': 'Hard constraint prevents exceeding, soft adds penalty',
-    'constraint.grade_spread.penalty': 'Penalty weight for exceeding grade spread limit',
     'constraint.grade_ratio.max_percentage': 'Maximum percentage of cabin that can be from a single grade',
     'constraint.grade_ratio.penalty': 'Penalty weight for exceeding grade ratio limit',
 
@@ -312,13 +310,12 @@ migrate((app) => {
     // bunking/solver/constants.py instead).
 
     // Age & Grade (unified spread limits)
-    'spread.max_grade': 'age-grade',
+    // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
+    // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
     'spread.max_age_months': 'age-grade',
     'constraint.age_spread.penalty': 'age-grade',
     'constraint.age_spread.preferred_months': 'age-grade',
     'constraint.age_spread.preferred_bonus': 'age-grade',
-    'constraint.grade_spread.mode': 'age-grade',
-    'constraint.grade_spread.penalty': 'age-grade',
     'constraint.grade_ratio.max_percentage': 'age-grade',
     'constraint.grade_ratio.penalty': 'age-grade',
     // Cabin Minimum Occupancy
@@ -692,13 +689,9 @@ migrate((app) => {
       max: 10000
     },
 
-    // Unified spread limits (used by both solver and request processor)
-    "spread.max_grade": {
-      value: 2,
-      description: "Maximum grade spread allowed in bunks and bunk requests",
-      min: 1,
-      max: 5
-    },
+    // Unified spread limits (used by both solver and request processor).
+    // spread.max_grade removed in Phase 2 cleanup (collapsed to
+    // MAX_UNIQUE_GRADES_PER_BUNK constant in bunking/solver/constants.py).
     "spread.max_age_months": {
       value: 24,
       description: "Maximum age difference in months allowed in bunks and bunk requests",
@@ -770,16 +763,9 @@ migrate((app) => {
       min: 0,
       max: 100
     },
-    "constraint.grade_spread.mode": {
-      value: "soft",
-      description: "Grade spread constraint mode (hard/soft)"
-    },
-    "constraint.grade_spread.penalty": {
-      value: 3000,
-      description: "Penalty for grade spread violations",
-      min: 0,
-      max: 10000
-    },
+    // constraint.grade_spread.{mode, penalty} removed in Phase 2 cleanup.
+    // Solver enforces MAX_UNIQUE_GRADES_PER_BUNK as a hard constraint; no
+    // soft-mode toggle and no penalty knob.
 
     // Objective configurations
     "objective.source_multipliers.share_bunk_with": {
