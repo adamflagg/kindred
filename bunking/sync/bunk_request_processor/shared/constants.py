@@ -119,7 +119,7 @@ AI_PROCESSING_FIELDS: list[str] = [
 ]
 
 # Fields that can be parsed directly without AI (simple dropdown values)
-DIRECT_PARSE_FIELDS: list[str] = ["socialize_with"]
+DIRECT_PARSE_FIELDS: list[str] = [SourceField.SOCIALIZE_WITH]
 
 # Notes fields — additive across uploads, not superseding.
 # Used to scope temporal conflict filtering (ADR 4) and staff name detection (ADR 6).
