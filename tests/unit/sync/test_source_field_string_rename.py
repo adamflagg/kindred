@@ -7,8 +7,8 @@ NOT equal any RequestType value.
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import (
-    ALL_PROCESSING_FIELDS,
     AI_PROCESSING_FIELDS,
+    ALL_PROCESSING_FIELDS,
     SourceField,
 )
 
