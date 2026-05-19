@@ -55,7 +55,7 @@ class TestScoreBreakdown:
             satisfied_requests=8,
             satisfaction_rate=0.8,
             field_scores={SourceField.BUNK_REQUEST_FORM: {"total": 5, "satisfied": 4}},
-            penalties={"grade_spread": 100},
+            penalties={"under_occupancy": 100},
         )
 
         assert breakdown.total_score == 1000
@@ -65,7 +65,7 @@ class TestScoreBreakdown:
         assert breakdown.satisfied_requests == 8
         assert breakdown.satisfaction_rate == 0.8
         assert SourceField.BUNK_REQUEST_FORM in breakdown.field_scores
-        assert "grade_spread" in breakdown.penalties
+        assert "under_occupancy" in breakdown.penalties
 
 
 class TestEvaluateScenarioScore:

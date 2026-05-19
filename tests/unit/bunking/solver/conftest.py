@@ -51,10 +51,6 @@ class MinimalConfigLoader:
 
     def __init__(self, overrides: dict[str, ConfigValue] | None = None):
         self._defaults: dict[str, ConfigValue] = {
-            "constraint.grade_spread.mode": "soft",
-            "constraint.grade_spread.max": 2,
-            "constraint.grade_spread.max_spread": 2,
-            "constraint.grade_spread.penalty": 3000,
             "constraint.cabin_capacity.mode": "hard",
             "constraint.cabin_capacity.max": 14,
             "constraint.cabin_capacity.standard": 12,

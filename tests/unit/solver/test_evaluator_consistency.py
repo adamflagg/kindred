@@ -65,6 +65,7 @@ def test_grade_spread_module_has_no_config_reads():
     assert 'get_int("constraint.grade_spread' not in src
     assert 'get_constraint("grade_spread"' not in src
     assert 'get_str("constraint.grade_spread' not in src
+    assert 'get_float("constraint.grade_spread' not in src
 
 
 # --- Evaluator migration (Task 3.3, B1/B2/B4) ----------------------------------
