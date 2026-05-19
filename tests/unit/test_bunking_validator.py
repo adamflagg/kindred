@@ -109,6 +109,7 @@ class MockBunkRequest:
     priority_keyword_detected: bool = False  # TG-3: True when parent text had an explicit priority keyword
     raw_text: str = ""  # TG-3: parent's original wording snippet
     id: str | None = None  # PB record id, used for impossibility gating (#1520)
+    session_cm_id: str = "10000001"  # originating session; matches _mock_session default
 
 
 @dataclass
@@ -2780,3 +2781,107 @@ def test_validator_no_gating_when_impossibility_set_is_none():
     assert result.statistics.satisfied_material_parent_requests == 0
     assert result.statistics.material_parent_request_satisfaction_rate == 0.0
     assert result.statistics.mp_campers_total == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (Group 65 #1540): session_cm_id + requester_grade on action-list rows
+# ---------------------------------------------------------------------------
+
+
+def test_negative_request_violation_has_session_cm_id_and_requester_grade():
+    """Multi-enrollment dedup + grade-first sort depend on both fields being populated.
+
+    Emma Johnson (1001, grade 6) has a staff not_bunk_with request for Liam Garcia (1002).
+    Both are assigned to Maple 1 (bunk 2001) → violation.
+    The NegativeRequestViolation detail row must carry session_cm_id and requester_grade.
+    Group 65 #1540.
+    """
+    session = _mock_session(cm_id="10000099", name="SessionCmIdViolationFixture")
+    persons = [
+        MockPerson(campminder_id="1001", name="Emma Johnson", grade=6),
+        MockPerson(campminder_id="1002", name="Liam Garcia", grade=5),
+    ]
+    bunks = [MockBunk(campminder_id="2001", name="Maple 1", max_size=8)]
+    assignments = [
+        _mock_assignment("1001", "2001"),
+        _mock_assignment("1002", "2001"),
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1001",
+            requested_person_cm_id="1002",
+            request_type="not_bunk_with",
+            status="resolved",
+            source_field=SourceField.STAFF_NOT_BUNK_WITH,
+            source="staff",
+            session_cm_id="10000099",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert len(stats.negative_request_violations_detail) == 1
+    row = stats.negative_request_violations_detail[0]
+    assert "session_cm_id" in row
+    assert row["session_cm_id"] == "10000099"
+    assert "requester_grade" in row
+    assert row["requester_grade"] == 6  # Emma's grade
+
+
+def test_priority_unsuccessful_has_session_cm_id_and_requester_grade():
+    """Multi-enrollment dedup + grade-first sort depend on both fields being populated.
+
+    Olivia Chen (3001, grade 7) requests bunk_with Riley Sam (3002) with priority_keyword_detected=True.
+    They are in different bunks → request unsatisfied → priority_unsuccessfuls must carry
+    session_cm_id and requester_grade.
+    Group 65 #1540.
+    """
+    session = _mock_session(cm_id="10000098", name="SessionCmIdPriorityFixture")
+    persons = [
+        MockPerson(campminder_id="3001", name="Olivia Chen", grade=7),
+        MockPerson(campminder_id="3002", name="Riley Sam", grade=7),
+    ]
+    bunks = [
+        MockBunk(campminder_id="4001", name="Cedar 1", max_size=8),
+        MockBunk(campminder_id="4002", name="Cedar 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("3001", "4001"),
+        _mock_assignment("3002", "4002"),  # different bunk → unsatisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="3001",
+            requested_person_cm_id="3002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            priority_keyword_detected=True,
+            raw_text="Olivia must bunk with Riley",
+            session_cm_id="10000098",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=assignments,
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    stats = result.statistics
+
+    assert len(stats.priority_unsuccessfuls) == 1
+    row = stats.priority_unsuccessfuls[0]
+    assert "session_cm_id" in row
+    assert row["session_cm_id"] == "10000098"
+    assert "requester_grade" in row
+    assert row["requester_grade"] == 7  # Olivia's grade

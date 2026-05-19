@@ -71,6 +71,8 @@ class NegativeRequestViolation(TypedDict):
     target_name: str
     bunk_cm_id: str
     bunk_name: str
+    session_cm_id: str
+    requester_grade: int | None
 
 
 class PriorityUnsuccessful(TypedDict):
@@ -81,6 +83,8 @@ class PriorityUnsuccessful(TypedDict):
     requester_name: str
     target_name: str
     raw_text: str  # parent's original wording snippet
+    session_cm_id: str
+    requester_grade: int | None
 
 
 class ValidationSeverity(StrEnum):
@@ -698,6 +702,9 @@ class BunkingValidator:
                     ):
                         requester_person = person_by_id.get(requester_id)
                         requested_person = person_by_id.get(request.requested_person_cm_id)
+                        requester_grade_val: int | None = None
+                        if requester_person is not None and requester_person.grade is not None:
+                            requester_grade_val = int(requester_person.grade)
                         stats.priority_unsuccessfuls.append(
                             PriorityUnsuccessful(
                                 requester_cm_id=requester_id,
@@ -707,6 +714,8 @@ class BunkingValidator:
                                 if requested_person
                                 else f"Person {request.requested_person_cm_id}",
                                 raw_text=getattr(request, "raw_text", ""),
+                                session_cm_id=request.session_cm_id,
+                                requester_grade=requester_grade_val,
                             )
                         )
 
@@ -749,6 +758,10 @@ class BunkingValidator:
                         violated_bunk_cm_id = person_assignment.bunk_cm_id
                         violated_bunk = (bunk_by_id or {}).get(violated_bunk_cm_id)
                         violated_bunk_name = violated_bunk.name if violated_bunk else violated_bunk_cm_id
+                        requester_person = person_by_id.get(person_id)
+                        requester_grade_val = None
+                        if requester_person is not None and requester_person.grade is not None:
+                            requester_grade_val = int(requester_person.grade)
                         stats.negative_request_violations_detail.append(
                             NegativeRequestViolation(
                                 requester_cm_id=person_id,
@@ -757,6 +770,8 @@ class BunkingValidator:
                                 target_name=requested_name,
                                 bunk_cm_id=violated_bunk_cm_id,
                                 bunk_name=violated_bunk_name,
+                                session_cm_id=request.session_cm_id,
+                                requester_grade=requester_grade_val,
                             )
                         )
                         source_fields = get_source_fields(request)
