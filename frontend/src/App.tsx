@@ -81,6 +81,7 @@ const VelocityPage = lazy(() => import('./pages/metrics/trends/VelocityPage'))
 const CancellationVelocityPage = lazy(
   () => import('./pages/metrics/trends/CancellationVelocityPage')
 )
+const PostCheckPopout = lazy(() => import('./pages/PostCheckPopout'))
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -611,6 +612,18 @@ function App() {
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
                           </Route>
+
+                          {/* Post-check popout — bare window with no app shell */}
+                          <Route
+                            path="/post-check/popout"
+                            element={
+                              <ErrorBoundary>
+                                <Suspense fallback={<PageSkeleton />}>
+                                  <PostCheckPopout />
+                                </Suspense>
+                              </ErrorBoundary>
+                            }
+                          />
 
                           {/* Catch-all redirect */}
                           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useMemo, useState } from 'react'
 import {
   BUNK_LEVEL_ISSUE_TYPES,
   SUPPRESSED_ISSUE_TYPES,
@@ -33,7 +33,7 @@ import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import { useAuth } from '../contexts/AuthContext'
 import { getLogoPath } from '../config/branding'
 
-interface ValidationResults {
+export interface ValidationResults {
   statistics: ValidationStatistics
   issues: PostCheckIssue[]
   validated_at: string
@@ -74,6 +74,28 @@ interface PostValidationResultsModalProps {
    * Camp year for the PDF export filename and header.
    */
   year?: number | undefined
+}
+
+/**
+ * Props for PostCheckContents — the pure-presentational body that renders
+ * post-check results without any modal chrome.  Both the modal wrapper and
+ * the /post-check/popout route consume this component.
+ */
+export interface PostCheckContentsProps {
+  results: ValidationResults
+  scenarioId?: string | undefined
+  sessionCmId: number
+  impossibilityReport?: ImpossibilityReport | undefined
+  preCheckError?: boolean | undefined
+  sessionName?: string | undefined
+  year?: number | undefined
+  /**
+   * When true, hides the "Close" button in the footer action area.
+   * Used by the popout route where there's no modal to dismiss.
+   */
+  hideCloseButton?: boolean | undefined
+  /** Called when the user clicks the close/done button. Omit in popout mode. */
+  onClose?: (() => void) | undefined
 }
 
 // Parse issue into structured display data
@@ -570,9 +592,19 @@ type FamilyRow = {
   subRows: { session: string; detail: React.ReactNode }[]
 }
 
-export default function PostValidationResultsModal({
-  isOpen,
-  onClose,
+/**
+ * PostCheckContents — the presentational body of the post-check results.
+ *
+ * Renders the satisfaction ring, KPI tiles, families-to-contact list, bunk
+ * issue groups, and the collapsible details section.  Intentionally has no
+ * modal chrome (no overlay, no close button unless `onClose` is provided).
+ *
+ * Consumed by:
+ *  - PostValidationResultsModal (wraps in <Modal> + adds close/done button)
+ *  - /post-check/popout route (renders bare, full-page)
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for PopoutRoute
+export function PostCheckContents({
   results,
   scenarioId,
   sessionCmId,
@@ -580,7 +612,9 @@ export default function PostValidationResultsModal({
   preCheckError = false,
   sessionName,
   year,
-}: PostValidationResultsModalProps) {
+  hideCloseButton = false,
+  onClose,
+}: PostCheckContentsProps) {
   const { user } = useAuth()
   const plannerName = (user?.['name'] as string | undefined) || 'Camp Staff'
   const [showDetails, setShowDetails] = useState(false)
@@ -607,13 +641,6 @@ export default function PostValidationResultsModal({
       return next
     })
   }
-  useEffect(() => {
-    if (!isOpen) {
-      setSelectedCamperId(null)
-      setExpandedBunks(new Set())
-      setExpandedFamilyKeys(new Set())
-    }
-  }, [isOpen])
 
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
@@ -798,70 +825,26 @@ export default function PostValidationResultsModal({
   const status = getOverallStatus()
   const StatusIcon = status.icon
 
-  const headerContent = (
-    <div className={`flex items-center gap-3 bg-gradient-to-r py-4 pr-14 pl-5 ${status.gradient}`}>
-      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${status.iconBg}`}>
-        <StatusIcon className="h-5 w-5" />
-      </div>
-      <div>
-        <h2 className="font-display text-foreground text-lg leading-tight font-bold">
-          {status.label}
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          {status.sublabel}
-          {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
-        </p>
-      </div>
-    </div>
-  )
-
-  const footerContent = (
-    <div className="bg-muted/30 border-border/50 flex items-center justify-between border-t px-5 py-4">
-      <div className="flex items-center gap-3">
-        <span className="text-muted-foreground text-xs">
-          {new Date(results.validated_at).toLocaleString()}
-        </span>
-        <LazyPdfExportButton
-          sessionName={sessionName ?? String(sessionCmId)}
-          year={year ?? new Date().getFullYear()}
-          plannerName={plannerName}
-          statistics={statistics}
-          impossibilityReport={
-            impossibilityReport ?? {
-              total_impossible: 0,
-              affected_campers: 0,
-              by_reason: {},
-              flat: [],
-              mp_campers_entirely_impossible: [],
-            }
-          }
-          issues={results.issues}
-          {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
-        />
-      </div>
-      <button
-        onClick={onClose}
-        className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-          satisfactionRate >= 0.7 && errorCount === 0
-            ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
-            : 'bg-muted hover:bg-muted/80 text-foreground'
-        }`}
-      >
-        {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
-      </button>
-    </div>
-  )
-
   return (
-    <Modal
-      isOpen={isOpen && !!results}
-      onClose={onClose}
-      header={headerContent}
-      footer={footerContent}
-      size="md"
-      noPadding
-      scrollable
-    >
+    <>
+      {/* Header band — status icon + label */}
+      <div
+        className={`flex items-center gap-3 bg-gradient-to-r py-4 pr-14 pl-5 ${status.gradient}`}
+      >
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${status.iconBg}`}>
+          <StatusIcon className="h-5 w-5" />
+        </div>
+        <div>
+          <h2 className="font-display text-foreground text-lg leading-tight font-bold">
+            {status.label}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            {status.sublabel}
+            {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
+          </p>
+        </div>
+      </div>
+
       {/* Satisfaction Ring + Quick Stats */}
       <div className="border-border/50 flex items-center gap-6 border-b px-5 py-5">
         {/* Ring */}
@@ -1354,6 +1337,45 @@ export default function PostValidationResultsModal({
           )}
         </div>
       )}
+
+      {/* Footer: timestamp + PDF export + optional close button */}
+      <div className="bg-muted/30 border-border/50 flex items-center justify-between border-t px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="text-muted-foreground text-xs">
+            {new Date(results.validated_at).toLocaleString()}
+          </span>
+          <LazyPdfExportButton
+            sessionName={sessionName ?? String(sessionCmId)}
+            year={year ?? new Date().getFullYear()}
+            plannerName={plannerName}
+            statistics={statistics}
+            impossibilityReport={
+              impossibilityReport ?? {
+                total_impossible: 0,
+                affected_campers: 0,
+                by_reason: {},
+                flat: [],
+                mp_campers_entirely_impossible: [],
+              }
+            }
+            issues={results.issues}
+            {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
+          />
+        </div>
+        {!hideCloseButton && onClose && (
+          <button
+            onClick={onClose}
+            className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+              satisfactionRate >= 0.7 && errorCount === 0
+                ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
+                : 'bg-muted hover:bg-muted/80 text-foreground'
+            }`}
+          >
+            {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
+          </button>
+        )}
+      </div>
+
       {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
           SessionHeader (where the Check-Bunking button lives) sits outside
           SessionView's BunkRequestProvider tree, so we mount a local
@@ -1392,6 +1414,41 @@ export default function PostValidationResultsModal({
           </ErrorBoundary>
         )}
       </BunkRequestProvider>
+    </>
+  )
+}
+
+export default function PostValidationResultsModal({
+  isOpen,
+  onClose,
+  results,
+  scenarioId,
+  sessionCmId,
+  impossibilityReport,
+  preCheckError = false,
+  sessionName,
+  year,
+}: PostValidationResultsModalProps) {
+  return (
+    <Modal
+      isOpen={isOpen && !!results}
+      onClose={onClose}
+      header={null}
+      footer={null}
+      size="md"
+      noPadding
+      scrollable
+    >
+      <PostCheckContents
+        results={results}
+        scenarioId={scenarioId}
+        sessionCmId={sessionCmId}
+        impossibilityReport={impossibilityReport}
+        preCheckError={preCheckError}
+        sessionName={sessionName}
+        year={year}
+        onClose={onClose}
+      />
     </Modal>
   )
 }
