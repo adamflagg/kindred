@@ -22,7 +22,7 @@ from bunking.models_v2 import (
     DirectSolverOutput,
 )
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
-from bunking.satisfaction.bucket import is_material_parent_request
+from bunking.satisfaction.bucket import is_counted_request, is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -876,6 +876,18 @@ class DirectBunkingSolver:
             session_id = self.input.requests[0].session_cm_id
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
+        # Material-only counts for user-facing stats (Group 65 #1539).
+        # Immaterial requests (socialize_with) still ran through the solver but
+        # are excluded from the reported aggregates.
+        material_requests = [r for r in self.input.requests if is_counted_request(r)]
+        request_by_id = {r.id: r for r in self.input.requests}
+        satisfied_material_count = sum(
+            1
+            for req_ids in satisfied_requests.values()
+            for req_id in req_ids
+            if is_counted_request(request_by_id[req_id])
+        )
+
         # Create output
         stats = _build_stats_dict(
             solver=solver,
@@ -885,8 +897,8 @@ class DirectBunkingSolver:
             num_workers=num_workers,
             num_persons=len(self.person_ids),
             num_bunks=len(self.bunks),
-            num_requests=len(self.input.requests),
-            satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
+            num_requests=len(material_requests),
+            satisfied_count=satisfied_material_count,
             soft_constraint_violations=self.soft_constraint_violations,
             requests_by_person=self.input.requests_by_person,
             objective_trajectory=callback.objective_trajectory,

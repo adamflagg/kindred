@@ -1508,3 +1508,179 @@ class TestTier2MetricsInStatsDict:
         assert stats["objective_plateau_time"] is None
         assert stats["bound_gain_after_plateau"] is None
         assert stats["time_to_first_solution"] is None
+
+
+class TestMaterialOnlyStatsAggregates:
+    """Stats total_requests and satisfied_request_count must be material-only.
+
+    Immaterial (socialize_with) requests are still run through CP-SAT but
+    must NOT inflate the user-facing counters that drive the solver-finish
+    quick popup.  Group 65 #1539.
+    """
+
+    def _make_input(
+        self,
+        requests: list[DirectBunkRequest],
+        num_persons: int = 20,
+    ) -> DirectSolverInput:
+        """Two bunks (capacity 12 each), N same-session same-gender campers.
+
+        Default 20 persons → 10/bunk → satisfies MIN_BUNK_OCCUPANCY=8.
+        """
+        bunks = [
+            DirectBunk(
+                id=f"bunk-{i}",
+                campminder_id=9000 + i,
+                name=f"Cabin-{i}",
+                capacity=12,
+                gender="M",
+                session_cm_id=1000001,
+            )
+            for i in range(2)
+        ]
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+
+    def test_total_requests_excludes_socialize_with(self) -> None:
+        """total_requests counts only COUNTED (material + staff) requests.
+
+        Input: 1 bunk_with (MATERIAL_PARENT, counted) + 1 socialize_with
+        (IMMATERIAL_PARENT, not counted).  Expected: total_requests == 1.
+        """
+        from unittest.mock import MagicMock
+
+        from bunking.config import ConfigLoader
+
+        class _StubLoader:
+            def get_int(self, key: str, default: int | None = None) -> int:
+                return default if default is not None else 0
+
+            def get_float(self, key: str, default: float | None = None) -> float:
+                return default if default is not None else 0.0
+
+        requests = [
+            DirectBunkRequest(
+                id="req-bunk-with",
+                requester_person_cm_id=1000,
+                requested_person_cm_id=1001,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            DirectBunkRequest(
+                id="req-socialize",
+                requester_person_cm_id=1002,
+                requested_person_cm_id=1003,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        cfg = MagicMock()
+        cfg.get_constraint.side_effect = lambda ct, p, default=None: (
+            2 if ct == "grade_spread" and p == "max_spread" else (default if default is not None else 0)
+        )
+        cfg.get_int.side_effect = lambda k, default=None: default if default is not None else 0
+        cfg.get_float.side_effect = lambda k, default=None: default if default is not None else 0.0
+        cfg.get_str.side_effect = lambda k, default=None: (
+            "hard" if "grade_spread.mode" in k else (default if default is not None else "")
+        )
+        cfg.get_bool.side_effect = lambda k, default=None: default if default is not None else False
+        cfg.get_priority.side_effect = lambda *a: 4
+        cfg.get_soft_constraint_weight.side_effect = lambda *a: 0
+
+        with ConfigLoader.use(_StubLoader()):  # type: ignore[arg-type]
+            solver = DirectBunkingSolver(
+                input_data=self._make_input(requests),
+                config_service=cfg,
+            )
+            result = solver.solve(time_limit_seconds=10)
+
+        assert result is not None
+        # Only bunk_with is material; socialize_with must be excluded from total.
+        assert result.stats["total_requests"] == 1
+
+    def test_satisfied_count_excludes_socialize_with(self) -> None:
+        """satisfied_request_count counts only satisfied COUNTED requests.
+
+        With two persons in a 2-bunk session, the bunk_with between them is
+        satisfied iff they land in the same bunk; the socialize_with between
+        the other two must not inflate the satisfied count regardless of
+        placement.  We assert the satisfied count is <= 1 (can't exceed the
+        one material request in the input).
+        """
+        from unittest.mock import MagicMock
+
+        from bunking.config import ConfigLoader
+
+        class _StubLoader:
+            def get_int(self, key: str, default: int | None = None) -> int:
+                return default if default is not None else 0
+
+            def get_float(self, key: str, default: float | None = None) -> float:
+                return default if default is not None else 0.0
+
+        requests = [
+            DirectBunkRequest(
+                id="req-bunk-with",
+                requester_person_cm_id=1000,
+                requested_person_cm_id=1001,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            DirectBunkRequest(
+                id="req-socialize",
+                requester_person_cm_id=1002,
+                requested_person_cm_id=1003,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        cfg = MagicMock()
+        cfg.get_constraint.side_effect = lambda ct, p, default=None: (
+            2 if ct == "grade_spread" and p == "max_spread" else (default if default is not None else 0)
+        )
+        cfg.get_int.side_effect = lambda k, default=None: default if default is not None else 0
+        cfg.get_float.side_effect = lambda k, default=None: default if default is not None else 0.0
+        cfg.get_str.side_effect = lambda k, default=None: (
+            "hard" if "grade_spread.mode" in k else (default if default is not None else "")
+        )
+        cfg.get_bool.side_effect = lambda k, default=None: default if default is not None else False
+        cfg.get_priority.side_effect = lambda *a: 4
+        cfg.get_soft_constraint_weight.side_effect = lambda *a: 0
+
+        with ConfigLoader.use(_StubLoader()):  # type: ignore[arg-type]
+            solver = DirectBunkingSolver(
+                input_data=self._make_input(requests),
+                config_service=cfg,
+            )
+            result = solver.solve(time_limit_seconds=10)
+
+        assert result is not None
+        # satisfied_request_count must never exceed the 1 material request.
+        assert result.stats["satisfied_request_count"] <= 1
