@@ -28,3 +28,26 @@ describe('SolverProgressModal validation warning', () => {
     expect(screen.queryByText(/campers not enrolled/i)).not.toBeInTheDocument()
   })
 })
+
+describe('SolverProgressModal material-only count passthrough (Group 65 #1539)', () => {
+  it('shows material-only satisfied_request_count from backend stats verbatim — no frontend re-filter', () => {
+    const state: SolverProgressState = {
+      isOpen: true,
+      phase: 'completed',
+      elapsedSeconds: 30,
+      timeLimit: 60,
+      stats: {
+        satisfied_request_count: 42,
+        total_requests: 50,
+        duration_seconds: 30,
+      },
+    }
+
+    render(<SolverProgressModal state={state} onClose={() => {}} />)
+
+    // The "Requests Satisfied" StatCard renders value as "{satisfied}/{total}"
+    // directly from stats fields — no list filtering. Backend Tasks 4/5 made
+    // these material-only, so the count the solver emits IS the correct count.
+    expect(screen.getByText('42/50')).toBeInTheDocument()
+  })
+})
