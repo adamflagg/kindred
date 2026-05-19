@@ -26,6 +26,7 @@ import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
 import { buildFamilyRows } from './PdfExport/familyRows'
+import { sessionShortLabel } from '../utils/sessionLabel'
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
@@ -556,11 +557,6 @@ function CohortPill({ cohort }: { cohort: 'got_nothing' | 'violated' | 'priority
       {COHORT_LABELS[cohort]}
     </span>
   )
-}
-
-/** Short display label for a session cm_id: last 4 digits. */
-function sessionShortLabel(sessionId: string): string {
-  return sessionId.length > 4 ? sessionId.slice(-4) : sessionId
 }
 
 type FamilyRow = {

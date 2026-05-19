@@ -2,6 +2,7 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { buildFamilyRows, cohortLabel } from './familyRows'
+import { sessionShortLabel } from '../../utils/sessionLabel'
 import {
   BUNK_LEVEL_ISSUE_TYPES,
   SUPPRESSED_ISSUE_TYPES,
@@ -128,6 +129,27 @@ const styles = StyleSheet.create({
   amberFill: { height: 6, backgroundColor: AMBER, borderRadius: 2 },
   reasonGroup: { marginBottom: 10 },
   reasonHead: { fontSize: 11, fontWeight: 700, color: STONE_950, marginBottom: 4 },
+  // Families-to-contact: grouped rows (one group per camper/cohort)
+  familyRowGroup: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: STONE_200,
+    paddingVertical: 3,
+  },
+  familyRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  familyName: { fontSize: 8, fontWeight: 'bold', flex: 2 },
+  familyCohort: { fontSize: 8, color: STONE_600, flex: 2 },
+  familySessionTags: { fontSize: 7, color: STONE_600, flex: 1, textAlign: 'right' },
+  familySubRow: {
+    flexDirection: 'row',
+    paddingTop: 2,
+    paddingLeft: 12,
+  },
+  familySubSession: { fontSize: 7, fontWeight: 'bold', color: STONE_950, width: 36 },
+  familySubDetail: { fontSize: 7, color: STONE_950, flex: 1 },
 })
 
 function pct(rate: number | undefined): string {
@@ -300,18 +322,24 @@ export function BunkPlanReport({
           <Page size="LETTER" style={styles.page}>
             <Text style={styles.sectionTitle}>Families to contact ({familyRows.length})</Text>
             <Text style={styles.subtitle}>
-              Sorted alphabetically by camper first name. Each row needs a follow-up call.
+              Sorted by grade then name. Each row needs a follow-up call. Sub-rows show per-session
+              detail.
             </Text>
-            <View style={styles.tableHead}>
-              <Text style={styles.cell}>Camper</Text>
-              <Text style={styles.cell}>Cohort</Text>
-              <Text style={[styles.cell, { flex: 2 }]}>Detail</Text>
-            </View>
-            {familyRows.map((r) => (
-              <View key={r.key} style={styles.tableRow} wrap={false}>
-                <Text style={styles.cell}>{r.name}</Text>
-                <Text style={styles.cell}>{cohortLabel(r.cohort)}</Text>
-                <Text style={[styles.cell, { flex: 2 }]}>{r.detail}</Text>
+            {familyRows.map((row) => (
+              <View key={row.key} style={styles.familyRowGroup} wrap={false}>
+                <View style={styles.familyRowHeader}>
+                  <Text style={styles.familyName}>{row.name}</Text>
+                  <Text style={styles.familyCohort}>{cohortLabel(row.cohort)}</Text>
+                  <Text style={styles.familySessionTags}>
+                    {row.sessions.map((s) => `S${sessionShortLabel(s)}`).join(' ')}
+                  </Text>
+                </View>
+                {row.subRows.map((sub) => (
+                  <View key={`${row.key}-${sub.session}`} style={styles.familySubRow}>
+                    <Text style={styles.familySubSession}>S{sessionShortLabel(sub.session)}</Text>
+                    <Text style={styles.familySubDetail}>{sub.detail}</Text>
+                  </View>
+                ))}
               </View>
             ))}
             <Text

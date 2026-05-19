@@ -340,6 +340,55 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
   }, 30000)
 })
 
+describe('BunkPlanReport (PDF) — Families to contact: sub-rows always visible', () => {
+  it('renders all sub-rows beneath each camper (PDF mirrors always-expanded modal)', async () => {
+    // Emma Johnson is enrolled in two sessions — should appear once with a session tag header
+    // and two sub-rows (one per session) both visible in the PDF.
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats()}
+        impossibilityReport={{
+          total_impossible: 2,
+          affected_campers: 1,
+          by_reason: {},
+          flat: [],
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 1,
+              name: 'Emma Johnson',
+              grade: 4,
+              gender: 'F',
+              session_cm_id: 1000001,
+              reason_codes: ['no_valid_bunk'],
+            },
+            {
+              cm_id: 1,
+              name: 'Emma Johnson',
+              grade: 4,
+              gender: 'F',
+              session_cm_id: 1000003,
+              reason_codes: ['no_valid_bunk'],
+            },
+          ],
+        }}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+
+    // Camper name appears
+    expect(text).toMatch(/Emma Johnson/)
+    // Both session tags visible (last 4 digits of each session_cm_id)
+    expect(text).toMatch(/S0001/)
+    expect(text).toMatch(/S0003/)
+  }, 30000)
+})
+
 describe('BunkPlanReport (PDF) — Impossibility detail pages', () => {
   it('renders full impossibility detail grouped by reason with friendly labels', async () => {
     const items = [
