@@ -483,6 +483,7 @@ _BUILD_STATS_DICT_KEYS = frozenset(
         "num_reified_linear",
         "max_linear_coefficient",
         "soft_constraints_by_module",
+        "soft_constraint_penalty_by_module",
         "request_density_histogram_by_bucket",
         # Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
         "objective_trajectory",
@@ -925,55 +926,146 @@ class TestCountReifiedLinearConstraints:
         assert _count_reified_linear_constraints(model.Proto()) == 2
 
 
-class TestCountSoftConstraintsByModule:
-    """`soft_constraint_violations` keys carry module prefixes set by each
-    constraint helper. Roll them up into a per-module count so the dashboard
-    can show which constraint families produced the most penalty terms.
+class TestBucketSoftConstraintViolations:
+    """`_bucket_soft_constraint_violations` returns (fires_by_module, penalty_total_by_module).
 
-    Known prefixes (as of 2026-05):
-    - `must_satisfy_<cm_id>`             (must_satisfy.py)
+    Fires are summed `solver.Value(var)` per module prefix; penalty totals
+    are `penalty * value` per prefix. Both dicts are pre-seeded with all
+    `_MODULE_LABELS` keys so missing-vs-zero is unambiguous downstream.
+
+    Violation-name prefixes (registered in `_SOFT_CONSTRAINT_PREFIXES`):
     - `grade_ratio_<bunk>_grade_<grade>` (grade_ratio.py)
     - `level_regression_<p>_<b>`         (level_progression.py)
     - `age_spread_b<bunk>`               (age_spread.py)
     """
 
-    def test_empty_dict_returns_empty(self) -> None:
-        from bunking.solver.observability import _count_soft_constraints_by_module
+    def _make_var(self, name: str) -> object:
+        return object()
 
-        assert _count_soft_constraints_by_module({}) == {}
+    def _make_solver(self, value_map: dict[object, int]) -> MagicMock:
+        solver = MagicMock()
+        solver.Value = lambda v: value_map[v]
+        return solver
 
-    def test_groups_keys_by_known_prefix(self) -> None:
-        from bunking.solver.observability import _count_soft_constraints_by_module
+    def test_solver_none_returns_zero_seeded_dicts(self) -> None:
+        from bunking.solver.observability import (
+            _MODULE_LABELS,
+            _bucket_soft_constraint_violations,
+        )
 
-        # Values don't matter — function only inspects keys
-        violations: dict[str, object] = {
-            "must_satisfy_12345": object(),
-            "must_satisfy_67890": object(),
-            "grade_ratio_0_grade_5": object(),
-            "grade_ratio_1_grade_6": object(),
-            "grade_ratio_2_grade_7": object(),
-            "level_regression_0_0": object(),
-            "age_spread_b0": object(),
-            "age_spread_b1": object(),
+        fires, penalties = _bucket_soft_constraint_violations(None, {"grade_ratio_0_grade_5": (object(), 100)})
+        assert fires == dict.fromkeys(_MODULE_LABELS, 0)
+        assert penalties == dict.fromkeys(_MODULE_LABELS, 0)
+
+    def test_empty_violations_returns_zero_seeded_dicts(self) -> None:
+        from bunking.solver.observability import (
+            _MODULE_LABELS,
+            _bucket_soft_constraint_violations,
+        )
+
+        solver = self._make_solver({})
+        fires, penalties = _bucket_soft_constraint_violations(solver, {})
+        assert fires == dict.fromkeys(_MODULE_LABELS, 0)
+        assert penalties == dict.fromkeys(_MODULE_LABELS, 0)
+
+    def test_buckets_by_known_prefix_summing_fires_and_penalty(self) -> None:
+        from bunking.solver.observability import _bucket_soft_constraint_violations
+
+        v_gr1, v_gr2 = self._make_var("gr1"), self._make_var("gr2")
+        v_lr1 = self._make_var("lr1")
+        v_as1 = self._make_var("as1")
+
+        violations = {
+            "grade_ratio_0_grade_5": (v_gr1, 50),
+            "grade_ratio_1_grade_6": (v_gr2, 50),
+            "level_regression_0_0": (v_lr1, 800),
+            "age_spread_b0": (v_as1, 200),
         }
-        result = _count_soft_constraints_by_module(violations)
-        assert result == {
-            "must_satisfy": 2,
-            "grade_ratio": 3,
-            "level_regression": 1,
-            "age_spread": 2,
+        solver = self._make_solver(
+            {
+                v_gr1: 1,
+                v_gr2: 0,
+                v_lr1: 0,
+                v_as1: 1,
+            }
+        )
+
+        fires, penalties = _bucket_soft_constraint_violations(solver, violations)
+        assert fires == {
+            "grade_ratio": 1,
+            "level_regression": 0,
+            "age_spread": 1,
+            "other": 0,
+        }
+        assert penalties == {
+            "grade_ratio": 50,
+            "level_regression": 0,
+            "age_spread": 200,
+            "other": 0,
         }
 
     def test_unknown_prefix_lands_in_other(self) -> None:
-        from bunking.solver.observability import _count_soft_constraints_by_module
+        from bunking.solver.observability import _bucket_soft_constraint_violations
 
-        violations: dict[str, object] = {
-            "some_future_constraint_42": object(),
-            "must_satisfy_1": object(),
+        v_unknown = self._make_var("unknown")
+        v_gr = self._make_var("gr")
+        violations = {
+            "some_future_constraint_42": (v_unknown, 17),
+            "grade_ratio_0_grade_5": (v_gr, 50),
         }
-        result = _count_soft_constraints_by_module(violations)
-        assert result.get("must_satisfy") == 1
-        assert result.get("other") == 1
+        solver = self._make_solver({v_unknown: 1, v_gr: 1})
+
+        fires, penalties = _bucket_soft_constraint_violations(solver, violations)
+        assert fires["other"] == 1
+        assert fires["grade_ratio"] == 1
+        assert penalties["other"] == 17
+        assert penalties["grade_ratio"] == 50
+
+
+class TestBucketSoftConstraintViolationsCpSat:
+    """End-to-end with a real CpSolver: forced BoolVars exercise the
+    `solver.Value()` path and catch BoolVar/IntVar type mismatches or
+    OR-Tools API drift that mocks can't see.
+    """
+
+    def test_real_solver_buckets_forced_fires_correctly(self) -> None:
+        from bunking.solver.observability import _bucket_soft_constraint_violations
+
+        model = cp_model.CpModel()
+        v_lr_fire = model.NewBoolVar("level_regression_0_0")
+        v_lr_off = model.NewBoolVar("level_regression_0_1")
+        v_gr_fire = model.NewBoolVar("grade_ratio_0_grade_5")
+        v_as_off = model.NewBoolVar("age_spread_b0")
+
+        model.Add(v_lr_fire == 1)
+        model.Add(v_lr_off == 0)
+        model.Add(v_gr_fire == 1)
+        model.Add(v_as_off == 0)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+        violations = {
+            "level_regression_0_0": (v_lr_fire, 800),
+            "level_regression_0_1": (v_lr_off, 800),
+            "grade_ratio_0_grade_5": (v_gr_fire, 50),
+            "age_spread_b0": (v_as_off, 200),
+        }
+        fires, penalties = _bucket_soft_constraint_violations(solver, violations)
+
+        assert fires == {
+            "grade_ratio": 1,
+            "level_regression": 1,
+            "age_spread": 0,
+            "other": 0,
+        }
+        assert penalties == {
+            "grade_ratio": 50,
+            "level_regression": 800,
+            "age_spread": 0,
+            "other": 0,
+        }
 
 
 class TestMaxLinearCoefficient:
@@ -1273,10 +1365,11 @@ class TestTier1MetricsInStatsDict:
         model.Add(50_000 * x <= 100).OnlyEnforceIf(a)  # reified + big-M
 
         solver = self._base_mock_solver()
+        v_gr1, v_gr2 = object(), object()
+        solver.Value = lambda v, _m={v_gr1: 1, v_gr2: 1}: _m[v]
         violations = {
-            "must_satisfy_1": object(),
-            "must_satisfy_2": object(),
-            "grade_ratio_0_grade_5": object(),
+            "grade_ratio_0_grade_5": (v_gr1, 50),
+            "grade_ratio_1_grade_6": (v_gr2, 50),
         }
         requests_by_person: dict[int, list[DirectBunkRequest]] = {
             1: [_make_req("r1", 1, "bunk_with")],
@@ -1299,8 +1392,16 @@ class TestTier1MetricsInStatsDict:
         assert stats["num_reified_linear"] == 1
         assert stats["max_linear_coefficient"] == 50_000
         assert stats["soft_constraints_by_module"] == {
-            "must_satisfy": 2,
-            "grade_ratio": 1,
+            "grade_ratio": 2,
+            "level_regression": 0,
+            "age_spread": 0,
+            "other": 0,
+        }
+        assert stats["soft_constraint_penalty_by_module"] == {
+            "grade_ratio": 100,
+            "level_regression": 0,
+            "age_spread": 0,
+            "other": 0,
         }
         assert stats["request_density_histogram_by_bucket"] == {
             "material_parent": {1: 1, 2: 1},
