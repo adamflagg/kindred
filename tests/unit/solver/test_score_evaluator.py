@@ -55,7 +55,7 @@ class TestScoreBreakdown:
             satisfied_requests=8,
             satisfaction_rate=0.8,
             field_scores={SourceField.BUNK_REQUEST_FORM: {"total": 5, "satisfied": 4}},
-            penalties={"grade_spread": 100},
+            penalties={"under_occupancy": 100},
         )
 
         assert breakdown.total_score == 1000
@@ -65,7 +65,7 @@ class TestScoreBreakdown:
         assert breakdown.satisfied_requests == 8
         assert breakdown.satisfaction_rate == 0.8
         assert SourceField.BUNK_REQUEST_FORM in breakdown.field_scores
-        assert "grade_spread" in breakdown.penalties
+        assert "under_occupancy" in breakdown.penalties
 
 
 class TestEvaluateScenarioScore:
@@ -327,35 +327,13 @@ class TestEvaluateScenarioScore:
         assert b.request_satisfaction_score == 750
         assert a.request_satisfaction_score > b.request_satisfaction_score
 
-    def test_grade_spread_penalty(self, mock_config):
-        """Bunks with too many unique grades should incur penalty.
-
-        After the B3 fix, the formula uses unique-grade-count, not range:
-        2 unique grades (even far apart) is fine; 3+ unique grades with
-        max=2 triggers a penalty.
-        """
-        from bunking.solver.score_evaluator import evaluate_scenario_score
-
-        # 3 unique grades exceeds max of 2 → 1 excess grade → penalty applied
-        result = evaluate_scenario_score(
-            requests=[],
-            assignments=[
-                {"person_cm_id": 100, "bunk_cm_id": 1},
-                {"person_cm_id": 200, "bunk_cm_id": 1},
-                {"person_cm_id": 300, "bunk_cm_id": 1},
-            ],
-            persons=[
-                {"cm_id": 100, "grade": 3, "gender": "M"},
-                {"cm_id": 200, "grade": 5, "gender": "M"},
-                {"cm_id": 300, "grade": 7, "gender": "M"},
-            ],
-            bunks=[{"cm_id": 1, "name": "B-1", "gender": "M", "max_size": 12}],
-            config=mock_config,
-        )
-
-        assert "grade_spread" in result.penalties
-        assert result.penalties["grade_spread"] > 0
-        assert result.soft_penalty_score > 0
+    # Phase 2 grade-spread cleanup: removed test_grade_spread_penalty —
+    # the soft grade-spread path was deleted and the score evaluator no
+    # longer reports a "grade_spread" penalty term. Solver now enforces a
+    # hard MAX_UNIQUE_GRADES_PER_BUNK ceiling, so the only way 3+ unique
+    # grades land in one bunk in a solved scenario is via staff manual
+    # override on the bunking board (flagged with grade_spread_warning by
+    # the validator, not the score evaluator).
 
     # Phase 2 cabin-capacity cleanup: removed test_over_capacity_penalty —
     # the soft-cabin-capacity path was deleted and the score evaluator no

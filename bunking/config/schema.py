@@ -20,14 +20,6 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # SPREAD VALIDATION
     # Used by both solver constraints and request processor
     # =========================================================================
-    "spread.max_grade": ConfigKey(
-        key="spread.max_grade",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Maximum grade difference allowed in bunk requests",
-        min_value=0,
-        max_value=10,
-    ),
     "spread.max_age_months": ConfigKey(
         key="spread.max_age_months",
         config_type=ConfigType.INT,
@@ -152,20 +144,12 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
         description="Weight for keeping same-grade campers together",
         min_value=0,
     ),
-    "constraint.grade_spread.mode": ConfigKey(
-        key="constraint.grade_spread.mode",
-        config_type=ConfigType.STRING,
-        required=True,
-        description="Grade spread enforcement mode",
-        allowed_values=["hard", "soft"],
-    ),
-    "constraint.grade_spread.penalty": ConfigKey(
-        key="constraint.grade_spread.penalty",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Penalty for grade spread violations",
-        min_value=0,
-    ),
+    # Phase 2 cleanup (Grade Spread): constraint.grade_spread.{mode, penalty}
+    # were removed in favor of MAX_UNIQUE_GRADES_PER_BUNK (=2) in
+    # bunking/solver/constants.py. The soft constraint path was deleted; solver
+    # is hard-only. Staff can override on the bunking board (board flags
+    # grade_spread_warning post-solve). spread.max_grade was the sync-side
+    # filter knob; collapsed into the same constant.
     # =========================================================================
     # OBJECTIVE FUNCTION - Source Multipliers
     # =========================================================================

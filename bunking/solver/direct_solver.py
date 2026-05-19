@@ -39,7 +39,7 @@ from .constraints.cabin_occupancy import (
 from .constraints.gender import add_gender_constraints
 from .constraints.grade_adjacency import add_grade_adjacency_constraints
 from .constraints.grade_ratio import add_grade_ratio_constraints
-from .constraints.grade_spread import add_grade_spread_constraints, add_grade_spread_soft_constraint
+from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
@@ -418,16 +418,9 @@ class DirectBunkingSolver:
         # Uses extracted constraint module - debug check is internal
         add_group_lock_constraints(self._build_solver_context())
 
-        # 6. Grade/age spread constraints - NOW ENABLED with aggregation
-        # Check if grade spread should be hard or soft constraint
-        grade_spread_mode = self.config.get_str("constraint.grade_spread.mode", default="hard")
-        logger.debug(f"Grade spread mode from config: '{grade_spread_mode}'")
-        if grade_spread_mode == "hard":
-            # Uses extracted constraint module - debug check is internal
-            add_grade_spread_constraints(self._build_solver_context())
-        else:
-            logger.debug("Grade spread will be handled as SOFT constraint in objective function")
-        # If soft, it will be handled in the objective function
+        # 6. Grade spread (hard) - max MAX_UNIQUE_GRADES_PER_BUNK distinct grades per bunk
+        # Uses extracted constraint module - debug check is internal
+        add_grade_spread_constraints(self._build_solver_context())
 
         # 7. Grade ratio percentage constraints
         # Uses extracted constraint module - debug check is internal
@@ -588,10 +581,10 @@ class DirectBunkingSolver:
         # Add age/grade flow incentives
         add_age_grade_flow_objective(ctx, objective_terms)
 
-        # Add grade spread soft constraint if configured
-        grade_spread_mode = self.config.get_str("constraint.grade_spread.mode", default="hard")
-        if grade_spread_mode == "soft":
-            add_grade_spread_soft_constraint(ctx, objective_terms)
+        # NOTE: grade_spread soft constraint removed in Phase 2. Solver enforces
+        # the MAX_UNIQUE_GRADES_PER_BUNK ceiling as a hard constraint; staff
+        # manual overrides on the bunking board surface as ``grade_spread_warning``
+        # ValidationIssues post-solve.
 
         # NOTE: cabin_capacity soft constraint removed in Phase 2. Solver caps
         # at DEFAULT_BUNK_CAPACITY (hard); staff manual edits cap at

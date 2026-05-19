@@ -1,21 +1,18 @@
 """Verify constraint modules and evaluators read penalty config via centralized accessors.
 
 These tests pin the *plumbing* (how the value is read), not the *math* (how the
-penalty is applied to the OR-Tools cost or to the displayed score). The math is
-covered by other tests (e.g. ``test_grade_spread_formula.py``).
+penalty is applied to the OR-Tools cost or to the displayed score).
 
-Why this matters: in PR 3 we centralize three config reads
-(`bunking.solver.penalties.{min_occupancy_penalty, min_occupancy_threshold,
-grade_spread_penalty}`) so the OR-Tools constraint modules and the post-solve
-evaluators cannot drift out of sync. If a future change reads
-`config.get_int("constraint.grade_spread.penalty")` directly instead of
-calling the accessor, the centralization invariant breaks. These tests catch
-that by monkeypatching the accessor on the *consumer* module and asserting it
-gets invoked.
+Why this matters: we centralize config reads
+(`bunking.solver.penalties.{min_occupancy_penalty, min_occupancy_threshold}`)
+so the OR-Tools constraint modules and the post-solve evaluators cannot drift
+out of sync. If a future change reads the canonical key directly instead of
+calling the accessor, the centralization invariant breaks.
 
-(``cabin_capacity_penalty`` was originally part of this set but was removed in
-Phase 2 cabin-capacity cleanup along with the soft-cabin-capacity path that
-read it.)
+(``cabin_capacity_penalty`` was removed in Phase 2 cabin-capacity cleanup.
+``grade_spread_penalty`` was removed in Phase 2 grade-spread cleanup — the
+soft path is gone and the hard threshold is hardcoded in
+``bunking/solver/constants.py:MAX_UNIQUE_GRADES_PER_BUNK``.)
 """
 
 from __future__ import annotations
@@ -34,11 +31,13 @@ def test_cabin_occupancy_module_imports_centralized_accessors():
     )
 
 
-def test_grade_spread_module_imports_centralized_accessor():
-    """The constraint module must reference ``grade_spread_penalty``."""
-    assert hasattr(grade_spread_mod, "grade_spread_penalty"), (
-        "grade_spread.py must import grade_spread_penalty from bunking.solver.penalties"
+def test_grade_spread_module_uses_hardcoded_constant():
+    """Phase 2: grade_spread reads the hardcoded constant, not a penalty accessor."""
+    assert hasattr(grade_spread_mod, "MAX_UNIQUE_GRADES_PER_BUNK"), (
+        "grade_spread.py must import MAX_UNIQUE_GRADES_PER_BUNK from bunking.solver.constants"
     )
+    # The penalty accessor was deleted with the soft path
+    assert not hasattr(grade_spread_mod, "grade_spread_penalty")
 
 
 def test_cabin_occupancy_module_does_not_read_canonical_keys_directly():
@@ -58,13 +57,15 @@ def test_cabin_occupancy_module_does_not_read_canonical_keys_directly():
     )
 
 
-def test_grade_spread_module_does_not_read_canonical_key_directly():
+def test_grade_spread_module_has_no_config_reads():
+    """Phase 2: grade_spread is fully hardcoded; no config-key reads remain."""
     import inspect
 
     src = inspect.getsource(grade_spread_mod)
-    assert 'get_int("constraint.grade_spread.penalty"' not in src, (
-        "grade_spread.py must read the penalty via grade_spread_penalty(), not via a direct config.get_int() call."
-    )
+    assert 'get_int("constraint.grade_spread' not in src
+    assert 'get_constraint("grade_spread"' not in src
+    assert 'get_str("constraint.grade_spread' not in src
+    assert 'get_float("constraint.grade_spread' not in src
 
 
 # --- Evaluator migration (Task 3.3, B1/B2/B4) ----------------------------------
@@ -81,7 +82,6 @@ def test_objective_evaluator_imports_centralized_accessors():
     for name in (
         "min_occupancy_penalty",
         "min_occupancy_threshold",
-        "grade_spread_penalty",
     ):
         assert hasattr(obj_mod, name), f"objective_evaluator.py must import {name} from bunking.solver.penalties"
 
@@ -92,7 +92,6 @@ def test_score_evaluator_imports_centralized_accessors():
     for name in (
         "min_occupancy_penalty",
         "min_occupancy_threshold",
-        "grade_spread_penalty",
     ):
         assert hasattr(score_mod, name), f"score_evaluator.py must import {name} from bunking.solver.penalties"
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
 from bunking.satisfaction.predicate import is_request_satisfied
-from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY, MAX_UNIQUE_GRADES_PER_BUNK
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
 from bunking.sync.bunk_request_processor.core.models import source_from_field
 from bunking.sync.bunk_request_processor.shared.constants import (
@@ -235,8 +235,11 @@ class BunkingValidator:
     """Validates bunking assignments and reports issues."""
 
     def __init__(self) -> None:
-        # Spread validation limits (from former SpreadValidator)
-        self.max_grade_spread = 2  # Maximum number of different grades allowed in a bunk
+        # Spread validation limits (from former SpreadValidator).
+        # Grade spread mirrors the solver's hard ceiling so board-side warnings
+        # fire on the same threshold the solver enforced (with staff overrides
+        # permitted on the bunking board — flagged via grade_spread_warning).
+        self.max_grade_spread = MAX_UNIQUE_GRADES_PER_BUNK
         self.max_age_spread_months = 24  # Maximum age difference (2 years)
 
     def validate_bunking(

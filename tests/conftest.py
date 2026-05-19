@@ -157,7 +157,6 @@ def sample_session_data():
 # Default test configuration values matching database schema
 TEST_CONFIG = {
     # Spread validation
-    "spread.max_grade": 2,
     "spread.max_age_months": 24,
     # Solver constraints
     "constraint.grade_ratio.max_percentage": 67,
@@ -172,8 +171,6 @@ TEST_CONFIG = {
     "constraint.cabin_capacity.penalty": 3000,
     "constraint.age_grade_flow.weight": 10,
     "constraint.grade_cohesion.weight": 5,
-    "constraint.grade_spread.mode": "soft",
-    "constraint.grade_spread.penalty": 3000,
     # Objective function weights
     "objective.source_multipliers.share_bunk_with": 1.75,
     "objective.source_multipliers.do_not_share_with": 1.5,
@@ -240,7 +237,6 @@ class MockConfigLoader:
             # level_progression removed - uses no_regression_penalty, not progression_weight
             "age_grade_flow": "constraint.age_grade_flow.weight",
             "grade_cohesion": "constraint.grade_cohesion.weight",
-            "grade_spread": "constraint.grade_spread.penalty",
             "age_spread": "constraint.age_spread.penalty",
             "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }

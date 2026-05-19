@@ -9,7 +9,6 @@ two paths cannot drift out of sync.
 from __future__ import annotations
 
 from bunking.solver.penalties import (
-    grade_spread_penalty,
     min_occupancy_penalty,
     min_occupancy_threshold,
 )
@@ -25,11 +24,6 @@ def test_min_occupancy_penalty_reads_canonical_key(mock_config):
     assert min_occupancy_penalty() == 678
 
 
-def test_grade_spread_penalty_reads_canonical_key(mock_config):
-    _set(mock_config, "constraint.grade_spread.penalty", 9999)
-    assert grade_spread_penalty() == 9999
-
-
 def test_min_occupancy_threshold_returns_hardcoded_constant(mock_config):
     """After Phase 2 cleanup the threshold is hardcoded — the accessor returns
     MIN_BUNK_OCCUPANCY (=8) regardless of config. Tests that previously set
@@ -42,10 +36,10 @@ def test_min_occupancy_threshold_returns_hardcoded_constant(mock_config):
     assert min_occupancy_threshold() == MIN_BUNK_OCCUPANCY == 8
 
 
-def test_accessors_use_get_instance(mock_config):
-    """The accessors must read via ConfigLoader.get_instance(), not a snapshot."""
-    _set(mock_config, "constraint.grade_spread.penalty", 1)
-    assert grade_spread_penalty() == 1
-    _set(mock_config, "constraint.grade_spread.penalty", 2)
+def test_min_occupancy_uses_get_instance(mock_config):
+    """The accessor must read via ConfigLoader.get_instance(), not a snapshot."""
+    _set(mock_config, "constraint.cabin_minimum_occupancy.penalty", 1)
+    assert min_occupancy_penalty() == 1
+    _set(mock_config, "constraint.cabin_minimum_occupancy.penalty", 2)
     # If the accessor cached the previous read, this would still return 1.
-    assert grade_spread_penalty() == 2
+    assert min_occupancy_penalty() == 2
