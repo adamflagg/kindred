@@ -1,11 +1,11 @@
 """Request-source bucket classification.
 
 source_field values originate from a custom CampMinder report:
-- bunk_with:      parent bunk request form
-- socialize_with: parent "socialize with / age preference" dropdown
-- not_bunk_with:  hidden CampMinder staff "do not bunk with" field
-- bunking_notes:  most recent staff bunk note pulled by the report
-- internal_notes: staff internal notes pulled by the report
+- bunk_request_form:    parent bunk request form
+- socialize_with:       parent "socialize with / age preference" dropdown
+- staff_not_bunk_with:  hidden CampMinder staff "do not bunk with" field
+- bunking_notes:        most recent staff bunk note pulled by the report
+- internal_notes:       staff internal notes pulled by the report
 
 This is the canonical helper #1142 will eventually flip every read site to
 use, replacing the redundant `source` column on bunk_requests.

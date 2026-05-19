@@ -9,7 +9,7 @@ existing `build_solver_context` helper), calling the constraint function, and
 then attempting to solve with an additional pinning constraint.  Infeasibility
 proves the hard constraint fired; feasibility proves it didn't.
 
-MP = source_field == "bunk_with" (MATERIAL_PARENT bucket per bucket.py).
+MP = source_field == "bunk_request_form" (MATERIAL_PARENT bucket per bucket.py).
 Non-MP = source_field == "bunking_notes" (STAFF bucket, explicit but not MP).
 """
 
@@ -37,7 +37,7 @@ def _mp_request(
     requested_cm_id: int,
     session_cm_id: int = 1000,
 ) -> DirectBunkRequest:
-    """Material-Parent bunk_with request (source_field=bunk_with)."""
+    """Material-Parent request (request_type=bunk_with, source_field=bunk_request_form)."""
     return DirectBunkRequest(
         id=request_id,
         requester_person_cm_id=requester_cm_id,
