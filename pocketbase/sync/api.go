@@ -73,6 +73,35 @@ func requirePermission(permission string, handler func(*core.RequestEvent) error
 	}
 }
 
+// parseSourceFieldParameter validates and parses the comma-separated `source_field`
+// query parameter used by the request-processing endpoints. It returns the parsed
+// field names, the first invalid field encountered (empty when all are valid), and
+// whether every field was valid. An empty parameter means "all fields" and is valid
+// with a nil slice.
+func parseSourceFieldParameter(param string) (fields []string, invalid string, ok bool) {
+	if param == "" {
+		return nil, "", true
+	}
+	validFields := map[string]bool{
+		"bunk_request_form":   true,
+		"staff_not_bunk_with": true,
+		"bunking_notes":       true,
+		"internal_notes":      true,
+		"socialize_with":      true,
+	}
+	for _, f := range strings.Split(param, ",") {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		if !validFields[f] {
+			return nil, f, false
+		}
+		fields = append(fields, f)
+	}
+	return fields, "", true
+}
+
 // InitializeSyncService sets up the sync API endpoints
 func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error {
 	// Get the scheduler instance
@@ -158,27 +187,16 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			session := normalizeSession(e.Request.URL.Query().Get("session"))
 
 			// Parse optional source_field parameter (comma-separated)
-			sourceFieldParam := e.Request.URL.Query().Get("source_field")
-			var sourceFields []string
-			if sourceFieldParam != "" {
-				validFields := map[string]bool{
-					"bunk_request_form": true, "staff_not_bunk_with": true,
-					"bunking_notes": true, "internal_notes": true, "socialize_with": true,
-				}
-				for _, f := range strings.Split(sourceFieldParam, ",") {
-					f = strings.TrimSpace(f)
-					if f == "" {
-						continue
-					}
-					if !validFields[f] {
-						return e.JSON(http.StatusBadRequest, map[string]any{
-							"error": fmt.Sprintf(
-								"Invalid source_field: %s. Valid options: "+
-									"bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
-						})
-					}
-					sourceFields = append(sourceFields, f)
-				}
+			sourceFields, invalidSourceField, validSourceFields := parseSourceFieldParameter(
+				e.Request.URL.Query().Get("source_field"),
+			)
+			if !validSourceFields {
+				return e.JSON(http.StatusBadRequest, map[string]any{
+					"error": fmt.Sprintf(
+						"Invalid source_field: %s. Valid options: "+
+							"bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with",
+						invalidSourceField),
+				})
 			}
 
 			// Parse optional limit parameter

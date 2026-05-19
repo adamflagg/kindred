@@ -504,7 +504,7 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fields, valid := parseSourceFieldParameter(tt.param)
+			fields, _, valid := parseSourceFieldParameter(tt.param)
 
 			if valid != tt.wantValid {
 				t.Errorf("expected valid=%v, got %v for param %q", tt.wantValid, valid, tt.param)
@@ -524,36 +524,8 @@ func TestSourceFieldParameterValidation(t *testing.T) {
 	}
 }
 
-// parseSourceFieldParameter parses and validates the source_field query parameter
-// Returns slice of valid field names and validity
-func parseSourceFieldParameter(param string) ([]string, bool) {
-	if param == "" {
-		return nil, true // Empty means all fields (default)
-	}
-
-	validFields := map[string]bool{
-		"bunk_request_form":   true,
-		"staff_not_bunk_with": true,
-		"bunking_notes":       true,
-		"internal_notes":      true,
-		"socialize_with":      true,
-	}
-
-	parts := strings.Split(param, ",")
-	fields := make([]string, 0, len(parts))
-	for _, f := range parts {
-		f = strings.TrimSpace(f)
-		if f == "" {
-			continue
-		}
-		if !validFields[f] {
-			return nil, false // Invalid field
-		}
-		fields = append(fields, f)
-	}
-
-	return fields, true
-}
+// parseSourceFieldParameter now lives in api.go (production); TestSourceFieldParameterValidation
+// exercises that single implementation directly.
 
 // TestCustomValuesSyncServices tests that custom values sync services are defined
 func TestCustomValuesSyncServices(t *testing.T) {
