@@ -10,8 +10,8 @@ import { safeSourceFromField } from '../sourceFromField'
 
 describe('safeSourceFromField', () => {
   describe('FAMILY classifications', () => {
-    it('maps bunk_with to family', () => {
-      expect(safeSourceFromField('bunk_with')).toBe('family')
+    it('maps bunk_request_form to family', () => {
+      expect(safeSourceFromField('bunk_request_form')).toBe('family')
     })
 
     it('maps socialize_with to family', () => {
@@ -20,8 +20,8 @@ describe('safeSourceFromField', () => {
   })
 
   describe('STAFF classifications', () => {
-    it('maps not_bunk_with to staff', () => {
-      expect(safeSourceFromField('not_bunk_with')).toBe('staff')
+    it('maps staff_not_bunk_with to staff', () => {
+      expect(safeSourceFromField('staff_not_bunk_with')).toBe('staff')
     })
 
     it('maps bunking_notes to staff', () => {
@@ -39,9 +39,9 @@ describe('safeSourceFromField', () => {
 
   describe('all 6 values pinned (parametric)', () => {
     const CASES: Array<[string, 'family' | 'staff']> = [
-      ['bunk_with', 'family'],
+      ['bunk_request_form', 'family'],
       ['socialize_with', 'family'],
-      ['not_bunk_with', 'staff'],
+      ['staff_not_bunk_with', 'staff'],
       ['bunking_notes', 'staff'],
       ['internal_notes', 'staff'],
       ['manual', 'staff'],

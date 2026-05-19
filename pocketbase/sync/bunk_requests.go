@@ -24,8 +24,8 @@ func calculateContentHash(content string) string {
 
 // CSV column to field mapping
 var csvFieldMap = map[string]string{
-	"Share Bunk With":             "bunk_with",
-	"Do Not Share Bunk With":      "not_bunk_with",
+	"Share Bunk With":             "bunk_request_form",
+	"Do Not Share Bunk With":      "staff_not_bunk_with",
 	"Internal Bunk Notes":         "internal_notes",
 	"BunkingNotes Notes":          "bunking_notes",
 	"RetParent-Socializewithbest": "socialize_with",

@@ -162,7 +162,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 			var sourceFields []string
 			if sourceFieldParam != "" {
 				validFields := map[string]bool{
-					"bunk_with": true, "not_bunk_with": true,
+					"bunk_request_form": true, "staff_not_bunk_with": true,
 					"bunking_notes": true, "internal_notes": true, "socialize_with": true,
 				}
 				for _, f := range strings.Split(sourceFieldParam, ",") {
@@ -174,7 +174,7 @@ func InitializeSyncService(app *pocketbase.PocketBase, e *core.ServeEvent) error
 						return e.JSON(http.StatusBadRequest, map[string]any{
 							"error": fmt.Sprintf(
 								"Invalid source_field: %s. Valid options: "+
-									"bunk_with, not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
+									"bunk_request_form, staff_not_bunk_with, bunking_notes, internal_notes, socialize_with", f),
 						})
 					}
 					sourceFields = append(sourceFields, f)

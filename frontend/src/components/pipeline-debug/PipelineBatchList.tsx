@@ -220,8 +220,10 @@ export function PipelineBatchList({
               className="border-bark-300 bg-parchment-50 text-foreground dark:border-bark-600 dark:bg-bark-800 rounded-md border px-2 py-1 text-xs focus:ring-1 focus:ring-amber-500/50 focus:outline-none"
             >
               <option value="">All</option>
-              <option value="bunk_with">{formatSourceField('bunk_with')}</option>
-              <option value="not_bunk_with">{formatSourceField('not_bunk_with')}</option>
+              <option value="bunk_request_form">{formatSourceField('bunk_request_form')}</option>
+              <option value="staff_not_bunk_with">
+                {formatSourceField('staff_not_bunk_with')}
+              </option>
               <option value="bunking_notes">{formatSourceField('bunking_notes')}</option>
               <option value="internal_notes">{formatSourceField('internal_notes')}</option>
               <option value="socialize_with">{formatSourceField('socialize_with')}</option>

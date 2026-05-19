@@ -18,8 +18,8 @@ interface RequestContextProps {
 const FIELD_LABELS: Record<string, string> = {
   ai_parse: 'AI Parse',
   socialize_direct_map: 'Socialize',
-  bunk_with: 'bunk_with',
-  not_bunk_with: 'not_bunk_with',
+  bunk_request_form: 'bunk_request_form',
+  staff_not_bunk_with: 'staff_not_bunk_with',
   bunking_notes: 'bunking_notes',
   internal_notes: 'internal_notes',
 }

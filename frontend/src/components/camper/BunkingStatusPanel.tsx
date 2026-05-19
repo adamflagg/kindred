@@ -110,7 +110,7 @@ export function BunkingStatusPanel({
   )
 
   // Used for both the summary slices and the row partition so material parent
-  // age prefs (source_field='bunk_with') and staff age prefs (source='staff')
+  // age prefs (source_field='bunk_request_form') and staff age prefs (source='staff')
   // contribute to "X/Y met" instead of only rendering as rows below.
   const summaryRequests = useMemo(
     () => [...personRequests, ...resolvedAgePrefs],

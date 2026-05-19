@@ -2,7 +2,11 @@
  * TypeScript types for debug components
  */
 
-export type SourceFieldType = 'bunk_with' | 'not_bunk_with' | 'bunking_notes' | 'internal_notes'
+export type SourceFieldType =
+  | 'bunk_request_form'
+  | 'staff_not_bunk_with'
+  | 'bunking_notes'
+  | 'internal_notes'
 
 export interface ParsedIntent {
   request_type: string
@@ -84,8 +88,8 @@ export { formatSourceField } from '../../utils/formatSourceField'
  * This constant only enumerates the fields relevant to the debug UI filters.
  */
 export const SOURCE_FIELD_LABELS: Record<SourceFieldType, string> = {
-  bunk_with: 'Bunk With',
-  not_bunk_with: 'Not Bunk With',
+  bunk_request_form: 'Bunk With',
+  staff_not_bunk_with: 'Not Bunk With',
   bunking_notes: 'Bunking Notes',
   internal_notes: 'Internal Notes',
 }
