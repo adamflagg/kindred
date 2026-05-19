@@ -623,6 +623,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
             grade: 5,
             gender: 'F',
             reason_codes: ['target_not_in_solver'],
+            session_cm_id: 1000001,
           },
           {
             cm_id: 2,
@@ -630,6 +631,7 @@ describe('PreValidationResultsModal — entirely-impossible MP campers', () => {
             grade: 6,
             gender: 'M',
             reason_codes: ['grade_compatibility'],
+            session_cm_id: 1000001,
           },
         ],
       }),
@@ -680,7 +682,14 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
         by_reason: {},
         flat: [],
         mp_campers_entirely_impossible: [
-          { cm_id: 100, name: 'Emma Johnson', grade: 4, gender: 'F', reason_codes: reasonCodes },
+          {
+            cm_id: 100,
+            name: 'Emma Johnson',
+            grade: 4,
+            gender: 'F',
+            reason_codes: reasonCodes,
+            session_cm_id: 1000001,
+          },
         ],
       }),
     }
@@ -741,6 +750,7 @@ describe('PreValidationResultsModal — click-through to CamperDetailsPanel', ()
           grade: 6,
           gender: 'F',
           reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
         },
       ],
     }),

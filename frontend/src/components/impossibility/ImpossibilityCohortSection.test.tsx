@@ -26,6 +26,7 @@ describe('ImpossibilityCohortSection', () => {
             grade: 5,
             gender: 'F',
             reason_codes: ['grade_compatibility'],
+            session_cm_id: 1000001,
           },
         ]}
         totalImpossibleRequests={1}
@@ -47,6 +48,7 @@ describe('ImpossibilityCohortSection', () => {
             grade: 4,
             gender: 'M',
             reason_codes: ['cross_session'],
+            session_cm_id: 1000001,
           },
         ]}
         totalImpossibleRequests={1}
@@ -67,6 +69,7 @@ describe('ImpossibilityCohortSection', () => {
             grade: 5,
             gender: 'F',
             reason_codes: ['malformed'],
+            session_cm_id: 1000001,
           },
         ]}
         totalImpossibleRequests={1}

@@ -80,6 +80,7 @@ describe('BunkPlanReport (PDF)', () => {
               gender: 'Girls',
               grade: 7,
               reason_codes: ['no_valid_bunk'],
+              session_cm_id: 1000001,
             },
           ],
         }}

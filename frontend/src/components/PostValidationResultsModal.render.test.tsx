@@ -673,7 +673,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
 
   it('opens the panel when a camper name in the section is clicked', async () => {
     const report = makeReport([
-      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 42,
+        name: 'Olivia Chen',
+        grade: 6,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     render(
       <PostValidationResultsModal
@@ -694,7 +701,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
 
   it('wraps CamperDetailsPanel in a session-scoped BunkRequestProvider (#1464 regression)', async () => {
     const report = makeReport([
-      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 42,
+        name: 'Olivia Chen',
+        grade: 6,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     render(
       <PostValidationResultsModal
@@ -749,7 +763,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     // Otherwise selectedCamperId persists across close/reopen and the camper
     // details panel remounts with stale selection.
     const report = makeReport([
-      { cm_id: 99, name: 'Riley Sam', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 99,
+        name: 'Riley Sam',
+        grade: 5,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     const { rerender } = render(
       <PostValidationResultsModal
@@ -985,6 +1006,7 @@ describe('PostValidationResultsModal — Families to contact', () => {
           grade: 4,
           gender: 'F',
           reason_codes: ['pair_no_shared_bunk'],
+          session_cm_id: 1000001,
         },
         {
           cm_id: 1002,
@@ -992,6 +1014,7 @@ describe('PostValidationResultsModal — Families to contact', () => {
           grade: 5,
           gender: 'F',
           reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
         },
       ],
     })
@@ -1004,6 +1027,8 @@ describe('PostValidationResultsModal — Families to contact', () => {
           target_name: 'Samuel Johnson',
           bunk_cm_id: '2001',
           bunk_name: 'Pine 3',
+          session_cm_id: '1000001',
+          requester_grade: 4,
         },
       ],
       priority_unsuccessfuls: [
@@ -1013,6 +1038,8 @@ describe('PostValidationResultsModal — Families to contact', () => {
           requester_name: 'Sophia Martinez',
           target_name: 'Mia Wilson',
           raw_text: 'top priority',
+          session_cm_id: '1000001',
+          requester_grade: 5,
         },
       ],
     })
@@ -1392,6 +1419,7 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
           grade: 5,
           gender: 'F',
           reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
         },
       ],
       by_reason: {},

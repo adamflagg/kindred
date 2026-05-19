@@ -528,6 +528,7 @@ describe('SolverDebugImpossibilityModal — preserved behavior from main', () =>
           grade: 8,
           gender: 'F',
           reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
         },
       ],
     }
