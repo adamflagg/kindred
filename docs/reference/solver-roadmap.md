@@ -5,11 +5,17 @@ emerged from the May 2026 stuck-core investigation. Each stream gets a
 dedicated GitHub issue; specs and plans live in `docs/superpowers/` (local
 only) once individual streams are picked up.
 
-> **Updated 2026-05-18 (post-#1523, post-#1520).** Stream 4 (mutual-request
-> boost, Phase 3) shipped. The #1520 validator-side parity fix also shipped.
-> Only **Stream 3 (#1381 — Phase 4, variable-count attack surface)** remains
-> genuinely open as planned work; Stream 6 substreams 6a–6f stay incremental
-> and unfiled until a real need surfaces.
+> **Updated 2026-05-18 (post-#1533, post-#1529, post-#1523, post-#1520).** Stream 4
+> (mutual-request boost, Phase 3) shipped. The #1520 validator-side parity fix
+> also shipped. The solver objective sensitivity analysis (#1529) landed, then
+> the **business-rules-vs-magnitudes review** opened off the back of it — batch 1
+> (Δ3 raise `share_bunk_with` 1.5→1.75 + Δ4 equalize notes multipliers) shipped
+> as #1533. Δ1 (penalty re-rank) is deferred behind the Age Spread Phase 2
+> soft→hard collapse; Δ2 (cabin_min_occupancy penalty→bonus reshape) is open
+> and needs a design brainstorm before drafting. Only **Stream 3 (#1381 —
+> Phase 4, variable-count attack surface)** remains genuinely open as planned
+> *infrastructure* work; Stream 6 substreams 6a–6f stay incremental and unfiled
+> until a real need surfaces.
 
 > **Why this doc exists.** The May 12 investigation surfaced four
 > distinct improvements at once (camp-policy fix, observability gap,
@@ -58,6 +64,11 @@ only) once individual streams are picked up.
 | Tighten `request_validation_summary` to a `RequestValidationSummary` TypedDict | #1386 | #1487 | ✅ shipped 2026-05-18 |
 | Remove unreachable per-bunk branch in `age_preference` sat-var builder | #1467 | — | ✅ shipped 2026-05-16 |
 | Thread config through penalty accessors in evaluators | #1332 | — | ✅ shipped 2026-05-18 |
+| Objective sensitivity analysis doc + reproducible script | none (spec in-doc) | #1529 | ✅ shipped 2026-05-18 — `docs/reference/objective-sensitivity.md` + `scripts/analyze_objective_sensitivity.py` |
+| Business-rules-vs-magnitudes review — batch 1 (Δ3 `share_bunk_with` 1.5→1.75, Δ4 equalize `internal_notes` 0.8→1.0, B-class fallback drift) | none (spec in `solver-config-decisions.md`) | #1533 | ✅ shipped 2026-05-18 — post-merge S4 sweep showed obj +0.03–0.33%, gap tightened across all budgets, satisfaction stable |
+| Business-rules-vs-magnitudes review — Δ1 (penalty re-rank: spreads top, ratio middle, occupancy bottom) | none (spec in `solver-config-decisions.md`) | — | ⏸ **DEFERRED 2026-05-18** — blocked on Age Spread Phase 2 (soft→hard collapse) so the re-rank operates on the live surface rather than dead soft paths |
+| Business-rules-vs-magnitudes review — Δ2 (`cabin_min_occupancy` penalty → bonus reshape, mirror `age_spread_preferred_bonus`) | none (spec in `solver-config-decisions.md`) | — | ⬜ **OPEN** — needs design brainstorm (step vs continuous, per-spot vs per-bunk) before drafting |
+| `soft_constraints_by_module` reports vars-created not fires-honored | spinoff from sensitivity review | — | ⬜ filed as spinoff issue in `solver-config-decisions.md` 2026-05-18 |
 | Stream 6 substreams 6a–6f | unfiled | — | ⬜ incremental |
 
 Work-item PRs use `Closes #N` in the body so the issue auto-closes on merge,
@@ -1302,3 +1313,38 @@ regresses.
   for the boost (323/344 = 93.9% from 30 s budget onward at both 2× and
   5×; residual 21 unmet are partial-tails of multi-MP campers, none
   mutual). S4 is the right bed for any future coverage-moving lever.
+- **2026-05-18** — Objective sensitivity analysis shipped (#1529):
+  `docs/reference/objective-sensitivity.md` compiles per-request weights,
+  per-constraint penalty inventory, and per-archetype threshold ratios from
+  one place. `scripts/analyze_objective_sensitivity.py` regenerates the
+  three tables; `tests/unit/scripts/test_analyze_objective_sensitivity.py`
+  locks every magnitude. Drives the business-rules-vs-magnitudes review
+  recorded in `solver-config-decisions.md` (gitignored, local-only).
+- **2026-05-18** — Business-rules-vs-magnitudes review opened off the back
+  of #1529. Eight deltas surfaced against staff's stated priority stack;
+  four actionable (Δ1–Δ4), three confirmed-correct (Δ5, Δ7, Δ8), one
+  noted-not-actionable (Δ6). Spinoff: `soft_constraints_by_module` reports
+  vars-created not fires-honored (vars resolve to 0 in the final solution
+  for most reified penalties — the metric reads as a violation count but
+  isn't). Filed locally; not yet a GitHub issue.
+- **2026-05-18** — Business-rules batch 1 shipped (#1533): Δ3 raises
+  `objective.source_multipliers.share_bunk_with` 1.5 → 1.75 so MP one-way
+  `bunk_with` (700 at slot 0; 1400 mutual) sits strictly above staff
+  `not_bunk_with` (600); Δ4 raises `internal_notes` 0.8 → 1.0 so both note
+  sources tie at 400. Adjacent: B-class evaluator/seed-drift fixed in
+  `score_evaluator.py` + `objective_evaluator.py` (production never tripped
+  the fallbacks because CONFIG_SCHEMA requires the keys; the fix is
+  code-readability only). Post-merge local sweep on S4 (1235406, 30/60/180 s):
+  obj +0.03–0.33% across budgets, gap *tightened* at every budget
+  (2.04→1.73, 1.40→1.03, 1.00→0.98), satisfied-request count stable in
+  533–545 band. No regression; "tail tax" got marginally steeper as
+  intended (post-180 s satisfies 542 vs pre 545 but at higher obj — solver
+  prefers fewer high-weight placements over more low-weight ones).
+- **2026-05-18** — Business-rules Δ1 (penalty re-rank: spreads > ratio >
+  occupancy) **deferred**. Post-batch-1 analysis showed only `age_spread`
+  and `grade_ratio` are behaviorally live — `grade_spread` runs hard in
+  prod (penalty never fires) and `cabin_min_occupancy` is reshaped by Δ2.
+  But age_spread itself is queued for hard-ceiling collapse in the Age
+  Spread Phase 2 PR, which would moot any penalty value bumped here.
+  Decision: wait for the soft→hard collapses to ship, then re-evaluate
+  what the live penalty surface needs.
