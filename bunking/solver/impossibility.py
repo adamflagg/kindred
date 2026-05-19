@@ -117,6 +117,7 @@ def _camper_dict(person: DirectPerson) -> dict[str, Any]:
         "name": f"{person.first_name} {person.last_name}".strip(),
         "grade": person.grade,
         "gender": person.gender,
+        "session_cm_id": person.session_cm_id,
     }
 
 

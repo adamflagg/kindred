@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
-from bunking.solver.impossibility import validate_impossibility
+from bunking.solver.impossibility import _camper_dict, validate_impossibility
 
 from .conftest import make_bunk, make_input, make_person, make_request
+
+
+def test_camper_dict_includes_session_cm_id() -> None:
+    """Multi-enrollment dedup on the frontend depends on session_cm_id being
+    present in mp_campers_entirely_impossible entries."""
+    person = make_person(1, session=1000001, gender="F", grade=4)
+    result = _camper_dict(person)
+    assert result["session_cm_id"] == 1000001
+    # Existing fields preserved
+    assert result["cm_id"] == 1
+    assert result["name"]  # non-empty display name
+    assert result["grade"] == 4
+    assert result["gender"] == "F"
 
 
 def test_camper_with_all_mp_requests_impossible_is_listed(mock_config):
