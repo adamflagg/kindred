@@ -6,9 +6,10 @@
  *   status tier, and stats tile from material parent satisfaction rate.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import toast from 'react-hot-toast'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
 import { makeImpossibilityReport } from '../test/impossibilityReport'
@@ -17,6 +18,16 @@ import type { EntirelyImpossibleMpCamper } from '../services/solver'
 // Stub out AuthContext so tests don't need a real AuthProvider
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Test User' } }),
+}))
+
+// Mock react-router hooks used by PostCheckContents
+const mockNavigate = vi.fn()
+vi.mock('react-router', () => ({
+  useNavigate: () => mockNavigate,
+  useLocation: () => ({ pathname: '/session/1000001/bunking' }),
+  Link: ({ children, ...p }: React.PropsWithChildren<Record<string, unknown>>) => (
+    <a {...p}>{children}</a>
+  ),
 }))
 
 // Mock the Modal component to render children directly
@@ -1730,5 +1741,53 @@ describe('PostValidationResultsModal — expandable family rows (Task 11)', () =
     // 1 distinct camper (Liam) → "1 follow-up call recommended"
     expect(screen.getByText(/1 follow-up call recommended/i)).toBeInTheDocument()
     expect(screen.queryByText(/2 follow-up call/i)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 16 — "Open in popout" button
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Open in popout button (Task 16)', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear()
+  })
+
+  it('clicking "Open in popout" calls window.open with the right URL including scenario', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        scenarioId="abc"
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open in popout/i }))
+    expect(openSpy).toHaveBeenCalledWith(
+      '/post-check/popout?session=1000001&scenario=abc',
+      'post-check',
+      expect.stringMatching(/width=\d+/)
+    )
+    openSpy.mockRestore()
+  })
+
+  it('falls back to same-tab nav + toast when popup is blocked', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
+    const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open in popout/i }))
+    expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/popup blocked/i))
+    expect(mockNavigate).toHaveBeenCalledWith('/post-check/popout?session=1000001')
+    openSpy.mockRestore()
+    toastSpy.mockRestore()
   })
 })

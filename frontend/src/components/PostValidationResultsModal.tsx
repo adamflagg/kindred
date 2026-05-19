@@ -19,7 +19,10 @@ import {
   TrendingUp,
   Target,
   Activity,
+  ExternalLink,
 } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router'
+import toast from 'react-hot-toast'
 import { Modal } from './ui/Modal'
 import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
@@ -617,6 +620,23 @@ export function PostCheckContents({
 }: PostCheckContentsProps) {
   const { user } = useAuth()
   const plannerName = (user?.['name'] as string | undefined) || 'Camp Staff'
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isPopoutRoute = location.pathname.startsWith('/post-check/popout')
+
+  const handlePopout = useCallback(() => {
+    const qs = new URLSearchParams({ session: String(sessionCmId) })
+    if (scenarioId) qs.set('scenario', scenarioId)
+    const url = `/post-check/popout?${qs.toString()}`
+    const win = window.open(url, 'post-check', 'width=600,height=900')
+    if (!win) {
+      toast.error(
+        'Popup blocked — opening in this tab. Allow popups for this site to use the popout.'
+      )
+      navigate(url)
+    }
+  }, [sessionCmId, scenarioId, navigate])
+
   const [showDetails, setShowDetails] = useState(false)
   const [showUnmetParents, setShowUnmetParents] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
@@ -828,13 +848,11 @@ export function PostCheckContents({
   return (
     <>
       {/* Header band — status icon + label */}
-      <div
-        className={`flex items-center gap-3 bg-gradient-to-r py-4 pr-14 pl-5 ${status.gradient}`}
-      >
+      <div className={`flex items-center gap-3 bg-gradient-to-r py-4 pr-4 pl-5 ${status.gradient}`}>
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${status.iconBg}`}>
           <StatusIcon className="h-5 w-5" />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="font-display text-foreground text-lg leading-tight font-bold">
             {status.label}
           </h2>
@@ -843,6 +861,17 @@ export function PostCheckContents({
             {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
           </p>
         </div>
+        {!isPopoutRoute && (
+          <button
+            type="button"
+            onClick={handlePopout}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-black/5"
+            title="Open this view in a separate window"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open in popout
+          </button>
+        )}
       </div>
 
       {/* Satisfaction Ring + Quick Stats */}
