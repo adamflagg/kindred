@@ -82,7 +82,7 @@ def _request(
     session: int,
     *,
     request_type: str = "bunk_with",
-    source_field: str = "bunk_with",
+    source_field: str = "bunk_request_form",
     status: str = "resolved",
 ) -> DirectBunkRequest:
     return DirectBunkRequest(
@@ -212,8 +212,8 @@ class TestMustSatisfyDiagnosticSplit:
     def test_mixed_material_and_staff_unsatisfied_falls_in_material_category(self, mock_config):
         """Mixed possible buckets: presence of any MATERIAL_PARENT routes to material_parent_unmet."""
         # 1001 has TWO possible requests, neither satisfied:
-        #   - bunk_with 1002 (material, source_field='bunk_with')
-        #   - not_bunk_with 1003 (staff, source_field='not_bunk_with')
+        #   - bunk_with 1002 (material, source_field='bunk_request_form')
+        #   - not_bunk_with 1003 (staff, source_field='staff_not_bunk_with')
         # Place 1001 separate from 1002 (bunk_with unmet) and same as 1003 (not_bunk_with unmet).
         input_data = DirectSolverInput(
             persons=[_person(1001, 100), _person(1002, 100), _person(1003, 100)],

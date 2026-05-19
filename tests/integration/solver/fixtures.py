@@ -46,7 +46,7 @@ SESSION = 1000001
 
 # Material-Parent source field (MATERIAL_PARENT bucket per bunking/satisfaction/
 # bucket.py); "bunking_notes" is an explicit-but-non-MP STAFF-bucket source.
-MP_SOURCE = "bunk_with"
+MP_SOURCE = "bunk_request_form"
 NON_MP_SOURCE = "bunking_notes"
 
 # Camper cm_ids 1..8 are the MP clique (forced together by parent_paramount);

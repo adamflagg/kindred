@@ -111,7 +111,7 @@ class TestListParseAnalysisEndpoint:
         item = data["items"][0]
         assert item["id"] == "debug_123"
         assert item["requester_name"] == "Emma Johnson"
-        assert item["source_field"] == "bunk_with"
+        assert item["source_field"] == "bunk_request_form"
         assert len(item["parsed_intents"]) == 1
 
     def test_list_filters_by_session(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
@@ -440,7 +440,7 @@ class TestListOriginalRequestsEndpoint:
         mock_original.first_name = "Emma"
         mock_original.last_name = "Johnson"
         mock_original.requester_cm_id = 12345
-        mock_original.field = "bunk_with"
+        mock_original.field = "bunk_request_form"
         mock_original.content = "With Mia please"
         mock_original.year = 2025
         mock_original.processed = None
@@ -456,7 +456,7 @@ class TestListOriginalRequestsEndpoint:
 
         item = data["items"][0]
         assert item["id"] == "orig_req_1"
-        assert item["source_field"] == "bunk_with"
+        assert item["source_field"] == "bunk_request_form"
         assert item["original_text"] == "With Mia please"
         assert item["requester_name"] == "Emma Johnson"
 
@@ -783,7 +783,7 @@ class TestListOriginalRequestsWithParseStatusEndpoint:
         mock_original.first_name = "Emma"
         mock_original.last_name = "Johnson"
         mock_original.requester_cm_id = 12345
-        mock_original.field = "bunk_with"
+        mock_original.field = "bunk_request_form"
         mock_original.content = "With Mia please"
         mock_original.year = 2025
         mock_original.processed = None
@@ -871,7 +871,7 @@ class TestGetParseResultWithFallbackEndpoint:
         first_name: str = "Emma",
         last_name: str = "Johnson",
         requester_cm_id: int = 12345,
-        field: str = "bunk_with",
+        field: str = "bunk_request_form",
         content: str = "With Mia please",
     ) -> Mock:
         """Create a mock OriginalRequest object."""
@@ -1058,7 +1058,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         first_name: str = "Emma",
         last_name: str = "Johnson",
         requester_cm_id: int = 12345,
-        field: str = "bunk_with",
+        field: str = "bunk_request_form",
         content: str = "With Mia please",
     ) -> Mock:
         """Create a mock OriginalRequest object."""
@@ -1098,7 +1098,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         # These should be populated from original request, not debug result
         assert data["requester_name"] == "Emma Johnson"
         assert data["requester_cm_id"] == 12345
-        assert data["source_field"] == "bunk_with"
+        assert data["source_field"] == "bunk_request_form"
         assert data["original_text"] == "With Mia please"
 
     def test_production_fallback_includes_original_data(
@@ -1129,7 +1129,7 @@ class TestGetParseResultAlwaysIncludesOriginal:
         # Original data should ALWAYS be populated
         assert data["requester_name"] == "Emma Johnson"
         assert data["requester_cm_id"] == 12345
-        assert data["source_field"] == "bunk_with"
+        assert data["source_field"] == "bunk_request_form"
         assert data["original_text"] == "With Mia please"
 
     def test_none_source_includes_original_data(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
@@ -1250,7 +1250,7 @@ class TestBatchParseStatusEndpoint:
             mock.first_name = f"Camper{i}"
             mock.last_name = "Test"
             mock.requester_cm_id = 10000 + i
-            mock.field = "bunk_with"
+            mock.field = "bunk_request_form"
             mock.content = f"Content {i}"
             mock.year = 2025
             mock_originals.append(mock)
@@ -1328,7 +1328,7 @@ class TestGroupedByCamperEndpoint:
         mock_originals = []
 
         # Camper 1: Emma Johnson with 2 fields
-        for field in ["bunk_with", "bunking_notes"]:
+        for field in ["bunk_request_form", "bunking_notes"]:
             mock = Mock()
             mock.id = f"req_emma_{field}"
             mock.preferred_name = None
@@ -1342,12 +1342,12 @@ class TestGroupedByCamperEndpoint:
 
         # Camper 2: Liam Garcia with 1 field
         mock = Mock()
-        mock.id = "req_liam_bunk_with"
+        mock.id = "req_liam_bunk_request_form"
         mock.preferred_name = None
         mock.first_name = "Liam"
         mock.last_name = "Garcia"
         mock.requester_cm_id = 67890
-        mock.field = "bunk_with"
+        mock.field = "bunk_request_form"
         mock.content = "Want to bunk with Noah"
         mock.year = 2025
         mock_originals.append(mock)
@@ -1356,9 +1356,9 @@ class TestGroupedByCamperEndpoint:
 
         # Mock batch status check
         mock_deps["debug_repo"].check_parse_status_batch.return_value = {
-            "req_emma_bunk_with": (True, False),
+            "req_emma_bunk_request_form": (True, False),
             "req_emma_bunking_notes": (False, True),
-            "req_liam_bunk_with": (False, False),
+            "req_liam_bunk_request_form": (False, False),
         }
 
         response = client.get("/api/debug/original-requests-grouped?year=2025")
@@ -1387,7 +1387,7 @@ class TestGroupedByCamperEndpoint:
 
         # Create records including socialize_with
         mock_originals = []
-        for field in ["bunk_with", "socialize_with"]:
+        for field in ["bunk_request_form", "socialize_with"]:
             mock = Mock()
             mock.id = f"req_{field}"
             mock.preferred_name = None
@@ -1401,7 +1401,7 @@ class TestGroupedByCamperEndpoint:
 
         mock_loader.load_by_filter.return_value = mock_originals
         mock_deps["debug_repo"].check_parse_status_batch.return_value = {
-            "req_bunk_with": (False, False),
+            "req_bunk_request_form": (False, False),
             "req_socialize_with": (False, False),
         }
 
@@ -1410,10 +1410,10 @@ class TestGroupedByCamperEndpoint:
         assert response.status_code == 200
         data = response.json()
 
-        # Should have 1 camper group with only bunk_with (socialize_with excluded)
+        # Should have 1 camper group with only bunk_request_form (socialize_with excluded)
         assert len(data["items"]) == 1
         assert len(data["items"][0]["fields"]) == 1
-        assert data["items"][0]["fields"][0]["source_field"] == "bunk_with"
+        assert data["items"][0]["fields"][0]["source_field"] == "bunk_request_form"
 
     def test_filters_by_source_field(self, client_with_mocks: tuple[TestClient, dict[str, Mock], Mock]) -> None:
         """Test that source_field filter is applied."""
@@ -1597,7 +1597,7 @@ class TestScopedClearEndpoint:
         mock_repos["session_repo"].find_by_cm_id.return_value = {"id": "sess_xyz"}
         mock_repos["debug_repo"].clear_by_filter.return_value = 3
 
-        response = client.delete("/api/debug/parse-analysis?session_cm_id=1000003&source_field=bunk_with")
+        response = client.delete("/api/debug/parse-analysis?session_cm_id=1000003&source_field=bunk_request_form")
 
         assert response.status_code == 200
         data = response.json()
@@ -1606,7 +1606,7 @@ class TestScopedClearEndpoint:
         # Verify both filters were passed
         call_kwargs = mock_repos["debug_repo"].clear_by_filter.call_args[1]
         assert call_kwargs.get("session_id") == "sess_xyz"
-        assert call_kwargs.get("source_field") == "bunk_with"
+        assert call_kwargs.get("source_field") == "bunk_request_form"
 
 
 # =============================================================================
@@ -1701,20 +1701,20 @@ class TestProductionRequestsEndpoint:
         assert "total" in data
         assert data["total"] == 3
 
-        # Should have 2 groups: bunk_with (2 items) and not_bunk_with (1 item)
+        # Should have 2 groups: bunk_request_form (2 items) and staff_not_bunk_with (1 item)
         groups = data["groups"]
-        assert "bunk_with" in groups
-        assert "not_bunk_with" in groups
-        assert len(groups["bunk_with"]) == 2
-        assert len(groups["not_bunk_with"]) == 1
+        assert "bunk_request_form" in groups
+        assert "staff_not_bunk_with" in groups
+        assert len(groups["bunk_request_form"]) == 2
+        assert len(groups["staff_not_bunk_with"]) == 1
 
-        # Verify bunk_with group content
-        bunk_with_names = [r["requested_person_name"] for r in groups["bunk_with"]]
+        # Verify bunk_request_form group content
+        bunk_with_names = [r["requested_person_name"] for r in groups["bunk_request_form"]]
         assert "Emma Johnson" in bunk_with_names
         assert "Noah Smith" in bunk_with_names
 
-        # Verify not_bunk_with group content
-        assert groups["not_bunk_with"][0]["requested_person_name"] == "Liam Garcia"
+        # Verify staff_not_bunk_with group content
+        assert groups["staff_not_bunk_with"][0]["requested_person_name"] == "Liam Garcia"
 
     def test_filters_by_session(self, client_with_mocks: tuple[TestClient, dict[str, Mock]]) -> None:
         """Test that endpoint filters by session_cm_id when provided."""
@@ -1844,7 +1844,7 @@ class TestProductionRequestsResponseSchema:
                 "source_field": field,
                 "confidence_score": 0.9,
             }
-            for i, field in enumerate(["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes"])
+            for i, field in enumerate(["bunk_request_form", "staff_not_bunk_with", "bunking_notes", "internal_notes"])
         ]
 
         response = client.get("/api/debug/production-requests/12345?year=2025")
@@ -1853,8 +1853,8 @@ class TestProductionRequestsResponseSchema:
         data = response.json()
 
         # All 4 source fields should be present as groups
-        assert "bunk_with" in data["groups"]
-        assert "not_bunk_with" in data["groups"]
+        assert "bunk_request_form" in data["groups"]
+        assert "staff_not_bunk_with" in data["groups"]
         assert "bunking_notes" in data["groups"]
         assert "internal_notes" in data["groups"]
 
@@ -1886,7 +1886,7 @@ class TestProductionRequestsResponseSchema:
         assert response.status_code == 200
         data = response.json()
 
-        req = data["groups"]["bunk_with"][0]
+        req = data["groups"]["bunk_request_form"][0]
 
         # Verify all expected fields are present
         assert "id" in req

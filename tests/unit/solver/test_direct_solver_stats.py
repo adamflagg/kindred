@@ -1153,7 +1153,7 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # not_bunk_with with no target → malformed; source_field=not_bunk_with → STAFF
+        # not_bunk_with with no target → malformed; source_field=staff_not_bunk_with → STAFF
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
@@ -1279,8 +1279,8 @@ class TestTier1MetricsInStatsDict:
             "grade_ratio_0_grade_5": object(),
         }
         requests_by_person: dict[int, list[DirectBunkRequest]] = {
-            1: [_make_req("r1", 1, "bunk_with")],
-            2: [_make_req("r2", 2, "bunk_with"), _make_req("r3", 2, "bunk_with")],
+            1: [_make_req("r1", 1, "bunk_request_form")],
+            2: [_make_req("r2", 2, "bunk_request_form"), _make_req("r3", 2, "bunk_request_form")],
         }
         stats = _build_stats_dict(
             solver=solver,
