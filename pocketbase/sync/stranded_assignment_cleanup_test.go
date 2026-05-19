@@ -10,12 +10,12 @@ import (
 
 func TestFindStrandedAssignments(t *testing.T) {
 	validPairs := map[string]bool{
-		orphanPairKey("sess1", "bunkA"): true,
-		orphanPairKey("sess1", "bunkB"): true,
+		strandedPairKey("sess1", "bunkA"): true,
+		strandedPairKey("sess1", "bunkB"): true,
 	}
 	// Only sess1 has bunk_plans; sess2 has none (its plans failed to sync).
 	plannedSessions := map[string]bool{"sess1": true}
-	candidates := []orphanCandidate{
+	candidates := []strandedCandidate{
 		{RecordID: "r1", SessionID: "sess1", BunkID: "bunkA"}, // valid pair - kept
 		{RecordID: "r2", SessionID: "sess1", BunkID: "bunkZ"}, // stranded - bunk not planned
 		{RecordID: "r3", SessionID: "sess1", BunkID: ""},      // no bunk - skipped
@@ -32,8 +32,8 @@ func TestFindStrandedAssignments(t *testing.T) {
 	}
 }
 
-// setupOrphanCollections builds the minimal schema the reconciler touches.
-func setupOrphanCollections(t *testing.T, app core.App) {
+// setupStrandedCollections builds the minimal schema the reconciler touches.
+func setupStrandedCollections(t *testing.T, app core.App) {
 	t.Helper()
 
 	sessions := core.NewBaseCollection("camp_sessions")
@@ -116,7 +116,7 @@ func TestStrandedAssignmentCleanup_SweepsStrandedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -155,7 +155,7 @@ func TestStrandedAssignmentCleanup_GateSkipsWhenNoBunkPlans(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -189,7 +189,7 @@ func TestStrandedAssignmentCleanup_GateSkipsPerSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	// Session A has a bunk_plan; session B has none (its plans failed to sync).
 	// The global gate passes because plans exist overall — only the per-session
@@ -230,7 +230,7 @@ func TestStrandedAssignmentCleanup_LeavesValidDraftUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -266,7 +266,7 @@ func TestStrandedAssignmentCleanup_ProdAuditDoesNotDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -300,7 +300,7 @@ func TestStrandedAssignmentCleanup_Idempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -339,7 +339,7 @@ func TestStrandedAssignmentCleanup_ProdAuditWarnings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	// otherBunk has a plan → session IS in plannedSessions
@@ -381,7 +381,7 @@ func TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal(t *testing.T)
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	// Drop bunk_assignments so the production-audit query fails. The draft
 	// sweep (bunk_assignments_draft) is unaffected.

@@ -16,18 +16,18 @@ const serviceNameStrandedAssignmentCleanup = "stranded_assignment_cleanup"
 const msgStrandedProd = "stranded_assignment_cleanup: stranded production assignments detected — " +
 	"not deleted (bunk_assignments sync owns prod cleanup)"
 
-// orphanCandidate is the minimal projection of an assignment row needed for
+// strandedCandidate is the minimal projection of an assignment row needed for
 // stranded-detection — decoupled from *core.Record so the detection logic is
 // unit-testable without a database.
-type orphanCandidate struct {
+type strandedCandidate struct {
 	RecordID  string
 	SessionID string
 	BunkID    string
 }
 
-// orphanPairKey builds the composite key used to test whether a (session, bunk)
+// strandedPairKey builds the composite key used to test whether a (session, bunk)
 // pair has a surviving bunk_plan. Both args are PocketBase record IDs.
-func orphanPairKey(sessionID, bunkID string) string {
+func strandedPairKey(sessionID, bunkID string) string {
 	return sessionID + ":" + bunkID
 }
 
@@ -39,9 +39,9 @@ func orphanPairKey(sessionID, bunkID string) string {
 // sweeping its drafts would null every valid assignment for the session.
 func findStrandedAssignments(
 	validPairs, plannedSessions map[string]bool,
-	candidates []orphanCandidate,
-) []orphanCandidate {
-	stranded := []orphanCandidate{}
+	candidates []strandedCandidate,
+) []strandedCandidate {
+	stranded := []strandedCandidate{}
 	for _, c := range candidates {
 		if c.BunkID == "" {
 			continue
@@ -49,7 +49,7 @@ func findStrandedAssignments(
 		if !plannedSessions[c.SessionID] {
 			continue
 		}
-		if !validPairs[orphanPairKey(c.SessionID, c.BunkID)] {
+		if !validPairs[strandedPairKey(c.SessionID, c.BunkID)] {
 			stranded = append(stranded, c)
 		}
 	}
@@ -101,10 +101,10 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 			return fmt.Errorf("stranded_assignment_cleanup: year resolution failed: %w", err)
 		}
 	}
-	return reconcileOrphanedAssignments(s.App, year, &s.Stats)
+	return reconcileStrandedAssignments(s.App, year, &s.Stats)
 }
 
-// reconcileOrphanedAssignments is the integration logic:
+// reconcileStrandedAssignments is the integration logic:
 //  1. Build the valid (session, bunk) set, plus the set of sessions that have
 //     at least one bunk_plan, from bunk_plans for the year.
 //  2. GATE: if there are zero bunk_plans for the year, the plan set is
@@ -115,7 +115,7 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 //     the camper falls back into the Unassigned pool.
 //  4. Audit bunk_assignments (production): log stranded rows — but do NOT
 //     delete. The bunk_assignments sync's own deleteOrphans() owns prod.
-func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
+func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 	yearFilter := fmt.Sprintf("year = %d", year)
 
 	plans, err := app.FindRecordsByFilter("bunk_plans", yearFilter, "", 0, 0)
@@ -132,7 +132,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	plannedSessions := make(map[string]bool)
 	for _, p := range plans {
 		sessionID := p.GetString("session")
-		validPairs[orphanPairKey(sessionID, p.GetString("bunk"))] = true
+		validPairs[strandedPairKey(sessionID, p.GetString("bunk"))] = true
 		plannedSessions[sessionID] = true
 	}
 
@@ -147,7 +147,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		return fmt.Errorf("stranded_assignment_cleanup: query bunk_assignments_draft: %w", err)
 	}
 	draftByID := make(map[string]*core.Record, len(drafts))
-	draftCandidates := make([]orphanCandidate, 0, len(drafts))
+	draftCandidates := make([]strandedCandidate, 0, len(drafts))
 	// Validity is derived from the (session, bunk) pair, NOT the draft's own
 	// bunk_plan relation: that relation is non-authoritative and may dangle
 	// (point at a since-deleted plan) even when the bunk is still planned. A
@@ -155,7 +155,7 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 	// bunk_plan and all.
 	for _, d := range drafts {
 		draftByID[d.Id] = d
-		draftCandidates = append(draftCandidates, orphanCandidate{
+		draftCandidates = append(draftCandidates, strandedCandidate{
 			RecordID:  d.Id,
 			SessionID: d.GetString("session"),
 			BunkID:    d.GetString("bunk"),
@@ -190,9 +190,9 @@ func reconcileOrphanedAssignments(app core.App, year int, stats *Stats) error {
 		stats.Errors++
 		slog.Error("stranded_assignment_cleanup: query bunk_assignments", "error", err)
 	} else {
-		prodCandidates := make([]orphanCandidate, 0, len(prod))
+		prodCandidates := make([]strandedCandidate, 0, len(prod))
 		for _, p := range prod {
-			prodCandidates = append(prodCandidates, orphanCandidate{
+			prodCandidates = append(prodCandidates, strandedCandidate{
 				RecordID:  p.Id,
 				SessionID: p.GetString("session"),
 				BunkID:    p.GetString("bunk"),
