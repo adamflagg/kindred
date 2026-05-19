@@ -7,6 +7,8 @@
 // type that carries targetPerson (or not), without requiring changes to the
 // EnhancedBunkRequest type itself.
 
+import { SourceField } from '../types/sourceField'
+
 type SortableTarget = { first_name?: string; last_name?: string } | null | undefined
 
 export interface PartitionableRequest {
@@ -35,7 +37,10 @@ export function partitionRequestsBySource<T extends PartitionableRequest>(
       age.push(r)
       continue
     }
-    if (r.source_field === 'bunk_with' || r.source_field === 'socialize_with') {
+    if (
+      r.source_field === SourceField.BUNK_REQUEST_FORM ||
+      r.source_field === SourceField.SOCIALIZE_WITH
+    ) {
       parent.push(r)
       continue
     }

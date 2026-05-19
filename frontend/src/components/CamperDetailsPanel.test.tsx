@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '../test/testUtils'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { mockPerson } from '../test/mockData'
+import { SourceField } from '../types/sourceField'
 import type { CamperSatisfaction, PerRequestStatus } from '../types/satisfaction'
 
 // Configurable per-collection mock factories
@@ -637,14 +638,14 @@ describe('CamperDetailsPanel', () => {
     }
 
     it('renders Parent rows before Staff sub-divider before Staff rows', async () => {
-      // Two requests: one parent (bunk_with Emma→Riley), one staff (not_bunk_with)
+      // Two requests: one parent (bunk_request_form Emma→Riley), one staff (staff_not_bunk_with)
       const bunkRequests: Record<string, unknown>[] = [
         {
           id: 'r3-p1',
           requester_id: 100,
           requestee_id: 200,
           request_type: 'bunk_with',
-          source_field: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
           source: 'family',
           status: 'resolved',
           requested_person_name: 'Riley Sam',
@@ -663,7 +664,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'not_bunk_with',
-          source_field: 'not_bunk_with',
+          source_field: SourceField.STAFF_NOT_BUNK_WITH,
           source: 'staff',
           status: 'resolved',
           requested_person_name: 'Olivia Chen',
@@ -903,7 +904,7 @@ describe('CamperDetailsPanel', () => {
       expect(screen.queryByText('P')).toBeNull()
     })
 
-    it('#1172: renders P badge from source_field=bunk_with when per_request is empty', async () => {
+    it('#1172: renders P badge from source_field=bunk_request_form when per_request is empty', async () => {
       // Simulate /api/satisfaction unavailable: emptyCamperSatisfaction (per_request: []).
       // Pre-#1158 the badge was driven by the row's own source_field — fall back to
       // that path so a backend hiccup doesn't silently hide the P badge.
@@ -913,7 +914,7 @@ describe('CamperDetailsPanel', () => {
           requester_id: 100,
           requestee_id: 0,
           request_type: 'age_preference',
-          source_field: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
           source: 'family',
           age_preference_target: 'older',
           status: 'resolved',
