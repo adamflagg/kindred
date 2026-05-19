@@ -177,14 +177,13 @@ def _count_reified_linear_constraints(proto: Any) -> int:
 # modules should append a (prefix, module-label) pair here so they roll up
 # correctly. Keys whose prefix doesn't match any entry fall into "other".
 _SOFT_CONSTRAINT_PREFIXES: tuple[tuple[str, str], ...] = (
-    ("must_satisfy_", "must_satisfy"),
     ("grade_ratio_", "grade_ratio"),
     ("level_regression_", "level_regression"),
     ("age_spread_b", "age_spread"),
 )
 
 
-_MODULE_LABELS: tuple[str, ...] = ("must_satisfy", "grade_ratio", "level_regression", "age_spread", "other")
+_MODULE_LABELS: tuple[str, ...] = ("grade_ratio", "level_regression", "age_spread", "other")
 
 
 def _classify_bucket(name: str) -> str:

@@ -934,7 +934,6 @@ class TestBucketSoftConstraintViolations:
     `_MODULE_LABELS` keys so missing-vs-zero is unambiguous downstream.
 
     Violation-name prefixes (registered in `_SOFT_CONSTRAINT_PREFIXES`):
-    - `must_satisfy_<cm_id>`             (must_satisfy.py)
     - `grade_ratio_<bunk>_grade_<grade>` (grade_ratio.py)
     - `level_regression_<p>_<b>`         (level_progression.py)
     - `age_spread_b<bunk>`               (age_spread.py)
@@ -954,7 +953,7 @@ class TestBucketSoftConstraintViolations:
             _bucket_soft_constraint_violations,
         )
 
-        fires, penalties = _bucket_soft_constraint_violations(None, {"must_satisfy_1": (object(), 100)})
+        fires, penalties = _bucket_soft_constraint_violations(None, {"grade_ratio_0_grade_5": (object(), 100)})
         assert fires == dict.fromkeys(_MODULE_LABELS, 0)
         assert penalties == dict.fromkeys(_MODULE_LABELS, 0)
 
@@ -972,14 +971,11 @@ class TestBucketSoftConstraintViolations:
     def test_buckets_by_known_prefix_summing_fires_and_penalty(self) -> None:
         from bunking.solver.observability import _bucket_soft_constraint_violations
 
-        v_ms1, v_ms2 = self._make_var("ms1"), self._make_var("ms2")
         v_gr1, v_gr2 = self._make_var("gr1"), self._make_var("gr2")
         v_lr1 = self._make_var("lr1")
         v_as1 = self._make_var("as1")
 
         violations = {
-            "must_satisfy_1": (v_ms1, 1000),
-            "must_satisfy_2": (v_ms2, 1000),
             "grade_ratio_0_grade_5": (v_gr1, 50),
             "grade_ratio_1_grade_6": (v_gr2, 50),
             "level_regression_0_0": (v_lr1, 800),
@@ -987,8 +983,6 @@ class TestBucketSoftConstraintViolations:
         }
         solver = self._make_solver(
             {
-                v_ms1: 1,
-                v_ms2: 0,
                 v_gr1: 1,
                 v_gr2: 0,
                 v_lr1: 0,
@@ -998,14 +992,12 @@ class TestBucketSoftConstraintViolations:
 
         fires, penalties = _bucket_soft_constraint_violations(solver, violations)
         assert fires == {
-            "must_satisfy": 1,
             "grade_ratio": 1,
             "level_regression": 0,
             "age_spread": 1,
             "other": 0,
         }
         assert penalties == {
-            "must_satisfy": 1000,
             "grade_ratio": 50,
             "level_regression": 0,
             "age_spread": 200,
@@ -1016,18 +1008,18 @@ class TestBucketSoftConstraintViolations:
         from bunking.solver.observability import _bucket_soft_constraint_violations
 
         v_unknown = self._make_var("unknown")
-        v_ms = self._make_var("ms")
+        v_gr = self._make_var("gr")
         violations = {
             "some_future_constraint_42": (v_unknown, 17),
-            "must_satisfy_1": (v_ms, 1000),
+            "grade_ratio_0_grade_5": (v_gr, 50),
         }
-        solver = self._make_solver({v_unknown: 1, v_ms: 1})
+        solver = self._make_solver({v_unknown: 1, v_gr: 1})
 
         fires, penalties = _bucket_soft_constraint_violations(solver, violations)
         assert fires["other"] == 1
-        assert fires["must_satisfy"] == 1
+        assert fires["grade_ratio"] == 1
         assert penalties["other"] == 17
-        assert penalties["must_satisfy"] == 1000
+        assert penalties["grade_ratio"] == 50
 
 
 class TestBucketSoftConstraintViolationsCpSat:
@@ -1044,13 +1036,11 @@ class TestBucketSoftConstraintViolationsCpSat:
         v_lr_off = model.NewBoolVar("level_regression_0_1")
         v_gr_fire = model.NewBoolVar("grade_ratio_0_grade_5")
         v_as_off = model.NewBoolVar("age_spread_b0")
-        v_ms_fire = model.NewBoolVar("must_satisfy_1")
 
         model.Add(v_lr_fire == 1)
         model.Add(v_lr_off == 0)
         model.Add(v_gr_fire == 1)
         model.Add(v_as_off == 0)
-        model.Add(v_ms_fire == 1)
 
         solver = cp_model.CpSolver()
         status = solver.Solve(model)
@@ -1061,19 +1051,16 @@ class TestBucketSoftConstraintViolationsCpSat:
             "level_regression_0_1": (v_lr_off, 800),
             "grade_ratio_0_grade_5": (v_gr_fire, 50),
             "age_spread_b0": (v_as_off, 200),
-            "must_satisfy_1": (v_ms_fire, 1000),
         }
         fires, penalties = _bucket_soft_constraint_violations(solver, violations)
 
         assert fires == {
-            "must_satisfy": 1,
             "grade_ratio": 1,
             "level_regression": 1,
             "age_spread": 0,
             "other": 0,
         }
         assert penalties == {
-            "must_satisfy": 1000,
             "grade_ratio": 50,
             "level_regression": 800,
             "age_spread": 0,
@@ -1378,12 +1365,11 @@ class TestTier1MetricsInStatsDict:
         model.Add(50_000 * x <= 100).OnlyEnforceIf(a)  # reified + big-M
 
         solver = self._base_mock_solver()
-        v_ms1, v_ms2, v_gr1 = object(), object(), object()
-        solver.Value = lambda v, _m={v_ms1: 1, v_ms2: 1, v_gr1: 1}: _m[v]
+        v_gr1, v_gr2 = object(), object()
+        solver.Value = lambda v, _m={v_gr1: 1, v_gr2: 1}: _m[v]
         violations = {
-            "must_satisfy_1": (v_ms1, 1000),
-            "must_satisfy_2": (v_ms2, 1000),
             "grade_ratio_0_grade_5": (v_gr1, 50),
+            "grade_ratio_1_grade_6": (v_gr2, 50),
         }
         requests_by_person: dict[int, list[DirectBunkRequest]] = {
             1: [_make_req("r1", 1, "bunk_with")],
@@ -1406,15 +1392,13 @@ class TestTier1MetricsInStatsDict:
         assert stats["num_reified_linear"] == 1
         assert stats["max_linear_coefficient"] == 50_000
         assert stats["soft_constraints_by_module"] == {
-            "must_satisfy": 2,
-            "grade_ratio": 1,
+            "grade_ratio": 2,
             "level_regression": 0,
             "age_spread": 0,
             "other": 0,
         }
         assert stats["soft_constraint_penalty_by_module"] == {
-            "must_satisfy": 2000,
-            "grade_ratio": 50,
+            "grade_ratio": 100,
             "level_regression": 0,
             "age_spread": 0,
             "other": 0,
