@@ -184,22 +184,41 @@ _SOFT_CONSTRAINT_PREFIXES: tuple[tuple[str, str], ...] = (
 )
 
 
-def _count_soft_constraints_by_module(violations: dict[str, Any]) -> dict[str, int]:
-    """Group `soft_constraint_violations` keys by constraint module prefix.
+_MODULE_LABELS: tuple[str, ...] = ("must_satisfy", "grade_ratio", "level_regression", "age_spread", "other")
 
-    The dashboard uses this to show which constraint families dominate the
-    penalty surface — e.g. `grade_ratio=420` vs `must_satisfy=83` tells a
-    very different optimization story.
+
+def _classify_bucket(name: str) -> str:
+    for prefix, label in _SOFT_CONSTRAINT_PREFIXES:
+        if name.startswith(prefix):
+            return label
+    return "other"
+
+
+def _bucket_soft_constraint_violations(
+    solver: Any,
+    violations: dict[str, Any],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Bucket soft-constraint violation vars by module prefix.
+
+    Returns ``(fires_by_module, penalty_total_by_module)``. Both dicts are
+    keyed by ``_MODULE_LABELS`` and pre-seeded to 0 so missing-vs-zero is
+    unambiguous downstream. ``solver=None`` is the single-bunk path: the
+    CP-SAT model never runs, so both dicts come back all-zero.
+
+    Replaces the previous ``_count_soft_constraints_by_module`` (which
+    counted dict keys = vars created at model-build time, not fires
+    honored in the final solution; cf. #1532).
     """
-    result: dict[str, int] = {}
-    for key in violations:
-        bucket = "other"
-        for prefix, label in _SOFT_CONSTRAINT_PREFIXES:
-            if key.startswith(prefix):
-                bucket = label
-                break
-        result[bucket] = result.get(bucket, 0) + 1
-    return result
+    fires: dict[str, int] = dict.fromkeys(_MODULE_LABELS, 0)
+    penalty_totals: dict[str, int] = dict.fromkeys(_MODULE_LABELS, 0)
+    if solver is None or not violations:
+        return fires, penalty_totals
+    for name, (var, penalty) in violations.items():
+        bucket = _classify_bucket(name)
+        value = int(solver.Value(var))
+        fires[bucket] += value
+        penalty_totals[bucket] += penalty * value
+    return fires, penalty_totals
 
 
 def _max_linear_coefficient(proto: Any) -> int:
@@ -326,6 +345,8 @@ def _build_stats_dict(
     objective_trajectory = objective_trajectory or []
     bound_trajectory = bound_trajectory or []
 
+    fires_by_module, penalty_by_module = _bucket_soft_constraint_violations(solver, soft_constraint_violations or {})
+
     return {
         # Existing back-compat fields
         "status": solver.StatusName(status),
@@ -363,7 +384,8 @@ def _build_stats_dict(
         # Tier 1 observability (Stream 2, issue #1380)
         "num_reified_linear": _count_reified_linear_constraints(model_proto),
         "max_linear_coefficient": _max_linear_coefficient(model_proto),
-        "soft_constraints_by_module": _count_soft_constraints_by_module(soft_constraint_violations or {}),
+        "soft_constraints_by_module": fires_by_module,
+        "soft_constraint_penalty_by_module": penalty_by_module,
         "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(requests_by_person or {}),
         # Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
         "objective_trajectory": objective_trajectory,

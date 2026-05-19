@@ -48,11 +48,11 @@ from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
 from .logging import ConstraintLogger
 from .observability import (
+    _bucket_soft_constraint_violations,
     _build_impossible_by_reason_by_bucket,
     _build_request_density_histogram_by_bucket,
     _build_stats_dict,
     _count_constraint_types,
-    _count_soft_constraints_by_module,
 )
 
 if TYPE_CHECKING:
@@ -663,6 +663,9 @@ class DirectBunkingSolver:
         # table renders every key from `_build_stats_dict`. Emit the full
         # key set with `None` for fields the simplified path can't populate
         # so column rendering is identical across session types.
+        single_bunk_fires, single_bunk_penalties = _bucket_soft_constraint_violations(
+            None, self.soft_constraint_violations
+        )
         stats: dict[str, Any] = {
             "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
             # int() cast — same reason as _build_stats_dict above: cp_model
@@ -698,7 +701,8 @@ class DirectBunkingSolver:
             # and soft-by-module use the actual data we have.
             "num_reified_linear": 0,
             "max_linear_coefficient": 0,
-            "soft_constraints_by_module": _count_soft_constraints_by_module(self.soft_constraint_violations),
+            "soft_constraints_by_module": single_bunk_fires,
+            "soft_constraint_penalty_by_module": single_bunk_penalties,
             "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
                 self.input.requests_by_person
             ),
@@ -900,40 +904,21 @@ class DirectBunkingSolver:
         )
 
     def _log_objective_breakdown(self, solver: cp_model.CpSolver) -> None:
-        """Log breakdown of objective value by category.
-
-        Shows how much each soft constraint category contributed to the objective.
-        """
+        """Log breakdown of objective value by category."""
         logger.info("=== Post-Solve Objective Breakdown ===")
         logger.info(f"Total objective value: {solver.ObjectiveValue():.0f}")
 
-        # Group soft constraint violations by category
-        category_totals: dict[str, float] = defaultdict(float)
-        category_counts: dict[str, int] = defaultdict(int)
+        fires_by_module, penalty_by_module = _bucket_soft_constraint_violations(solver, self.soft_constraint_violations)
 
-        for name, (var, penalty) in self.soft_constraint_violations.items():
-            # Extract category from name (e.g., "grade_ratio_5_grade_7" -> "grade_ratio")
-            parts = name.split("_")
-            if len(parts) >= 2:
-                category = f"{parts[0]}_{parts[1]}"
-            else:
-                category = name
-
-            try:
-                value = solver.Value(var)
-                if value > 0:
-                    contribution = penalty * value if isinstance(value, int) else penalty
-                    category_totals[category] += contribution
-                    category_counts[category] += 1
-            except Exception:  # noqa: S110 — intentional silent handling
-                # Variable might not be in solution
-                pass
-
-        if category_totals:
+        firing_buckets = [
+            (label, penalty_by_module[label], fires_by_module[label])
+            for label in penalty_by_module
+            if fires_by_module[label] > 0
+        ]
+        if firing_buckets:
             logger.info("Soft constraint penalties by category:")
-            for category, total in sorted(category_totals.items(), key=lambda x: -x[1]):
-                count = category_counts[category]
-                logger.info(f"  {category}: {total:.0f} ({count} violations)")
+            for label, total, count in sorted(firing_buckets, key=lambda x: -x[1]):
+                logger.info(f"  {label}: {total} ({count} violations)")
         else:
             logger.info("No soft constraint penalties incurred")
 
