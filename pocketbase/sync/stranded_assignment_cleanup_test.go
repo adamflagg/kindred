@@ -10,12 +10,12 @@ import (
 
 func TestFindStrandedAssignments(t *testing.T) {
 	validPairs := map[string]bool{
-		orphanPairKey("sess1", "bunkA"): true,
-		orphanPairKey("sess1", "bunkB"): true,
+		strandedPairKey("sess1", "bunkA"): true,
+		strandedPairKey("sess1", "bunkB"): true,
 	}
 	// Only sess1 has bunk_plans; sess2 has none (its plans failed to sync).
 	plannedSessions := map[string]bool{"sess1": true}
-	candidates := []orphanCandidate{
+	candidates := []strandedCandidate{
 		{RecordID: "r1", SessionID: "sess1", BunkID: "bunkA"}, // valid pair - kept
 		{RecordID: "r2", SessionID: "sess1", BunkID: "bunkZ"}, // stranded - bunk not planned
 		{RecordID: "r3", SessionID: "sess1", BunkID: ""},      // no bunk - skipped
@@ -32,8 +32,8 @@ func TestFindStrandedAssignments(t *testing.T) {
 	}
 }
 
-// setupOrphanCollections builds the minimal schema the reconciler touches.
-func setupOrphanCollections(t *testing.T, app core.App) {
+// setupStrandedCollections builds the minimal schema the reconciler touches.
+func setupStrandedCollections(t *testing.T, app core.App) {
 	t.Helper()
 
 	sessions := core.NewBaseCollection("camp_sessions")
@@ -110,13 +110,13 @@ func saveRec(t *testing.T, app core.App, collection string, data map[string]any)
 	return r
 }
 
-func TestOrphanReconciler_SweepsStrandedDraft(t *testing.T) {
+func TestStrandedAssignmentCleanup_SweepsStrandedDraft(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -131,7 +131,7 @@ func TestOrphanReconciler_SweepsStrandedDraft(t *testing.T) {
 		"bunk": goneBunk.Id, "bunk_plan": keptPlan.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -149,13 +149,13 @@ func TestOrphanReconciler_SweepsStrandedDraft(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_GateSkipsWhenNoBunkPlans(t *testing.T) {
+func TestStrandedAssignmentCleanup_GateSkipsWhenNoBunkPlans(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -167,7 +167,7 @@ func TestOrphanReconciler_GateSkipsWhenNoBunkPlans(t *testing.T) {
 		"bunk": bunk.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -183,13 +183,13 @@ func TestOrphanReconciler_GateSkipsWhenNoBunkPlans(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_GateSkipsPerSession(t *testing.T) {
+func TestStrandedAssignmentCleanup_GateSkipsPerSession(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	// Session A has a bunk_plan; session B has none (its plans failed to sync).
 	// The global gate passes because plans exist overall — only the per-session
@@ -208,7 +208,7 @@ func TestOrphanReconciler_GateSkipsPerSession(t *testing.T) {
 		"bunk": bunkB.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -224,13 +224,13 @@ func TestOrphanReconciler_GateSkipsPerSession(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_LeavesValidDraftUntouched(t *testing.T) {
+func TestStrandedAssignmentCleanup_LeavesValidDraftUntouched(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -242,7 +242,7 @@ func TestOrphanReconciler_LeavesValidDraftUntouched(t *testing.T) {
 		"bunk": bunk.Id, "bunk_plan": plan.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -260,13 +260,13 @@ func TestOrphanReconciler_LeavesValidDraftUntouched(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_ProdAuditDoesNotDelete(t *testing.T) {
+func TestStrandedAssignmentCleanup_ProdAuditDoesNotDelete(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -278,7 +278,7 @@ func TestOrphanReconciler_ProdAuditDoesNotDelete(t *testing.T) {
 		"person": person.Id, "session": sess.Id, "bunk": goneBunk.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -294,13 +294,13 @@ func TestOrphanReconciler_ProdAuditDoesNotDelete(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_Idempotent(t *testing.T) {
+func TestStrandedAssignmentCleanup_Idempotent(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	keptBunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "B-1", "year": 2026})
@@ -313,12 +313,12 @@ func TestOrphanReconciler_Idempotent(t *testing.T) {
 		"bunk": goneBunk.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync run 1: %v", err)
 	}
-	svc2 := NewOrphanReconcilerSync(app)
+	svc2 := NewStrandedAssignmentCleanupSync(app)
 	svc2.SetYear(2026)
 	if err = svc2.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync run 2: %v", err)
@@ -333,13 +333,13 @@ func TestOrphanReconciler_Idempotent(t *testing.T) {
 	}
 }
 
-func TestOrphanReconciler_ProdAuditWarnings(t *testing.T) {
+func TestStrandedAssignmentCleanup_ProdAuditWarnings(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
 	// otherBunk has a plan → session IS in plannedSessions
@@ -352,7 +352,7 @@ func TestOrphanReconciler_ProdAuditWarnings(t *testing.T) {
 		"person": person.Id, "session": sess.Id, "bunk": strandedBunk.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -371,17 +371,17 @@ func TestOrphanReconciler_ProdAuditWarnings(t *testing.T) {
 	}
 }
 
-// TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal verifies that a failure
+// TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal verifies that a failure
 // querying production bunk_assignments is recorded in Stats.Errors — so
 // WasSuccessful() reports false — but does NOT abort the run: the draft sweep
 // that already succeeded must still stand.
-func TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal(t *testing.T) {
+func TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal(t *testing.T) {
 	app, err := pbtests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	setupOrphanCollections(t, app)
+	setupStrandedCollections(t, app)
 
 	// Drop bunk_assignments so the production-audit query fails. The draft
 	// sweep (bunk_assignments_draft) is unaffected.
@@ -405,7 +405,7 @@ func TestOrphanReconciler_ProdQueryErrorIsCountedNotFatal(t *testing.T) {
 		"bunk": goneBunk.Id, "year": 2026,
 	})
 
-	svc := NewOrphanReconcilerSync(app)
+	svc := NewStrandedAssignmentCleanupSync(app)
 	svc.SetYear(2026)
 	if err = svc.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync must not return an error on a prod-query failure: %v", err)

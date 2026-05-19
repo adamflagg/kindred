@@ -204,9 +204,10 @@ func TestCustomValuesSyncRunsSequentially(t *testing.T) {
 func TestGetRefreshBunkingJobs(t *testing.T) {
 	jobs := GetRefreshBunkingJobs()
 
-	// orphan_reconciler runs last: refresh-bunking rewrites bunk_plans, which is
-	// exactly what strands scenario drafts — they must be swept in the same run.
-	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "orphan_reconciler"}
+	// stranded_assignment_cleanup runs last: refresh-bunking rewrites bunk_plans,
+	// which is exactly what strands scenario drafts — they must be swept in the
+	// same run.
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "stranded_assignment_cleanup"}
 	if len(jobs) != len(expected) {
 		t.Fatalf("expected %d jobs, got %d: %v", len(expected), len(jobs), jobs)
 	}
@@ -219,8 +220,8 @@ func TestGetRefreshBunkingJobs(t *testing.T) {
 }
 
 // TestRefreshBunkingRunsAllServices verifies that refresh-bunking triggers
-// bunks, bunk_plans, bunk_assignments, and orphan_reconciler in sequence
-// (not just bunk_assignments)
+// bunks, bunk_plans, bunk_assignments, and stranded_assignment_cleanup in
+// sequence (not just bunk_assignments)
 func TestRefreshBunkingRunsAllServices(t *testing.T) {
 	s := NewScheduler(nil)
 
@@ -256,7 +257,7 @@ func TestRefreshBunkingRunsAllServices(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "orphan_reconciler"}
+	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "stranded_assignment_cleanup"}
 	if len(callOrder) != len(expected) {
 		t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
 	}

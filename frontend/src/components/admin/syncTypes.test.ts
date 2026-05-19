@@ -4,23 +4,23 @@ import { getSyncTypesByPhase, YEAR_SYNC_TYPES } from './syncTypes'
 describe('syncTypes', () => {
   const currentYear = 2026
 
-  it('includes orphan_reconciler in transform phase', () => {
+  it('includes stranded_assignment_cleanup in transform phase', () => {
     const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
     const ids = transformJobs.map((t) => t.id)
-    expect(ids).toContain('orphan_reconciler')
+    expect(ids).toContain('stranded_assignment_cleanup')
   })
 
-  it('orphan_reconciler is last in the transform phase group', () => {
+  it('stranded_assignment_cleanup is last in the transform phase group', () => {
     const transformJobs = getSyncTypesByPhase('transform', currentYear, currentYear)
     const ids = transformJobs.map((t) => t.id)
     const enrollmentIdx = ids.indexOf('enrollment_snapshots')
-    const orphanIdx = ids.indexOf('orphan_reconciler')
-    expect(orphanIdx).toBeGreaterThan(enrollmentIdx)
-    expect(orphanIdx).toBe(ids.length - 1)
+    const cleanupIdx = ids.indexOf('stranded_assignment_cleanup')
+    expect(cleanupIdx).toBeGreaterThan(enrollmentIdx)
+    expect(cleanupIdx).toBe(ids.length - 1)
   })
 
-  it('orphan_reconciler has a description clarifying PB-only', () => {
-    const entry = YEAR_SYNC_TYPES.find((t) => t.id === 'orphan_reconciler')
+  it('stranded_assignment_cleanup has a description clarifying PB-only', () => {
+    const entry = YEAR_SYNC_TYPES.find((t) => t.id === 'stranded_assignment_cleanup')
     expect(entry).toBeDefined()
     expect('description' in entry!).toBe(true)
     if ('description' in entry!) {
@@ -28,8 +28,8 @@ describe('syncTypes', () => {
     }
   })
 
-  it('orphan_reconciler is not currentYearOnly', () => {
-    const entry = YEAR_SYNC_TYPES.find((t) => t.id === 'orphan_reconciler')
+  it('stranded_assignment_cleanup is not currentYearOnly', () => {
+    const entry = YEAR_SYNC_TYPES.find((t) => t.id === 'stranded_assignment_cleanup')
     expect(entry).toBeDefined()
     expect('currentYearOnly' in entry!).toBe(false)
   })
