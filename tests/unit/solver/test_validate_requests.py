@@ -374,9 +374,12 @@ class TestValidateRequestsAgePrefNoEligibleGrade:
 
         assert len(solver.possible_requests[1001]) == 0
         assert len(solver.impossible_requests[1001]) == 1
-        assert solver.request_validation_summary["impossible_by_reason"]["immaterial_parent"] == {
-            "age_pref_no_eligible_grade": 1
-        }
+        # Group 65 #1539: impossible_by_reason["immaterial_parent"] is now filtered
+        # out of the popup-visible summary (socialize_with / age-pref rows are not
+        # actionable for staff). The raw impossibility_report still records them.
+        assert solver.request_validation_summary["impossible_by_reason"]["immaterial_parent"] == {}
+        # The raw report still contains the impossible item.
+        assert any(item.bucket == "immaterial_parent" for item in solver.impossibility_report.flat)
 
     def test_younger_at_min_grade_is_impossible(self, mock_config):
         """F grade 2 prefers younger; session has only grade ≥2 girls → impossible."""

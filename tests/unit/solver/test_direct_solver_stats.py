@@ -1684,3 +1684,158 @@ class TestMaterialOnlyStatsAggregates:
         assert result is not None
         # satisfied_request_count must never exceed the 1 material request.
         assert result.stats["satisfied_request_count"] <= 1
+
+
+class TestRequestValidationSummaryMaterialOnly:
+    """Group 65 #1539 — popup-visible request_validation_summary aggregates
+    exclude IMMATERIAL_PARENT (socialize_with).
+
+    solver-debug-only fields (mp_*, all_*, unsatisfied_*) at the finalization
+    site (direct_solver.py:1084-1177) are out of scope for this filter.
+
+    Fixture:
+    - Person 1 (session 1000001) has 2 bunk_with requests → MATERIAL_PARENT
+      - req-m1: requests person 2 (same session) — possible
+      - req-m2: requests person 99 (not in solver) — impossible (target_not_in_solver)
+    - Person 3 (session 1000001) has 1 socialize_with request → IMMATERIAL_PARENT
+      - req-i1: requests person 4 (session 1000002, cross-session) — impossible
+
+    Expected:
+    - total_requests == 2 (only the 2 bunk_with; socialize_with excluded)
+    - possible_requests == 1 (1 material possible)
+    - impossible_requests == 1 (only the material-impossible; socialize_with excluded)
+    - affected_campers == 1 (only person 1, not person 3)
+    - impossible_by_reason does not contain counts under "immaterial_parent" key
+      (it may be present as an empty dict, but must have no reason counts)
+    """
+
+    def _make_input(self) -> DirectSolverInput:
+        bunks = [
+            DirectBunk(
+                id="bunk-1",
+                campminder_id=9001,
+                name="A",
+                capacity=10,
+                gender="Mixed",
+                session_cm_id=1000001,
+            ),
+            DirectBunk(
+                id="bunk-2",
+                campminder_id=9002,
+                name="B",
+                capacity=10,
+                gender="Mixed",
+                session_cm_id=1000002,
+            ),
+        ]
+        persons = [
+            DirectPerson(
+                campminder_person_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=3,
+                first_name="Olivia",
+                last_name="Chen",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=4,
+                first_name="Riley",
+                last_name="Sam",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000002,
+            ),
+        ]
+        requests = [
+            # MATERIAL_PARENT — possible (requestee in same session)
+            DirectBunkRequest(
+                id="req-m1",
+                requester_person_cm_id=1,
+                requested_person_cm_id=2,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            # MATERIAL_PARENT — impossible (requestee not in solver)
+            DirectBunkRequest(
+                id="req-m2",
+                requester_person_cm_id=1,
+                requested_person_cm_id=99,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            # IMMATERIAL_PARENT — impossible (requestee in different session)
+            DirectBunkRequest(
+                id="req-i1",
+                requester_person_cm_id=3,
+                requested_person_cm_id=4,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+
+    def test_total_requests_excludes_immaterial(self) -> None:
+        """total_requests == 2 (2 bunk_with material), not 3."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["total_requests"] == 2
+
+    def test_impossible_requests_excludes_immaterial(self) -> None:
+        """impossible_requests == 1 (only req-m2 is material-impossible), not 2."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["impossible_requests"] == 1
+
+    def test_possible_requests_excludes_immaterial(self) -> None:
+        """possible_requests == total_requests - material_impossible == 2 - 1 == 1."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["possible_requests"] == 1
+
+    def test_affected_campers_excludes_immaterial(self) -> None:
+        """affected_campers == 1 (only person 1 has material-impossible requests)."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["affected_campers"] == 1
+
+    def test_impossible_by_reason_has_no_immaterial_counts(self) -> None:
+        """immaterial_parent bucket in impossible_by_reason must be empty."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        by_reason = solver.request_validation_summary["impossible_by_reason"]
+        # immaterial_parent bucket may be present but must have no reason codes
+        immaterial_counts = by_reason.get("immaterial_parent", {})
+        assert immaterial_counts == {}, (
+            f"impossible_by_reason['immaterial_parent'] should be empty, got {immaterial_counts!r}"
+        )

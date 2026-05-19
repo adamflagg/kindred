@@ -22,7 +22,7 @@ from bunking.models_v2 import (
     DirectSolverOutput,
 )
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
-from bunking.satisfaction.bucket import is_counted_request, is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, is_counted_request, is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -325,17 +325,41 @@ class DirectBunkingSolver:
         # while total_impossible never does — the two are intentionally independent counts.
         impossible_by_reason = _build_impossible_by_reason_by_bucket(impossible_pairs)
 
+        # Material-only aggregates (Group 65 #1539) — popup-visible counts exclude
+        # IMMATERIAL_PARENT (socialize_with). The solver still processes immaterial
+        # requests; only the reported totals filter them out.
         total_requests = sum(
-            len(reqs)
+            1
             for person_cm_id, reqs in self.input.requests_by_person.items()
             if person_cm_id in self.person_idx_map
+            for r in reqs
+            if is_counted_request(r)
         )
+
+        # Drop IMMATERIAL_PARENT bucket from impossible_by_reason. The helper
+        # emits {bucket: {reason_code: count}}; zero out the immaterial bucket
+        # so the popup renders only actionable (material + staff) breakdowns.
+        material_impossible_by_reason: dict[str, dict[str, int]] = {
+            bucket: (reasons if bucket != RequestBucket.IMMATERIAL_PARENT.value else {})
+            for bucket, reasons in impossible_by_reason.items()
+        }
+
+        # Material-only impossible count: filter report.flat by bucket.
+        material_impossible_count = sum(
+            1 for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value
+        )
+
+        # affected_campers — distinct requester cm_id among material-impossible rows only.
+        material_affected_campers = len(
+            {item.requester["cm_id"] for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value}
+        )
+
         self.request_validation_summary: RequestValidationSummary = {
             "total_requests": total_requests,
-            "possible_requests": total_requests - report.total_impossible,
-            "impossible_requests": report.total_impossible,
-            "impossible_by_reason": impossible_by_reason,
-            "affected_campers": report.affected_campers,
+            "possible_requests": total_requests - material_impossible_count,
+            "impossible_requests": material_impossible_count,
+            "impossible_by_reason": material_impossible_by_reason,
+            "affected_campers": material_affected_campers,
         }
 
         if report.total_impossible > 0:
@@ -350,8 +374,9 @@ class DirectBunkingSolver:
                 or "unclassified — impossible requests have missing/unknown source_field"
             )
             logger.warning(
-                f"Request validation: {report.total_impossible} of {total_requests} "
-                f"requests are infeasible ({reason_summary})"
+                f"Request validation: {report.total_impossible} total infeasible "
+                f"({material_impossible_count} material) of {total_requests} material requests "
+                f"({reason_summary})"
             )
             logger.warning(f"Affected campers: {self.request_validation_summary['affected_campers']}")
 
