@@ -527,6 +527,42 @@ function IssueGroup({
   )
 }
 
+// Inline helpers for expandable family rows
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return expanded ? (
+    <ChevronUp className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+  ) : (
+    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-stone-400" />
+  )
+}
+
+const COHORT_STYLES = {
+  got_nothing: 'bg-red-100 text-red-800',
+  violated: 'bg-amber-100 text-amber-800',
+  priority_unmet: 'bg-pink-100 text-pink-800',
+} as const
+
+const COHORT_LABELS = {
+  got_nothing: 'Got nothing',
+  violated: 'Not-bunk-with violated',
+  priority_unmet: 'Priority unmet',
+} as const
+
+function CohortPill({ cohort }: { cohort: 'got_nothing' | 'violated' | 'priority_unmet' }) {
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COHORT_STYLES[cohort]}`}
+    >
+      {COHORT_LABELS[cohort]}
+    </span>
+  )
+}
+
+/** Short display label for a session cm_id: last 4 digits. */
+function sessionShortLabel(sessionId: string): string {
+  return sessionId.length > 4 ? sessionId.slice(-4) : sessionId
+}
+
 type FamilyRow = {
   key: string
   name: string
@@ -534,7 +570,8 @@ type FamilyRow = {
   grade: number
   gender: string
   cohort: 'got_nothing' | 'violated' | 'priority_unmet'
-  detail: React.ReactNode
+  sessions: string[]
+  subRows: { session: string; detail: React.ReactNode }[]
 }
 
 export default function PostValidationResultsModal({
@@ -565,10 +602,20 @@ export default function PostValidationResultsModal({
       return next
     })
   }, [])
+  const [expandedFamilyKeys, setExpandedFamilyKeys] = useState<Set<string>>(new Set())
+  const toggleFamilyExpand = (key: string) => {
+    setExpandedFamilyKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
   useEffect(() => {
     if (!isOpen) {
       setSelectedCamperId(null)
       setExpandedBunks(new Set())
+      setExpandedFamilyKeys(new Set())
     }
   }, [isOpen])
 
@@ -611,9 +658,9 @@ export default function PostValidationResultsModal({
 
   // Unified "Families to contact" list — combines all three contact-action cohorts:
   // got_nothing (entirely-impossible MP campers), violated (not-bunk-with violations),
-  // and priority_unmet (priority-flagged requests that didn't land). Sorted by first name.
+  // and priority_unmet (priority-flagged requests that didn't land). Sorted grade-first.
   // Sort/filter logic lives in PdfExport/familyRows.ts (shared with PDF export).
-  // Modal re-decorates string detail into JSX for richer inline formatting.
+  // Modal re-decorates string sub-row detail into JSX for richer inline formatting.
   const familyRows: FamilyRow[] = useMemo(() => {
     const safeReport = impossibilityReport ?? {
       mp_campers_entirely_impossible: [],
@@ -624,40 +671,46 @@ export default function PostValidationResultsModal({
     }
     const baseRows = buildFamilyRows(statistics, safeReport)
     return baseRows.map((r) => {
-      let detail: React.ReactNode
-      if (r.cohort === 'got_nothing') {
-        const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
-          (x) => String(x.cm_id) === r.cm_id
-        )
-        detail = (
-          <span>
-            All requests impossible · {(c?.reason_codes ?? []).map(friendlyReasonLabel).join(', ')}
-          </span>
-        )
-      } else if (r.cohort === 'violated') {
-        const v = (statistics.negative_request_violations_detail ?? []).find(
-          (x) => `nv-${x.requester_cm_id}-${x.target_cm_id}-${x.bunk_cm_id}` === r.key
-        )
-        detail = v ? (
-          <span>
-            Placed with {v.target_name} in <span className="font-mono text-xs">{v.bunk_name}</span>
-          </span>
-        ) : (
-          <span>{r.detail}</span>
-        )
-      } else {
-        const p = (statistics.priority_unsuccessfuls ?? []).find(
-          (x) => `pu-${x.requester_cm_id}-${x.target_cm_id}` === r.key
-        )
-        detail = p ? (
-          <span>
-            Wanted {p.target_name} · <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
-          </span>
-        ) : (
-          <span>{r.detail}</span>
-        )
-      }
-      return { ...r, detail }
+      const decoratedSubRows = r.subRows.map((sub) => {
+        let detail: React.ReactNode
+        if (r.cohort === 'got_nothing') {
+          const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
+            (x) => String(x.cm_id) === r.cm_id && String(x.session_cm_id) === sub.session
+          )
+          detail = (
+            <span>
+              All requests impossible ·{' '}
+              {(c?.reason_codes ?? []).map(friendlyReasonLabel).join(', ')}
+            </span>
+          )
+        } else if (r.cohort === 'violated') {
+          const v = (statistics.negative_request_violations_detail ?? []).find(
+            (x) => x.requester_cm_id === r.cm_id && x.session_cm_id === sub.session
+          )
+          detail = v ? (
+            <span>
+              Placed with {v.target_name} in{' '}
+              <span className="font-mono text-xs">{v.bunk_name}</span>
+            </span>
+          ) : (
+            <span>{sub.detail}</span>
+          )
+        } else {
+          const p = (statistics.priority_unsuccessfuls ?? []).find(
+            (x) => x.requester_cm_id === r.cm_id && x.session_cm_id === sub.session
+          )
+          detail = p ? (
+            <span>
+              Wanted {p.target_name} ·{' '}
+              <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
+            </span>
+          ) : (
+            <span>{sub.detail}</span>
+          )
+        }
+        return { session: sub.session, detail }
+      })
+      return { ...r, subRows: decoratedSubRows }
     })
   }, [statistics, impossibilityReport])
 
@@ -709,8 +762,10 @@ export default function PostValidationResultsModal({
       }
     } else if (satisfactionRate >= 0.5) {
       const parts: string[] = []
-      if (familyRows.length > 0)
-        parts.push(`${familyRows.length} ${familyRows.length === 1 ? 'family' : 'families'}`)
+      // Count distinct campers (not (camper, cohort) tuples) for the sublabel
+      const distinctFamilyCount = new Set(familyRows.map((r) => r.cm_id)).size
+      if (distinctFamilyCount > 0)
+        parts.push(`${distinctFamilyCount} ${distinctFamilyCount === 1 ? 'family' : 'families'}`)
       if (issuesByBunk.length > 0)
         parts.push(`${issuesByBunk.length} ${issuesByBunk.length === 1 ? 'bunk' : 'bunks'}`)
       const otherCount = groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)
@@ -905,57 +960,86 @@ export default function PostValidationResultsModal({
         <div className="px-5 pt-4">
           <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-red-900">Families to contact</h3>
-                <p className="mt-0.5 text-xs text-red-800/80">
-                  {familyRows.length} follow-up call{familyRows.length === 1 ? '' : 's'} recommended
-                </p>
-              </div>
-              <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
-                {familyRows.length}
-              </span>
+              {(() => {
+                const distinctCount = new Set(familyRows.map((r) => r.cm_id)).size
+                return (
+                  <>
+                    <div>
+                      <h3 className="text-sm font-semibold text-red-900">Families to contact</h3>
+                      <p className="mt-0.5 text-xs text-red-800/80">
+                        {distinctCount} follow-up call{distinctCount === 1 ? '' : 's'} recommended
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
+                      {distinctCount}
+                    </span>
+                  </>
+                )
+              })()}
             </div>
-            <ul className="mt-3 divide-y divide-red-100 text-sm">
-              {familyRows.map((row) => (
-                <li key={row.key} className="flex items-center justify-between gap-2 py-2">
-                  <div className="min-w-0">
+            <div className="mt-3 divide-y divide-red-100 text-sm">
+              {familyRows.map((row) => {
+                const isExpanded = expandedFamilyKeys.has(row.key)
+                return (
+                  <div key={row.key}>
                     <button
                       type="button"
-                      className="text-left font-medium text-stone-900 hover:text-red-700"
-                      onClick={() => setSelectedCamperId(row.cm_id)}
+                      data-testid={`family-expand-toggle-${row.cm_id}-${row.cohort}`}
+                      aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
+                      className="flex w-full items-center gap-2 px-1 py-2 text-left hover:bg-red-50/60"
+                      onClick={() => toggleFamilyExpand(row.key)}
                     >
-                      {row.name}
-                    </button>
-                    {row.grade > 0 && (
-                      <span className="text-xs text-stone-500">
-                        {' '}
-                        · {row.grade}
-                        {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
-                          ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
-                          'th'}{' '}
-                        · {row.gender}
+                      <ChevronIcon expanded={isExpanded} />
+                      <span
+                        className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedCamperId(row.cm_id)
+                        }}
+                      >
+                        {row.name}
                       </span>
+                      {row.grade > 0 && (
+                        <span className="text-xs text-stone-500">
+                          · {row.grade}
+                          {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
+                            ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
+                            'th'}
+                        </span>
+                      )}
+                      <CohortPill cohort={row.cohort} />
+                      <span className="text-xs text-stone-400">
+                        {row.subRows.length} issue{row.subRows.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="ml-auto flex gap-1">
+                        {row.sessions.map((s) => (
+                          <span
+                            key={s}
+                            className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600"
+                          >
+                            S{sessionShortLabel(s)}
+                          </span>
+                        ))}
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <div className="bg-red-50/40">
+                        {row.subRows.map((sub) => (
+                          <div
+                            key={sub.session}
+                            data-testid={`family-subrow-${sub.session}`}
+                            className="border-t border-red-100 px-7 py-1.5 text-xs text-stone-600"
+                          >
+                            <span className="font-medium">S{sessionShortLabel(sub.session)}</span> ·{' '}
+                            {sub.detail}
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    <div className="text-xs text-stone-600">{row.detail}</div>
                   </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row.cohort === 'got_nothing'
-                        ? 'bg-red-100 text-red-800'
-                        : row.cohort === 'violated'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-pink-100 text-pink-800'
-                    }`}
-                  >
-                    {row.cohort === 'got_nothing'
-                      ? 'Got nothing'
-                      : row.cohort === 'violated'
-                        ? 'Not-bunk-with violated'
-                        : 'Priority unmet'}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

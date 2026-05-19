@@ -692,7 +692,9 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    // Camper name is now a clickable span inside the family-row expand toggle,
+    // not a standalone button — use getByText to target the span directly.
+    await user.click(screen.getByText('Olivia Chen'))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
       'data-camper-id',
       '42'
@@ -720,7 +722,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    await user.click(screen.getByText('Olivia Chen'))
     const provider = await screen.findByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '9876543')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
@@ -782,7 +784,8 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Riley Sam/ }))
+    // Camper name is now a clickable span, not a standalone button.
+    await user.click(screen.getByText('Riley Sam'))
     expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
 
     // Close the modal.
@@ -1053,11 +1056,16 @@ describe('PostValidationResultsModal — Families to contact', () => {
       />
     )
     expect(screen.getByText(/families to contact/i)).toBeInTheDocument()
-    const rowOrder = screen.getAllByRole('listitem').map((el) => el.textContent ?? '')
-    const indexOf = (name: string) => rowOrder.findIndex((t) => t.includes(name))
-    expect(indexOf('Emma Johnson')).toBeLessThan(indexOf('Olivia Chen'))
-    expect(indexOf('Olivia Chen')).toBeLessThan(indexOf('Riley Sam'))
-    expect(indexOf('Riley Sam')).toBeLessThan(indexOf('Sophia Martinez'))
+    // Rows are now expandable <div> buttons, not <li> elements.
+    // Verify grade-first ordering by DOM position of each name's toggle button.
+    // Grades: Olivia=4, Riley=4, Emma=5, Sophia=5 → grade-first, name tiebreak
+    const toggles = screen.getAllByTestId(/^family-expand-toggle-/)
+    const buttonTexts = toggles.map((el) => el.textContent ?? '')
+    const indexOf = (name: string) => buttonTexts.findIndex((t) => t.includes(name))
+    // Grade 4 rows (Olivia, Riley) appear before grade 5 rows (Emma, Sophia)
+    expect(indexOf('Olivia Chen')).toBeLessThan(indexOf('Emma Johnson'))
+    expect(indexOf('Riley Sam')).toBeLessThan(indexOf('Emma Johnson'))
+    expect(indexOf('Emma Johnson')).toBeLessThan(indexOf('Sophia Martinez'))
     expect(screen.getAllByText(/got nothing/i).length).toBe(2)
     expect(screen.getByText(/not-bunk-with violated/i)).toBeInTheDocument()
     expect(screen.getByText(/priority unmet/i)).toBeInTheDocument()
@@ -1599,5 +1607,128 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
       />
     )
     expect(screen.getAllByText(/2 other issues/i).length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 11 — Expandable family rows + multi-session collapse (Group 65 #1540)
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — expandable family rows (Task 11)', () => {
+  it('multi-enrolled camper renders one row with session tags', () => {
+    // Emma Johnson appears in two sessions — should collapse to a single toggle button
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000003,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // One expand-toggle button per (camper, cohort), not per session entry
+    const emmaToggles = screen.getAllByTestId('family-expand-toggle-1-got_nothing')
+    expect(emmaToggles).toHaveLength(1)
+    // The toggle button text should include her name only once
+    expect(screen.getAllByText('Emma Johnson')).toHaveLength(1)
+  })
+
+  it('clicking expand caret reveals per-session sub-rows', async () => {
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000003,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // Sub-rows hidden by default
+    expect(screen.queryByTestId('family-subrow-1000001')).toBeNull()
+    expect(screen.queryByTestId('family-subrow-1000003')).toBeNull()
+
+    // Click the expand toggle
+    await userEvent.setup().click(screen.getByTestId('family-expand-toggle-1-got_nothing'))
+
+    // Sub-rows now visible
+    expect(screen.getByTestId('family-subrow-1000001')).toBeInTheDocument()
+    expect(screen.getByTestId('family-subrow-1000003')).toBeInTheDocument()
+  })
+
+  it('sublabel counts distinct campers, not (camper, cohort) tuples', () => {
+    // One camper appears in both 'got_nothing' (two sessions) and 'violated':
+    // got_nothing = 1 (camper, cohort) tuple; 1 distinct camper; 1 family to contact
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 99,
+          name: 'Liam Garcia',
+          grade: 5,
+          gender: 'M',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 99,
+          name: 'Liam Garcia',
+          grade: 5,
+          gender: 'M',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000002,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // 1 distinct camper (Liam) → "1 follow-up call recommended"
+    expect(screen.getByText(/1 follow-up call recommended/i)).toBeInTheDocument()
+    expect(screen.queryByText(/2 follow-up call/i)).not.toBeInTheDocument()
   })
 })

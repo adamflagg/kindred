@@ -272,7 +272,7 @@ describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
 })
 
 describe('BunkPlanReport (PDF) — Families to contact page', () => {
-  it('renders Families to contact with all 3 cohorts in alphabetical order', async () => {
+  it('renders Families to contact with all 3 cohorts in grade-first order', async () => {
     const buf = await renderToBuffer(
       <BunkPlanReport
         sessionName="Session 3"
@@ -287,6 +287,8 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
               target_name: 'Samuel Johnson',
               bunk_cm_id: '10',
               bunk_name: 'Pine 3',
+              session_cm_id: '1000001',
+              requester_grade: 6, // grade 6 — appears after grade 5
             },
           ],
           priority_unsuccessfuls: [
@@ -296,6 +298,8 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
               requester_name: 'Sophia Martinez',
               target_name: 'Mia Wilson',
               raw_text: 'top priority',
+              session_cm_id: '1000001',
+              requester_grade: 7, // grade 7 — appears last
             },
           ],
         })}
@@ -312,6 +316,7 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
                 grade: 5,
                 gender: 'F',
                 reason_codes: ['grade_compatibility'],
+                session_cm_id: 1000001,
               },
             ],
           } as any
@@ -329,7 +334,7 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
     expect(text).toMatch(/Emma Johnson/)
     expect(text).toMatch(/Riley Sam/)
     expect(text).toMatch(/Sophia Martinez/)
-    // Alphabetical: Emma < Riley < Sophia
+    // Grade-first order: Emma (5) < Riley (6) < Sophia (7)
     expect(text.indexOf('Emma Johnson')).toBeLessThan(text.indexOf('Riley Sam'))
     expect(text.indexOf('Riley Sam')).toBeLessThan(text.indexOf('Sophia Martinez'))
   }, 30000)
