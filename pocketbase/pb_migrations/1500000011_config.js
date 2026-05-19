@@ -783,7 +783,7 @@ migrate((app) => {
 
     // Objective configurations
     "objective.source_multipliers.share_bunk_with": {
-      value: 1.5,
+      value: 1.75,
       description: "How much weight to give parent bunk requests",
       min: 0.5,
       max: 3
@@ -801,7 +801,7 @@ migrate((app) => {
       max: 3
     },
     "objective.source_multipliers.internal_notes": {
-      value: 0.8,
+      value: 1.0,
       description: "How much weight to give internal staff notes",
       min: 0.5,
       max: 3

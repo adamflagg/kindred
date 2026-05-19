@@ -1,6 +1,8 @@
 # Solver Objective Sensitivity Analysis
 
-> **Snapshot:** 2026-05-18, post-v5.5.0 / post-#1523 mutual-request boost.
+> **Snapshot:** 2026-05-18, post-request-multiplier batch 1 (`share_bunk_with`
+> raised 1.5→1.75 to enforce MP-above-STAFF hierarchy; `internal_notes` raised
+> 0.8→1.0 to tie with `bunking_notes`).
 > Source-of-truth for the tables is `scripts/analyze_objective_sensitivity.py` —
 > regenerate with `uv run python scripts/analyze_objective_sensitivity.py`.
 > Test suite at `tests/unit/scripts/test_analyze_objective_sensitivity.py`
@@ -59,10 +61,10 @@ the `mutual` flag — see `score_evaluator.py` and the regression test
 
 | Source | Bucket | Slot 0 (first) | Slot 1 (second) | Slot 2+ (third+) | Mutual boost applies? |
 |---|---|---|---|---|---|
-| `bunk_with` | MP | 600 (1200 mutual) | 300 (600 mutual) | 60 (120 mutual) | Yes (×2.0) |
+| `bunk_with` | MP | 700 (1400 mutual) | 350 (700 mutual) | 70 (140 mutual) | Yes (×2.0) |
 | `not_bunk_with` | STAFF | 600 | 300 | 60 | No |
 | `bunking_notes` | STAFF | 400 | 200 | 40 | No |
-| `internal_notes` | STAFF | 320 | 160 | 32 | No |
+| `internal_notes` | STAFF | 400 | 200 | 40 | No |
 | `socialize_with` | IMP | 240 | 120 | 24 | No |
 
 `age_preference` MP requests are **not in the objective at all** — they are
@@ -100,11 +102,11 @@ of earnable would be needed to overcome a single instance of that penalty.
 
 | Archetype | Description | Total earnable | vs grade_ratio (5000) | vs grade_spread (3000) | vs level_progression (800) |
 |---|---|---|---|---|---|
-| **A. Loner mutual** | Singleton MP camper, 1 reciprocated bunk_with request. | 1200 | 4.17× | 2.50× | 0.67× |
-| **B. Loner one-way** | Singleton MP camper, 1 unreciprocated bunk_with request. | 600 | 8.33× | 5.00× | 1.33× |
-| **C. Cluster star** | Multi-MP camper, 3 reciprocated bunk_with requests forming a tight cluster. | 1920 | 2.60× | 1.56× | 0.42× |
-| **D. Mixed multi (THE RESIDUAL ARCHETYPE)** | Multi-MP camper, 1 reciprocated bunk_with at first-pick + 2 unreciprocated at slots 1-2. Matches the partial-tail pattern of the 21 S2 / 17 S4 unmet residuals. | 1560 | 3.21× | 1.92× | 0.51× |
-| **E. Popular target (own requests)** | A camper named by multiple other campers but with her own 2 unreciprocated MP requests elsewhere. Modeled here from her side; demand from other campers does not appear in her own objective contribution — see threshold analysis. | 900 | 5.56× | 3.33× | 0.89× |
+| **A. Loner mutual** | Singleton MP camper, 1 reciprocated bunk_with request. | 1400 | 3.57× | 2.14× | 0.57× |
+| **B. Loner one-way** | Singleton MP camper, 1 unreciprocated bunk_with request. | 700 | 7.14× | 4.29× | 1.14× |
+| **C. Cluster star** | Multi-MP camper, 3 reciprocated bunk_with requests forming a tight cluster. | 2240 | 2.23× | 1.34× | 0.36× |
+| **D. Mixed multi (THE RESIDUAL ARCHETYPE)** | Multi-MP camper, 1 reciprocated bunk_with at first-pick + 2 unreciprocated at slots 1-2. Matches the partial-tail pattern of the 21 S2 / 17 S4 unmet residuals. | 1820 | 2.75× | 1.65× | 0.44× |
+| **E. Popular target (own requests)** | A camper named by multiple other campers but with her own 2 unreciprocated MP requests elsewhere. Modeled here from her side; demand from other campers does not appear in her own objective contribution — see threshold analysis. | 1050 | 4.76× | 2.86× | 0.76× |
 
 ### Reading the ratios
 
@@ -118,18 +120,19 @@ of earnable would be needed to overcome a single instance of that penalty.
 
 Three useful patterns visible in the table:
 
-1. **Loner one-way (B) is structurally hard to honor** — at 600 earnable,
-   it loses to grade_ratio by 8×. The solver only honors archetype B when
+1. **Loner one-way (B) is structurally hard to honor** — at 700 earnable,
+   it loses to grade_ratio by ~7×. The solver only honors archetype B when
    the placement is "free" (no soft constraint triggered). The mutual boost
-   (archetype A) cuts that ratio in half (4.17×) but doesn't break parity.
-2. **Cluster star (C) dominates level_progression** at 0.42× — a 3-MP all-
-   mutual camper's full benefit (1920) is more than 2× a single level
+   (archetype A) cuts that ratio roughly in half (3.57×) but doesn't break
+   parity.
+2. **Cluster star (C) dominates level_progression** at 0.36× — a 3-MP all-
+   mutual camper's full benefit (2240) is nearly 3× a single level
    regression (800). The solver will accept the regression to keep the
    cluster intact.
 3. **Mixed multi (D) — the residual archetype — has a "tail tax".** The
-   first-pick mutual is worth 1200 by itself (4.17× ratio vs grade_ratio,
+   first-pick mutual is worth 1400 by itself (3.57× ratio vs grade_ratio,
    same as archetype A — meaning the mutual alone is what gets honored).
-   The slots 1-2 add only 360 marginal earnable, vastly insufficient to
+   The slots 1-2 add only 420 marginal earnable, vastly insufficient to
    override any 5000 grade_ratio violation triggered by honoring them.
    **This is the arithmetic explanation of the 21 S2 / 17 S4 residuals.**
 
@@ -145,7 +148,7 @@ Cross-reference data from solver run `qgc731ty5puoy3c` (S2, 180 s, current main)
 The solver is *paying* 480 K in grade_ratio penalties because the cluster
 rewards exceed them. So the 21 residuals are **not** "the solver refuses to
 break grade_ratio" — they are cases where honoring the slot-1/slot-2 tail
-would trigger an *additional* penalty whose 5000 cost exceeds the 60-300
+would trigger an *additional* penalty whose 5000 cost exceeds the 70-350
 marginal benefit. The slot-0 first-pick (or mutual) already paid for the
 cluster's grade_ratio violation; adding the tail member doesn't earn enough
 to justify the next ratio break.
@@ -155,9 +158,9 @@ labels anonymized; the arithmetic is what matters, not who the campers are):
 
 | Requester (sat'd MPs) | Unmet target | Pattern |
 |---|---|---|
-| `1000001` (got 2/3, both mutual) | `1000002 → bunk X`, one-way, slot 1 | 2-grade gap + presumably ratio-locked target bunk; 300 marginal benefit vs 5000 ratio cost — solver correctly drops |
-| `1000003` (got 3/4) | `1000004 → bunk Y`, one-way, slot 2 | Adjacent grade, presumably full bunk; 60 marginal benefit — even cheaper to drop |
-| `1000005` (got 5/6, all mutual stacked) | `1000006 → bunk Z`, one-way, slot ? | Same-grade neighbor bunk — only triggers ratio if target's bunk would tip; 60-300 vs 5000 — drops |
+| `1000001` (got 2/3, both mutual) | `1000002 → bunk X`, one-way, slot 1 | 2-grade gap + presumably ratio-locked target bunk; 350 marginal benefit vs 5000 ratio cost — solver correctly drops |
+| `1000003` (got 3/4) | `1000004 → bunk Y`, one-way, slot 2 | Adjacent grade, presumably full bunk; 70 marginal benefit — even cheaper to drop |
+| `1000005` (got 5/6, all mutual stacked) | `1000006 → bunk Z`, one-way, slot ? | Same-grade neighbor bunk — only triggers ratio if target's bunk would tip; 70-350 vs 5000 — drops |
 
 All 21 follow this shape. A "popular target boost" would shift archetype E's
 own benefit but not change the receiving side's arithmetic — see Phase 4

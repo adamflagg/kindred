@@ -101,11 +101,11 @@ class TestEvaluateScenarioScore:
         }.get(key, default)
 
         config.get_float.side_effect = lambda key, default=1.0: {
-            "objective.source_multipliers.share_bunk_with": 1.5,
+            "objective.source_multipliers.share_bunk_with": 1.75,
             "objective.source_multipliers.do_not_share_with": 1.5,
-            "objective.source_multipliers.bunking_notes": 1.2,
+            "objective.source_multipliers.bunking_notes": 1.0,
             "objective.source_multipliers.internal_notes": 1.0,
-            "objective.source_multipliers.socialize_preference": 0.8,
+            "objective.source_multipliers.socialize_preference": 0.6,
         }.get(key, default)
 
         return config
@@ -269,17 +269,17 @@ class TestEvaluateScenarioScore:
             config=mock_config,
         )
 
-        # Verify the first-pick gets slot-0 boost: score = 60 * 10 = 600
-        # (base_weight=40 * source_mult=1.5 * FIRST_REQUEST_MULTIPLIER=10)
-        assert first_pick.request_satisfaction_score == 600
+        # Verify the first-pick gets slot-0 boost: score = 70 * 10 = 700
+        # (base_weight=40 * source_mult=1.75 * FIRST_REQUEST_MULTIPLIER=10)
+        assert first_pick.request_satisfaction_score == 700
 
     def test_first_requested_flag_determines_slot_0(self, mock_config):
         """Two-request control: flipping is_first_requested between two
         requests with different source-mults must change the total score.
 
         Slot-0 (10x) goes to whichever request is flagged. With
-        BUNK_REQUEST_FORM(1.5) flagged first: 60*10 + 40*5 = 800.
-        With INTERNAL_NOTES(1.0) flagged first: 40*10 + 60*5 = 700.
+        BUNK_REQUEST_FORM(1.75) flagged first: 70*10 + 40*5 = 900.
+        With INTERNAL_NOTES(1.0) flagged first: 40*10 + 70*5 = 750.
         """
         from bunking.solver.score_evaluator import evaluate_scenario_score
 
@@ -323,8 +323,8 @@ class TestEvaluateScenarioScore:
             requests=internal_notes_first, assignments=assignments, persons=persons, bunks=bunks, config=mock_config
         )
 
-        assert a.request_satisfaction_score == 800
-        assert b.request_satisfaction_score == 700
+        assert a.request_satisfaction_score == 900
+        assert b.request_satisfaction_score == 750
         assert a.request_satisfaction_score > b.request_satisfaction_score
 
     def test_grade_spread_penalty(self, mock_config):

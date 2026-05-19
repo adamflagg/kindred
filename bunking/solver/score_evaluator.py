@@ -133,15 +133,18 @@ def evaluate_scenario_score(
         and int(r["requester_id"]) != int(r["requestee_id"])
     )
 
-    # Source field multipliers
+    # Source field multipliers. Fallback defaults mirror the seed values in
+    # pocketbase/pb_migrations/1500000011_config.js. Production never trips
+    # these because the keys are required by CONFIG_SCHEMA, but keeping them
+    # in sync avoids B-class evaluator/seed drift.
     source_multipliers = {
-        SourceField.BUNK_REQUEST_FORM: config.get_float("objective.source_multipliers.share_bunk_with", default=1.5),
+        SourceField.BUNK_REQUEST_FORM: config.get_float("objective.source_multipliers.share_bunk_with", default=1.75),
         SourceField.STAFF_NOT_BUNK_WITH: config.get_float(
             "objective.source_multipliers.do_not_share_with", default=1.5
         ),
-        SourceField.BUNKING_NOTES: config.get_float("objective.source_multipliers.bunking_notes", default=1.2),
+        SourceField.BUNKING_NOTES: config.get_float("objective.source_multipliers.bunking_notes", default=1.0),
         SourceField.INTERNAL_NOTES: config.get_float("objective.source_multipliers.internal_notes", default=1.0),
-        SourceField.SOCIALIZE_WITH: config.get_float("objective.source_multipliers.socialize_preference", default=0.8),
+        SourceField.SOCIALIZE_WITH: config.get_float("objective.source_multipliers.socialize_preference", default=0.6),
     }
 
     # Track request satisfaction per person

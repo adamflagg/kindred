@@ -30,10 +30,10 @@ class ObjectiveConfig:
     slot_multipliers: tuple[int, ...] = (10, 5, 1)
     source_multipliers: dict[str, float] = field(
         default_factory=lambda: {
-            "bunk_with": 1.5,
+            "bunk_with": 1.75,
             "not_bunk_with": 1.5,
             "bunking_notes": 1.0,
-            "internal_notes": 0.8,
+            "internal_notes": 1.0,
             "socialize_with": 0.6,
         }
     )

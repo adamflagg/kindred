@@ -175,10 +175,10 @@ TEST_CONFIG = {
     "constraint.grade_spread.mode": "soft",
     "constraint.grade_spread.penalty": 3000,
     # Objective function weights
-    "objective.source_multipliers.share_bunk_with": 1.5,
+    "objective.source_multipliers.share_bunk_with": 1.75,
     "objective.source_multipliers.do_not_share_with": 1.5,
     "objective.source_multipliers.bunking_notes": 1.0,
-    "objective.source_multipliers.internal_notes": 0.8,
+    "objective.source_multipliers.internal_notes": 1.0,
     "objective.source_multipliers.socialize_preference": 0.6,
     "objective.enable_diminishing_returns": 1,
     "objective.first_request_multiplier": 10,
