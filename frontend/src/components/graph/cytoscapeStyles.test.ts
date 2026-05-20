@@ -441,6 +441,47 @@ describe('createGraphElements', () => {
     expect(ghostParent.data.cross_scope).toBe(true)
   })
 
+  it('cross-scope edges respect showEdges visibility (#1556 — parallel pass must apply the same filter as in-scope)', () => {
+    // Same-shape inputs as the cross-scope plumbing test above, but with
+    // showEdges['request'] = false. The bunk graph's legend toggle for the
+    // `request` edge type should hide cross-scope request edges too, not just
+    // in-scope ones.
+    const cross = [
+      {
+        source: 1,
+        target: 99,
+        edge_type: 'request' as const,
+        weight: 1,
+        request_type: null,
+        confidence: null,
+        reciprocal: false,
+        cross_scope: true as const,
+      },
+    ]
+    const ghostNodes: GraphNodeData[] = [
+      {
+        id: 99,
+        name: 'Riley Sam',
+        grade: 6,
+        centrality: 0,
+        clustering: 0,
+        satisfaction_status: 'no_requests',
+        bunk_cm_id: 999,
+        community: 0,
+        first_year: false,
+      },
+    ]
+    const { edges } = createGraphElements(
+      mockNodes,
+      [],
+      mockBunksData,
+      { request: false, historical: true, school: true, cross_scope: true },
+      cross,
+      ghostNodes
+    )
+    expect(edges).toHaveLength(0)
+  })
+
   it('passes request_type from edge data to EdgeElement so styles can color negative requests differently', () => {
     const edges: GraphEdgeData[] = [
       reqEdge(1, 2, 'not_bunk_with'),

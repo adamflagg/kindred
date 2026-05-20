@@ -272,6 +272,35 @@ describe('CamperDetailsPanel', () => {
         expect(screen.getByText('Camper not found')).toBeInTheDocument()
       })
     })
+
+    it('surfaces loading state for the parent-input fetch (#1558)', async () => {
+      // Camper data resolves so the panel renders past its top-level spinner,
+      // but the original_bunk_requests fetch is left pending so the inline
+      // loading indicator in the parent-input block is visible.
+      setupDeclinedRequestMocks()
+      mockGetListOriginalBunkRequests.mockReturnValue(new Promise(() => {}))
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: /Emma/i })).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('original-bunk-data-loading')).toBeInTheDocument()
+      expect(screen.queryByTestId('original-bunk-data-error')).not.toBeInTheDocument()
+    })
+
+    it('surfaces error state when the parent-input fetch fails instead of silently hiding (#1558)', async () => {
+      setupDeclinedRequestMocks()
+      mockGetListOriginalBunkRequests.mockRejectedValue(new Error('network down'))
+
+      render(<CamperDetailsPanel camperId="100" onClose={mockOnClose} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('original-bunk-data-error')).toBeInTheDocument()
+      })
+      expect(screen.getByRole('alert')).toHaveTextContent(/couldn't load parent input/i)
+      expect(screen.queryByTestId('original-bunk-data-loading')).not.toBeInTheDocument()
+    })
   })
 
   describe('Panel Behavior', () => {

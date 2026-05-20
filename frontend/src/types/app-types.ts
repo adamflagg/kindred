@@ -105,10 +105,14 @@ export interface Camper {
 export type Session = CampSessionsResponse
 
 /**
- * Bunk type — PocketBase BunksResponse plus computed capacity.
- * capacity is computed from bunk_plans count, not stored in PB.
+ * Bunk type — direct alias for PocketBase BunksResponse.
+ *
+ * Note: there is no per-bunk capacity stored anywhere. Capacity is treated as
+ * a uniform `DEFAULT_BUNK_CAPACITY` (see `utils/capacityConstants`) at every
+ * reader site. If per-bunk capacity is ever introduced, model it on the bunks
+ * collection rather than re-adding a phantom optional field here.
  */
-export type Bunk = BunksResponse & { capacity?: number }
+export type Bunk = BunksResponse
 
 export interface BunkRequest {
   id: string
