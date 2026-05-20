@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -647,48 +648,50 @@ func TestMarkSyncRunningPreservesStatus(t *testing.T) {
 // TestRunSingleSyncRespectsPreMarkedStatus tests that RunSingleSync uses existing status
 // if MarkSyncRunning was called first
 func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
-	o := NewOrchestrator(nil)
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
 
-	// Register a fast mock service
-	mock := &MockService{name: "test_service", delay: 10 * time.Millisecond}
-	o.RegisterService("test", mock)
+		// Register a fast mock service
+		mock := &MockService{name: "test_service", delay: 10 * time.Millisecond}
+		o.RegisterService("test", mock)
 
-	// Pre-mark as running (simulating what API handler will do)
-	err := o.MarkSyncRunning("test")
-	if err != nil {
-		t.Fatalf("MarkSyncRunning failed: %v", err)
-	}
+		// Pre-mark as running (simulating what API handler will do)
+		err := o.MarkSyncRunning("test")
+		if err != nil {
+			t.Fatalf("MarkSyncRunning failed: %v", err)
+		}
 
-	// Get the start time from pre-marked status
-	o.mu.RLock()
-	preMarkedStatus := o.runningJobs["test"]
-	preMarkedStartTime := preMarkedStatus.StartTime
-	o.mu.RUnlock()
+		// Get the start time from pre-marked status
+		o.mu.RLock()
+		preMarkedStatus := o.runningJobs["test"]
+		preMarkedStartTime := preMarkedStatus.StartTime
+		o.mu.RUnlock()
 
-	// RunSingleSync should use the existing status, not create a new one
-	ctx := context.Background()
-	err = o.RunSingleSync(ctx, "test")
-	if err != nil {
-		t.Fatalf("RunSingleSync failed: %v", err)
-	}
+		// RunSingleSync should use the existing status, not create a new one
+		ctx := context.Background()
+		err = o.RunSingleSync(ctx, "test")
+		if err != nil {
+			t.Fatalf("RunSingleSync failed: %v", err)
+		}
 
-	// Wait for the sync goroutine to complete
-	time.Sleep(50 * time.Millisecond)
+		// Wait for the sync goroutine to complete (virtual time advances past the mock's 10ms delay).
+		time.Sleep(50 * time.Millisecond)
 
-	// Check that the service was actually called
-	if mock.GetCallCount() != 1 {
-		t.Errorf("expected 1 call to Sync, got %d", mock.GetCallCount())
-	}
+		// Check that the service was actually called
+		if mock.GetCallCount() != 1 {
+			t.Errorf("expected 1 call to Sync, got %d", mock.GetCallCount())
+		}
 
-	// The status should have been updated to success
-	o.mu.RLock()
-	finalStatus := o.runningJobs["test"]
-	o.mu.RUnlock()
+		// The status should have been updated to success
+		o.mu.RLock()
+		finalStatus := o.runningJobs["test"]
+		o.mu.RUnlock()
 
-	// Start time should be preserved from pre-marked status
-	if finalStatus != nil && !finalStatus.StartTime.Equal(preMarkedStartTime) {
-		t.Errorf("expected StartTime to be preserved from MarkSyncRunning, got different time")
-	}
+		// Start time should be preserved from pre-marked status
+		if finalStatus != nil && !finalStatus.StartTime.Equal(preMarkedStartTime) {
+			t.Errorf("expected StartTime to be preserved from MarkSyncRunning, got different time")
+		}
+	})
 }
 
 // TestHistoricalSyncIncludesCustomValueServices verifies custom value services are
@@ -945,156 +948,162 @@ func TestWeeklySyncJobsCount(t *testing.T) {
 // deadlines appropriately, fixing the "rate limiter wait: context deadline exceeded" issue.
 func TestRunSingleSyncContextDeadlineHandling(t *testing.T) {
 	t.Run("uses parent context when deadline is generous", func(t *testing.T) {
-		o := NewOrchestrator(nil)
+		synctest.Test(t, func(t *testing.T) {
+			o := NewOrchestrator(nil)
 
-		// Track what context the service receives
-		var receivedCtx context.Context
-		var ctxMu sync.Mutex
+			// Track what context the service receives
+			var receivedCtx context.Context
+			var ctxMu sync.Mutex
 
-		mock := &contextCaptureMockService{
-			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
-			onSync: func(ctx context.Context) {
-				ctxMu.Lock()
-				receivedCtx = ctx
-				ctxMu.Unlock()
-			},
-		}
-		o.RegisterService("test", mock)
-
-		// Create a parent context with 2-hour deadline (generous)
-		parentCtx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
-		defer cancel()
-
-		err := o.RunSingleSync(parentCtx, "test")
-		if err != nil {
-			t.Fatalf("RunSingleSync failed: %v", err)
-		}
-
-		// Wait for sync to complete
-		time.Sleep(100 * time.Millisecond)
-
-		ctxMu.Lock()
-		ctx := receivedCtx
-		ctxMu.Unlock()
-
-		if ctx == nil {
-			t.Fatal("service was never called with a context")
-			return
-		}
-
-		// When parent has generous deadline (>=30min), the sync context should
-		// have a deadline that's at least 30 minutes out (not just whatever is left
-		// on the parent context)
-		deadline, hasDeadline := ctx.Deadline()
-		if !hasDeadline {
-			t.Error("expected sync context to have a deadline")
-		} else {
-			timeUntilDeadline := time.Until(deadline)
-			// Should have at least 30 minutes remaining (allowing some margin for test execution)
-			if timeUntilDeadline < 29*time.Minute {
-				t.Errorf("sync context deadline too short: %v remaining", timeUntilDeadline)
+			mock := &contextCaptureMockService{
+				MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+				onSync: func(ctx context.Context) {
+					ctxMu.Lock()
+					receivedCtx = ctx
+					ctxMu.Unlock()
+				},
 			}
-		}
+			o.RegisterService("test", mock)
+
+			// Create a parent context with 2-hour deadline (generous)
+			parentCtx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+			defer cancel()
+
+			err := o.RunSingleSync(parentCtx, "test")
+			if err != nil {
+				t.Fatalf("RunSingleSync failed: %v", err)
+			}
+
+			// Wait for the sync goroutine to complete (virtual time advances past the mock's 50ms delay).
+			time.Sleep(100 * time.Millisecond)
+
+			ctxMu.Lock()
+			ctx := receivedCtx
+			ctxMu.Unlock()
+
+			if ctx == nil {
+				t.Fatal("service was never called with a context")
+				return
+			}
+
+			// When parent has generous deadline (>=30min), the sync context should
+			// have a deadline that's at least 30 minutes out (not just whatever is left
+			// on the parent context)
+			deadline, hasDeadline := ctx.Deadline()
+			if !hasDeadline {
+				t.Error("expected sync context to have a deadline")
+			} else {
+				timeUntilDeadline := time.Until(deadline)
+				// Should have at least 30 minutes remaining (allowing some margin for test execution)
+				if timeUntilDeadline < 29*time.Minute {
+					t.Errorf("sync context deadline too short: %v remaining", timeUntilDeadline)
+				}
+			}
+		})
 	})
 
 	t.Run("extends short parent deadline", func(t *testing.T) {
-		o := NewOrchestrator(nil)
+		synctest.Test(t, func(t *testing.T) {
+			o := NewOrchestrator(nil)
 
-		var receivedCtx context.Context
-		var ctxMu sync.Mutex
+			var receivedCtx context.Context
+			var ctxMu sync.Mutex
 
-		mock := &contextCaptureMockService{
-			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
-			onSync: func(ctx context.Context) {
-				ctxMu.Lock()
-				receivedCtx = ctx
-				ctxMu.Unlock()
-			},
-		}
-		o.RegisterService("test", mock)
-
-		// Create a parent context with very short deadline (1 minute - too short for sync)
-		parentCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-		defer cancel()
-
-		err := o.RunSingleSync(parentCtx, "test")
-		if err != nil {
-			t.Fatalf("RunSingleSync failed: %v", err)
-		}
-
-		// Wait for sync to complete
-		time.Sleep(100 * time.Millisecond)
-
-		ctxMu.Lock()
-		ctx := receivedCtx
-		ctxMu.Unlock()
-
-		if ctx == nil {
-			t.Fatal("service was never called with a context")
-			return
-		}
-
-		// When parent has short deadline (<30min), the sync should create
-		// its own generous timeout
-		deadline, hasDeadline := ctx.Deadline()
-		if !hasDeadline {
-			t.Error("expected sync context to have a deadline")
-		} else {
-			timeUntilDeadline := time.Until(deadline)
-			// Should have at least 30 minutes (the default generous timeout)
-			if timeUntilDeadline < 29*time.Minute {
-				t.Errorf("sync context should extend short parent deadline: got %v remaining", timeUntilDeadline)
+			mock := &contextCaptureMockService{
+				MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+				onSync: func(ctx context.Context) {
+					ctxMu.Lock()
+					receivedCtx = ctx
+					ctxMu.Unlock()
+				},
 			}
-		}
+			o.RegisterService("test", mock)
+
+			// Create a parent context with very short deadline (1 minute - too short for sync)
+			parentCtx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+
+			err := o.RunSingleSync(parentCtx, "test")
+			if err != nil {
+				t.Fatalf("RunSingleSync failed: %v", err)
+			}
+
+			// Wait for the sync goroutine to complete (virtual time advances past the mock's 50ms delay).
+			time.Sleep(100 * time.Millisecond)
+
+			ctxMu.Lock()
+			ctx := receivedCtx
+			ctxMu.Unlock()
+
+			if ctx == nil {
+				t.Fatal("service was never called with a context")
+				return
+			}
+
+			// When parent has short deadline (<30min), the sync should create
+			// its own generous timeout
+			deadline, hasDeadline := ctx.Deadline()
+			if !hasDeadline {
+				t.Error("expected sync context to have a deadline")
+			} else {
+				timeUntilDeadline := time.Until(deadline)
+				// Should have at least 30 minutes (the default generous timeout)
+				if timeUntilDeadline < 29*time.Minute {
+					t.Errorf("sync context should extend short parent deadline: got %v remaining", timeUntilDeadline)
+				}
+			}
+		})
 	})
 
 	t.Run("creates deadline when parent has none", func(t *testing.T) {
-		o := NewOrchestrator(nil)
+		synctest.Test(t, func(t *testing.T) {
+			o := NewOrchestrator(nil)
 
-		var receivedCtx context.Context
-		var ctxMu sync.Mutex
+			var receivedCtx context.Context
+			var ctxMu sync.Mutex
 
-		mock := &contextCaptureMockService{
-			MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
-			onSync: func(ctx context.Context) {
-				ctxMu.Lock()
-				receivedCtx = ctx
-				ctxMu.Unlock()
-			},
-		}
-		o.RegisterService("test", mock)
-
-		// Parent context with no deadline
-		parentCtx := context.Background()
-
-		err := o.RunSingleSync(parentCtx, "test")
-		if err != nil {
-			t.Fatalf("RunSingleSync failed: %v", err)
-		}
-
-		// Wait for sync to complete
-		time.Sleep(100 * time.Millisecond)
-
-		ctxMu.Lock()
-		ctx := receivedCtx
-		ctxMu.Unlock()
-
-		if ctx == nil {
-			t.Fatal("service was never called with a context")
-			return
-		}
-
-		// When parent has no deadline, sync should create a generous timeout
-		deadline, hasDeadline := ctx.Deadline()
-		if !hasDeadline {
-			t.Error("expected sync context to have a deadline even when parent doesn't")
-		} else {
-			timeUntilDeadline := time.Until(deadline)
-			// Should have at least 1 hour (the extended timeout for no-deadline parents)
-			if timeUntilDeadline < 59*time.Minute {
-				t.Errorf("sync context deadline too short for no-deadline parent: %v remaining", timeUntilDeadline)
+			mock := &contextCaptureMockService{
+				MockService: &MockService{name: "test", delay: 50 * time.Millisecond},
+				onSync: func(ctx context.Context) {
+					ctxMu.Lock()
+					receivedCtx = ctx
+					ctxMu.Unlock()
+				},
 			}
-		}
+			o.RegisterService("test", mock)
+
+			// Parent context with no deadline
+			parentCtx := context.Background()
+
+			err := o.RunSingleSync(parentCtx, "test")
+			if err != nil {
+				t.Fatalf("RunSingleSync failed: %v", err)
+			}
+
+			// Wait for the sync goroutine to complete (virtual time advances past the mock's 50ms delay).
+			time.Sleep(100 * time.Millisecond)
+
+			ctxMu.Lock()
+			ctx := receivedCtx
+			ctxMu.Unlock()
+
+			if ctx == nil {
+				t.Fatal("service was never called with a context")
+				return
+			}
+
+			// When parent has no deadline, sync should create a generous timeout
+			deadline, hasDeadline := ctx.Deadline()
+			if !hasDeadline {
+				t.Error("expected sync context to have a deadline even when parent doesn't")
+			} else {
+				timeUntilDeadline := time.Until(deadline)
+				// Should have at least 1 hour (the extended timeout for no-deadline parents)
+				if timeUntilDeadline < 59*time.Minute {
+					t.Errorf("sync context deadline too short for no-deadline parent: %v remaining", timeUntilDeadline)
+				}
+			}
+		})
 	})
 }
 
@@ -2881,47 +2890,50 @@ func TestGetCurrentRunProgress_PriorityOrder(t *testing.T) {
 }
 
 func TestFinalizeSyncStatusSuccess(t *testing.T) {
-	o := NewOrchestrator(nil)
-	mock := &MockService{name: "test", delay: 0}
-	o.RegisterService("test", mock)
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
+		mock := &MockService{name: "test", delay: 0}
+		o.RegisterService("test", mock)
 
-	err := o.MarkSyncRunning("test")
-	if err != nil {
-		t.Fatalf("MarkSyncRunning failed: %v", err)
-	}
+		err := o.MarkSyncRunning("test")
+		if err != nil {
+			t.Fatalf("MarkSyncRunning failed: %v", err)
+		}
 
-	time.Sleep(1010 * time.Millisecond)
+		// Advance virtual time so EndTime - StartTime rounds to a non-zero Duration (int seconds).
+		time.Sleep(1010 * time.Millisecond)
 
-	stats := Stats{Created: 5, Updated: 3, Skipped: 2, Errors: 0}
-	o.FinalizeSyncStatus("test", stats, nil)
+		stats := Stats{Created: 5, Updated: 3, Skipped: 2, Errors: 0}
+		o.FinalizeSyncStatus("test", stats, nil)
 
-	o.mu.RLock()
-	_, stillRunning := o.runningJobs["test"]
-	completed := o.lastCompletedStatus["test"]
-	o.mu.RUnlock()
+		o.mu.RLock()
+		_, stillRunning := o.runningJobs["test"]
+		completed := o.lastCompletedStatus["test"]
+		o.mu.RUnlock()
 
-	if stillRunning {
-		t.Error("expected test to be removed from runningJobs")
-	}
-	if completed == nil {
-		t.Fatal("expected test to be in lastCompletedStatus")
-		return
-	}
-	if completed.Status != statusSuccess {
-		t.Errorf("expected status 'success', got %q", completed.Status)
-	}
-	if completed.EndTime == nil {
-		t.Error("expected EndTime to be set")
-	}
-	if completed.Summary.Created != 5 {
-		t.Errorf("expected Created=5, got %d", completed.Summary.Created)
-	}
-	if completed.Summary.Duration <= 0 {
-		t.Error("expected Duration > 0")
-	}
-	if completed.Error != "" {
-		t.Errorf("expected no error, got %q", completed.Error)
-	}
+		if stillRunning {
+			t.Error("expected test to be removed from runningJobs")
+		}
+		if completed == nil {
+			t.Fatal("expected test to be in lastCompletedStatus")
+			return
+		}
+		if completed.Status != statusSuccess {
+			t.Errorf("expected status 'success', got %q", completed.Status)
+		}
+		if completed.EndTime == nil {
+			t.Error("expected EndTime to be set")
+		}
+		if completed.Summary.Created != 5 {
+			t.Errorf("expected Created=5, got %d", completed.Summary.Created)
+		}
+		if completed.Summary.Duration <= 0 {
+			t.Error("expected Duration > 0")
+		}
+		if completed.Error != "" {
+			t.Errorf("expected no error, got %q", completed.Error)
+		}
+	})
 }
 
 func TestFinalizeSyncStatusError(t *testing.T) {
@@ -3104,51 +3116,55 @@ func TestRunSingleSyncAtomicStatusTransition(t *testing.T) {
 
 // TestRunTokenPopulated tests that RunSingleSync populates RunToken on the status
 func TestRunTokenPopulated(t *testing.T) {
-	o := NewOrchestrator(nil)
+	synctest.Test(t, func(t *testing.T) {
+		o := NewOrchestrator(nil)
 
-	mock := &MockService{name: "test_service", delay: 50 * time.Millisecond}
-	o.RegisterService("test", mock)
+		mock := &MockService{name: "test_service", delay: 50 * time.Millisecond}
+		o.RegisterService("test", mock)
 
-	ctx := context.Background()
-	err := o.RunSingleSync(ctx, "test")
-	if err != nil {
-		t.Fatalf("RunSingleSync failed: %v", err)
-	}
+		ctx := context.Background()
+		err := o.RunSingleSync(ctx, "test")
+		if err != nil {
+			t.Fatalf("RunSingleSync failed: %v", err)
+		}
 
-	// While running, status should have a non-empty RunToken
-	o.mu.RLock()
-	status := o.runningJobs["test"]
-	o.mu.RUnlock()
+		// While running, status should have a non-empty RunToken.
+		// The sync goroutine is durably blocked in MockService.Sync's time.After,
+		// so virtual time has not advanced and the running status is still present.
+		o.mu.RLock()
+		status := o.runningJobs["test"]
+		o.mu.RUnlock()
 
-	if status == nil {
-		t.Fatal("expected running status")
-		return
-	}
+		if status == nil {
+			t.Fatal("expected running status")
+			return
+		}
 
-	if status.RunToken == "" {
-		t.Error("expected RunToken to be populated, got empty string")
-	}
+		if status.RunToken == "" {
+			t.Error("expected RunToken to be populated, got empty string")
+		}
 
-	// Wait for completion
-	time.Sleep(100 * time.Millisecond)
+		// Wait for the sync goroutine to complete (virtual time advances past the mock's 50ms delay).
+		time.Sleep(100 * time.Millisecond)
 
-	// Completed status should also have the token
-	o.mu.RLock()
-	completed := o.lastCompletedStatus["test"]
-	o.mu.RUnlock()
+		// Completed status should also have the token
+		o.mu.RLock()
+		completed := o.lastCompletedStatus["test"]
+		o.mu.RUnlock()
 
-	if completed == nil {
-		t.Fatal("expected completed status")
-		return
-	}
+		if completed == nil {
+			t.Fatal("expected completed status")
+			return
+		}
 
-	if completed.RunToken == "" {
-		t.Error("expected completed status to preserve RunToken")
-	}
+		if completed.RunToken == "" {
+			t.Error("expected completed status to preserve RunToken")
+		}
 
-	if completed.RunToken != status.RunToken {
-		t.Errorf("RunToken mismatch: running=%q completed=%q", status.RunToken, completed.RunToken)
-	}
+		if completed.RunToken != status.RunToken {
+			t.Errorf("RunToken mismatch: running=%q completed=%q", status.RunToken, completed.RunToken)
+		}
+	})
 }
 
 // TestRunTokenPreservedByFinalizeSyncStatus tests that FinalizeSyncStatus preserves

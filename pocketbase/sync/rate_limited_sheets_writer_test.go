@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"google.golang.org/api/googleapi"
@@ -374,30 +375,32 @@ func TestRateLimitedWriter_DoesNotRetryGoogleAPINon429(t *testing.T) {
 // =============================================================================
 
 func TestRateLimitedWriter_RespectsContextCancellation(t *testing.T) {
-	mock := newTrackingMock()
-	mock.writeErrFn = failNTimes(10) // always fail
-	cfg := testConfig()
-	cfg.InitialBackoff = 100 * time.Millisecond // slow enough that we can cancel
-	writer := NewRateLimitedSheetsWriter(mock, cfg)
+	synctest.Test(t, func(t *testing.T) {
+		mock := newTrackingMock()
+		mock.writeErrFn = failNTimes(10) // always fail
+		cfg := testConfig()
+		cfg.InitialBackoff = 100 * time.Millisecond // slow enough that we can cancel
+		writer := NewRateLimitedSheetsWriter(mock, cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
-	// Cancel after a short delay
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		cancel()
-	}()
+		// Cancel after a short delay
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+		}()
 
-	err := writer.WriteToSheet(ctx, "s1", "tab", [][]any{{"x"}})
-	if err == nil {
-		t.Fatal("WriteToSheet should return error when context is canceled")
-		return
-	}
+		err := writer.WriteToSheet(ctx, "s1", "tab", [][]any{{"x"}})
+		if err == nil {
+			t.Fatal("WriteToSheet should return error when context is canceled")
+			return
+		}
 
-	// Should have been called fewer times than max retries because context was canceled
-	if mock.writeCalls.Load() >= 4 {
-		t.Errorf("WriteToSheet: inner called %d times, should be < 4 due to context cancellation", mock.writeCalls.Load())
-	}
+		// Should have been called fewer times than max retries because context was canceled
+		if mock.writeCalls.Load() >= 4 {
+			t.Errorf("WriteToSheet: inner called %d times, should be < 4 due to context cancellation", mock.writeCalls.Load())
+		}
+	})
 }
 
 // =============================================================================

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -127,77 +128,79 @@ func TestGetCustomValuesSyncJobs(t *testing.T) {
 // This is a regression test for the "rate limiter wait: context deadline exceeded" issue
 // that occurred when both custom values syncs ran concurrently, doubling API pressure.
 func TestCustomValuesSyncRunsSequentially(t *testing.T) {
-	s := NewScheduler(nil)
+	synctest.Test(t, func(t *testing.T) {
+		s := NewScheduler(nil)
 
-	// Create mock services that track execution timing
-	type execRecord struct {
-		start time.Time
-		end   time.Time
-	}
-	var mu sync.Mutex
-	execTimes := make(map[string]*execRecord)
-
-	// Create slow mock services (100ms each) to make timing measurable
-	for _, name := range []string{"person_custom_values", "household_custom_values"} {
-		jobName := name
-		mock := &MockService{
-			name:  jobName,
-			delay: 100 * time.Millisecond,
+		// Create mock services that track execution timing
+		type execRecord struct {
+			start time.Time
+			end   time.Time
 		}
-		// Wrap the mock to record timing
-		wrappedMock := &timingMockService{
-			MockService: mock,
-			onSync: func() {
-				mu.Lock()
-				execTimes[jobName] = &execRecord{start: time.Now()}
-				mu.Unlock()
-			},
-			afterSync: func() {
-				mu.Lock()
-				if rec := execTimes[jobName]; rec != nil {
-					rec.end = time.Now()
-				}
-				mu.Unlock()
-			},
+		var mu sync.Mutex
+		execTimes := make(map[string]*execRecord)
+
+		// Create slow mock services (100ms each) to make timing measurable
+		for _, name := range []string{"person_custom_values", "household_custom_values"} {
+			jobName := name
+			mock := &MockService{
+				name:  jobName,
+				delay: 100 * time.Millisecond,
+			}
+			// Wrap the mock to record timing
+			wrappedMock := &timingMockService{
+				MockService: mock,
+				onSync: func() {
+					mu.Lock()
+					execTimes[jobName] = &execRecord{start: time.Now()}
+					mu.Unlock()
+				},
+				afterSync: func() {
+					mu.Lock()
+					if rec := execTimes[jobName]; rec != nil {
+						rec.end = time.Now()
+					}
+					mu.Unlock()
+				},
+			}
+			s.orchestrator.RegisterService(name, wrappedMock)
 		}
-		s.orchestrator.RegisterService(name, wrappedMock)
-	}
 
-	// Run the custom values sync (this should run sequentially)
-	s.runCustomValuesSync()
+		// Run the custom values sync (this should run sequentially)
+		s.runCustomValuesSync()
 
-	// Allow time for all goroutines to complete (2 syncs x 100ms + margin)
-	time.Sleep(300 * time.Millisecond)
+		// Allow virtual time to advance past both 100ms mock delays plus margin.
+		time.Sleep(300 * time.Millisecond)
 
-	// Verify sequential execution: job 2 should start AFTER job 1 ends
-	mu.Lock()
-	personRec := execTimes["person_custom_values"]
-	householdRec := execTimes["household_custom_values"]
-	mu.Unlock()
+		// Verify sequential execution: job 2 should start AFTER job 1 ends
+		mu.Lock()
+		personRec := execTimes["person_custom_values"]
+		householdRec := execTimes["household_custom_values"]
+		mu.Unlock()
 
-	if personRec == nil || householdRec == nil {
-		t.Fatal("expected both services to have been executed")
-		return
-	}
+		if personRec == nil || householdRec == nil {
+			t.Fatal("expected both services to have been executed")
+			return
+		}
 
-	// Ensure end times were recorded (syncs completed)
-	if personRec.end.IsZero() || householdRec.end.IsZero() {
-		t.Fatal("expected both services to have completed (end times recorded)")
-		return
-	}
+		// Ensure end times were recorded (syncs completed)
+		if personRec.end.IsZero() || householdRec.end.IsZero() {
+			t.Fatal("expected both services to have completed (end times recorded)")
+			return
+		}
 
-	// Check that there's no overlap - one must complete before the other starts
-	// Either: person ends before household starts, OR household ends before person starts
-	personEndsFirst := personRec.end.Before(householdRec.start) || personRec.end.Equal(householdRec.start)
-	householdEndsFirst := householdRec.end.Before(personRec.start) || householdRec.end.Equal(personRec.start)
+		// Check that there's no overlap - one must complete before the other starts
+		// Either: person ends before household starts, OR household ends before person starts
+		personEndsFirst := personRec.end.Before(householdRec.start) || personRec.end.Equal(householdRec.start)
+		householdEndsFirst := householdRec.end.Before(personRec.start) || householdRec.end.Equal(personRec.start)
 
-	if !personEndsFirst && !householdEndsFirst {
-		t.Errorf("custom values syncs ran concurrently (overlapped):\n"+
-			"  person_custom_values:    start=%v, end=%v\n"+
-			"  household_custom_values: start=%v, end=%v",
-			personRec.start.Format(time.RFC3339Nano), personRec.end.Format(time.RFC3339Nano),
-			householdRec.start.Format(time.RFC3339Nano), householdRec.end.Format(time.RFC3339Nano))
-	}
+		if !personEndsFirst && !householdEndsFirst {
+			t.Errorf("custom values syncs ran concurrently (overlapped):\n"+
+				"  person_custom_values:    start=%v, end=%v\n"+
+				"  household_custom_values: start=%v, end=%v",
+				personRec.start.Format(time.RFC3339Nano), personRec.end.Format(time.RFC3339Nano),
+				householdRec.start.Format(time.RFC3339Nano), householdRec.end.Format(time.RFC3339Nano))
+		}
+	})
 }
 
 // TestGetRefreshBunkingJobs tests that refresh bunking returns the correct services in order
@@ -223,50 +226,52 @@ func TestGetRefreshBunkingJobs(t *testing.T) {
 // bunks, bunk_plans, bunk_assignments, and stranded_assignment_cleanup in
 // sequence (not just bunk_assignments)
 func TestRefreshBunkingRunsAllServices(t *testing.T) {
-	s := NewScheduler(nil)
+	synctest.Test(t, func(t *testing.T) {
+		s := NewScheduler(nil)
 
-	// Track which services were called and in what order
-	var mu sync.Mutex
-	var callOrder []string
+		// Track which services were called and in what order
+		var mu sync.Mutex
+		var callOrder []string
 
-	for _, name := range GetRefreshBunkingJobs() {
-		jobName := name
-		mock := &MockService{
-			name:  jobName,
-			delay: 10 * time.Millisecond,
+		for _, name := range GetRefreshBunkingJobs() {
+			jobName := name
+			mock := &MockService{
+				name:  jobName,
+				delay: 10 * time.Millisecond,
+			}
+			wrappedMock := &timingMockService{
+				MockService: mock,
+				onSync: func() {
+					mu.Lock()
+					callOrder = append(callOrder, jobName)
+					mu.Unlock()
+				},
+			}
+			s.orchestrator.RegisterService(name, wrappedMock)
 		}
-		wrappedMock := &timingMockService{
-			MockService: mock,
-			onSync: func() {
-				mu.Lock()
-				callOrder = append(callOrder, jobName)
-				mu.Unlock()
-			},
+
+		err := s.TriggerSync(context.Background(), "refresh-bunking")
+		if err != nil {
+			t.Fatalf("TriggerSync failed: %v", err)
 		}
-		s.orchestrator.RegisterService(name, wrappedMock)
-	}
 
-	err := s.TriggerSync(context.Background(), "refresh-bunking")
-	if err != nil {
-		t.Fatalf("TriggerSync failed: %v", err)
-	}
+		// Allow virtual time to advance past all 4 services × 10ms mock delays plus margin.
+		time.Sleep(200 * time.Millisecond)
 
-	// Allow time for all services to complete
-	time.Sleep(200 * time.Millisecond)
+		mu.Lock()
+		defer mu.Unlock()
 
-	mu.Lock()
-	defer mu.Unlock()
-
-	expected := []string{"bunks", "bunk_plans", "bunk_assignments", "stranded_assignment_cleanup"}
-	if len(callOrder) != len(expected) {
-		t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
-	}
-
-	for i, name := range expected {
-		if callOrder[i] != name {
-			t.Errorf("expected service %d to be %q, got %q (order: %v)", i, name, callOrder[i], callOrder)
+		expected := []string{"bunks", "bunk_plans", "bunk_assignments", "stranded_assignment_cleanup"}
+		if len(callOrder) != len(expected) {
+			t.Fatalf("expected %d services called, got %d: %v", len(expected), len(callOrder), callOrder)
 		}
-	}
+
+		for i, name := range expected {
+			if callOrder[i] != name {
+				t.Errorf("expected service %d to be %q, got %q (order: %v)", i, name, callOrder[i], callOrder)
+			}
+		}
+	})
 }
 
 // TestRefreshBunkingRegistersRequiredServices verifies that TriggerSync for
