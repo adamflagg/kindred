@@ -9,9 +9,9 @@
  * intentionally different.
  */
 export type RequestSourceField =
-  | 'bunk_with'
+  | 'bunk_request_form'
   | 'socialize_with'
-  | 'not_bunk_with'
+  | 'staff_not_bunk_with'
   | 'bunking_notes'
   | 'internal_notes'
 

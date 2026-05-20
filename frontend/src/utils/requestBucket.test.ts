@@ -3,8 +3,8 @@ import { isMaterialRequest, IMMATERIAL_SOURCE_FIELDS } from './requestBucket'
 
 describe('isMaterialRequest', () => {
   it.each([
-    ['bunk_with', true],
-    ['not_bunk_with', true],
+    ['bunk_request_form', true],
+    ['staff_not_bunk_with', true],
     ['bunking_notes', true],
     ['internal_notes', true],
     ['socialize_with', false],
