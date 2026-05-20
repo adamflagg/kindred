@@ -28,6 +28,9 @@ export interface SolverRunStats {
   num_reified_linear?: number
   max_linear_coefficient?: number
   soft_constraints_by_module?: Record<string, number>
+  // Weighted penalty per soft-constraint module (#1547 follow-up). Shape mirrors
+  // soft_constraints_by_module — same keys, values are penalty × fires summed.
+  soft_constraint_penalty_by_module?: Record<string, number>
   request_density_histogram_by_bucket?: Record<RequestBucket, Record<string, number>>
   // Tier 2 observability (Stream 2, Phase 2 — plateau-diagnostic metrics)
   objective_trajectory?: Array<{ t: number; objective: number; bound: number }>

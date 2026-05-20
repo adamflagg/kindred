@@ -247,6 +247,33 @@ describe('buildRunSummary', () => {
     })
   })
 
+  describe('Soft constraint penalty by module (#1547 follow-up)', () => {
+    const withPenalty: SolverRun = {
+      ...fullRun,
+      stats: {
+        ...fullRun.stats,
+        soft_constraint_penalty_by_module: { must_satisfy: 1600, grade_ratio: 30000 },
+      },
+    }
+
+    it('includes soft_constraint_penalty_by_module when non-empty', () => {
+      const out = buildRunSummary(withPenalty)
+      expect(out.soft_constraint_penalty_by_module).toEqual({
+        must_satisfy: 1600,
+        grade_ratio: 30000,
+      })
+    })
+
+    it('omits soft_constraint_penalty_by_module when empty', () => {
+      const empty: SolverRun = {
+        ...fullRun,
+        stats: { ...fullRun.stats, soft_constraint_penalty_by_module: {} },
+      }
+      const out = buildRunSummary(empty)
+      expect(out.soft_constraint_penalty_by_module).toBeUndefined()
+    })
+  })
+
   describe('hasNonEmptyBuckets', () => {
     it('returns false when every bucket is empty', () => {
       expect(hasNonEmptyBuckets({ material_parent: {}, immaterial_parent: {}, staff: {} })).toBe(

@@ -39,6 +39,7 @@ export interface RunSummary {
   solution_strategy?: string
   constraint_type_breakdown?: Record<string, number>
   soft_constraints_by_module?: Record<string, number>
+  soft_constraint_penalty_by_module?: Record<string, number>
   request_density_histogram_by_bucket?: Record<RequestBucket, Record<string, number>>
   impossible_request_breakdown?: Record<RequestBucket, Record<string, number>>
   config_snapshot?: Record<string, string>
@@ -101,6 +102,12 @@ export function buildRunSummary(run: SolverRun): RunSummary {
     Object.keys(stats.soft_constraints_by_module).length > 0
   ) {
     summary.soft_constraints_by_module = stats.soft_constraints_by_module
+  }
+  if (
+    stats.soft_constraint_penalty_by_module &&
+    Object.keys(stats.soft_constraint_penalty_by_module).length > 0
+  ) {
+    summary.soft_constraint_penalty_by_module = stats.soft_constraint_penalty_by_module
   }
   if (
     stats.request_density_histogram_by_bucket &&

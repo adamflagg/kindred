@@ -210,6 +210,22 @@ export function DrillDownDrawer({ run, onClose }: Props) {
             </div>
           ) : null}
 
+          {s.soft_constraint_penalty_by_module &&
+          Object.keys(s.soft_constraint_penalty_by_module).length > 0 ? (
+            <div>
+              <div className="mb-2 text-xs tracking-wide text-gray-500 uppercase">
+                Soft constraint penalty by module
+              </div>
+              <div className="flex flex-wrap gap-2 text-sm">
+                {Object.entries(s.soft_constraint_penalty_by_module).map(([mod, total]) => (
+                  <span key={mod} className="rounded bg-rose-50 px-3 py-1 text-rose-900">
+                    {mod}: {total.toLocaleString()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {s.request_density_histogram_by_bucket &&
           hasNonEmptyBuckets(s.request_density_histogram_by_bucket) ? (
             <div>

@@ -141,6 +141,43 @@ describe('DrillDownDrawer', () => {
     })
   })
 
+  describe('Soft constraint penalty by module (#1547 follow-up)', () => {
+    const penaltyRun: SolverRun = {
+      ...run,
+      stats: {
+        ...run.stats,
+        soft_constraints_by_module: { must_satisfy: 2, grade_ratio: 6, age_spread: 1 },
+        soft_constraint_penalty_by_module: {
+          must_satisfy: 1600,
+          grade_ratio: 30000,
+          age_spread: 1500,
+        },
+      },
+    }
+
+    it('renders soft constraint penalty by module as chips', () => {
+      render(<DrillDownDrawer run={penaltyRun} onClose={vi.fn()} />)
+      expect(screen.getByText(/Soft constraint penalty by module/i)).toBeInTheDocument()
+      expect(screen.getByText(/must_satisfy: 1,600/)).toBeInTheDocument()
+      expect(screen.getByText(/grade_ratio: 30,000/)).toBeInTheDocument()
+      expect(screen.getByText(/age_spread: 1,500/)).toBeInTheDocument()
+    })
+
+    it('hides the penalty section when the dict is empty', () => {
+      const emptyPenaltyRun: SolverRun = {
+        ...run,
+        stats: { ...run.stats, soft_constraint_penalty_by_module: {} },
+      }
+      render(<DrillDownDrawer run={emptyPenaltyRun} onClose={vi.fn()} />)
+      expect(screen.queryByText(/Soft constraint penalty by module/i)).not.toBeInTheDocument()
+    })
+
+    it('hides the penalty section when the field is missing', () => {
+      render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
+      expect(screen.queryByText(/Soft constraint penalty by module/i)).not.toBeInTheDocument()
+    })
+  })
+
   it('exposes drawer as an aria dialog labeled by its heading', () => {
     render(<DrillDownDrawer run={run} onClose={vi.fn()} />)
     const dialog = screen.getByRole('dialog')
