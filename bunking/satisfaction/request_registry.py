@@ -8,24 +8,29 @@ Single source of truth for the two axes keyed by (source_field, request_type):
   * Solver axis     — `rule` (HARD_MSO / HARD_MNT / SOFT) + `weight_key`
     (config suffix for the objective multiplier).
 
-One row per valid combo. `report_group` is currently source-determined; the
-`report_group_for` projection enforces that invariant (raises if a source's
-rows disagree). `rule` and `weight_key` are SCAFFOLD as of this PR — accessors
-exist and are tested, but no consumer reads them yet:
+One row per valid combo. `report_group` and `weight_key` are both currently
+source-determined; `_build_source_to_group` and `_build_weight_key_by_source`
+enforce that invariant at import (raises if a source's rows disagree).
+  * `weight_key` is consumed by the objective evaluators via `weight_for`
+    (Phase 3). For off-axis combos absent from the registry, `weight_for` falls
+    back to the source-keyed projection — preserving the pre-Phase-3 lookup
+    semantics on synthetic fixtures and off-axis data.
   * `rule == HARD_MNT` is a DECLARED placeholder for deferred staff-hardening
     (#1543 / #1541); it is not enforced. `parent_paramount` still detects MP via
     `is_material_parent_request` (report_group == MATERIAL_PARENT).
-  * `weight_key` mirrors the config keys the objective evaluators currently
-    hardcode; the evaluators are rewired to read it in a follow-up PR.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+if TYPE_CHECKING:
+    from bunking.config import ConfigLoader
 
 _MULT = "objective.source_multipliers"
 
@@ -111,6 +116,56 @@ _SOURCE_TO_GROUP: dict[str, RequestBucket] = _build_source_to_group()
 
 COUNTED_BUCKETS: frozenset[RequestBucket] = frozenset(rc.report_group for rc in _REGISTRY.values() if rc.counted)
 
+# Per-config-key fallback defaults — the values the objective evaluators
+# (score_evaluator / objective_evaluator) hardcode, mirroring the seed in
+# pocketbase/pb_migrations/1500000011_config.js. `weight_for` passes these so a
+# config missing the key reproduces the evaluators' historical fallback exactly.
+_WEIGHT_DEFAULTS: dict[str, float] = {
+    f"{_MULT}.share_bunk_with": 1.75,
+    f"{_MULT}.do_not_share_with": 1.5,
+    f"{_MULT}.bunking_notes": 1.0,
+    f"{_MULT}.internal_notes": 1.0,
+    f"{_MULT}.socialize_preference": 0.6,
+}
+
+# Invariant (enforced at import, like the report_group projection above): every
+# weight_key the registry declares must have a default, or `weight_for` would
+# KeyError at runtime. A new row without a matching default fails loudly here.
+_missing_weight_defaults = sorted(
+    key for rc in _REGISTRY.values() if (key := rc.weight_key) is not None and key not in _WEIGHT_DEFAULTS
+)
+if _missing_weight_defaults:
+    raise AssertionError(f"weight_key(s) lack a _WEIGHT_DEFAULTS entry: {_missing_weight_defaults}")
+
+
+def _build_weight_key_by_source() -> dict[str, str | None]:
+    """Project the registry onto source_field, asserting weight_key consistency.
+
+    Today weight_key is source-determined: every row of a given source shares
+    one weight_key (mirroring `report_group`). This projection powers
+    `weight_for`'s source-keyed fallback for off-axis combos (strict source +
+    a request_type the registry doesn't admit), which preserves the
+    pre-Phase-3 evaluator semantics where the multiplier keyed on source_field
+    alone. If a future row makes weight_key request_type-dependent, this
+    raises — that's the signal that the fallback path needs to go away and a
+    per-(source,type) config split is required (Phase 4 / #1218).
+    """
+    mapping: dict[str, str | None] = {}
+    sentinel: object = object()
+    for (source, _rtype), rc in _REGISTRY.items():
+        existing: str | None | object = mapping.get(source, sentinel)
+        if existing is not sentinel and existing != rc.weight_key:
+            raise AssertionError(
+                f"weight_key for source {source!r} is not source-determined "
+                f"({existing} vs {rc.weight_key}); a per-(source,type) config "
+                f"split is required — see solver-config-it #1218"
+            )
+        mapping[source] = rc.weight_key
+    return mapping
+
+
+_WEIGHT_KEY_BY_SOURCE: dict[str, str | None] = _build_weight_key_by_source()
+
 
 def classify(source_field: str, request_type: str) -> RequestClass:
     """Full classification for a (source_field, request_type) combo. Raises on unknown."""
@@ -137,5 +192,27 @@ def rule_for(source_field: str, request_type: str) -> SolverRule:
 
 
 def weight_key_for(source_field: str, request_type: str) -> str | None:
-    """Objective multiplier config key for a combo. SCAFFOLD — no consumer reads this yet."""
+    """Objective multiplier config key for a combo. Raises on unknown combo."""
     return classify(source_field, request_type).weight_key
+
+
+def weight_for(source_field: str, request_type: str, config: ConfigLoader) -> float:
+    """Objective multiplier for a (source_field, request_type) combo.
+
+    Resolves the registry's weight_key for the combo and looks it up in
+    `config`, falling back to the per-key default in `_WEIGHT_DEFAULTS`. For
+    combos absent from the registry (synthetic fixtures or off-axis data
+    pairing a strict source with a request_type it doesn't admit), falls back
+    to the source-keyed projection — preserving the pre-Phase-3 evaluator
+    semantics where the multiplier keyed on source_field alone. Today this
+    fallback returns the same value as the strict lookup for every valid combo
+    (weight_key is source-determined; see `_build_weight_key_by_source`).
+
+    Returns neutral 1.0 if the source has no weight_key (manual rows) or is
+    unknown to the registry entirely.
+    """
+    rc = _REGISTRY.get((source_field, request_type))
+    key = rc.weight_key if rc is not None else _WEIGHT_KEY_BY_SOURCE.get(source_field)
+    if key is None:
+        return 1.0
+    return config.get_float(key, default=_WEIGHT_DEFAULTS[key])

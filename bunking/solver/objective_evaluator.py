@@ -26,6 +26,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
+from bunking.satisfaction import weight_for
 from bunking.solver.bunk_ordering import get_bunk_rank
 from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.direct_solver import (
@@ -165,26 +166,6 @@ class ObjectiveEvaluator:
             and int(r["requester_id"]) != int(r["requestee_id"])
         )
 
-        # Source field multipliers (same as solver). Fallback defaults mirror
-        # the seed values in pocketbase/pb_migrations/1500000011_config.js.
-        # Production never trips these because the keys are required by
-        # CONFIG_SCHEMA, but keeping them in sync avoids B-class drift.
-        source_multipliers = {
-            SourceField.BUNK_REQUEST_FORM: self.config.get_float(
-                "objective.source_multipliers.share_bunk_with", default=1.75
-            ),
-            SourceField.STAFF_NOT_BUNK_WITH: self.config.get_float(
-                "objective.source_multipliers.do_not_share_with", default=1.5
-            ),
-            SourceField.BUNKING_NOTES: self.config.get_float("objective.source_multipliers.bunking_notes", default=1.0),
-            SourceField.INTERNAL_NOTES: self.config.get_float(
-                "objective.source_multipliers.internal_notes", default=1.0
-            ),
-            SourceField.SOCIALIZE_WITH: self.config.get_float(
-                "objective.source_multipliers.socialize_preference", default=0.6
-            ),
-        }
-
         # Group requests by person (same as solver)
         requests_by_person: dict[int, list[tuple[dict[str, Any], bool]]] = defaultdict(list)
         field_stats: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "satisfied": 0})
@@ -262,7 +243,7 @@ class ObjectiveEvaluator:
                 # Apply source field multiplier
                 source_fields = self._get_source_fields(request)
                 if source_fields:
-                    multiplier = max(source_multipliers.get(f, 1.0) for f in source_fields)
+                    multiplier = max(weight_for(f, request.get("request_type", ""), self.config) for f in source_fields)
                 else:
                     multiplier = 1.0
                 base_weight = base_weight * multiplier

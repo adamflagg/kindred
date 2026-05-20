@@ -2,8 +2,8 @@
 
 Public API:
 - RequestBucket, COUNTED_BUCKETS, classify_request — bucket policy
-- SolverRule, rule_for, weight_key_for, RequestClass — (source,type) solver-rule
-  + objective-weight scaffold (request_registry)
+- SolverRule, rule_for, weight_key_for, weight_for, RequestClass — (source,type)
+  solver-rule + objective-weight resolver (request_registry)
 - is_request_satisfied — per-request predicate
 - satisfied_request_ids_by_person — batch predicate over a finished assignment set
 - camper_satisfaction — per-camper aggregator (pure)
@@ -37,6 +37,7 @@ from bunking.satisfaction.request_registry import (
     RequestClass,
     SolverRule,
     rule_for,
+    weight_for,
     weight_key_for,
 )
 
@@ -59,5 +60,6 @@ __all__ = [
     "rule_for",
     "satisfied_request_ids_by_person",
     "session_satisfaction",
+    "weight_for",
     "weight_key_for",
 ]
