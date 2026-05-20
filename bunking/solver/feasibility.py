@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
-from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
+from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
+from bunking.solver.constraints.age_spread import _age_to_months
 
 if TYPE_CHECKING:
     from bunking.config import ConfigLoader
@@ -291,6 +292,7 @@ def find_infeasibility_cause(
         "session_boundary",
         "parent_paramount",  # supersedes the former must_satisfy_one probe
         "grade_spread",
+        "age_spread",
         "gender",
         "level_progression",
         "group_locks",
@@ -343,11 +345,48 @@ def find_infeasibility_cause(
                 actionable = _explain_grade_spread_infeasibility(input_data)
                 if actionable is not None:
                     return actionable
+            elif constraint == "age_spread":
+                actionable = _explain_age_spread_infeasibility(input_data)
+                if actionable is not None:
+                    return actionable
             return f"The {constraint} constraint is causing infeasibility"
 
     # If still infeasible with each individual constraint disabled, try combinations
     logger.info("No single constraint removal fixed it. The issue may be a combination.")
     return "Infeasibility caused by multiple interacting constraints"
+
+
+def _explain_age_spread_infeasibility(input_data: DirectSolverInput) -> str | None:
+    """Return a staff-actionable diagnosis when a locked group exceeds ``MAX_AGE_SPREAD_MONTHS``.
+
+    The hard ``MAX_AGE_SPREAD_MONTHS`` ceiling makes one new infeasibility
+    class possible: a locked group whose members span more than that many
+    months in age cannot fit any non-AG bunk. Surface that with the offending
+    group + the next action (split on the bunking board, or accept the manual
+    override).
+
+    Returns ``None`` if no locked group exceeds the limit — the caller falls
+    back to the generic ``"The age_spread constraint is causing
+    infeasibility"`` message in that case.
+    """
+    person_by_cm = input_data.person_by_cm_id
+    for group_id, member_cms in input_data.group_locks.items():
+        ages_months = []
+        for cm in member_cms:
+            person = person_by_cm.get(cm)
+            if person is not None and hasattr(person, "age"):
+                ages_months.append(_age_to_months(person.age))
+        if len(ages_months) < 2:
+            continue
+        spread = max(ages_months) - min(ages_months)
+        if spread > MAX_AGE_SPREAD_MONTHS:
+            return (
+                f"Cannot solve within the {MAX_AGE_SPREAD_MONTHS}-month age "
+                f"spread limit: locked group {group_id!r} spans {spread} months "
+                f"— split the group on the bunking board or accept the manual "
+                f"override."
+            )
+    return None
 
 
 def _explain_grade_spread_infeasibility(input_data: DirectSolverInput) -> str | None:

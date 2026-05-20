@@ -178,9 +178,9 @@ migrate((app) => {
     // Constraint Settings - Age & Grade (unified spread limits)
     // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
     // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
-    'spread.max_age_months': 'Max Age Difference (months)',
-    'constraint.age_spread.penalty': 'Age Spread Violation Penalty',
-    'constraint.age_spread.preferred_months': 'Preferred Age Spread (months)',
+    // spread.max_age_months + constraint.age_spread.{penalty, preferred_months}
+    // removed in Age Spread Phase 2 (collapsed to MAX_AGE_SPREAD_MONTHS and
+    // PREFERRED_AGE_SPREAD_MONTHS). Only the bonus knob remains.
     'constraint.age_spread.preferred_bonus': 'Preferred Age Spread Bonus',
     'constraint.grade_ratio.max_percentage': 'Max Single Grade Percentage',
     'constraint.grade_ratio.penalty': 'Grade Ratio Violation Penalty',
@@ -244,9 +244,9 @@ migrate((app) => {
     // Constraint Settings - Age & Grade (unified spread limits)
     // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
     // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
-    'spread.max_age_months': 'Maximum age difference in months allowed in bunks and bunk requests',
-    'constraint.age_spread.penalty': 'Penalty weight for exceeding age spread limit',
-    'constraint.age_spread.preferred_months': 'Cabins at or below this spread earn a bonus (0 = disabled). Must be less than Max Age Difference.',
+    // spread.max_age_months + constraint.age_spread.{penalty, preferred_months}
+    // removed in Age Spread Phase 2 (collapsed to MAX_AGE_SPREAD_MONTHS and
+    // PREFERRED_AGE_SPREAD_MONTHS).
     'constraint.age_spread.preferred_bonus': 'Objective bonus for each cabin within the preferred age spread. Higher = solver tries harder to form tight age groups.',
     'constraint.grade_ratio.max_percentage': 'Maximum percentage of cabin that can be from a single grade',
     'constraint.grade_ratio.penalty': 'Penalty weight for exceeding grade ratio limit',
@@ -312,9 +312,8 @@ migrate((app) => {
     // Age & Grade (unified spread limits)
     // spread.max_grade + constraint.grade_spread.{mode, penalty} removed in
     // Phase 2 cleanup (collapsed to MAX_UNIQUE_GRADES_PER_BUNK).
-    'spread.max_age_months': 'age-grade',
-    'constraint.age_spread.penalty': 'age-grade',
-    'constraint.age_spread.preferred_months': 'age-grade',
+    // spread.max_age_months + constraint.age_spread.{penalty, preferred_months}
+    // removed in Age Spread Phase 2.
     'constraint.age_spread.preferred_bonus': 'age-grade',
     'constraint.grade_ratio.max_percentage': 'age-grade',
     'constraint.grade_ratio.penalty': 'age-grade',
@@ -587,10 +586,6 @@ migrate((app) => {
       component_type: "number",
       component_config: { min: 0, max: 10000, step: 100 }
     },
-    "constraint.age_spread.preferred_months": {
-      component_type: "number",
-      component_config: { min: 0, max: 60, step: 1, suffix: " months" }
-    },
     "constraint.age_spread.preferred_bonus": {
       component_type: "slider",
       component_config: { min: 0, max: 10000, step: 100, showValue: true }
@@ -692,25 +687,10 @@ migrate((app) => {
     // Unified spread limits (used by both solver and request processor).
     // spread.max_grade removed in Phase 2 cleanup (collapsed to
     // MAX_UNIQUE_GRADES_PER_BUNK constant in bunking/solver/constants.py).
-    "spread.max_age_months": {
-      value: 24,
-      description: "Maximum age difference in months allowed in bunks and bunk requests",
-      min: 12,
-      max: 48
-    },
-
-    "constraint.age_spread.penalty": {
-      value: 1500,
-      description: "Penalty for age spread violations",
-      min: 0,
-      max: 10000
-    },
-    "constraint.age_spread.preferred_months": {
-      value: 12,
-      description: "Preferred age spread in months — cabins at or below this spread earn a bonus (0 = disabled)",
-      min: 0,
-      max: 60
-    },
+    // spread.max_age_months + constraint.age_spread.{penalty, preferred_months}
+    // removed in Age Spread Phase 2 (collapsed to MAX_AGE_SPREAD_MONTHS and
+    // PREFERRED_AGE_SPREAD_MONTHS constants). Only the bonus weight remains
+    // tunable.
     "constraint.age_spread.preferred_bonus": {
       value: 500,
       description: "Bonus weight for cabins whose age spread is within the preferred threshold",

@@ -385,9 +385,9 @@ class ConfigLoader:
             # level_progression removed - uses no_regression_penalty via constraint module
             # must_satisfy_one removed in Stage 4 (#1379) - replaced by hard MP constraint
             # grade_spread removed in Phase 2 - replaced by hard MAX_UNIQUE_GRADES_PER_BUNK constant
+            # age_spread removed in Phase 2 - replaced by hard MAX_AGE_SPREAD_MONTHS constant
             "age_grade_flow": "constraint.age_grade_flow.weight",
             "grade_cohesion": "constraint.grade_cohesion.weight",
-            "age_spread": "constraint.age_spread.penalty",
         }
 
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")

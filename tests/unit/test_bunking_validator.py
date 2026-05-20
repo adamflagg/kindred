@@ -147,8 +147,19 @@ class TestBunkingValidator:
         ]
 
     def test_validator_initialization(self, validator):
-        assert validator.max_grade_spread == 2
-        assert validator.max_age_spread_months == 24
+        from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
+
+        assert validator.max_grade_spread == MAX_UNIQUE_GRADES_PER_BUNK
+        assert validator.max_age_spread_months == MAX_AGE_SPREAD_MONTHS
+
+    def test_validator_max_age_spread_is_imported_constant(self):
+        """Validator must reference MAX_AGE_SPREAD_MONTHS, not a literal 24."""
+        import inspect
+
+        from bunking.bunking_validator import BunkingValidator
+
+        src = inspect.getsource(BunkingValidator.__init__)
+        assert "MAX_AGE_SPREAD_MONTHS" in src, "validator should reference the constant by name"
 
     def test_validate_bunking_basic(self, validator, basic_session, basic_bunks, basic_persons):
         """Test basic validation with all campers assigned."""

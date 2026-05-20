@@ -37,7 +37,8 @@ PRIORITY_KEYWORDS: tuple[str, ...] = (
 
 # Age filtering constants
 MAX_AGE_DIFFERENCE_MONTHS = 36  # For pre-filtering candidates
-DEFAULT_AGE_SPREAD_MONTHS = 24  # For validation warnings
+# DEFAULT_AGE_SPREAD_MONTHS deleted in Age Spread Phase 2 — use
+# bunking.solver.constants.MAX_AGE_SPREAD_MONTHS (the single source of truth).
 
 # Confidence thresholds
 # These define base confidence values for match types and status thresholds.

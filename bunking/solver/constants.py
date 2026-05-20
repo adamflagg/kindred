@@ -20,6 +20,21 @@ seeded), ``constraint.grade_spread.mode`` (seeded "soft" but production runs
 never fired in observed solver logs), and the validator's parallel hardcode
 into the single constant below. Solver is hard-only.
 
+Age spread (Phase 2): collapsed phantom ``constraint.age_spread.months`` (read
+with ``default=24``, never in CONFIG_SCHEMA), ``spread.max_age_months`` PB
+config row (was only consumed by the sync-time spread filter; silently
+disconnected from solver behavior), ``constraint.age_spread.penalty`` (soft
+violation path being deleted), ``constraint.age_spread.preferred_months``
+(seed=12, bumped to 18 here per staff intent), the validator's parallel
+hardcoded ``24``, and the orphan ``DEFAULT_AGE_SPREAD_MONTHS`` in
+``bunking/sync/.../core/constants.py`` into the three constants below
+(``MAX_AGE_SPREAD_MONTHS``, ``PREFERRED_AGE_SPREAD_MONTHS``,
+``EDGE_AGE_OVERFLOW_PENALTY``). Middle bunks treat the cap as hard;
+edge bunks (lowest/highest level per gender+session) get a soft escape
+hatch via ``EDGE_AGE_OVERFLOW_PENALTY`` so a hard MSO chain into the top
+cabin remains feasible. ``constraint.age_spread.preferred_bonus`` is KEPT
+in the config as the lone tunable knob in this domain.
+
 If per-bunk variance is ever needed (e.g., a smaller specialty cabin), add a
 real ``max_size`` integer column on the ``bunks`` PocketBase collection with a
 sync path that populates it. That's a feature, not a refactor.
@@ -63,3 +78,36 @@ Reads:
 - ``bunking/sync/bunk_request_processor/orchestrator/orchestrator.py`` — sync-
   time spread filter on incoming bunk requests (was reading ``spread.max_grade``
   which is gone)."""
+
+MAX_AGE_SPREAD_MONTHS = 24
+"""Ceiling for age range (months) within a non-AG bunk. Enforced as a hard
+CP-SAT constraint for middle bunks (the solver is INFEASIBLE if a middle bunk
+exceeds it); for edge bunks (lowest/highest level per gender+session) the
+solver may exceed it by paying ``EDGE_AGE_OVERFLOW_PENALTY`` — fires only
+when a hard constraint (MSO chain, locked group) forces it. Staff can
+override on the bunking board — the board allows >24mo with a display warning
+(same asymmetry as ``MAX_BUNK_CAPACITY`` / ``MAX_UNIQUE_GRADES_PER_BUNK``).
+Reads:
+
+- ``bunking/solver/constraints/age_spread.py`` — hard CP-SAT constraint
+  (middle bunks) + soft edge escape hatch.
+- ``bunking/solver/feasibility.py:_explain_age_spread_infeasibility`` — when
+  the hard cap causes INFEASIBLE, surfaces a staff-actionable message.
+- ``bunking/bunking_validator.py`` — board-side warning when staff manual
+  overrides exceed the limit.
+- ``bunking/sync/bunk_request_processor/orchestrator/orchestrator.py`` — sync-
+  time spread filter on incoming bunk requests."""
+
+PREFERRED_AGE_SPREAD_MONTHS = 18
+"""Soft target: bunks with spread <= ``PREFERRED_AGE_SPREAD_MONTHS`` earn a
+tunable objective bonus (``constraint.age_spread.preferred_bonus``, kept as a
+runtime knob). Bumped from the prior seed of 12 per staff intent — tighter
+clusters that approximate single-grade cabins are the goal, but the prior
+12-month target was too aggressive in practice."""
+
+EDGE_AGE_OVERFLOW_PENALTY = 15_000
+"""Penalty charged when an edge bunk (lowest or highest level for its gender/session)
+exceeds MAX_AGE_SPREAD_MONTHS. Not exposed as a config knob — fires only when a hard
+constraint (MSO, locked group) leaves no other option. Set above the typical soft-objective
+gains the solver would otherwise chase (bunk-with weights are in the hundreds to low
+thousands), so overflow never happens for non-structural reasons."""

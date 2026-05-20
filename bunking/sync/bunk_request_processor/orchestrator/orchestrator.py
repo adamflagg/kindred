@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from bunking.config.loader import ConfigLoader
 from bunking.logging_config import get_logger
-from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
+from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
 from pocketbase import PocketBase
 
 if TYPE_CHECKING:
@@ -724,18 +724,15 @@ class RequestOrchestrator:
             year=self.year,
         )
 
-        # Create spread filter from unified spread.* config
-        from bunking.config.loader import ConfigLoader
-
+        # Create spread filter from MAX_AGE_SPREAD_MONTHS / MAX_UNIQUE_GRADES_PER_BUNK constants
         from ..name_resolution.filters.spread_filter import SpreadFilter
 
-        config_loader = ConfigLoader()
         spread_enabled = self.ai_config.get("spread_validation", {}).get("enabled", True)
         spread_filter: SpreadFilter | None
         if spread_enabled:
             spread_filter = SpreadFilter(
                 grade_spread=MAX_UNIQUE_GRADES_PER_BUNK,
-                age_spread_months=config_loader.get_int("spread.max_age_months", default=24),
+                age_spread_months=MAX_AGE_SPREAD_MONTHS,
             )
         else:
             spread_filter = None
