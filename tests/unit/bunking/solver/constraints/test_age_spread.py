@@ -78,22 +78,26 @@ class TestHard24moConstraint:
         assert is_optimal_or_feasible(status)
 
     def test_spread_over_24mo_with_forced_assignment_is_infeasible(self):
-        """Two campers 25mo apart cannot share a non-AG bunk."""
+        """Two campers 25mo apart cannot share a non-edge (middle) bunk."""
         campers = [
             _person_with_age_months(1001, 144),  # 12y 0m
             _person_with_age_months(1002, 169),  # 14y 1m  → 25mo spread
         ]
-        bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)
+        # Three bunks so B-5 is the middle (non-edge) bunk — hard cap applies there.
+        bunk_low = create_bunk(cm_id=2001, name="B-3", gender="M", capacity=12)
+        bunk_mid = create_bunk(cm_id=2002, name="B-5", gender="M", capacity=12)
+        bunk_high = create_bunk(cm_id=2003, name="B-7", gender="M", capacity=12)
 
         ctx = build_solver_context(
             persons=campers,
-            bunks=[bunk],
+            bunks=[bunk_low, bunk_mid, bunk_high],
             config_overrides={"constraint.age_spread.preferred_bonus": 500},
         )
 
         add_age_spread_constraints(ctx)
-        ctx.model.Add(ctx.assignments[(0, 0)] == 1)
-        ctx.model.Add(ctx.assignments[(1, 0)] == 1)
+        # Force both campers into B-5 (bunk_idx=1 after sorting bunks by cm_id).
+        ctx.model.Add(ctx.assignments[(0, 1)] == 1)
+        ctx.model.Add(ctx.assignments[(1, 1)] == 1)
 
         solver = cp_model.CpSolver()
         status = solver.Solve(ctx.model)
