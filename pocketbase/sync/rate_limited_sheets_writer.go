@@ -187,11 +187,13 @@ func (w *RateLimitedSheetsWriter) executeWithRetry(
 			sleepDuration = backoff + cryptoJitter(backoff, w.config.JitterFraction)
 		}
 
-		// Sleep with context awareness
+		// Sleep with context awareness; NewTimer avoids goroutine leak on cancellation.
+		timer := time.NewTimer(sleepDuration)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return fmt.Errorf("%s retry cancelled: %w", opName, ctx.Err())
-		case <-time.After(sleepDuration):
+		case <-timer.C:
 		}
 
 		// Wait on rate limiters again before retry
