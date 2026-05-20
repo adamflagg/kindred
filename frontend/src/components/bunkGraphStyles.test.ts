@@ -10,9 +10,23 @@ import {
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
   FIRST_YEAR_RING_WIDTH,
+  getBunkCytoscapeStyles,
   getBunkGradeColors,
   getNodeColor,
 } from './bunkGraphStyles'
+import { EDGE_COLORS } from './graph/constants'
+
+function fakeEle(data: Record<string, unknown>): { data: (key: string) => unknown } {
+  return { data: (key: string) => data[key] }
+}
+
+function findEdgeStyle(
+  styles: ReturnType<typeof getBunkCytoscapeStyles>,
+  selector: string
+): Record<string, unknown> | undefined {
+  const entry = styles.find((s) => s.selector === selector)
+  return entry?.style as Record<string, unknown> | undefined
+}
 
 describe('getNodeColor', () => {
   it('returns the no-connections red for an isolated node', () => {
@@ -90,5 +104,50 @@ describe('FIRST_YEAR_RING_COLOR', () => {
 describe('FIRST_YEAR_RING_WIDTH', () => {
   it('is thicker than the default node border so the ring reads as a marker', () => {
     expect(FIRST_YEAR_RING_WIDTH).toBeGreaterThanOrEqual(5)
+  })
+})
+
+describe('getBunkCytoscapeStyles', () => {
+  it('returns an array of style definitions including an edge selector', () => {
+    const styles = getBunkCytoscapeStyles()
+    expect(Array.isArray(styles)).toBe(true)
+    expect(styles.find((s) => s.selector === 'edge')).toBeDefined()
+  })
+
+  it('renders not_bunk_with edges with the red line-color (parity with session graph)', () => {
+    const edgeStyle = findEdgeStyle(getBunkCytoscapeStyles(), 'edge')
+    expect(edgeStyle).toBeDefined()
+    const lineColor = edgeStyle?.['line-color'] as (ele: ReturnType<typeof fakeEle>) => string
+    expect(typeof lineColor).toBe('function')
+    const ele = fakeEle({ edge_type: 'request', request_type: 'not_bunk_with' })
+    expect(lineColor(ele)).toBe(EDGE_COLORS['not_bunk_with'])
+  })
+
+  it('renders not_bunk_with edges with the red target-arrow-color (parity with session graph)', () => {
+    const edgeStyle = findEdgeStyle(getBunkCytoscapeStyles(), 'edge')
+    const arrowColor = edgeStyle?.['target-arrow-color'] as (
+      ele: ReturnType<typeof fakeEle>
+    ) => string
+    expect(typeof arrowColor).toBe('function')
+    const ele = fakeEle({ edge_type: 'request', request_type: 'not_bunk_with' })
+    expect(arrowColor(ele)).toBe(EDGE_COLORS['not_bunk_with'])
+  })
+
+  it('renders reciprocal not_bunk_with edges with the red source-arrow-color', () => {
+    const reciprocalStyle = findEdgeStyle(getBunkCytoscapeStyles(), 'edge[?reciprocal]')
+    expect(reciprocalStyle).toBeDefined()
+    const sourceArrowColor = reciprocalStyle?.['source-arrow-color'] as (
+      ele: ReturnType<typeof fakeEle>
+    ) => string
+    expect(typeof sourceArrowColor).toBe('function')
+    const ele = fakeEle({ edge_type: 'request', request_type: 'not_bunk_with' })
+    expect(sourceArrowColor(ele)).toBe(EDGE_COLORS['not_bunk_with'])
+  })
+
+  it('keeps bunk_with edges blue (line-color unchanged for positive requests)', () => {
+    const edgeStyle = findEdgeStyle(getBunkCytoscapeStyles(), 'edge')
+    const lineColor = edgeStyle?.['line-color'] as (ele: ReturnType<typeof fakeEle>) => string
+    const ele = fakeEle({ edge_type: 'request', request_type: 'bunk_with' })
+    expect(lineColor(ele)).toBe(EDGE_COLORS['request'])
   })
 })

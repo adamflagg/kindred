@@ -13,8 +13,10 @@ import {
 import { toast } from 'react-hot-toast'
 import type { Bunk, Camper, BunkWithCampers, DragItem } from '../types/app-types'
 import BunkCard from './BunkCard'
+import BunkSwapModal from './BunkSwapModal'
 import FloatingUnassignedBadge from './FloatingUnassignedBadge'
 import CamperDetailsPanel from './CamperDetailsPanel'
+import { swapBunks } from '../utils/bunkSwap'
 
 // Lazy load heavy components - only loads when needed
 const BunkSocialGraphModal = lazy(() => import('./BunkSocialGraphModal'))
@@ -69,6 +71,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     cmId: number
     name: string
   } | null>(null)
+  const [selectedBunkForSwap, setSelectedBunkForSwap] = useState<BunkWithCampers | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isUnassignedExpanded, setIsUnassignedExpanded] = useState(false)
   const [draggedGroupMembers, setDraggedGroupMembers] = useState<Camper[]>([])
@@ -203,6 +206,15 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   }
 
   const bunksByArea = getBunksByArea()
+
+  // Flat list of every BunkWithCampers in the session, regardless of the
+  // active area filter. Powers the swap modal's candidate picker so staff
+  // can swap across area views.
+  const allBunksWithCampers: BunkWithCampers[] = [
+    ...bunksByArea.boys,
+    ...bunksByArea.girls,
+    ...bunksByArea['all-gender'],
+  ]
 
   // Get displayed bunks based on selected area
   // React Compiler will optimize this computation
@@ -585,6 +597,9 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                       })
                     })
                   }}
+                  onSwapClick={
+                    canManage && !isProductionMode ? () => setSelectedBunkForSwap(bunk) : undefined
+                  }
                   isDragging={isDragging}
                   isProductionMode={isProductionMode}
                   defaultCapacity={defaultCapacity}
@@ -688,6 +703,29 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             onBunkChange={(cmId, name) => setSelectedBunkForGraph({ cmId, name })}
           />
         </Suspense>
+      )}
+
+      {/* Bunk Swap Modal — same-gender picker + Confirm flow (#1546) */}
+      {selectedBunkForSwap && canManage && !isProductionMode && (
+        <BunkSwapModal
+          source={selectedBunkForSwap}
+          allBunks={allBunksWithCampers}
+          onCancel={() => setSelectedBunkForSwap(null)}
+          onConfirm={async (target) => {
+            const source = selectedBunkForSwap
+            // Close immediately so the user sees the board update as the
+            // per-camper moves stream in.
+            setSelectedBunkForSwap(null)
+            try {
+              await swapBunks(source, target, async (camperId, bunkId) => {
+                await onCamperMove(camperId, bunkId)
+              })
+            } catch (error) {
+              console.error('Bunk swap failed:', error)
+              toast.error('Bunk swap failed — some campers may not have moved')
+            }
+          }}
+        />
       )}
 
       {/* Lock Group Action Bar - only shown in draft mode with pending selections (lazy loaded) */}

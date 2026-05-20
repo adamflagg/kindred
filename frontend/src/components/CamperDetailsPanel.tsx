@@ -15,6 +15,7 @@ import {
   MessageSquareQuote,
 } from 'lucide-react'
 import { ParentStaffDivider, AgePreferenceDivider } from './camper/RequestSectionDividers'
+import FirstPickBadge from './camper/FirstPickBadge'
 import { pb } from '../lib/pocketbase'
 import { StatusBadge } from './StatusBadge'
 import {
@@ -927,6 +928,9 @@ export default function CamperDetailsPanel({
                         showSatisfaction={isConfirmedRequest(req)}
                         satisfied={sat.satisfied}
                         detail={sat.detail}
+                        badge={
+                          <FirstPickBadge isFirstRequested={req.is_first_requested ?? false} />
+                        }
                       />
                     )
                   })}

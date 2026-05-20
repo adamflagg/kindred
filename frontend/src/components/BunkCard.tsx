@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
-import { Network, Download } from 'lucide-react'
+import { Network, Download, ArrowLeftRight } from 'lucide-react'
 import type { BunkWithCampers, Camper } from '../types/app-types'
 import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
@@ -22,6 +22,7 @@ interface BunkCardProps {
   onCamperLockToggle?: (camper: Camper) => void
   onCamperUnassign?: (camper: Camper) => void
   onShowSocialGraph?: () => void
+  onSwapClick?: (() => void) | undefined
   isDragging?: boolean
   isProductionMode?: boolean
   defaultCapacity?: number
@@ -83,6 +84,7 @@ function BunkCard({
   onCamperLockToggle,
   onCamperUnassign,
   onShowSocialGraph,
+  onSwapClick,
   isDragging = false,
   isProductionMode = false,
   defaultCapacity = 12,
@@ -403,6 +405,16 @@ function BunkCard({
               title="Export bunk to CSV"
             >
               <Download className="h-4 w-4" />
+            </button>
+          )}
+          {onSwapClick && (
+            <button
+              onClick={onSwapClick}
+              className="btn-ghost p-2"
+              title="Swap this bunk's roster with another bunk"
+              aria-label="Swap bunk"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
             </button>
           )}
           {onShowSocialGraph && bunk.campers.length > 0 && (

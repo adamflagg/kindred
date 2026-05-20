@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, Activity } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Core, NodeSingular, EdgeSingular } from 'cytoscape'
+import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
 import fcose from 'cytoscape-fcose'
@@ -27,10 +27,10 @@ import { getSessionShorthand } from '../utils/sessionDisplay'
 import {
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
-  FIRST_YEAR_RING_WIDTH,
+  getBunkCytoscapeStyles,
   getBunkGradeColors,
-  getNodeColor,
 } from './bunkGraphStyles'
+import { EDGE_COLORS } from './graph/constants'
 import { socialGraphService } from '../services/socialGraph'
 import { graphCacheService } from '../services/GraphCacheService'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
@@ -79,6 +79,10 @@ interface GraphEdge {
   // line for mutual requests (#1309).
   reciprocal: boolean
   confidence?: number
+  // `not_bunk_with` requests ship from the API with edge_type='request' (same
+  // as positive bunk_with) and are distinguished only by request_type — the
+  // shared `resolveEdgeColor` helper consults this field to pick the red hue.
+  request_type?: string | null
 }
 
 interface BunkGraphMetrics {
@@ -98,24 +102,9 @@ interface BunkGraphData {
   health_score: number
 }
 
-// Edge type colors (matching main graph)
-const EDGE_COLORS: Record<string, string> = {
-  request: '#3498db', // Blue for all request edges
-}
-
-// Helpers hoisted to module scope: they reference no closure values and were
-// previously redeclared on every useMemo recompute. Exported for unit tests.
-// eslint-disable-next-line react-refresh/only-export-components
-export const isAGBunkName = (name: string): boolean => /^AG(?:$|[\s-]|\d)/.test(name)
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-  if (!name) return 'B'
-  if (isAGBunkName(name)) return 'AG'
-  if (name.startsWith('G-')) return 'G'
-  if (name.startsWith('B-')) return 'B'
-  return 'B'
-}
+// Bunk-naming predicates live in `utils/bunkNaming` so utility modules
+// (e.g. bunkSwap) can import them without depending on this component.
+import { getBunkType, extractSortKey, isAGBunkName } from '../utils/bunkNaming'
 
 /**
  * Build a PocketBase filter for fetching bunks by cm_id within a specific year.
@@ -156,15 +145,6 @@ export const extractBunkCmIdsFromPlans = (
       .filter((id): id is number => typeof id === 'number')
   ),
 ]
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const extractSortKey = (name: string): { primary: number; secondary: string } => {
-  if (name.includes('Alph')) return { primary: -2, secondary: name }
-  if (name.includes('Bet')) return { primary: -1, secondary: name }
-  const match = name.match(/[GB]-(\d+)/)
-  if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
-  return { primary: 999, secondary: name }
-}
 
 export default function BunkSocialGraphModal({
   bunkCmId,
@@ -310,95 +290,7 @@ export default function BunkSocialGraphModal({
 
     const cy = cytoscape({
       container: containerRef.current,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'background-color': (ele: NodeSingular) => {
-              // const nodeId = parseInt(ele.id().replace('node-', ''));
-              const degree = ele.degree(false)
-              return getNodeColor(degree)
-            },
-            width: 40, // Fixed circular nodes
-            height: 40,
-            label: 'data(label)',
-            'font-size': '14px',
-            'font-weight': 600,
-            'text-valign': 'bottom',
-            'text-margin-y': 8, // More spacing from node
-            'text-wrap': 'wrap',
-            'text-max-width': '120px',
-            color: 'data(gradeColor)', // Keep grade color for text
-            'text-outline-width': 2,
-            'text-outline-color': '#ffffff',
-            'overlay-padding': '6px',
-          },
-        },
-        {
-          selector: 'node.isolated',
-          style: {
-            // Isolated nodes don't need special border styling
-          },
-        },
-        {
-          selector: 'node.first-year',
-          style: {
-            // The amber ring is the entire first-year signal — making it
-            // thicker than the default node border keeps the marker centered
-            // by geometry (no SVG badge to drift at fractional zooms) while
-            // still clearly distinguishing first-year campers.
-            'border-width': FIRST_YEAR_RING_WIDTH,
-            'border-color': FIRST_YEAR_RING_COLOR,
-            'border-style': 'solid',
-          },
-        },
-        {
-          selector: 'edge',
-          style: {
-            // Default is a dashed one-way request arrow. The backend
-            // (build_bunk_graph) already collapses mutual pairs into a single
-            // edge tagged reciprocal — those pick up the bold solid
-            // double-headed style from the edge[?reciprocal] selector below.
-            // Mirrors the session-level treatment in
-            // graph/cytoscapeStyles.ts (#1309).
-            width: 2,
-            'line-style': 'dashed',
-            'line-color': (ele: EdgeSingular) => {
-              const edgeType = ele.data('edge_type')
-              return EDGE_COLORS[edgeType] ?? '#95a5a6'
-            },
-            'target-arrow-shape': (ele: EdgeSingular) => {
-              const edgeType = ele.data('edge_type')
-              return edgeType === 'request' ? 'triangle' : 'none'
-            },
-            'target-arrow-color': (ele: EdgeSingular) => {
-              const edgeType = ele.data('edge_type')
-              return EDGE_COLORS[edgeType] ?? '#95a5a6'
-            },
-            'line-opacity': (ele: EdgeSingular) => {
-              const confidence = ele.data('confidence') ?? 0.5
-              // Opacity based on confidence: 0.3 to 0.9
-              return Math.max(0.3, Math.min(0.9, confidence))
-            },
-            'curve-style': 'straight',
-            'control-point-step-size': 40,
-            'overlay-padding': '3px',
-          },
-        },
-        {
-          selector: 'edge[?reciprocal]',
-          style: {
-            // Bold solid double-headed line for backend-collapsed mutual pairs.
-            width: 4,
-            'line-style': 'solid',
-            'source-arrow-shape': 'triangle',
-            'source-arrow-color': (ele: EdgeSingular) => {
-              const edgeType = ele.data('edge_type')
-              return EDGE_COLORS[edgeType] ?? '#95a5a6'
-            },
-          },
-        },
-      ],
+      style: getBunkCytoscapeStyles(),
       // Don't set layout in initialization - we'll run it after adding elements
       // wheelSensitivity: 0.3, // Removed to avoid warning
       minZoom: 0.5,

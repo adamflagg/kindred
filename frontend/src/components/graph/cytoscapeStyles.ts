@@ -40,9 +40,10 @@ export interface CytoscapeStyleOptions {
  * Map a Cytoscape edge to its color. The negative bunk request
  * ('not_bunk_with') ships from the API with edge_type='request' — same as
  * the positive 'bunk_with' — so we have to consult request_type to pick
- * the right hue.
+ * the right hue. Shared with the bunk-level graph (BunkSocialGraphModal)
+ * so both surfaces stay in lockstep on negative-request coloring.
  */
-function resolveEdgeColor(ele: { data: (key: string) => unknown }): string {
+export function resolveEdgeColor(ele: { data: (key: string) => unknown }): string {
   const edgeType = ele.data('edge_type') as string
   if (edgeType === 'request') {
     const requestType = ele.data('request_type') as string | null | undefined
