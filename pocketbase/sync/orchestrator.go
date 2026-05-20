@@ -805,7 +805,7 @@ func (o *Orchestrator) RunDailySync(ctx context.Context) error {
 			time.Sleep(o.jobSpacing)
 		}
 
-		slog.Info("Daily sync: Starting service", "service", jobName, "progress", fmt.Sprintf("%d/%d", i+1, len(orderedJobs)))
+		slog.Info("Daily sync: Starting service", "service", jobName, "current", i+1, "total", len(orderedJobs))
 
 		// Run sync and wait for completion
 		if err := o.runSyncAndWait(ctx, jobName); err != nil {
@@ -865,7 +865,7 @@ func (o *Orchestrator) RunWeeklySync(ctx context.Context) error {
 			time.Sleep(o.jobSpacing)
 		}
 
-		slog.Info("Weekly sync: Starting service", "service", jobName, "progress", fmt.Sprintf("%d/%d", i+1, len(weeklyJobs)))
+		slog.Info("Weekly sync: Starting service", "service", jobName, "current", i+1, "total", len(weeklyJobs))
 
 		// Run sync and wait for completion
 		if err := o.runSyncAndWait(ctx, jobName); err != nil {

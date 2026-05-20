@@ -103,7 +103,7 @@ func (s *FinancialTransactionsSync) SyncForYear(ctx context.Context, year int) e
 
 		// Log progress every 2000 records
 		if i > 0 && i%2000 == 0 {
-			slog.Info("Processing transactions", "progress", fmt.Sprintf("%d/%d", i, totalTxns),
+			slog.Info("Processing transactions", "current", i, "total", totalTxns,
 				"created", s.Stats.Created, "updated", s.Stats.Updated, "skipped", s.Stats.Skipped)
 		}
 
