@@ -1573,7 +1573,7 @@ func TestQueueConcurrentAccess(t *testing.T) {
 	go func() {
 		for i := range 50 {
 			_, err := o.EnqueueUnifiedSync(2020+i%10, "all", false, false, "writer")
-			if err != nil && !strings.Contains(err.Error(), "full") && !strings.Contains(err.Error(), "duplicate") {
+			if err != nil {
 				errChan <- err
 			}
 		}

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -10,6 +11,9 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/robfig/cron/v3"
 )
+
+// ErrUnknownSyncType is returned by TriggerSync when the sync type is not recognized.
+var ErrUnknownSyncType = errors.New("unknown sync type")
 
 // LogRetentionDays is the number of days to keep solver_runs logs before auto-pruning
 // This is hardcoded as it's an infrastructure setting, not a business rule
@@ -246,7 +250,7 @@ func (s *Scheduler) TriggerSync(ctx context.Context, syncType string) error {
 	case "custom-values":
 		return s.orchestrator.RunCustomValuesSync(ctx)
 	default:
-		return fmt.Errorf("unknown sync type: %s", syncType)
+		return fmt.Errorf("unknown sync type %q: %w", syncType, ErrUnknownSyncType)
 	}
 }
 

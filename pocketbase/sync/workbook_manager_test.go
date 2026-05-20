@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/pocketbase/pocketbase/tests"
@@ -477,7 +478,7 @@ func TestGetOrCreateGlobalsWorkbook_DriveSearchFails_ContinuesToCreate(t *testin
 	}
 
 	// Error should be from CreateSpreadsheet (no credentials), not from Drive search
-	if err != nil && err.Error() == context.DeadlineExceeded.Error() {
+	if errors.Is(err, context.DeadlineExceeded) {
 		t.Error("Drive search error should not propagate - should continue to create")
 	}
 }
