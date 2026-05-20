@@ -349,6 +349,31 @@ def test_add_objective_consumes_mutual_request_boost():
     )
 
 
+def test_add_objective_filters_mutual_pairs_through_possible_requests():
+    """#1561: mutual-pair detection must read self.possible_requests, not the
+    unfiltered self.input.requests_by_person. Otherwise an asymmetric
+    impossibility (e.g. self_conflict on B's side, malformed B→A) would still
+    register (A, B) as mutual and apply the 2x boost to A→B even though B→A
+    can never be satisfied.
+
+    Symmetric impossibilities (cross_session, gender, grade_spread,
+    target_not_in_solver) zero out both directions so the bug doesn't
+    misfire there in practice, but the semantic intent of the Stream 4
+    boost is "both sides satisfiable" — the call site should reflect that.
+    """
+    from bunking.solver import direct_solver
+
+    src = inspect.getsource(direct_solver.DirectBunkingSolver.add_objective)
+    assert "compute_mutual_bunk_with_pairs(self.possible_requests)" in src, (
+        "add_objective must call compute_mutual_bunk_with_pairs with "
+        "self.possible_requests so impossible reciprocals don't count as mutual"
+    )
+    assert "compute_mutual_bunk_with_pairs(self.input.requests_by_person)" not in src, (
+        "add_objective still passes the unfiltered self.input.requests_by_person; "
+        "switch to self.possible_requests (see #1561)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # score_evaluator.py — third evaluator path, must mirror the same boost as
 # the solver (else baseline-regression goldens silently drift on reciprocal
