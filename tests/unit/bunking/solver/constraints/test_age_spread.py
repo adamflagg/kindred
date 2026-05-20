@@ -264,3 +264,124 @@ class TestPreferred18moBonus:
         active_bonuses = sum(1 for var, _w in preferred_bonuses.values() if solver.Value(var) == 1)
         # Only the tight cabin (8mo) earns the bonus; the loose one (20mo) does not.
         assert active_bonuses == 1, f"Expected exactly 1 bunk to earn preferred bonus, got {active_bonuses}"
+
+
+class TestEdgeBunkCarveOut:
+    """Edge bunks (lowest/highest level per gender+session) get a soft escape hatch
+    instead of the hard 24mo cap. Middle bunks are unchanged."""
+
+    def test_high_edge_bunk_overflow_is_feasible(self):
+        """A high-edge bunk can exceed 24mo when forced — escape hatch activates."""
+        campers = [
+            _person_with_age_months(1001, 144),  # 12y 0m
+            _person_with_age_months(1002, 169),  # 14y 1m  → 25mo spread
+        ]
+        bunk_low = create_bunk(cm_id=2001, name="B-3", gender="M", capacity=12)
+        bunk_mid = create_bunk(cm_id=2002, name="B-5", gender="M", capacity=12)
+        bunk_high = create_bunk(cm_id=2003, name="B-7", gender="M", capacity=12)
+
+        ctx = build_solver_context(
+            persons=campers,
+            bunks=[bunk_low, bunk_mid, bunk_high],
+            config_overrides={"constraint.age_spread.preferred_bonus": 500},
+        )
+
+        add_age_spread_constraints(ctx)
+        # Force both campers into B-7 (bunk_idx=2 after sorting by cm_id).
+        ctx.model.Add(ctx.assignments[(0, 2)] == 1)
+        ctx.model.Add(ctx.assignments[(1, 2)] == 1)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_optimal_or_feasible(status), "Edge bunk should allow >24mo overflow"
+        # The overflow bool must be True — it's the only way to be feasible here.
+        assert "edge_age_overflow_b2" in ctx.soft_constraint_violations
+        overflow_var, penalty = ctx.soft_constraint_violations["edge_age_overflow_b2"]
+        assert solver.Value(overflow_var) == 1, "Overflow bool should be True when forced"
+        assert penalty == 15_000
+
+    def test_middle_bunk_overflow_still_infeasible(self):
+        """Middle bunk retains the hard 24mo cap — no escape hatch."""
+        campers = [
+            _person_with_age_months(1001, 144),
+            _person_with_age_months(1002, 169),  # 25mo spread
+        ]
+        bunk_low = create_bunk(cm_id=2001, name="B-3", gender="M", capacity=12)
+        bunk_mid = create_bunk(cm_id=2002, name="B-5", gender="M", capacity=12)
+        bunk_high = create_bunk(cm_id=2003, name="B-7", gender="M", capacity=12)
+
+        ctx = build_solver_context(
+            persons=campers,
+            bunks=[bunk_low, bunk_mid, bunk_high],
+            config_overrides={"constraint.age_spread.preferred_bonus": 500},
+        )
+
+        add_age_spread_constraints(ctx)
+        # Force into B-5 (middle, bunk_idx=1).
+        ctx.model.Add(ctx.assignments[(0, 1)] == 1)
+        ctx.model.Add(ctx.assignments[(1, 1)] == 1)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert status == cp_model.INFEASIBLE, "Middle bunk must never allow >24mo spread"
+
+    def test_high_edge_bunk_no_overflow_when_within_cap(self):
+        """Edge bunk with ≤24mo spread keeps overflow bool False (no penalty paid)."""
+        campers = [
+            _person_with_age_months(1001, 144),
+            _person_with_age_months(1002, 164),  # 20mo spread — within cap
+        ]
+        bunk_low = create_bunk(cm_id=2001, name="B-3", gender="M", capacity=12)
+        bunk_mid = create_bunk(cm_id=2002, name="B-5", gender="M", capacity=12)
+        bunk_high = create_bunk(cm_id=2003, name="B-7", gender="M", capacity=12)
+
+        ctx = build_solver_context(
+            persons=campers,
+            bunks=[bunk_low, bunk_mid, bunk_high],
+            config_overrides={"constraint.age_spread.preferred_bonus": 500},
+        )
+
+        add_age_spread_constraints(ctx)
+        # Force into B-7 (highest, bunk_idx=2).
+        ctx.model.Add(ctx.assignments[(0, 2)] == 1)
+        ctx.model.Add(ctx.assignments[(1, 2)] == 1)
+        # Minimize violations so solver prefers overflow=False when spread is within cap.
+        # soft_constraint_violations values are (BoolVar, int) tuples.
+        violation_terms = [weight * var for var, weight in ctx.soft_constraint_violations.values()]
+        if violation_terms:
+            ctx.model.Minimize(sum(violation_terms))
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_optimal_or_feasible(status)
+        assert "edge_age_overflow_b2" in ctx.soft_constraint_violations
+        overflow_var, _ = ctx.soft_constraint_violations["edge_age_overflow_b2"]
+        assert solver.Value(overflow_var) == 0, "Overflow bool must stay False when spread is within cap"
+
+    def test_only_bunk_for_session_is_edge(self):
+        """A session with a single bunk per gender is treated as edge — escape hatch applies."""
+        campers = [
+            _person_with_age_months(1001, 144),
+            _person_with_age_months(1002, 169),  # 25mo spread
+        ]
+        sole_bunk = create_bunk(cm_id=2001, name="B-5", gender="M", capacity=12)
+
+        ctx = build_solver_context(
+            persons=campers,
+            bunks=[sole_bunk],
+            config_overrides={"constraint.age_spread.preferred_bonus": 500},
+        )
+
+        add_age_spread_constraints(ctx)
+        # No need to force assignments — only one bunk exists.
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_optimal_or_feasible(status), "Sole bunk is an edge bunk; >24mo should be allowed"
+        assert "edge_age_overflow_b0" in ctx.soft_constraint_violations
+        overflow_var, _ = ctx.soft_constraint_violations["edge_age_overflow_b0"]
+        assert solver.Value(overflow_var) == 1
