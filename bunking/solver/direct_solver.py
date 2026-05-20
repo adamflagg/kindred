@@ -496,8 +496,10 @@ class DirectBunkingSolver:
             return weight_for(source_field, request.request_type, self.config)
         except ValueError:
             logger.warning(
-                "off-axis (source, type) combo in request %s — using multiplier 1.0",
+                "objective_multiplier_fallback request_id=%s source_field=%s request_type=%s multiplier=1.0 reason=off_axis_source_type",
                 request.id,
+                source_field,
+                request.request_type,
             )
             return 1.0
 

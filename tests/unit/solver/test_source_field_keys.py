@@ -218,10 +218,10 @@ class TestDirectSolverCanonicalKeys:
         # which has _WEIGHT_DEFAULTS = 0.6.
         request = DirectBunkRequest(
             id="req-soc",
-            requester_person_cm_id=100,
+            requester_person_cm_id=1000001,
             requested_person_cm_id=None,
             request_type="age_preference",
-            session_cm_id=1000,
+            session_cm_id=1000001,
             year=2025,
             source_field=SourceField.SOCIALIZE_WITH,
             age_preference_target="younger",
@@ -231,33 +231,45 @@ class TestDirectSolverCanonicalKeys:
         # Pre-fix: 1.0 (generic default). Post-fix: 0.6 (registry-aware default).
         assert multiplier == 0.6
 
-    def test_multiplier_off_axis_combo_falls_back_to_neutral(self):
+    def test_multiplier_off_axis_combo_falls_back_to_neutral(self, caplog):
         """An off-axis (source, type) combo not in the 14-row registry falls back
         to a neutral 1.0 with a warning — matches the evaluators' handling
         (`objective_evaluator.py` / `score_evaluator.py` wrap `weight_for` in a
         try/except ValueError)."""
+        import logging
+
         from bunking.models_v2 import DirectBunkRequest
         from bunking.solver.direct_solver import DirectBunkingSolver
 
+        # Fail the test if the fallback path ever reads config — `weight_for`
+        # raises ValueError via classify() BEFORE touching config for off-axis
+        # combos, so a config.get_float call signals a regression to plain
+        # lookup.
         config = MagicMock()
-        config.get_float.return_value = 1.0
+        config.get_float.side_effect = AssertionError("off-axis fallback should not rely on config.get_float lookup")
         config.get_int.return_value = 0
 
         solver = DirectBunkingSolver.__new__(DirectBunkingSolver)
         solver.config = config
 
-        # bunk_request_form × age_preference is not a valid combo (registry row
-        # for age_preference uses socialize_with sources, not bunk_request_form).
+        # socialize_with × bunk_with is genuinely off-axis: SOCIALIZE_WITH only
+        # registers with age_preference, so classify() raises ValueError before
+        # weight_for ever reads config.
         request = DirectBunkRequest(
             id="req-off",
-            requester_person_cm_id=100,
-            requested_person_cm_id=None,
-            request_type="age_preference",
-            session_cm_id=1000,
+            requester_person_cm_id=1000001,
+            requested_person_cm_id=1000002,
+            request_type="bunk_with",
+            session_cm_id=1000001,
             year=2025,
-            source_field=SourceField.BUNK_REQUEST_FORM,
-            age_preference_target="younger",
+            source_field=SourceField.SOCIALIZE_WITH,
         )
 
-        multiplier = solver._get_csv_field_multiplier(request)
+        with caplog.at_level(logging.WARNING, logger="bunking.solver.direct_solver"):
+            multiplier = solver._get_csv_field_multiplier(request)
+
         assert multiplier == 1.0
+        assert any(
+            "objective_multiplier_fallback" in rec.getMessage() and "req-off" in rec.getMessage()
+            for rec in caplog.records
+        ), "expected warning emission on off-axis fallback"

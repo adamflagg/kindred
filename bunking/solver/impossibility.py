@@ -103,7 +103,10 @@ def filter_immaterial_requests(report: ImpossibilityReport) -> ImpossibilityRepo
 
     ``by_bucket_count`` is already request-id-unique per bucket, so dropping the
     immaterial key is sufficient. ``mp_campers_entirely_impossible`` is left
-    untouched (MP-only by definition).
+    untouched (MP-only by definition). ``campers_no_resolved_possible`` is also
+    left untouched: it powers the solver-side ``unsatisfied_no_possible``
+    diagnostic and must stay an input-property invariant, independent of which
+    buckets the pre-check chooses to display.
     """
     immaterial_bucket = RequestBucket.IMMATERIAL_PARENT.value
 
