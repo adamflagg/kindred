@@ -698,7 +698,7 @@ async def list_original_requests_with_parse_status(
 
 
 # AI-processed fields only (excludes socialize_with which is dropdown-based)
-AI_PARSED_FIELDS = {"bunk_with", "not_bunk_with", "bunking_notes", "internal_notes"}
+AI_PARSED_FIELDS = {"bunk_request_form", "staff_not_bunk_with", "bunking_notes", "internal_notes"}
 
 
 @router.get("/original-requests-grouped", response_model=GroupedRequestsResponse)
@@ -1103,7 +1103,7 @@ async def get_production_requests(
         session_cm_id: Optional session filter
 
     Returns:
-        Production requests grouped by source_field (bunk_with, not_bunk_with, etc.)
+        Production requests grouped by source_field (bunk_request_form, staff_not_bunk_with, etc.)
     """
     bunk_repo = get_bunk_requests_repository()
 
@@ -1250,8 +1250,8 @@ VALID_RESOLUTION_METHODS = {
     "unresolved",
 }
 VALID_SOURCE_FIELDS = {
-    "bunk_with",
-    "not_bunk_with",
+    "bunk_request_form",
+    "staff_not_bunk_with",
     "bunking_notes",
     "internal_notes",
     "socialize_with",

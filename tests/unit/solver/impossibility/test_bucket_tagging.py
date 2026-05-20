@@ -10,11 +10,11 @@ from .conftest import make_bunk, make_input, make_person, make_request
 
 
 def test_bunk_with_source_field_classifies_as_material_parent(mock_config):
-    """A request with source_field='bunk_with' → bucket='material_parent'."""
+    """A request with source_field='bunk_request_form' → bucket='material_parent'."""
     p1 = make_person(1, session=1000001, gender="F", grade=5)
     p2 = make_person(2, session=1000002, gender="F", grade=5)  # different session
     bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
-    req = make_request("r1", requester=1, requestee=2, source_field="bunk_with")
+    req = make_request("r1", requester=1, requestee=2, source_field="bunk_request_form")
     inp = make_input([p1, p2], bunks, [req])
 
     report = validate_impossibility(inp, mock_config)
@@ -42,7 +42,7 @@ def test_socialize_with_source_field_classifies_as_immaterial_parent(mock_config
 
 
 def test_not_bunk_with_source_field_classifies_as_staff(mock_config):
-    """source_field='not_bunk_with' → bucket='staff'.
+    """source_field='staff_not_bunk_with' → bucket='staff'.
 
     Uses a self-conflict scenario (bunk_with + not_bunk_with to the same target)
     to trigger impossibility for the not_bunk_with request.
@@ -55,14 +55,14 @@ def test_not_bunk_with_source_field_classifies_as_staff(mock_config):
         requester=1,
         requestee=2,
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
     )
     req_not_bunk_with = make_request(
         "r2",
         requester=1,
         requestee=2,
         request_type="not_bunk_with",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
     )
     inp = make_input([p1, p2], bunks, [req_bunk_with, req_not_bunk_with])
 

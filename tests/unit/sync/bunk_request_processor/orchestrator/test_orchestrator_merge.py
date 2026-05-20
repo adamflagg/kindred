@@ -33,7 +33,7 @@ class TestOrchestratorMergeOnSave:
         requested_cm_id: int | None = 67890,
         request_type: RequestType = RequestType.BUNK_WITH,
         session_cm_id: int = 1000002,
-        source_field: str = "bunk_with",
+        source_field: str = "bunk_request_form",
         confidence_score: float = 0.95,
         year: int = 2025,
         metadata: dict[str, Any] | None = None,
@@ -76,12 +76,12 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record in DB - use a proper BunkRequest object
         existing_record = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
         # Set source_fields attribute that exists on DB records
-        existing_record.source_fields = ["bunk_with"]
+        existing_record.source_fields = ["bunk_request_form"]
         mock_request_repo.get_by_id.return_value = existing_record
         mock_request_repo.update_for_merge.return_value = True
 
@@ -126,11 +126,11 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
-        existing_record.source_fields = ["bunk_with"]
+        existing_record.source_fields = ["bunk_request_form"]
         mock_request_repo.get_by_id.return_value = existing_record
         mock_request_repo.update_for_merge.return_value = True
 
@@ -173,11 +173,11 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
-        existing_record.source_fields = ["bunk_with"]  # Existing field
+        existing_record.source_fields = ["bunk_request_form"]  # Existing field
         mock_request_repo.get_by_id.return_value = existing_record
         mock_request_repo.update_for_merge.return_value = True
 
@@ -198,7 +198,7 @@ class TestOrchestratorMergeOnSave:
         call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
         # Should contain both fields
         assert "bunking_notes" in call_kwargs.get("source_fields", [])
-        assert "bunk_with" in call_kwargs.get("source_fields", [])
+        assert "bunk_request_form" in call_kwargs.get("source_fields", [])
 
     def test_no_merge_creates_new_with_source_link(self) -> None:
         """Test that requests without database match create new records.
@@ -206,7 +206,7 @@ class TestOrchestratorMergeOnSave:
         Normal flow: create new bunk_request and add source link.
         """
         request = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             metadata={
                 "original_request_id": "orig_req_789",
             },
@@ -236,7 +236,7 @@ class TestOrchestratorMergeOnSave:
     def test_new_request_source_link_is_primary(self) -> None:
         """Test that new requests have their source link marked as primary."""
         request = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             metadata={
                 "original_request_id": "orig_req_789",
             },
@@ -270,7 +270,7 @@ class TestOrchestratorMergeOnSave:
             bunk_request_id="new_pb_id_999",
             original_request_id="orig_req_789",
             is_primary=True,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
 
     def test_merge_preserves_higher_confidence(self) -> None:
@@ -290,11 +290,11 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest with lower confidence
         existing_record = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.85,  # Lower than new request
         )
         existing_record.id = "existing_pb_id_123"
-        existing_record.source_fields = ["bunk_with"]
+        existing_record.source_fields = ["bunk_request_form"]
         mock_request_repo.get_by_id.return_value = existing_record
         mock_request_repo.update_for_merge.return_value = True
 
@@ -331,11 +331,11 @@ class TestOrchestratorMergeOnSave:
 
         # The existing record - use proper BunkRequest
         existing_record = self._create_request(
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             confidence_score=0.85,
         )
         existing_record.id = "existing_pb_id_123"
-        existing_record.source_fields = ["bunk_with"]
+        existing_record.source_fields = ["bunk_request_form"]
         mock_request_repo.get_by_id.return_value = existing_record
         mock_request_repo.update_for_merge.return_value = True
 

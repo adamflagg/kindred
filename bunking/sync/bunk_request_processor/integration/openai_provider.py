@@ -19,6 +19,7 @@ from ..core.models import (
     RequestType,
 )
 from ..prompts import format_prompt
+from ..shared.constants import SourceField
 from ..shared.name_utils import parse_name
 from ..utils.date_parser import parse_temporal_date
 from .ai_schemas import (
@@ -358,10 +359,10 @@ class OpenAIProvider(AIProvider):
 
         # Map V2 SourceField values to prompt template names
         prompt_map = {
-            "bunk_with": "parse_bunk_with",
-            "not_bunk_with": "parse_not_bunk_with",
-            "bunking_notes": "parse_bunking_notes",
-            "internal_notes": "parse_internal_notes",
+            SourceField.BUNK_REQUEST_FORM: "parse_bunk_with",
+            SourceField.STAFF_NOT_BUNK_WITH: "parse_not_bunk_with",
+            SourceField.BUNKING_NOTES: "parse_bunking_notes",
+            SourceField.INTERNAL_NOTES: "parse_internal_notes",
         }
         return prompt_map.get(field_type, "parse_request")
 

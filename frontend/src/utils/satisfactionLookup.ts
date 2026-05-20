@@ -17,6 +17,7 @@ import { isAgePreferenceSatisfied } from './agePreferenceSatisfaction'
 import { formatGradeOrdinal } from './gradeUtils'
 import { safeSourceFromField } from './sourceFromField'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
+import { SourceField } from '../types/sourceField'
 
 export function buildSatisfactionLookup(
   perRequest: PerRequestStatus[]
@@ -172,7 +173,8 @@ export function resolveBadgeBucket(
   if (bucket === 'staff') return { isMaterialAgePref: false, isStaffBadge: true }
   if (bucket === undefined) {
     return {
-      isMaterialAgePref: req.request_type === 'age_preference' && req.source_field === 'bunk_with',
+      isMaterialAgePref:
+        req.request_type === 'age_preference' && req.source_field === SourceField.BUNK_REQUEST_FORM,
       isStaffBadge: safeSourceFromField(req.source_field) === 'staff',
     }
   }

@@ -655,7 +655,7 @@ class TestSingleBunkRequestValidation:
                 requester_person_cm_id=1000,
                 requested_person_cm_id=1001,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 status="resolved",
                 priority=4,
                 session_cm_id=1000001,
@@ -1190,7 +1190,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1227,7 +1227,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1246,7 +1246,7 @@ class TestImpossibleRequestBreakdownByReason:
                 session_cm_id=1000001,
             ),
         ]
-        # not_bunk_with with no target → malformed; source_field=not_bunk_with → STAFF
+        # not_bunk_with with no target → malformed; source_field=staff_not_bunk_with → STAFF
         request = DirectBunkRequest(
             id="req-1",
             requester_person_cm_id=1,
@@ -1254,7 +1254,7 @@ class TestImpossibleRequestBreakdownByReason:
             request_type="not_bunk_with",
             session_cm_id=1000001,
             year=2026,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
         )
         input_data = self._make_input(persons, requests=[request])
         solver = DirectBunkingSolver(input_data=input_data, config_service=MagicMock())
@@ -1291,7 +1291,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
             DirectBunkRequest(
                 id="r2",
@@ -1300,7 +1300,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
             DirectBunkRequest(
                 id="r3",
@@ -1309,7 +1309,7 @@ class TestImpossibleRequestBreakdownByReason:
                 request_type="bunk_with",
                 session_cm_id=1000001,
                 year=2026,
-                source_field="bunk_with",
+                source_field="bunk_request_form",
             ),
         ]
         input_data = self._make_input(persons, requests=requests)
@@ -1373,8 +1373,8 @@ class TestTier1MetricsInStatsDict:
             "grade_ratio_1_grade_6": (v_gr2, 50),
         }
         requests_by_person: dict[int, list[DirectBunkRequest]] = {
-            1: [_make_req("r1", 1, "bunk_with")],
-            2: [_make_req("r2", 2, "bunk_with"), _make_req("r3", 2, "bunk_with")],
+            1: [_make_req("r1", 1, "bunk_request_form")],
+            2: [_make_req("r2", 2, "bunk_request_form"), _make_req("r3", 2, "bunk_request_form")],
         }
         stats = _build_stats_dict(
             solver=solver,
@@ -1576,7 +1576,7 @@ class TestMaterialOnlyStatsAggregates:
                 requester_person_cm_id=1000,
                 requested_person_cm_id=1001,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 status="resolved",
                 priority=4,
                 session_cm_id=1000001,
@@ -1644,7 +1644,7 @@ class TestMaterialOnlyStatsAggregates:
                 requester_person_cm_id=1000,
                 requested_person_cm_id=1001,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 status="resolved",
                 priority=4,
                 session_cm_id=1000001,
@@ -1774,7 +1774,7 @@ class TestRequestValidationSummaryMaterialOnly:
                 requester_person_cm_id=1,
                 requested_person_cm_id=2,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 session_cm_id=1000001,
                 year=2026,
             ),
@@ -1784,7 +1784,7 @@ class TestRequestValidationSummaryMaterialOnly:
                 requester_person_cm_id=1,
                 requested_person_cm_id=99,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 session_cm_id=1000001,
                 year=2026,
             ),
@@ -1889,7 +1889,7 @@ class TestRequestValidationSummaryMultiReasonDedup:
                 requester_person_cm_id=1,
                 requested_person_cm_id=2,
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 session_cm_id=1000001,
                 year=2026,
             ),

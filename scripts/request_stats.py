@@ -45,8 +45,8 @@ def main() -> None:
     print("ORIGINAL BUNK REQUESTS (raw CampMinder data)")
     print("=" * 60)
     fields = [
-        "bunk_with",
-        "not_bunk_with",
+        "bunk_request_form",
+        "staff_not_bunk_with",
         "bunking_notes",
         "internal_notes",
         "socialize_with",

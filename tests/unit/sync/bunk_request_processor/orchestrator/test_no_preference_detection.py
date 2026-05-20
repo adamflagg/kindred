@@ -182,8 +182,8 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "none",  # Should be skipped
-                "not_bunk_with": "",
+                "bunk_request_form": "none",  # Should be skipped
+                "staff_not_bunk_with": "",
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -219,8 +219,8 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "John Smith",  # Valid - should create ParseRequest
-                "not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with), goes to AI
+                "bunk_request_form": "John Smith",  # Valid - should create ParseRequest
+                "staff_not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with), goes to AI
                 "bunking_notes": "no preference",  # ADR 5: NOT skipped (not bunk_with), goes to AI
                 "internal_notes": "Keep with Sarah",  # Valid - should create ParseRequest
                 "socialize_with": "",  # Empty - naturally skipped
@@ -234,9 +234,9 @@ class TestNoPreferenceIntegration:
         assert len(parse_requests) == 4
 
         field_names = {pr.field_name for pr in parse_requests}
-        assert "bunk_with" in field_names
+        assert "bunk_request_form" in field_names
         assert "internal_notes" in field_names
-        assert "not_bunk_with" in field_names  # ADR 5: no longer skipped
+        assert "staff_not_bunk_with" in field_names  # ADR 5: no longer skipped
         assert "bunking_notes" in field_names  # ADR 5: no longer skipped
 
     @pytest.mark.asyncio
@@ -262,8 +262,8 @@ class TestNoPreferenceIntegration:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "none",  # Skipped (bunk_with + no-preference)
-                "not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with)
+                "bunk_request_form": "none",  # Skipped (bunk_request_form + no-preference)
+                "staff_not_bunk_with": "n/a",  # ADR 5: NOT skipped (not bunk_with)
                 "bunking_notes": "no preference",  # ADR 5: NOT skipped (not bunk_with)
                 "internal_notes": "",
                 "socialize_with": "",
@@ -378,8 +378,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "N/A; their own grade/younger",
-                "not_bunk_with": "",
+                "bunk_request_form": "N/A; their own grade/younger",
+                "staff_not_bunk_with": "",
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -407,8 +407,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "N/A- same age or older",
-                "not_bunk_with": "",
+                "bunk_request_form": "N/A- same age or older",
+                "staff_not_bunk_with": "",
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -436,8 +436,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "N/A -   ",
-                "not_bunk_with": "",
+                "bunk_request_form": "N/A -   ",
+                "staff_not_bunk_with": "",
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -465,8 +465,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "Sarah Chen",
-                "not_bunk_with": "",
+                "bunk_request_form": "Sarah Chen",
+                "staff_not_bunk_with": "",
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",
@@ -498,8 +498,8 @@ class TestNaPrefixStrippingInPrepare:
                 "requester_cm_id": 12345,
                 "first_name": "Emma",
                 "last_name": "Johnson",
-                "bunk_with": "N/A; their own grade",  # Stripped (bunk_with field)
-                "not_bunk_with": "N/A- same age",  # ADR 5: NOT stripped (not bunk_with)
+                "bunk_request_form": "N/A; their own grade",  # Stripped (bunk_with field)
+                "staff_not_bunk_with": "N/A- same age",  # ADR 5: NOT stripped (not bunk_with)
                 "bunking_notes": "",
                 "internal_notes": "",
                 "socialize_with": "",

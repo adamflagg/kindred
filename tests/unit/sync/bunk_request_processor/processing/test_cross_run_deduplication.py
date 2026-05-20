@@ -50,7 +50,7 @@ class TestCrossRunDeduplication:
         requested_cm_id=67890,
         request_type=RequestType.BUNK_WITH,
         session_cm_id=1000002,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         confidence_score=0.95,
         year=2025,
     ):
@@ -141,7 +141,7 @@ class TestCrossRunDeduplication:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.5,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,
@@ -164,7 +164,7 @@ class TestCrossRunDeduplication:
         mock_request_repo.find_existing.return_value = None
 
         # Two identical requests in same batch
-        req1 = self._create_request(source_field="bunk_with")
+        req1 = self._create_request(source_field="bunk_request_form")
         req2 = self._create_request(source_field="bunking_notes")
 
         result = deduplicator.deduplicate_batch([req1, req2], check_database=True)
@@ -279,7 +279,7 @@ class TestCrossRunDeduplicationStatistics:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.95,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,

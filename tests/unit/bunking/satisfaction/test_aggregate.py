@@ -46,7 +46,7 @@ class TestEmptyRequests:
 
 class TestSingleSatisfiedMaterialParent:
     def test_counts_satisfied(self) -> None:
-        req = _req("r1", "bunk_with", 1, 2, "bunk_with")
+        req = _req("r1", "bunk_with", 1, 2, "bunk_request_form")
         result = camper_satisfaction(person_cm_id=1, person_requests=[req], person_to_bunk={1: 100, 2: 100})
         mp = result.counted_totals[RequestBucket.MATERIAL_PARENT]
         assert mp.satisfied == 1
@@ -57,15 +57,15 @@ class TestSingleSatisfiedMaterialParent:
 
 class TestParentMinOneViolation:
     def test_one_unsatisfied_material_parent_triggers(self) -> None:
-        req = _req("r1", "bunk_with", 1, 2, "bunk_with")
+        req = _req("r1", "bunk_with", 1, 2, "bunk_request_form")
         result = camper_satisfaction(person_cm_id=1, person_requests=[req], person_to_bunk={1: 100, 2: 101})
         assert result.flags.parent_min_one_violation
 
     def test_one_satisfied_one_unsatisfied_does_not_trigger(self) -> None:
         # Per spec: violation requires ≥1 material_parent request AND zero satisfied.
         # ≥1 satisfied ⇒ no violation.
-        req1 = _req("r1", "bunk_with", 1, 2, "bunk_with")
-        req2 = _req("r2", "bunk_with", 1, 3, "bunk_with")
+        req1 = _req("r1", "bunk_with", 1, 2, "bunk_request_form")
+        req2 = _req("r2", "bunk_with", 1, 3, "bunk_request_form")
         result = camper_satisfaction(
             person_cm_id=1,
             person_requests=[req1, req2],
@@ -93,12 +93,12 @@ class TestImmaterialUncounted:
 
 class TestStaffUnsatisfiedAlert:
     def test_unsatisfied_staff_request_triggers(self) -> None:
-        req = _req("r1", "not_bunk_with", 1, 2, "not_bunk_with")
+        req = _req("r1", "not_bunk_with", 1, 2, "staff_not_bunk_with")
         result = camper_satisfaction(person_cm_id=1, person_requests=[req], person_to_bunk={1: 100, 2: 100})
         assert result.flags.staff_unsatisfied_alert
 
     def test_satisfied_staff_does_not_alert(self) -> None:
-        req = _req("r1", "not_bunk_with", 1, 2, "not_bunk_with")
+        req = _req("r1", "not_bunk_with", 1, 2, "staff_not_bunk_with")
         result = camper_satisfaction(person_cm_id=1, person_requests=[req], person_to_bunk={1: 100, 2: 101})
         assert not result.flags.staff_unsatisfied_alert
 
@@ -107,7 +107,7 @@ class TestMixedBuckets:
     def test_material_and_immaterial_both_present(self) -> None:
         # Camper has one material parent (bunk_with → bunk_with field, satisfied)
         # AND one immaterial parent (bunk_with type → socialize_with field, satisfied).
-        material = _req("r1", "bunk_with", 1, 2, "bunk_with")
+        material = _req("r1", "bunk_with", 1, 2, "bunk_request_form")
         immaterial = _req("r2", "bunk_with", 1, 3, "socialize_with")
         result = camper_satisfaction(
             person_cm_id=1,
@@ -130,7 +130,7 @@ class TestMixedBuckets:
         # Even if a camper has a satisfied immaterial socialize_with,
         # an unsatisfied material parent_min_one_violation still triggers
         # — immaterial cannot rescue the parent-paramount metric.
-        material = _req("r1", "bunk_with", 1, 2, "bunk_with")  # unsatisfied
+        material = _req("r1", "bunk_with", 1, 2, "bunk_request_form")  # unsatisfied
         immaterial = _req("r2", "bunk_with", 1, 3, "socialize_with")  # satisfied
         result = camper_satisfaction(
             person_cm_id=1,
@@ -178,7 +178,7 @@ class TestCoerceRowNoneSourceField:
             "requester_id": 1,
             "requestee_id": 2,
             "request_type": None,
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
         }
         coerced = _coerce_row(row)
         assert coerced["request_type"] == ""
@@ -197,7 +197,7 @@ class TestCoerceRowMissingRequesterId:
             # requester_id intentionally absent
             "requestee_id": 2,
             "request_type": "bunk_with",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
         }
         with pytest.raises(ValueError, match="requester_id"):
             _coerce_row(row)
@@ -208,7 +208,7 @@ class TestCoerceRowMissingRequesterId:
             "requester_id": None,
             "requestee_id": 2,
             "request_type": "bunk_with",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
         }
         with pytest.raises(ValueError, match="requester_id"):
             _coerce_row(row)
@@ -219,7 +219,7 @@ class TestCoerceRowMissingRequesterId:
             # requester_id intentionally absent
             requestee_id = 2
             request_type = "bunk_with"
-            source_field = "bunk_with"
+            source_field = "bunk_request_form"
 
         with pytest.raises(ValueError, match="requester_id"):
             _coerce_row(Row())
@@ -265,9 +265,9 @@ class TestCamperSatisfactionPredicateExceptionHandling:
             "requester_id": 1,
             "requestee_id": 2,
             "request_type": "foo_bar_unknown",
-            "source_field": "bunk_with",
+            "source_field": "bunk_request_form",
         }
-        good_row = _req("r_good", "bunk_with", 1, 3, "bunk_with")  # 1→3 satisfied
+        good_row = _req("r_good", "bunk_with", 1, 3, "bunk_request_form")  # 1→3 satisfied
         result = camper_satisfaction(
             person_cm_id=1,
             person_requests=[bad_row, good_row],
@@ -329,7 +329,7 @@ def test_per_request_status_has_detail_field() -> None:
 def test_camper_satisfaction_threads_detail_for_bunk_with() -> None:
     """detail strings from evaluate_request must surface in per_request output."""
     # Two campers in the same bunk — bunk_with should be satisfied with "Same bunk".
-    req = _req("rq1", "bunk_with", 1, 2, "bunk_with")
+    req = _req("rq1", "bunk_with", 1, 2, "bunk_request_form")
     result = camper_satisfaction(
         person_cm_id=1,
         person_requests=[req],
@@ -346,7 +346,7 @@ def test_camper_satisfaction_threads_detail_for_unsatisfied_not_bunk_with() -> N
     Mirrors the TS predicate in `frontend/src/utils/requestSatisfaction.ts` so
     Path 1 (drag preview) and Path 2 (persisted) tooltips agree.
     """
-    req = _req("rq1", "not_bunk_with", 1, 2, "not_bunk_with")
+    req = _req("rq1", "not_bunk_with", 1, 2, "staff_not_bunk_with")
     result = camper_satisfaction(
         person_cm_id=1,
         person_requests=[req],

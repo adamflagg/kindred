@@ -4,7 +4,7 @@
  *
  * The original_bunk_requests table stores each field type as separate records:
  * - requester: relation to persons
- * - field: "bunk_with" | "not_bunk_with" | "bunking_notes" | "internal_notes" | "socialize_with"
+ * - field: "bunk_request_form" | "staff_not_bunk_with" | "bunking_notes" | "internal_notes" | "socialize_with"
  * - content: the raw text content
  *
  * This hook fetches all records for a person and transforms them into a denormalized object.
@@ -63,12 +63,12 @@ export function useOriginalBunkData(
           const processed = record.processed
 
           switch (fieldName) {
-            case 'bunk_with':
+            case 'bunk_request_form':
               result.share_bunk_with = content
               if (updated) result.share_bunk_with_updated = updated
               if (processed) result.share_bunk_with_processed = processed
               break
-            case 'not_bunk_with':
+            case 'staff_not_bunk_with':
               result.do_not_share_bunk_with = content
               if (updated) result.do_not_share_bunk_with_updated = updated
               if (processed) result.do_not_share_bunk_with_processed = processed

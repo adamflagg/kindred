@@ -57,7 +57,7 @@ class TestSessionCompatibilityRule:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.95,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,

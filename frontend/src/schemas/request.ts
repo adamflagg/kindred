@@ -61,8 +61,8 @@ export const BunkRequestsResponseSchema = BunkRequestsRecordSchema.merge(BaseSys
 
 // Original bunk requests field enum
 export const OriginalBunkRequestsFieldSchema = z.enum([
-  'bunk_with',
-  'not_bunk_with',
+  'bunk_request_form',
+  'staff_not_bunk_with',
   'bunking_notes',
   'internal_notes',
   'socialize_with',

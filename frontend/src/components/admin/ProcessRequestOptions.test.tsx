@@ -319,7 +319,7 @@ describe('ProcessRequestOptions', () => {
 
     expect(defaultProps.onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        sourceFields: expect.arrayContaining(['bunk_with', 'not_bunk_with']),
+        sourceFields: expect.arrayContaining(['bunk_request_form', 'staff_not_bunk_with']),
       })
     )
     const firstCall = defaultProps.onSubmit.mock.calls[0]

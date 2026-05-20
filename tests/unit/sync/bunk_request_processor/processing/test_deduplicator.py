@@ -48,7 +48,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.95,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -116,7 +116,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.95,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -130,7 +130,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.75,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -154,7 +154,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.90,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -169,7 +169,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=0.95,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -216,7 +216,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.85,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -275,7 +275,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.90,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -289,7 +289,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.80,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -305,7 +305,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=0.95,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -319,7 +319,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.85,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -344,7 +344,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.99,  # Higher confidence
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -359,7 +359,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.70,  # Lower confidence
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -479,7 +479,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.95,
-            source_field="bunk_with",  # Family form field
+            source_field="bunk_request_form",  # Family form field
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -527,7 +527,7 @@ class TestDeduplicator:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.90,
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -582,7 +582,7 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=0.95,  # Higher confidence
-            source_field="bunk_with",  # Parent embedded negative in bunk_with
+            source_field="bunk_request_form",  # Parent embedded negative in bunk_with
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -611,7 +611,7 @@ class TestSimplifiedSourcePriority:
         # Family wins even with staff having a different source_field (source > confidence)
         assert len(result.kept_requests) == 1
         assert source_from_field(result.kept_requests[0].source_field) == "family"
-        assert result.kept_requests[0].source_field == "bunk_with"
+        assert result.kept_requests[0].source_field == "bunk_request_form"
         assert result.statistics["duplicates_removed"] == 1
 
     def test_confidence_tiebreaker_same_source(self):
@@ -626,7 +626,7 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.98,  # Higher confidence
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -641,7 +641,7 @@ class TestSimplifiedSourcePriority:
             session_cm_id=1000002,
             is_first_requested=False,
             confidence_score=0.75,  # Lower confidence
-            source_field="bunk_with",
+            source_field="bunk_request_form",
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
@@ -848,7 +848,7 @@ class TestDatabaseDuplicateMerge:
             session_cm_id=1000002,
             is_first_requested=True,
             confidence_score=0.95,
-            source_field="not_bunk_with",
+            source_field="staff_not_bunk_with",
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,

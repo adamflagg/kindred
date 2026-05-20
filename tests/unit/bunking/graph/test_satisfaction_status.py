@@ -51,8 +51,8 @@ def _populate(
     Post-#1041: _calculate_node_metrics now classifies on source_field, not
     request_type. The legacy 2-axis source ("family"/"staff") is mapped to
     source_field per the canonical pairing:
-      source="family" → source_field="bunk_with"      (MATERIAL_PARENT)
-      source="staff"  → source_field="not_bunk_with"  (STAFF)
+      source="family" → source_field="bunk_request_form"      (MATERIAL_PARENT)
+      source="staff"  → source_field="staff_not_bunk_with"  (STAFF)
     request_type is also set so other consumers (cytoscape coloring, frontend
     inversion) keep working.
     """
@@ -66,7 +66,7 @@ def _populate(
             # (family→bunk_with, staff→not_bunk_with) so legacy tests that only
             # specify source continue to behave as documented.
             request_type = "not_bunk_with" if source == "staff" else "bunk_with"
-            source_field = "not_bunk_with" if source == "staff" else "bunk_with"
+            source_field = "staff_not_bunk_with" if source == "staff" else "bunk_request_form"
             builder.graph.add_edge(
                 u,
                 v,
@@ -84,7 +84,7 @@ def _populate(
                 v,
                 edge_type="request",
                 request_type="bunk_with",
-                source_field="bunk_with",
+                source_field="bunk_request_form",
                 requester_id=u,
                 requestee_id=v,
             )
@@ -204,13 +204,13 @@ def _fake_request(requester_id: int, requestee_id: int, source: str | None = "fa
     # listed here. Callers testing invalid/edge-case paths must pass source_field=
     # explicitly rather than relying on this default map.
     default_source_field = {
-        ("bunk_with", "parent"): "bunk_with",
+        ("bunk_with", "parent"): "bunk_request_form",
         # ("bunk_with", "staff"): removed — semantically invalid (type/field disagree)
-        ("not_bunk_with", "parent"): "not_bunk_with",
-        ("not_bunk_with", "staff"): "not_bunk_with",
+        ("not_bunk_with", "parent"): "staff_not_bunk_with",
+        ("not_bunk_with", "staff"): "staff_not_bunk_with",
         ("socialize_with", "parent"): "socialize_with",
         # ("age_preference", "parent"): removed — "age_preference" is not a valid source_field
-    }.get((request_type, source or "parent"), "bunk_with")
+    }.get((request_type, source or "parent"), "bunk_request_form")
     attrs: dict[str, object] = {
         "id": f"r-{requester_id}-{requestee_id}",
         "requester_id": requester_id,
@@ -401,7 +401,7 @@ def test_not_bunk_with_same_bunk_marks_unsatisfied() -> None:
         2,
         edge_type="request",
         source="staff",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
         request_type="not_bunk_with",
         requester_id=1,
         requestee_id=2,
@@ -425,7 +425,7 @@ def test_not_bunk_with_different_bunks_marks_satisfied() -> None:
         2,
         edge_type="request",
         source="staff",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
         request_type="not_bunk_with",
         requester_id=1,
         requestee_id=2,
@@ -445,7 +445,7 @@ def test_not_bunk_with_unbunked_target_marks_satisfied() -> None:
         2,
         edge_type="request",
         source="staff",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
         request_type="not_bunk_with",
         requester_id=1,
         requestee_id=2,
@@ -475,7 +475,7 @@ def test_unbunked_requester_marks_unsatisfied() -> None:
         2,
         edge_type="request",
         source="family",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         request_type="bunk_with",
         requester_id=1,
         requestee_id=2,
@@ -485,7 +485,7 @@ def test_unbunked_requester_marks_unsatisfied() -> None:
         3,
         edge_type="request",
         source="staff",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
         request_type="not_bunk_with",
         requester_id=1,
         requestee_id=3,
@@ -586,7 +586,7 @@ def _make_assignment_with_expand(person_cm_id: int) -> object:
 def _make_request_record(requester_id: int, requestee_id: int, source: str) -> object:
     """Minimal bunk_request record for build_bunk_graph edge creation.
 
-    source_field defaults to "bunk_with" (MATERIAL_PARENT) for legacy callers
+    source_field defaults to "bunk_request_form" (MATERIAL_PARENT) for legacy callers
     that only specify the 2-axis source and request_type=bunk_with.
     """
     from types import SimpleNamespace
@@ -601,7 +601,7 @@ def _make_request_record(requester_id: int, requestee_id: int, source: str) -> o
         is_reciprocal=False,
         status="resolved",
         year=2026,
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         source=source,
     )
 
@@ -774,14 +774,14 @@ def _make_typed_request_record(
 
     source_field defaults to mirror the canonical source/type pairing so
     pre-#1041 callsites continue to bucket as expected:
-      source="family" + bunk_with     → source_field="bunk_with"
-      source="staff"  + not_bunk_with → source_field="not_bunk_with"
+      source="family" + bunk_with     → source_field="bunk_request_form"
+      source="staff"  + not_bunk_with → source_field="staff_not_bunk_with"
     Override `source_field` directly for boundary cases.
     """
     from types import SimpleNamespace
 
     if source_field is None:
-        source_field = "not_bunk_with" if request_type == "not_bunk_with" else "bunk_with"
+        source_field = "staff_not_bunk_with" if request_type == "not_bunk_with" else "bunk_request_form"
     return SimpleNamespace(
         id=f"r-{requester_id}-{requestee_id}-{request_type}",
         requester_id=requester_id,
@@ -1007,7 +1007,7 @@ def test_parent_edges_filter_excludes_not_bunk_with_source_field() -> None:
         2,
         edge_type="request",
         source="family",
-        source_field="not_bunk_with",
+        source_field="staff_not_bunk_with",
         request_type="not_bunk_with",
         requester_id=1,
         requestee_id=2,

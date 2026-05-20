@@ -44,12 +44,12 @@ class TestRequestDensityHistogramByBucket:
         # Emma: 1 MP + 1 IMMATERIAL + 2 STAFF requests. Liam: 1 MP request.
         requests_by_person = {
             1001: [
-                _req("r1", 1001, "bunk_with"),
-                _req("r2", 1001, "not_bunk_with"),
+                _req("r1", 1001, "bunk_request_form"),
+                _req("r2", 1001, "staff_not_bunk_with"),
                 _req("r3", 1001, "internal_notes"),
                 _req("r5", 1001, "socialize_with"),
             ],
-            1002: [_req("r4", 1002, "bunk_with")],
+            1002: [_req("r4", 1002, "bunk_request_form")],
         }
         result = _build_request_density_histogram_by_bucket(requests_by_person)
         assert result == {
@@ -59,7 +59,7 @@ class TestRequestDensityHistogramByBucket:
         }
 
     def test_skips_campers_with_zero_requests(self) -> None:
-        result = _build_request_density_histogram_by_bucket({1001: [_req("r1", 1001, "bunk_with")], 1002: []})
+        result = _build_request_density_histogram_by_bucket({1001: [_req("r1", 1001, "bunk_request_form")], 1002: []})
         assert result == {"material_parent": {1: 1}, "immaterial_parent": {}, "staff": {}}
 
     def test_unknown_source_field_is_dropped_and_logged(self, caplog: pytest.LogCaptureFixture) -> None:
@@ -85,8 +85,8 @@ class TestImpossibleByReasonByBucket:
 
     def test_each_reason_lands_in_its_bucket(self) -> None:
         pairs = [
-            (_req("r1", 1001, "bunk_with"), "target_not_in_solver"),
-            (_req("r2", 1002, "not_bunk_with"), "malformed"),
+            (_req("r1", 1001, "bunk_request_form"), "target_not_in_solver"),
+            (_req("r2", 1002, "staff_not_bunk_with"), "malformed"),
             (_req("r3", 1003, "socialize_with"), "age_pref_no_eligible_grade"),
         ]
         assert _build_impossible_by_reason_by_bucket(pairs) == {
@@ -97,7 +97,7 @@ class TestImpossibleByReasonByBucket:
 
     def test_multi_reason_same_request_counts_each(self) -> None:
         # Layer 2 records one request under multiple reason codes — non-deduped.
-        req = _req("r1", 1001, "bunk_with")
+        req = _req("r1", 1001, "bunk_request_form")
         pairs = [(req, "cross_session"), (req, "pair_no_shared_bunk")]
         assert _build_impossible_by_reason_by_bucket(pairs) == {
             "material_parent": {"cross_session": 1, "pair_no_shared_bunk": 1},
@@ -107,8 +107,8 @@ class TestImpossibleByReasonByBucket:
 
     def test_two_requests_same_bucket_same_reason_accumulates(self) -> None:
         pairs = [
-            (_req("r1", 1001, "bunk_with"), "cross_session"),
-            (_req("r2", 1002, "bunk_with"), "cross_session"),
+            (_req("r1", 1001, "bunk_request_form"), "cross_session"),
+            (_req("r2", 1002, "bunk_request_form"), "cross_session"),
         ]
         assert _build_impossible_by_reason_by_bucket(pairs) == {
             "material_parent": {"cross_session": 2},

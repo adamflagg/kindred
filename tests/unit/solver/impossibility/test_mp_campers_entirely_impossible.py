@@ -25,7 +25,7 @@ def test_camper_with_all_mp_requests_impossible_is_listed(mock_config):
     with the distinct reason codes that hit their MP requests."""
     p1 = make_person(1, session=1000001, gender="F", grade=5)
     bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
-    # Camper 1's only MP request (source_field=bunk_with -> MATERIAL_PARENT
+    # Camper 1's only MP request (source_field=bunk_request_form -> MATERIAL_PARENT
     # bucket) targets cm_id 777, absent from the roster -> target_not_in_solver.
     requests = [make_request("r1", requester=1, requestee=777, session=1000001)]
     input_data = make_input([p1], bunks, requests)

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildSatisfactionLookup, evaluateRequest, resolveBadgeBucket } from './satisfactionLookup'
+import { SourceField } from '../types/sourceField'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import type { PerRequestStatus, RequestBucket } from '../types/satisfaction'
 
@@ -153,9 +154,9 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
 
-  it('undefined bucket + age_preference + source_field=bunk_with → P badge (fallback)', () => {
+  it('undefined bucket + age_preference + source_field=bunk_request_form → P badge (fallback)', () => {
     const result = resolveBadgeBucket(undefined, {
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       request_type: 'age_preference',
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })
@@ -198,9 +199,9 @@ describe('resolveBadgeBucket — #1172 centralized-bucket-with-source-field-fall
     expect(result).toEqual({ isMaterialAgePref: false, isStaffBadge: false })
   })
 
-  it('undefined bucket + age_preference request_type + source_field=bunk_with → P badge', () => {
+  it('undefined bucket + age_preference request_type + source_field=bunk_request_form → P badge', () => {
     const result = resolveBadgeBucket(undefined, {
-      source_field: 'bunk_with',
+      source_field: SourceField.BUNK_REQUEST_FORM,
       request_type: 'age_preference',
     })
     expect(result).toEqual({ isMaterialAgePref: true, isStaffBadge: false })

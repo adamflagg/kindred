@@ -17,7 +17,7 @@ def test_b_does_not_inherit_a_request():
         2,
         edge_type="request",
         request_type="bunk_with",
-        source_field="bunk_with",
+        source_field="bunk_request_form",
         request_id="r1",
         requester_id=1,
         requestee_id=2,

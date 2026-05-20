@@ -16,7 +16,7 @@ def test_affected_campers_counts_cm_id_zero(mock_config):
     p1 = make_person(0, session=1000001, gender="F", grade=5)
     p2 = make_person(1, session=1000002, gender="F", grade=5)  # different session
     bunks = [make_bunk(10, session=1000001, gender="F", capacity=12)]
-    req = make_request("r1", requester=0, requestee=1, source_field="bunk_with")
+    req = make_request("r1", requester=0, requestee=1, source_field="bunk_request_form")
     inp = make_input([p1, p2], bunks, [req])
 
     report = validate_impossibility(inp, mock_config)

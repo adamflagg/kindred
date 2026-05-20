@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 # Source field enum for filtering
-SourceFieldType = Literal["bunk_with", "not_bunk_with", "bunking_notes", "internal_notes"]
+SourceFieldType = Literal["bunk_request_form", "staff_not_bunk_with", "bunking_notes", "internal_notes"]
 
 
 class ParseAnalysisFilter(BaseModel):
@@ -42,7 +42,7 @@ class ParseAnalysisItem(BaseModel):
     original_request_id: str = Field(description="Original bunk request record ID")
     requester_name: str | None = Field(description="Name of the camper who made the request")
     requester_cm_id: int | None = Field(description="CampMinder ID of the requester")
-    source_field: str | None = Field(description="Source field (bunk_with, bunking_notes, etc.)")
+    source_field: str | None = Field(description="Source field (bunk_request_form, bunking_notes, etc.)")
     original_text: str | None = Field(description="Original request text from CSV")
     parsed_intents: list[ParsedIntent] = Field(default_factory=list, description="Parsed intents from Phase 1")
     is_valid: bool = Field(description="Whether parsing succeeded")
@@ -278,6 +278,6 @@ class ProductionRequestsResponse(BaseModel):
     """Response for production requests endpoint, grouped by source_field."""
 
     groups: dict[str, list[ProductionRequestItem]] = Field(
-        description="Production requests grouped by source_field (bunk_with, not_bunk_with, etc.)"
+        description="Production requests grouped by source_field (bunk_request_form, staff_not_bunk_with, etc.)"
     )
     total: int = Field(description="Total number of production requests")
