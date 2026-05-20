@@ -105,24 +105,29 @@ vi.mock('../../services/solver', () => ({
   },
 }))
 
-// Mock PocketBase — return a session list so segment "2" resolves to a session
-// with cm_id=1000001.
+// Mock PocketBase. A single stable getFullList mock is shared across every
+// pb.collection(...) call, so per-test overrides (mockResolvedValueOnce /
+// mockRejectedValueOnce) actually drive what the component sees — the previous
+// `collection: () => ({ getFullList: vi.fn() })` minted a fresh fn per call, so
+// overrides landed on a throwaway and tests passed for the wrong reason (#1549).
+const { mockGetFullList } = vi.hoisted(() => ({ mockGetFullList: vi.fn() }))
+
+const DEFAULT_SESSIONS = [
+  {
+    id: 'sess-pb-1',
+    cm_id: 1000001,
+    name: 'Session 2',
+    session_type: 'main',
+    start_date: '2025-07-01',
+    end_date: '2025-07-15',
+    year: 2025,
+    parent_id: '',
+  },
+]
+
 vi.mock('../../lib/pocketbase', () => ({
   pb: {
-    collection: () => ({
-      getFullList: vi.fn().mockResolvedValue([
-        {
-          id: 'sess-pb-1',
-          cm_id: 1000001,
-          name: 'Session 2',
-          session_type: 'main',
-          start_date: '2025-07-01',
-          end_date: '2025-07-15',
-          year: 2025,
-          parent_id: '',
-        },
-      ]),
-    }),
+    collection: vi.fn(() => ({ getFullList: mockGetFullList })),
   },
 }))
 
@@ -141,6 +146,7 @@ const renderRoute = (path: string) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockGetFullList.mockResolvedValue(DEFAULT_SESSIONS)
 })
 
 describe('PostCheckPopout', () => {
@@ -154,13 +160,25 @@ describe('PostCheckPopout', () => {
     expect(screen.queryByTestId('main-app-header')).toBeNull()
   })
 
-  it('shows "Session not found" when segment does not resolve', async () => {
-    // Simulate getFullList returning an empty list → no sessions → segment won't resolve
-    const { pb } = await import('../../lib/pocketbase')
-    vi.mocked(pb.collection('').getFullList).mockResolvedValueOnce([])
-    renderRoute('/session/unknown-session/post-check')
+  it('shows "Session not found" when the session list loads but has no match', async () => {
+    // Empty session list → segment "2" can't resolve. With the stable mock this
+    // override actually drives the component's fetch (proving the empty-list
+    // path, not a coincidental segment mismatch).
+    mockGetFullList.mockResolvedValueOnce([])
+    renderRoute('/session/2/post-check')
     await waitFor(() => {
       expect(screen.getByText(/session not found/i)).toBeInTheDocument()
     })
+  })
+
+  it('shows an error state (not "Session not found") when the session query fails', async () => {
+    // A network/PB failure must render an explicit error, not collapse into the
+    // not-found state (frontend/CLAUDE.md: all 4 query states handled). #1549.
+    mockGetFullList.mockRejectedValueOnce(new Error('network down'))
+    renderRoute('/session/2/post-check')
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load sessions/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/session not found/i)).toBeNull()
   })
 })

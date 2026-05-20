@@ -524,6 +524,42 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
     expect(screen.getByText(/impossible by reason/i)).toBeInTheDocument()
   })
 
+  it('does not render a ghost "0" tile for a reason code with no items', () => {
+    // After the backend strips IMMATERIAL_PARENT rows (#1537), a reason code
+    // whose items were all immaterial is left with an empty array. The modal
+    // must not render a "0" tile for it — mirroring PreValidationResultsModal's
+    // per-tile guard. Group 65 #1549.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({
+          by_reason: {
+            grade_compatibility: [
+              {
+                request_id: 'r1',
+                reason_code: 'grade_compatibility',
+                reason_message: 'grade too wide',
+                request_type: 'bunk_with',
+                requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' },
+                requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' },
+                detail: {},
+                bucket: 'material_parent' as const,
+              },
+            ],
+            cross_session: [],
+          },
+        })}
+      />
+    )
+    // The populated reason renders its tile.
+    expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
+    // The empty reason must NOT render a ghost tile.
+    expect(screen.queryByText('Different sessions')).not.toBeInTheDocument()
+  })
+
   it('does not render "Impossible by reason" when by_reason is empty', () => {
     render(
       <PostValidationResultsModal

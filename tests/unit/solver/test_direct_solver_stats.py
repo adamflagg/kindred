@@ -13,6 +13,7 @@ from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.impossibility import ImpossibilityReport, ImpossibleItem
 from bunking.solver.observability import _compute_optimality_gap, _count_constraint_types
 
 
@@ -1839,3 +1840,98 @@ class TestRequestValidationSummaryMaterialOnly:
         assert immaterial_counts == {}, (
             f"impossible_by_reason['immaterial_parent'] should be empty, got {immaterial_counts!r}"
         )
+
+
+class TestRequestValidationSummaryMultiReasonDedup:
+    """Group 65 #1549 — a material request impossible for >1 reason appears once
+    per reason in report.flat (Layer 2 records every overlapping blocker, see
+    impossibility.py). The material impossible/possible counts must dedup by
+    request_id, matching validate_impossibility's own total_impossible dedup.
+    Counting flat rows directly double-counts and can drive possible_requests
+    negative.
+
+    Fixture: 1 material bunk_with request (req-multi) made impossible for two
+    reasons via an injected impossibility report (cross_gender + grade_distant).
+    """
+
+    def _make_input(self) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="A",
+            capacity=10,
+            gender="Mixed",
+            session_cm_id=1000001,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="F",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+        ]
+        requests = [
+            DirectBunkRequest(
+                id="req-multi",
+                requester_person_cm_id=1,
+                requested_person_cm_id=2,
+                request_type="bunk_with",
+                source_field="bunk_with",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=[bunk])
+
+    def _multi_reason_report(self) -> ImpossibilityReport:
+        requester = {"cm_id": 1, "name": "Emma Johnson", "grade": 8, "gender": "F"}
+        requestee = {"cm_id": 2, "name": "Liam Garcia", "grade": 8, "gender": "M"}
+        items = [
+            ImpossibleItem(
+                request_id="req-multi",
+                reason_code=code,
+                reason_message="…",
+                request_type="bunk_with",
+                requester=requester,
+                requestee=requestee,
+                detail={},
+                bucket="material_parent",
+            )
+            for code in ("cross_gender", "grade_distant")
+        ]
+        return ImpossibilityReport(
+            total_impossible=1,  # validate_impossibility dedups by request_id
+            affected_campers=1,
+            by_reason={"cross_gender": [items[0]], "grade_distant": [items[1]]},
+            flat=items,
+            by_bucket_count={"material_parent": 1},
+        )
+
+    def test_multi_reason_request_counted_once(self) -> None:
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(),
+            config_service=MagicMock(),
+            impossibility_report=self._multi_reason_report(),
+        )
+        summary = solver.request_validation_summary
+        assert summary["total_requests"] == 1
+        assert summary["impossible_requests"] == 1, (
+            f"multi-reason request double-counted: {summary['impossible_requests']}"
+        )
+        assert summary["possible_requests"] == 0, f"possible_requests went negative: {summary['possible_requests']}"
+        assert summary["affected_campers"] == 1

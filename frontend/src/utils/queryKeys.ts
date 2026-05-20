@@ -428,6 +428,10 @@ export const queryKeys = {
   // Solver pre-validate (debug view) — see frontend/src/pages/summer/SolverDebugPage
   preCheck: (sessionCmId: number | null, year: number) => ['pre-check', sessionCmId, year] as const,
 
+  // Solver post-check validation (popout) — see frontend/src/pages/PostCheckPopout
+  postCheck: (sessionCmId: number | null, scenarioId: string | undefined) =>
+    ['post-check', sessionCmId, scenarioId] as const,
+
   // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
   scenariosList: (year: number) => ['scenarios', 'list', year] as const,
 }

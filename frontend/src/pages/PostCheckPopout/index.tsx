@@ -49,7 +49,12 @@ export default function PostCheckPopout() {
   const year = useYear()
 
   // Fetch all sessions to resolve the friendly URL segment
-  const { data: allSessions = [], isLoading: sessionsLoading } = useQuery({
+  const {
+    data: allSessions = [],
+    isLoading: sessionsLoading,
+    isError: sessionsError,
+    error: sessionsErrorObj,
+  } = useQuery({
     queryKey: queryKeys.sessions(year),
     queryFn: async () => {
       const result = await pb.collection('camp_sessions').getFullList<CampSessionsResponse>({
@@ -98,6 +103,22 @@ export default function PostCheckPopout() {
     )
   }
 
+  // A query failure must surface as an explicit error, not collapse into the
+  // "Session not found" state below (which would be reached because allSessions
+  // defaults to [] on error). frontend/CLAUDE.md: all 4 query states handled.
+  if (sessionsError) {
+    return (
+      <div className="p-6">
+        <h1 className="text-lg font-semibold text-red-700">Failed to load sessions</h1>
+        <p className="mt-1 text-sm text-stone-600">
+          {sessionsErrorObj instanceof Error
+            ? sessionsErrorObj.message
+            : 'An unexpected error occurred.'}
+        </p>
+      </div>
+    )
+  }
+
   if (!session) {
     return (
       <div className="p-6">
@@ -131,7 +152,7 @@ function PostCheckPopoutContents({
   // Note: BunkingValidationResult in solver.ts is an older type definition —
   // the actual API response matches ValidationResults. Cast as ValidateBunkingButton does.
   const postCheckQuery = useQuery<ValidationResults>({
-    queryKey: ['post-check', sessionCmId, scenarioId] as const,
+    queryKey: queryKeys.postCheck(sessionCmId, scenarioId),
     queryFn: () =>
       solverService.validateBunking(
         String(sessionCmId),

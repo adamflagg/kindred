@@ -344,14 +344,22 @@ class DirectBunkingSolver:
             for bucket, reasons in impossible_by_reason.items()
         }
 
-        # Material-only impossible count: filter report.flat by bucket.
-        material_impossible_count = sum(
-            1 for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value
+        # Material-only impossible count — request-id-unique, mirroring
+        # report.total_impossible's dedup. A request impossible for >1 reason
+        # appears once per reason in report.flat (Layer 2 records every
+        # overlapping blocker); counting rows directly would double-count it and
+        # could drive possible_requests negative.
+        material_impossible_count = len(
+            {item.request_id for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value}
         )
 
         # affected_campers — distinct requester cm_id among material-impossible rows only.
         material_affected_campers = len(
-            {item.requester["cm_id"] for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value}
+            {
+                item.requester.get("cm_id")
+                for item in report.flat
+                if item.bucket != RequestBucket.IMMATERIAL_PARENT.value and item.requester.get("cm_id") is not None
+            }
         )
 
         self.request_validation_summary: RequestValidationSummary = {

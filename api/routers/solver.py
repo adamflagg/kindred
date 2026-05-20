@@ -29,7 +29,7 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
-from bunking.solver.impossibility import ImpossibilityReport, validate_impossibility
+from bunking.solver.impossibility import filter_immaterial_requests, validate_impossibility
 
 from ..constants.collections import (
     ATTENDEES,
@@ -71,43 +71,6 @@ def _resolve_time_limit(value: int | None, default: int = 60) -> int:
     No config DB lookup — the request body is the canonical source.
     """
     return value if value is not None else default
-
-
-def _filter_immaterial_from_report(report: ImpossibilityReport) -> ImpossibilityReport:
-    """Strip IMMATERIAL_PARENT bucket entries from a report's flat and by_reason fields.
-
-    Group 65 #1537 — pre-check should not surface socialize_with requests
-    because parent age-pref dropdowns are not actionable signals for staff.
-
-    Re-derives total_impossible and affected_campers from the filtered flat list.
-    mp_campers_entirely_impossible is left untouched (MP-only by definition).
-    by_bucket_count is also filtered so filter-chip counts stay consistent.
-    """
-    from dataclasses import replace
-
-    from bunking.satisfaction.bucket import RequestBucket
-
-    immaterial_bucket = RequestBucket.IMMATERIAL_PARENT.value
-
-    filtered_flat = [item for item in report.flat if item.bucket != immaterial_bucket]
-
-    filtered_by_reason = {
-        reason_code: [item for item in items if item.bucket != immaterial_bucket]
-        for reason_code, items in report.by_reason.items()
-    }
-
-    filtered_by_bucket_count = {
-        bucket: count for bucket, count in report.by_bucket_count.items() if bucket != immaterial_bucket
-    }
-
-    return replace(
-        report,
-        flat=filtered_flat,
-        by_reason=filtered_by_reason,
-        total_impossible=len(filtered_flat),
-        affected_campers=len({item.requester.get("cm_id") for item in filtered_flat if item.requester}),
-        by_bucket_count=filtered_by_bucket_count,
-    )
 
 
 # ========================================
@@ -439,7 +402,7 @@ async def pre_validate_solver(
         report = validate_impossibility(solver_input, config_service)
         # Filter IMMATERIAL_PARENT entries — staff treat these as background noise,
         # not actionable signals (Group 65 #1537).
-        report = _filter_immaterial_from_report(report)
+        report = filter_immaterial_requests(report)
 
         # --- Statistics ---
         total_capacity = sum(b.capacity for b in solver_input.bunks)
