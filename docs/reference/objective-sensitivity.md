@@ -189,9 +189,9 @@ update the test assertions, and ship all three together.
 
 ## See also
 
-- `docs/reference/solver-roadmap.md` — the Phase 0-4 stream sequencing; Phase
-  3 changelog references this analysis for residual interpretation.
+- `docs/architecture/solver-internals.md` — solver design reference (hard
+  MSO, impossibility framework, observability, mutual boost).
 - `docs/reference/solver-config-decisions.md` (local-only / gitignored) —
   the per-domain cleanup tracker that this analysis feeds.
-- `bunking/solver/direct_solver.py:562-612` — objective assembly.
+- `bunking/solver/direct_solver.py` — objective assembly (`add_objective`).
 - `bunking/satisfaction/bucket.py` — source_field → MP/IMP/STAFF mapping.
