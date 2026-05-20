@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import type { BunkWithCampers } from '../types/app-types'
 import { isEligibleSwapTarget } from '../utils/bunkSwap'
-import { extractSortKey } from './BunkSocialGraphModal'
+import { extractSortKey } from '../utils/bunkNaming'
 
 interface BunkSwapModalProps {
   source: BunkWithCampers

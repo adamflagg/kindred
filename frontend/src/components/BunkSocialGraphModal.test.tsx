@@ -12,12 +12,8 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-import {
-  buildBunksFilter,
-  extractBunkCmIdsFromPlans,
-  extractSortKey,
-  getBunkType,
-} from './BunkSocialGraphModal'
+import { buildBunksFilter, extractBunkCmIdsFromPlans } from './BunkSocialGraphModal'
+import { extractSortKey, getBunkType } from '../utils/bunkNaming'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
 // Mirrors the useMemo body in BunkSocialGraphModal so we can assert the
@@ -51,86 +47,9 @@ function deriveSessionBunks(allBunks: BunkStub[] | undefined, bunkCmId: number) 
     }))
 }
 
-// ─── getBunkType ──────────────────────────────────────────────────────────────
-
-describe('getBunkType', () => {
-  it('returns B for an empty string', () => {
-    expect(getBunkType('')).toBe('B')
-  })
-
-  it('classifies boy bunks', () => {
-    expect(getBunkType('B-1')).toBe('B')
-    expect(getBunkType('B-12')).toBe('B')
-  })
-
-  it('classifies girl bunks', () => {
-    expect(getBunkType('G-1')).toBe('G')
-    expect(getBunkType('G-7')).toBe('G')
-  })
-
-  it('classifies AG bunks by prefix', () => {
-    expect(getBunkType('AG-1')).toBe('AG')
-    expect(getBunkType('AG1')).toBe('AG')
-  })
-
-  it('falls back to B for unrecognised names', () => {
-    expect(getBunkType('Cabin-5')).toBe('B')
-  })
-
-  // #1164: classification was previously a substring match (`name.includes('AG')`),
-  // which mis-classified incidental occurrences. The match must be prefix-anchored
-  // and bounded — AG followed by end-of-string, whitespace, hyphen, or a digit.
-  describe('#1164 — AG match must be prefix-anchored, not substring', () => {
-    it.each([
-      ['AG', 'AG'],
-      ['AG-1', 'AG'],
-      ['AG1', 'AG'],
-      ['AG Alph', 'AG'],
-      ['AG-Alpha-1', 'AG'],
-    ])('classifies %s as AG', (name, expected) => {
-      expect(getBunkType(name)).toBe(expected)
-    })
-
-    it.each([
-      ['STAGE', 'B'], // Incidental "AG" mid-word
-      ['page', 'B'], // Incidental "ag" lowercased
-      ['BAG-1', 'B'], // "AG" inside a B-prefixed name
-      ['B-1AG', 'B'], // Trailing AG suffix on a B bunk (was previously mis-AG'd; #1164 inverts)
-      ['Stage-1', 'B'], // Mixed-case "ag" mid-word
-    ])('does NOT classify %s as AG (incidental match)', (name, expected) => {
-      expect(getBunkType(name)).toBe(expected)
-    })
-  })
-})
-
-// ─── extractSortKey ───────────────────────────────────────────────────────────
-
-describe('extractSortKey', () => {
-  it('places Alpha bunks at primary -2', () => {
-    expect(extractSortKey('Alpha').primary).toBe(-2)
-    expect(extractSortKey('B-Alph-1').primary).toBe(-2)
-  })
-
-  it('places Beta bunks at primary -1', () => {
-    expect(extractSortKey('Beta').primary).toBe(-1)
-    expect(extractSortKey('G-Bet-2').primary).toBe(-1)
-  })
-
-  it('extracts numeric sort key for numbered bunks', () => {
-    expect(extractSortKey('B-3').primary).toBe(3)
-    expect(extractSortKey('G-10').primary).toBe(10)
-  })
-
-  it('sorts lower numbers before higher numbers', () => {
-    const k1 = extractSortKey('B-1')
-    const k2 = extractSortKey('B-9')
-    expect(k1.primary).toBeLessThan(k2.primary)
-  })
-
-  it('falls back to primary 999 for unrecognised patterns', () => {
-    expect(extractSortKey('Unknown').primary).toBe(999)
-  })
-})
+// Unit tests for getBunkType / extractSortKey now live in
+// `frontend/src/utils/bunkNaming.test.ts`. They're imported here only so the
+// sessionBunks derivation tests below can exercise the same logic.
 
 // ─── extractBunkCmIdsFromPlans ───────────────────────────────────────────────
 // Regression guard for #1339: bunk_plans schema has no flat bunk_cm_id column;

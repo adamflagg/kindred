@@ -7,7 +7,7 @@
  * unit-testable without booting the query client.
  */
 import type { BunkWithCampers } from '../types/app-types'
-import { getBunkType } from '../components/BunkSocialGraphModal'
+import { getBunkType } from './bunkNaming'
 
 /**
  * True when `candidate` is a valid target to swap with `source`. Filters:
@@ -35,6 +35,14 @@ export function isEligibleSwapTarget(source: BunkWithCampers, candidate: BunkWit
  * Not atomic: a mid-loop failure leaves the bunks in a partial-swap state.
  * Acceptable for v1 — moveCamper already toasts per-call errors and staff
  * can re-swap to recover.
+ *
+ * Lock-group invariant: lock groups are guaranteed to live entirely within
+ * a single bunk (the solver and DnD path both enforce this). Swapping
+ * bunkA ↔ bunkB therefore relocates whole lock groups together — group
+ * members in bunkA all move to bunkB and vice versa — without any
+ * group-aware logic here. This relies on the upstream invariant; if a
+ * group ever ends up split across two unrelated bunks, that's a separate
+ * bug to fix at the source, not here.
  */
 export async function swapBunks(
   bunkA: BunkWithCampers,

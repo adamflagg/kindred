@@ -597,7 +597,9 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                       })
                     })
                   }}
-                  onSwapClick={() => setSelectedBunkForSwap(bunk)}
+                  onSwapClick={
+                    canManage && !isProductionMode ? () => setSelectedBunkForSwap(bunk) : undefined
+                  }
                   isDragging={isDragging}
                   isProductionMode={isProductionMode}
                   defaultCapacity={defaultCapacity}
@@ -704,7 +706,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       )}
 
       {/* Bunk Swap Modal — same-gender picker + Confirm flow (#1546) */}
-      {selectedBunkForSwap && (
+      {selectedBunkForSwap && canManage && !isProductionMode && (
         <BunkSwapModal
           source={selectedBunkForSwap}
           allBunks={allBunksWithCampers}
@@ -714,9 +716,14 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             // Close immediately so the user sees the board update as the
             // per-camper moves stream in.
             setSelectedBunkForSwap(null)
-            await swapBunks(source, target, async (camperId, bunkId) => {
-              await onCamperMove(camperId, bunkId)
-            })
+            try {
+              await swapBunks(source, target, async (camperId, bunkId) => {
+                await onCamperMove(camperId, bunkId)
+              })
+            } catch (error) {
+              console.error('Bunk swap failed:', error)
+              toast.error('Bunk swap failed — some campers may not have moved')
+            }
           }}
         />
       )}

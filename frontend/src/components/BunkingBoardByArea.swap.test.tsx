@@ -13,32 +13,18 @@
  * without booting dnd-kit / lock contexts. BunkSwapModal renders for real.
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { toast } from 'react-hot-toast'
 
 import type { BunkWithCampers, Camper, Bunk } from '../types/app-types'
 
+const { mockHasPermission } = vi.hoisted(() => ({
+  mockHasPermission: vi.fn(() => true),
+}))
+
 vi.mock('./FloatingUnassignedBadge', () => ({ default: () => null }))
 vi.mock('./CamperDetailsPanel', () => ({ default: () => null }))
-vi.mock('./BunkSocialGraphModal', () => ({
-  default: () => null,
-  // BunkSwapModal imports `extractSortKey` from BunkSocialGraphModal; the
-  // mock must export it so the modal can sort candidates.
-  extractSortKey: (name: string) => {
-    if (name.includes('Alph')) return { primary: -2, secondary: name }
-    if (name.includes('Bet')) return { primary: -1, secondary: name }
-    const match = name.match(/[GB]-(\d+)/)
-    if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
-    return { primary: 999, secondary: name }
-  },
-  // bunkSwap.ts also imports `getBunkType` from this module.
-  getBunkType: (name: string): 'G' | 'B' | 'AG' => {
-    if (!name) return 'B'
-    if (/^AG(?:$|[\s-]|\d)/.test(name)) return 'AG'
-    if (name.startsWith('G-')) return 'G'
-    if (name.startsWith('B-')) return 'B'
-    return 'B'
-  },
-}))
+vi.mock('./BunkSocialGraphModal', () => ({ default: () => null }))
 vi.mock('./LockGroupActionBar', () => ({ default: () => null }))
 vi.mock('./LockGroupPanel', () => ({ default: () => null }))
 
@@ -81,7 +67,7 @@ vi.mock('../contexts/LockGroupContext', () => ({
 
 vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2026 }))
 vi.mock('../hooks/usePermissions', () => ({
-  usePermissions: () => ({ hasPermission: () => true }),
+  usePermissions: () => ({ hasPermission: mockHasPermission }),
 }))
 
 import BunkingBoardByArea from './BunkingBoardByArea'
@@ -136,6 +122,11 @@ describe('BunkingBoardByArea — bunk swap', () => {
     onAreaChange: () => {},
   }
 
+  beforeEach(() => {
+    mockHasPermission.mockReturnValue(true)
+    vi.restoreAllMocks()
+  })
+
   it('opens the swap modal when a bunk Swap button is clicked', () => {
     render(<BunkingBoardByArea {...baseProps} onCamperMove={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Swap bunk G-9' }))
@@ -175,5 +166,29 @@ describe('BunkingBoardByArea — bunk swap', () => {
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(onCamperMove).not.toHaveBeenCalled()
     expect(screen.queryByText(/Swap G-9 with/i)).not.toBeInTheDocument()
+  })
+
+  it('hides the Swap button on every bunk when isProductionMode is true', () => {
+    render(<BunkingBoardByArea {...baseProps} onCamperMove={vi.fn()} isProductionMode={true} />)
+    expect(screen.queryByRole('button', { name: /Swap bunk/ })).not.toBeInTheDocument()
+  })
+
+  it('hides the Swap button when the user lacks BUNKING_MANAGE permission', () => {
+    mockHasPermission.mockReturnValue(false)
+    render(<BunkingBoardByArea {...baseProps} onCamperMove={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Swap bunk/ })).not.toBeInTheDocument()
+  })
+
+  it('shows an error toast when a camper move rejects during swap', async () => {
+    const toastErrorSpy = vi.spyOn(toast, 'error').mockReturnValue('mock-id')
+    const onCamperMove = vi.fn().mockRejectedValue(new Error('move failed'))
+    render(<BunkingBoardByArea {...baseProps} onCamperMove={onCamperMove} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Swap bunk G-9' }))
+    fireEvent.click(screen.getByRole('radio', { name: /G-10b/ }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm swap/i }))
+
+    await waitFor(() => {
+      expect(toastErrorSpy).toHaveBeenCalled()
+    })
   })
 })

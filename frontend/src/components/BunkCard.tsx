@@ -22,7 +22,7 @@ interface BunkCardProps {
   onCamperLockToggle?: (camper: Camper) => void
   onCamperUnassign?: (camper: Camper) => void
   onShowSocialGraph?: () => void
-  onSwapClick?: () => void
+  onSwapClick?: (() => void) | undefined
   isDragging?: boolean
   isProductionMode?: boolean
   defaultCapacity?: number

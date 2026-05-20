@@ -102,19 +102,9 @@ interface BunkGraphData {
   health_score: number
 }
 
-// Helpers hoisted to module scope: they reference no closure values and were
-// previously redeclared on every useMemo recompute. Exported for unit tests.
-// eslint-disable-next-line react-refresh/only-export-components
-export const isAGBunkName = (name: string): boolean => /^AG(?:$|[\s-]|\d)/.test(name)
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const getBunkType = (name: string): 'G' | 'B' | 'AG' => {
-  if (!name) return 'B'
-  if (isAGBunkName(name)) return 'AG'
-  if (name.startsWith('G-')) return 'G'
-  if (name.startsWith('B-')) return 'B'
-  return 'B'
-}
+// Bunk-naming predicates live in `utils/bunkNaming` so utility modules
+// (e.g. bunkSwap) can import them without depending on this component.
+import { getBunkType, extractSortKey, isAGBunkName } from '../utils/bunkNaming'
 
 /**
  * Build a PocketBase filter for fetching bunks by cm_id within a specific year.
@@ -155,15 +145,6 @@ export const extractBunkCmIdsFromPlans = (
       .filter((id): id is number => typeof id === 'number')
   ),
 ]
-
-// eslint-disable-next-line react-refresh/only-export-components
-export const extractSortKey = (name: string): { primary: number; secondary: string } => {
-  if (name.includes('Alph')) return { primary: -2, secondary: name }
-  if (name.includes('Bet')) return { primary: -1, secondary: name }
-  const match = name.match(/[GB]-(\d+)/)
-  if (match?.[1]) return { primary: parseInt(match[1], 10), secondary: name }
-  return { primary: 999, secondary: name }
-}
 
 export default function BunkSocialGraphModal({
   bunkCmId,
