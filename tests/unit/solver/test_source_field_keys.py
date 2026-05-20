@@ -188,7 +188,6 @@ class TestDirectSolverCanonicalKeys:
             requester_person_cm_id=100,
             requested_person_cm_id=200,
             request_type="bunk_with",
-            priority=5,
             session_cm_id=1000,
             year=2025,
             source_field=SourceField.BUNK_REQUEST_FORM,
@@ -196,3 +195,69 @@ class TestDirectSolverCanonicalKeys:
 
         multiplier = solver._get_csv_field_multiplier(request)
         assert multiplier == 1.75
+
+    def test_multiplier_uses_registry_default_when_config_missing_key(self):
+        """#1530: when the config has no row for the key, fall back to the
+        canonical per-key default in `_WEIGHT_DEFAULTS` — same as the
+        evaluators via `weight_for` (PR #1552). The pre-fix generic
+        `default=1.0` diverged from the evaluators for socialize_preference
+        (registry default 0.6) and `do_not_share_with` (1.5)."""
+        from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.direct_solver import DirectBunkingSolver
+
+        # Config has NO entry for the multiplier — any get_float call returns the default.
+        config = MagicMock()
+        config.get_float.side_effect = lambda key, default=None: default if default is not None else 1.0
+        config.get_int.return_value = 0
+
+        solver = DirectBunkingSolver.__new__(DirectBunkingSolver)
+        solver.config = config
+
+        # socialize_preference source paired with age_preference type → registry
+        # row exists with weight_key=objective.source_multipliers.socialize_preference,
+        # which has _WEIGHT_DEFAULTS = 0.6.
+        request = DirectBunkRequest(
+            id="req-soc",
+            requester_person_cm_id=100,
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            session_cm_id=1000,
+            year=2025,
+            source_field=SourceField.SOCIALIZE_WITH,
+            age_preference_target="younger",
+        )
+
+        multiplier = solver._get_csv_field_multiplier(request)
+        # Pre-fix: 1.0 (generic default). Post-fix: 0.6 (registry-aware default).
+        assert multiplier == 0.6
+
+    def test_multiplier_off_axis_combo_falls_back_to_neutral(self):
+        """An off-axis (source, type) combo not in the 14-row registry falls back
+        to a neutral 1.0 with a warning — matches the evaluators' handling
+        (`objective_evaluator.py` / `score_evaluator.py` wrap `weight_for` in a
+        try/except ValueError)."""
+        from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.direct_solver import DirectBunkingSolver
+
+        config = MagicMock()
+        config.get_float.return_value = 1.0
+        config.get_int.return_value = 0
+
+        solver = DirectBunkingSolver.__new__(DirectBunkingSolver)
+        solver.config = config
+
+        # bunk_request_form × age_preference is not a valid combo (registry row
+        # for age_preference uses socialize_with sources, not bunk_request_form).
+        request = DirectBunkRequest(
+            id="req-off",
+            requester_person_cm_id=100,
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            session_cm_id=1000,
+            year=2025,
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            age_preference_target="younger",
+        )
+
+        multiplier = solver._get_csv_field_multiplier(request)
+        assert multiplier == 1.0

@@ -195,11 +195,14 @@ def test_impossible_request_does_not_consume_slot(mock_config: Any) -> None:
     assert pos_b_coeff is not None, "pos_b var must appear in the objective"
 
     # CP-SAT stores Maximize objectives as their negation internally; compare
-    # by magnitude. Source multiplier defaults to 1.0 under mock_config; mutual
-    # boost doesn't apply (no reciprocal direction filed). Slot-0 = base*FIRST,
-    # slot-1 = base*SECOND.
-    expected_slot0 = int(BASE_REQUEST_WEIGHT * 1.0 * FIRST_REQUEST_MULTIPLIER)
-    expected_slot1 = int(BASE_REQUEST_WEIGHT * 1.0 * SECOND_REQUEST_MULTIPLIER)
+    # by magnitude. Post-#1530 the solver routes the multiplier through the
+    # `(source, type)` registry — bunk_request_form × bunk_with → share_bunk_with
+    # weight_key with `_WEIGHT_DEFAULTS = 1.75` (mock_config has no row, so the
+    # registry default kicks in). Mutual boost doesn't apply (no reciprocal
+    # direction filed). Slot-0 = base*1.75*FIRST, slot-1 = base*1.75*SECOND.
+    source_multiplier = 1.75
+    expected_slot0 = int(BASE_REQUEST_WEIGHT * source_multiplier * FIRST_REQUEST_MULTIPLIER)
+    expected_slot1 = int(BASE_REQUEST_WEIGHT * source_multiplier * SECOND_REQUEST_MULTIPLIER)
     actual = sorted([abs(pos_a_coeff), abs(pos_b_coeff)])
     assert actual == sorted([expected_slot0, expected_slot1]), (
         f"possible requests should claim slots 0+1 (magnitudes {expected_slot0}, {expected_slot1}); "
