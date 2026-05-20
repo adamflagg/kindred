@@ -1,15 +1,17 @@
 """Phase B (Stream 3 / #1381): impossible requests must not produce req_satisfied
 BoolVars in the model proto.
 
-Today the objective builder iterates ``self.input.requests_by_person`` and creates
-a pinned-to-0 ``req_satisfied_<id>`` BoolVar for every bunk_with request whose
-pair has no valid bunks (line 525 in ``add_objective``). For requests already
-classified impossible by ``validate_impossibility``, this is wasted model bulk
-AND consumes a diminishing-returns slot that should belong to a possible request.
+Before this PR, the objective builder iterated ``self.input.requests_by_person``
+and created a pinned-to-0 ``req_satisfied_<id>`` BoolVar for every bunk_with
+request whose pair had no valid bunks (the no-valid-bunks fallback branch in
+``add_objective``). For requests already classified impossible by
+``validate_impossibility``, that was wasted model bulk AND consumed a
+diminishing-returns slot that should belong to a possible request.
 
-Switching the loop source to ``self.possible_requests`` (which already filters
-on ``{item.request_id for item in impossibility_report.flat}`` in
-``_validate_requests``) eliminates the pinned-to-0 var and frees the slot.
+Phase B switches the loop source to ``self.possible_requests`` (which
+``_validate_requests`` populates by filtering against
+``{item.request_id for item in impossibility_report.flat}``), eliminating the
+pinned-to-0 var and freeing the slot.
 """
 
 from __future__ import annotations
@@ -142,3 +144,64 @@ def test_possible_request_still_gets_sat_var(mock_config: Any) -> None:
     solver.add_objective()
 
     assert "pos1" in solver.request_satisfied_vars, "Possible request must still register in the shared sat-var map"
+
+
+def test_impossible_request_does_not_consume_slot(mock_config: Any) -> None:
+    """Slot-accounting guard: when a person has one impossible + two possible
+    bunk_with requests, the two possible requests must claim slots 0 and 1 of
+    the diminishing-returns stack (FIRST + SECOND multipliers), not slots 1
+    and 2 (SECOND + THIRD). Without Phase B, the impossible request consumed
+    slot 0 and the possible requests fell to slots 1 and 2.
+    """
+    from bunking.solver.direct_solver import (
+        BASE_REQUEST_WEIGHT,
+        FIRST_REQUEST_MULTIPLIER,
+        SECOND_REQUEST_MULTIPLIER,
+    )
+
+    persons = [
+        make_person(1, session=1000, gender="F"),
+        make_person(2, session=1000, gender="F"),
+        make_person(3, session=1000, gender="F"),
+        make_person(4, session=2000, gender="F"),  # different session for the impossible req
+    ]
+    bunks = [
+        make_bunk(100, session=1000, gender="F"),
+        make_bunk(200, session=1000, gender="F"),
+        make_bunk(300, session=2000, gender="F"),
+    ]
+    # Order matters: impossible request first ensures pre-fix would have given
+    # it slot 0 with the possible requests pushed down to slots 1 and 2.
+    requests = [
+        make_request("imp1", requester=1, requestee=4, request_type="bunk_with", session=1000),
+        make_request("pos_a", requester=1, requestee=2, request_type="bunk_with", session=1000),
+        make_request("pos_b", requester=1, requestee=3, request_type="bunk_with", session=1000),
+    ]
+    solver = DirectBunkingSolver(make_input(persons, bunks, requests), config_service=mock_config)
+
+    solver.add_constraints()
+    solver.add_objective()
+
+    impossible_ids = {item.request_id for item in solver.impossibility_report.flat}
+    assert "imp1" in impossible_ids, "precondition: imp1 must be classified impossible"
+
+    proto = solver.model.Proto()
+    name_to_index = {v.name: i for i, v in enumerate(proto.variables)}
+    coeff_by_var: dict[int, int] = dict(zip(proto.objective.vars, proto.objective.coeffs, strict=False))
+
+    pos_a_coeff = coeff_by_var.get(name_to_index["req_satisfied_pos_a"])
+    pos_b_coeff = coeff_by_var.get(name_to_index["req_satisfied_pos_b"])
+    assert pos_a_coeff is not None, "pos_a var must appear in the objective"
+    assert pos_b_coeff is not None, "pos_b var must appear in the objective"
+
+    # CP-SAT stores Maximize objectives as their negation internally; compare
+    # by magnitude. Source multiplier defaults to 1.0 under mock_config; mutual
+    # boost doesn't apply (no reciprocal direction filed). Slot-0 = base*FIRST,
+    # slot-1 = base*SECOND.
+    expected_slot0 = int(BASE_REQUEST_WEIGHT * 1.0 * FIRST_REQUEST_MULTIPLIER)
+    expected_slot1 = int(BASE_REQUEST_WEIGHT * 1.0 * SECOND_REQUEST_MULTIPLIER)
+    actual = sorted([abs(pos_a_coeff), abs(pos_b_coeff)])
+    assert actual == sorted([expected_slot0, expected_slot1]), (
+        f"possible requests should claim slots 0+1 (magnitudes {expected_slot0}, {expected_slot1}); "
+        f"got pos_a={pos_a_coeff}, pos_b={pos_b_coeff}"
+    )
