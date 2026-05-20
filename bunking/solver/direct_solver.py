@@ -504,7 +504,17 @@ class DirectBunkingSolver:
         # get_or_create_request_sat_var memo-shares with parent_paramount.
         ctx = self._build_solver_context()
 
-        for person_cm_id, requests in self.input.requests_by_person.items():
+        # Stream 3 Phase B (#1381): iterate self.possible_requests instead of
+        # self.input.requests_by_person.items() so the objective builder never
+        # sees a request already in impossibility_report.flat. This drops the
+        # pinned-to-0 req_satisfied BoolVar (line ~525 below for the
+        # no-valid-bunks fallback) AND frees the diminishing-returns slot the
+        # impossible request would otherwise consume, letting a possible
+        # request claim a higher-weighted slot. _validate_requests initializes
+        # possible_requests for every person in requests_by_person but only
+        # populates entries for persons in person_idx_map, so the roster guard
+        # stays.
+        for person_cm_id, requests in self.possible_requests.items():
             if person_cm_id not in self.person_idx_map:
                 continue
 
