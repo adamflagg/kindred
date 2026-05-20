@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from bunking.config import ConfigLoader, MissingKeyError
+from bunking.config.errors import UnknownKeyError
 
 
 class TestGetSoftConstraintWeightNoDefault:
@@ -74,3 +75,31 @@ class TestLoaderFailsLoudOnMissingRequiredKey:
         assert validate_param.default is True, (
             f"validate_on_init default should be True, got {validate_param.default!r}"
         )
+
+
+class TestAgeSpreadRemovedFromWeightMappings:
+    """Age Spread Phase 2: age_spread is no longer routed through soft-weight mapping.
+
+    The hard MAX_AGE_SPREAD_MONTHS constant replaces constraint.age_spread.penalty.
+    Any residual ``get_soft_constraint_weight("age_spread")`` call should fall
+    through to the default key shape ``constraint.age_spread.weight``, which
+    isn't in CONFIG_SCHEMA → UnknownKeyError.
+    """
+
+    def test_get_soft_constraint_weight_age_spread_falls_through(self) -> None:
+        """Calling with 'age_spread' should resolve to constraint.age_spread.weight (not .penalty)."""
+        ConfigLoader.reset()
+        fake_collection = MagicMock()
+        fake_collection.get_first_list_item.side_effect = Exception("not found")
+        fake_pb = MagicMock()
+        fake_pb.collection.return_value = fake_collection
+
+        with patch("bunking.config.loader.PocketBase", return_value=fake_pb):
+            ConfigLoader.initialize(
+                pocketbase_url="http://127.0.0.1:19999",
+                validate_on_init=False,
+            )
+            loader = ConfigLoader.get_instance()
+            with pytest.raises(UnknownKeyError):
+                loader.get_soft_constraint_weight("age_spread")
+        ConfigLoader.reset()
