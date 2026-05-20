@@ -230,50 +230,24 @@ def test_weight_for_reads_configured_value_over_default() -> None:
     assert weight_for(SourceField.BUNK_REQUEST_FORM, RequestType.BUNK_WITH.value, cfg) == 9.25  # type: ignore[arg-type]
 
 
-def test_weight_for_unknown_source_is_neutral() -> None:
-    """A source the registry doesn't know returns 1.0, never raises.
-
-    Pre-Phase-3 the evaluators did `source_multipliers.get(f, 1.0)` — anything
-    not in the source-keyed dict resolved to neutral. weight_for preserves that.
-    """
-    assert weight_for("nonexistent_source", RequestType.BUNK_WITH.value, _StubConfig()) == 1.0  # type: ignore[arg-type]
+def test_weight_for_unknown_source_raises() -> None:
+    """A source the registry doesn't know raises ValueError — the 14 combos
+    are the universe, off-axis data fails loud."""
+    with pytest.raises(ValueError):
+        weight_for("nonexistent_source", RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
 
 
-def test_weight_for_off_axis_combo_uses_source_keyed_fallback() -> None:
-    """For a strict source paired with a request_type it doesn't admit (off-axis
-    combos absent from the registry), weight_for falls back to the source's
-    weight_key. This preserves the pre-Phase-3 source-keyed lookup on synthetic
-    fixtures and off-axis data — required for the baseline-regression test.
-
-    For every valid registry row the fallback and the strict lookup return the
-    same value (weight_key is source-determined today), so this only changes
-    behavior for off-axis combos.
-    """
-    # staff_not_bunk_with admits only not_bunk_with in the registry; pair it
-    # with bunk_with and the old evaluators still applied do_not_share_with.
-    assert weight_for(SourceField.STAFF_NOT_BUNK_WITH, RequestType.BUNK_WITH.value, _StubConfig()) == 1.5  # type: ignore[arg-type]
-    # socialize_with admits only age_preference; the same fixture-style mismatch.
-    assert weight_for(SourceField.SOCIALIZE_WITH, RequestType.BUNK_WITH.value, _StubConfig()) == 0.6  # type: ignore[arg-type]
-    # And configured overrides win on the fallback path too.
-    cfg = _StubConfig({"objective.source_multipliers.do_not_share_with": 2.5})
-    assert weight_for(SourceField.STAFF_NOT_BUNK_WITH, RequestType.BUNK_WITH.value, cfg) == 2.5  # type: ignore[arg-type]
-
-
-def test_weight_key_is_source_determined_today() -> None:
-    """Invariant: every row of a given source shares one weight_key (today's
-    state, mirroring `report_group`). When this breaks, weight_for's source-keyed
-    fallback path needs to go away — the strict (source, type) lookup becomes
-    the only valid path.
-    """
-    from collections import defaultdict
-
-    from bunking.satisfaction import request_registry
-
-    by_source: dict[str, set[str | None]] = defaultdict(set)
-    for (source, _rtype), rc in request_registry._REGISTRY.items():
-        by_source[source].add(rc.weight_key)
-    for source, keys in by_source.items():
-        assert len(keys) == 1, f"{source} maps to multiple weight_keys: {keys}"
+def test_weight_for_off_axis_combo_raises() -> None:
+    """A strict source paired with a request_type it doesn't admit is not in
+    the registry — weight_for raises rather than silently applying the source's
+    multiplier (the pre-Phase-3 behavior). Off-axis pipeline data is a hygiene
+    bug we want to surface, not paper over."""
+    # staff_not_bunk_with admits only not_bunk_with; bunk_with is off-axis.
+    with pytest.raises(ValueError):
+        weight_for(SourceField.STAFF_NOT_BUNK_WITH, RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
+    # socialize_with admits only age_preference; bunk_with is off-axis.
+    with pytest.raises(ValueError):
+        weight_for(SourceField.SOCIALIZE_WITH, RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
 
 
 def test_weight_for_manual_is_neutral() -> None:

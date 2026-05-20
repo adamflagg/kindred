@@ -8,13 +8,14 @@ Single source of truth for the two axes keyed by (source_field, request_type):
   * Solver axis     — `rule` (HARD_MSO / HARD_MNT / SOFT) + `weight_key`
     (config suffix for the objective multiplier).
 
-One row per valid combo. `report_group` and `weight_key` are both currently
-source-determined; `_build_source_to_group` and `_build_weight_key_by_source`
-enforce that invariant at import (raises if a source's rows disagree).
+One row per valid combo — the 14 entries below are the universe. `report_group`
+is source-determined; `_build_source_to_group` enforces that invariant at
+import (raises if a source's rows disagree).
   * `weight_key` is consumed by the objective evaluators via `weight_for`
-    (Phase 3). For off-axis combos absent from the registry, `weight_for` falls
-    back to the source-keyed projection — preserving the pre-Phase-3 lookup
-    semantics on synthetic fixtures and off-axis data.
+    (Phase 3). `weight_for` raises `ValueError` on a `(source, type)` combo
+    not in the registry — there is no source-keyed fallback. Off-axis data
+    (a strict source paired with a request_type it doesn't admit) is a
+    pipeline-hygiene bug and we want it to fail loudly.
   * `rule == HARD_MNT` is a DECLARED placeholder for deferred staff-hardening
     (#1543 / #1541); it is not enforced. `parent_paramount` still detects MP via
     `is_material_parent_request` (report_group == MATERIAL_PARENT).
@@ -138,35 +139,6 @@ if _missing_weight_defaults:
     raise AssertionError(f"weight_key(s) lack a _WEIGHT_DEFAULTS entry: {_missing_weight_defaults}")
 
 
-def _build_weight_key_by_source() -> dict[str, str | None]:
-    """Project the registry onto source_field, asserting weight_key consistency.
-
-    Today weight_key is source-determined: every row of a given source shares
-    one weight_key (mirroring `report_group`). This projection powers
-    `weight_for`'s source-keyed fallback for off-axis combos (strict source +
-    a request_type the registry doesn't admit), which preserves the
-    pre-Phase-3 evaluator semantics where the multiplier keyed on source_field
-    alone. If a future row makes weight_key request_type-dependent, this
-    raises — that's the signal that the fallback path needs to go away and a
-    per-(source,type) config split is required (Phase 4 / #1218).
-    """
-    mapping: dict[str, str | None] = {}
-    sentinel: object = object()
-    for (source, _rtype), rc in _REGISTRY.items():
-        existing: str | None | object = mapping.get(source, sentinel)
-        if existing is not sentinel and existing != rc.weight_key:
-            raise AssertionError(
-                f"weight_key for source {source!r} is not source-determined "
-                f"({existing} vs {rc.weight_key}); a per-(source,type) config "
-                f"split is required — see solver-config-it #1218"
-            )
-        mapping[source] = rc.weight_key
-    return mapping
-
-
-_WEIGHT_KEY_BY_SOURCE: dict[str, str | None] = _build_weight_key_by_source()
-
-
 def classify(source_field: str, request_type: str) -> RequestClass:
     """Full classification for a (source_field, request_type) combo. Raises on unknown."""
     rc = _REGISTRY.get((source_field, request_type))
@@ -199,20 +171,14 @@ def weight_key_for(source_field: str, request_type: str) -> str | None:
 def weight_for(source_field: str, request_type: str, config: ConfigLoader) -> float:
     """Objective multiplier for a (source_field, request_type) combo.
 
-    Resolves the registry's weight_key for the combo and looks it up in
-    `config`, falling back to the per-key default in `_WEIGHT_DEFAULTS`. For
-    combos absent from the registry (synthetic fixtures or off-axis data
-    pairing a strict source with a request_type it doesn't admit), falls back
-    to the source-keyed projection — preserving the pre-Phase-3 evaluator
-    semantics where the multiplier keyed on source_field alone. Today this
-    fallback returns the same value as the strict lookup for every valid combo
-    (weight_key is source-determined; see `_build_weight_key_by_source`).
-
-    Returns neutral 1.0 if the source has no weight_key (manual rows) or is
-    unknown to the registry entirely.
+    Resolves the registry's weight_key for the combo and reads `config`, with
+    the per-key default in `_WEIGHT_DEFAULTS` as fallback. Raises `ValueError`
+    via `classify()` if the combo is not in the registry — the 14 rows are the
+    universe and off-axis data (a strict source paired with a request_type it
+    doesn't admit) is a pipeline-hygiene bug we want to fail loudly. Returns
+    neutral 1.0 for valid combos with no weight_key (manual rows).
     """
-    rc = _REGISTRY.get((source_field, request_type))
-    key = rc.weight_key if rc is not None else _WEIGHT_KEY_BY_SOURCE.get(source_field)
-    if key is None:
+    rc = classify(source_field, request_type)
+    if rc.weight_key is None:
         return 1.0
-    return config.get_float(key, default=_WEIGHT_DEFAULTS[key])
+    return config.get_float(rc.weight_key, default=_WEIGHT_DEFAULTS[rc.weight_key])

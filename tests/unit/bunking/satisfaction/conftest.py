@@ -46,16 +46,21 @@ def synthetic_assignments() -> list[dict[str, Any]]:
 
 @pytest.fixture
 def synthetic_requests() -> list[dict[str, Any]]:
-    """Every (request_type, source_field) combination.
+    """Every valid (request_type, source_field) combination the predicate handles.
 
     Truth table:
-      r1: 1 bunk_with 2, source=bunk_with       → SATISFIED   (both in Alpha)
-      r2: 1 bunk_with 4, source=bunk_with       → UNSATISFIED (Alpha vs Beta)
-      r3: 2 bunk_with 3, source=socialize_with  → SATISFIED   (both in Alpha)
-      r4: 3 not_bunk_with 4, source=not_bunk_with → SATISFIED (Alpha vs Beta)
-      r5: 3 not_bunk_with 1, source=not_bunk_with → UNSATISFIED (both in Alpha)
-      r6: 4 bunk_with 5, source=bunking_notes   → SATISFIED   (both in Beta)
-      r7: 5 bunk_with 4, source=internal_notes  → SATISFIED   (both in Beta)
+      r1: 1 bunk_with 2, source=bunk_request_form     → SATISFIED   (both in Alpha)
+      r2: 1 bunk_with 4, source=bunk_request_form     → UNSATISFIED (Alpha vs Beta)
+      r4: 3 not_bunk_with 4, source=staff_not_bunk_with → SATISFIED (Alpha vs Beta)
+      r5: 3 not_bunk_with 1, source=staff_not_bunk_with → UNSATISFIED (both in Alpha)
+      r6: 4 bunk_with 5, source=bunking_notes         → SATISFIED   (both in Beta)
+      r7: 5 bunk_with 4, source=internal_notes        → SATISFIED   (both in Beta)
+      r_age: 8 age_preference, source=socialize_with  → IMMATERIAL_PARENT (uncounted)
+
+    Off-axis combos (e.g. socialize_with × bunk_with) are not in the registry's
+    14-row universe — see docs/architecture/request-classification.md. The
+    request_registry's `weight_for` raises on them; fixtures must use valid
+    combos only.
     """
     return [
         # bunk_with → MATERIAL_PARENT
@@ -77,16 +82,6 @@ def synthetic_requests() -> list[dict[str, Any]]:
             "year": 2026,
             "session_id": 999,
         },  # unsatisfied
-        # socialize_with → IMMATERIAL_PARENT (visible-uncounted)
-        {
-            "id": "r3",
-            "requester_id": 2,
-            "requestee_id": 3,
-            "request_type": "bunk_with",
-            "source_field": "socialize_with",
-            "year": 2026,
-            "session_id": 999,
-        },  # satisfied
         # not_bunk_with → STAFF
         {
             "id": "r4",

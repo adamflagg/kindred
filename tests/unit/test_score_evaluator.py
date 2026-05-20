@@ -454,21 +454,27 @@ class TestEvaluateScenarioScore:
         assert result_a.request_satisfaction_score > result_b.request_satisfaction_score
 
     def test_source_field_multiplier(self, mock_config):
-        """Test that source field multipliers affect score."""
+        """Test that source field multipliers affect score.
+
+        Pairs two valid (source, type) combos with distinct multipliers so the
+        test exercises the same axis without relying on off-axis pairings —
+        the registry rejects pairs like (socialize_with, bunk_with) which is
+        a strict source pinned to age_preference (#1142 Phase 3).
+        """
         share_bunk_request = [
             {
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.75x multiplier (share_bunk_with)
+                "source_field": SourceField.BUNK_REQUEST_FORM,  # 1.75x (share_bunk_with)
             }
         ]
-        socialize_request = [
+        notes_request = [
             {
                 "requester_id": 1,
                 "requestee_id": 2,
                 "request_type": "bunk_with",
-                "source_field": SourceField.SOCIALIZE_WITH,  # 0.6x multiplier (socialize_preference)
+                "source_field": SourceField.BUNKING_NOTES,  # 1.0x (bunking_notes)
             }
         ]
         assignments = [
@@ -482,10 +488,10 @@ class TestEvaluateScenarioScore:
         bunks = [{"cm_id": 100, "max_size": 12}]
 
         share_result = evaluate_scenario_score(share_bunk_request, assignments, persons, bunks, config=mock_config)
-        socialize_result = evaluate_scenario_score(socialize_request, assignments, persons, bunks, config=mock_config)
+        notes_result = evaluate_scenario_score(notes_request, assignments, persons, bunks, config=mock_config)
 
-        # BUNK_WITH (1.75x) should score higher than SOCIALIZE_WITH (0.6x)
-        assert share_result.request_satisfaction_score > socialize_result.request_satisfaction_score
+        # BUNK_REQUEST_FORM (1.75x) should score higher than BUNKING_NOTES (1.0x).
+        assert share_result.request_satisfaction_score > notes_result.request_satisfaction_score
 
     def test_field_scores_breakdown(self, mock_config):
         """Test field-level score breakdown."""
