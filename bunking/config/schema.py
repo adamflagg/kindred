@@ -18,16 +18,13 @@ from .types import ConfigKey, ConfigType
 CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SPREAD VALIDATION
-    # Used by both solver constraints and request processor
     # =========================================================================
-    "spread.max_age_months": ConfigKey(
-        key="spread.max_age_months",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Maximum age difference in months for bunk requests",
-        min_value=0,
-        max_value=60,
-    ),
+    # Phase 2 cleanup: spread.max_age_months was collapsed into
+    # bunking/solver/constants.py — MAX_AGE_SPREAD_MONTHS (=24). It was only
+    # consumed by the sync-time spread filter while a separate phantom
+    # constraint.age_spread.months (default=24) drove solver behavior.
+    # spread.max_grade was collapsed earlier into MAX_UNIQUE_GRADES_PER_BUNK
+    # (Grade Spread Phase 2).
     # =========================================================================
     # SOLVER CONSTRAINTS - Grade Ratio
     # =========================================================================
@@ -55,21 +52,11 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Age Spread
     # =========================================================================
-    "constraint.age_spread.penalty": ConfigKey(
-        key="constraint.age_spread.penalty",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Penalty for age spread violations",
-        min_value=0,
-    ),
-    "constraint.age_spread.preferred_months": ConfigKey(
-        key="constraint.age_spread.preferred_months",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Preferred age spread in months — cabins at or below this spread earn a bonus (0 = disabled)",
-        min_value=0,
-        max_value=60,
-    ),
+    # Phase 2 cleanup: constraint.age_spread.{penalty, preferred_months} were
+    # collapsed into bunking/solver/constants.py — MAX_AGE_SPREAD_MONTHS (hard
+    # cap, =24) and PREFERRED_AGE_SPREAD_MONTHS (soft target, =18). The soft
+    # penalty path is gone; the constant takes the hardcoded threshold.
+    # constraint.age_spread.preferred_bonus is KEPT as the lone tunable knob.
     "constraint.age_spread.preferred_bonus": ConfigKey(
         key="constraint.age_spread.preferred_bonus",
         config_type=ConfigType.INT,

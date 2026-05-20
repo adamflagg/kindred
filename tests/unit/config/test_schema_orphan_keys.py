@@ -37,3 +37,20 @@ def test_enabled_orphan_labels_absent_from_migration_metadata():
         "constraint.grade_spread.enabled",
     ]:
         assert key not in text, f"orphan label {key} still in migration"
+
+
+# Age Spread Phase 2: 3 keys deleted, 1 kept.
+# - spread.max_age_months          → MAX_AGE_SPREAD_MONTHS constant
+# - constraint.age_spread.penalty  → deleted (soft path gone)
+# - constraint.age_spread.preferred_months → PREFERRED_AGE_SPREAD_MONTHS constant
+# - constraint.age_spread.preferred_bonus  → KEPT (lone tunable in domain)
+
+
+def test_age_spread_deleted_keys_absent_from_schema():
+    assert "spread.max_age_months" not in CONFIG_SCHEMA
+    assert "constraint.age_spread.penalty" not in CONFIG_SCHEMA
+    assert "constraint.age_spread.preferred_months" not in CONFIG_SCHEMA
+
+
+def test_age_spread_preferred_bonus_still_in_schema():
+    assert "constraint.age_spread.preferred_bonus" in CONFIG_SCHEMA
