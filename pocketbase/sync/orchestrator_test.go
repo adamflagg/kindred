@@ -682,13 +682,16 @@ func TestRunSingleSyncRespectsPreMarkedStatus(t *testing.T) {
 			t.Errorf("expected 1 call to Sync, got %d", mock.GetCallCount())
 		}
 
-		// The status should have been updated to success
+		// The status should have been moved to lastCompletedStatus on success
 		o.mu.RLock()
-		finalStatus := o.runningJobs["test"]
+		completedStatus := o.lastCompletedStatus["test"]
 		o.mu.RUnlock()
 
+		if completedStatus == nil {
+			t.Fatal("expected completed status, got nil")
+		}
 		// Start time should be preserved from pre-marked status
-		if finalStatus != nil && !finalStatus.StartTime.Equal(preMarkedStartTime) {
+		if !completedStatus.StartTime.Equal(preMarkedStartTime) {
 			t.Errorf("expected StartTime to be preserved from MarkSyncRunning, got different time")
 		}
 	})
