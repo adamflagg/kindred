@@ -17,12 +17,13 @@ from __future__ import annotations
 
 from bunking.logging_config import get_logger
 from bunking.solver.constants import (
+    EDGE_AGE_OVERFLOW_PENALTY,
     MAX_AGE_SPREAD_MONTHS,
     PREFERRED_AGE_SPREAD_MONTHS,
 )
 
 from .base import SolverContext
-from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk
+from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk, is_edge_bunk_for_grades
 
 logger = get_logger(__name__)
 
@@ -35,19 +36,23 @@ def _age_to_months(age: float) -> int:
 
 
 def add_age_spread_constraints(ctx: SolverContext) -> None:
-    """Add hard age spread constraint + soft preferred-bonus path per non-AG bunk.
+    """Add age spread constraints per non-AG bunk.
 
-    Two-tier age spread system:
-    - Hard ceiling: ``spread <= MAX_AGE_SPREAD_MONTHS`` per non-AG bunk. Solver
-      never emits a bunk that violates this; staff can override on the
-      bunking board (board flags >24mo with a warning via the validator).
-    - Preferred bonus (soft): when ``spread <= PREFERRED_AGE_SPREAD_MONTHS``,
-      an objective bonus is added — encouraging tighter age clusters that
-      approximate single-grade cabins. Disabled when the configured bonus
-      weight is 0.
-
-    Uses TRUE min/max aggregation to reduce constraint count from O(n²) to
-    O(bunks).
+    Three-tier system:
+    - **Middle bunks** (not lowest/highest for their gender+session): hard cap
+      ``spread <= MAX_AGE_SPREAD_MONTHS``. Solver is INFEASIBLE if two campers
+      >24mo apart are forced in — there are always adjacent bunks to absorb
+      outliers, so no structural exception is warranted.
+    - **Edge bunks** (lowest or highest level for gender+session, including the
+      only bunk in a session): soft escape hatch via a reified
+      ``edge_age_overflow_b{idx}`` BoolVar. The 24mo cap is enforced only when
+      the bool is False; when True, ``EDGE_AGE_OVERFLOW_PENALTY`` is charged.
+      Since MSO satisfaction is a hard constraint, the solver sets this True only
+      when structurally forced (e.g., a hard bunk-with chain into the top cabin) —
+      never as a casual optimization choice.
+    - **Preferred bonus** (soft): bunks with spread <= ``PREFERRED_AGE_SPREAD_MONTHS``
+      earn a configurable bonus, regardless of edge/middle status. Disabled when
+      the configured bonus weight is 0.
     """
     if ctx.is_constraint_disabled("age_spread"):
         logger.info("Age spread constraints DISABLED via debug settings")
@@ -57,13 +62,14 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
     preferred_active = preferred_age_spread_bonus > 0
 
     logger.debug(
-        f"Adding hard age spread constraints (max {MAX_AGE_SPREAD_MONTHS}mo,"
+        f"Adding age spread constraints (max {MAX_AGE_SPREAD_MONTHS}mo,"
         f" preferred {PREFERRED_AGE_SPREAD_MONTHS}mo, bonus {preferred_age_spread_bonus},"
         f" preferred_active={preferred_active})"
     )
 
     bonus_count = 0
     bunk_count = 0
+    edge_count = 0
 
     for bunk_idx, bunk in enumerate(ctx.bunks):
         if is_ag_session_bunk(bunk):
@@ -100,8 +106,19 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
         spread = ctx.model.NewIntVar(0, max_possible - min_possible, f"age_spread_b{bunk_idx}")
         ctx.model.Add(spread == max_age_in_bunk - min_age_in_bunk)
 
-        # HARD: solver may never emit spread > MAX_AGE_SPREAD_MONTHS
-        ctx.model.Add(spread <= MAX_AGE_SPREAD_MONTHS)
+        is_edge, _ = is_edge_bunk_for_grades(bunk, ctx.bunks)
+        if is_edge:
+            # Soft escape hatch: solver pays EDGE_AGE_OVERFLOW_PENALTY to exceed 24mo.
+            # Only fires when a hard constraint (MSO, locked group) forces it.
+            edge_overflow = ctx.model.NewBoolVar(f"edge_age_overflow_b{bunk_idx}")
+            ctx.model.Add(spread <= MAX_AGE_SPREAD_MONTHS).OnlyEnforceIf(edge_overflow.Not())
+            ctx.soft_constraint_violations[f"edge_age_overflow_b{bunk_idx}"] = (
+                edge_overflow,
+                EDGE_AGE_OVERFLOW_PENALTY,
+            )
+            edge_count += 1
+        else:
+            ctx.model.Add(spread <= MAX_AGE_SPREAD_MONTHS)
 
         if preferred_active:
             within_preferred = ctx.model.NewBoolVar(f"age_spread_preferred_b{bunk_idx}")
@@ -113,4 +130,7 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
             )
             bonus_count += 1
 
-    logger.debug(f"Age spread: hard cap applied across {bunk_count} bunks with {bonus_count} preferred-bonus entries")
+    logger.debug(
+        f"Age spread: hard cap across {bunk_count - edge_count} middle bunks,"
+        f" escape hatch across {edge_count} edge bunks, {bonus_count} preferred-bonus entries"
+    )
