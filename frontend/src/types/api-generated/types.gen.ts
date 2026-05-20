@@ -3689,7 +3689,7 @@ export type RejectResponse = {
 /**
  * RequestBucket
  *
- * Classification of a bunk request by origin and staff/parent intent.
+ * Reporting bucket — the scorecard grouping a request rolls into.
  */
 export type RequestBucket = 'material_parent' | 'immaterial_parent' | 'staff'
 
