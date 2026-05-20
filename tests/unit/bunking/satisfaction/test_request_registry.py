@@ -158,3 +158,21 @@ def test_report_group_is_source_determined() -> None:
 def test_unknown_combo_raises() -> None:
     with pytest.raises(ValueError):
         classify("nonexistent_source", "bunk_with")
+
+
+def test_weight_keys_match_evaluator_config_keys() -> None:
+    """Registry weight_key per source must equal the config key the objective
+    evaluators currently hardcode (score_evaluator / objective_evaluator). When
+    PR 3 rewires the evaluators to read the registry, this guarantees no value
+    change. `manual` has no evaluator entry → weight_key is None (1.0 default).
+    """
+    expected_by_source = {
+        SourceField.BUNK_REQUEST_FORM: "objective.source_multipliers.share_bunk_with",
+        SourceField.STAFF_NOT_BUNK_WITH: "objective.source_multipliers.do_not_share_with",
+        SourceField.BUNKING_NOTES: "objective.source_multipliers.bunking_notes",
+        SourceField.INTERNAL_NOTES: "objective.source_multipliers.internal_notes",
+        SourceField.SOCIALIZE_WITH: "objective.source_multipliers.socialize_preference",
+        SourceField.MANUAL: None,
+    }
+    for source, rtype in EXPECTED:
+        assert weight_key_for(source, rtype) == expected_by_source[source]
