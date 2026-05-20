@@ -31,6 +31,8 @@ class TestClassifyRequest:
             ("staff_not_bunk_with", RequestBucket.STAFF),
             ("bunking_notes", RequestBucket.STAFF),
             ("internal_notes", RequestBucket.STAFF),
+            # Admin-UI source: registry classifies it as STAFF (previously raised — see PR 2).
+            ("manual", RequestBucket.STAFF),
         ],
     )
     def test_known_source_fields_map_to_buckets(self, source_field: str, expected_bucket: RequestBucket) -> None:

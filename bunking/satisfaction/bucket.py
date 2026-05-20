@@ -1,73 +1,50 @@
-"""Request-source bucket classification.
+"""Request-source bucket classification (compatibility shim).
 
-source_field values originate from a custom CampMinder report:
-- bunk_request_form:    parent bunk request form
-- socialize_with:       parent "socialize with / age preference" dropdown
-- staff_not_bunk_with:  hidden CampMinder staff "do not bunk with" field
-- bunking_notes:        most recent staff bunk note pulled by the report
-- internal_notes:       staff internal notes pulled by the report
+The canonical table lives in `bunking.satisfaction.request_registry`. This
+module preserves the historical public surface (`RequestBucket`,
+`COUNTED_BUCKETS`, `classify_request`, `is_material_parent_request`) so existing
+imports keep working, delegating all classification to the registry.
 
-This is the canonical helper #1142 will eventually flip every read site to
-use, replacing the redundant `source` column on bunk_requests.
+`classify_request` takes source_field only — `report_group` is source-determined
+(enforced by `request_registry._build_source_to_group`). Callers that also have
+`request_type` and need the solver rule or weight should use
+`request_registry.rule_for` / `weight_key_for` directly.
 """
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from bunking.logging_config import get_logger
-from bunking.sync.bunk_request_processor.shared.constants import SourceField
+from bunking.satisfaction.request_registry import (
+    COUNTED_BUCKETS,
+    RequestBucket,
+    report_group_for,
+)
 
 if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
 
 logger = get_logger(__name__)
 
-
-class RequestBucket(StrEnum):
-    """Classification of a bunk request by origin and staff/parent intent."""
-
-    MATERIAL_PARENT = "material_parent"
-    IMMATERIAL_PARENT = "immaterial_parent"
-    STAFF = "staff"
-
-
-_BUCKET_MAP: dict[str, RequestBucket] = {
-    SourceField.BUNK_REQUEST_FORM: RequestBucket.MATERIAL_PARENT,
-    SourceField.SOCIALIZE_WITH: RequestBucket.IMMATERIAL_PARENT,
-    SourceField.STAFF_NOT_BUNK_WITH: RequestBucket.STAFF,
-    SourceField.BUNKING_NOTES: RequestBucket.STAFF,
-    SourceField.INTERNAL_NOTES: RequestBucket.STAFF,
-}
-
-
-# Buckets that contribute to "totals" / coverage metrics.
-# Immaterial parent requests are visible per-request but excluded from sums.
-COUNTED_BUCKETS: frozenset[RequestBucket] = frozenset({RequestBucket.MATERIAL_PARENT, RequestBucket.STAFF})
+__all__ = ["COUNTED_BUCKETS", "RequestBucket", "classify_request", "is_material_parent_request"]
 
 
 def classify_request(source_field: str) -> RequestBucket:
-    """Map source_field → bucket. Raises on unknown — there is no valid fallback.
+    """Map source_field → reporting bucket. Raises on unknown — no valid fallback.
 
-    source_field is required at the PB schema level
-    (pb_migrations/1500000018_bunk_requests.js:246), and the legacy null
-    fallback was removed in PR #1086 after Stage 3a's audit confirmed zero
-    affected rows in production. Any unknown value indicates a data-hygiene
-    regression or a new source_field the map doesn't cover, and must surface
-    loudly rather than be silently misbucketed.
+    source_field is required at the PB schema level; an unknown value indicates a
+    data-hygiene regression or a new source_field the registry doesn't cover, and
+    must surface loudly rather than be silently misbucketed.
     """
-    bucket = _BUCKET_MAP.get(source_field)
-    if bucket is None:
-        raise ValueError(f"unknown source_field {source_field!r}; expected one of {sorted(_BUCKET_MAP)}")
-    return bucket
+    return report_group_for(source_field)
 
 
 def is_material_parent_request(request: DirectBunkRequest) -> bool:
     """True iff the request's source_field classifies as MATERIAL_PARENT.
 
-    Defensive: missing or unknown source_field returns False with a debug
-    log. Used by the solver hard constraint and the post-solve diagnostic.
+    Defensive: missing or unknown source_field returns False with a debug log.
+    Used by the solver hard constraint and the post-solve diagnostic.
     """
     sf = request.source_field
     if not sf:
