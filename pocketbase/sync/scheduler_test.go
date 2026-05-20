@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -65,9 +66,8 @@ func TestSchedulerUnknownSyncType(t *testing.T) {
 		t.Error("expected error for unknown sync type")
 	}
 
-	expectedMsg := "unknown sync type: invalid-type"
-	if err.Error() != expectedMsg {
-		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
+	if !errors.Is(err, ErrUnknownSyncType) {
+		t.Errorf("expected ErrUnknownSyncType, got %v", err)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestSchedulerTriggerSyncCustomValues(t *testing.T) {
 
 	// TriggerSync should handle custom-values type
 	err := s.TriggerSync(context.Background(), "custom-values")
-	// It should not return "unknown sync type" error
-	if err != nil && err.Error() == "unknown sync type: custom-values" {
+	// It should not return ErrUnknownSyncType
+	if err != nil && errors.Is(err, ErrUnknownSyncType) {
 		t.Error("TriggerSync should handle custom-values type")
 	}
 }
