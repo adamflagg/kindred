@@ -2,7 +2,6 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 import type { ImpossibilityReport, ValidationStatistics } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 import { buildFamilyRows, cohortLabel } from './familyRows'
-import { sessionShortLabel } from '../../utils/sessionLabel'
 import {
   BUNK_LEVEL_ISSUE_TYPES,
   SUPPRESSED_ISSUE_TYPES,
@@ -176,11 +175,6 @@ export function BunkPlanReport({
   const mpTotal = statistics.material_parent_requests ?? 0
   const mpSatisfied = statistics.satisfied_material_parent_requests ?? 0
 
-  // Unmet parent persons sorted alphabetically for page 3
-  const unmetParents = [...(statistics.unsatisfied_material_parent_persons ?? [])].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  )
-
   const generatedAt = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -330,13 +324,9 @@ export function BunkPlanReport({
                 <View style={styles.familyRowHeader}>
                   <Text style={styles.familyName}>{row.name}</Text>
                   <Text style={styles.familyCohort}>{cohortLabel(row.cohort)}</Text>
-                  <Text style={styles.familySessionTags}>
-                    {row.sessions.map((s) => `S${sessionShortLabel(s)}`).join(' ')}
-                  </Text>
                 </View>
-                {row.subRows.map((sub) => (
-                  <View key={`${row.key}-${sub.session}`} style={styles.familySubRow}>
-                    <Text style={styles.familySubSession}>S{sessionShortLabel(sub.session)}</Text>
+                {row.subRows.map((sub, i) => (
+                  <View key={`${row.key}-${i}`} style={styles.familySubRow}>
                     <Text style={styles.familySubDetail}>{sub.detail}</Text>
                   </View>
                 ))}
@@ -353,16 +343,15 @@ export function BunkPlanReport({
         )
       })()}
 
-      {/* ── Page 3 — Bunks needing attention / Other issues / Unmet drill-down ── */}
+      {/* ── Page 3 — Bunks needing attention / Other issues ── */}
       {(() => {
         const issuesList = issues ?? []
         const bunkLevelIssues = issuesList.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type))
         const otherIssues = issuesList.filter(
           (i) => !BUNK_LEVEL_ISSUE_TYPES.has(i.type) && !SUPPRESSED_ISSUE_TYPES.has(i.type)
         )
-        const unmetDetail = statistics.unsatisfied_material_parent_detail ?? []
 
-        if (bunkLevelIssues.length === 0 && otherIssues.length === 0 && unmetDetail.length === 0) {
+        if (bunkLevelIssues.length === 0 && otherIssues.length === 0) {
           return null
         }
 
@@ -384,15 +373,6 @@ export function BunkPlanReport({
           otherMap.set(issue.type, arr)
         }
         const groupedOther = [...otherMap.entries()]
-
-        // Tiebreak on requester_cm_id then target_cm_id so same-name requesters
-        // (Emma Johnson #1 vs Emma Johnson #2) render in deterministic order.
-        const sortedUnmet = [...unmetDetail].sort(
-          (a, b) =>
-            a.requester_name.localeCompare(b.requester_name) ||
-            a.requester_cm_id.localeCompare(b.requester_cm_id) ||
-            a.target_cm_id.localeCompare(b.target_cm_id)
-        )
 
         return (
           <Page size="LETTER" style={styles.page} wrap>
@@ -419,25 +399,6 @@ export function BunkPlanReport({
                   <View key={type} style={styles.tableRow} wrap={false}>
                     <Text style={styles.cell}>{type.replace(/_/g, ' ')}</Text>
                     <Text style={styles.cell}>{items.length}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {sortedUnmet.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>Unmet parent requests</Text>
-                {sortedUnmet.map((r) => (
-                  <View
-                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
-                    style={styles.tableRow}
-                    wrap={false}
-                  >
-                    <Text style={styles.cell}>{r.requester_name}</Text>
-                    <Text style={styles.cell}>wanted {r.target_name}</Text>
-                    <Text style={styles.cell}>
-                      {r.requester_bunk_name} vs {r.target_bunk_name}
-                    </Text>
                   </View>
                 ))}
               </>
@@ -506,39 +467,6 @@ export function BunkPlanReport({
           />
         </Page>
       )}
-
-      {/* ── Last page — Full unmet alphabetical list ── */}
-      <Page size="LETTER" style={styles.page}>
-        <Text style={styles.sectionTitle}>Unmet Parent Requests (full list)</Text>
-        {unmetParents.length === 0 ? (
-          <Text style={styles.emptyNote}>All parent requests were satisfied.</Text>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-            {unmetParents.map((p) => (
-              <View
-                key={`unmet-${p.cm_id}`}
-                style={{
-                  width: '30%',
-                  padding: 4,
-                  borderWidth: 0.5,
-                  borderColor: STONE_200,
-                  borderRadius: 2,
-                }}
-              >
-                <Text style={{ fontSize: 8 }}>{p.name}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
-            `Page ${pageNumber} of ${totalPages} · Full Unmet List`
-          }
-          fixed
-        />
-      </Page>
     </Document>
   )
 }

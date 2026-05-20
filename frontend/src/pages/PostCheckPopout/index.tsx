@@ -1,5 +1,5 @@
-import { useSearchParams } from 'react-router'
-import { useEffect } from 'react'
+import { useSearchParams, useParams } from 'react-router'
+import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   PostCheckContents,
@@ -10,9 +10,23 @@ import { useApiWithAuth } from '../../hooks/useApiWithAuth'
 import { useYear } from '../../hooks/useCurrentYear'
 import { queryKeys } from '../../utils/queryKeys'
 import type { PreCheckCacheValue } from '../../services/solver'
+import { pb } from '../../lib/pocketbase'
+import { findSessionByUrlSegment } from '../../utils/sessionUtils'
+import type { Session } from '../../types/app-types'
+
+interface CampSessionsResponse {
+  id: string
+  cm_id: number
+  name: string
+  session_type: string
+  start_date: string
+  end_date: string
+  year: number
+  parent_id: string
+}
 
 /**
- * /post-check/popout
+ * /session/:sessionId/post-check
  *
  * A bare route that renders post-check results without the main app shell.
  * Designed to be opened via window.open() from the session header.
@@ -24,41 +38,78 @@ import type { PreCheckCacheValue } from '../../services/solver'
  * pre-fetched results as props, matching how ValidateBunkingButton drives
  * the modal. The popout fetches the same data independently via useQuery so
  * the result is cached and shareable.
+ *
+ * The :sessionId path segment is a friendly URL segment (e.g. "2", "taste-1")
+ * resolved via findSessionByUrlSegment. The ?scenario= query param is optional.
  */
 export default function PostCheckPopout() {
+  const { sessionId: sessionIdSegment } = useParams<{ sessionId: string }>()
   const [params] = useSearchParams()
-  const sessionStr = params.get('session')
   const scenarioId = params.get('scenario') ?? undefined
   const year = useYear()
 
-  useEffect(() => {
-    document.title = sessionStr ? `Post-Check · Session ${sessionStr}` : 'Post-Check'
-  }, [sessionStr])
+  // Fetch all sessions to resolve the friendly URL segment
+  const { data: allSessions = [], isLoading: sessionsLoading } = useQuery({
+    queryKey: queryKeys.sessions(year),
+    queryFn: async () => {
+      const result = await pb.collection('camp_sessions').getFullList<CampSessionsResponse>({
+        filter: `year = ${year} && (session_type = "main" || session_type = "embedded")`,
+        sort: 'name',
+      })
+      return result.map((s) => ({
+        id: s.id,
+        cm_id: s.cm_id,
+        name: s.name,
+        session_type: s.session_type,
+        start_date: s.start_date,
+        end_date: s.end_date,
+        year: s.year,
+        parent_id: s.parent_id,
+      })) as unknown as Session[]
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  })
 
-  if (!sessionStr) {
+  const session = useMemo(() => {
+    if (!sessionIdSegment || allSessions.length === 0) return null
+    return findSessionByUrlSegment(allSessions, sessionIdSegment)
+  }, [sessionIdSegment, allSessions])
+
+  useEffect(() => {
+    document.title = session ? `Post-Check · ${session.name}` : 'Post-Check'
+  }, [session])
+
+  if (!sessionIdSegment) {
     return (
       <div className="p-6">
         <h1 className="text-lg font-semibold">Session required</h1>
-        <p className="text-sm text-stone-600">
-          Missing <code>?session=&lt;cm_id&gt;</code> query param.
-        </p>
+        <p className="text-sm text-stone-600">No session segment in URL.</p>
       </div>
     )
   }
 
-  const sessionCmId = parseInt(sessionStr, 10)
-  if (Number.isNaN(sessionCmId)) {
+  if (sessionsLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <p className="text-muted-foreground text-sm">Loading session…</p>
+      </div>
+    )
+  }
+
+  if (!session) {
     return (
       <div className="p-6">
-        <h1 className="text-lg font-semibold">Invalid session id</h1>
+        <h1 className="text-lg font-semibold">Session not found</h1>
         <p className="text-sm text-stone-600">
-          The <code>session</code> param must be a numeric CampMinder session id.
+          Could not resolve <code>{sessionIdSegment}</code> to a session.
         </p>
       </div>
     )
   }
 
-  return <PostCheckPopoutContents sessionCmId={sessionCmId} scenarioId={scenarioId} year={year} />
+  return <PostCheckPopoutContents sessionCmId={session.cm_id} scenarioId={scenarioId} year={year} />
 }
 
 /** Inner component that can safely call hooks after param validation. */

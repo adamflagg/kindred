@@ -22,6 +22,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router'
+import { sessionNameToUrl } from '../utils/sessionUtils'
 import toast from 'react-hot-toast'
 import { Modal } from './ui/Modal'
 import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
@@ -29,7 +30,7 @@ import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
 import { buildFamilyRows } from './PdfExport/familyRows'
-import { sessionShortLabel } from '../utils/sessionLabel'
+
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
@@ -553,15 +554,6 @@ function IssueGroup({
   )
 }
 
-// Inline helpers for expandable family rows
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return expanded ? (
-    <ChevronUp className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-  ) : (
-    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-  )
-}
-
 const COHORT_STYLES = {
   got_nothing: 'bg-red-100 text-red-800',
   violated: 'bg-amber-100 text-amber-800',
@@ -606,7 +598,6 @@ type FamilyRow = {
  *  - PostValidationResultsModal (wraps in <Modal> + adds close/done button)
  *  - /post-check/popout route (renders bare, full-page)
  */
-// eslint-disable-next-line react-refresh/only-export-components -- exported for PopoutRoute
 export function PostCheckContents({
   results,
   scenarioId,
@@ -622,53 +613,53 @@ export function PostCheckContents({
   const plannerName = (user?.['name'] as string | undefined) || 'Camp Staff'
   const navigate = useNavigate()
   const location = useLocation()
-  const isPopoutRoute = location.pathname.startsWith('/post-check/popout')
+  const isPopoutRoute = location.pathname.endsWith('/post-check')
 
   const handlePopout = useCallback(() => {
-    const qs = new URLSearchParams({ session: String(sessionCmId) })
-    if (scenarioId) qs.set('scenario', scenarioId)
-    const url = `/post-check/popout?${qs.toString()}`
-    const win = window.open(url, 'post-check', 'width=600,height=900')
+    const seg = sessionName ? sessionNameToUrl(sessionName) : String(sessionCmId)
+    const url = scenarioId
+      ? `/session/${seg}/post-check?scenario=${scenarioId}`
+      : `/session/${seg}/post-check`
+    const win = window.open(url, 'post-check', 'width=512,height=900')
     if (!win) {
       toast.error(
         'Popup blocked — opening in this tab. Allow popups for this site to use the popout.'
       )
-      navigate(url)
+      void navigate(url)
     }
-  }, [sessionCmId, scenarioId, navigate])
+  }, [sessionCmId, sessionName, scenarioId, navigate])
 
   const [showDetails, setShowDetails] = useState(false)
-  const [showUnmetParents, setShowUnmetParents] = useState(false)
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
-  const [expandedBunks, setExpandedBunks] = useState<Set<string>>(new Set())
-  const toggleBunkExpand = useCallback((bunkName: string) => {
-    setExpandedBunks((prev) => {
-      const next = new Set(prev)
-      if (next.has(bunkName)) {
-        next.delete(bunkName)
-      } else {
-        next.add(bunkName)
-      }
-      return next
-    })
-  }, [])
-  const [expandedFamilyKeys, setExpandedFamilyKeys] = useState<Set<string>>(new Set())
-  const toggleFamilyExpand = (key: string) => {
-    setExpandedFamilyKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
 
+  const handleCamperClick = useCallback(
+    (cmId: string) => {
+      if (isPopoutRoute) {
+        const url = `/camper/${cmId}/popout?session=${sessionCmId}`
+        // Match the slide-in panel width (w-[28rem] = 448px). Offset the new
+        // window just to the right of THIS popout so it doesn't cover it
+        // (best-effort; browsers may clamp position).
+        const left = window.screenX + window.outerWidth + 10
+        const top = window.screenY
+        const win = window.open(
+          url,
+          `camper-${cmId}`,
+          `width=448,height=900,left=${left},top=${top}`
+        )
+        if (!win) {
+          toast.error(
+            'Popup blocked — opening in this tab. Allow popups for this site to use the popout.'
+          )
+          void navigate(url)
+        }
+      } else {
+        setSelectedCamperId(cmId)
+      }
+    },
+    [isPopoutRoute, sessionCmId, navigate]
+  )
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
-  const unmetParents = statistics.unsatisfied_material_parent_persons ?? []
-  const unmetParentDetail = statistics.unsatisfied_material_parent_detail ?? []
-  // Either bucket (legacy persons array OR detail array) is enough to render
-  // the drill-down — backend may emit just one.
-  const hasUnmetDrilldown = unmetParents.length > 0 || unmetParentDetail.length > 0
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -717,35 +708,26 @@ export function PostCheckContents({
       const decoratedSubRows = r.subRows.map((sub) => {
         let detail: React.ReactNode
         if (r.cohort === 'got_nothing') {
-          const c = (safeReport.mp_campers_entirely_impossible ?? []).find(
-            (x) => String(x.cm_id) === r.cm_id && String(x.session_cm_id) === sub.session
-          )
           detail = (
             <span>
               All requests impossible ·{' '}
-              {(c?.reason_codes ?? []).map(friendlyReasonLabel).join(', ')}
+              {(sub.reasonCodes ?? []).map(friendlyReasonLabel).join(', ')}
             </span>
           )
         } else if (r.cohort === 'violated') {
-          const v = (statistics.negative_request_violations_detail ?? []).find(
-            (x) => x.requester_cm_id === r.cm_id && x.session_cm_id === sub.session
-          )
-          detail = v ? (
+          detail = sub.targetName ? (
             <span>
-              Placed with {v.target_name} in{' '}
-              <span className="font-mono text-xs">{v.bunk_name}</span>
+              Placed with {sub.targetName} in{' '}
+              <span className="font-mono text-xs">{sub.bunkName}</span>
             </span>
           ) : (
             <span>{sub.detail}</span>
           )
         } else {
-          const p = (statistics.priority_unsuccessfuls ?? []).find(
-            (x) => x.requester_cm_id === r.cm_id && x.session_cm_id === sub.session
-          )
-          detail = p ? (
+          detail = sub.targetName ? (
             <span>
-              Wanted {p.target_name} ·{' '}
-              <em className="text-stone-500">&ldquo;{p.raw_text}&rdquo;</em>
+              Wanted {sub.targetName} ·{' '}
+              <em className="text-stone-500">&ldquo;{sub.rawText}&rdquo;</em>
             </span>
           ) : (
             <span>{sub.detail}</span>
@@ -813,7 +795,6 @@ export function PostCheckContents({
         parts.push(`${issuesByBunk.length} ${issuesByBunk.length === 1 ? 'bunk' : 'bunks'}`)
       const otherCount = groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)
       if (otherCount > 0) parts.push(`${otherCount} other issue${otherCount === 1 ? '' : 's'}`)
-      if (hasUnmetDrilldown && parts.length === 0) parts.push('unmet parent requests')
       const sublabel = parts.length > 0 ? parts.join(' · ') : 'no issues to review'
       base = {
         label: 'Needs Attention',
@@ -847,563 +828,475 @@ export function PostCheckContents({
 
   return (
     <>
-      {/* Header band — status icon + label */}
-      <div className={`flex items-center gap-3 bg-gradient-to-r py-4 pr-4 pl-5 ${status.gradient}`}>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${status.iconBg}`}>
-          <StatusIcon className="h-5 w-5" />
-        </div>
-        <div className="flex-1">
-          <h2 className="font-display text-foreground text-lg leading-tight font-bold">
-            {status.label}
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            {status.sublabel}
-            {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
-          </p>
-        </div>
-        {!isPopoutRoute && (
-          <button
-            type="button"
-            onClick={handlePopout}
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-black/5"
-            title="Open this view in a separate window"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Open in popout
-          </button>
-        )}
-      </div>
-
-      {/* Satisfaction Ring + Quick Stats */}
-      <div className="border-border/50 flex items-center gap-6 border-b px-5 py-5">
-        {/* Ring */}
-        <SatisfactionRing rate={satisfactionRate} size={100} />
-
-        {/* Stats grid */}
-        <div className="grid flex-1 grid-cols-2 gap-3">
-          <div className="flex items-center gap-2">
-            <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
-              <Users className="text-forest-600 h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">
-                {statistics.assigned_campers}/{statistics.total_campers}
-              </p>
-              <p className="text-muted-foreground text-xs">assigned</p>
-            </div>
+      <div
+        className={`postcheck-surface flex flex-col ${isPopoutRoute ? 'h-screen' : 'max-h-[calc(90vh-2rem)]'}`}
+      >
+        {/* Header band — status icon + label (shrink-0 so it never scrolls away) */}
+        <div
+          className={`bg-card relative flex shrink-0 items-center gap-3 bg-gradient-to-r py-4 pr-4 pl-5 ${status.gradient}`}
+        >
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${status.iconBg}`}>
+            <StatusIcon className="h-5 w-5" />
           </div>
-
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                parentUnderTarget ? 'bg-amber-500/10' : 'bg-forest-500/10'
-              }`}
+          <div className="flex-1 pr-24">
+            <h2 className="font-display text-foreground text-lg leading-tight font-bold">
+              {status.label}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {status.sublabel}
+              {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
+            </p>
+          </div>
+          {!isPopoutRoute && (
+            <button
+              type="button"
+              onClick={handlePopout}
+              aria-label="Open in popout"
+              title="Open this view in a separate window"
+              className="text-muted-foreground hover:text-foreground absolute top-4 right-14 rounded-lg p-2 transition-colors hover:bg-black/10"
             >
-              <Heart
-                className={`h-4 w-4 ${parentUnderTarget ? 'text-amber-600' : 'text-forest-600'}`}
-              />
-            </div>
-            <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">
-                {parentTotal > 0
-                  ? `${statistics.satisfied_material_parent_requests ?? 0}/${parentTotal}`
-                  : `${statistics.satisfied_requests}/${statistics.total_requests}`}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                {parentTotal > 0 ? 'parent requests met' : 'requests met'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
-              <Home className="text-forest-600 h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">
-                {statistics.bunks_at_capacity +
-                  statistics.bunks_under_capacity +
-                  statistics.bunks_over_capacity}
-              </p>
-              <p className="text-muted-foreground text-xs">bunks used</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div
-              className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                errorCount > 0
-                  ? 'bg-red-500/10'
-                  : warningCount > 0
-                    ? 'bg-amber-500/10'
-                    : 'bg-forest-500/10'
-              }`}
-            >
-              <Target
-                className={`h-4 w-4 ${
-                  errorCount > 0
-                    ? 'text-red-600'
-                    : warningCount > 0
-                      ? 'text-amber-600'
-                      : 'text-forest-600'
-                }`}
-              />
-            </div>
-            <div>
-              <p className="text-foreground text-lg leading-tight font-semibold">
-                {visibleIssuesCount}
-              </p>
-              <p className="text-muted-foreground text-xs">issues</p>
-            </div>
-          </div>
+              <ExternalLink className="h-5 w-5" />
+            </button>
+          )}
         </div>
-      </div>
 
-      {/* TG-9: "Families to contact" — unified action list consolidating:
+        {/* Scrollable body — everything between header and footer */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Satisfaction Ring + Quick Stats */}
+          <div className="border-border/50 flex items-center gap-6 border-b px-5 py-5">
+            {/* Ring */}
+            <SatisfactionRing rate={satisfactionRate} size={100} />
+
+            {/* Stats grid */}
+            <div className="grid flex-1 grid-cols-2 gap-3">
+              <div className="flex items-center gap-2">
+                <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Users className="text-forest-600 h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {statistics.assigned_campers}/{statistics.total_campers}
+                  </p>
+                  <p className="text-muted-foreground text-xs">assigned</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    parentUnderTarget ? 'bg-amber-500/10' : 'bg-forest-500/10'
+                  }`}
+                >
+                  <Heart
+                    className={`h-4 w-4 ${parentUnderTarget ? 'text-amber-600' : 'text-forest-600'}`}
+                  />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {parentTotal > 0
+                      ? `${statistics.satisfied_material_parent_requests ?? 0}/${parentTotal}`
+                      : `${statistics.satisfied_requests}/${statistics.total_requests}`}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {parentTotal > 0 ? 'parent requests met' : 'requests met'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Home className="text-forest-600 h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {statistics.bunks_at_capacity +
+                      statistics.bunks_under_capacity +
+                      statistics.bunks_over_capacity}
+                  </p>
+                  <p className="text-muted-foreground text-xs">bunks used</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    errorCount > 0
+                      ? 'bg-red-500/10'
+                      : warningCount > 0
+                        ? 'bg-amber-500/10'
+                        : 'bg-forest-500/10'
+                  }`}
+                >
+                  <Target
+                    className={`h-4 w-4 ${
+                      errorCount > 0
+                        ? 'text-red-600'
+                        : warningCount > 0
+                          ? 'text-amber-600'
+                          : 'text-forest-600'
+                    }`}
+                  />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {visibleIssuesCount}
+                  </p>
+                  <p className="text-muted-foreground text-xs">issues</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* TG-9: "Families to contact" — unified action list consolidating:
           - Cohort A: entirely-impossible MP campers (got nothing)
           - Cohort B: not-bunk-with violations (families to call)
           - Cohort C: priority-flagged requests that didn't land
           All rows sorted alphabetically by camper first name. */}
-      {familyRows.length > 0 && (
-        <div className="px-5 pt-4">
-          <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
-            <div className="flex items-center justify-between">
-              {(() => {
-                const distinctCount = new Set(familyRows.map((r) => r.cm_id)).size
-                return (
-                  <>
-                    <div>
-                      <h3 className="text-sm font-semibold text-red-900">Families to contact</h3>
-                      <p className="mt-0.5 text-xs text-red-800/80">
-                        {distinctCount} follow-up call{distinctCount === 1 ? '' : 's'} recommended
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
-                      {distinctCount}
-                    </span>
-                  </>
-                )
-              })()}
-            </div>
-            <div className="mt-3 divide-y divide-red-100 text-sm">
-              {familyRows.map((row) => {
-                const isExpanded = expandedFamilyKeys.has(row.key)
-                return (
-                  <div key={row.key}>
-                    <button
-                      type="button"
-                      data-testid={`family-expand-toggle-${row.cm_id}-${row.cohort}`}
-                      aria-label={isExpanded ? 'Collapse row' : 'Expand row'}
-                      className="flex w-full items-center gap-2 px-1 py-2 text-left hover:bg-red-50/60"
-                      onClick={() => toggleFamilyExpand(row.key)}
-                    >
-                      <ChevronIcon expanded={isExpanded} />
-                      <span
-                        className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSelectedCamperId(row.cm_id)
-                        }}
-                      >
-                        {row.name}
-                      </span>
-                      {row.grade > 0 && (
-                        <span className="text-xs text-stone-500">
-                          · {row.grade}
-                          {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
-                            ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
-                            'th'}
+          {familyRows.length > 0 && (
+            <div className="px-5 pt-4">
+              <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
+                <div className="flex items-center justify-between">
+                  {(() => {
+                    const distinctCount = new Set(familyRows.map((r) => r.cm_id)).size
+                    return (
+                      <>
+                        <div>
+                          <h3 className="text-sm font-semibold text-red-900">
+                            Families to contact
+                          </h3>
+                          <p className="mt-0.5 text-xs text-red-800/80">
+                            {distinctCount} follow-up call{distinctCount === 1 ? '' : 's'}{' '}
+                            recommended
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
+                          {distinctCount}
                         </span>
-                      )}
-                      <CohortPill cohort={row.cohort} />
-                      <span className="text-xs text-stone-400">
-                        {row.subRows.length} issue{row.subRows.length === 1 ? '' : 's'}
-                      </span>
-                      <span className="ml-auto flex gap-1">
-                        {row.sessions.map((s) => (
-                          <span
-                            key={s}
-                            className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600"
-                          >
-                            S{sessionShortLabel(s)}
+                      </>
+                    )
+                  })()}
+                </div>
+                <div className="mt-3 divide-y divide-red-100 text-sm">
+                  {familyRows.map((row) => (
+                    <div key={row.key} className="px-1 py-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
+                          onClick={() => handleCamperClick(row.cm_id)}
+                        >
+                          {row.name}
+                        </span>
+                        {row.grade > 0 && (
+                          <span className="text-xs text-stone-500">
+                            · {row.grade}
+                            {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
+                              ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
+                              'th'}
                           </span>
-                        ))}
-                      </span>
-                    </button>
-                    {isExpanded && (
-                      <div className="bg-red-50/40">
-                        {row.subRows.map((sub) => (
+                        )}
+                        <CohortPill cohort={row.cohort} />
+                      </div>
+                      <div className="mt-1 space-y-0.5 pl-3">
+                        {row.subRows.map((sub, i) => (
                           <div
-                            key={sub.session}
-                            data-testid={`family-subrow-${sub.session}`}
-                            className="border-t border-red-100 px-7 py-1.5 text-xs text-stone-600"
+                            key={`${row.key}-${i}`}
+                            data-testid={`family-subrow-${row.key}-${i}`}
+                            className="text-xs text-stone-600"
                           >
-                            <span className="font-medium">S{sessionShortLabel(sub.session)}</span> ·{' '}
                             {sub.detail}
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {preCheckError && !impossibilityReport && (
-        <div className="px-5 py-2">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-            Pre-check unavailable — couldn&rsquo;t load the impossibility cohort. Re-run Pre-Check
-            to see it.
-          </div>
-        </div>
-      )}
-
-      {/* TG-4.6: "Impossible by reason" — by_reason breakdown from pre-check.
-          Shows as collapsible stat tiles in post-check's card visual language. */}
-      {impossibilityReport && Object.keys(impossibilityReport.by_reason).length > 0 && (
-        <div className="px-5 pt-3">
-          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <h3 className="text-sm font-semibold text-stone-900">Impossible by reason</h3>
-            <p className="mt-0.5 text-xs text-stone-500">
-              Summary only — see Pre-Check or export PDF for full per-camper detail
-            </p>
-            <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {Object.entries(impossibilityReport.by_reason).map(([code, items]) => (
-                <li key={code} className="flex flex-col rounded-lg bg-white px-3 py-2 text-center">
-                  <span className="text-foreground text-lg font-bold">{items.length}</span>
-                  <span className="text-muted-foreground text-xs">{friendlyReasonLabel(code)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {/* Capacity by gender */}
-      {statistics.capacity_by_gender && (
-        <div className="px-5 pt-3">
-          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-stone-900">Capacity by gender</h3>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Bunk fill compared to enrolled camper count
-                </p>
-              </div>
-            </div>
-            <div className="mt-2">
-              {Object.entries(statistics.capacity_by_gender ?? {}).map(([g, cap]) => {
-                const pct = cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
-                const barColor =
-                  cap.assigned > cap.capacity
-                    ? 'bg-red-500'
-                    : pct >= 90
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
-                return (
-                  <div key={g} className="flex items-center gap-2 py-1.5">
-                    <span className="w-14 text-xs font-medium text-stone-700 capitalize">{g}</span>
-                    <div className="h-2 flex-1 overflow-hidden rounded bg-stone-200">
-                      <div
-                        className={`h-full ${barColor}`}
-                        style={{ width: `${Math.min(pct, 100)}%` }}
-                      />
                     </div>
-                    <span className="min-w-[80px] text-right text-xs text-stone-600">
-                      {cap.assigned} / {cap.capacity}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bunks needing attention */}
-      {issuesByBunk.length > 0 && (
-        <div className="px-5 pt-3">
-          <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-orange-900">Bunks needing attention</h3>
-                <p className="mt-0.5 text-xs text-orange-800/80">
-                  {issuesByBunk.length} bunk{issuesByBunk.length === 1 ? '' : 's'} have warnings
-                </p>
+                  ))}
+                </div>
               </div>
-              <span className="rounded-full bg-orange-200/80 px-2.5 py-1 text-xs font-medium text-orange-900">
-                {issuesByBunk.length}
-              </span>
             </div>
-            <ul className="mt-3 space-y-2 text-sm">
-              {issuesByBunk.map(([bunkName, bunkIssues]) => {
-                const isExpanded = expandedBunks.has(bunkName)
-                return (
-                  <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 text-left"
-                      onClick={() => toggleBunkExpand(bunkName)}
-                      aria-expanded={isExpanded}
+          )}
+
+          {preCheckError && !impossibilityReport && (
+            <div className="px-5 py-2">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                Pre-check unavailable — couldn&rsquo;t load the impossibility cohort. Re-run
+                Pre-Check to see it.
+              </div>
+            </div>
+          )}
+
+          {/* TG-4.6: "Impossible by reason" — by_reason breakdown from pre-check.
+          Shows as collapsible stat tiles in post-check's card visual language. */}
+          {impossibilityReport && Object.keys(impossibilityReport.by_reason).length > 0 && (
+            <div className="px-5 pt-3">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                <h3 className="text-sm font-semibold text-stone-900">Impossible by reason</h3>
+                <p className="mt-0.5 text-xs text-stone-500">
+                  Summary only — see Pre-Check or export PDF for full per-camper detail
+                </p>
+                <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {Object.entries(impossibilityReport.by_reason).map(([code, items]) => (
+                    <li
+                      key={code}
+                      className="flex flex-col rounded-lg bg-white px-3 py-2 text-center"
                     >
-                      <span className="font-medium text-stone-900">{bunkName}</span>
-                      {isExpanded ? (
-                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                      ) : (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-stone-400" />
-                      )}
-                    </button>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {bunkIssues.map((iss, idx) => (
+                      <span className="text-foreground text-lg font-bold">{items.length}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {friendlyReasonLabel(code)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Capacity by gender */}
+          {statistics.capacity_by_gender && (
+            <div className="px-5 pt-3">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-900">Capacity by gender</h3>
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      Bunk fill compared to enrolled camper count
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  {Object.entries(statistics.capacity_by_gender ?? {}).map(([g, cap]) => {
+                    const pct =
+                      cap.capacity > 0 ? Math.round((cap.assigned / cap.capacity) * 100) : 0
+                    const barColor =
+                      cap.assigned > cap.capacity
+                        ? 'bg-red-500'
+                        : pct >= 90
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-500'
+                    return (
+                      <div key={g} className="flex items-center gap-2 py-1.5">
+                        <span className="w-14 text-xs font-medium text-stone-700 capitalize">
+                          {g}
+                        </span>
+                        <div className="h-2 flex-1 overflow-hidden rounded bg-stone-200">
+                          <div
+                            className={`h-full ${barColor}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }}
+                          />
+                        </div>
+                        <span className="min-w-[80px] text-right text-xs text-stone-600">
+                          {cap.assigned} / {cap.capacity}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bunks needing attention */}
+          {issuesByBunk.length > 0 && (
+            <div className="px-5 pt-3">
+              <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-orange-900">
+                      Bunks needing attention
+                    </h3>
+                    <p className="mt-0.5 text-xs text-orange-800/80">
+                      {issuesByBunk.length} bunk{issuesByBunk.length === 1 ? '' : 's'} have warnings
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-orange-200/80 px-2.5 py-1 text-xs font-medium text-orange-900">
+                    {issuesByBunk.length}
+                  </span>
+                </div>
+                <ul className="mt-3 space-y-2 text-sm">
+                  {issuesByBunk.map(([bunkName, bunkIssues]) => (
+                    <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-stone-900">{bunkName}</span>
+                        {bunkIssues.map((iss, idx) => (
+                          <span
+                            key={idx}
+                            className={`rounded-full px-2 py-0.5 text-xs ${
+                              iss.type === 'capacity_violation'
+                                ? 'bg-red-200 text-red-900'
+                                : 'bg-amber-200 text-amber-900'
+                            }`}
+                          >
+                            {getIssueTypeLabel(iss.type)}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-1 space-y-0.5 pl-3">
+                        {bunkIssues.map((iss, idx) => (
+                          <div key={idx} className="text-xs text-stone-600">
+                            {formatBunkIssueDetail(iss)}
+                          </div>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {/* Other issues — residual types not covered by Families to contact or Bunks needing attention */}
+          {groupedOtherIssues.length > 0 && (
+            <div className="px-5 pt-3">
+              <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-900">Other issues</h3>
+                    <p className="mt-0.5 text-xs text-stone-500">
+                      Items not covered by Families to contact or Bunks needing attention
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
+                    {groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {groupedOtherIssues.map(([type, group]) => (
+                    <IssueGroup
+                      key={type}
+                      type={type}
+                      issues={group.issues}
+                      severity={group.severity}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Success state message */}
+          {issues.length === 0 && (
+            <div className="px-5 py-6 text-center">
+              <div className="bg-forest-500/10 mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl">
+                <Sparkles className="text-forest-500 h-6 w-6" />
+              </div>
+              <p className="text-muted-foreground text-sm">
+                No issues detected. All bunking assignments look great!
+              </p>
+            </div>
+          )}
+
+          {/* Collapsible Details */}
+          {Object.keys(statistics.field_stats).length > 0 && (
+            <div className="border-border/50 border-t">
+              <button
+                onClick={() => setShowDetails(!showDetails)}
+                className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Details by request source
+                </span>
+                {showDetails ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+
+              {showDetails && (
+                <div className="animate-fade-in space-y-2 px-5 pb-4">
+                  {SOURCE_FIELD_ORDER.map((fieldName) => {
+                    const stats = statistics.field_stats[fieldName]
+                    if (!stats) return null
+                    return (
+                      <div
+                        key={fieldName}
+                        className="bg-muted/40 flex items-center justify-between rounded-xl p-3"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-foreground text-sm font-medium">
+                            {formatSourceField(fieldName)}
+                          </span>
+                          <span className="text-muted-foreground text-xs">
+                            {stats.satisfied}/{stats.total}
+                          </span>
+                        </div>
                         <span
-                          key={idx}
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            iss.type === 'capacity_violation'
-                              ? 'bg-red-200 text-red-900'
-                              : 'bg-amber-200 text-amber-900'
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            stats.satisfaction_rate >= 0.8
+                              ? 'bg-forest-500/15 text-forest-600'
+                              : stats.satisfaction_rate >= 0.5
+                                ? 'bg-amber-500/15 text-amber-600'
+                                : 'bg-red-500/15 text-red-600'
                           }`}
                         >
-                          {getIssueTypeLabel(iss.type)}
+                          {Math.round(stats.satisfaction_rate * 100)}%
                         </span>
-                      ))}
+                      </div>
+                    )
+                  })}
+
+                  {/* Capacity info */}
+                  {statistics.bunks_over_capacity > 0 && (
+                    <div className="text-muted-foreground mt-3 rounded-lg border border-amber-500/10 bg-amber-500/5 p-2 text-xs">
+                      <span className="font-medium text-amber-600">Note:</span>{' '}
+                      {statistics.bunks_over_capacity} bunk
+                      {statistics.bunks_over_capacity > 1 ? 's are' : ' is'} over capacity
                     </div>
-                    {isExpanded && (
-                      <ul className="mt-2 space-y-1 border-t border-stone-100 pt-2">
-                        {bunkIssues.map((iss, idx) => (
-                          <li key={idx} className="text-xs text-stone-600">
-                            {formatBunkIssueDetail(iss)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        </div>
-      )}
+                  )}
 
-      {/* Other issues — residual types not covered by Families to contact or Bunks needing attention */}
-      {groupedOtherIssues.length > 0 && (
-        <div className="px-5 pt-3">
-          <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-stone-900">Other issues</h3>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  Items not covered by Families to contact or Bunks needing attention
-                </p>
-              </div>
-              <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">
-                {groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)}
-              </span>
-            </div>
-            <div className="mt-3 space-y-2">
-              {groupedOtherIssues.map(([type, group]) => (
-                <IssueGroup
-                  key={type}
-                  type={type}
-                  issues={group.issues}
-                  severity={group.severity}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Success state message */}
-      {issues.length === 0 && (
-        <div className="px-5 py-6 text-center">
-          <div className="bg-forest-500/10 mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl">
-            <Sparkles className="text-forest-500 h-6 w-6" />
-          </div>
-          <p className="text-muted-foreground text-sm">
-            No issues detected. All bunking assignments look great!
-          </p>
-        </div>
-      )}
-
-      {/* Unmet parent requests drill-down (#1105) */}
-      {hasUnmetDrilldown && (
-        <div className="border-border/50 border-t">
-          <button
-            type="button"
-            onClick={() => setShowUnmetParents(!showUnmetParents)}
-            aria-expanded={showUnmetParents}
-            aria-controls="unmet-parent-requests-list"
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              {/* Detail path counts REQUESTS; legacy persons path counts unique
-                  CAMPERS — disambiguate the label so the noun matches the number. */}
-              {unmetParentDetail.length > 0
-                ? `Unmet parent requests (${unmetParentDetail.length})`
-                : `Campers with unmet parent requests (${unmetParents.length})`}
-            </span>
-            {showUnmetParents ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </button>
-
-          {showUnmetParents && (
-            <ul
-              id="unmet-parent-requests-list"
-              className="animate-fade-in max-h-48 space-y-1 overflow-y-auto px-5 pb-4"
-            >
-              {(() => {
-                const detail = statistics.unsatisfied_material_parent_detail ?? []
-                // When detail isn't available, fall back to plain names so older sessions still render.
-                const rows =
-                  detail.length > 0
-                    ? [...detail].sort((a, b) => a.requester_name.localeCompare(b.requester_name))
-                    : unmetParents.map((p) => ({
-                        requester_cm_id: String(p.cm_id),
-                        requester_name: p.name,
-                        target_cm_id: '',
-                        target_name: '',
-                        requester_bunk_name: '',
-                        target_bunk_name: '',
-                      }))
-                return rows.map((r) => (
-                  <li
-                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
-                    className="text-foreground py-1 text-sm"
-                  >
-                    <span className="font-medium">{r.requester_name}</span>
-                    {r.target_name && (
-                      <>
-                        <span className="text-stone-500"> wanted </span>
-                        <span className="font-medium">{r.target_name}</span>
-                      </>
-                    )}
-                    {r.requester_bunk_name && r.target_bunk_name && (
-                      <span className="text-xs text-stone-500">
-                        {' '}
-                        · <span className="font-mono">{r.requester_bunk_name}</span> vs{' '}
-                        <span className="font-mono">{r.target_bunk_name}</span>
-                      </span>
-                    )}
-                  </li>
-                ))
-              })()}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Collapsible Details */}
-      {Object.keys(statistics.field_stats).length > 0 && (
-        <div className="border-border/50 border-t">
-          <button
-            onClick={() => setShowDetails(!showDetails)}
-            className="text-muted-foreground hover:text-foreground hover:bg-muted/30 flex w-full items-center justify-between px-5 py-3 text-sm transition-colors"
-          >
-            <span className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Details by request source
-            </span>
-            {showDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-
-          {showDetails && (
-            <div className="animate-fade-in space-y-2 px-5 pb-4">
-              {SOURCE_FIELD_ORDER.map((fieldName) => {
-                const stats = statistics.field_stats[fieldName]
-                if (!stats) return null
-                return (
-                  <div
-                    key={fieldName}
-                    className="bg-muted/40 flex items-center justify-between rounded-xl p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-foreground text-sm font-medium">
-                        {formatSourceField(fieldName)}
-                      </span>
-                      <span className="text-muted-foreground text-xs">
-                        {stats.satisfied}/{stats.total}
-                      </span>
+                  {statistics.unassigned_campers > 0 && (
+                    <div className="text-muted-foreground rounded-lg border border-red-500/10 bg-red-500/5 p-2 text-xs">
+                      <span className="font-medium text-red-600">Note:</span>{' '}
+                      {statistics.unassigned_campers} camper
+                      {statistics.unassigned_campers > 1 ? 's need' : ' needs'} bunk assignment
                     </div>
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                        stats.satisfaction_rate >= 0.8
-                          ? 'bg-forest-500/15 text-forest-600'
-                          : stats.satisfaction_rate >= 0.5
-                            ? 'bg-amber-500/15 text-amber-600'
-                            : 'bg-red-500/15 text-red-600'
-                      }`}
-                    >
-                      {Math.round(stats.satisfaction_rate * 100)}%
-                    </span>
-                  </div>
-                )
-              })}
-
-              {/* Capacity info */}
-              {statistics.bunks_over_capacity > 0 && (
-                <div className="text-muted-foreground mt-3 rounded-lg border border-amber-500/10 bg-amber-500/5 p-2 text-xs">
-                  <span className="font-medium text-amber-600">Note:</span>{' '}
-                  {statistics.bunks_over_capacity} bunk
-                  {statistics.bunks_over_capacity > 1 ? 's are' : ' is'} over capacity
-                </div>
-              )}
-
-              {statistics.unassigned_campers > 0 && (
-                <div className="text-muted-foreground rounded-lg border border-red-500/10 bg-red-500/5 p-2 text-xs">
-                  <span className="font-medium text-red-600">Note:</span>{' '}
-                  {statistics.unassigned_campers} camper
-                  {statistics.unassigned_campers > 1 ? 's need' : ' needs'} bunk assignment
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
-      )}
+        {/* end scrollable body */}
 
-      {/* Footer: timestamp + PDF export + optional close button */}
-      <div className="bg-muted/30 border-border/50 flex items-center justify-between border-t px-5 py-4">
-        <div className="flex items-center gap-3">
-          <span className="text-muted-foreground text-xs">
-            {new Date(results.validated_at).toLocaleString()}
-          </span>
-          <LazyPdfExportButton
-            sessionName={sessionName ?? String(sessionCmId)}
-            year={year ?? new Date().getFullYear()}
-            plannerName={plannerName}
-            statistics={statistics}
-            impossibilityReport={
-              impossibilityReport ?? {
-                total_impossible: 0,
-                affected_campers: 0,
-                by_reason: {},
-                flat: [],
-                mp_campers_entirely_impossible: [],
+        {/* Footer: timestamp + PDF export + optional close button */}
+        <div className="bg-muted/30 border-border/50 flex shrink-0 items-center justify-between border-t px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="text-muted-foreground text-xs">
+              {new Date(results.validated_at).toLocaleString()}
+            </span>
+            <LazyPdfExportButton
+              sessionName={sessionName ?? String(sessionCmId)}
+              year={year ?? new Date().getFullYear()}
+              plannerName={plannerName}
+              statistics={statistics}
+              impossibilityReport={
+                impossibilityReport ?? {
+                  total_impossible: 0,
+                  affected_campers: 0,
+                  by_reason: {},
+                  flat: [],
+                  mp_campers_entirely_impossible: [],
+                }
               }
-            }
-            issues={results.issues}
-            {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
-          />
+              issues={results.issues}
+              {...(getLogoPath('large') ? { logoUrl: getLogoPath('large')! } : {})}
+            />
+          </div>
+          {!hideCloseButton && onClose && (
+            <button
+              onClick={onClose}
+              className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                satisfactionRate >= 0.7 && errorCount === 0
+                  ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
+                  : 'bg-muted hover:bg-muted/80 text-foreground'
+              }`}
+            >
+              {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
+            </button>
+          )}
         </div>
-        {!hideCloseButton && onClose && (
-          <button
-            onClick={onClose}
-            className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-              satisfactionRate >= 0.7 && errorCount === 0
-                ? 'bg-forest-500 hover:bg-forest-600 shadow-forest-500/20 text-white shadow-lg'
-                : 'bg-muted hover:bg-muted/80 text-foreground'
-            }`}
-          >
-            {satisfactionRate >= 0.7 && errorCount === 0 ? 'Looks Great!' : 'Close'}
-          </button>
-        )}
+        {/* end footer */}
       </div>
+      {/* end flex-col container */}
 
       {/* CamperDetailsPanel calls useBunkRequestContext() unconditionally;
           SessionHeader (where the Check-Bunking button lives) sits outside
@@ -1466,7 +1359,7 @@ export default function PostValidationResultsModal({
       footer={null}
       size="md"
       noPadding
-      scrollable
+      scrollable={false}
     >
       <PostCheckContents
         results={results}

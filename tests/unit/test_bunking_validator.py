@@ -2606,6 +2606,56 @@ def test_capacity_by_gender_aggregates_bunks_and_assignments():
     assert cap["male"]["assigned"] == 3
 
 
+def test_capacity_by_gender_counts_bodies_by_bunk_not_person_gender():
+    """`assigned` counts bodies sitting in each gendered bunk via bunk membership,
+    NOT each person's own gender.
+
+    This is the post-check "Capacity by gender" contract: we count heads in the
+    Boys (M) and Girls (F) cabins. A camper's recorded gender is irrelevant — a
+    body in a B-cabin counts toward boys regardless of (or absent) person.gender.
+    Family-camp / co-ed bunks (gender not "M"/"F") are excluded entirely; their
+    bodies count toward neither side.
+    """
+    from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+
+    session = _mock_session(cm_id="10000001", name="GenderByBunk")
+    persons = [
+        # No recorded gender, but assigned to a boys cabin → counts as a boy body.
+        MockPerson(campminder_id="2000", name="No-Gender", grade=5, gender=None),
+        # Recorded F, but assigned to a boys cabin → still counts as a boy body.
+        MockPerson(campminder_id="2001", name="F-in-Boys", grade=5, gender="F"),
+        # Recorded M, assigned to a girls cabin → counts as a girl body.
+        MockPerson(campminder_id="2002", name="M-in-Girls", grade=5, gender="M"),
+        # Body in a family-camp (no-gender) cabin → counts toward neither.
+        MockPerson(campminder_id="2003", name="Family", grade=5, gender=None),
+    ]
+    bunks = [
+        MockBunk(campminder_id="3001", name="B-1", gender="M"),  # boys
+        MockBunk(campminder_id="3002", name="G-1", gender="F"),  # girls
+        MockBunk(campminder_id="3003", name="Azaleas", gender=""),  # family camp
+    ]
+    assignments = [
+        _mock_assignment("2000", "3001"),
+        _mock_assignment("2001", "3001"),
+        _mock_assignment("2002", "3002"),
+        _mock_assignment("2003", "3003"),
+    ]
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=[],
+    )
+    cap = result.statistics.capacity_by_gender
+    # Only the two gendered bunks contribute; the family-camp bunk is excluded.
+    assert set(cap.keys()) == {"female", "male"}
+    assert cap["male"]["capacity"] == 1 * DEFAULT_BUNK_CAPACITY
+    assert cap["male"]["assigned"] == 2  # both bodies in B-1, regardless of person gender
+    assert cap["female"]["capacity"] == 1 * DEFAULT_BUNK_CAPACITY
+    assert cap["female"]["assigned"] == 1  # the body in G-1
+
+
 # ---------------------------------------------------------------------------
 # #1520 — validator-side impossibility gating
 #

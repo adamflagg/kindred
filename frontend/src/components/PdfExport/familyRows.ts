@@ -6,6 +6,13 @@ export type FamilyCohort = 'got_nothing' | 'violated' | 'priority_unmet'
 export type FamilySubRow = {
   session: string
   detail: string
+  // Structured per-sub-row data used by the modal for rich JSX rendering.
+  // Avoids re-deriving via .find() which breaks when a camper has N violations
+  // in the same session (all N sub-rows share the same requester+session key).
+  targetName?: string
+  bunkName?: string
+  rawText?: string
+  reasonCodes?: string[]
 }
 
 export type FamilyRowData = {
@@ -32,6 +39,11 @@ export function buildFamilyRows(
     cohort: FamilyCohort
     session: string
     detail: string
+    // Structured per-entry data carried into sub-rows for rich modal rendering.
+    targetName?: string
+    bunkName?: string
+    rawText?: string
+    reasonCodes?: string[]
   }
   const raw: RawRow[] = []
 
@@ -44,6 +56,7 @@ export function buildFamilyRows(
       cohort: 'got_nothing',
       session: String(c.session_cm_id), // normalize number → string
       detail: `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
+      reasonCodes: c.reason_codes,
     })
   }
   for (const v of statistics.negative_request_violations_detail ?? []) {
@@ -55,6 +68,8 @@ export function buildFamilyRows(
       cohort: 'violated',
       session: v.session_cm_id, // already string
       detail: `Placed with ${v.target_name} in ${v.bunk_name}`,
+      targetName: v.target_name,
+      bunkName: String(v.bunk_name),
     })
   }
   for (const p of statistics.priority_unsuccessfuls ?? []) {
@@ -66,6 +81,8 @@ export function buildFamilyRows(
       cohort: 'priority_unmet',
       session: p.session_cm_id, // already string
       detail: `Wanted ${p.target_name} · "${p.raw_text}"`,
+      targetName: p.target_name,
+      rawText: p.raw_text,
     })
   }
 
@@ -73,10 +90,18 @@ export function buildFamilyRows(
   const grouped = new Map<string, FamilyRowData>()
   for (const r of raw) {
     const key = `${r.cm_id}-${r.cohort}`
+    const subRow: FamilySubRow = {
+      session: r.session,
+      detail: r.detail,
+      ...(r.targetName !== undefined && { targetName: r.targetName }),
+      ...(r.bunkName !== undefined && { bunkName: r.bunkName }),
+      ...(r.rawText !== undefined && { rawText: r.rawText }),
+      ...(r.reasonCodes !== undefined && { reasonCodes: r.reasonCodes }),
+    }
     const existing = grouped.get(key)
     if (existing) {
       if (!existing.sessions.includes(r.session)) existing.sessions.push(r.session)
-      existing.subRows.push({ session: r.session, detail: r.detail })
+      existing.subRows.push(subRow)
     } else {
       grouped.set(key, {
         key,
@@ -86,7 +111,7 @@ export function buildFamilyRows(
         gender: r.gender,
         cohort: r.cohort,
         sessions: [r.session],
-        subRows: [{ session: r.session, detail: r.detail }],
+        subRows: [subRow],
         detail: r.detail, // transitional — Task 12 removes; equals subRows[0].detail
       })
     }

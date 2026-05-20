@@ -105,13 +105,34 @@ vi.mock('../../services/solver', () => ({
   },
 }))
 
+// Mock PocketBase — return a session list so segment "2" resolves to a session
+// with cm_id=1000001.
+vi.mock('../../lib/pocketbase', () => ({
+  pb: {
+    collection: () => ({
+      getFullList: vi.fn().mockResolvedValue([
+        {
+          id: 'sess-pb-1',
+          cm_id: 1000001,
+          name: 'Session 2',
+          session_type: 'main',
+          start_date: '2025-07-01',
+          end_date: '2025-07-15',
+          year: 2025,
+          parent_id: '',
+        },
+      ]),
+    }),
+  },
+}))
+
 const renderRoute = (path: string) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
-          <Route path="/post-check/popout" element={<PostCheckPopout />} />
+          <Route path="/session/:sessionId/post-check" element={<PostCheckPopout />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -123,8 +144,8 @@ beforeEach(() => {
 })
 
 describe('PostCheckPopout', () => {
-  it('renders post-check modal contents bare (no main app shell)', async () => {
-    renderRoute('/post-check/popout?session=1000001&scenario=abc')
+  it('renders post-check modal contents bare (no main app shell) when segment resolves', async () => {
+    renderRoute('/session/2/post-check?scenario=abc')
     await waitFor(() => {
       expect(screen.getByText(/families to contact/i)).toBeInTheDocument()
     })
@@ -133,8 +154,13 @@ describe('PostCheckPopout', () => {
     expect(screen.queryByTestId('main-app-header')).toBeNull()
   })
 
-  it('shows error message when session param missing', () => {
-    renderRoute('/post-check/popout')
-    expect(screen.getByText(/session.*required/i)).toBeInTheDocument()
+  it('shows "Session not found" when segment does not resolve', async () => {
+    // Simulate getFullList returning an empty list → no sessions → segment won't resolve
+    const { pb } = await import('../../lib/pocketbase')
+    vi.mocked(pb.collection('').getFullList).mockResolvedValueOnce([])
+    renderRoute('/session/unknown-session/post-check')
+    await waitFor(() => {
+      expect(screen.getByText(/session not found/i)).toBeInTheDocument()
+    })
   })
 })
