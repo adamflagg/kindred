@@ -12,7 +12,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// ErrUnknownSyncType is returned by TriggerSync when the sync type is not recognised.
+// ErrUnknownSyncType is returned by TriggerSync when the sync type is not recognized.
 var ErrUnknownSyncType = errors.New("unknown sync type")
 
 // LogRetentionDays is the number of days to keep solver_runs logs before auto-pruning
