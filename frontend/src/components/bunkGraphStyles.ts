@@ -5,6 +5,9 @@
  * and first-year badge logic can be unit-tested without booting cytoscape.
  */
 
+import type { EdgeSingular, NodeSingular, StylesheetStyle } from 'cytoscape'
+import { resolveEdgeColor } from './graph/cytoscapeStyles'
+
 export const BUNK_NODE_COLORS = {
   // Binary connection state — anything > 0 reads as "has connections".
   noConnections: '#ef4444', // red-500
@@ -50,4 +53,94 @@ export function getBunkGradeColors(grades: readonly number[]): Record<number, st
     }
   })
   return result
+}
+
+/**
+ * Cytoscape stylesheet for the per-bunk graph (BunkSocialGraphModal).
+ *
+ * Edge color/arrow resolution routes through `resolveEdgeColor` from the
+ * shared graph module so `not_bunk_with` requests render red on the bunk
+ * graph the same way they do on the session graph. Previously a local
+ * single-entry `EDGE_COLORS` map keyed on `edge_type` alone collapsed both
+ * positive and negative requests to the same blue (#1545).
+ */
+export function getBunkCytoscapeStyles(): StylesheetStyle[] {
+  return [
+    {
+      selector: 'node',
+      style: {
+        'background-color': (ele: NodeSingular) => getNodeColor(ele.degree(false)),
+        width: 40,
+        height: 40,
+        label: 'data(label)',
+        'font-size': '14px',
+        'font-weight': 600,
+        'text-valign': 'bottom',
+        'text-margin-y': 8,
+        'text-wrap': 'wrap',
+        'text-max-width': '120px',
+        // gradeColor is set per-node in the element data builder so each
+        // camper's label picks up the light → dark ramp from getBunkGradeColors.
+        color: 'data(gradeColor)',
+        'text-outline-width': 2,
+        'text-outline-color': '#ffffff',
+        'overlay-padding': '6px',
+      },
+    },
+    {
+      selector: 'node.isolated',
+      style: {
+        // Isolated nodes don't need special border styling.
+      },
+    },
+    {
+      selector: 'node.first-year',
+      style: {
+        // The amber ring is the entire first-year signal — making it
+        // thicker than the default node border keeps the marker centered
+        // by geometry (no SVG badge to drift at fractional zooms).
+        'border-width': FIRST_YEAR_RING_WIDTH,
+        'border-color': FIRST_YEAR_RING_COLOR,
+        'border-style': 'solid',
+      },
+    },
+    {
+      selector: 'edge',
+      style: {
+        // Default is a dashed one-way request arrow. The backend
+        // (build_bunk_graph) already collapses mutual pairs into a single
+        // edge tagged reciprocal — those pick up the bold solid
+        // double-headed style from the edge[?reciprocal] selector below.
+        // Mirrors the session-level treatment in graph/cytoscapeStyles.ts.
+        width: 2,
+        'line-style': 'dashed',
+        'line-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+        'target-arrow-shape': (ele: EdgeSingular) => {
+          const edgeType = ele.data('edge_type')
+          return edgeType === 'request' ? 'triangle' : 'none'
+        },
+        'target-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+        'line-opacity': (ele: EdgeSingular) => {
+          const confidence = (ele.data('confidence') as number | undefined) ?? 0.5
+          return Math.max(0.3, Math.min(0.9, confidence))
+        },
+        'curve-style': 'straight',
+        'control-point-step-size': 40,
+        'overlay-padding': '3px',
+      },
+    },
+    {
+      selector: 'edge[?reciprocal]',
+      style: {
+        // Bold solid double-headed line for backend-collapsed mutual pairs.
+        // line-color and target-arrow-color inherit from the base 'edge'
+        // rule; source-arrow-color must mirror them so a recip not_bunk_with
+        // doesn't render with a blue source arrow.
+        width: 4,
+        'line-style': 'solid',
+        'source-arrow-shape': 'triangle',
+        'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+  ]
 }

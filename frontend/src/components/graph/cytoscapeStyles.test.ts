@@ -6,11 +6,39 @@ import type { NodeSingular } from 'cytoscape'
 import {
   getCytoscapeStyles,
   createGraphElements,
+  resolveEdgeColor,
   type GraphNodeData,
   type GraphEdgeData,
 } from './cytoscapeStyles'
 import { EDGE_COLORS, STATUS_COLORS } from './constants'
 import { expectDefined } from '../../test/testUtils'
+
+// Minimal stub matching cytoscape's `ele.data(key)` shape used by resolveEdgeColor.
+function fakeEle(data: Record<string, unknown>): { data: (key: string) => unknown } {
+  return { data: (key: string) => data[key] }
+}
+
+describe('resolveEdgeColor', () => {
+  it('returns the not_bunk_with red for request edges with request_type=not_bunk_with', () => {
+    const ele = fakeEle({ edge_type: 'request', request_type: 'not_bunk_with' })
+    expect(resolveEdgeColor(ele)).toBe(EDGE_COLORS['not_bunk_with'])
+  })
+
+  it('returns the request blue for request edges with request_type=bunk_with', () => {
+    const ele = fakeEle({ edge_type: 'request', request_type: 'bunk_with' })
+    expect(resolveEdgeColor(ele)).toBe(EDGE_COLORS['request'])
+  })
+
+  it('returns the request blue for request edges without a request_type', () => {
+    const ele = fakeEle({ edge_type: 'request' })
+    expect(resolveEdgeColor(ele)).toBe(EDGE_COLORS['request'])
+  })
+
+  it('falls back to neutral gray for unknown edge types', () => {
+    const ele = fakeEle({ edge_type: 'sibling' })
+    expect(resolveEdgeColor(ele)).toBe('#95a5a6')
+  })
+})
 
 describe('getCytoscapeStyles', () => {
   it('returns an array of style definitions', () => {
