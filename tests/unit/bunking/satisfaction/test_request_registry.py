@@ -16,6 +16,7 @@ from bunking.satisfaction.request_registry import (
     classify,
     report_group_for,
     rule_for,
+    weight_for,
     weight_key_for,
 )
 from bunking.sync.bunk_request_processor.core.models import RequestType
@@ -33,7 +34,7 @@ EXPECTED: dict[tuple[str, str], tuple[RequestBucket, bool, SolverRule, str | Non
         RequestBucket.MATERIAL_PARENT,
         True,
         SolverRule.HARD_MSO,
-        "share_bunk_with",
+        "do_not_share_with",
     ),
     (SourceField.BUNK_REQUEST_FORM, RequestType.AGE_PREFERENCE.value): (
         RequestBucket.MATERIAL_PARENT,
@@ -164,19 +165,99 @@ def test_unknown_combo_raises() -> None:
         classify("nonexistent_source", "bunk_with")
 
 
-def test_weight_keys_match_evaluator_config_keys() -> None:
-    """Registry weight_key per source must equal the config key the objective
-    evaluators currently hardcode (score_evaluator / objective_evaluator). When
-    PR 3 rewires the evaluators to read the registry, this guarantees no value
-    change. `manual` has no evaluator entry → weight_key is None (1.0 default).
+class _StubConfig:
+    """ConfigLoader double for weight_for tests.
+
+    Returns a configured override when present, otherwise echoes back the
+    default the caller passed — mirroring a ConfigLoader where the key is unset.
     """
-    expected_by_source = {
-        SourceField.BUNK_REQUEST_FORM: "objective.source_multipliers.share_bunk_with",
-        SourceField.STAFF_NOT_BUNK_WITH: "objective.source_multipliers.do_not_share_with",
-        SourceField.BUNKING_NOTES: "objective.source_multipliers.bunking_notes",
-        SourceField.INTERNAL_NOTES: "objective.source_multipliers.internal_notes",
-        SourceField.SOCIALIZE_WITH: "objective.source_multipliers.socialize_preference",
-        SourceField.MANUAL: None,
+
+    def __init__(self, overrides: dict[str, float] | None = None) -> None:
+        self._overrides = overrides or {}
+
+    def get_float(self, key: str, default: float | None = None) -> float:
+        if key in self._overrides:
+            return self._overrides[key]
+        return default if default is not None else 1.0
+
+
+# Per-combo expected default multiplier, keyed by the weight_key suffix from
+# EXPECTED. Mirrors the fallback defaults the objective evaluators hardcode
+# today; None suffix (manual) → neutral 1.0.
+_DEFAULT_BY_SUFFIX: dict[str | None, float] = {
+    "share_bunk_with": 1.75,
+    "do_not_share_with": 1.5,
+    "bunking_notes": 1.0,
+    "internal_notes": 1.0,
+    "socialize_preference": 0.6,
+    None: 1.0,
+}
+
+
+@pytest.mark.parametrize(("key", "expected"), list(EXPECTED.items()))
+def test_weight_for_uses_per_combo_default_when_unconfigured(
+    key: tuple[str, str],
+    expected: tuple[RequestBucket, bool, SolverRule, str | None],
+) -> None:
+    """No-op pin: with no config override, weight_for returns the evaluators'
+    historical per-source multiplier default for every valid combo."""
+    source, rtype = key
+    weight_suffix = expected[3]
+    assert weight_for(source, rtype, _StubConfig()) == _DEFAULT_BY_SUFFIX[weight_suffix]  # type: ignore[arg-type]
+
+
+def test_weight_for_reads_configured_value_over_default() -> None:
+    """When the config supplies the weight_key, weight_for returns it (not the default)."""
+    cfg = _StubConfig({"objective.source_multipliers.share_bunk_with": 9.25})
+    assert weight_for(SourceField.BUNK_REQUEST_FORM, RequestType.BUNK_WITH.value, cfg) == 9.25  # type: ignore[arg-type]
+
+
+def test_weight_for_unknown_source_raises() -> None:
+    """A source the registry doesn't know raises ValueError — the 14 combos
+    are the universe, off-axis data fails loud."""
+    with pytest.raises(ValueError):
+        weight_for("nonexistent_source", RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
+
+
+def test_weight_for_off_axis_combo_raises() -> None:
+    """A strict source paired with a request_type it doesn't admit is not in
+    the registry — weight_for raises rather than silently applying the source's
+    multiplier (the pre-Phase-3 behavior). Off-axis pipeline data is a hygiene
+    bug we want to surface, not paper over."""
+    # staff_not_bunk_with admits only not_bunk_with; bunk_with is off-axis.
+    with pytest.raises(ValueError):
+        weight_for(SourceField.STAFF_NOT_BUNK_WITH, RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
+    # socialize_with admits only age_preference; bunk_with is off-axis.
+    with pytest.raises(ValueError):
+        weight_for(SourceField.SOCIALIZE_WITH, RequestType.BUNK_WITH.value, _StubConfig())  # type: ignore[arg-type]
+
+
+def test_weight_for_manual_is_neutral() -> None:
+    """manual rows are in the registry but have no weight_key → 1.0 (today's behavior)."""
+    for rtype in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value, RequestType.AGE_PREFERENCE.value):
+        assert weight_for(SourceField.MANUAL, rtype, _StubConfig()) == 1.0  # type: ignore[arg-type]
+
+
+def test_weight_defaults_match_evaluator_fallbacks() -> None:
+    """_WEIGHT_DEFAULTS must equal the fallback defaults the objective evaluators
+    hardcode (score_evaluator / objective_evaluator). Pins the Phase-3 reroute as
+    a no-op: a config missing a key resolves to the same value as before.
+    """
+    from bunking.satisfaction import request_registry
+
+    assert request_registry._WEIGHT_DEFAULTS == {
+        "objective.source_multipliers.share_bunk_with": 1.75,
+        "objective.source_multipliers.do_not_share_with": 1.5,
+        "objective.source_multipliers.bunking_notes": 1.0,
+        "objective.source_multipliers.internal_notes": 1.0,
+        "objective.source_multipliers.socialize_preference": 0.6,
     }
-    for source, rtype in EXPECTED:
-        assert weight_key_for(source, rtype) == expected_by_source[source]
+
+
+def test_every_weight_key_has_a_default() -> None:
+    """Every non-None weight_key in the registry has a _WEIGHT_DEFAULTS entry, so
+    weight_for never KeyErrors."""
+    from bunking.satisfaction import request_registry
+
+    keys = {rc.weight_key for rc in request_registry._REGISTRY.values() if rc.weight_key is not None}
+    assert keys <= set(request_registry._WEIGHT_DEFAULTS)

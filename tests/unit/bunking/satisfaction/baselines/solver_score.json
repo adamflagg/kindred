@@ -16,9 +16,9 @@
       "total": 1
     },
     "socialize_with": {
-      "raw_score": 32,
-      "satisfied": 1,
-      "total": 2
+      "raw_score": 0,
+      "satisfied": 0,
+      "total": 1
     },
     "staff_not_bunk_with": {
       "raw_score": 60,
@@ -29,10 +29,10 @@
   "penalties": {
     "under_occupancy": 750
   },
-  "request_satisfaction_score": 2400,
-  "satisfaction_rate": 0.625,
-  "satisfied_requests": 5,
+  "request_satisfaction_score": 2080,
+  "satisfaction_rate": 0.5714285714285714,
+  "satisfied_requests": 4,
   "soft_penalty_score": 750,
-  "total_requests": 8,
-  "total_score": 1650
+  "total_requests": 7,
+  "total_score": 1330
 }

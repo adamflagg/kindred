@@ -8,24 +8,30 @@ Single source of truth for the two axes keyed by (source_field, request_type):
   * Solver axis     — `rule` (HARD_MSO / HARD_MNT / SOFT) + `weight_key`
     (config suffix for the objective multiplier).
 
-One row per valid combo. `report_group` is currently source-determined; the
-`report_group_for` projection enforces that invariant (raises if a source's
-rows disagree). `rule` and `weight_key` are SCAFFOLD as of this PR — accessors
-exist and are tested, but no consumer reads them yet:
+One row per valid combo — the 14 entries below are the universe. `report_group`
+is source-determined; `_build_source_to_group` enforces that invariant at
+import (raises if a source's rows disagree).
+  * `weight_key` is consumed by the objective evaluators via `weight_for`
+    (Phase 3). `weight_for` raises `ValueError` on a `(source, type)` combo
+    not in the registry — there is no source-keyed fallback. Off-axis data
+    (a strict source paired with a request_type it doesn't admit) is a
+    pipeline-hygiene bug and we want it to fail loudly.
   * `rule == HARD_MNT` is a DECLARED placeholder for deferred staff-hardening
     (#1543 / #1541); it is not enforced. `parent_paramount` still detects MP via
     `is_material_parent_request` (report_group == MATERIAL_PARENT).
-  * `weight_key` mirrors the config keys the objective evaluators currently
-    hardcode; the evaluators are rewired to read it in a follow-up PR.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
+
+if TYPE_CHECKING:
+    from bunking.config import ConfigLoader
 
 _MULT = "objective.source_multipliers"
 
@@ -70,7 +76,7 @@ _AGE = RequestType.AGE_PREFERENCE.value
 _REGISTRY: dict[tuple[str, str], RequestClass] = {
     # Parent bunk-request form — flexible type, all MATERIAL_PARENT / HARD_MSO.
     (SourceField.BUNK_REQUEST_FORM, _BW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
-    (SourceField.BUNK_REQUEST_FORM, _NBW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
+    (SourceField.BUNK_REQUEST_FORM, _NBW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.do_not_share_with"),
     (SourceField.BUNK_REQUEST_FORM, _AGE): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
     # Parent socialize-with dropdown — strict age_preference, informational.
     (SourceField.SOCIALIZE_WITH, _AGE): RequestClass(_IMP, False, SolverRule.SOFT, f"{_MULT}.socialize_preference"),
@@ -111,6 +117,27 @@ _SOURCE_TO_GROUP: dict[str, RequestBucket] = _build_source_to_group()
 
 COUNTED_BUCKETS: frozenset[RequestBucket] = frozenset(rc.report_group for rc in _REGISTRY.values() if rc.counted)
 
+# Per-config-key fallback defaults — the values the objective evaluators
+# (score_evaluator / objective_evaluator) hardcode, mirroring the seed in
+# pocketbase/pb_migrations/1500000011_config.js. `weight_for` passes these so a
+# config missing the key reproduces the evaluators' historical fallback exactly.
+_WEIGHT_DEFAULTS: dict[str, float] = {
+    f"{_MULT}.share_bunk_with": 1.75,
+    f"{_MULT}.do_not_share_with": 1.5,
+    f"{_MULT}.bunking_notes": 1.0,
+    f"{_MULT}.internal_notes": 1.0,
+    f"{_MULT}.socialize_preference": 0.6,
+}
+
+# Invariant (enforced at import, like the report_group projection above): every
+# weight_key the registry declares must have a default, or `weight_for` would
+# KeyError at runtime. A new row without a matching default fails loudly here.
+_missing_weight_defaults = sorted(
+    key for rc in _REGISTRY.values() if (key := rc.weight_key) is not None and key not in _WEIGHT_DEFAULTS
+)
+if _missing_weight_defaults:
+    raise AssertionError(f"weight_key(s) lack a _WEIGHT_DEFAULTS entry: {_missing_weight_defaults}")
+
 
 def classify(source_field: str, request_type: str) -> RequestClass:
     """Full classification for a (source_field, request_type) combo. Raises on unknown."""
@@ -137,5 +164,21 @@ def rule_for(source_field: str, request_type: str) -> SolverRule:
 
 
 def weight_key_for(source_field: str, request_type: str) -> str | None:
-    """Objective multiplier config key for a combo. SCAFFOLD — no consumer reads this yet."""
+    """Objective multiplier config key for a combo. Raises on unknown combo."""
     return classify(source_field, request_type).weight_key
+
+
+def weight_for(source_field: str, request_type: str, config: ConfigLoader) -> float:
+    """Objective multiplier for a (source_field, request_type) combo.
+
+    Resolves the registry's weight_key for the combo and reads `config`, with
+    the per-key default in `_WEIGHT_DEFAULTS` as fallback. Raises `ValueError`
+    via `classify()` if the combo is not in the registry — the 14 rows are the
+    universe and off-axis data (a strict source paired with a request_type it
+    doesn't admit) is a pipeline-hygiene bug we want to fail loudly. Returns
+    neutral 1.0 for valid combos with no weight_key (manual rows).
+    """
+    rc = classify(source_field, request_type)
+    if rc.weight_key is None:
+        return 1.0
+    return config.get_float(rc.weight_key, default=_WEIGHT_DEFAULTS[rc.weight_key])

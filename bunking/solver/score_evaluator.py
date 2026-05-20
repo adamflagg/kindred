@@ -36,7 +36,7 @@ from typing import Any
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
-from bunking.satisfaction import is_request_satisfied
+from bunking.satisfaction import is_request_satisfied, weight_for
 from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.direct_solver import (
     BASE_REQUEST_WEIGHT,
@@ -133,20 +133,6 @@ def evaluate_scenario_score(
         and int(r["requester_id"]) != int(r["requestee_id"])
     )
 
-    # Source field multipliers. Fallback defaults mirror the seed values in
-    # pocketbase/pb_migrations/1500000011_config.js. Production never trips
-    # these because the keys are required by CONFIG_SCHEMA, but keeping them
-    # in sync avoids B-class evaluator/seed drift.
-    source_multipliers = {
-        SourceField.BUNK_REQUEST_FORM: config.get_float("objective.source_multipliers.share_bunk_with", default=1.75),
-        SourceField.STAFF_NOT_BUNK_WITH: config.get_float(
-            "objective.source_multipliers.do_not_share_with", default=1.5
-        ),
-        SourceField.BUNKING_NOTES: config.get_float("objective.source_multipliers.bunking_notes", default=1.0),
-        SourceField.INTERNAL_NOTES: config.get_float("objective.source_multipliers.internal_notes", default=1.0),
-        SourceField.SOCIALIZE_WITH: config.get_float("objective.source_multipliers.socialize_preference", default=0.6),
-    }
-
     # Track request satisfaction per person
     person_satisfaction: dict[int, list[tuple[dict[str, Any], int]]] = defaultdict(list)
 
@@ -220,7 +206,7 @@ def evaluate_scenario_score(
             base_weight: float = float(BASE_REQUEST_WEIGHT)
 
             # Apply source field multiplier
-            multiplier = max(source_multipliers.get(f, 1.0) for f in source_fields) if source_fields else 1.0
+            multiplier = max(weight_for(f, request_type, config) for f in source_fields) if source_fields else 1.0
             base_weight = base_weight * multiplier
 
             # Stream 4 (#1382): mutual bunk_with boost (mirrors solver).
