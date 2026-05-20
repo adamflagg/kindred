@@ -21,10 +21,10 @@ from bunking.models_v2 import (
     DirectSolverInput,
     DirectSolverOutput,
 )
+from bunking.satisfaction import weight_for
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
 from bunking.satisfaction.bucket import RequestBucket, is_counted_request, is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
-from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
 
 from .callbacks import BestBoundCallback, SolverProgressCallback
@@ -480,18 +480,28 @@ class DirectBunkingSolver:
         add_gender_constraints(self._build_solver_context())
 
     def _get_csv_field_multiplier(self, request: DirectBunkRequest) -> float:
-        """Get the appropriate multiplier based on source field.
+        """Objective multiplier for a request, routed through the canonical
+        `(source, type)` registry (PR #1552 completion).
 
-        Maps canonical SourceField values to config keys for lookup.
+        Matches `score_evaluator.py` / `objective_evaluator.py` byte-for-byte
+        on in-registry data and on missing config keys (per-key
+        `_WEIGHT_DEFAULTS` fallback). Off-axis combos and missing source
+        fields fall back to a neutral 1.0 with a warning — same pattern the
+        evaluators use.
         """
-        if hasattr(request, "source_field") and request.source_field:
-            config_key = SOURCE_FIELD_TO_CONFIG_KEY.get(request.source_field)
-            if config_key:
-                return self.config.get_float(f"objective.source_multipliers.{config_key}", default=1.0)
-            logger.warning(f"Unknown source_field value not in SOURCE_FIELD_TO_CONFIG_KEY: {request.source_field!r}")
-
-        # Default multiplier
-        return 1.0
+        source_field = getattr(request, "source_field", None)
+        if not source_field:
+            return 1.0
+        try:
+            return weight_for(source_field, request.request_type, self.config)
+        except ValueError:
+            logger.warning(
+                "objective_multiplier_fallback request_id=%s source_field=%s request_type=%s multiplier=1.0 reason=off_axis_source_type",
+                request.id,
+                source_field,
+                request.request_type,
+            )
+            return 1.0
 
     def add_objective(self) -> None:
         """Add objective function to maximize satisfied requests with diminishing returns."""
@@ -1095,7 +1105,15 @@ class DirectBunkingSolver:
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
         )
 
-        no_possible: list[int] = []
+        # Input-property `no_possible`: placed campers in the canonical rollup
+        # (`ImpossibilityReport.campers_no_resolved_possible`). Decoupled from
+        # `all_satisfied` so the count is invariant across solve outcomes. The
+        # diagnostic-loop body below skips these campers when bucketing into
+        # material_parent_unmet / other_unmet to preserve mutual exclusivity.
+        no_possible_cm_ids: set[int] = {
+            int(entry["cm_id"]) for entry in self.impossibility_report.campers_no_resolved_possible
+        }
+        no_possible: list[int] = [cm_id for cm_id in no_possible_cm_ids if cm_id in person_to_bunk]
         material_parent_unmet: list[int] = []
         other_unmet: list[int] = []
         # Per-camper resolved-possible count, used for the violation message text.
@@ -1162,15 +1180,16 @@ class DirectBunkingSolver:
                 if any(r.id in satisfied_ids_for_person for r in resolved_possible):
                     all_campers_satisfied += 1
 
+            # Campers already accounted for as input-property `no_possible` are
+            # not eligible for the post-solve unmet buckets (mutual exclusivity).
+            if person_cm_id in no_possible_cm_ids:
+                continue
+
             resolved_ids = {r.id for r in resolved_requests}
             if any(rid in resolved_ids for rid in all_satisfied.get(person_cm_id, [])):
                 continue
 
             resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
-            if not resolved_possible:
-                no_possible.append(person_cm_id)
-                continue
-
             resolved_possible_count[person_cm_id] = len(resolved_possible)
             if any(is_material_parent_request(r) for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)

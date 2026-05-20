@@ -78,6 +78,12 @@ class ImpossibilityReport:
     # set is impossible. Each entry: {cm_id, name, grade, gender, session_cm_id,
     # reason_codes}. Derived from `flat` — see validate_impossibility / _camper_dict.
     mp_campers_entirely_impossible: list[dict[str, Any]] = field(default_factory=list)
+    # Camper-level rollup: roster campers with ≥1 resolved request whose ENTIRE
+    # resolved request set is impossible. Superset of mp_campers_entirely_impossible
+    # (covers STAFF and IMMATERIAL_PARENT buckets too). Powers the
+    # `unsatisfied_no_possible` diagnostic — input-property, invariant across
+    # solve outcomes.
+    campers_no_resolved_possible: list[dict[str, Any]] = field(default_factory=list)
     # request_id-unique counts per RequestBucket.value. bucket=None items are excluded.
     # Used by the admin modal's filter chips so they show counts without re-aggregating.
     by_bucket_count: dict[str, int] = field(default_factory=dict)
@@ -97,7 +103,10 @@ def filter_immaterial_requests(report: ImpossibilityReport) -> ImpossibilityRepo
 
     ``by_bucket_count`` is already request-id-unique per bucket, so dropping the
     immaterial key is sufficient. ``mp_campers_entirely_impossible`` is left
-    untouched (MP-only by definition).
+    untouched (MP-only by definition). ``campers_no_resolved_possible`` is also
+    left untouched: it powers the solver-side ``unsatisfied_no_possible``
+    diagnostic and must stay an input-property invariant, independent of which
+    buckets the pre-check chooses to display.
     """
     immaterial_bucket = RequestBucket.IMMATERIAL_PARENT.value
 
@@ -295,6 +304,25 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
         entry = _camper_dict(person)
         entry["reason_codes"] = sorted(reason_codes)
         report.mp_campers_entirely_impossible.append(entry)
+
+    # Camper-level rollup: campers with ≥1 resolved request whose every resolved
+    # request is impossible. Scoped to resolved status (the diagnostic ignores
+    # pending/declined — solver scope only). Input-property by construction.
+    for cm_id, requests in input_data.requests_by_person.items():
+        person = ctx.person_by_cm_id.get(cm_id)
+        if person is None:
+            continue
+        resolved = [r for r in requests if r.status == "resolved"]
+        if not resolved:
+            continue
+        if not all(r.id in impossible_ids for r in resolved):
+            continue
+        reason_codes_all: set[str] = set()
+        for r in resolved:
+            reason_codes_all |= reasons_by_request.get(r.id, set())
+        entry = _camper_dict(person)
+        entry["reason_codes"] = sorted(reason_codes_all)
+        report.campers_no_resolved_possible.append(entry)
 
     return report
 
