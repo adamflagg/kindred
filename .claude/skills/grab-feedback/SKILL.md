@@ -29,6 +29,22 @@ gh issue list --repo {owner}/{repo}-feedback --state open --limit 50 --json numb
 
 If none: report "No new feedback" and stop.
 
+### Step 1a: Filter out already-mirrored issues
+
+Open feedback issues may already have a public placeholder (placeholder-mode issues stay open by design). Skip any issue whose comments already contain a `Public placeholder created at` or `Transferred to` annotation — those are tracked, not new work.
+
+```bash
+for n in <numbers from step 1>; do
+  mirrored=$(gh issue view "$n" --repo {owner}/{repo}-feedback --json comments \
+    --jq '.comments[] | select(.body | test("Public placeholder created|Transferred to")) | .body' | head -1)
+  if [ -n "$mirrored" ]; then
+    echo "#$n already mirrored: $mirrored"
+  fi
+done
+```
+
+Drop mirrored issues from the working set before proceeding to Step 2. Mention them in the report so the user knows they were considered.
+
 ## Step 2: Classify each issue
 
 For each issue, decide which path it takes:
