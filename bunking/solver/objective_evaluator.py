@@ -147,7 +147,8 @@ class ObjectiveEvaluator:
     ) -> tuple[int, dict[str, Any]]:
         """Calculate request satisfaction score with diminishing returns.
 
-        Exactly mirrors solver's add_objective() logic.
+        Mirrors solver's add_objective() logic. Off-axis (source_field, request_type)
+        combos log a warning and fall back to multiplier 1.0.
         """
         # Config values (same as solver)
         enable_first_boost = bool(self.config.get_int("objective.enable_first_boost", default=1))
@@ -243,7 +244,16 @@ class ObjectiveEvaluator:
                 # Apply source field multiplier
                 source_fields = self._get_source_fields(request)
                 if source_fields:
-                    multiplier = max(weight_for(f, request.get("request_type", ""), self.config) for f in source_fields)
+                    try:
+                        multiplier = max(
+                            weight_for(f, request.get("request_type", ""), self.config) for f in source_fields
+                        )
+                    except ValueError:
+                        logger.warning(
+                            "off-axis (source, type) combo in request %s — using multiplier 1.0",
+                            request.get("id"),
+                        )
+                        multiplier = 1.0
                 else:
                     multiplier = 1.0
                 base_weight = base_weight * multiplier

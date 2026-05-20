@@ -76,7 +76,7 @@ _AGE = RequestType.AGE_PREFERENCE.value
 _REGISTRY: dict[tuple[str, str], RequestClass] = {
     # Parent bunk-request form — flexible type, all MATERIAL_PARENT / HARD_MSO.
     (SourceField.BUNK_REQUEST_FORM, _BW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
-    (SourceField.BUNK_REQUEST_FORM, _NBW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
+    (SourceField.BUNK_REQUEST_FORM, _NBW): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.do_not_share_with"),
     (SourceField.BUNK_REQUEST_FORM, _AGE): RequestClass(_MP, True, SolverRule.HARD_MSO, f"{_MULT}.share_bunk_with"),
     # Parent socialize-with dropdown — strict age_preference, informational.
     (SourceField.SOCIALIZE_WITH, _AGE): RequestClass(_IMP, False, SolverRule.SOFT, f"{_MULT}.socialize_preference"),
