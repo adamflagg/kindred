@@ -225,7 +225,7 @@ async def run_solver_task_v2(
                 solver_runs[run_id]["infeasibility_cause"] = cause
 
                 # If parent_paramount is the cause, localize the conflict to
-                # specific campers (Stream 5 — see docs/reference/solver-roadmap.md).
+                # specific campers (see docs/architecture/solver-internals.md).
                 if isinstance(cause, str) and "parent_paramount" in cause:
                     from bunking.solver.feasibility import localize_hard_mso_infeasibility
 

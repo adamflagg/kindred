@@ -52,10 +52,10 @@ Harness improvements roadmap: `docs/reference/claude-harness-improvements.md`.
 ### 📚 Full Documentation
 
 See `/docs`:
-- `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model
+- `architecture/` — sync-layer, bunk-request-pipeline, session-types, metrics-module, data-model, solver-internals
 - `guides/` — solver-configuration, csv-preparation, request-management, troubleshooting, docker-deployment
 - `api/` — solver-api, response-examples
-- `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, solver-roadmap, commit-conventions, git-workflow, oauth2-setup
+- `reference/` — cli-commands, issue-triage, pocketbase-migrations, tables, commit-conventions, git-workflow, oauth2-setup
 
 ---
 

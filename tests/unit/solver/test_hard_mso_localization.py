@@ -1,9 +1,9 @@
 """Smoke + correctness tests for localize_hard_mso_infeasibility.
 
-Stream 5 (Infeasibility Localization for Hard Constraints) — see
-docs/reference/solver-roadmap.md. Verifies the IIS-style diagnostic
-that runs after find_infeasibility_cause identifies parent_paramount
-as the cause.
+See docs/architecture/solver-internals.md ("Infeasibility localization
+(IIS)") for the design. Verifies the IIS-style diagnostic that runs
+after find_infeasibility_cause identifies parent_paramount as the
+cause.
 """
 
 from __future__ import annotations

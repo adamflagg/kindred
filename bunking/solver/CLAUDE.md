@@ -6,7 +6,7 @@ OR-Tools CP-SAT model built from composable constraint builders. Entry: `direct_
 
 Before adding or modifying constraints:
 
-- `docs/reference/solver-roadmap.md` — Tier / Stage / RequestBucket organization, status, plan
+- `docs/architecture/solver-internals.md` — hard MSO, impossibility framework, sat-var encoding, IIS, mutual boost, observability, V1/V2 split
 - `docs/guides/solver-configuration.md` — config keys, weights, thresholds
 - `docs/api/solver-api.md` — I/O contract via `models_v2.DirectSolver*` dataclasses
 
