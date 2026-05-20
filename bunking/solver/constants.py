@@ -96,3 +96,10 @@ tunable objective bonus (``constraint.age_spread.preferred_bonus``, kept as a
 runtime knob). Bumped from the prior seed of 12 per staff intent — tighter
 clusters that approximate single-grade cabins are the goal, but the prior
 12-month target was too aggressive in practice."""
+
+EDGE_AGE_OVERFLOW_PENALTY = 15_000
+"""Penalty charged when an edge bunk (lowest or highest level for its gender/session)
+exceeds MAX_AGE_SPREAD_MONTHS. Not exposed as a config knob — fires only when a hard
+constraint (MSO, locked group) leaves no other option. Set above the typical soft-objective
+gains the solver would otherwise chase (bunk-with weights are in the hundreds to low
+thousands), so overflow never happens for non-structural reasons."""
