@@ -22,7 +22,7 @@ from bunking.models_v2 import (
     DirectSolverOutput,
 )
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
-from bunking.satisfaction.bucket import is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, is_counted_request, is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SOURCE_FIELD_TO_CONFIG_KEY
 from campminder.client import get_current_season
@@ -325,17 +325,49 @@ class DirectBunkingSolver:
         # while total_impossible never does — the two are intentionally independent counts.
         impossible_by_reason = _build_impossible_by_reason_by_bucket(impossible_pairs)
 
+        # Material-only aggregates (Group 65 #1539) — popup-visible counts exclude
+        # IMMATERIAL_PARENT (socialize_with). The solver still processes immaterial
+        # requests; only the reported totals filter them out.
         total_requests = sum(
-            len(reqs)
+            1
             for person_cm_id, reqs in self.input.requests_by_person.items()
             if person_cm_id in self.person_idx_map
+            for r in reqs
+            if is_counted_request(r)
         )
+
+        # Drop IMMATERIAL_PARENT bucket from impossible_by_reason. The helper
+        # emits {bucket: {reason_code: count}}; zero out the immaterial bucket
+        # so the popup renders only actionable (material + staff) breakdowns.
+        material_impossible_by_reason: dict[str, dict[str, int]] = {
+            bucket: (reasons if bucket != RequestBucket.IMMATERIAL_PARENT.value else {})
+            for bucket, reasons in impossible_by_reason.items()
+        }
+
+        # Material-only impossible count — request-id-unique, mirroring
+        # report.total_impossible's dedup. A request impossible for >1 reason
+        # appears once per reason in report.flat (Layer 2 records every
+        # overlapping blocker); counting rows directly would double-count it and
+        # could drive possible_requests negative.
+        material_impossible_count = len(
+            {item.request_id for item in report.flat if item.bucket != RequestBucket.IMMATERIAL_PARENT.value}
+        )
+
+        # affected_campers — distinct requester cm_id among material-impossible rows only.
+        material_affected_campers = len(
+            {
+                item.requester.get("cm_id")
+                for item in report.flat
+                if item.bucket != RequestBucket.IMMATERIAL_PARENT.value and item.requester.get("cm_id") is not None
+            }
+        )
+
         self.request_validation_summary: RequestValidationSummary = {
             "total_requests": total_requests,
-            "possible_requests": total_requests - report.total_impossible,
-            "impossible_requests": report.total_impossible,
-            "impossible_by_reason": impossible_by_reason,
-            "affected_campers": report.affected_campers,
+            "possible_requests": total_requests - material_impossible_count,
+            "impossible_requests": material_impossible_count,
+            "impossible_by_reason": material_impossible_by_reason,
+            "affected_campers": material_affected_campers,
         }
 
         if report.total_impossible > 0:
@@ -350,8 +382,9 @@ class DirectBunkingSolver:
                 or "unclassified — impossible requests have missing/unknown source_field"
             )
             logger.warning(
-                f"Request validation: {report.total_impossible} of {total_requests} "
-                f"requests are infeasible ({reason_summary})"
+                f"Request validation: {report.total_impossible} total infeasible "
+                f"({material_impossible_count} material) of {total_requests} material requests "
+                f"({reason_summary})"
             )
             logger.warning(f"Affected campers: {self.request_validation_summary['affected_campers']}")
 
@@ -876,6 +909,18 @@ class DirectBunkingSolver:
             session_id = self.input.requests[0].session_cm_id
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
+        # Material-only counts for user-facing stats (Group 65 #1539).
+        # Immaterial requests (socialize_with) still ran through the solver but
+        # are excluded from the reported aggregates.
+        material_requests = [r for r in self.input.requests if is_counted_request(r)]
+        request_by_id = {r.id: r for r in self.input.requests}
+        satisfied_material_count = sum(
+            1
+            for req_ids in satisfied_requests.values()
+            for req_id in req_ids
+            if is_counted_request(request_by_id[req_id])
+        )
+
         # Create output
         stats = _build_stats_dict(
             solver=solver,
@@ -885,8 +930,8 @@ class DirectBunkingSolver:
             num_workers=num_workers,
             num_persons=len(self.person_ids),
             num_bunks=len(self.bunks),
-            num_requests=len(self.input.requests),
-            satisfied_count=sum(len(reqs) for reqs in satisfied_requests.values()),
+            num_requests=len(material_requests),
+            satisfied_count=satisfied_material_count,
             soft_constraint_violations=self.soft_constraint_violations,
             requests_by_person=self.input.requests_by_person,
             objective_trajectory=callback.objective_trajectory,

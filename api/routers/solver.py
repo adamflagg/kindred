@@ -29,7 +29,7 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
-from bunking.solver.impossibility import validate_impossibility
+from bunking.solver.impossibility import filter_immaterial_requests, validate_impossibility
 
 from ..constants.collections import (
     ATTENDEES,
@@ -400,6 +400,9 @@ async def pre_validate_solver(
 
         # --- Impossibility detection (delegates to shared predicate registry) ---
         report = validate_impossibility(solver_input, config_service)
+        # Filter IMMATERIAL_PARENT entries — staff treat these as background noise,
+        # not actionable signals (Group 65 #1537).
+        report = filter_immaterial_requests(report)
 
         # --- Statistics ---
         total_capacity = sum(b.capacity for b in solver_input.bunks)

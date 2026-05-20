@@ -6,9 +6,10 @@
  *   status tier, and stats tile from material parent satisfaction rate.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import toast from 'react-hot-toast'
 
 import PostValidationResultsModal from './PostValidationResultsModal'
 import { makeImpossibilityReport } from '../test/impossibilityReport'
@@ -17,6 +18,20 @@ import type { EntirelyImpossibleMpCamper } from '../services/solver'
 // Stub out AuthContext so tests don't need a real AuthProvider
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Test User' } }),
+}))
+
+// Mock react-router hooks used by PostCheckContents
+const mockNavigate = vi.fn()
+// Configurable pathname for useLocation — default is NOT a popout route.
+// Individual tests can set mockLocationPathname to a /post-check path to
+// exercise the isPopoutRoute=true branch of handleCamperClick/handlePopout.
+let mockLocationPathname = '/session/1000001/bunking'
+vi.mock('react-router', () => ({
+  useNavigate: () => mockNavigate,
+  useLocation: () => ({ pathname: mockLocationPathname }),
+  Link: ({ children, ...p }: React.PropsWithChildren<Record<string, unknown>>) => (
+    <a {...p}>{children}</a>
+  ),
 }))
 
 // Mock the Modal component to render children directly
@@ -411,34 +426,12 @@ describe('PostValidationResultsModal — KPI "issues" tile excludes suppressed t
   })
 })
 
-describe('PostValidationResultsModal — unmet parent requests drill-down (#1105)', () => {
-  it('shows no drill-down section when unsatisfied_material_parent_persons is absent', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults()}
-      />
-    )
-
-    expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
-  })
-
-  it('shows no drill-down section when unsatisfied_material_parent_persons is empty', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({ unsatisfied_material_parent_persons: [] })}
-      />
-    )
-
-    expect(screen.queryByText(/unmet parent requests/i)).not.toBeInTheDocument()
-  })
-
-  it('shows collapsible drill-down section with count when unsatisfied persons present', () => {
+describe('PostValidationResultsModal — unmet parent requests drill-down removed', () => {
+  // Group 65: every camper in this list is already surfaced in "Families to
+  // contact" as a got-nothing row, so the separate (unformatted) drill-down was
+  // removed. The KPI sub-label ("N kids missed a parent request") still conveys
+  // the count — see the banner sub-text tests above.
+  it('does not render a separate unmet-parents drill-down even when unsatisfied data is present', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -449,104 +442,23 @@ describe('PostValidationResultsModal — unmet parent requests drill-down (#1105
             { cm_id: 1000001, name: 'Emma Johnson' },
             { cm_id: 1000002, name: 'Liam Garcia' },
           ],
-        })}
-      />
-    )
-
-    // Pin both the literal label and the rendered count.
-    // Legacy persons-array path: count is unique-camper count, so label
-    // disambiguates from the request-count meaning used in the detail path.
-    expect(screen.getByText('Campers with unmet parent requests (2)')).toBeInTheDocument()
-  })
-
-  // #6 — Same badge label was being applied to two different denominators:
-  // request count (new detail path) and unique-requester count (legacy persons
-  // path). Disambiguate the label so the number matches the noun.
-  it('uses request-count label when detail array is present', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
           unsatisfied_material_parent_detail: [
             {
-              requester_cm_id: '1',
+              requester_cm_id: '1000001',
               requester_name: 'Emma Johnson',
-              target_cm_id: '2',
-              target_name: 'Liam Garcia',
-              requester_bunk_name: 'Pine 3',
-              target_bunk_name: 'Oak 2',
-            },
-            {
-              requester_cm_id: '1',
-              requester_name: 'Emma Johnson',
-              target_cm_id: '3',
+              target_cm_id: '1000003',
               target_name: 'Olivia Chen',
-              requester_bunk_name: 'Pine 3',
-              target_bunk_name: 'Oak 2',
+              requester_bunk_name: 'B-1',
+              target_bunk_name: 'G-2',
             },
           ],
         })}
       />
     )
 
-    // 2 requests across 1 camper — label reads as REQUESTS, count = 2.
-    expect(screen.getByText('Unmet parent requests (2)')).toBeInTheDocument()
-    // The campers-with-requests label is NOT used when detail is present.
-    expect(screen.queryByText(/Campers with unmet parent requests/i)).not.toBeInTheDocument()
-  })
-
-  it('shows camper names after expanding the drill-down section', async () => {
-    const user = userEvent.setup()
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          unsatisfied_material_parent_persons: [
-            { cm_id: 1000001, name: 'Emma Johnson' },
-            { cm_id: 1000002, name: 'Liam Garcia' },
-          ],
-        })}
-      />
-    )
-
-    // Names should not be visible before expanding
-    expect(screen.queryByText('Emma Johnson')).not.toBeInTheDocument()
-    expect(screen.queryByText('Liam Garcia')).not.toBeInTheDocument()
-
-    // Click to expand
-    await user.click(screen.getByText(/unmet parent requests/i))
-
-    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
-    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
-  })
-
-  it('exposes disclosure state via aria-expanded and aria-controls (#1169 review)', async () => {
-    const user = userEvent.setup()
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          unsatisfied_material_parent_persons: [{ cm_id: 1000001, name: 'Emma Johnson' }],
-        })}
-      />
-    )
-
-    const toggle = screen.getByRole('button', { name: /unmet parent requests/i })
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    const controlsId = toggle.getAttribute('aria-controls')
-    expect(controlsId).toBeTruthy()
-
-    await user.click(toggle)
-
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    // The controlled list element should now exist with the matching id.
-    expect(document.getElementById(controlsId as string)).not.toBeNull()
+    expect(screen.queryByRole('button', { name: /unmet parent requests/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/campers with unmet parent requests/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^unmet parent requests \(\d+\)$/i)).not.toBeInTheDocument()
   })
 })
 
@@ -612,6 +524,42 @@ describe('PostValidationResultsModal — Impossibility by reason section (TG-4.6
     expect(screen.getByText(/impossible by reason/i)).toBeInTheDocument()
   })
 
+  it('does not render a ghost "0" tile for a reason code with no items', () => {
+    // After the backend strips IMMATERIAL_PARENT rows (#1537), a reason code
+    // whose items were all immaterial is left with an empty array. The modal
+    // must not render a "0" tile for it — mirroring PreValidationResultsModal's
+    // per-tile guard. Group 65 #1549.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={makeImpossibilityReport({
+          by_reason: {
+            grade_compatibility: [
+              {
+                request_id: 'r1',
+                reason_code: 'grade_compatibility',
+                reason_message: 'grade too wide',
+                request_type: 'bunk_with',
+                requester: { cm_id: 1, name: 'Emma Johnson', grade: 5, gender: 'F' },
+                requestee: { cm_id: 2, name: 'Liam Garcia', grade: 8, gender: 'M' },
+                detail: {},
+                bucket: 'material_parent' as const,
+              },
+            ],
+            cross_session: [],
+          },
+        })}
+      />
+    )
+    // The populated reason renders its tile.
+    expect(screen.getByText('Grade range too wide')).toBeInTheDocument()
+    // The empty reason must NOT render a ghost tile.
+    expect(screen.queryByText('Different sessions')).not.toBeInTheDocument()
+  })
+
   it('does not render "Impossible by reason" when by_reason is empty', () => {
     render(
       <PostValidationResultsModal
@@ -673,7 +621,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
 
   it('opens the panel when a camper name in the section is clicked', async () => {
     const report = makeReport([
-      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 42,
+        name: 'Olivia Chen',
+        grade: 6,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     render(
       <PostValidationResultsModal
@@ -685,7 +640,9 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    // Camper name is now a clickable span inside the family-row expand toggle,
+    // not a standalone button — use getByText to target the span directly.
+    await user.click(screen.getByText('Olivia Chen'))
     expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
       'data-camper-id',
       '42'
@@ -694,7 +651,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
 
   it('wraps CamperDetailsPanel in a session-scoped BunkRequestProvider (#1464 regression)', async () => {
     const report = makeReport([
-      { cm_id: 42, name: 'Olivia Chen', grade: 6, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 42,
+        name: 'Olivia Chen',
+        grade: 6,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     render(
       <PostValidationResultsModal
@@ -706,7 +670,7 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Olivia Chen/ }))
+    await user.click(screen.getByText('Olivia Chen'))
     const provider = await screen.findByTestId('bunk-request-provider')
     expect(provider).toHaveAttribute('data-session-cm-id', '9876543')
     expect(provider).toContainElement(screen.getByTestId('camper-details-panel'))
@@ -749,7 +713,14 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
     // Otherwise selectedCamperId persists across close/reopen and the camper
     // details panel remounts with stale selection.
     const report = makeReport([
-      { cm_id: 99, name: 'Riley Sam', grade: 5, gender: 'F', reason_codes: ['cross_session'] },
+      {
+        cm_id: 99,
+        name: 'Riley Sam',
+        grade: 5,
+        gender: 'F',
+        reason_codes: ['cross_session'],
+        session_cm_id: 1000001,
+      },
     ])
     const { rerender } = render(
       <PostValidationResultsModal
@@ -761,7 +732,8 @@ describe('PostValidationResultsModal — impossibility section (#1442 part 2)', 
       />
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole('button', { name: /Riley Sam/ }))
+    // Camper name is now a clickable span, not a standalone button.
+    await user.click(screen.getByText('Riley Sam'))
     expect(await screen.findByTestId('camper-details-panel')).toBeInTheDocument()
 
     // Close the modal.
@@ -985,6 +957,7 @@ describe('PostValidationResultsModal — Families to contact', () => {
           grade: 4,
           gender: 'F',
           reason_codes: ['pair_no_shared_bunk'],
+          session_cm_id: 1000001,
         },
         {
           cm_id: 1002,
@@ -992,6 +965,7 @@ describe('PostValidationResultsModal — Families to contact', () => {
           grade: 5,
           gender: 'F',
           reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
         },
       ],
     })
@@ -1004,6 +978,8 @@ describe('PostValidationResultsModal — Families to contact', () => {
           target_name: 'Samuel Johnson',
           bunk_cm_id: '2001',
           bunk_name: 'Pine 3',
+          session_cm_id: '1000001',
+          requester_grade: 4,
         },
       ],
       priority_unsuccessfuls: [
@@ -1013,6 +989,8 @@ describe('PostValidationResultsModal — Families to contact', () => {
           requester_name: 'Sophia Martinez',
           target_name: 'Mia Wilson',
           raw_text: 'top priority',
+          session_cm_id: '1000001',
+          requester_grade: 5,
         },
       ],
     })
@@ -1026,11 +1004,15 @@ describe('PostValidationResultsModal — Families to contact', () => {
       />
     )
     expect(screen.getByText(/families to contact/i)).toBeInTheDocument()
-    const rowOrder = screen.getAllByRole('listitem').map((el) => el.textContent ?? '')
-    const indexOf = (name: string) => rowOrder.findIndex((t) => t.includes(name))
-    expect(indexOf('Emma Johnson')).toBeLessThan(indexOf('Olivia Chen'))
-    expect(indexOf('Olivia Chen')).toBeLessThan(indexOf('Riley Sam'))
-    expect(indexOf('Riley Sam')).toBeLessThan(indexOf('Sophia Martinez'))
+    // Rows are now flat divs with always-visible sub-lines (no expand toggle).
+    // Verify grade-first ordering by DOM position of each name span.
+    // Grades: Olivia=4, Riley=4, Emma=5, Sophia=5 → grade-first, name tiebreak
+    const allText = document.body.textContent ?? ''
+    const indexOf = (name: string) => allText.indexOf(name)
+    // Grade 4 rows (Olivia, Riley) appear before grade 5 rows (Emma, Sophia)
+    expect(indexOf('Olivia Chen')).toBeLessThan(indexOf('Emma Johnson'))
+    expect(indexOf('Riley Sam')).toBeLessThan(indexOf('Emma Johnson'))
+    expect(indexOf('Emma Johnson')).toBeLessThan(indexOf('Sophia Martinez'))
     expect(screen.getAllByText(/got nothing/i).length).toBe(2)
     expect(screen.getByText(/not-bunk-with violated/i)).toBeInTheDocument()
     expect(screen.getByText(/priority unmet/i)).toBeInTheDocument()
@@ -1060,64 +1042,6 @@ describe('PostValidationResultsModal — Families to contact', () => {
     expect(screen.queryByText(/campers who got nothing/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/families to call/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/priority unsuccessfuls/i)).not.toBeInTheDocument()
-  })
-})
-
-describe('PostValidationResultsModal — Unmet drill-down enriched', () => {
-  it('shows requester wanted target with bunk placements', async () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          unsatisfied_material_parent_detail: [
-            {
-              requester_cm_id: '1',
-              requester_name: 'Emma Johnson',
-              target_cm_id: '2',
-              target_name: 'Liam Garcia',
-              requester_bunk_name: 'Pine 3',
-              target_bunk_name: 'Oak 2',
-            },
-          ],
-          // Keep the legacy persons array so the section still renders
-          unsatisfied_material_parent_persons: [{ cm_id: 1, name: 'Emma Johnson' }],
-        })}
-      />
-    )
-    await userEvent.click(screen.getByText(/unmet parent requests/i))
-    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
-    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
-    expect(screen.getByText(/Pine 3/)).toBeInTheDocument()
-    expect(screen.getByText(/Oak 2/)).toBeInTheDocument()
-  })
-
-  it('renders drill-down when only unsatisfied_material_parent_detail is present (no legacy persons array)', async () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          unsatisfied_material_parent_detail: [
-            {
-              requester_cm_id: '1',
-              requester_name: 'Emma Johnson',
-              target_cm_id: '2',
-              target_name: 'Liam Garcia',
-              requester_bunk_name: 'Pine 3',
-              target_bunk_name: 'Oak 2',
-            },
-          ],
-        })}
-      />
-    )
-    await userEvent.click(screen.getByText(/unmet parent requests/i))
-    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
-    expect(screen.getByText(/wanted/i)).toBeInTheDocument()
-    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
   })
 })
 
@@ -1177,10 +1101,11 @@ describe('PostValidationResultsModal — Impossible by reason kicker', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Issue #1481 Item 1 — Bunks needing attention: chip rows expand on click
+// Bunks needing attention — pills inline next to bunk name, details always
+// visible below (mirrors the families-to-contact style; chevrons removed).
 // ---------------------------------------------------------------------------
 
-describe('PostValidationResultsModal — bunk chip row expand on click (#1481)', () => {
+describe('PostValidationResultsModal — bunk issue rows (always-visible details)', () => {
   const bunkIssues = [
     {
       type: 'capacity_violation',
@@ -1204,7 +1129,7 @@ describe('PostValidationResultsModal — bunk chip row expand on click (#1481)',
     },
   ]
 
-  it('default view shows chip labels, not numeric detail lines', () => {
+  it('shows chip labels inline and numeric detail lines without any expand', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -1217,56 +1142,14 @@ describe('PostValidationResultsModal — bunk chip row expand on click (#1481)',
         }}
       />
     )
-    // Chip labels visible
+    // Chip label and bunk name both visible
+    expect(screen.getByText('Pine 3')).toBeInTheDocument()
     expect(screen.getByText(/capacity violation/i)).toBeInTheDocument()
-    // Detail line text NOT visible before click (the number "9 of 8" or "1 over")
-    expect(screen.queryByText(/9 of 8|1 over/i)).not.toBeInTheDocument()
-  })
-
-  it('clicking a bunk row expands to reveal numeric detail lines', async () => {
-    const user = userEvent.setup()
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={{
-          statistics: makeStats(),
-          issues: bunkIssues,
-          validated_at: '2025-06-01T12:00:00Z',
-        }}
-      />
-    )
-    // Click the bunk row (by bunk name)
-    await user.click(screen.getByText('Pine 3'))
-    // Capacity detail line should now be visible with numbers
+    // Detail line visible immediately — no click needed
     expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
   })
 
-  it('clicking the bunk row again collapses the detail', async () => {
-    const user = userEvent.setup()
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={{
-          statistics: makeStats(),
-          issues: bunkIssues,
-          validated_at: '2025-06-01T12:00:00Z',
-        }}
-      />
-    )
-    await user.click(screen.getByText('Pine 3'))
-    // Expanded — detail visible
-    expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
-    // Click again to collapse
-    await user.click(screen.getByText('Pine 3'))
-    expect(screen.queryByText(/9.*8|1 over/i)).not.toBeInTheDocument()
-  })
-
-  it('age_spread detail shows months and limit after expand', async () => {
-    const user = userEvent.setup()
+  it('age_spread detail shows months and limit (always visible)', () => {
     const issues = [
       {
         type: 'age_spread_warning',
@@ -1283,14 +1166,11 @@ describe('PostValidationResultsModal — bunk chip row expand on click (#1481)',
         results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
       />
     )
-    await user.click(screen.getByText('Oak 2'))
-    // Expect "26" and "24" and "months" in the rendered output
     expect(screen.getByText(/26.*month|month.*26/i)).toBeInTheDocument()
     expect(screen.getByText(/24/)).toBeInTheDocument()
   })
 
-  it('falls back to raw message when details are absent', async () => {
-    const user = userEvent.setup()
+  it('falls back to raw message when details are absent', () => {
     const issues = [
       {
         type: 'capacity_violation',
@@ -1306,55 +1186,7 @@ describe('PostValidationResultsModal — bunk chip row expand on click (#1481)',
         results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
       />
     )
-    await user.click(screen.getByText('Maple 1'))
     expect(screen.getByText('Bunk Maple 1 is over capacity')).toBeInTheDocument()
-  })
-
-  it('resets expandedBunks when the modal closes, so reopening starts collapsed', async () => {
-    // Otherwise an expanded bunk stays expanded across close/reopen, leaking UI
-    // state between sessions the same way selectedCamperId did before its fix.
-    const user = userEvent.setup()
-    const issues = [
-      {
-        type: 'capacity_violation',
-        severity: 'error',
-        message: 'Bunk Pine 3 is over capacity (9/8)',
-        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
-      },
-    ]
-    const { rerender } = render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
-      />
-    )
-    // Expand the bunk row.
-    await user.click(screen.getByText('Pine 3'))
-    // Verify it is expanded (detail text visible).
-    expect(screen.getByText(/9.*8|1 over/i)).toBeInTheDocument()
-
-    // Close the modal.
-    rerender(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={false}
-        onClose={() => {}}
-        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
-      />
-    )
-
-    // Reopen — the detail panel should NOT come back with the stale expansion.
-    rerender(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
-      />
-    )
-    expect(screen.queryByText(/9.*8|1 over/i)).not.toBeInTheDocument()
   })
 })
 
@@ -1392,6 +1224,7 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
           grade: 5,
           gender: 'F',
           reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
         },
       ],
       by_reason: {},
@@ -1571,5 +1404,376 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
       />
     )
     expect(screen.getAllByText(/2 other issues/i).length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 11 — Always-visible flat family rows (Group 65 #1540)
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — flat family rows (Task 11)', () => {
+  it('multi-enrolled camper renders one name row with always-visible sub-lines', () => {
+    // Emma Johnson appears in two sessions — should collapse to a single name row.
+    // Sub-rows are always visible (no expand needed).
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000003,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // One name row per (camper, cohort), not per session entry
+    expect(screen.getAllByText('Emma Johnson')).toHaveLength(1)
+    // No expand toggle or chevron buttons for family rows
+    expect(screen.queryByTestId(/^family-expand-toggle-/)).toBeNull()
+    // Session-tag labels (e.g. "S0001") should NOT appear
+    expect(screen.queryByText(/^S\d{4,}/)).toBeNull()
+  })
+
+  it('sub-rows are always visible without any click (no expand needed)', () => {
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 1,
+          name: 'Emma Johnson',
+          grade: 4,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000003,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // Sub-rows visible immediately — no click required
+    const subRows = screen.getAllByTestId(/^family-subrow-/)
+    expect(subRows.length).toBe(2)
+    // Both detail lines rendered
+    subRows.forEach((el) => {
+      expect(el.textContent).toBeTruthy()
+    })
+  })
+
+  it('sublabel counts distinct campers, not (camper, cohort) tuples', () => {
+    // One camper appears in both 'got_nothing' (two sessions) and 'violated':
+    // got_nothing = 1 (camper, cohort) tuple; 1 distinct camper; 1 family to contact
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 99,
+          name: 'Liam Garcia',
+          grade: 5,
+          gender: 'M',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+        {
+          cm_id: 99,
+          name: 'Liam Garcia',
+          grade: 5,
+          gender: 'M',
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000002,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    // 1 distinct camper (Liam) → "1 follow-up call recommended"
+    expect(screen.getByText(/1 follow-up call recommended/i)).toBeInTheDocument()
+    expect(screen.queryByText(/2 follow-up call/i)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 16 — "Open in popout" button
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — Open in popout button (Task 16)', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear()
+  })
+
+  it('clicking "Open in popout" calls window.open with the friendly URL including scenario', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        scenarioId="abc"
+        sessionName="Session 2"
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open in popout/i }))
+    expect(openSpy).toHaveBeenCalledWith(
+      '/session/2/post-check?scenario=abc',
+      'post-check',
+      expect.stringMatching(/width=\d+/)
+    )
+    openSpy.mockRestore()
+  })
+
+  it('falls back to cm_id in URL when no sessionName is provided', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        scenarioId="abc"
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open in popout/i }))
+    expect(openSpy).toHaveBeenCalledWith(
+      '/session/1000001/post-check?scenario=abc',
+      'post-check',
+      expect.stringMatching(/width=\d+/)
+    )
+    openSpy.mockRestore()
+  })
+
+  it('falls back to same-tab nav + toast when popup is blocked', () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
+    const toastSpy = vi.spyOn(toast, 'error').mockImplementation(() => '')
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        sessionName="Session 2"
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open in popout/i }))
+    expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/popup blocked/i))
+    expect(mockNavigate).toHaveBeenCalledWith('/session/2/post-check')
+    openSpy.mockRestore()
+    toastSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Bug regression — multiple not_bunk_with violations in same session for same
+// camper must show DISTINCT target names, not repeat the first one.
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — violated sub-rows show distinct targets (#multi-violated)', () => {
+  it('shows all three distinct target names when one camper has three violations in the same session', () => {
+    // Emma Johnson violated not_bunk_with against three different campers,
+    // all in session 1000001.  The old .find() bug returned the first match
+    // (Liam Garcia) for every sub-row, so Olivia Chen and Noah Williams never
+    // appeared.
+    const stats = makeStats({
+      negative_request_violations_detail: [
+        {
+          requester_cm_id: '5001',
+          target_cm_id: '5002',
+          requester_name: 'Emma Johnson',
+          target_name: 'Liam Garcia',
+          bunk_cm_id: '9001',
+          bunk_name: 'g9',
+          session_cm_id: '1000001',
+          requester_grade: 5,
+        },
+        {
+          requester_cm_id: '5001',
+          target_cm_id: '5003',
+          requester_name: 'Emma Johnson',
+          target_name: 'Olivia Chen',
+          bunk_cm_id: '9002',
+          bunk_name: 'g10',
+          session_cm_id: '1000001',
+          requester_grade: 5,
+        },
+        {
+          requester_cm_id: '5001',
+          target_cm_id: '5004',
+          requester_name: 'Emma Johnson',
+          target_name: 'Noah Williams',
+          bunk_cm_id: '9003',
+          bunk_name: 'g11',
+          session_cm_id: '1000001',
+          requester_grade: 5,
+        },
+      ],
+    })
+
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+
+    // Confirm the three sub-rows are distinct (the bug repeated the first name).
+    const subRows = screen.getAllByTestId(/^family-subrow-5001-violated/)
+    expect(subRows).toHaveLength(3)
+    const texts = subRows.map((el) => el.textContent ?? '')
+
+    // All three distinct targets must appear across the three sub-rows.
+    expect(texts.some((t) => t.includes('Liam Garcia'))).toBe(true)
+    expect(texts.some((t) => t.includes('Olivia Chen'))).toBe(true)
+    expect(texts.some((t) => t.includes('Noah Williams'))).toBe(true)
+
+    // Each sub-row must mention a DIFFERENT target (the bug showed Liam 3×).
+    expect(texts[0]).toMatch(/Liam Garcia/)
+    expect(texts[1]).toMatch(/Olivia Chen/)
+    expect(texts[2]).toMatch(/Noah Williams/)
+
+    // No target should repeat across all three rows
+    const uniqueTargetMentions = new Set(
+      ['Liam Garcia', 'Olivia Chen', 'Noah Williams'].filter((name) =>
+        texts.some((t) => t.includes(name))
+      )
+    )
+    expect(uniqueTargetMentions.size).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task: handleCamperClick — popout mode vs normal modal mode
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — handleCamperClick behavior', () => {
+  // Reset pathname after each test so subsequent describe blocks always start
+  // in normal-modal (non-popout) mode.
+  afterEach(() => {
+    mockLocationPathname = '/session/1000001/bunking'
+  })
+
+  it('popout mode: clicking camper name opens /camper/<cm_id>/popout?session=<sessionCmId> in a new window', () => {
+    // Simulate we're inside the popout route (/post-check path)
+    mockLocationPathname = '/session/2/post-check'
+
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+
+    const stats = makeStats({
+      negative_request_violations_detail: [
+        {
+          requester_cm_id: '1001',
+          target_cm_id: '1002',
+          requester_name: 'Emma Johnson',
+          target_name: 'Liam Garcia',
+          bunk_cm_id: '2001',
+          bunk_name: 'Pine 3',
+          session_cm_id: '1000001',
+          requester_grade: 5,
+        },
+      ],
+    })
+
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults(stats)}
+      />
+    )
+
+    // Click the camper name in "Families to contact" list
+    const camperSpan = screen.getByText('Emma Johnson')
+    camperSpan.click()
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/camper/1001/popout?session=1000001'),
+      expect.stringContaining('camper-1001'),
+      expect.any(String)
+    )
+    // Should NOT call setSelectedCamperId (no slide-in panel in popout mode)
+    expect(screen.queryByTestId('camper-details-panel')).not.toBeInTheDocument()
+
+    openSpy.mockRestore()
+  })
+
+  it('normal modal mode: clicking camper name sets selectedCamperId (slide-in path, no window.open)', async () => {
+    // useLocation defaults to '/session/1000001/bunking' (NOT a popout route)
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window)
+
+    const { makeImpossibilityReport: mir } = await import('../test/impossibilityReport')
+    const report = mir({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 42,
+          name: 'Olivia Chen',
+          grade: 6,
+          gender: 'F' as const,
+          reason_codes: ['cross_session'],
+          session_cm_id: 1000001,
+        },
+      ],
+    })
+
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={report}
+      />
+    )
+
+    const camperSpan = screen.getByText('Olivia Chen')
+    camperSpan.click()
+
+    // Slide-in panel should appear (setSelectedCamperId was called)
+    expect(await screen.findByTestId('camper-details-panel')).toHaveAttribute(
+      'data-camper-id',
+      '42'
+    )
+    // window.open must NOT be called in normal modal mode
+    expect(openSpy).not.toHaveBeenCalled()
+
+    openSpy.mockRestore()
   })
 })

@@ -81,6 +81,8 @@ const VelocityPage = lazy(() => import('./pages/metrics/trends/VelocityPage'))
 const CancellationVelocityPage = lazy(
   () => import('./pages/metrics/trends/CancellationVelocityPage')
 )
+const PostCheckPopout = lazy(() => import('./pages/PostCheckPopout'))
+const CamperPopout = lazy(() => import('./pages/CamperPopout'))
 
 // Loading skeleton component for route transitions
 function PageSkeleton() {
@@ -611,6 +613,33 @@ function App() {
                             <Route path="user" element={<Navigate to="/user" replace />} />
                             <Route path="users" element={<Navigate to="/users" replace />} />
                           </Route>
+
+                          {/* Popout routes — bare windows with no app shell */}
+                          <Route
+                            path="/session/:sessionId/post-check"
+                            element={
+                              <ErrorBoundary>
+                                <Suspense fallback={<PageSkeleton />}>
+                                  <PostCheckPopout />
+                                </Suspense>
+                              </ErrorBoundary>
+                            }
+                          />
+                          {/* Camper details popout — /camper/:camperId/popout must be registered
+                              outside AppLayout and BEFORE the catch-all so React Router matches
+                              it as a top-level route. More-specific paths like
+                              /camper/123/popout beat the AppLayout-nested /camper/:camperId
+                              because this route is matched first in the ProtectedRoute branch. */}
+                          <Route
+                            path="/camper/:camperId/popout"
+                            element={
+                              <ErrorBoundary>
+                                <Suspense fallback={<PageSkeleton />}>
+                                  <CamperPopout />
+                                </Suspense>
+                              </ErrorBoundary>
+                            }
+                          />
 
                           {/* Catch-all redirect */}
                           <Route path="*" element={<Navigate to="/" replace />} />

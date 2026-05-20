@@ -128,6 +128,27 @@ const styles = StyleSheet.create({
   amberFill: { height: 6, backgroundColor: AMBER, borderRadius: 2 },
   reasonGroup: { marginBottom: 10 },
   reasonHead: { fontSize: 11, fontWeight: 700, color: STONE_950, marginBottom: 4 },
+  // Families-to-contact: grouped rows (one group per camper/cohort)
+  familyRowGroup: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: STONE_200,
+    paddingVertical: 3,
+  },
+  familyRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  familyName: { fontSize: 8, fontWeight: 'bold', flex: 2 },
+  familyCohort: { fontSize: 8, color: STONE_600, flex: 2 },
+  familySessionTags: { fontSize: 7, color: STONE_600, flex: 1, textAlign: 'right' },
+  familySubRow: {
+    flexDirection: 'row',
+    paddingTop: 2,
+    paddingLeft: 12,
+  },
+  familySubSession: { fontSize: 7, fontWeight: 'bold', color: STONE_950, width: 36 },
+  familySubDetail: { fontSize: 7, color: STONE_950, flex: 1 },
 })
 
 function pct(rate: number | undefined): string {
@@ -153,11 +174,6 @@ export function BunkPlanReport({
   const mpRate = statistics.material_parent_request_satisfaction_rate
   const mpTotal = statistics.material_parent_requests ?? 0
   const mpSatisfied = statistics.satisfied_material_parent_requests ?? 0
-
-  // Unmet parent persons sorted alphabetically for page 3
-  const unmetParents = [...(statistics.unsatisfied_material_parent_persons ?? [])].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  )
 
   const generatedAt = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -300,18 +316,20 @@ export function BunkPlanReport({
           <Page size="LETTER" style={styles.page}>
             <Text style={styles.sectionTitle}>Families to contact ({familyRows.length})</Text>
             <Text style={styles.subtitle}>
-              Sorted alphabetically by camper first name. Each row needs a follow-up call.
+              Sorted by grade then name. Each row needs a follow-up call. Sub-rows show per-session
+              detail.
             </Text>
-            <View style={styles.tableHead}>
-              <Text style={styles.cell}>Camper</Text>
-              <Text style={styles.cell}>Cohort</Text>
-              <Text style={[styles.cell, { flex: 2 }]}>Detail</Text>
-            </View>
-            {familyRows.map((r) => (
-              <View key={r.key} style={styles.tableRow} wrap={false}>
-                <Text style={styles.cell}>{r.name}</Text>
-                <Text style={styles.cell}>{cohortLabel(r.cohort)}</Text>
-                <Text style={[styles.cell, { flex: 2 }]}>{r.detail}</Text>
+            {familyRows.map((row) => (
+              <View key={row.key} style={styles.familyRowGroup} wrap={false}>
+                <View style={styles.familyRowHeader}>
+                  <Text style={styles.familyName}>{row.name}</Text>
+                  <Text style={styles.familyCohort}>{cohortLabel(row.cohort)}</Text>
+                </View>
+                {row.subRows.map((sub, i) => (
+                  <View key={`${row.key}-${i}`} style={styles.familySubRow}>
+                    <Text style={styles.familySubDetail}>{sub.detail}</Text>
+                  </View>
+                ))}
               </View>
             ))}
             <Text
@@ -325,16 +343,15 @@ export function BunkPlanReport({
         )
       })()}
 
-      {/* ── Page 3 — Bunks needing attention / Other issues / Unmet drill-down ── */}
+      {/* ── Page 3 — Bunks needing attention / Other issues ── */}
       {(() => {
         const issuesList = issues ?? []
         const bunkLevelIssues = issuesList.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type))
         const otherIssues = issuesList.filter(
           (i) => !BUNK_LEVEL_ISSUE_TYPES.has(i.type) && !SUPPRESSED_ISSUE_TYPES.has(i.type)
         )
-        const unmetDetail = statistics.unsatisfied_material_parent_detail ?? []
 
-        if (bunkLevelIssues.length === 0 && otherIssues.length === 0 && unmetDetail.length === 0) {
+        if (bunkLevelIssues.length === 0 && otherIssues.length === 0) {
           return null
         }
 
@@ -356,15 +373,6 @@ export function BunkPlanReport({
           otherMap.set(issue.type, arr)
         }
         const groupedOther = [...otherMap.entries()]
-
-        // Tiebreak on requester_cm_id then target_cm_id so same-name requesters
-        // (Emma Johnson #1 vs Emma Johnson #2) render in deterministic order.
-        const sortedUnmet = [...unmetDetail].sort(
-          (a, b) =>
-            a.requester_name.localeCompare(b.requester_name) ||
-            a.requester_cm_id.localeCompare(b.requester_cm_id) ||
-            a.target_cm_id.localeCompare(b.target_cm_id)
-        )
 
         return (
           <Page size="LETTER" style={styles.page} wrap>
@@ -391,25 +399,6 @@ export function BunkPlanReport({
                   <View key={type} style={styles.tableRow} wrap={false}>
                     <Text style={styles.cell}>{type.replace(/_/g, ' ')}</Text>
                     <Text style={styles.cell}>{items.length}</Text>
-                  </View>
-                ))}
-              </>
-            )}
-
-            {sortedUnmet.length > 0 && (
-              <>
-                <Text style={styles.sectionTitle}>Unmet parent requests</Text>
-                {sortedUnmet.map((r) => (
-                  <View
-                    key={`${r.requester_cm_id}-${r.target_cm_id}`}
-                    style={styles.tableRow}
-                    wrap={false}
-                  >
-                    <Text style={styles.cell}>{r.requester_name}</Text>
-                    <Text style={styles.cell}>wanted {r.target_name}</Text>
-                    <Text style={styles.cell}>
-                      {r.requester_bunk_name} vs {r.target_bunk_name}
-                    </Text>
                   </View>
                 ))}
               </>
@@ -478,39 +467,6 @@ export function BunkPlanReport({
           />
         </Page>
       )}
-
-      {/* ── Last page — Full unmet alphabetical list ── */}
-      <Page size="LETTER" style={styles.page}>
-        <Text style={styles.sectionTitle}>Unmet Parent Requests (full list)</Text>
-        {unmetParents.length === 0 ? (
-          <Text style={styles.emptyNote}>All parent requests were satisfied.</Text>
-        ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-            {unmetParents.map((p) => (
-              <View
-                key={`unmet-${p.cm_id}`}
-                style={{
-                  width: '30%',
-                  padding: 4,
-                  borderWidth: 0.5,
-                  borderColor: STONE_200,
-                  borderRadius: 2,
-                }}
-              >
-                <Text style={{ fontSize: 8 }}>{p.name}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <Text
-          style={styles.footer}
-          render={({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
-            `Page ${pageNumber} of ${totalPages} · Full Unmet List`
-          }
-          fixed
-        />
-      </Page>
     </Document>
   )
 }

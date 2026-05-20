@@ -96,6 +96,29 @@ def calculate_age(birthdate_str: str) -> float:
         return 0.0
 
 
+def _build_validator_bunks(bunks_data: list[Any]) -> list[Bunk]:
+    """Map raw PocketBase bunk records to validator ``Bunk`` models.
+
+    ``gender`` ("M"/"F"/"Mixed"/"") must be carried through — the post-check
+    "Capacity by gender" stat splits boys/girls cabins on it. Dropping it left
+    every bunk ``gender=None`` and zeroed the denominator (``N / 0``).
+    """
+    return [
+        Bunk(
+            id=bunk_data.id,
+            campminder_id=str(getattr(bunk_data, "cm_id", "")),
+            name=getattr(bunk_data, "name", ""),
+            area=getattr(bunk_data, "area", None),
+            division_cm_id=str(getattr(bunk_data, "division_id", None))
+            if getattr(bunk_data, "division_id", None)
+            else None,
+            is_locked=getattr(bunk_data, "is_locked", False),
+            gender=getattr(bunk_data, "gender", None),
+        )
+        for bunk_data in bunks_data
+    ]
+
+
 @router.post("/validate-bunking")
 async def validate_bunking(
     request: ValidateBunkingRequest, user: AuthUser = Depends(require_permission(Permission.BUNKING_MANAGE))
@@ -147,20 +170,8 @@ async def validate_bunking(
             )
 
         # Build bunk list from year-filtered query
-        bunks = []
+        bunks = _build_validator_bunks(bunks_data)
         logger.info(f"Fetched {len(bunks_data)} bunks for year {ctx.year}")
-        for bunk_data in bunks_data:
-            bunk = Bunk(
-                id=bunk_data.id,
-                campminder_id=str(getattr(bunk_data, "cm_id", "")),
-                name=getattr(bunk_data, "name", ""),
-                area=getattr(bunk_data, "area", None),
-                division_cm_id=str(getattr(bunk_data, "division_id", None))
-                if getattr(bunk_data, "division_id", None)
-                else None,
-                is_locked=getattr(bunk_data, "is_locked", False),
-            )
-            bunks.append(bunk)
 
         # Fetch active enrolled attendees for all related sessions
         attendees_data = await asyncio.to_thread(

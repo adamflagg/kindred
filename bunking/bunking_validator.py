@@ -71,6 +71,8 @@ class NegativeRequestViolation(TypedDict):
     target_name: str
     bunk_cm_id: str
     bunk_name: str
+    session_cm_id: str
+    requester_grade: int | None
 
 
 class PriorityUnsuccessful(TypedDict):
@@ -81,6 +83,8 @@ class PriorityUnsuccessful(TypedDict):
     requester_name: str
     target_name: str
     raw_text: str  # parent's original wording snippet
+    session_cm_id: str
+    requester_grade: int | None
 
 
 class ValidationSeverity(StrEnum):
@@ -152,14 +156,17 @@ class ValidationStatistics(BaseModel):
     # modal drill-down (#1105). Each entry is {cm_id, name}.
     unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
     # One entry per unsatisfied MP request with requester_cm_id, requester_name,
-    # target_cm_id, target_name, requester_bunk_name, target_bunk_name.
-    # Powers the enriched 'Unmet parent requests' drill-down in the post-check modal.
+    # target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on
+    # the validation payload (typed in solver.ts). The post-check modal drill-down
+    # this once fed was removed in Group 65 (de-duped against "Families to contact");
+    # the field is retained for the API contract / future consumers.
     unsatisfied_material_parent_detail: list[dict[str, str]] = Field(
         default_factory=list,
         description=(
             "One entry per unsatisfied MP request with requester_cm_id, requester_name, "
-            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. "
-            "Powers the enriched 'Unmet parent requests' drill-down in the post-check modal."
+            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on the "
+            "validation payload; no longer rendered (the post-check 'Unmet parent requests' "
+            "drill-down was removed in Group 65)."
         ),
     )
 
@@ -379,11 +386,14 @@ class BunkingValidator:
         if stats.total_capacity > 0:
             stats.capacity_utilization_rate = stats.used_capacity / stats.total_capacity
 
-        # Per-gender capacity and assigned counts.
-        # bunk.gender is "F" or "M"; unknown/other genders are skipped.
-        # Capacity is n_bunks × DEFAULT_BUNK_CAPACITY — the real Bunk model has no
-        # per-bunk size column (removed in Phase 2 cleanup), so this is headcount-based.
-        # If per-bunk variance is ever needed, add a max_size column and read it here.
+        # Per-gender capacity and assigned counts — Boys (M) and Girls (F) cabins only.
+        # Both numerator and denominator come from the BUNK, never person gender:
+        #   capacity = (#M/F bunks) × DEFAULT_BUNK_CAPACITY
+        #   assigned = bodies sitting in those bunks (heads in the cabin)
+        # A camper's own recorded gender is irrelevant — we count cabin occupancy.
+        # Non-gendered bunks (family-camp "" / co-ed "Mixed"/"AG") have no M/F gender
+        # and fall out of both sides. Capacity is headcount-based because the Bunk
+        # model has no per-bunk size column (removed in Phase 2 cleanup).
         capacity_by_gender: dict[str, dict[str, int]] = {
             "female": {"capacity": 0, "assigned": 0},
             "male": {"capacity": 0, "assigned": 0},
@@ -393,14 +403,7 @@ class BunkingValidator:
             if gender_key is None:
                 continue
             capacity_by_gender[gender_key]["capacity"] += DEFAULT_BUNK_CAPACITY
-        for person in persons:
-            if person.campminder_id not in assignments_by_person:
-                continue
-            person_gender = getattr(person, "gender", None)
-            gender_key = "female" if person_gender == "F" else "male" if person_gender == "M" else None
-            if gender_key is None:
-                continue
-            capacity_by_gender[gender_key]["assigned"] += 1
+            capacity_by_gender[gender_key]["assigned"] += len(assignments_by_bunk.get(bunk.campminder_id, []))
         stats.capacity_by_gender = capacity_by_gender
 
         return ValidationResult(statistics=stats, issues=issues, session_id=session.campminder_id, scenario=scenario)
@@ -698,6 +701,9 @@ class BunkingValidator:
                     ):
                         requester_person = person_by_id.get(requester_id)
                         requested_person = person_by_id.get(request.requested_person_cm_id)
+                        requester_grade_val: int | None = None
+                        if requester_person is not None and requester_person.grade is not None:
+                            requester_grade_val = int(requester_person.grade)
                         stats.priority_unsuccessfuls.append(
                             PriorityUnsuccessful(
                                 requester_cm_id=requester_id,
@@ -707,6 +713,8 @@ class BunkingValidator:
                                 if requested_person
                                 else f"Person {request.requested_person_cm_id}",
                                 raw_text=getattr(request, "raw_text", ""),
+                                session_cm_id=request.session_cm_id,
+                                requester_grade=requester_grade_val,
                             )
                         )
 
@@ -749,6 +757,10 @@ class BunkingValidator:
                         violated_bunk_cm_id = person_assignment.bunk_cm_id
                         violated_bunk = (bunk_by_id or {}).get(violated_bunk_cm_id)
                         violated_bunk_name = violated_bunk.name if violated_bunk else violated_bunk_cm_id
+                        requester_person = person_by_id.get(person_id)
+                        requester_grade_val = None
+                        if requester_person is not None and requester_person.grade is not None:
+                            requester_grade_val = int(requester_person.grade)
                         stats.negative_request_violations_detail.append(
                             NegativeRequestViolation(
                                 requester_cm_id=person_id,
@@ -757,6 +769,8 @@ class BunkingValidator:
                                 target_name=requested_name,
                                 bunk_cm_id=violated_bunk_cm_id,
                                 bunk_name=violated_bunk_name,
+                                session_cm_id=request.session_cm_id,
+                                requester_grade=requester_grade_val,
                             )
                         )
                         source_fields = get_source_fields(request)

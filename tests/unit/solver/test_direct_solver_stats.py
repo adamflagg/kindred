@@ -13,6 +13,7 @@ from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver.direct_solver import DirectBunkingSolver
+from bunking.solver.impossibility import ImpossibilityReport, ImpossibleItem
 from bunking.solver.observability import _compute_optimality_gap, _count_constraint_types
 
 
@@ -1508,3 +1509,429 @@ class TestTier2MetricsInStatsDict:
         assert stats["objective_plateau_time"] is None
         assert stats["bound_gain_after_plateau"] is None
         assert stats["time_to_first_solution"] is None
+
+
+class TestMaterialOnlyStatsAggregates:
+    """Stats total_requests and satisfied_request_count must be material-only.
+
+    Immaterial (socialize_with) requests are still run through CP-SAT but
+    must NOT inflate the user-facing counters that drive the solver-finish
+    quick popup.  Group 65 #1539.
+    """
+
+    def _make_input(
+        self,
+        requests: list[DirectBunkRequest],
+        num_persons: int = 20,
+    ) -> DirectSolverInput:
+        """Two bunks (capacity 12 each), N same-session same-gender campers.
+
+        Default 20 persons → 10/bunk → satisfies MIN_BUNK_OCCUPANCY=8.
+        """
+        bunks = [
+            DirectBunk(
+                id=f"bunk-{i}",
+                campminder_id=9000 + i,
+                name=f"Cabin-{i}",
+                capacity=12,
+                gender="M",
+                session_cm_id=1000001,
+            )
+            for i in range(2)
+        ]
+        persons = [
+            DirectPerson(
+                campminder_person_id=1000 + i,
+                first_name=f"Camper{i}",
+                last_name="Test",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            )
+            for i in range(num_persons)
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+
+    def test_total_requests_excludes_socialize_with(self) -> None:
+        """total_requests counts only COUNTED (material + staff) requests.
+
+        Input: 1 bunk_with (MATERIAL_PARENT, counted) + 1 socialize_with
+        (IMMATERIAL_PARENT, not counted).  Expected: total_requests == 1.
+        """
+        from unittest.mock import MagicMock
+
+        from bunking.config import ConfigLoader
+
+        class _StubLoader:
+            def get_int(self, key: str, default: int | None = None) -> int:
+                return default if default is not None else 0
+
+            def get_float(self, key: str, default: float | None = None) -> float:
+                return default if default is not None else 0.0
+
+        requests = [
+            DirectBunkRequest(
+                id="req-bunk-with",
+                requester_person_cm_id=1000,
+                requested_person_cm_id=1001,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            DirectBunkRequest(
+                id="req-socialize",
+                requester_person_cm_id=1002,
+                requested_person_cm_id=1003,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        cfg = MagicMock()
+        cfg.get_constraint.side_effect = lambda ct, p, default=None: (
+            2 if ct == "grade_spread" and p == "max_spread" else (default if default is not None else 0)
+        )
+        cfg.get_int.side_effect = lambda k, default=None: default if default is not None else 0
+        cfg.get_float.side_effect = lambda k, default=None: default if default is not None else 0.0
+        cfg.get_str.side_effect = lambda k, default=None: (
+            "hard" if "grade_spread.mode" in k else (default if default is not None else "")
+        )
+        cfg.get_bool.side_effect = lambda k, default=None: default if default is not None else False
+        cfg.get_priority.side_effect = lambda *a: 4
+        cfg.get_soft_constraint_weight.side_effect = lambda *a: 0
+
+        with ConfigLoader.use(_StubLoader()):  # type: ignore[arg-type]
+            solver = DirectBunkingSolver(
+                input_data=self._make_input(requests),
+                config_service=cfg,
+            )
+            result = solver.solve(time_limit_seconds=10)
+
+        assert result is not None
+        # Only bunk_with is material; socialize_with must be excluded from total.
+        assert result.stats["total_requests"] == 1
+
+    def test_satisfied_count_excludes_socialize_with(self) -> None:
+        """satisfied_request_count counts only satisfied COUNTED requests.
+
+        With two persons in a 2-bunk session, the bunk_with between them is
+        satisfied iff they land in the same bunk; the socialize_with between
+        the other two must not inflate the satisfied count regardless of
+        placement.  We assert the satisfied count is <= 1 (can't exceed the
+        one material request in the input).
+        """
+        from unittest.mock import MagicMock
+
+        from bunking.config import ConfigLoader
+
+        class _StubLoader:
+            def get_int(self, key: str, default: int | None = None) -> int:
+                return default if default is not None else 0
+
+            def get_float(self, key: str, default: float | None = None) -> float:
+                return default if default is not None else 0.0
+
+        requests = [
+            DirectBunkRequest(
+                id="req-bunk-with",
+                requester_person_cm_id=1000,
+                requested_person_cm_id=1001,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            DirectBunkRequest(
+                id="req-socialize",
+                requester_person_cm_id=1002,
+                requested_person_cm_id=1003,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                status="resolved",
+                priority=4,
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        cfg = MagicMock()
+        cfg.get_constraint.side_effect = lambda ct, p, default=None: (
+            2 if ct == "grade_spread" and p == "max_spread" else (default if default is not None else 0)
+        )
+        cfg.get_int.side_effect = lambda k, default=None: default if default is not None else 0
+        cfg.get_float.side_effect = lambda k, default=None: default if default is not None else 0.0
+        cfg.get_str.side_effect = lambda k, default=None: (
+            "hard" if "grade_spread.mode" in k else (default if default is not None else "")
+        )
+        cfg.get_bool.side_effect = lambda k, default=None: default if default is not None else False
+        cfg.get_priority.side_effect = lambda *a: 4
+        cfg.get_soft_constraint_weight.side_effect = lambda *a: 0
+
+        with ConfigLoader.use(_StubLoader()):  # type: ignore[arg-type]
+            solver = DirectBunkingSolver(
+                input_data=self._make_input(requests),
+                config_service=cfg,
+            )
+            result = solver.solve(time_limit_seconds=10)
+
+        assert result is not None
+        # satisfied_request_count must never exceed the 1 material request.
+        assert result.stats["satisfied_request_count"] <= 1
+
+
+class TestRequestValidationSummaryMaterialOnly:
+    """Group 65 #1539 — popup-visible request_validation_summary aggregates
+    exclude IMMATERIAL_PARENT (socialize_with).
+
+    solver-debug-only fields (mp_*, all_*, unsatisfied_*) at the finalization
+    site (direct_solver.py:1084-1177) are out of scope for this filter.
+
+    Fixture:
+    - Person 1 (session 1000001) has 2 bunk_with requests → MATERIAL_PARENT
+      - req-m1: requests person 2 (same session) — possible
+      - req-m2: requests person 99 (not in solver) — impossible (target_not_in_solver)
+    - Person 3 (session 1000001) has 1 socialize_with request → IMMATERIAL_PARENT
+      - req-i1: requests person 4 (session 1000002, cross-session) — impossible
+
+    Expected:
+    - total_requests == 2 (only the 2 bunk_with; socialize_with excluded)
+    - possible_requests == 1 (1 material possible)
+    - impossible_requests == 1 (only the material-impossible; socialize_with excluded)
+    - affected_campers == 1 (only person 1, not person 3)
+    - impossible_by_reason does not contain counts under "immaterial_parent" key
+      (it may be present as an empty dict, but must have no reason counts)
+    """
+
+    def _make_input(self) -> DirectSolverInput:
+        bunks = [
+            DirectBunk(
+                id="bunk-1",
+                campminder_id=9001,
+                name="A",
+                capacity=10,
+                gender="Mixed",
+                session_cm_id=1000001,
+            ),
+            DirectBunk(
+                id="bunk-2",
+                campminder_id=9002,
+                name="B",
+                capacity=10,
+                gender="Mixed",
+                session_cm_id=1000002,
+            ),
+        ]
+        persons = [
+            DirectPerson(
+                campminder_person_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=3,
+                first_name="Olivia",
+                last_name="Chen",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=4,
+                first_name="Riley",
+                last_name="Sam",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000002,
+            ),
+        ]
+        requests = [
+            # MATERIAL_PARENT — possible (requestee in same session)
+            DirectBunkRequest(
+                id="req-m1",
+                requester_person_cm_id=1,
+                requested_person_cm_id=2,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            # MATERIAL_PARENT — impossible (requestee not in solver)
+            DirectBunkRequest(
+                id="req-m2",
+                requester_person_cm_id=1,
+                requested_person_cm_id=99,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+            # IMMATERIAL_PARENT — impossible (requestee in different session)
+            DirectBunkRequest(
+                id="req-i1",
+                requester_person_cm_id=3,
+                requested_person_cm_id=4,
+                request_type="bunk_with",
+                source_field="socialize_with",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=bunks)
+
+    def test_total_requests_excludes_immaterial(self) -> None:
+        """total_requests == 2 (2 bunk_with material), not 3."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["total_requests"] == 2
+
+    def test_impossible_requests_excludes_immaterial(self) -> None:
+        """impossible_requests == 1 (only req-m2 is material-impossible), not 2."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["impossible_requests"] == 1
+
+    def test_possible_requests_excludes_immaterial(self) -> None:
+        """possible_requests == total_requests - material_impossible == 2 - 1 == 1."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["possible_requests"] == 1
+
+    def test_affected_campers_excludes_immaterial(self) -> None:
+        """affected_campers == 1 (only person 1 has material-impossible requests)."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        assert solver.request_validation_summary["affected_campers"] == 1
+
+    def test_impossible_by_reason_has_no_immaterial_counts(self) -> None:
+        """immaterial_parent bucket in impossible_by_reason must be empty."""
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(input_data=self._make_input(), config_service=MagicMock())
+        by_reason = solver.request_validation_summary["impossible_by_reason"]
+        # immaterial_parent bucket may be present but must have no reason codes
+        immaterial_counts = by_reason.get("immaterial_parent", {})
+        assert immaterial_counts == {}, (
+            f"impossible_by_reason['immaterial_parent'] should be empty, got {immaterial_counts!r}"
+        )
+
+
+class TestRequestValidationSummaryMultiReasonDedup:
+    """Group 65 #1549 — a material request impossible for >1 reason appears once
+    per reason in report.flat (Layer 2 records every overlapping blocker, see
+    impossibility.py). The material impossible/possible counts must dedup by
+    request_id, matching validate_impossibility's own total_impossible dedup.
+    Counting flat rows directly double-counts and can drive possible_requests
+    negative.
+
+    Fixture: 1 material bunk_with request (req-multi) made impossible for two
+    reasons via an injected impossibility report (cross_gender + grade_distant).
+    """
+
+    def _make_input(self) -> DirectSolverInput:
+        bunk = DirectBunk(
+            id="bunk-1",
+            campminder_id=9001,
+            name="A",
+            capacity=10,
+            gender="Mixed",
+            session_cm_id=1000001,
+        )
+        persons = [
+            DirectPerson(
+                campminder_person_id=1,
+                first_name="Emma",
+                last_name="Johnson",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="F",
+                session_cm_id=1000001,
+            ),
+            DirectPerson(
+                campminder_person_id=2,
+                first_name="Liam",
+                last_name="Garcia",
+                grade=8,
+                birthdate="2014-01-01",
+                gender="M",
+                session_cm_id=1000001,
+            ),
+        ]
+        requests = [
+            DirectBunkRequest(
+                id="req-multi",
+                requester_person_cm_id=1,
+                requested_person_cm_id=2,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                session_cm_id=1000001,
+                year=2026,
+            ),
+        ]
+        return DirectSolverInput(persons=persons, requests=requests, bunks=[bunk])
+
+    def _multi_reason_report(self) -> ImpossibilityReport:
+        requester = {"cm_id": 1, "name": "Emma Johnson", "grade": 8, "gender": "F"}
+        requestee = {"cm_id": 2, "name": "Liam Garcia", "grade": 8, "gender": "M"}
+        items = [
+            ImpossibleItem(
+                request_id="req-multi",
+                reason_code=code,
+                reason_message="…",
+                request_type="bunk_with",
+                requester=requester,
+                requestee=requestee,
+                detail={},
+                bucket="material_parent",
+            )
+            for code in ("cross_gender", "grade_distant")
+        ]
+        return ImpossibilityReport(
+            total_impossible=1,  # validate_impossibility dedups by request_id
+            affected_campers=1,
+            by_reason={"cross_gender": [items[0]], "grade_distant": [items[1]]},
+            flat=items,
+            by_bucket_count={"material_parent": 1},
+        )
+
+    def test_multi_reason_request_counted_once(self) -> None:
+        from unittest.mock import MagicMock
+
+        solver = DirectBunkingSolver(
+            input_data=self._make_input(),
+            config_service=MagicMock(),
+            impossibility_report=self._multi_reason_report(),
+        )
+        summary = solver.request_validation_summary
+        assert summary["total_requests"] == 1
+        assert summary["impossible_requests"] == 1, (
+            f"multi-reason request double-counted: {summary['impossible_requests']}"
+        )
+        assert summary["possible_requests"] == 0, f"possible_requests went negative: {summary['possible_requests']}"
+        assert summary["affected_campers"] == 1

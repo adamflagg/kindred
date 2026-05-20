@@ -20,13 +20,13 @@ predicate.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
-from bunking.satisfaction.bucket import classify_request, is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, classify_request, is_material_parent_request
 
 logger = get_logger(__name__)
 
@@ -75,12 +75,51 @@ class ImpossibilityReport:
     by_reason: dict[str, list[ImpossibleItem]] = field(default_factory=dict)
     flat: list[ImpossibleItem] = field(default_factory=list)
     # Camper-level rollup: roster campers whose ENTIRE Material-Parent request
-    # set is impossible. Each entry: {cm_id, name, grade, gender, reason_codes}.
-    # Derived from `flat` — see validate_impossibility.
+    # set is impossible. Each entry: {cm_id, name, grade, gender, session_cm_id,
+    # reason_codes}. Derived from `flat` — see validate_impossibility / _camper_dict.
     mp_campers_entirely_impossible: list[dict[str, Any]] = field(default_factory=list)
     # request_id-unique counts per RequestBucket.value. bucket=None items are excluded.
     # Used by the admin modal's filter chips so they show counts without re-aggregating.
     by_bucket_count: dict[str, int] = field(default_factory=dict)
+
+
+def filter_immaterial_requests(report: ImpossibilityReport) -> ImpossibilityReport:
+    """Return a copy of *report* with IMMATERIAL_PARENT (socialize_with) entries removed.
+
+    Group 65 #1537 — the pre-check should not surface socialize_with requests:
+    parent age-pref dropdowns are not actionable signals for staff.
+
+    ``total_impossible`` / ``affected_campers`` are re-derived from the filtered
+    flat list with request-id (resp. cm_id) dedup, matching the counting in
+    ``validate_impossibility``. A request impossible for >1 reason appears once
+    per reason in ``flat`` (Layer 2 records every overlapping blocker), so a
+    plain ``len(flat)`` would double-count it.
+
+    ``by_bucket_count`` is already request-id-unique per bucket, so dropping the
+    immaterial key is sufficient. ``mp_campers_entirely_impossible`` is left
+    untouched (MP-only by definition).
+    """
+    immaterial_bucket = RequestBucket.IMMATERIAL_PARENT.value
+
+    filtered_flat = [item for item in report.flat if item.bucket != immaterial_bucket]
+    filtered_by_reason = {
+        reason_code: [item for item in items if item.bucket != immaterial_bucket]
+        for reason_code, items in report.by_reason.items()
+    }
+    filtered_by_bucket_count = {
+        bucket: count for bucket, count in report.by_bucket_count.items() if bucket != immaterial_bucket
+    }
+
+    return replace(
+        report,
+        flat=filtered_flat,
+        by_reason=filtered_by_reason,
+        total_impossible=len({item.request_id for item in filtered_flat}),
+        affected_campers=len(
+            {item.requester.get("cm_id") for item in filtered_flat if item.requester.get("cm_id") is not None}
+        ),
+        by_bucket_count=filtered_by_bucket_count,
+    )
 
 
 class HardConstraintImpossibility:
@@ -117,6 +156,7 @@ def _camper_dict(person: DirectPerson) -> dict[str, Any]:
         "name": f"{person.first_name} {person.last_name}".strip(),
         "grade": person.grade,
         "gender": person.gender,
+        "session_cm_id": person.session_cm_id,
     }
 
 

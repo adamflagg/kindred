@@ -56,6 +56,7 @@ export interface ImpossibilityReportItem {
   reason_code: string
   reason_message: string
   request_type: string
+  source_field?: string | null
   requester: { cm_id: number; name: string; grade: number; gender: string }
   requestee: { cm_id: number; name: string; grade: number; gender: string } | null
   detail: Record<string, unknown>
@@ -68,6 +69,7 @@ export interface EntirelyImpossibleMpCamper {
   grade: number
   gender: string
   reason_codes: string[]
+  session_cm_id: number // Group 65 #1540 — multi-enrollment dedup
 }
 
 export interface ImpossibilityReport {
@@ -145,6 +147,8 @@ export interface ValidationStatistics {
     target_name: string
     bunk_cm_id: string
     bunk_name: string
+    session_cm_id: string // Group 65 #1540 — backend BunkRequest.session_cm_id is str
+    requester_grade: number | null // Group 65 #1540 — grade-first sort
   }>
   priority_unsuccessfuls?: Array<{
     requester_cm_id: string
@@ -152,6 +156,8 @@ export interface ValidationStatistics {
     requester_name: string
     target_name: string
     raw_text: string
+    session_cm_id: string // Group 65 #1540
+    requester_grade: number | null // Group 65 #1540
   }>
   /** TG-6: camper-level two-tier MP coverage. */
   mp_campers_total?: number

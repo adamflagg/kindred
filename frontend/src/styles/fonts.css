@@ -211,6 +211,32 @@ h6 {
   }
 }
 
+/* The post-check surface (modal + popout) renders desktop-style content. In a
+   narrow popout window it falls below the app's mobile breakpoints, so the
+   global mobile heading scale (<=768px) and touch-target button min-heights
+   (<=640px) would make its header/footer taller than the in-app modal. Pin
+   those back for this surface only — higher specificity than the bare h2/h3/
+   button rules above, and a no-op in the desktop modal where these media
+   queries never fire. Mobile support for this surface is not a goal. */
+@media (max-width: 768px) {
+  .postcheck-surface h2 {
+    font-size: 1.125rem; /* text-lg */
+    line-height: 1.25; /* leading-tight */
+  }
+
+  .postcheck-surface h3 {
+    font-size: 0.875rem; /* text-sm */
+    line-height: 1.25rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .postcheck-surface button {
+    min-height: 0;
+    min-width: 0;
+  }
+}
+
 /* Print typography */
 @media print {
   body {

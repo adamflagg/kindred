@@ -80,6 +80,7 @@ describe('BunkPlanReport (PDF)', () => {
               gender: 'Girls',
               grade: 7,
               reason_codes: ['no_valid_bunk'],
+              session_cm_id: 1000001,
             },
           ],
         }}
@@ -166,14 +167,17 @@ describe('BunkPlanReport (PDF)', () => {
   }, 30000)
 })
 
-describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
-  it('renders Bunks needing attention, Other issues, and Unmet drill-down on one page', async () => {
+describe('BunkPlanReport (PDF) — Bunks/Other page', () => {
+  it('renders Bunks needing attention and Other issues, with no unmet-parents list', async () => {
     const buf = await renderToBuffer(
       <BunkPlanReport
         sessionName="Session 3"
         year={2026}
         plannerName="Test Staff"
         statistics={makeStats({
+          // Group 65: these no longer drive any PDF section — the unmet
+          // drill-down + full-list page were removed (those campers are already
+          // in "Families to contact"). Supplied here to prove they don't leak.
           unsatisfied_material_parent_detail: [
             {
               requester_cm_id: '1',
@@ -184,6 +188,7 @@ describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
               target_bunk_name: 'Oak 2',
             },
           ],
+          unsatisfied_material_parent_persons: [{ cm_id: 2001, name: 'Riley Sam' }],
         })}
         impossibilityReport={
           {
@@ -195,7 +200,11 @@ describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
           } as any
         }
         issues={[
-          { type: 'capacity_violation', severity: 'error', message: 'Pine 3 over capacity' },
+          {
+            type: 'capacity_violation',
+            severity: 'error',
+            message: 'Bunk Pine 3 is over capacity',
+          },
           { type: 'unassigned_campers', severity: 'error', message: '2 unassigned' },
         ]}
       />
@@ -210,68 +219,15 @@ describe('BunkPlanReport (PDF) — Bunks/Other/Unmet page', () => {
     expect(text).toMatch(/Pine 3/)
     expect(flat).toMatch(/OTHERISSUES/)
     expect(text).toMatch(/unassigned/i)
-    expect(flat).toMatch(/UNMET/)
-    expect(text).toMatch(/Emma Johnson/)
-    expect(text).toMatch(/Liam Garcia/)
-  }, 30000)
-
-  // #8 — Two requesters can share a name (Emma Johnson #1 and Emma Johnson #2
-  // at a 600-camper session). Sort by name alone leaves order non-deterministic;
-  // tiebreak on requester_cm_id (then target_cm_id) so the PDF is reproducible.
-  it('produces deterministic unmet order when requesters share a name (cm_id tiebreak)', async () => {
-    const buf = await renderToBuffer(
-      <BunkPlanReport
-        sessionName="Session 3"
-        year={2026}
-        plannerName="Test Staff"
-        statistics={makeStats({
-          unsatisfied_material_parent_detail: [
-            // Same requester_name; cm_id "1002" should sort AFTER "1001".
-            // Bunk names differ so we can read the order out of the PDF text.
-            {
-              requester_cm_id: '1002',
-              requester_name: 'Emma Johnson',
-              target_cm_id: '2002',
-              target_name: 'Liam Garcia',
-              requester_bunk_name: 'Pine 7',
-              target_bunk_name: 'Oak 2',
-            },
-            {
-              requester_cm_id: '1001',
-              requester_name: 'Emma Johnson',
-              target_cm_id: '2001',
-              target_name: 'Olivia Chen',
-              requester_bunk_name: 'Pine 3',
-              target_bunk_name: 'Oak 5',
-            },
-          ],
-        })}
-        impossibilityReport={
-          {
-            by_reason: {},
-            total_impossible: 0,
-            affected_campers: 0,
-            flat: [],
-            mp_campers_entirely_impossible: [],
-          } as any
-        }
-      />
-    )
-    const parser = new PDFParse({ data: buf })
-    const result = await parser.getText()
-    await parser.destroy()
-    const text = result.text
-
-    // Both rows render — and the cm_id="1001" row (Pine 3 / Olivia Chen) must
-    // come before the cm_id="1002" row (Pine 7 / Liam Garcia).
-    expect(text).toMatch(/Pine 3/)
-    expect(text).toMatch(/Pine 7/)
-    expect(text.indexOf('Pine 3')).toBeLessThan(text.indexOf('Pine 7'))
+    // No unmet-parents section anywhere in the document.
+    expect(flat).not.toMatch(/UNMET/)
+    expect(text).not.toMatch(/Emma Johnson/)
+    expect(text).not.toMatch(/Riley Sam/)
   }, 30000)
 })
 
 describe('BunkPlanReport (PDF) — Families to contact page', () => {
-  it('renders Families to contact with all 3 cohorts in alphabetical order', async () => {
+  it('renders Families to contact with all 3 cohorts in grade-first order', async () => {
     const buf = await renderToBuffer(
       <BunkPlanReport
         sessionName="Session 3"
@@ -286,6 +242,8 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
               target_name: 'Samuel Johnson',
               bunk_cm_id: '10',
               bunk_name: 'Pine 3',
+              session_cm_id: '1000001',
+              requester_grade: 6, // grade 6 — appears after grade 5
             },
           ],
           priority_unsuccessfuls: [
@@ -295,6 +253,8 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
               requester_name: 'Sophia Martinez',
               target_name: 'Mia Wilson',
               raw_text: 'top priority',
+              session_cm_id: '1000001',
+              requester_grade: 7, // grade 7 — appears last
             },
           ],
         })}
@@ -311,6 +271,7 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
                 grade: 5,
                 gender: 'F',
                 reason_codes: ['grade_compatibility'],
+                session_cm_id: 1000001,
               },
             ],
           } as any
@@ -328,9 +289,60 @@ describe('BunkPlanReport (PDF) — Families to contact page', () => {
     expect(text).toMatch(/Emma Johnson/)
     expect(text).toMatch(/Riley Sam/)
     expect(text).toMatch(/Sophia Martinez/)
-    // Alphabetical: Emma < Riley < Sophia
+    // Grade-first order: Emma (5) < Riley (6) < Sophia (7)
     expect(text.indexOf('Emma Johnson')).toBeLessThan(text.indexOf('Riley Sam'))
     expect(text.indexOf('Riley Sam')).toBeLessThan(text.indexOf('Sophia Martinez'))
+  }, 30000)
+})
+
+describe('BunkPlanReport (PDF) — Families to contact: sub-rows always visible', () => {
+  it('renders all sub-rows beneath each camper without session-label prefixes', async () => {
+    // Emma Johnson is enrolled in two sessions — should appear once with both
+    // detail sub-rows always visible in the PDF. No S0001/S0003 session labels.
+    const buf = await renderToBuffer(
+      <BunkPlanReport
+        sessionName="Session 3"
+        year={2026}
+        plannerName="Test Staff"
+        statistics={makeStats()}
+        impossibilityReport={{
+          total_impossible: 2,
+          affected_campers: 1,
+          by_reason: {},
+          flat: [],
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 1,
+              name: 'Emma Johnson',
+              grade: 4,
+              gender: 'F',
+              session_cm_id: 1000001,
+              reason_codes: ['no_valid_bunk'],
+            },
+            {
+              cm_id: 1,
+              name: 'Emma Johnson',
+              grade: 4,
+              gender: 'F',
+              session_cm_id: 1000003,
+              reason_codes: ['no_valid_bunk'],
+            },
+          ],
+        }}
+      />
+    )
+    const parser = new PDFParse({ data: buf })
+    const result = await parser.getText()
+    await parser.destroy()
+    const text = result.text
+
+    // Camper name appears
+    expect(text).toMatch(/Emma Johnson/)
+    // Sub-rows contain "All requests impossible" detail for each session
+    expect(text).toMatch(/All requests impossible/)
+    // Session-label prefixes (S0001, S0003) should NOT appear
+    expect(text).not.toMatch(/S0001/)
+    expect(text).not.toMatch(/S0003/)
   }, 30000)
 })
 

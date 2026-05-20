@@ -58,3 +58,28 @@ def is_material_parent_request(request: DirectBunkRequest) -> bool:
             getattr(request, "id", "<unknown>"),
         )
         return False
+
+
+def is_counted_request(request: DirectBunkRequest) -> bool:
+    """True iff the request's source_field classifies into a COUNTED bucket.
+
+    COUNTED = MATERIAL_PARENT ∪ STAFF — the buckets that contribute to user-facing
+    totals and action lists. IMMATERIAL_PARENT (socialize_with) is excluded
+    because parent age-pref dropdowns are not actionable signals for staff.
+
+    Defensive: missing or unknown source_field returns False with a debug log.
+    Used by pre-check / post-check / solver-finish counts that surface
+    actionable issues to staff.
+    """
+    sf = request.source_field
+    if not sf:
+        return False
+    try:
+        return classify_request(sf) in COUNTED_BUCKETS
+    except ValueError:
+        logger.debug(
+            "is_counted_request: unknown source_field %r on request %s — treating as not-counted",
+            sf,
+            getattr(request, "id", "<unknown>"),
+        )
+        return False
