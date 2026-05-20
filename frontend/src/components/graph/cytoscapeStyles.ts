@@ -527,7 +527,10 @@ export function createGraphElements(
   // disjoint from pairBuckets by construction (an edge can't be both in-scope
   // and cross-scope on the same pair), so we don't need to coordinate counts
   // between the two passes.
-  const crossEdges = crossScopeEdges ?? []
+  const crossEdges = (crossScopeEdges ?? []).filter((edge) => {
+    const setting = showEdges[edge.edge_type as keyof ShowEdgesSettings]
+    return setting !== false
+  })
   const crossPairBuckets = new Map<string, CrossScopeEdgeData[]>()
   crossEdges.forEach((e) => {
     const k = pairKey(e.source, e.target)

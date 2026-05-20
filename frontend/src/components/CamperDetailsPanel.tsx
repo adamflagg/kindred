@@ -550,7 +550,11 @@ export default function CamperDetailsPanel({
   // Original parent-sourced bunk-request form text (CSV import, normalized
   // per-field). Re-uses the same hook the full-page camper detail does so the
   // sidebar reads the same source of truth via `requester.cm_id`.
-  const { originalBunkData } = useOriginalBunkData(camper?.person_cm_id, currentYear)
+  const {
+    originalBunkData,
+    isLoading: isLoadingOriginalBunkData,
+    error: errorOriginalBunkData,
+  } = useOriginalBunkData(camper?.person_cm_id, currentYear)
 
   // Trigger close - for embedded mode, call directly; for slide panel, start exit animation
   const handleClose = useCallback(() => {
@@ -1143,6 +1147,28 @@ export default function CamperDetailsPanel({
               </div>
             )}
           </section>
+        )}
+
+        {/* Parent-input loading / error status row — gates the three blocks
+            below so users can tell "still fetching" / "fetch failed" apart
+            from "no parent input on file" (which silently shows nothing). */}
+        {isLoadingOriginalBunkData && (
+          <div
+            data-testid="original-bunk-data-loading"
+            className="text-muted-foreground flex items-center gap-2 px-3 py-2 text-sm italic"
+          >
+            <div className="spinner-lodge h-4 w-4" />
+            <span>Loading parent input…</span>
+          </div>
+        )}
+        {errorOriginalBunkData && !isLoadingOriginalBunkData && (
+          <div
+            data-testid="original-bunk-data-error"
+            role="alert"
+            className="rounded-r-lg border-l-2 border-red-400 bg-red-50/60 px-3 py-2 text-sm text-red-900 dark:border-red-500/60 dark:bg-red-900/20 dark:text-red-200"
+          >
+            Couldn&apos;t load parent input. Try refreshing.
+          </div>
         )}
 
         {/* Bunk Request Form — parent-sourced form input, expanded by default (quick-ref).

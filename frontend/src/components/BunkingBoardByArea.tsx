@@ -138,7 +138,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         ...bunk,
         campers: assignedCampers,
         occupancy: assignedCampers.length,
-        utilization: (assignedCampers.length / (bunk.capacity ?? defaultCapacity)) * 100,
+        utilization: (assignedCampers.length / defaultCapacity) * 100,
       }
 
       // Categorize by bunk name prefix
@@ -435,19 +435,16 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           toast.error(`Target bunk has reached maximum capacity (${MAX_BUNK_CAPACITY} campers)`)
           return
         }
-      } else if (targetBunk && targetBunk.occupancy >= (targetBunk.capacity ?? defaultCapacity)) {
+      } else if (targetBunk && targetBunk.occupancy >= defaultCapacity) {
         // Still allow move but show warning
         const sourceCamper = campers.find((c) => c.id === camperId)
         if (sourceCamper?.assigned_bunk !== targetBunkId) {
-          toast(
-            `⚠️ Warning: Bunk will exceed standard capacity (${DEFAULT_BUNK_CAPACITY} campers)`,
-            {
-              style: {
-                background: '#FEF3C7',
-                color: '#92400E',
-              },
-            }
-          )
+          toast(`⚠️ Warning: Bunk will exceed standard capacity (${defaultCapacity} campers)`, {
+            style: {
+              background: '#FEF3C7',
+              color: '#92400E',
+            },
+          })
         }
       }
     }

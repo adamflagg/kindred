@@ -91,8 +91,6 @@ function BunkCard({
   activeDragCamper = null,
 }: BunkCardProps) {
   const viewingYear = useYear()
-  // Use bunk.capacity if set, otherwise fall back to config default
-  const effectiveCapacity = bunk.capacity ?? defaultCapacity
 
   // Check if this bunk is a valid drop target for the dragged camper
   const isValidDropTarget = (): boolean => {
@@ -159,7 +157,7 @@ function BunkCard({
   const { data: requestStatus = {} } = useBunkRequestsFromContext(camperPersonIds)
 
   const utilizationColor =
-    bunk.occupancy > effectiveCapacity
+    bunk.occupancy > defaultCapacity
       ? 'text-red-600 dark:text-red-400'
       : bunk.utilization >= 90
         ? 'text-orange-600 dark:text-orange-400'
@@ -184,7 +182,7 @@ function BunkCard({
       }
     }
     // Calculate over capacity inside useMemo
-    const isOverCapacity = bunk.occupancy > effectiveCapacity
+    const isOverCapacity = bunk.occupancy > defaultCapacity
 
     // Sort campers by age (youngest to oldest)
     const sorted = [...bunk.campers].sort((a, b) => a.age - b.age)
@@ -320,7 +318,7 @@ function BunkCard({
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3 text-sm">
               <span className={clsx('font-medium', utilizationColor)}>
-                {bunk.occupancy}/{effectiveCapacity}
+                {bunk.occupancy}/{defaultCapacity}
               </span>
               {gradeDistribution && (
                 <div className="text-muted-foreground flex-1">
@@ -433,7 +431,7 @@ function BunkCard({
       <BunkUtilizationBar
         utilization={bunk.utilization}
         occupancy={bunk.occupancy}
-        capacity={effectiveCapacity}
+        capacity={defaultCapacity}
       />
 
       {/* Campers List */}
@@ -478,7 +476,7 @@ function BunkCard({
         ageGapWarning={ageGapWarning}
         gradeRatioWarning={gradeRatioWarning}
         tooManyGradesWarning={tooManyGradesWarning}
-        capacity={effectiveCapacity}
+        capacity={defaultCapacity}
         isLocked={false}
       />
     </div>

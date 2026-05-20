@@ -44,7 +44,6 @@ export const mockBunk = (overrides?: Partial<Bunk>): Bunk => ({
   id: 'bunk1',
   cm_id: 201,
   name: 'Bunk 1',
-  capacity: 12,
   gender: '',
   area_id: 0,
   is_active: true,
@@ -197,7 +196,6 @@ export const mockBunks = [
     id: 'bunk3',
     cm_id: 203,
     name: 'Bunk 10',
-    capacity: 14,
   }),
 ]
 
