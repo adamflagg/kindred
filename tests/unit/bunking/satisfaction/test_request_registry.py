@@ -137,7 +137,7 @@ def test_accessors_match_classify() -> None:
 
 def test_counted_buckets_is_material_parent_plus_staff() -> None:
     """Reporting no-op: only IMMATERIAL_PARENT is excluded today."""
-    assert COUNTED_BUCKETS == frozenset({RequestBucket.MATERIAL_PARENT, RequestBucket.STAFF})
+    assert frozenset({RequestBucket.MATERIAL_PARENT, RequestBucket.STAFF}) == COUNTED_BUCKETS
 
 
 def test_report_group_is_source_determined() -> None:
