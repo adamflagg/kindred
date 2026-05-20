@@ -124,7 +124,11 @@ def test_registry_row(key: tuple[str, str], expected: tuple[RequestBucket, bool,
 
 def test_registry_has_exactly_14_rows() -> None:
     """No extra or missing combos — the table is the complete enumeration."""
+    from bunking.satisfaction import request_registry
+
     assert len(EXPECTED) == 14
+    assert len(request_registry._REGISTRY) == 14
+    assert set(request_registry._REGISTRY) == set(EXPECTED)
 
 
 def test_accessors_match_classify() -> None:
