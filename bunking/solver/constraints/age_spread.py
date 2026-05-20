@@ -1,16 +1,22 @@
 """
-Age Spread Constraints - Hard cap on age range within non-AG bunks.
+Age Spread Constraints - cap on age range within non-AG bunks.
 
 Enforces ``max_age_months - min_age_months <= MAX_AGE_SPREAD_MONTHS`` per
-non-AG bunk. Bunks with spread within ``PREFERRED_AGE_SPREAD_MONTHS`` earn a
-configurable soft bonus (``constraint.age_spread.preferred_bonus``). Uses TRUE
-min/max aggregation to reduce constraint count from O(n²) to O(bunks).
+non-AG bunk. Middle bunks treat this as a hard constraint; edge bunks (lowest
+or highest level for their gender+session) get a soft escape hatch with
+``EDGE_AGE_OVERFLOW_PENALTY`` so structurally forced overflow (e.g., hard
+MSO chains into the top cabin) is feasible. Bunks with spread within
+``PREFERRED_AGE_SPREAD_MONTHS`` earn a configurable soft bonus
+(``constraint.age_spread.preferred_bonus``). Uses TRUE min/max aggregation
+to reduce constraint count from O(n²) to O(bunks).
 
-Phase 2 collapsed the prior soft penalty path (``excess_spread`` /
-``has_violation`` reified machinery) into the single hard constraint above —
-the soft path was being absorbed by ~6% of bunks in production, and the
-hard cap moves that infeasibility upstream where the feasibility-warning hook
-in ``bunking/solver/feasibility.py`` can surface a staff-actionable message.
+Phase 2 collapsed the prior all-bunks soft penalty path (``excess_spread`` /
+``has_violation`` reified machinery, absorbed by ~6% of bunks in production)
+into the current hard-middle / soft-edge split — the validator
+(``bunking/bunking_validator.py``) still warns post-solve on any >24mo
+spread regardless of edge/middle, and the feasibility-warning hook in
+``bunking/solver/feasibility.py`` surfaces a staff-actionable message when
+a middle bunk forces infeasibility.
 """
 
 from __future__ import annotations
