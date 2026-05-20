@@ -15,6 +15,7 @@ from bunking.models_v2 import DirectBunkRequest
 from bunking.solver.observability import (
     _build_impossible_by_reason_by_bucket,
     _build_request_density_histogram_by_bucket,
+    _classify_bucket,
     _count_presolve_compression,
     _derive_plateau_scalars,
     _lp_root_gap,
@@ -191,3 +192,24 @@ class TestDerivePlateauScalars:
         ]
         # final_bound falls back to last solution's bound (850) -> abs(850 - 850) = 0
         assert _derive_plateau_scalars(obj, [])["bound_gain_after_plateau"] == 0.0
+
+
+class TestClassifyBucket:
+    """Soft-constraint key → module bucket mapping (drives the dashboard rollup)."""
+
+    def test_grade_ratio_keys_bucket_into_grade_ratio(self) -> None:
+        assert _classify_bucket("grade_ratio_b0") == "grade_ratio"
+
+    def test_level_regression_keys_bucket_into_level_regression(self) -> None:
+        assert _classify_bucket("level_regression_p5") == "level_regression"
+
+    def test_age_spread_per_bunk_keys_bucket_into_age_spread(self) -> None:
+        assert _classify_bucket("age_spread_b3") == "age_spread"
+
+    def test_edge_age_overflow_keys_bucket_into_age_spread(self) -> None:
+        # Edge-bunk soft escape hatch (PR #1553) emits ``edge_age_overflow_b{idx}``;
+        # they belong in the age_spread bucket, not "other".
+        assert _classify_bucket("edge_age_overflow_b0") == "age_spread"
+
+    def test_unknown_prefix_falls_through_to_other(self) -> None:
+        assert _classify_bucket("some_brand_new_violation_b0") == "other"

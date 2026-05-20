@@ -127,9 +127,21 @@ def add_age_spread_constraints(ctx: SolverContext) -> None:
             ctx.model.Add(spread <= MAX_AGE_SPREAD_MONTHS)
 
         if preferred_active:
+            # Gate the bonus on (spread within preferred) AND (bunk is used). Without the
+            # bunk-used gate, empty bunks' unconstrained min/max IntVars let the solver pick
+            # spread = 0 and claim the bonus for free, skewing the objective.
+            is_tight = ctx.model.NewBoolVar(f"age_spread_tight_b{bunk_idx}")
+            ctx.model.Add(spread <= PREFERRED_AGE_SPREAD_MONTHS).OnlyEnforceIf(is_tight)
+            ctx.model.Add(spread > PREFERRED_AGE_SPREAD_MONTHS).OnlyEnforceIf(is_tight.Not())
+
+            bunk_used = ctx.model.NewBoolVar(f"age_spread_bunk_used_b{bunk_idx}")
+            bunk_assignments = [ctx.assignments[(p_idx, bunk_idx)] for p_idx, _ in age_months_data]
+            ctx.model.AddMaxEquality(bunk_used, bunk_assignments)
+
             within_preferred = ctx.model.NewBoolVar(f"age_spread_preferred_b{bunk_idx}")
-            ctx.model.Add(spread <= PREFERRED_AGE_SPREAD_MONTHS).OnlyEnforceIf(within_preferred)
-            ctx.model.Add(spread > PREFERRED_AGE_SPREAD_MONTHS).OnlyEnforceIf(within_preferred.Not())
+            ctx.model.AddImplication(within_preferred, is_tight)
+            ctx.model.AddImplication(within_preferred, bunk_used)
+            ctx.model.AddBoolOr([within_preferred, is_tight.Not(), bunk_used.Not()])
             ctx.soft_constraint_bonuses[f"age_spread_preferred_b{bunk_idx}"] = (
                 within_preferred,
                 preferred_age_spread_bonus,

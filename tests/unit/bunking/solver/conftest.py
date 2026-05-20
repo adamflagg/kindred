@@ -57,10 +57,6 @@ class MinimalConfigLoader:
             "constraint.cabin_capacity.penalty": 3000,
             "constraint.grade_ratio.max_percentage": 67,
             "constraint.grade_ratio.penalty": 1000,
-            "constraint.age_spread.max_months": 24,
-            "constraint.age_spread.months": 24,
-            "constraint.age_spread.penalty": 1500,
-            "constraint.age_spread.preferred_months": 0,
             "constraint.age_spread.preferred_bonus": 0,
             "constraint.must_satisfy_one.penalty": 100000,
             "constraint.age_grade_flow.weight": 10,
@@ -105,13 +101,17 @@ class MinimalConfigLoader:
         return self.get_int(key, default)
 
     def get_soft_constraint_weight(self, constraint_name: str) -> int:
-        """Get soft constraint weight value for the given constraint."""
+        """Get soft constraint weight value for the given constraint.
+
+        Mirrors ``ConfigLoader.get_soft_constraint_weight`` in production —
+        keep this dict in sync so test code can't silently pass on a key
+        that production now resolves to ``UnknownKeyError``.
+        """
         weight_mappings = {
-            "age_spread": "constraint.age_spread.penalty",
-            "grade_spread": "constraint.grade_spread.penalty",
+            # age_spread, grade_spread, must_satisfy_one removed in Phase 2 —
+            # see ``bunking/config/loader.py`` for the production mapping.
             "age_grade_flow": "constraint.age_grade_flow.weight",
             "grade_cohesion": "constraint.grade_cohesion.weight",
-            "must_satisfy_one": "constraint.must_satisfy_one.penalty",
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
         return self.get_int(key)

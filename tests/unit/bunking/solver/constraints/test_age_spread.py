@@ -265,6 +265,50 @@ class TestPreferred18moBonus:
         # Only the tight cabin (8mo) earns the bonus; the loose one (20mo) does not.
         assert active_bonuses == 1, f"Expected exactly 1 bunk to earn preferred bonus, got {active_bonuses}"
 
+    def test_empty_bunk_does_not_claim_preferred_bonus(self):
+        """Unused bunks must not claim the preferred-age bonus.
+
+        Without a bunk-used gate, an empty bunk's ``min_age_in_bunk`` and
+        ``max_age_in_bunk`` IntVars are unconstrained (no camper triggers the
+        ``OnlyEnforceIf(is_in_bunk)`` bounds), so the solver picks
+        ``spread = 0 <= PREFERRED_AGE_SPREAD_MONTHS`` and the bonus fires for
+        free — skewing the objective.
+        """
+        bunk_a = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=12)
+        bunk_b = create_bunk(cm_id=2002, name="B-2", gender="M", capacity=12)
+
+        campers = [
+            _person_with_age_months(1001, 144),
+            _person_with_age_months(1002, 150),
+        ]
+
+        ctx = build_solver_context(
+            persons=campers,
+            bunks=[bunk_a, bunk_b],
+            config_overrides={"constraint.age_spread.preferred_bonus": 500},
+        )
+
+        add_age_spread_constraints(ctx)
+        # Force all campers into B-2 (bunk_idx=1); B-1 (bunk_idx=0) stays empty.
+        ctx.model.Add(ctx.assignments[(0, 1)] == 1)
+        ctx.model.Add(ctx.assignments[(1, 1)] == 1)
+
+        # Maximize bonuses so the solver claims every bonus it can.
+        objective_terms = [weight * var for var, weight in ctx.soft_constraint_bonuses.values()]
+        if objective_terms:
+            ctx.model.Maximize(sum(objective_terms))
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+        assert is_optimal_or_feasible(status)
+
+        empty_var, _ = ctx.soft_constraint_bonuses["age_spread_preferred_b0"]
+        assert solver.Value(empty_var) == 0, (
+            "Empty bunk must not claim preferred-age bonus when no campers are assigned"
+        )
+        occupied_var, _ = ctx.soft_constraint_bonuses["age_spread_preferred_b1"]
+        assert solver.Value(occupied_var) == 1, "Occupied tight bunk should still claim the preferred-age bonus"
+
 
 class TestEdgeBunkCarveOut:
     """Edge bunks (lowest/highest level per gender+session) get a soft escape hatch

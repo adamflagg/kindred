@@ -27,9 +27,13 @@ disconnected from solver behavior), ``constraint.age_spread.penalty`` (soft
 violation path being deleted), ``constraint.age_spread.preferred_months``
 (seed=12, bumped to 18 here per staff intent), the validator's parallel
 hardcoded ``24``, and the orphan ``DEFAULT_AGE_SPREAD_MONTHS`` in
-``bunking/sync/.../core/constants.py`` into the two constants below. Solver
-is hard-only. ``constraint.age_spread.preferred_bonus`` is KEPT in the config
-as the lone tunable knob in this domain.
+``bunking/sync/.../core/constants.py`` into the three constants below
+(``MAX_AGE_SPREAD_MONTHS``, ``PREFERRED_AGE_SPREAD_MONTHS``,
+``EDGE_AGE_OVERFLOW_PENALTY``). Middle bunks treat the cap as hard;
+edge bunks (lowest/highest level per gender+session) get a soft escape
+hatch via ``EDGE_AGE_OVERFLOW_PENALTY`` so a hard MSO chain into the top
+cabin remains feasible. ``constraint.age_spread.preferred_bonus`` is KEPT
+in the config as the lone tunable knob in this domain.
 
 If per-bunk variance is ever needed (e.g., a smaller specialty cabin), add a
 real ``max_size`` integer column on the ``bunks`` PocketBase collection with a
@@ -76,13 +80,17 @@ Reads:
   which is gone)."""
 
 MAX_AGE_SPREAD_MONTHS = 24
-"""Hard ceiling for age range (months) within a non-AG bunk. Solver never
-emits a bunk with ``max_age - min_age > MAX_AGE_SPREAD_MONTHS``. Staff can
+"""Ceiling for age range (months) within a non-AG bunk. Enforced as a hard
+CP-SAT constraint for middle bunks (the solver is INFEASIBLE if a middle bunk
+exceeds it); for edge bunks (lowest/highest level per gender+session) the
+solver may exceed it by paying ``EDGE_AGE_OVERFLOW_PENALTY`` — fires only
+when a hard constraint (MSO chain, locked group) forces it. Staff can
 override on the bunking board — the board allows >24mo with a display warning
 (same asymmetry as ``MAX_BUNK_CAPACITY`` / ``MAX_UNIQUE_GRADES_PER_BUNK``).
 Reads:
 
-- ``bunking/solver/constraints/age_spread.py`` — hard CP-SAT constraint.
+- ``bunking/solver/constraints/age_spread.py`` — hard CP-SAT constraint
+  (middle bunks) + soft edge escape hatch.
 - ``bunking/solver/feasibility.py:_explain_age_spread_infeasibility`` — when
   the hard cap causes INFEASIBLE, surfaces a staff-actionable message.
 - ``bunking/bunking_validator.py`` — board-side warning when staff manual

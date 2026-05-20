@@ -180,6 +180,7 @@ _SOFT_CONSTRAINT_PREFIXES: tuple[tuple[str, str], ...] = (
     ("grade_ratio_", "grade_ratio"),
     ("level_regression_", "level_regression"),
     ("age_spread_b", "age_spread"),
+    ("edge_age_overflow_b", "age_spread"),
 )
 
 
