@@ -28,10 +28,8 @@ export default function SessionStats({ bunks, campers, defaultCapacity = 12 }: S
     {} as Record<'boys' | 'girls' | 'other', number>
   )
 
-  // Calculate effective capacity accounting for overfull bunks
   const effectiveCapacity = bunks.reduce((sum, bunk) => {
     const assignedToBunk = campers.filter((c) => c.assigned_bunk === bunk.id).length
-    // If bunk is overfull, use actual occupancy as capacity for that bunk
     return sum + Math.max(defaultCapacity, assignedToBunk)
   }, 0)
 
