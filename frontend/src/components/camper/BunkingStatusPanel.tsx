@@ -9,6 +9,7 @@ import { partitionRequestsBySource } from '../../utils/partitionRequestsBySource
 import { isConfirmedRequest } from '../../utils/bunkRequest'
 import { resolveBadgeBucket } from '../../utils/satisfactionLookup'
 import { BunkRequestRow } from '../BunkRequestRow'
+import FirstPickBadge from './FirstPickBadge'
 import { ParentStaffDivider, AgePreferenceDivider } from './RequestSectionDividers'
 import type { Camper } from '../../types/app-types'
 import type { EnhancedBunkRequest } from '../../hooks/camper/useAllBunkRequests'
@@ -311,6 +312,7 @@ export function BunkingStatusPanel({
                   satisfied={sat.satisfied}
                   detail={sat.detail}
                   showSatisfaction={isConfirmedRequest(req)}
+                  badge={<FirstPickBadge isFirstRequested={req.is_first_requested ?? false} />}
                 />
               )
             })}

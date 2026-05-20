@@ -1398,4 +1398,128 @@ describe('CamperDetailsPanel', () => {
       expect(root?.classList.contains('bottom-0')).toBe(false)
     })
   })
+
+  describe('first-pick indicator (#1544)', () => {
+    /** Reuse R3 person/attendee fixtures via local references. */
+    const EMMA = mockPerson({
+      id: 'pb-emma-fp',
+      cm_id: 100,
+      first_name: 'Emma',
+      last_name: 'Johnson',
+      grade: 6,
+      year: 2025,
+      household_id: 0,
+    })
+    const RILEY = mockPerson({
+      id: 'pb-riley-fp',
+      cm_id: 200,
+      first_name: 'Riley',
+      last_name: 'Sam',
+      grade: 6,
+      year: 2025,
+      household_id: 0,
+    })
+    const EMMA_ATTENDEE: Record<string, unknown> = {
+      id: 'att-emma-fp',
+      person: 'pb-emma-fp',
+      person_id: 100,
+      session: 'sess-fp',
+      status: 'enrolled',
+      status_id: 2,
+      year: 2025,
+      collectionId: 'attendees',
+      collectionName: 'attendees',
+      created: '2025-01-01T00:00:00Z',
+      updated: '2025-01-01T00:00:00Z',
+      expand: {
+        session: {
+          id: 'sess-fp',
+          cm_id: 3001,
+          name: 'Session FP',
+          session_type: 'main',
+        },
+      },
+    }
+
+    function setupFirstPickMocks(bunkRequests: Record<string, unknown>[]) {
+      mockGetFullListPersons.mockImplementation((opts: { filter?: string }) => {
+        const filter = opts.filter ?? ''
+        if (filter.includes('cm_id = 200')) return Promise.resolve([RILEY])
+        return Promise.resolve([EMMA])
+      })
+      mockGetFullListAttendees.mockResolvedValue([EMMA_ATTENDEE])
+      mockGetFullListBunkAssignments.mockResolvedValue([])
+      mockGetFullListBunkRequests.mockResolvedValue(bunkRequests)
+      mockGetListPersons.mockResolvedValue({ items: [], totalItems: 0 })
+      mockGetListOriginalBunkRequests.mockResolvedValue({ items: [], totalItems: 0 })
+    }
+
+    it('renders FirstPickBadge on parent rows with is_first_requested=true', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'fp-first',
+          requester_id: 100,
+          requestee_id: 200,
+          request_type: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
+          source: 'family',
+          status: 'resolved',
+          requested_person_name: 'Riley Sam',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.95,
+          is_first_requested: true,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupFirstPickMocks(bunkRequests)
+
+      render(<CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />)
+
+      const badge = await screen.findByLabelText('First pick')
+      expect(badge).toBeInTheDocument()
+    })
+
+    it('does not render FirstPickBadge when no request is first-requested', async () => {
+      const bunkRequests: Record<string, unknown>[] = [
+        {
+          id: 'fp-none',
+          requester_id: 100,
+          requestee_id: 200,
+          request_type: 'bunk_with',
+          source_field: SourceField.BUNK_REQUEST_FORM,
+          source: 'family',
+          status: 'resolved',
+          requested_person_name: 'Riley Sam',
+          year: 2025,
+          session_id: 3001,
+          is_reciprocal: false,
+          confidence_score: 0.95,
+          is_first_requested: false,
+          created: '2025-01-01T00:00:00Z',
+          updated: '2025-01-01T00:00:00Z',
+          collectionId: 'bunk_requests',
+          collectionName: 'bunk_requests',
+          metadata: {},
+        },
+      ]
+      setupFirstPickMocks(bunkRequests)
+
+      const { container } = render(
+        <CamperDetailsPanel camperId="100" onClose={vi.fn()} embedded={true} />
+      )
+
+      // Wait for the request row to render (Riley appears as the target name).
+      await waitFor(() => {
+        expect(container.textContent).toContain('Riley')
+      })
+
+      expect(screen.queryByLabelText('First pick')).not.toBeInTheDocument()
+    })
+  })
 })

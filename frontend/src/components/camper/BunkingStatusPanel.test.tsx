@@ -860,3 +860,47 @@ describe('BunkingStatusPanel — getRequestSatisfaction lookup', () => {
     expect(pill.parentElement).toHaveAttribute('title', 'No grade on file')
   })
 })
+
+describe('BunkingStatusPanel — first-pick indicator (#1544)', () => {
+  it('renders the FirstPickBadge on parent rows when is_first_requested=true', () => {
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'first-pick',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
+        requestee_id: 67890,
+        requestedPersonName: 'Liam Garcia',
+        is_first_requested: true,
+      }),
+      makeRequest({
+        id: 'other',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
+        requestee_id: 67891,
+        requestedPersonName: 'Olivia Chen',
+        is_first_requested: false,
+      }),
+    ]
+    renderPanelWith({ allBunkRequests: requests, satisfactionData: {} })
+    const badges = screen.getAllByLabelText('First pick')
+    expect(badges).toHaveLength(1)
+  })
+
+  it('does not render the FirstPickBadge when no request is first-requested', () => {
+    const requests: EnhancedBunkRequest[] = [
+      makeRequest({
+        id: 'r1',
+        status: 'resolved',
+        request_type: 'bunk_with',
+        source_field: SourceField.BUNK_REQUEST_FORM,
+        requestee_id: 67890,
+        requestedPersonName: 'Liam Garcia',
+        is_first_requested: false,
+      }),
+    ]
+    renderPanelWith({ allBunkRequests: requests, satisfactionData: {} })
+    expect(screen.queryByLabelText('First pick')).not.toBeInTheDocument()
+  })
+})
