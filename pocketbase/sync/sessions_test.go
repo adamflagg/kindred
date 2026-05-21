@@ -706,13 +706,13 @@ func TestGetSessionTypeFromGroupID(t *testing.T) {
 			name:        "leadership group CIT",
 			groupCMID:   groupLeadership,
 			sessionName: "Counselor In-Training",
-			expected:    "training",
+			expected:    "scit",
 		},
 		{
 			name:        "leadership group SIT",
 			groupCMID:   groupLeadership,
 			sessionName: "Specialist In-Training",
-			expected:    "training",
+			expected:    "scit",
 		},
 		// Teen Retreat group (4447)
 		{

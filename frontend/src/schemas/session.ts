@@ -11,7 +11,7 @@ export const CampSessionsSessionTypeSchema = z.enum([
   'ag',
   'family',
   'quest',
-  'training',
+  'scit',
   'bmitzvah',
   'tli',
   'adult',

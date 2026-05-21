@@ -46,7 +46,7 @@ export const SESSION_TYPE_LITERALS = [
   'ag',
   'family',
   'quest',
-  'training',
+  'scit',
   'bmitzvah',
   'tli',
   'adult',

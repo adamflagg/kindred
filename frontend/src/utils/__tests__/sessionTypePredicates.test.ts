@@ -61,7 +61,7 @@ const ALL_TYPES = [
   'tli',
   'teen',
   'family',
-  'training',
+  'scit',
   'bmitzvah',
   'adult',
   'school',
@@ -127,7 +127,7 @@ describe('isAtCampSession', () => {
     'tli',
     'teen',
     'family',
-    'training',
+    'scit',
     'bmitzvah',
     'adult',
     'school',
@@ -157,7 +157,7 @@ describe('isQuestSession', () => {
     expect(isQuestSession(makeSession('quest'))).toBe(true)
   })
 
-  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'tli', 'teen', 'family', 'training']
+  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'tli', 'teen', 'family', 'scit']
   falseFor.forEach((t) => {
     it(`returns false for "${t}"`, () => {
       expect(isQuestSession(makeSession(t))).toBe(false)
@@ -176,7 +176,7 @@ describe('isInDropdown', () => {
     'tli',
     'teen',
     'family',
-    'training',
+    'scit',
     'bmitzvah',
     'adult',
     'school',
@@ -207,7 +207,7 @@ describe('isSummerCampSession', () => {
     'tli',
     'teen',
     'family',
-    'training',
+    'scit',
     'bmitzvah',
     'adult',
     'school',
@@ -234,7 +234,7 @@ describe('isSummerCampSession', () => {
 
 describe('isTeenProgram', () => {
   const trueFor: AllType[] = ['tli', 'teen']
-  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'quest', 'family', 'training']
+  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'quest', 'family', 'scit']
 
   trueFor.forEach((t) => {
     it(`returns true for "${t}"`, () => {
@@ -306,7 +306,7 @@ describe('isAgSession', () => {
 
 describe('isMainOrEmbedded', () => {
   const trueFor: AllType[] = ['main', 'embedded']
-  const falseFor: AllType[] = ['ag', 'quest', 'tli', 'teen', 'family', 'training']
+  const falseFor: AllType[] = ['ag', 'quest', 'tli', 'teen', 'family', 'scit']
 
   trueFor.forEach((t) => {
     it(`returns true for "${t}"`, () => {
@@ -413,7 +413,7 @@ describe('exhaustiveness: every known literal is covered by at least one predica
       isQuestSession(s) ||
       isTeenProgram(s) ||
       s.session_type === 'family' ||
-      s.session_type === 'training' ||
+      s.session_type === 'scit' ||
       s.session_type === 'bmitzvah' ||
       s.session_type === 'adult' ||
       s.session_type === 'school' ||
