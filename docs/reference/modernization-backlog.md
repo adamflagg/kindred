@@ -188,7 +188,7 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 | # | From (current idiom) | To (modern) | `from` since | `to` since | Impact | Where | Count |
 |---|---|---|---|---|---|---|---|
 | 1 | `tsconfig` `target`/`lib` = `ES2022` | `ES2024` (lib at minimum) | — | TS lib 5.4 / Node 21 rt | **prereq** (unblocks #2, #6) | `frontend/tsconfig.json` | 1 |
-| 2 | `[...arr].sort(cmp)` / `arr.slice().sort(cmp)` | `arr.toSorted(cmp)` | ES2015 | ES2023 | MEDIUM (cheapest mechanical) | ≈29 files (`utils/sessionUtils.ts` ×5, `utils/csvExportHelpers.ts`, `components/BunkCard.tsx`, `pages/.../StaffCabinAnalysisPage.tsx`, `utils/retentionTransforms.ts`, …) | ≈41 |
+| 2 | `[...arr].sort(cmp)` / `arr.slice().sort(cmp)` | `arr.toSorted(cmp)` | ES2015 | ES2023 | MEDIUM (cheapest mechanical) | 22 files / 30 true-win sites (`utils/sessionUtils.ts` ×5, `utils/csvExportHelpers.ts` ×2, `components/BunkCard.tsx` ×2, `pages/.../StaffCabinAnalysisPage.tsx` ×2, …). **Not** `retentionTransforms.ts` — that's a Set-spread (skipped, see Retired) | 52 raw → 30 wins (#1587) |
 | 3 | `arr[arr.length - 1]` | `arr.at(-1)` | ES5 | ES2022 (already in lib) | LOW–MED (readability) | 18 files (`hooks/useUndoStack.ts`, metrics chart utils, `components/BunkCard.tsx`, …) | 27 |
 | 4 | `<Context.Provider value=>` | `<Context value=>` | React <19 | React 19 | LOW–MED (cosmetic) | 9 files (`contexts/*`, `providers/BunkRequestProvider.tsx:126`, …) | 18 |
 | 5 | `catch (e) { throw new Error(msg) }` | `throw new Error(msg, { cause: e })` | ES2015 | ES2022 (already in lib) | **HIGH** (stack-trace fidelity) | catch-and-wrap subset of 93 `catch` blocks (`services/*`, hooks); only `useCamperMovement.ts` chains today | scope to catch-rethrow sites (NOT the 138 bare `throw`) |
@@ -224,6 +224,7 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 |---|---|---|
 | `[...].sort()` → `toSorted` | inflated count | `areas[area as BunkArea].sort(...)` (`BunkingBoardByArea.tsx:157`) is an **in-place** sort inside `forEach`; the `].sort(` matched an *index bracket*, not a spread. Converting changes behavior. **Lesson: confirm a `[...` or `.slice()` precedes `.sort(`.** |
 | `[...ids].sort().join(',')` | `utils/queryKeys.ts:384` | Inside a doc **comment**, not code. **Lesson: filter comment lines.** |
+| `[...set].sort()` / `[...map.entries()].sort()` → `toSorted` | 10 sites (`retentionTransforms.ts` ×2, `SessionBunkHeatmap.tsx` ×2, `useVelocityChartData.ts` ×2, `useStaffRetentionData.ts`, `PdfExport/familyRows.ts`, `PostValidationResultsModal.tsx`, `PdfExport/BunkPlanReport.tsx`) | When the spread *materializes* a `Set`/`Map`/iterator (which have no `.sort()`/`.toSorted()`), the spread is **load-bearing**, not a defensive copy of an array. `[...x].toSorted()` allocates a second throwaway array; `[...x].sort()` sorts the first in place. `toSorted` is only a win over a *named Array* (`[...arr].sort()` → `arr.toSorted()`). **Lesson (#1587): grep `[\.\.\.IDENT]` is not enough — confirm IDENT is an Array, not a Set/Map/iterator; also exclude array-literal-append spreads like `[...prev, n].sort()`.** |
 | `use()` "eliminates throw-on-missing-provider wrapper" | prior HIGH row | `use(Context)` doesn't auto-throw or remove the null-guard; it only allows conditional reads. **Lesson: verify the feature's real semantics, not its reputation.** |
 | inflated counts | "100+ useContext", "~1,800 as const", "240 type defs", "only 2 lazy" | actual 13 / 208 / ≈1,758 / ≈50-lazy. **Lesson: counts decay — re-grep every pass (carried from §1/§2).** |
 
@@ -231,10 +232,10 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 
 | # | Status | Row | Title |
 |---|---|---|---|
-| 1 | `next` | 3a#1 | `build(frontend): bump tsconfig target+lib to ES2024` (unblocks #3, #5) |
-| 2 | | 3a#3 | `refactor(frontend): arr[len-1] → arr.at(-1)` (27 sites, no prereq) |
-| 3 | | 3a#2 | `refactor(frontend): [...].sort() → toSorted` (≈41 sites; needs #1) |
-| 4 | | 3a#4 | `refactor(frontend): <Context.Provider> → <Context> shorthand` (18 sites) |
+| 1 | `✓ shipped #1585` | 3a#1 | `build(frontend): bump tsconfig target+lib to ES2024` (unblocks #3, #5) |
+| 2 | `✓ shipped #1586` | 3a#3 | `refactor(frontend): arr[len-1] → arr.at(-1)` (27 sites, no prereq) |
+| 3 | `PR open #1587` | 3a#2 | `refactor(frontend): [...].sort() → toSorted` (30 true-win sites / 22 files; Set/iterator spreads skipped — see Retired) |
+| 4 | `next` | 3a#4 | `refactor(frontend): <Context.Provider> → <Context> shorthand` (18 sites) |
 | 5 | | 3a#6 | `refactor(frontend): Object.groupBy for LockGroup membersByGroup` (2 sites; needs #1) |
 | 6 | | 3a#5 | `refactor(frontend): error cause chaining on catch-rethrow` (behavioral — TDD per Rule 3) |
 | 7 | | 3a#9 | `refactor(frontend): satisfies on config/route maps` (targeted) |
