@@ -347,12 +347,12 @@ export interface GraphElements {
  * combination still renders as a multi-curve.
  */
 export function createGraphElements(
-  nodeData: GraphNodeData[],
-  edgeData: GraphEdgeData[],
+  nodeData: readonly GraphNodeData[],
+  edgeData: readonly GraphEdgeData[],
   bunksData: Record<number, string> | null | undefined,
   showEdges: ShowEdgesSettings,
-  crossScopeEdges?: CrossScopeEdgeData[],
-  crossScopeNodes?: GraphNodeData[]
+  crossScopeEdges?: readonly CrossScopeEdgeData[],
+  crossScopeNodes?: readonly GraphNodeData[]
 ): GraphElements {
   // Group nodes by bunk. In-scope bunks always exist, even when a cross-scope
   // ghost camper happens to share a bunk_cm_id with an in-scope camper (rare

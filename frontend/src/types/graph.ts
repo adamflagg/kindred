@@ -59,7 +59,7 @@ export interface GraphMetrics {
 export interface CrossScopeEdge {
   readonly source: number
   readonly target: number
-  readonly edge_type: string
+  readonly edge_type: 'request'
   readonly weight: number
   readonly request_type: string | null
   readonly confidence: number | null

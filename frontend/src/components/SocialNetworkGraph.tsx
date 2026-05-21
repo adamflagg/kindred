@@ -210,12 +210,12 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     // node[?cross_scope] for nodes), and the ghost campers stay clickable
     // so users can open the detail panel for potential connections.
     const { parentNodes, nodes, edges } = createGraphElements(
-      graphData.nodes as Parameters<typeof createGraphElements>[0],
-      graphData.edges as Parameters<typeof createGraphElements>[1],
+      graphData.nodes,
+      graphData.edges,
       bunksData,
       SHOW_EDGES,
-      graphData.cross_scope_edges as Parameters<typeof createGraphElements>[4],
-      graphData.cross_scope_nodes as Parameters<typeof createGraphElements>[5]
+      graphData.cross_scope_edges,
+      graphData.cross_scope_nodes
     )
 
     // Single-shot batched add. The previous RAF-chunked staging approach added
