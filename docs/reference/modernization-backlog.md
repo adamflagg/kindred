@@ -29,7 +29,7 @@ Shipped in follow-up PRs:
 All three items resolved:
 
 1. **`ruff target-version = "py314"`** — ✓ shipped in originating PR #972.
-2. **`.coderabbit.yaml`** — ✓ shipped (this PR). Includes Python 3.14 `path_instructions` (PEP 758/649/695/750, `typing.TypeIs`, `asyncio.TaskGroup`) plus path-scoped guidance for Go 1.26 idioms, PocketBase v0.23 migration syntax, React 19 / TS 5.8 frontend conventions, OR-Tools solver invariants, fictional-test-data discipline, and Markdown noise filters. `learnings.scope: local` + `related_issues` / `assess_linked_issues` enabled; `pre_merge_checks`, `suggested_labels`, `poem`/`fortune` deliberately off.
+2. **`.coderabbit.yaml`** — ✓ shipped (this PR). Includes Python 3.14 `path_instructions` (PEP 758/649/695/750, `typing.TypeIs`, `asyncio.TaskGroup`) plus path-scoped guidance for Go 1.26 idioms (incl. the `slog.SetDefault` default-handler false-positive suppression), PocketBase v0.23 migration syntax, React 19 / TS 6.0 / ES2022 frontend conventions, the `api/` FastAPI surface, OR-Tools solver invariants, fictional-test-data discipline, and Markdown noise filters. `learnings.scope: local` + `related_issues` / `assess_linked_issues` enabled; `pre_merge_checks`, `suggested_labels`, `poem`/`fortune` deliberately off.
 3. **`AGENTS.md`** — **decided not to add.** The only consumers of agent-instruction files in this repo are Claude Code and CodeRabbit. CodeRabbit already auto-scans `**/CLAUDE.md` via `knowledge_base.code_guidelines.filePatterns`, and the repo already has a 7-file CLAUDE.md hierarchy (root + `tests/`, `bunking/`, `bunking/solver/`, `frontend/`, `pocketbase/`, `api/`). AGENTS.md would duplicate those without serving a distinct audience. Revisit if Codex / Cursor / Jules adoption ever happens.
 
 ---
@@ -135,7 +135,7 @@ Modernization PRs surfaced unrelated pre-existing issues. Tracked for completene
 
 - **Inspect surrounding code, not just the regex** — see retired rows above.
 - **`lll` lint required wrapping multi-attr slog calls** in #1076; caught only on CI because `golangci-lint` is not in `lefthook pre-push`. Worth re-checking whether to move it into pre-push.
-- **CodeRabbit flagged "bypasses logging contract" on #1562** — false positive; logging pkg installs default slog handler via `slog.SetDefault` and no `logging.Info` wrapper exists. Worth a `.coderabbit.yaml` `path_instructions` entry once that lands (see §0).
+- **CodeRabbit flagged "bypasses logging contract" on #1562** — false positive; logging pkg installs default slog handler via `slog.SetDefault` and no `logging.Info` wrapper exists. ✓ Addressed in §0 — `.coderabbit.yaml` `pocketbase/**/*.go` block documents the `slog.SetDefault` default-handler pattern explicitly.
 
 Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 

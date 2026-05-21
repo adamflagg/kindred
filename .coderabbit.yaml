@@ -54,7 +54,7 @@ reviews:
         - Built-in generics: `dict[str, X]`, `list[X]`, `tuple[X, ...]` (no `typing.Dict/List/Tuple`)
         - Union syntax: `X | None` (no `typing.Optional` / `typing.Union`)
         - `typing.TypeIs` (3.13+), `typing.ReadOnly` (3.13+), `typing.override` (3.12+)
-        - `asyncio.TaskGroup`, `asyncio.timeout`, `itertools.batched`, `copy.replace`, `tomllib`
+        - `asyncio.TaskGroup`, `asyncio.timeout`, `itertools.batched`, `copy.replace`
         Style preferences:
         - Prefer `asyncio.TaskGroup` over `asyncio.gather` for new concurrent code (aggregates exceptions via ExceptionGroup).
         - Prefer `itertools.batched(x, n)` over manual `range(0, len(x), n)` chunking.
@@ -72,6 +72,7 @@ reviews:
         - `slices.Chunk` for batching; `slices.SortFunc` / `slices.Sort`
         - `math/rand/v2` (already adopted); `crypto/rand` for jitter
         - `testing/synctest` for time-dependent tests
+        Logging contract: the `logging` package installs the default slog handler via `slog.SetDefault` at init — direct `slog.Info(...)` / `slog.Error(...)` / etc. calls are the correct pattern. There is no `logging.Info` wrapper. Do NOT flag direct `slog.*` calls as "bypasses logging contract" — that's a false positive.
         Do NOT suggest `encoding/json/v2` — still `GOEXPERIMENT=jsonv2`-gated as of Go 1.26.3 and not subject to the Go 1 compatibility promise. The codebase deliberately uses `encoding/json` until v2 is GA.
         Domain invariant: cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs. All CampMinder-derived tables include a required `year` field; year filtering must use `CAMPMINDER_SEASON_ID` from env.
 
@@ -86,16 +87,22 @@ reviews:
 
     - path: "frontend/**/*.{ts,tsx}"
       instructions: |
-        React 19 + TypeScript 5.8 + ES2022 baseline. tsconfig already has bundler resolution, verbatimModuleSyntax, noImplicitOverride, erasableSyntaxOnly.
+        React 19 + TypeScript 6.0 + ES2022 baseline. tsconfig already has bundler resolution, verbatimModuleSyntax, noImplicitOverride, erasableSyntaxOnly. Lib target is ES2022 — do NOT suggest ES2023+ APIs (e.g. `Object.groupBy`, `Map.groupBy`, `Promise.withResolvers`) unless tsconfig `lib` is bumped first.
         Style preferences (don't insist, but prefer):
         - `Array.toSorted()` / `toReversed()` over `[...arr].sort()` / `.reverse()`
-        - `Object.groupBy()` over `reduce((acc, x) => ...)` groupBy patterns
         - `use()` hook over `useContext` for new contexts
         - `<Context>` shorthand over `<Context.Provider>`
         - Error cause chaining: `throw new Error(msg, { cause: err })`
         - `satisfies` for config / route / feature-map objects
         Critical auth invariant: protected FastAPI endpoints MUST be called via `fetchWithAuth` (NOT raw `fetch` with `credentials: 'include'`). The PocketBase JWT lives in `localStorage`, NOT cookies — raw fetch silently 401s. Mutation-mocked hook tests cannot catch this; service-level tests must assert the Authorization header.
         Routing pattern: Caddy routes specific PocketBase patterns to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
+
+    - path: "api/**/*.py"
+      instructions: |
+        FastAPI HTTP layer — thin routers over `bunking/`. If a router accumulates logic, extract to `bunking/` and have the router call back in.
+        Global exception handler in `api/main.py` returns a generic `{"detail": "Internal server error"}` (never the actual error) and logs the traceback server-side with `exc_info=True`. Do NOT suggest `raise HTTPException(status_code=500, detail=str(e))` — that leaks internals; let the global handler catch it.
+        Auth: `bunking/auth_middleware.py` + `bunking/jwt_auth.py` verify PocketBase JWTs. Protected endpoints must verify auth or they silently 401 (the JWT lives in localStorage, not cookies — frontend must call them via `fetchWithAuth`, never raw `fetch` with `credentials: 'include'`).
+        Routers live in `api/routers/`, schemas in `api/schemas/`. Same Python 3.14 conventions as `bunking/` — tag the logger with `[api]`.
 
     - path: "bunking/**/*.py"
       instructions: |
