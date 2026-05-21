@@ -205,7 +205,7 @@ function CamperCard({
             ...(lockState === 'pending'
               ? { animationDelay: `${getPendingAnimationDelay(camper.id)}ms` }
               : {}),
-          } as CSSProperties
+          } satisfies CSSProperties
         }
         className={clsx(
           'relative overflow-hidden rounded-xl border-2 p-2.5 transition-all select-none',

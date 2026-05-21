@@ -166,7 +166,7 @@ export function SyncTab() {
     const status =
       statusValue && typeof statusValue === 'object' && 'status' in statusValue
         ? statusValue
-        : ({ status: 'idle' } as SyncStatus)
+        : ({ status: 'idle' } satisfies SyncStatus)
     const Icon = syncType.icon
     const isRunning = status.status === 'running'
     const isPending = status.status === 'pending'
@@ -781,7 +781,7 @@ export function SyncTab() {
               const status =
                 statusValue && typeof statusValue === 'object' && 'status' in statusValue
                   ? statusValue
-                  : ({ status: 'idle' } as SyncStatus)
+                  : ({ status: 'idle' } satisfies SyncStatus)
               const Icon = syncType.icon
               const isRunning = status.status === 'running'
               const isPending = status.status === 'pending'
