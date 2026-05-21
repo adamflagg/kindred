@@ -193,13 +193,16 @@ const AI_SECTIONS = [
   { section_key: "history-tracking", title: "Historical Context & Tracking", description: "Settings for incorporating historical bunking and request data", display_order: 28 },
 ]
 
-// Convert "ai.foo.bar.baz" -> {category:"ai", subcategory:"foo.bar", config_key:"baz"}.
-// Matches the transformKey() logic in 1500000011_config.js.
+// Convert "ai.foo.bar.baz" -> {category:"ai", subcategory:"foo_bar", config_key:"baz"}.
+// Mirrors transformKey() in 1500000011_config.js, which joins the intermediate
+// segments of deep (4+) keys with "_" — NOT ".". Using "." here would recreate
+// the 53 deep ai.* rows under a different (category, subcategory, config_key)
+// triple on rollback, orphaning them from the original encoding.
 const transformAIKey = (dotKey) => {
   const parts = dotKey.split(".")
   const category = parts[0]
   const config_key = parts[parts.length - 1]
-  const subcategory = parts.length > 2 ? parts.slice(1, -1).join(".") : null
+  const subcategory = parts.length > 2 ? parts.slice(1, -1).join("_") : null
   return { category, subcategory, config_key }
 }
 

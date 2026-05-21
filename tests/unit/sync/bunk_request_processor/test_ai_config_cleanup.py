@@ -166,8 +166,8 @@ class TestContextBuilderNoConfigService:
 class TestConfigLoaderAIConfigEnvOnly:
     """`ConfigLoader.get_ai_config()` returns only env-derived keys.
 
-    The `category='ai'` PB query is gone. Returned dict has the env-derived
-    fields only: provider, api_key, model, endpoint, temperature, max_tokens,
+    The `category='ai'` PB query is gone. Returned dict has exactly the
+    env-derived fields: provider, api_key, model, temperature, max_tokens,
     batch_processing. No PB-loaded keys like `confidence_thresholds.*`.
     """
 
@@ -190,15 +190,17 @@ class TestConfigLoaderAIConfigEnvOnly:
             "get_ai_config() must not query the config collection after Phase 2 cleanup"
         )
 
-        # Env-derived keys present
-        assert "provider" in result
-        assert "model" in result
-        # PB-derived keys absent
-        assert "confidence_thresholds" not in result
-        assert "confidence_scoring" not in result
-        assert "name_matching" not in result
-        assert "spread_validation" not in result
-        assert "context_building" not in result
+        # Env-only contract (Phase 2): assert the EXACT key set so removed
+        # PB-derived keys (confidence_thresholds.*, confidence_scoring.*, etc.)
+        # cannot silently reappear.
+        assert set(result.keys()) == {
+            "provider",
+            "api_key",
+            "model",
+            "temperature",
+            "max_tokens",
+            "batch_processing",
+        }, f"get_ai_config() returned unexpected keys: {sorted(result.keys())}"
         ConfigLoader.reset()
 
 
