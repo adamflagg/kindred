@@ -5,6 +5,8 @@ independent of any external dependencies."""
 
 from __future__ import annotations
 
+import json
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -201,8 +203,6 @@ class Person:
         if not self.parent_names:
             return []
         try:
-            import json
-
             parsed = json.loads(self.parent_names)
             return parsed if isinstance(parsed, list) else []
         except json.JSONDecodeError, TypeError:
@@ -376,8 +376,6 @@ class ParseResult:
         """DEPRECATED: Use `parsed_requests` list instead. This property will be removed.
         It returns the first request for limited backward compatibility during transition.
         """
-        import warnings
-
         warnings.warn(
             "`ParseResult.parsed_request` is deprecated. Update to handle `parsed_requests` list.",
             DeprecationWarning,

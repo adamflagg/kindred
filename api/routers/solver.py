@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import defaultdict
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,7 @@ from ..schemas import (
 )
 from ..schemas.solver import SweepRequest, SweepResponse
 from ..services.data_fetcher import fetch_session_data_v2, prepare_direct_solver_input
+from ..services.id_cache import IDLookupCache
 from ..services.session_context import build_session_context
 from ..services.solver_runner import resolve_session_relation, run_solver_task_v2
 from ..services.sweep_input_snapshot import snapshot_session_input
@@ -376,8 +378,6 @@ async def pre_validate_solver(
       - New top-level impossibility_report field replaces it with structured
         per-reason groupings and cluster detail.
     """
-    from dataclasses import asdict
-
     try:
         ctx = await build_session_context(request.session_cm_id, request.year, pb)
         logger.info(f"Pre-validating solver request for session {ctx.session_cm_id} year {ctx.year}")
@@ -591,8 +591,6 @@ async def apply_solver_results(
         logger.warning(f"apply_solver_results: No year in run config/results, using current year {run_year}")
 
     # Create ID cache for the run year
-    from ..services.id_cache import IDLookupCache
-
     cache = IDLookupCache(pb, run_year)
 
     # Build session context to get proper session filter (includes AG sessions)

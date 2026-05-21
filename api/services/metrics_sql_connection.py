@@ -6,6 +6,7 @@ WAL mode for safe concurrent reads while PocketBase writes.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -24,8 +25,6 @@ def _discover_db_path() -> str:
     2. Docker default → /pb_data/data.db
     3. Local dev → pocketbase/pb_data/data.db (relative to project root)
     """
-    import os
-
     # 1. Explicit env var
     pb_data_dir = os.environ.get("PB_DATA_DIR")
     if pb_data_dir:

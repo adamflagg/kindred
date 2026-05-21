@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import warnings
 from collections.abc import Callable
@@ -29,7 +30,10 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
+from ..data.cache import CacheManager, CacheMonitor
 from ..data.cache.temporal_name_cache import TemporalNameCache
+from ..data.repositories.attendee_repository import AttendeeRepository
+from ..data.repositories.person_repository import PersonRepository
 from ..data.repositories.request_repository import RequestRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
@@ -46,11 +50,19 @@ from ..debug.trace_models import (
     ReciprocalSignal,
     SelfReferenceSignal,
 )
+from ..integration.ai_service import AIServiceConfig
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
+from ..name_resolution.filters.spread_filter import SpreadFilter
+from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
+from ..processing.batch_signals import detect_batch_signals
 from ..processing.deduplicator import Deduplicator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
+from ..resolution.strategies.exact_match import ExactMatchStrategy
+from ..resolution.strategies.fuzzy_match import FuzzyMatchStrategy
+from ..resolution.strategies.phonetic_match import PhoneticMatchStrategy
+from ..resolution.strategies.school_disambiguation import SchoolDisambiguationStrategy
 from ..services.context_builder import ContextBuilder
 from ..services.historical_verification_service import HistoricalVerificationService
 from ..services.phase1_parse_service import Phase1ParseService
@@ -628,7 +640,6 @@ class RequestOrchestrator:
         likewise never reachable. Both lookups removed in the AI Config Phase 2
         cleanup.
         """
-        from ..data.cache import CacheManager, CacheMonitor
 
         self.cache_manager = CacheManager({})
         self.cache_monitor: CacheMonitor | None = None
@@ -639,9 +650,6 @@ class RequestOrchestrator:
 
     def _init_repositories(self) -> None:
         """Initialize data repositories."""
-        from ..data.repositories.attendee_repository import AttendeeRepository
-        from ..data.repositories.person_repository import PersonRepository
-
         self._attendee_repo = AttendeeRepository(self.pb)
         self._person_repo = PersonRepository(self.pb, name_cache=self.temporal_name_cache)
 
@@ -653,8 +661,6 @@ class RequestOrchestrator:
         cleanup. If a non-default OpenAI endpoint is needed in the future, add
         it as an env var, not a PB row.
         """
-        from ..integration.ai_service import AIServiceConfig
-
         # Create AI provider using factory
         provider_factory = ProviderFactory()
         ai_service_config = AIServiceConfig(
@@ -701,8 +707,6 @@ class RequestOrchestrator:
 
         # Spread filter is always constructed — bounded by the unified
         # solver-side constants.
-        from ..name_resolution.filters.spread_filter import SpreadFilter
-
         self.spread_filter = SpreadFilter(
             grade_spread=MAX_UNIQUE_GRADES_PER_BUNK,
             age_spread_months=MAX_AGE_SPREAD_MONTHS,
@@ -737,10 +741,6 @@ class RequestOrchestrator:
         module-level constants on the strategy modules. Cleaned up in the
         AI Config Phase 2 cleanup.
         """
-        from ..resolution.strategies.exact_match import ExactMatchStrategy
-        from ..resolution.strategies.fuzzy_match import FuzzyMatchStrategy
-        from ..resolution.strategies.phonetic_match import PhoneticMatchStrategy
-        from ..resolution.strategies.school_disambiguation import SchoolDisambiguationStrategy
 
         self.resolution_pipeline = ResolutionPipeline(self._person_repo, self._attendee_repo)
         self.resolution_pipeline.add_strategy(ExactMatchStrategy(self._person_repo, self._attendee_repo))
@@ -1282,9 +1282,6 @@ class RequestOrchestrator:
         self._phase3_indices = phase3_processed
 
         # --- Batch Signal Detection (reciprocal + household co-request) ---
-        from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
-        from ..processing.batch_signals import detect_batch_signals
-
         batch_requests = []
         for pr, resolution_list in resolution_results:
             if not pr.parsed_requests or not pr.parse_request:
@@ -2264,8 +2261,6 @@ class RequestOrchestrator:
         # Combine source_fields arrays
         existing_source_fields = getattr(existing, "source_fields", None) or []
         if isinstance(existing_source_fields, str):
-            import json
-
             try:
                 existing_source_fields = json.loads(existing_source_fields)
             except json.JSONDecodeError:

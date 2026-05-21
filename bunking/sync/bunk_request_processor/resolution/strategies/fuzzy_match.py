@@ -8,6 +8,7 @@ was removed in the AI Config (Unified) Phase 2 cleanup."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import jellyfish
@@ -479,8 +480,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         Parses the parent_names JSON field which contains an array of parent info:
         [{"first": "John", "last": "Smith", "relationship": "Father"}, ...]
         """
-        import json
-
         parent_names = getattr(person, "parent_names", None)
         if not parent_names:
             return False

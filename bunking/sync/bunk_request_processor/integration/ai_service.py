@@ -20,6 +20,7 @@ from .ai_types import (
     ProviderType,
     TokenUsage,
 )
+from .provider_factory import create_provider
 
 # Re-export for backwards compatibility
 __all__ = [
@@ -54,8 +55,6 @@ class AIService:
 
     def _initialize_provider(self) -> None:
         """Initialize the appropriate provider"""
-        from .provider_factory import create_provider
-
         self._provider = create_provider(self.config)
 
     def _get_cache_key(self, request_text: str, context: AIRequestContext) -> str:

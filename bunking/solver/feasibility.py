@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
+from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
 from bunking.solver.constraints.age_spread import _age_to_months
 
@@ -280,8 +281,9 @@ def find_infeasibility_cause(
     Returns:
         A description of the likely cause.
     """
-    # Import here to avoid circular dependency
-    from bunking.solver import DirectBunkingSolver
+    from bunking.solver import (  # noqa: PLC0415 — circular: bunking.solver.__init__ imports direct_solver which imports feasibility
+        DirectBunkingSolver,
+    )
 
     logger.info("=== Starting Infeasibility Analysis ===")
 
@@ -434,7 +436,9 @@ def _probe_mp_feasibility(
     request×predicate scan runs once for the whole localization, not once per
     probe.
     """
-    from bunking.solver import DirectBunkingSolver
+    from bunking.solver import (  # noqa: PLC0415 — circular: bunking.solver.__init__ imports direct_solver which imports feasibility
+        DirectBunkingSolver,
+    )
 
     s = DirectBunkingSolver(input_data, config, {}, mp_skip_cms=skip, impossibility_report=impossibility_report)
     s.check_feasibility()
@@ -483,10 +487,11 @@ def localize_hard_mso_infeasibility(
           "notes": str,
         }
     """
-    from bunking.satisfaction.bucket import is_material_parent_request
-    from bunking.solver import DirectBunkingSolver
-
     logger.info("=== Localizing parent_paramount infeasibility ===")
+
+    from bunking.solver import (  # noqa: PLC0415 — circular: bunking.solver.__init__ imports direct_solver which imports feasibility
+        DirectBunkingSolver,
+    )
 
     # Probe pass: build candidate cms (MP-hard-constrained, excluding
     # mp_set_entirely_impossible). Sorted so the deletion-filter walk below —

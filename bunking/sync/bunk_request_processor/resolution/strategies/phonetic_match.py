@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import jellyfish
+
 from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ...shared import parse_name
@@ -393,16 +395,12 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
 
     def _soundex(self, name: str) -> str:
         """Generate Soundex code for a name using jellyfish."""
-        import jellyfish
-
         if not name:
             return "0000"
         return jellyfish.soundex(name)
 
     def _metaphone(self, name: str) -> str:
         """Generate Metaphone code for a name using jellyfish."""
-        import jellyfish
-
         if not name:
             return ""
         return jellyfish.metaphone(name)

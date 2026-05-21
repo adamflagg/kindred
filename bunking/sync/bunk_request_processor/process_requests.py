@@ -6,14 +6,16 @@ It handles configuration, initialization, and execution of the request processin
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
 from pathlib import Path
 from typing import Any
 
-from bunking.logging_config import get_logger
+from bunking.logging_config import TRACE, get_logger
 
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -233,9 +235,11 @@ async def load_from_database(
 
     Filter order: Year → Source Field → Session → Limit
     """
-    from .integration.original_requests_loader import OriginalRequestsLoader
-
     # Initialize loader with session filter
+    from .integration.original_requests_loader import (  # noqa: PLC0415 — test patches integration.original_requests_loader.OriginalRequestsLoader; top-level binding bypasses the patch
+        OriginalRequestsLoader,
+    )
+
     loader = OriginalRequestsLoader(pb, year, session_cm_ids=session_cm_ids)
     loader.load_persons_cache()
 
@@ -291,8 +295,6 @@ async def load_from_file(file_path: str, limit: int | None) -> list[dict[str, An
 
 def main() -> None:
     """Main entry point"""
-    import argparse
-
     parser = argparse.ArgumentParser(description="Process bunk requests using V2 three-phase pipeline")
     parser.add_argument("--year", type=int, default=2025, help="Year to process")
     parser.add_argument(
@@ -330,8 +332,6 @@ def main() -> None:
     args = parser.parse_args()
 
     # Setup logging - import TRACE level for trace mode
-    from bunking.logging_config import TRACE
-
     if args.trace:
         log_level = TRACE
     elif args.debug:
@@ -398,8 +398,6 @@ def main() -> None:
 
         # Write stats to file if requested (for Go integration)
         if args.stats_output:
-            import json
-
             stats = result.get("statistics", {})
             stats_output = {
                 "success": result.get("success", False),
@@ -426,8 +424,6 @@ def main() -> None:
         logger.error(f"Fatal error: {e}")
         # Write error stats to file if requested
         if args.stats_output:
-            import json
-
             with open(args.stats_output, "w") as f:
                 json.dump({"success": False, "created": 0, "updated": 0, "skipped": 0, "errors": 1}, f)
         sys.exit(1)

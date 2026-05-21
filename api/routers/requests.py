@@ -6,6 +6,7 @@ This router provides endpoints for merging and splitting bunk_requests.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -269,8 +270,6 @@ async def merge_requests(
         fields = getattr(req, "source_fields", None) or []
         if isinstance(fields, str):
             # Handle case where it's stored as JSON string
-            import json
-
             try:
                 fields = json.loads(fields)
             except json.JSONDecodeError:
@@ -313,8 +312,6 @@ async def merge_requests(
         # Get source field - from source_fields array or fall back to source_field
         req_source_fields = getattr(req, "source_fields", None) or []
         if isinstance(req_source_fields, str):
-            import json
-
             try:
                 req_source_fields = json.loads(req_source_fields)
             except json.JSONDecodeError:
@@ -457,8 +454,6 @@ async def split_requests(
     # Update kept request's source_fields (remove split sources)
     kept_source_fields = getattr(kept_request, "source_fields", None) or []
     if isinstance(kept_source_fields, str):
-        import json
-
         try:
             kept_source_fields = json.loads(kept_source_fields)
         except json.JSONDecodeError:

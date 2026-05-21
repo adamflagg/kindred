@@ -42,6 +42,7 @@ select = [
     "PERF", # perflint (performance anti-patterns)
     "DTZ",  # flake8-datetimez (timezone safety)
     "S",    # flake8-bandit (security)
+    "PLC0415", # import-outside-toplevel (catches new sloppy in-function imports)
 ]
 
 # Ignore specific rules
@@ -66,14 +67,15 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 # Per-file ignores
 [lint.per-file-ignores]
-"tests/**/*.py" = ["E402", "T201", "N806", "RUF005", "RUF059", "S101", "S105", "S106", "S107", "S108", "S110", "S112", "S113", "S311", "S324", "S603", "S607", "DTZ001", "DTZ005", "PT011", "PERF401"]
+# Tests use late imports for mock-after-import-time and conditional skip imports — PLC0415 ignored.
+"tests/**/*.py" = ["E402", "T201", "N806", "RUF005", "RUF059", "S101", "S105", "S106", "S107", "S108", "S110", "S112", "S113", "S311", "S324", "S603", "S607", "DTZ001", "DTZ005", "PT011", "PERF401", "PLC0415"]
 "scripts/**/*.py" = ["T20", "S", "DTZ005", "PERF401", "N999"]  # N999: script names can have hyphens (not Python module names)
 "scripts/cleanup_orphaned_configs.py" = ["E402"]
 "scripts/populate_new_solver_config.py" = ["E402"]
 "test_solver_hang.py" = ["E402"]
 "test_solver_without_isolation.py" = ["E402"]
 "docs/**/*.py" = ["S"]
-"api/services/test_*.py" = ["S101", "DTZ005"]
+"api/services/test_*.py" = ["S101", "DTZ005", "PLC0415"]  # Co-located tests — same late-import policy as tests/
 "bunking/sync/bunk_request_processor/resolution/strategies/school_disambiguation.py" = ["S101"]
 "bunking/sync/bunk_request_processor/processing/deduplicator.py" = ["S101"]
 "api/services/metrics_sql_repository.py" = ["S608"]  # f-string SQL uses parameterized ?'s only

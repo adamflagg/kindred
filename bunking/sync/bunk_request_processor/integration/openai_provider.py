@@ -6,6 +6,7 @@ GPT-4.1 and GPT-5 models fully support structured outputs via this API.
 
 from __future__ import annotations
 
+import traceback
 from typing import Any
 
 from openai import APIConnectionError, APITimeoutError, AsyncOpenAI, InternalServerError, RateLimitError
@@ -171,8 +172,6 @@ class OpenAIProvider(AIProvider):
             raise
 
         except Exception as e:
-            import traceback
-
             logger.error(f"V2 AI provider error: {e}\n{traceback.format_exc()}")
             return ParsedResponse(
                 requests=[],

@@ -19,10 +19,10 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from api.schemas.velocity import DailyDataPoint
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 
 if TYPE_CHECKING:
-    from api.schemas.velocity import DailyDataPoint
     from api.services.metrics_repository import MetricsRepository
 
 # Statuses that count as enrollments in reconstruction
@@ -275,9 +275,7 @@ def _build_daily_points(
     week0: bool = False,
 ) -> list[DailyDataPoint]:
     """Convert daily event buckets into a list of DailyDataPoint with running cumulatives."""
-    from api.schemas.velocity import DailyDataPoint as DailyPoint
-
-    result: list[DailyPoint] = []
+    result: list[DailyDataPoint] = []
     cum_gross = 0
     cum_cancelled = 0
     cum_gross_boys = 0
@@ -305,7 +303,7 @@ def _build_daily_points(
         cum_canc_girls += events["canc_girls"]
 
         result.append(
-            DailyPoint(
+            DailyDataPoint(
                 date=date_str,
                 day_offset=day_offset,
                 gross_enrolled=cum_gross,

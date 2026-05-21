@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -14,23 +17,31 @@ from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_admin
+from bunking.sync.bunk_request_processor.core.models import ParseRequest
+from bunking.sync.bunk_request_processor.data.data_access_context import DataAccessContext
 from bunking.sync.bunk_request_processor.data.repositories.debug_parse_repository import (
     DebugParseRepository,
 )
 from bunking.sync.bunk_request_processor.data.repositories.session_repository import (
     SessionRepository,
 )
-from bunking.sync.bunk_request_processor.debug.phase_runner import PHASE_ORDER
+from bunking.sync.bunk_request_processor.debug.phase_runner import PHASE_ORDER, PhaseRunner
 from bunking.sync.bunk_request_processor.debug.trace_collector import TraceCollector
+from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
+from bunking.sync.bunk_request_processor.integration.batch_processor import BatchProcessor
 from bunking.sync.bunk_request_processor.integration.original_requests_loader import (
     OriginalRequestsLoader,
 )
+from bunking.sync.bunk_request_processor.integration.provider_factory import ProviderFactory
+from bunking.sync.bunk_request_processor.orchestrator import RequestOrchestrator
 from bunking.sync.bunk_request_processor.prompts.loader import (
     clear_cache as clear_prompt_cache,
 )
+from bunking.sync.bunk_request_processor.services.context_builder import ContextBuilder
 from bunking.sync.bunk_request_processor.services.phase1_debug_service import (
     Phase1DebugService,
 )
+from bunking.sync.bunk_request_processor.services.phase1_parse_service import Phase1ParseService
 
 from ..constants.collections import (
     ATTENDEES,
@@ -163,8 +174,6 @@ class BunkRequestsRepository:
         Returns:
             List of bunk_request records as dicts
         """
-        import json
-
         filter_parts = [
             f"requester_id = {camper_cm_id}",
             f"year = {year}",
@@ -252,21 +261,6 @@ async def get_phase1_debug_service() -> Phase1DebugService:
     Note: This lazily creates the service with all dependencies.
     In production, you might want to cache this or use proper DI.
     """
-    import os
-
-    from bunking.sync.bunk_request_processor.integration.batch_processor import (
-        BatchProcessor,
-    )
-    from bunking.sync.bunk_request_processor.integration.provider_factory import (
-        ProviderFactory,
-    )
-    from bunking.sync.bunk_request_processor.services.context_builder import (
-        ContextBuilder,
-    )
-    from bunking.sync.bunk_request_processor.services.phase1_parse_service import (
-        Phase1ParseService,
-    )
-
     # Create AI provider from environment config
     provider_factory = ProviderFactory()
     ai_service = provider_factory.create_from_env()
@@ -1453,10 +1447,6 @@ def _create_phase_runner(
     Returns:
         PhaseRunner instance (or mock in tests).
     """
-    from bunking.sync.bunk_request_processor.data.data_access_context import DataAccessContext
-    from bunking.sync.bunk_request_processor.debug.phase_runner import PhaseRunner
-    from bunking.sync.bunk_request_processor.orchestrator import RequestOrchestrator
-
     data_context = DataAccessContext(year=year)
     data_context.initialize_sync()
     orchestrator = RequestOrchestrator(
@@ -1555,8 +1545,6 @@ async def run_phase2(
     session_cm_ids = [session_cm_id] if session_cm_id else []
 
     try:
-        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
-
         trace_data = TraceData(**trace_data_dict)
         runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
         result = await runner.run_phase2(runner._reconstruct_parse_results_from_trace(trace_data))
@@ -1593,8 +1581,6 @@ async def run_phase3(
     session_cm_ids = [session_cm_id] if session_cm_id else []
 
     try:
-        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
-
         trace_data = TraceData(**trace_data_dict)
         runner = _create_phase_runner(year=year, session_cm_ids=session_cm_ids)
         result = await runner.run_phase3(runner._reconstruct_ambiguous_from_trace(trace_data))
@@ -1637,10 +1623,6 @@ async def run_from_phase(
     trace_data_dict = getattr(trace_record, "trace_data", {}) or {}
 
     try:
-        from uuid import uuid4
-
-        from bunking.sync.bunk_request_processor.debug.trace_models import TraceData
-
         trace_data = TraceData(**trace_data_dict)
 
         # Create trace collector for this run
@@ -1733,8 +1715,6 @@ async def run_full_trace(
     Supports dry_run (default True). When dry_run=False, writes to production.
     """
     try:
-        from uuid import uuid4
-
         # Create trace collector for this run
         trace_collector = TraceCollector(run_id=uuid4().hex)
 
@@ -1756,8 +1736,6 @@ async def run_full_trace(
             )
 
         # Convert OriginalRequest objects to ParseRequest format
-        from bunking.sync.bunk_request_processor.core.models import ParseRequest
-
         parse_requests: list[ParseRequest] = []
         for orig in original_records:
             first = orig.preferred_name or orig.first_name

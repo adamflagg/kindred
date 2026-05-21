@@ -6,6 +6,7 @@ testable service that uses the MetricsRepository for data access.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 from api.schemas.metrics import (
@@ -84,8 +85,6 @@ class RegistrationService:
         Returns:
             RegistrationMetricsResponse with all breakdown metrics.
         """
-        import asyncio
-
         # Default status filter
         if status_filter is None:
             status_filter = ["enrolled"]

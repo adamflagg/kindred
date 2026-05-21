@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any
 
 from bunking.logging_config import get_logger
 
@@ -16,8 +16,6 @@ from .context_builder import ContextBuilder
 from .disambiguation_reranker import rerank_disambiguation_candidates
 
 logger = get_logger(__name__)
-
-T = TypeVar("T")
 
 
 class DisambiguationCase:
@@ -170,7 +168,7 @@ class Phase3DisambiguationService:
 
         return results
 
-    def _set_meta(self, case: DisambiguationCase, key: str, default: T) -> T:
+    def _set_meta[T](self, case: DisambiguationCase, key: str, default: T) -> T:
         """Return case.disambiguation_metadata[key], inserting *default* if absent."""
         value: T = case.disambiguation_metadata.setdefault(key, default)
         return value

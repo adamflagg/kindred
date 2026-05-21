@@ -6,7 +6,7 @@ Reference audit of modern language/tooling features available to Kindred but not
 
 **Execution model:** Work this backlog one layer at a time (one PR per language/concept) rather than a single mega-PR. Each section governs its own execution order; there is no global cross-section ordering — pick which language to work on based on real-world signals (active PRs, blast radius, idle slot).
 
-**Section lifecycle:** Open language sections start in single-table audit format (§1 Python, §3 Frontend today). On first execution loop they're restructured to §a/§b/§c per `modernization-prompts.md` Part A (concrete rewrites + honest survey-status + ranked execution order). Once every row has shipped or deferred, the section collapses to a closeout summary capturing wins / deferrals / retired false positives / surveyed-clean (§2 Go today). §4 (Infrastructure) is a hardening checklist — different artifact, no lifecycle.
+**Section lifecycle:** Open language sections start in single-table audit format (§3 Frontend today). On first execution loop they're restructured to §a/§b/§c per `modernization-prompts.md` Part A (concrete rewrites + honest survey-status + ranked execution order) — see §1 Python for the in-progress §a/§b/§c shape. Once every row has shipped or deferred, the section collapses to a closeout summary capturing wins / deferrals / retired false positives / surveyed-clean (§2 Go today). §4 (Infrastructure) is a hardening checklist — different artifact, no lifecycle.
 
 **Companion docs:** Ship rows by following `modernization-prompts.md` (Part B for execution, Part A for re-running an audit). The prompt doc names the false-positive lesson explicitly — every grep hit must be inspected with surrounding context before it lands in §a. When the last open section migrates, the §a/§b/§c template moves out of this doc into `modernization-prompts.md` as an appendix.
 
@@ -36,41 +36,87 @@ All three items resolved:
 
 ## 1. Python (project is on 3.14)
 
-> **Format note:** This section predates the §2 redo (toolchain/idiom-floor preamble + §a/§b/§c). Migrate to the new format on the next pickup — re-run `modernization-prompts.md` Part A in upgrade-in-place mode.
+**Toolchain at audit (May 2026):** `requires-python = ">=3.14"`; `.python-version` = `3.14`; `uv run python` ships `3.14.2`. Latest stable upstream is 3.14 (3.15 not GA). `ruff.toml target-version = "py314"`.
+**Idiom level pre-audit:** mixed 3.10–3.12. 510 files carry redundant `from __future__ import annotations` (a no-op under PEP 649 in 3.14); 24 manual `range(0, len(x), n)` chunkers; 35 `asyncio.gather` sites; 1 explicit `T = TypeVar(...)` declaration.
+**Idiom level post-audit goal:** through 3.14 except deferred row below.
+**Next-audit floor:** features added in Python 3.15+. Don't re-survey 3.10–3.14 — outcomes captured below.
 
-Baseline is strong: Pydantic v2 everywhere, `datetime.UTC` adopted, modern generics (`dict[str, X]`), f-strings clean, mypy `strict = true`. The real gaps are concurrency idioms and version-specific polish.
+Baseline is strong: Pydantic v2 everywhere, `from datetime import UTC` adopted in 23 files (zero `timezone.utc` left), modern generics (`dict[str, X]`), `StrEnum` in 4 files, three functions already use PEP 695 scoped generics, f-strings clean, mypy `strict = true`, no `Union`/`Optional`/`Dict`/`List`/`Tuple` typing imports outside docstrings.
 
-| Impact | Feature | Where | Count | Notes |
-|--------|---------|-------|-------|-------|
-| **HIGH** | `asyncio.TaskGroup` replacing `asyncio.gather` | `api/services/` — `geo_service.py`, `drilldown_service.py`, `forecast_service.py`, `historical_service.py`, `session_availability_service.py`, `validation.py`, `batch_processor.py` | ~35 callsites | Real robustness win: TaskGroup aggregates exceptions via ExceptionGroup instead of silently dropping sibling tasks on partial failure. Pattern change, not mechanical. |
-| **HIGH** | Drop `from __future__ import annotations` | repo-wide | ~250 files | PEP 649 makes deferred annotation evaluation the default in 3.14 — the import is dead weight. Fully mechanical (regex + ruff autofix). |
-| **MEDIUM** | `itertools.batched` replacing `range(0, len(x), n)` chunking | `validation.py:185`, `batch_processor.py`, `metrics_repository.py`, `geo_service.py`, `data_fetcher.py`, `drilldown_service.py`, `optimized_graph_builder.py`, `debug_parse_repository.py` | 11 | 3.12+. Drops the manual index arithmetic. |
-| **MEDIUM** | `match` statement for isinstance chains | `debug.py:188`, `requests.py`, `session_availability.py`, `metrics_repository.py` | ~15–20 | Readability only. Target chains with >2 branches. |
-| **LOW** | Residual `Optional[X]` → `X \| None` | `tests/test_ranked_candidate_passthrough.py:65,67` | 3 | Mostly already modernized — last few leftovers. |
-| **LOW** | `@override` decorator (from `typing`) | (unused) | 0 | Catches rename bugs in overrides. 3.12+. |
-| **LOW** | PEP 695 generic syntax (`def foo[T](x: T)`) | `phase3_disambiguation_service.py:6,20` | 1 | Single TypeVar in the codebase — not worth a campaign on its own. |
-| **LOW** | `@dataclass(slots=True, kw_only=True, frozen=True)` defaults | 41 `@dataclass` files | — | Mostly small DTOs, not hot paths. Apply opportunistically. |
-| **LOW** | `typing.TypeIs` (replaces `TypeGuard`) / `typing.ReadOnly` TypedDict fields | `geo_normalizer/normalizer.py:20` for ReadOnly; no `TypeGuard` in codebase | 1 | 3.13+. Low leverage here. |
-| **LOW** | `copy.replace()` | (unused; no `dataclasses.replace` callsites either) | 0 | 3.13+. No current use case. |
-| **LOW** | Enable ruff `PLC0415` (import-outside-toplevel) | repo-wide; surfaced by PR #1529 review (`test_analyze_objective_sensitivity.py` had `import pytest` inside a test body) | 1 known | Catches imports inside function bodies. Currently not in `ruff.toml`'s enabled rules. Likely a handful of pre-existing offenders to clean up before enabling. |
+### §a — Concrete rewrites (current targets)
 
-### Not applicable / already adopted
+| Impact | From (current idiom) | To (modern equivalent) | `from` works since | `to` available since | Where | Count |
+|---|---|---|---|---|---|---|
+| **HIGH** | `from __future__ import annotations` | delete the import (PEP 649 in 3.14 makes deferred evaluation the default — note: PEP 649 ≠ PEP 563, see §c #3 verification note) | 3.7 | 3.14 (PEP 649) | repo-wide | 510 files |
+| **HIGH** | `asyncio.gather(*tasks)` / `asyncio.gather(..., return_exceptions=True)` | `async with asyncio.TaskGroup() as tg: ... tg.create_task(...)` (aggregates failures via `ExceptionGroup` instead of dropping sibling tasks) | 3.4 | 3.11 (PEP 654 + asyncio.TaskGroup) | `api/services/{drilldown,forecast,geo,historical,registration,retention,session_availability,velocity,batch_processor,validation}.py`, `bunking/sync/.../{trace_collector,batch_processor}.py` | 35 across 11 files (1 of them uses `return_exceptions=True`) |
+| **MEDIUM** | `for i in range(0, len(x), n): chunk = x[i:i+n]` and the list-comprehension form `[x[i:i+n] for i in range(0, len(x), n)]` | `from itertools import batched; for chunk in batched(x, n)` (returns tuples — call `list()` if downstream mutates) | 3.0 | 3.12 (`itertools.batched`) | `api/routers/validation.py:198`, `api/services/{metrics_repository,metrics_sql_repository,data_fetcher}.py`, `bunking/satisfaction/aggregate.py:328`, `bunking/graph/optimized_graph_builder.py`, `bunking/sync/.../debug_parse_repository.py` (9), `.../attendee_repository.py` (3), `.../social_graph.py`, `.../ai_service.py`, `.../batch_processor.py:369` | 24 across 12 files |
+| **LOW** | `T = TypeVar("T")` + `def foo(x: T) -> T` | scoped generic `def foo[T](x: T) -> T:` (and drop the module-level `TypeVar`) | 3.5 (PEP 484) | 3.12 (PEP 695) | `bunking/sync/bunk_request_processor/services/phase3_disambiguation_service.py:6,20` | 1 declaration |
+| **LOW** | `dataclasses.replace(obj, field=value)` | `copy.replace(obj, field=value)` (generalizes — works for any class implementing `__replace__`) | 3.7 (`dataclasses`) | 3.13 (`copy.replace`) | `bunking/solver/impossibility.py:23`, `bunking/sync/.../phase1_parse_service.py:7`, `bunking/sync/.../deduplicator.py:193` | 3 |
+| **LOW** | Enable ruff `PLC0415` (`import-outside-toplevel`) — currently not in the enabled rules list | turn on the rule; clean offenders first | n/a | ruff 0.4+ | repo-wide; one known offender surfaced by PR #1529 review (`test_analyze_objective_sensitivity.py` had `import pytest` inside a test body) | 1 known + however many a fresh pass surfaces |
 
-- `Union[X, Y]` → `X \| Y` — no `Union` imports found ✓
-- `Dict`/`List`/`Tuple` from typing — only in docstrings/comments ✓
-- `datetime.UTC` — already used in 17+ files ✓
-- `tomllib` — no TOML parsing in the codebase ✓
-- PEP 750 t-strings — no SQL/HTML template builders that would benefit
-- `compression.zstd` — no zstandard dependency
-- Pydantic v1 legacy patterns — none found ✓
+### §b — Survey status (features ≥ 3.11, plus 3.10 cleanups verified)
 
-### Recommended Python PR order
+Each row records the actual search expression so the next audit can pick up where this one stopped looking.
 
-1. ~~`chore(ci): ruff target-version py314`~~ — ✓ shipped in originating PR #972
-2. `chore(py): drop redundant __future__ annotations import` — mechanical, repo-wide
-3. `refactor(api): adopt asyncio.TaskGroup in metrics services` — focused, ~35 callsites, behavioral improvement
-4. `refactor(api): use itertools.batched for chunking` — 11 callsites
-5. `refactor(api): convert isinstance chains to match` — small, optional
+| Feature | Status | Evidence |
+|---|---|---|
+| PEP 604 `X \| Y` unions (3.10) | **already adopted** | `grep -rn 'from typing import.*\bUnion\b' --include='*.py' api bunking campminder scripts tests` → 0; `grep -rn '\bOptional\[' …` → 3 (all in docstrings of `tests/unit/sync/bunk_request_processor/social/test_ranked_candidate_passthrough.py`) |
+| PEP 585 builtin generics (`list[X]`, `dict[K,V]`) (3.9) | **already adopted** | `grep -rEn '\b(Dict\|List\|Tuple\|Set\|FrozenSet)\[' --include='*.py' …` → 10 hits, all inside docstring text |
+| `match` statement (PEP 634, 3.10) | **dismissed** | `grep -rEn '^\s*match [a-zA-Z_(]' --include='*.py' …` → 0 real `match X:` statements; the 16 hits were all `match = regex.match(...)` assignments. 18 `elif isinstance(...)` candidates exist but inspection in context shows all are 2-branch or mix value-based + type-based predicates — match doesn't improve them. See "Retired" below. |
+| `datetime.UTC` (3.11) | **already adopted** | `grep -rln 'from datetime import.*UTC\b' …` → 23 files; `grep -rn 'timezone\.utc' …` → 0 legacy holdouts |
+| `tomllib` (3.11) | **dismissed** | `grep -rn 'import tomli\|import toml\b\|from tomli\|from toml ' …` → 0; project doesn't parse TOML at runtime |
+| `typing.Self` (3.11) | **dismissed** | `grep -rln 'from typing import.*Self\b\|typing\.Self\b' …` → 0; `grep -rEn 'def [a-z_]+\(cls,?.*\) -> ["\047][A-Z]' …` → 0 awkward forward refs |
+| `ExceptionGroup` / `except*` (3.11) | **dismissed** | `grep -rn 'ExceptionGroup\|except\*' …` → 0; the one `return_exceptions=True` site at `batch_processor.py:348` is the TaskGroup migration target, not a separate ExceptionGroup row |
+| `StrEnum` / `IntEnum` (3.11) | **already adopted** | `grep -rn 'StrEnum\|IntEnum' --include='*.py' …` → 4 files (`api/constants/geo.py`, `bunking/satisfaction/request_registry.py`, `bunking/bunking_validator.py`) |
+| `typing.LiteralString` (3.11) | **dismissed** | `grep -rn 'LiteralString' …` → 0; no SQL-builder layer that would gate on it (raw SQL is in scripts/tests only) |
+| PEP 695 generic syntax (3.12) | **partially adopted** | `grep -rEn 'def [a-zA-Z_]+\[[A-Z]' …` → 3 functions (`api/services/breakdown_calculator.py:57,108`, `api/services/retention_service.py:412`); `grep -rn '= TypeVar(' …` → 1 holdout — see §a |
+| `@override` decorator (3.12) | **surveyed — not actionable** | `grep -rn '@override' …` → 0; `grep -rEn '^class [A-Z][a-zA-Z_]*\([A-Z]' …` → 289 inheritance lines (27 non-Pydantic/Enum/Protocol). Adding `@override` retroactively across the AIProvider hierarchy and ABCs is a discipline policy, not a row. Decide separately whether to add the ruff rule (`PLR6301`/`misc-no-explicit-override`) before opening PRs. |
+| `itertools.batched` (3.12) | **see §a** | `grep -rn 'itertools\.batched' …` → 0 already-adopted sites; 24 `range(0, len(...))` candidates verified |
+| PEP 695 `type` statement / `TypeAlias` (3.12) | **dismissed** | `grep -rn 'TypeAlias\b' …` → 0; `grep -rEn '^type [A-Z]' …` → 0; no aliases to migrate |
+| `from __future__ import annotations` redundancy (3.14, PEP 649) | **see §a** | `grep -rl 'from __future__ import annotations' …` → 510 files. PEP 649 makes the import a no-op on 3.14. |
+| `typing.TypeIs` (3.13) | **dismissed** | `grep -rn 'TypeGuard' …` → 0 callers; nothing to migrate |
+| `typing.ReadOnly` TypedDict fields (3.13) | **surveyed — low value** | `grep -rln 'TypedDict' …` → 6 files; none are mutated cross-module in ways `ReadOnly` would catch. Re-survey if a TypedDict bug surfaces. |
+| `copy.replace()` (3.13) | **see §a** | 3 `dataclasses.replace` callsites verified |
+| PEP 696 TypeVar defaults (3.13) | **dismissed** | `grep -rn 'TypeVar.*default=' …` → 0; the single remaining TypeVar will get folded into PEP 695 anyway |
+| PEP 702 `@deprecated` (3.13) | **dismissed** | `grep -rn '@deprecated' …` → 0; no `DeprecationWarning` discipline in the codebase yet |
+| PEP 750 t-strings (3.14) | **deferred** | `grep -rEn "f['\"](SELECT\|INSERT\|UPDATE\|DELETE\|CREATE TABLE\|ALTER TABLE\|DROP) " …` → 5 SQL f-strings in `scripts/setup/seed_from_prod.py` (3), `tests/test_seed_from_prod.py` (1), plus 2 multiline in `api/services/metrics_sql_repository.py`. None are user-input-driven (table/column identifiers only), and PocketBase/SQLite have no t-string-aware API. Re-evaluate when a downstream library accepts `Template`. The prior audit's "no SQL/HTML template builders" claim was wrong — corrected here. |
+| `compression.zstd` (3.14) | **dismissed** | `grep -i 'zstd\|zstandard' pyproject.toml` → 0; no zstandard dep |
+| `@dataclass(slots=True, kw_only=True, frozen=True)` defaults | **surveyed — not a campaign** | `grep -rn '@dataclass' …` → 85 declarations across the codebase; only 1 currently sets `slots=True`. Hottest file `bunking/sync/.../core/models.py` has 9 dataclasses. Apply opportunistically when touching a file for another reason — not worth a sweep PR. |
+
+### §c — Ranked execution order
+
+**Status values:** blank (ready) · `next` (start here) · `PR open #N` (in flight, not yet merged) · `✓ shipped #N` (merged) · `skipped (reason)` · `deferred` · `gated (...)`. Per Part B step 6, statuses flip from `PR open` to `✓ shipped` after merge.
+
+| # | Row | Status | Score (s/m/t/r/p) | Notes |
+|---|---|---|---|---|
+| 1 | PEP 695 generic syntax on `phase3_disambiguation_service.py` | **PR open #1574** | 1/1/1/1/1 = 5 | 1 file, drop `TypeVar` import + retype methods using `[T]`. Trivial; ships fast. |
+| 2 | Enable ruff `PLC0415` (`import-outside-toplevel`) + sweep production offenders | **PR open #1575** | 3/2/1/3/1 = 10 | Audit-count correction: prior audit said "1 known offender"; real count was 1,871 (1,567 tests + 304 production). Path B chosen: per-file-ignore `tests/**` + `api/services/test_*.py`, then sweep 108 production hoists + 4 `# noqa: PLC0415` for genuine circular-import / test-monkeypatch cases. Original score of 5 was wrong; corrected to 10. |
+| 3 | `chore(py): drop redundant __future__ annotations import` | **next** | 3/1/1/1/1 = 7 | Mechanical-but-verify sweep. Codemod: `sed -i '/^from __future__ import annotations$/d'` followed by `uv run ruff check --fix --select I`. **Not strictly a no-op:** PEP 649 (3.14) defers annotation evaluation; `from __future__ import annotations` (PEP 563) stores them as strings. Code that introspects `__annotations__` directly or calls `typing.get_type_hints()` may see a different shape after the removal. Pydantic v2 / FastAPI handle both transparently in spot-checks, but verify by running the full pytest suite + `mypy --strict` after the sweep. Lefthook pre-push is the verification gate. |
+| 4 | `refactor(api): copy.replace for dataclasses.replace` | | 1/1/1/1/1 = 5 | 3 callsites; mostly cosmetic. Could be bundled with #1 since both are 1-file touches — but they're in different files; keep separate per PR-sizing rules. |
+| 5 | `refactor(api): itertools.batched for chunking` | | 3/1/1/2/1 = 8 | 24 sites, 12 files. Verify each downstream consumer accepts a tuple (slice-vs-tuple semantics) — most just iterate, but a couple pass to `.join`. List the converted vs untouched sites in the PR body. |
+| 6 | `refactor(api): adopt asyncio.TaskGroup for asyncio.gather` | | 3/3/2/3/1 = 12 | Behavioral contract change: callers will start seeing `ExceptionGroup` on partial failure instead of one of `gather`'s silently-dropped siblings. Audit each call's error-handling block before converting. Don't include the `return_exceptions=True` site at `batch_processor.py:348` — that one deliberately collects exceptions; the TaskGroup translation is a different pattern (catch the group and inspect `.exceptions`). |
+
+**Tie-breakers:** none of these rows unblock each other directly. #1–#4 can ship in any order; #5 before #6 (smaller blast radius first lets reviewer fatigue settle before the big behavioral one).
+
+### Retired as false positives (calibration for future audits)
+
+These survived the regex pass in the previous (pre-§a/§b/§c) audit before being killed on inspection. Worth remembering because the same regexes will keep matching:
+
+| Pattern | Where (prior audit's claim) | Why it failed |
+|---|---|---|
+| `match` statement replacing isinstance chains | "~15–20 hits across 4 files" | 18 `elif isinstance` hits exist but every one is either 2-branch (debug.py keywords/list-vs-str, campminder/client.py dict-vs-list, phase2 dict-vs-(int,str)) or mixes value comparison with type checks (metrics_repository.py: `elif status_filter == "enrolled"` between two `isinstance(…, list)` branches). The prompts doc's bar is ">2 branches"; none qualify. **Lesson: don't count `elif isinstance` lines — count distinct >2-branch type-only chains.** |
+| Residual `Optional[X]` → `X \| None` | "3 hits in test_ranked_candidate_passthrough.py:65,67" | All 3 hits sit inside a docstring describing a refactor (`Optional[Tuple[int, float, str]]` is plain text, not an annotation). **Lesson: filter grep hits for `--include='*.py'` AND verify they're not inside `"""..."""`. Or add `--exclude-dir` for docstring-heavy files.** |
+| `typing.ReadOnly` for `geo_normalizer/normalizer.py:20` | "1 hit" | The previous audit listed normalizer.py as a `ReadOnly` candidate; the actual line is an unrelated import. No TypedDict in the file would gain from `ReadOnly`. |
+| "no SQL/HTML template builders that would benefit from PEP 750" (Not-applicable list) | (claimed clean) | 5–7 SQL f-strings exist in `scripts/setup/seed_from_prod.py`, `tests/test_seed_from_prod.py`, `api/services/metrics_sql_repository.py`. Moved to §b as **deferred** — t-strings are real candidates, just not actionable without library support. **Lesson: "no candidates" claims need a search expression; the audit had none for PEP 750.** |
+
+### Process lessons (carried into `modernization-prompts.md` Rules 1–3)
+
+- **Counts decay between audits.** Previous audit said "~250 `__future__` files" — actually 510. "11 batched candidates" — actually 24. "41 `@dataclass`" — actually 85. Always re-grep before opening the PR; never reuse a stale count.
+- **Docstring text matches Python regexes.** Both the `Optional[X]` and `Dict/List/Tuple` rows in the previous audit triggered on docstring contents. Either exclude docstrings or grep only at file-imports.
+- **`elif isinstance` ≠ `match` candidate.** Most chains in this codebase are 2-branch, mixed-predicate, or `else`-terminated dictionary parsers. The `match` statement doesn't help any of them. Don't count regex hits; count >2-branch type-only chains.
+- **Three functions already use PEP 695** scoped-generic syntax (`api/services/breakdown_calculator.py`, `api/services/retention_service.py`). The previous audit didn't notice. The remaining single `T = TypeVar` is the last holdout, not the lonely sentinel the prior audit framed it as.
+
+Survey scope: features added in Python 3.10–3.14. Re-run Part A after toolchain bumps to 3.15+.
 
 ---
 

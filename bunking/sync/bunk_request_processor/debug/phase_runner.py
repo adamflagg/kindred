@@ -9,15 +9,22 @@ Supports dry-run (default) and production-write modes for cascades.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from bunking.logging_config import get_logger
+from bunking.sync.bunk_request_processor.core.models import (
+    ParsedRequest,
+    ParseRequest,
+    ParseResult,
+    Person,
+    RequestType,
+)
+from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+    RequestOrchestrator,
+    needs_phase3,
+)
+from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
-
-if TYPE_CHECKING:
-    from bunking.sync.bunk_request_processor.core.models import ParseRequest, ParseResult
-    from bunking.sync.bunk_request_processor.orchestrator.orchestrator import RequestOrchestrator
-    from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 
 from .trace_models import TraceData
 
@@ -191,8 +198,6 @@ class PhaseRunner:
                 return result
 
             # Continue to Phase 3 with unresolved, non-age-preference cases.
-            from bunking.sync.bunk_request_processor.orchestrator.orchestrator import needs_phase3
-
             ambiguous = [(pr, rr_list) for pr, rr_list in historical_results if any(needs_phase3(rr) for rr in rr_list)]
             if ambiguous:
                 phase3_results = await self.run_phase3(ambiguous)
@@ -259,13 +264,6 @@ class PhaseRunner:
         if not trace_data or not trace_data.phase1_parse.ran:
             return []
 
-        from bunking.sync.bunk_request_processor.core.models import (
-            ParsedRequest,
-            ParseRequest,
-            ParseResult,
-            RequestType,
-        )
-
         # Reconstruct parsed requests from trace intents
         parsed_requests = []
         for intent in trace_data.phase1_parse.parsed_intents:
@@ -331,11 +329,6 @@ class PhaseRunner:
         """
         if not trace_data or not trace_data.phase2_resolution:
             return []
-
-        from bunking.sync.bunk_request_processor.core.models import Person
-        from bunking.sync.bunk_request_processor.resolution.interfaces import (
-            ResolutionResult,
-        )
 
         # Reconstruct parse results from Phase 1 trace
         parse_results = self._reconstruct_parse_results_from_trace(trace_data)

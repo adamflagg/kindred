@@ -28,6 +28,7 @@ from bunking.auth_middleware import (
 )
 from bunking.config import ConfigLoader
 from bunking.logging_config import configure_logging, get_logger
+from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS
 
 from .dependencies import (
     auth_state,
@@ -35,6 +36,20 @@ from .dependencies import (
     pb,
     start_pb_token_refresh,
 )
+from .routers import (
+    debug,
+    geo,
+    internal,
+    metrics,
+    requests,
+    satisfaction,
+    scenarios,
+    session_availability,
+    social_graph,
+    solver,
+    validation,
+)
+from .services.metrics_sql_connection import close_connection
 from .settings import get_settings
 
 # Configure unified logging format
@@ -67,8 +82,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown
     if refresh_task:
         refresh_task.cancel()
-    from api.services.metrics_sql_connection import close_connection
-
     close_connection()
 
 
@@ -123,20 +136,6 @@ def create_app() -> FastAPI:
     app.add_middleware(lambda a: create_auth_middleware(a, auth_mode, admin_group))
 
     # Register routers
-    from .routers import (
-        debug,
-        geo,
-        internal,
-        metrics,
-        requests,
-        satisfaction,
-        scenarios,
-        session_availability,
-        social_graph,
-        solver,
-        validation,
-    )
-
     app.include_router(validation.router)
     app.include_router(solver.router)
     app.include_router(scenarios.router)
@@ -186,8 +185,6 @@ def create_app() -> FastAPI:
         Returns all valid permission codenames and their descriptions.
         Any authenticated user can read this; it's used by the role editor.
         """
-        from bunking.rbac.permissions import ALL_PERMISSIONS, PERMISSION_DESCRIPTIONS
-
         return {
             "permissions": [
                 {"codename": perm, "description": PERMISSION_DESCRIPTIONS.get(perm, "")}
