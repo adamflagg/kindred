@@ -24,12 +24,13 @@ Shipped in follow-up PRs:
 
 - **`ortools` PyPI switch** — PR #1038 moved `pyproject.toml:37` from the GitHub-release URL pin back to `ortools>=9.15`. PyPI now publishes cp314 wheels for `9.15.6755` (macOS/Linux/Windows), so the pin is healthy. Re-survey on the next ortools major bump.
 
-### Still outstanding
+### Bundle closeout — "Tell our tools we're on Python 3.14"
 
-**Bundle: "Tell our tools we're on Python 3.14"** — `ruff` is already bumped (above). The two remaining bundle items remain unshipped; both files are absent from the repo today (`ls .coderabbit.yaml AGENTS.md` → not found):
+All three items resolved:
 
-1. **Add `.coderabbit.yaml` with Python-version `path_instructions`** — CodeRabbit's LLM keeps flagging modern 3.14 syntax (PEP 758 `except A, B:` without parens, PEP 649 bare annotations, PEP 695 generic syntax, `dict[str, X]` generics, `typing.TypeIs`, `asyncio.TaskGroup`) as Python 2.x errors. The right fix is a `reviews.path_instructions` block scoped to `**/*.py` that names the codebase's Python floor and the specific PEPs not to flag (20k-char budget per entry; safer than burying the note in CLAUDE.md). Schema: `docs.coderabbit.ai/reference/configuration` → `reviews.path_instructions`.
-2. **Add `AGENTS.md` at repo root** — CodeRabbit auto-scans `**/AGENTS.md` via `knowledge_base.code_guidelines` (alongside `**/CLAUDE.md`, `.cursorrules`, `.windsurfrules`, etc.). AGENTS.md is the cross-agent convention — same Python-version note benefits Codex, Cursor, Copilot, and future agents. Companion to #1, not a replacement: `.coderabbit.yaml` is review-scoped and harder for the reviewer model to overlook; AGENTS.md is the durable cross-agent home for the same facts.
+1. **`ruff target-version = "py314"`** — ✓ shipped in originating PR #972.
+2. **`.coderabbit.yaml`** — ✓ shipped (this PR). Includes Python 3.14 `path_instructions` (PEP 758/649/695/750, `typing.TypeIs`, `asyncio.TaskGroup`) plus path-scoped guidance for Go 1.26 idioms, PocketBase v0.23 migration syntax, React 19 / TS 5.8 frontend conventions, OR-Tools solver invariants, fictional-test-data discipline, and Markdown noise filters. `learnings.scope: local` + `related_issues` / `assess_linked_issues` enabled; `pre_merge_checks`, `suggested_labels`, `poem`/`fortune` deliberately off.
+3. **`AGENTS.md`** — **decided not to add.** The only consumers of agent-instruction files in this repo are Claude Code and CodeRabbit. CodeRabbit already auto-scans `**/CLAUDE.md` via `knowledge_base.code_guidelines.filePatterns`, and the repo already has a 7-file CLAUDE.md hierarchy (root + `tests/`, `bunking/`, `bunking/solver/`, `frontend/`, `pocketbase/`, `api/`). AGENTS.md would duplicate those without serving a distinct audience. Revisit if Codex / Cursor / Jules adoption ever happens.
 
 ---
 
