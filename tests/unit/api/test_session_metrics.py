@@ -1016,3 +1016,48 @@ def test_is_summer_teen_session_false_for_nonteen_or_no_window() -> None:
 
     assert not is_summer_teen_session(_sess(6, "main", "2025-06-15", "2025-07-05"), ("2025-06-15", "2025-08-02"))
     assert not is_summer_teen_session(_sess(7, "scit", "2025-06-15", "2025-07-05"), None)
+
+
+# ============================================================================
+# resolve_cohort_session_ids() Tests (Task 2 — PR A)
+# ============================================================================
+
+
+def test_resolve_cohort_window_gates_teens():
+    from api.utils.session_metrics import resolve_cohort_session_ids
+
+    s = {
+        10: _sess(10, "main", "2025-06-15 07:00:00.000Z", "2025-07-05 07:00:00.000Z"),
+        16: _sess(16, "main", "2025-07-20 07:00:00.000Z", "2025-08-02 07:00:00.000Z"),
+        11: _sess(11, "quest", "2025-06-20 07:00:00.000Z", "2025-07-03 07:00:00.000Z"),
+        12: _sess(12, "scit", "2025-06-08 07:00:00.000Z", "2025-07-04 07:00:00.000Z"),
+        13: _sess(13, "tli", "2025-07-11 07:00:00.000Z", "2025-08-03 07:00:00.000Z"),
+        14: _sess(14, "scit", "2025-09-12 07:00:00.000Z", "2025-09-15 07:00:00.000Z"),  # fall noise
+        15: _sess(15, "tli", "2025-02-15 08:00:00.000Z", "2025-02-18 08:00:00.000Z"),  # Feb noise
+    }
+    assert resolve_cohort_session_ids(s, ["scit", "tli"]) == {12, 13}
+
+
+def test_resolve_cohort_nonteen_types_not_gated():
+    from api.utils.session_metrics import resolve_cohort_session_ids
+
+    s = {
+        10: _sess(10, "main", "2025-06-15 07:00:00.000Z", "2025-07-05 07:00:00.000Z"),
+        11: _sess(11, "quest", "2025-06-20 07:00:00.000Z", "2025-07-03 07:00:00.000Z"),
+        12: _sess(12, "scit", "2025-06-08 07:00:00.000Z", "2025-07-04 07:00:00.000Z"),
+    }
+    assert resolve_cohort_session_ids(s, ["main", "quest"]) == {10, 11}
+
+
+def test_resolve_cohort_none_returns_nonteen_plus_gated_teens():
+    from api.utils.session_metrics import resolve_cohort_session_ids
+
+    s = {
+        10: _sess(10, "main", "2025-06-15 07:00:00.000Z", "2025-07-05 07:00:00.000Z"),
+        16: _sess(16, "main", "2025-07-20 07:00:00.000Z", "2025-08-02 07:00:00.000Z"),
+        11: _sess(11, "quest", "2025-06-20 07:00:00.000Z", "2025-07-03 07:00:00.000Z"),
+        12: _sess(12, "scit", "2025-06-08 07:00:00.000Z", "2025-07-04 07:00:00.000Z"),
+        13: _sess(13, "tli", "2025-07-11 07:00:00.000Z", "2025-08-03 07:00:00.000Z"),
+        14: _sess(14, "scit", "2025-09-12 07:00:00.000Z", "2025-09-15 07:00:00.000Z"),  # fall noise
+    }
+    assert resolve_cohort_session_ids(s, None) == {10, 16, 11, 12, 13}

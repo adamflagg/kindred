@@ -107,6 +107,30 @@ def is_summer_teen_session(session: Any, window: tuple[str, str] | None) -> bool
     return s_start <= win_end and s_end >= win_start
 
 
+def resolve_cohort_session_ids(sessions: dict[int, Any], requested_types: list[str] | None) -> set[int]:
+    """Resolve requested session types to valid session cm_ids for a year.
+
+    Non-teen types pass on type membership alone. Teen types (scit/tli) are
+    additionally summer-window-gated via is_summer_teen_session so off-season
+    rows (fall Family-Camp CIT, year-long Teen Interns, Feb L.A. Trip) are excluded.
+    requested_types=None means "all summer cohorts" (non-teen displayable + gated teens).
+    """
+    window = get_summer_window(sessions)
+    result: set[int] = set()
+    for cm_id, s in sessions.items():
+        stype = getattr(s, "session_type", None)
+        if requested_types is not None and stype not in requested_types:
+            continue
+        if stype in SUMMER_TEEN_TYPES:
+            if not is_summer_teen_session(s, window):
+                continue
+        elif requested_types is None and stype not in DISPLAY_SESSION_TYPES:
+            # "all summer" only spans displayable summer types + gated teens
+            continue
+        result.add(int(cm_id))
+    return result
+
+
 def get_session_from_expand(record: Any) -> Any:
     """Extract session from a record's PocketBase expand dict.
 
