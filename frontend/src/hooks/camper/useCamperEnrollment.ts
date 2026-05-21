@@ -161,8 +161,8 @@ export function useCamperEnrollment(
 
       // Sort: enrolled first, then by session type priority
       allCampers.sort((a, b) => {
-        const aType = (a.expand?.session as { session_type?: string } | undefined)?.session_type
-        const bType = (b.expand?.session as { session_type?: string } | undefined)?.session_type
+        const aType = (a.expand.session as { session_type?: string } | undefined)?.session_type
+        const bType = (b.expand.session as { session_type?: string } | undefined)?.session_type
         return sortEnrolledFirst(a.attendee_status, aType, b.attendee_status, bType)
       })
 
