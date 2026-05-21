@@ -594,7 +594,10 @@ class DirectBunkingSolver:
         # Stream 4 (#1382): boost reciprocated bunk_with pairs. Always on;
         # set to 1.0 to disable in-place without removing the code path.
         mutual_request_boost = self.config.get_float("objective.mutual_request_boost", default=2.0)
-        mutual_bunk_with_pairs = compute_mutual_bunk_with_pairs(self.input.requests_by_person)
+        # #1561: feed possible_requests so an impossible reciprocal (e.g.
+        # self_conflict on B's side, malformed B→A) doesn't register (A, B)
+        # as mutual and falsely apply the 2x boost to A→B.
+        mutual_bunk_with_pairs = compute_mutual_bunk_with_pairs(self.possible_requests)
 
         for person_cm_id, request_satisfactions in person_request_satisfaction.items():
             if not request_satisfactions:
