@@ -32,8 +32,12 @@ reviews:
       mode: "off"
 
   # We don't open drafts (see CLAUDE.md global-preferences). No need to auto-review them.
+  # Default behavior is to only auto-review PRs targeting the default branch — opt in to
+  # all base branches so stacked PRs (e.g. `feature/foo` → `feature/foo-parent`) get reviews.
   auto_review:
     drafts: false
+    base_branches:
+      - ".*"
 
   # Workflow surfacing — these earn their space on this repo.
   related_issues: true
