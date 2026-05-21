@@ -96,8 +96,8 @@ interface BunkGraphMetrics {
 interface BunkGraphData {
   bunk_cm_id: number
   bunk_name: string
-  nodes: GraphNode[]
-  edges: GraphEdge[]
+  readonly nodes: readonly GraphNode[]
+  readonly edges: readonly GraphEdge[]
   metrics: BunkGraphMetrics
   health_score: number
 }
