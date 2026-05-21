@@ -27,7 +27,7 @@ type BunkArea = 'all' | 'boys' | 'girls' | 'all-gender'
 
 interface LockGroupsHubProps {
   groups: LockedGroupsResponse[]
-  membersByGroup: Record<string, ExpandedMember[]>
+  membersByGroup: Partial<Record<string, ExpandedMember[]>>
   pendingCampers: Camper[]
   selectedArea: BunkArea
   campers: Camper[] // All campers - used for looking up gender/session data

@@ -335,17 +335,10 @@ function LockGroupPanel({
 
   // Group members by group ID. Memoized so its object identity is stable
   // across renders — sortedGroups and filteredGroups depend on it.
-  const membersByGroup = useMemo<Record<string, ExpandedMember[]>>(() => {
-    return allMembers.reduce<Record<string, ExpandedMember[]>>(
-      (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
-        const groupId = member.group
-        acc[groupId] ??= []
-        acc[groupId].push(member)
-        return acc
-      },
-      {}
-    )
-  }, [allMembers])
+  const membersByGroup = useMemo(
+    () => Object.groupBy(allMembers, (member) => member.group),
+    [allMembers]
+  )
 
   // Helper to get age from member (year-aware for historical viewing)
   const getMemberAge = useCallback(

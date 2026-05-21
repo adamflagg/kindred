@@ -49,7 +49,7 @@ interface LockGroupContextValue {
   // Lock groups data
   groups: LockedGroupsResponse[]
   groupsLoading: boolean
-  membersByGroup: Record<string, ExpandedMember[]>
+  membersByGroup: Partial<Record<string, ExpandedMember[]>>
   membersLoading: boolean
 
   // Helper functions
@@ -161,17 +161,10 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
   })
 
   // Group members by group ID (using relation field 'group')
-  const membersByGroup = useMemo(() => {
-    return allMembers.reduce<Record<string, ExpandedMember[]>>(
-      (acc: Record<string, ExpandedMember[]>, member: ExpandedMember) => {
-        const groupId = member.group
-        acc[groupId] ??= []
-        acc[groupId].push(member)
-        return acc
-      },
-      {}
-    )
-  }, [allMembers])
+  const membersByGroup = useMemo(
+    () => Object.groupBy(allMembers, (member) => member.group),
+    [allMembers]
+  )
 
   // Create a map of camper person_id (CM ID) to group for quick lookups
   const camperToGroup = useMemo(() => {
