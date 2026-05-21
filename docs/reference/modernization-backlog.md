@@ -241,7 +241,7 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 | 5 | `✓ shipped #1589` | 3a#6 | `refactor(frontend): Object.groupBy for LockGroup membersByGroup` (2 sites; needs #1) |
 | 6 | `skipped (retired — FP)` | 3a#5 | `refactor(frontend): error cause chaining on catch-rethrow` — retired, see Retired table (0 wrap-rethrow-without-cause sites) |
 | 7 | `✓ shipped #1591` | 3a#9 | `refactor(frontend): satisfies on config/route maps` (targeted) |
-| 8 | `next` | 3a#8 | `refactor(frontend): readonly on cache/store/API types` (type-level, large surface; split per-shape — `graph.ts` slice first, `app-types.ts` follow-up) |
+| 8 | `PR open #1592` (graph.ts slice) | 3a#8 | `refactor(frontend): readonly on cache/store/API types` (type-level, large surface; split per-shape — `graph.ts` slice = #1592, `app-types.ts` composites still open) |
 | 9 | | 3a#7 | `refactor(frontend): React Query queryOptions + skipToken` (HIGH value, largest/most semantic — split as needed) |
 
 Ranking is easiest→hardest with the unblocker (#1) first per Part B's tie-breaker. The HIGH-impact-but-large rows (error cause, React Query) sit later because they carry test/semantic surface, not because they're low value.
