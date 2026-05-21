@@ -6,6 +6,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
+from api.services.metrics_repository import MetricsRepository
+from api.services.session_availability_service import SessionAvailabilityService
 from api.utils.validators import check_duration_session_exclusive
 from bunking.auth_middleware import AuthUser, get_current_user
 from bunking.logging_config import get_logger
@@ -40,9 +42,6 @@ async def get_session_availability(
     and availability status (open/limited/waitlist).
     """
     check_duration_session_exclusive(duration, session_cm_id)
-
-    from api.services.metrics_repository import MetricsRepository
-    from api.services.session_availability_service import SessionAvailabilityService
 
     type_filter = session_types.split(",") if session_types else None
     repository = MetricsRepository(pb)

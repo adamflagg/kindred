@@ -6,6 +6,7 @@ summer enrollment metrics across registration and retention services.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 # Session types for UI display: session dropdowns, session breakdown charts
@@ -219,9 +220,9 @@ def get_session_length_category(start_date: str, end_date: str) -> str:
     - 4-week+: 22+ days
     - unknown: missing or invalid dates
     """
-    from datetime import datetime
-
-    from api.services.reconstruction import parse_date_only
+    from api.services.reconstruction import (  # noqa: PLC0415 - circular: reconstruction imports session_metrics at top-level
+        parse_date_only,
+    )
 
     if not start_date or not end_date:
         return "unknown"

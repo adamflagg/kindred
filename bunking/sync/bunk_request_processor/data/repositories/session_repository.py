@@ -4,6 +4,7 @@ Provides methods to query camp session data and find related sessions."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
@@ -278,7 +279,5 @@ async def get_related_session_ids_async(session_cm_id: int, pb_client: PocketBas
     Returns:
         List of all related session CampMinder IDs (including the original)
     """
-    import asyncio
-
     repo = SessionRepository(pb_client)
     return await asyncio.to_thread(repo.get_related_session_ids, session_cm_id)

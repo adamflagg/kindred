@@ -46,6 +46,7 @@ from .constraints.parent_paramount import add_must_satisfy_one_request_constrain
 from .feasibility import RequestValidationSummary
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
+from .impossibility import validate_impossibility
 from .logging import ConstraintLogger
 from .observability import (
     _bucket_soft_constraint_violations,
@@ -282,8 +283,6 @@ class DirectBunkingSolver:
         self.mp_set_entirely_impossible, and self.request_validation_summary
         from the structured report.
         """
-        from bunking.solver.impossibility import validate_impossibility
-
         # Initialize per-camper dicts (existing API surface)
         for person_cm_id in self.input.requests_by_person:
             self.possible_requests[person_cm_id] = []

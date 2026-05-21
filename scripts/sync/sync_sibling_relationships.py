@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -34,8 +35,6 @@ class SiblingRelationshipsSyncService(BaseSyncService):
 
     def _rate_limit(self) -> None:
         """Rate limit helper for CampMinder API calls."""
-        import time
-
         time.sleep(0.1)  # Simple rate limiting
 
     def print_summary(self) -> None:

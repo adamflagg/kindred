@@ -17,6 +17,7 @@ from ...shared import parse_date
 from ...shared.constants import ACTIVE_ENROLLMENT_STATUSES, ENROLLED_STATUS_ID, PENDING_ENROLLMENT_STATUSES
 from ..pocketbase_wrapper import PocketBaseWrapper
 from .person_repository import PersonRepository
+from .session_repository import VALID_BUNKING_SESSION_TYPES
 
 logger = get_logger(__name__)
 
@@ -232,8 +233,6 @@ class AttendeeRepository:
         Uses get_full_list to handle campers enrolled in multiple sessions
         (e.g., summer session + family camp) without per_page truncation.
         """
-        from .session_repository import VALID_BUNKING_SESSION_TYPES
-
         try:
             # Build OR clause instead of IN to avoid encoding issues
             # DB field is person_id, not person_cm_id
@@ -311,8 +310,6 @@ class AttendeeRepository:
         Mirrors `_bulk_get_sessions_chunk` but appends instead of overwriting,
         so multi-enrolled campers get every bunking session returned.
         """
-        from .session_repository import VALID_BUNKING_SESSION_TYPES
-
         try:
             or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]
             or_clause = " || ".join(or_conditions)
@@ -371,8 +368,6 @@ class AttendeeRepository:
 
     def _bulk_get_enrollment_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, EnrollmentInfo]:
         """Get enrollment info for a single chunk of person IDs."""
-        from .session_repository import VALID_BUNKING_SESSION_TYPES
-
         try:
             or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]
             or_clause = " || ".join(or_conditions)

@@ -17,7 +17,10 @@ from api.services.comparison_service import ComparisonService
 from api.services.day1_service import Day1Service
 from api.services.drilldown_service import DrilldownService
 from api.services.forecast_service import ForecastService
+from api.services.geo_service import clear_person_id_cache
 from api.services.historical_service import HistoricalService
+from api.services.metrics_repository import MetricsRepository
+from api.services.metrics_sql_repository import MetricsSQLRepository
 from api.services.registration_service import RegistrationService
 from api.services.retention_service import RetentionService
 from api.services.retention_trends_service import RetentionTrendsService
@@ -51,11 +54,7 @@ def _create_repository() -> Any:
     Falls back to PocketBase HTTP API when disabled.
     """
     if os.environ.get("METRICS_SQL_ENABLED", "true").lower() == "true":
-        from api.services.metrics_sql_repository import MetricsSQLRepository
-
         return MetricsSQLRepository()
-    from api.services.metrics_repository import MetricsRepository
-
     return MetricsRepository(pb)
 
 
@@ -628,8 +627,6 @@ async def invalidate_metrics_cache() -> dict[str, int]:
     Geo's _PERSON_ID_CACHE piggybacks on the same signal — CampMinder sync
     changes attendee status_id, which feeds _fetch_active_person_pb_ids.
     """
-    from api.services.geo_service import clear_person_id_cache
-
     cleared = metrics_cache.invalidate_all()
     clear_person_id_cache()
     return {"cleared": cleared}

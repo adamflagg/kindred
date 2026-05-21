@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,6 +18,7 @@ from pocketbase.errors import ClientResponseError
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
 from bunking.logging_config import get_logger
+from bunking.solver.feasibility import localize_hard_mso_infeasibility
 from pocketbase import PocketBase
 
 from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
@@ -227,8 +229,6 @@ async def run_solver_task_v2(
                 # If parent_paramount is the cause, localize the conflict to
                 # specific campers (see docs/architecture/solver-internals.md).
                 if isinstance(cause, str) and "parent_paramount" in cause:
-                    from bunking.solver.feasibility import localize_hard_mso_infeasibility
-
                     iis = await asyncio.to_thread(
                         localize_hard_mso_infeasibility,
                         solver_input,
@@ -335,8 +335,6 @@ async def run_solver_task_v2(
             logger.info(f"Persisted PocketBase record: {pb_record.id}")
         except Exception as pb_error:
             logger.error(f"Failed to save to PocketBase: {type(pb_error).__name__}: {pb_error}")
-            import traceback
-
             logger.error(f"Traceback: {traceback.format_exc()}")
 
         logger.info(f"Solver run {run_id} completed successfully")

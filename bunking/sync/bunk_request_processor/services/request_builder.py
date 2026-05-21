@@ -16,6 +16,7 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
+from ..disposition.disposition_rules import determine_disposition
 from ..processing.first_request_detector import detect_first_request
 from ..shared.constants import SourceField
 
@@ -252,8 +253,6 @@ class RequestBuilder:
             status (#1406). Unresolved names (other request types) return (PENDING, "").
             Resolved matches go through disposition rules (business gates + quality).
         """
-        from ..disposition.disposition_rules import determine_disposition
-
         age_direction = parsed_req.age_preference.value if parsed_req.age_preference else None
 
         # AGE_PREFERENCE is resolution-independent: disposition_rules._age_preference_rules

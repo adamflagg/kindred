@@ -20,6 +20,7 @@ from .ai_types import (
     ParsedResponse,
     TokenUsage,
 )
+from .openai_provider import OpenAIProvider
 
 logger = get_logger(__name__)
 
@@ -163,8 +164,6 @@ class ProviderFactory:
 
         # Use OpenAI SDK provider with Pydantic structured outputs
         if provider_type == "openai":
-            from .openai_provider import OpenAIProvider
-
             if not config.api_key:
                 raise ValueError("API key is required for OpenAI provider")
             return OpenAIProvider(

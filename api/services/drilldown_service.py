@@ -7,10 +7,13 @@ individual attendee records instead of aggregated counts.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
+from api.services.cancellation_service import CANCELLED_STATUSES
 from api.services.extractors import filter_aged_out_attendees
+from api.services.waitlist_service import DECLINED_STATUSES, SUMMER_SESSION_TYPES
 from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,
@@ -154,8 +157,6 @@ class DrilldownService:
         Returns:
             List of DrilldownAttendee records matching the criteria.
         """
-        import asyncio
-
         # Default status filter
         if status_filter is None:
             status_filter = ["enrolled"]
@@ -500,8 +501,6 @@ class DrilldownService:
         Returns:
             List of DrilldownAttendee records from the base year.
         """
-        import asyncio
-
         # Fetch base year + compare year attendees and persons in parallel
         base_attendees, compare_attendees, persons = await asyncio.gather(
             self.repo.fetch_attendees(year, status_filter),
@@ -583,8 +582,6 @@ class DrilldownService:
         Returns:
             List of DrilldownAttendee records from the base year.
         """
-        import asyncio
-
         base_attendees, compare_attendees, persons = await asyncio.gather(
             self.repo.fetch_attendees(year, status_filter),
             self.repo.fetch_attendees(compare_year, ["enrolled"]),
@@ -779,10 +776,6 @@ class DrilldownService:
         Returns:
             List of DrilldownAttendee records.
         """
-        import asyncio
-
-        from api.services.waitlist_service import DECLINED_STATUSES
-
         persons = await self.repo.fetch_persons(year)
 
         if breakdown_type in ("waitlist_no_enrollment", "waitlist_has_enrollment", "waitlist_total"):
@@ -804,8 +797,6 @@ class DrilldownService:
             new_statuses = ["enrolled"]
         else:
             new_statuses = list(DECLINED_STATUSES)
-
-        from api.services.waitlist_service import SUMMER_SESSION_TYPES
 
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
@@ -923,10 +914,6 @@ class DrilldownService:
         Fetches waitlisted + enrolled attendees and partitions by enrollment status.
         For waitlist_total, returns all waitlisted (UC1 + UC2 combined).
         """
-        import asyncio
-
-        from api.services.waitlist_service import SUMMER_SESSION_TYPES
-
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
         waitlisted_attendees, enrolled_attendees = await asyncio.gather(
@@ -1012,8 +999,6 @@ class DrilldownService:
         breakdown_value format: "session_cm_id:gender[:grade]"
         Examples: "1001:F", "2001:", "1001:F:6"
         """
-        import asyncio
-
         # Parse "session_cm_id:gender[:grade]" format
         parts = breakdown_value.split(":")
         try:
@@ -1030,8 +1015,6 @@ class DrilldownService:
         )
 
         # Build set of valid session cm_ids for filtering
-        from api.services.waitlist_service import SUMMER_SESSION_TYPES
-
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
         summer_sessions = await self.repo.fetch_sessions(year, effective_types)
         summer_session_ids = set(summer_sessions.keys())
@@ -1152,10 +1135,6 @@ class DrilldownService:
         all_waitlisted_groups BEFORE session filtering and also fetches enrolled
         attendees for the enrolled_sessions column.
         """
-        import asyncio
-
-        from api.services.waitlist_service import SUMMER_SESSION_TYPES
-
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
         waitlisted_attendees, enrolled_attendees, persons = await asyncio.gather(
@@ -1232,10 +1211,6 @@ class DrilldownService:
         Fetches cancelled attendees and cross-references with status history
         and enrolled attendees to partition by cancellation category.
         """
-        import asyncio
-
-        from api.services.cancellation_service import CANCELLED_STATUSES, SUMMER_SESSION_TYPES
-
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
 
         # Re-enrolled is a special case: these are currently enrolled campers
@@ -1336,10 +1311,6 @@ class DrilldownService:
         Re-enrolled campers are currently enrolled and have a status history
         transition from a cancelled status back to enrolled.
         """
-        import asyncio
-
-        from api.services.cancellation_service import CANCELLED_STATUSES
-
         # Fetch enrolled attendees, persons, and status history for each cancelled status
         enrolled_attendees: list[Any]
         persons: dict[int, Any]

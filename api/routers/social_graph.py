@@ -14,6 +14,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
+import networkx as nx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
@@ -268,8 +269,6 @@ async def get_session_social_graph(
         # Calculate metrics if requested
         metrics = {}
         if include_metrics:
-            import networkx as nx
-
             if len(graph) > 0:
                 metrics = {
                     "density": nx.density(graph),
@@ -316,8 +315,6 @@ async def get_session_social_graph(
                         warnings.append(f"Friend group {comm_id} is split across {len(member_bunk_ids)} bunks")
 
         # Calculate layout positions if requested
-        import networkx as nx
-
         layout_positions = None
         if layout != "none" and len(graph) > 0:
             if layout == "force":
@@ -545,8 +542,6 @@ async def get_bunk_social_graph(
         logger.info(f"Final edges being sent to frontend: {edge_type_summary}, total={len(edges)}")
 
         # Calculate bunk-specific metrics
-        import networkx as nx
-
         isolated_count = len([n for n in bunk_graph.nodes() if bunk_graph.degree(n) == 0])
         # Calculate density manually for directed graphs
         n = len(bunk_graph)

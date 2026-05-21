@@ -15,6 +15,8 @@ from typing import Any
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
+from .metrics_sql_connection import get_connection
+
 logger = get_logger(__name__)
 
 
@@ -32,8 +34,6 @@ class MetricsSQLRepository:
         if conn is not None:
             self._conn = conn
         else:
-            from .metrics_sql_connection import get_connection
-
             self._conn = get_connection()
 
     # ------------------------------------------------------------------

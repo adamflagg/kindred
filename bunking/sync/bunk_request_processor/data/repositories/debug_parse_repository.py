@@ -6,6 +6,7 @@ Phase 1 parsing output separately from production bunk_requests.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
@@ -51,8 +52,6 @@ def _normalize_content_for_matching(content: str, field_type: str | None) -> str
 
     # Step 2: Collapse multiple consecutive spaces to single space
     # (preserves newlines and other whitespace characters)
-    import re
-
     text = re.sub(r" {2,}", " ", text)
 
     return text
