@@ -282,12 +282,17 @@ class DirectBunkingSolver:
         self.mp_set_entirely_impossible, and self.request_validation_summary
         from the structured report.
         """
-        from bunking.solver.impossibility import validate_impossibility
-
         # Initialize per-camper dicts (existing API surface)
         for person_cm_id in self.input.requests_by_person:
             self.possible_requests[person_cm_id] = []
             self.impossible_requests[person_cm_id] = []
+
+        # Imported lazily, not at module top, so tests can monkeypatch
+        # bunking.solver.impossibility.validate_impossibility — a module-level
+        # binding would capture the original before the patch is applied.
+        from .impossibility import (  # noqa: PLC0415 - test monkeypatch needs late binding
+            validate_impossibility,
+        )
 
         # Reuse a precomputed report when the diagnostic probe loops supplied
         # one — the request data is identical across probes, so re-running the

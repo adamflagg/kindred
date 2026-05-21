@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import warnings
 from collections.abc import Callable
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     )
 
 from ..conflict.conflict_detector import ConflictDetector
+from ..core.constants import CONFIDENCE_THRESHOLDS
 from ..core.models import (
     AgePreference,
     BunkRequest,
@@ -28,7 +30,10 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
+from ..data.cache import CacheManager, CacheMonitor, create_cache_monitor
 from ..data.cache.temporal_name_cache import TemporalNameCache
+from ..data.repositories.attendee_repository import AttendeeRepository
+from ..data.repositories.person_repository import PersonRepository
 from ..data.repositories.request_repository import RequestRepository
 from ..data.repositories.session_repository import SessionRepository
 from ..data.repositories.source_link_repository import SourceLinkRepository
@@ -45,11 +50,19 @@ from ..debug.trace_models import (
     ReciprocalSignal,
     SelfReferenceSignal,
 )
+from ..integration.ai_service import AIServiceConfig
 from ..integration.batch_processor import BatchProcessor
 from ..integration.provider_factory import ProviderFactory
+from ..name_resolution.filters.spread_filter import SpreadFilter
+from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
+from ..processing.batch_signals import detect_batch_signals
 from ..processing.deduplicator import Deduplicator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
+from ..resolution.strategies.exact_match import ExactMatchStrategy
+from ..resolution.strategies.fuzzy_match import FuzzyMatchStrategy
+from ..resolution.strategies.phonetic_match import PhoneticMatchStrategy
+from ..resolution.strategies.school_disambiguation import SchoolDisambiguationStrategy
 from ..services.context_builder import ContextBuilder
 from ..services.historical_verification_service import HistoricalVerificationService
 from ..services.phase1_parse_service import Phase1ParseService
@@ -300,8 +313,6 @@ class RequestOrchestrator:
         Returns:
             AI configuration dict with provider, model, thresholds, etc.
         """
-        from bunking.sync.bunk_request_processor.core.constants import CONFIDENCE_THRESHOLDS
-
         loader = ConfigLoader.get_instance()
         config = loader.get_ai_config()
 
@@ -660,8 +671,6 @@ class RequestOrchestrator:
 
     def _init_cache_system(self) -> None:
         """Initialize cache manager, monitor, and temporal name cache."""
-        from ..data.cache import CacheManager, CacheMonitor, create_cache_monitor
-
         cache_config = self.ai_config.get("cache", {})
         self.cache_manager = CacheManager(cache_config)
 
@@ -679,16 +688,11 @@ class RequestOrchestrator:
 
     def _init_repositories(self) -> None:
         """Initialize data repositories."""
-        from ..data.repositories.attendee_repository import AttendeeRepository
-        from ..data.repositories.person_repository import PersonRepository
-
         self._attendee_repo = AttendeeRepository(self.pb)
         self._person_repo = PersonRepository(self.pb, name_cache=self.temporal_name_cache)
 
     def _init_ai_provider(self) -> None:
         """Initialize AI provider, context builder, and batch processor."""
-        from ..integration.ai_service import AIServiceConfig
-
         # Create AI provider using factory
         provider_factory = ProviderFactory()
         ai_service_config = AIServiceConfig(
@@ -725,8 +729,6 @@ class RequestOrchestrator:
         )
 
         # Create spread filter from MAX_AGE_SPREAD_MONTHS / MAX_UNIQUE_GRADES_PER_BUNK constants
-        from ..name_resolution.filters.spread_filter import SpreadFilter
-
         spread_enabled = self.ai_config.get("spread_validation", {}).get("enabled", True)
         spread_filter: SpreadFilter | None
         if spread_enabled:
@@ -760,11 +762,6 @@ class RequestOrchestrator:
 
     def _init_resolution_pipeline(self) -> None:
         """Initialize resolution pipeline with strategies."""
-        from ..resolution.strategies.exact_match import ExactMatchStrategy
-        from ..resolution.strategies.fuzzy_match import FuzzyMatchStrategy
-        from ..resolution.strategies.phonetic_match import PhoneticMatchStrategy
-        from ..resolution.strategies.school_disambiguation import SchoolDisambiguationStrategy
-
         # Extract resolution config from PocketBase-loaded config
         resolution_config = self.ai_config.get("confidence_scoring", {}).get("resolution", {})
         fuzzy_config = resolution_config.get("fuzzy", {})
@@ -1315,9 +1312,6 @@ class RequestOrchestrator:
         self._phase3_indices = phase3_processed
 
         # --- Batch Signal Detection (reciprocal + household co-request) ---
-        from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
-        from ..processing.batch_signals import detect_batch_signals
-
         batch_requests = []
         for pr, resolution_list in resolution_results:
             if not pr.parsed_requests or not pr.parse_request:
@@ -2297,8 +2291,6 @@ class RequestOrchestrator:
         # Combine source_fields arrays
         existing_source_fields = getattr(existing, "source_fields", None) or []
         if isinstance(existing_source_fields, str):
-            import json
-
             try:
                 existing_source_fields = json.loads(existing_source_fields)
             except json.JSONDecodeError:

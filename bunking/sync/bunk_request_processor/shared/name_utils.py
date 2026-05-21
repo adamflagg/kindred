@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
+import jellyfish
+
 
 class ParsedName(NamedTuple):
     """Parsed name components."""
@@ -70,8 +72,6 @@ def last_name_jw_raw_score(search_last: str, db_last: str) -> float:
     Applies normalization (Mc/Mac prefix, apostrophes, case) then JW, plus
     hyphen-split parts for compound names. Returns float in [0.0, 1.0].
     """
-    import jellyfish
-
     norm_search = _normalize_last_name(search_last)
     norm_db = _normalize_last_name(db_last)
 

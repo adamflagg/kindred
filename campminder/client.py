@@ -1,8 +1,12 @@
 """CampMinder API client for fetching camper data and bunking requests."""
 
+import base64
 import json
+import logging
 import os
+import re
 import time
+import traceback
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -95,8 +99,6 @@ class CampMinderClient:
                 self.jwt_token = data["Token"]
 
                 # Parse token expiry from JWT payload if available, otherwise default to 1 hour
-                import base64
-
                 try:
                     # JWT tokens have format: header.payload.signature
                     # Payload contains 'exp' field with expiry timestamp
@@ -126,8 +128,6 @@ class CampMinderClient:
                         error_data = e.response.json()
                         if "message" in error_data and "Try again in" in error_data["message"]:
                             # Extract seconds from message like "Rate limit is exceeded. Try again in 12 seconds."
-                            import re
-
                             match = re.search(r"Try again in (\d+) seconds", error_data["message"])
                             if match:
                                 wait_time = int(match.group(1)) + 1  # Add 1 second buffer
@@ -135,8 +135,6 @@ class CampMinderClient:
                         pass
 
                     if retry < max_retries - 1:
-                        import logging
-
                         logger = logging.getLogger(__name__)
                         logger.warning(
                             f"Rate limit hit during authentication (attempt {retry + 1}/{max_retries}). Waiting {wait_time}s..."
@@ -189,8 +187,6 @@ class CampMinderClient:
                         self.jwt_expiry = cache["expiry"]
                         # Use logger if available, otherwise print
                         try:
-                            import logging
-
                             logger = logging.getLogger(__name__)
                             logger.info(
                                 f"Loaded cached CampMinder token (expires in {int((cache['expiry'] - time.time()) / 60)} minutes)"
@@ -392,8 +388,6 @@ class CampMinderClient:
             else:
                 return []
         except Exception:
-            import traceback
-
             traceback.print_exc()
             return []
 

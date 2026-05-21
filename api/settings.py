@@ -7,6 +7,7 @@ and sensible defaults. Settings are loaded once at startup and cached.
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -39,8 +40,6 @@ def _allow_auth_bypass() -> bool:
 
     The dual-signal CI requirement prevents accidental bypass in production.
     """
-    import os
-
     if os.getenv("ALLOW_AUTH_BYPASS", "").lower() in ("true", "1", "yes"):
         return True
     return os.getenv("CI") == "true" and os.getenv("GITHUB_ACTIONS") == "true"

@@ -6,10 +6,13 @@ batch at the end via flush(). NoOpTraceCollector does nothing (production defaul
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from bunking.logging_config import get_logger
 
+from .retention import MAX_AGE_DAYS, MAX_RUNS, cleanup_old_runs
 from .trace_models import (
     BatchSignalsTrace,
     ConflictDetectionTrace,
@@ -210,12 +213,8 @@ class TraceCollector:
         Note: PocketBase Python SDK is synchronous, so PB calls are wrapped
         in asyncio.to_thread() to avoid blocking the event loop.
         """
-        import asyncio
-
         if not self._traces:
             return ""
-
-        from .retention import cleanup_old_runs
 
         # 1. Create run record
         run_meta = run_metadata or {}
@@ -296,15 +295,11 @@ class TraceCollector:
 
         # 4. Run retention cleanup (only if needed)
         try:
-            from .retention import MAX_AGE_DAYS, MAX_RUNS
-
             check = await asyncio.to_thread(
                 pb_client.collection("debug_pipeline_runs").get_list, 1, 1, {"sort": "created"}
             )
             needs_cleanup = check.total_items > MAX_RUNS
             if not needs_cleanup and check.items:
-                from datetime import UTC, datetime, timedelta
-
                 oldest_str = getattr(check.items[0], "created", "")
                 if oldest_str:
                     try:

@@ -24,6 +24,7 @@ from bunking.sync.bunk_request_processor.process_requests import (
     process_bunk_requests,
 )
 from bunking.sync.bunk_request_processor.shared.constants import validate_source_fields
+from pocketbase import PocketBase
 
 logger = get_logger(__name__)
 
@@ -124,8 +125,6 @@ async def run_process_requests(
         validated_fields = validate_source_fields(source_fields)
 
     # Authenticate with PocketBase
-    from pocketbase import PocketBase
-
     config = load_configuration()
     pb_client = PocketBase(config["pb_url"])
     pb_client.collection("_superusers").auth_with_password(config["pb_email"], config["pb_password"])

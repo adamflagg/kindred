@@ -6,6 +6,7 @@ testable service that uses the MetricsRepository for data access.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
 from api.schemas.metrics import (
@@ -23,6 +24,7 @@ from api.schemas.metrics import (
     RetentionMetricsResponse,
     SessionFlowItem,
 )
+from api.utils.session_aliases import get_alias_group
 from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
@@ -34,6 +36,7 @@ from api.utils.session_metrics import (
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
+    RETENTION_AGED_OUT_GRADE,
     exclude_aged_out_persons,
     extract_city,
     extract_gender,
@@ -80,8 +83,6 @@ class RetentionService:
             RetentionMetricsResponse with all breakdown metrics.
         """
         # Fetch data in parallel
-        import asyncio
-
         _results = await asyncio.gather(
             self.repo.fetch_attendees(base_year),
             self.repo.fetch_attendees(compare_year),
@@ -142,8 +143,6 @@ class RetentionService:
         aged_out_count = pre_filter_count - len(person_ids_base)
         person_ids_base_unfiltered = exclude_aged_out_persons(person_ids_base_unfiltered, persons_base)
         # Build set of aged-out person IDs for methods that iterate attendees directly
-        from .extractors import RETENTION_AGED_OUT_GRADE
-
         aged_out_person_ids = {
             pid
             for pid, person in persons_base.items()
@@ -360,8 +359,6 @@ class RetentionService:
         """
         if session_cm_id is None:
             return None, None
-
-        from api.utils.session_aliases import get_alias_group
 
         # Build name→cm_id lookup for each year
         name_to_cmid_base: dict[str, int] = {}
