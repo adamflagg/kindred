@@ -127,7 +127,7 @@ export function useCamperEnrollment(
         camper: {
           ...camper,
           birthdate: person.birthdate,
-        } as Camper & { birthdate?: string },
+        } satisfies Camper & { birthdate?: string },
         person,
       }
     },

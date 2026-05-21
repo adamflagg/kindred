@@ -567,7 +567,7 @@ export default function SessionList() {
           hasAgSessions: agSessions.length > 0,
           agSessionCount: agSessions.length,
           pendingReviewCount: pendingReviewRequests.totalItems,
-        } as SessionStatistics
+        } satisfies SessionStatistics
       },
       enabled: !!user && sessions.length > 0,
     })),
