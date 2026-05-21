@@ -46,7 +46,6 @@ from .constraints.parent_paramount import add_must_satisfy_one_request_constrain
 from .feasibility import RequestValidationSummary
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
-from .impossibility import validate_impossibility
 from .logging import ConstraintLogger
 from .observability import (
     _bucket_soft_constraint_violations,
@@ -287,6 +286,13 @@ class DirectBunkingSolver:
         for person_cm_id in self.input.requests_by_person:
             self.possible_requests[person_cm_id] = []
             self.impossible_requests[person_cm_id] = []
+
+        # Imported lazily, not at module top, so tests can monkeypatch
+        # bunking.solver.impossibility.validate_impossibility — a module-level
+        # binding would capture the original before the patch is applied.
+        from .impossibility import (  # noqa: PLC0415 - test monkeypatch needs late binding
+            validate_impossibility,
+        )
 
         # Reuse a precomputed report when the diagnostic probe loops supplied
         # one — the request data is identical across probes, so re-running the
