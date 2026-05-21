@@ -194,7 +194,7 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 | 5 | `catch (e) { throw new Error(msg) }` | `throw new Error(msg, { cause: e })` | ES2015 | ES2022 (already in lib) | **HIGH** (stack-trace fidelity) | catch-and-wrap subset of 93 `catch` blocks (`services/*`, hooks); only `useCamperMovement.ts` chains today | scope to catch-rethrow sites (NOT the 138 bare `throw`) |
 | 6 | `xs.reduce<Record<K, V[]>>((acc, x) => { acc[k].push(x) }, {})` | `Object.groupBy(xs, x => k)` | ES5 | ES2024 | LOW–MED | `components/LockGroupPanel.tsx:339`, `contexts/LockGroupContext.tsx:165` (near-duplicates) | 2 |
 | 7 | ad-hoc `useQuery({queryKey, queryFn})` + `enabled: <bool>` | `queryOptions(...)` shared defs + `skipToken` | RQ v5 | RQ v5 (in use) | **HIGH** (type-safe shared defs; `skipToken` replaces conditional `enabled`) | 103 `useQuery`/55 files, 112 `enabled:` gates, 4 `useQueries` (no `combine`) | 50+ |
-| 8 | mutable `interface`/`type` for cache/store/API shapes | `readonly` fields / `Readonly<>` | TS | TS | MEDIUM (prevents accidental mutation) | ≈1,758 type defs (735 interface + 1,023 alias); 24 `readonly` today | targeted (persisted/cached shapes only) |
+| 8 | mutable `interface`/`type` for cache/store/API shapes | `readonly` fields / `Readonly<>` | TS | TS | MEDIUM (prevents accidental mutation) | ≈1,758 type defs (735 interface + 1,023 alias); **29** `readonly` today (was 24 — counts decay). **Skip generated** (`types/pocketbase-types.ts`, `types/api-generated/`) — hand-edits lost on regen. First slice: `types/graph.ts` (`GraphData`/`Node`/`Edge`, cached in `GraphCacheService`); `types/app-types.ts` composites the remaining slice | targeted (persisted/cached shapes only); 0 in-place mutations exist today → forward-looking insurance, not a bug fix |
 | 9 | untyped / `as Type` config & route/feature maps | `… satisfies T` | TS 4.9 | TS 4.9 (in use) | MEDIUM | 4 files use it (`VelocityPage`, `CancellationVelocityPage`, `services/debug.ts`); 208 `as const` | targeted |
 
 **Two-version note:** only rows 2 and 6 carry a *compile* gate — the ES2022 `lib` doesn't expose `toSorted`/`Object.groupBy` types (hence row 1). Every other rewrite is already accepted by the current toolchain, so it's stylistic/robustness with no compile-error pressure.
@@ -227,6 +227,8 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 | `[...set].sort()` / `[...map.entries()].sort()` → `toSorted` | 10 sites (`retentionTransforms.ts` ×2, `SessionBunkHeatmap.tsx` ×2, `useVelocityChartData.ts` ×2, `useStaffRetentionData.ts`, `PdfExport/familyRows.ts`, `PostValidationResultsModal.tsx`, `PdfExport/BunkPlanReport.tsx`) | When the spread *materializes* a `Set`/`Map`/iterator (which have no `.sort()`/`.toSorted()`), the spread is **load-bearing**, not a defensive copy of an array. `[...x].toSorted()` allocates a second throwaway array; `[...x].sort()` sorts the first in place. `toSorted` is only a win over a *named Array* (`[...arr].sort()` → `arr.toSorted()`). **Lesson (#1587): grep `[\.\.\.IDENT]` is not enough — confirm IDENT is an Array, not a Set/Map/iterator; also exclude array-literal-append spreads like `[...prev, n].sort()`.** |
 | `use()` "eliminates throw-on-missing-provider wrapper" | prior HIGH row | `use(Context)` doesn't auto-throw or remove the null-guard; it only allows conditional reads. **Lesson: verify the feature's real semantics, not its reputation.** |
 | inflated counts | "100+ useContext", "~1,800 as const", "240 type defs", "only 2 lazy" | actual 13 / 208 / ≈1,758 / ≈50-lazy. **Lesson: counts decay — re-grep every pass (carried from §1/§2).** |
+| error `cause` chaining (3a#5) | prior **HIGH** row #6 — "catch-and-wrap subset of 93 catch blocks" | All 10 wrapping `catch` blocks re-throw the original verbatim (`throw error`); the lone genuine wrap (`useCamperMovement.ts:297`) **already** passes `{ cause }`. The audit conflated "93 `catch` blocks" with "catch-and-wrap-*without*-cause" — zero of the latter exist. **Lesson: `catch` count ≠ wrap-rethrow count; grep for `throw new Error(` *inside* a catch that drops the caught variable, not bare `catch (`.** |
+| `satisfies` on array/tuple literals (3a#9) | 2 sites that wouldn't flip during #1591 | `[lat, lng] as LatLng` / `[...] as VelocityViewMode[]` can't become `… satisfies T`: a `satisfies`-checked array literal **widens** to `number[]`/`string[]`, losing the tuple / literal-union element type the `as` cast asserts. `satisfies` only helps object literals that already structurally conform. Separately spun off **issue #1590** — two `as` casts masking `exactOptionalPropertyTypes` mismatches (can't flip until the underlying types are fixed). **Lesson: `satisfies` ≠ `as` for arrays/tuples — it can't narrow literal-union or tuple element types.** |
 
 ### 3c. Ranked execution order
 
@@ -234,12 +236,12 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 |---|---|---|---|
 | 1 | `✓ shipped #1585` | 3a#1 | `build(frontend): bump tsconfig target+lib to ES2024` (unblocks #3, #5) |
 | 2 | `✓ shipped #1586` | 3a#3 | `refactor(frontend): arr[len-1] → arr.at(-1)` (27 sites, no prereq) |
-| 3 | `PR open #1587` | 3a#2 | `refactor(frontend): [...].sort() → toSorted` (30 true-win sites / 22 files; Set/iterator spreads skipped — see Retired) |
-| 4 | `next` | 3a#4 | `refactor(frontend): <Context.Provider> → <Context> shorthand` (18 sites) |
-| 5 | | 3a#6 | `refactor(frontend): Object.groupBy for LockGroup membersByGroup` (2 sites; needs #1) |
-| 6 | | 3a#5 | `refactor(frontend): error cause chaining on catch-rethrow` (behavioral — TDD per Rule 3) |
-| 7 | | 3a#9 | `refactor(frontend): satisfies on config/route maps` (targeted) |
-| 8 | | 3a#8 | `refactor(frontend): readonly on cache/store/API types` (type-level, large surface) |
+| 3 | `✓ shipped #1587` | 3a#2 | `refactor(frontend): [...].sort() → toSorted` (30 true-win sites / 22 files; Set/iterator spreads skipped — see Retired) |
+| 4 | `✓ shipped #1588` | 3a#4 | `refactor(frontend): <Context.Provider> → <Context> shorthand` (18 sites) |
+| 5 | `✓ shipped #1589` | 3a#6 | `refactor(frontend): Object.groupBy for LockGroup membersByGroup` (2 sites; needs #1) |
+| 6 | `skipped (retired — FP)` | 3a#5 | `refactor(frontend): error cause chaining on catch-rethrow` — retired, see Retired table (0 wrap-rethrow-without-cause sites) |
+| 7 | `✓ shipped #1591` | 3a#9 | `refactor(frontend): satisfies on config/route maps` (targeted) |
+| 8 | `PR open #1592` (graph.ts slice) | 3a#8 | `refactor(frontend): readonly on cache/store/API types` (type-level, large surface; split per-shape — `graph.ts` slice = #1592, `app-types.ts` composites still open) |
 | 9 | | 3a#7 | `refactor(frontend): React Query queryOptions + skipToken` (HIGH value, largest/most semantic — split as needed) |
 
 Ranking is easiest→hardest with the unblocker (#1) first per Part B's tie-breaker. The HIGH-impact-but-large rows (error cause, React Query) sit later because they carry test/semantic surface, not because they're low value.
