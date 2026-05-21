@@ -6,8 +6,6 @@ Constraint modules (which add OR-Tools cost terms) and post-solve evaluators
 two paths cannot drift out of sync.
 """
 
-from __future__ import annotations
-
 from bunking.solver.penalties import (
     min_occupancy_penalty,
     min_occupancy_threshold,

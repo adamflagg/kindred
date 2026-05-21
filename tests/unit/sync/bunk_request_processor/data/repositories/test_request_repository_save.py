@@ -5,8 +5,6 @@ in the PocketBase payload — `source` is now derived from `source_field` at
 read time and the column is being dropped (#1142 Stage 4).
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.sync.bunk_request_processor.core.models import (

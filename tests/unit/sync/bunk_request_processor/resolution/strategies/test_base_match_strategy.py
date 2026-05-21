@@ -5,8 +5,6 @@ takes a `config` arg — session-adjustment values are class attributes on the
 subclasses (Fuzzy / Phonetic), with the base class providing defaults.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from typing import Any

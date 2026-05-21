@@ -12,8 +12,6 @@ Patterns to detect:
 
 All patterns should be case-insensitive and match the ENTIRE field value."""
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

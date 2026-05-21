@@ -9,8 +9,6 @@ JSON fixture that the TypeScript implementation also consumes — drift between
 the two languages will fail CI.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.utils.units import (

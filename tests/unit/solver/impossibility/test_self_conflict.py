@@ -4,8 +4,6 @@ Tests exercise the predicate in isolation (direct class instantiation) and
 through the full validate_impossibility() pipeline.
 """
 
-from __future__ import annotations
-
 from bunking.solver.constraints.self_conflict import SelfConflictImpossibility
 from bunking.solver.impossibility import _build_context, validate_impossibility
 

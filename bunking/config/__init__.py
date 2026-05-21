@@ -18,8 +18,6 @@ Usage:
     weight = config.get_float("smart_local_resolution.connection_score_weight")
 """
 
-from __future__ import annotations
-
 from .errors import (
     ConfigError,
     DatabaseUnavailableError,

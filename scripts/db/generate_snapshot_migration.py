@@ -5,8 +5,6 @@ This creates a single snapshot migration that captures all collections, fields,
 indexes, and rules in a 100% PocketBase-compliant format.
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 from datetime import datetime

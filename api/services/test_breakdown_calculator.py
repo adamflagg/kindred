@@ -4,8 +4,6 @@ These tests define the expected behavior for the generic breakdown computation
 that will eliminate 26+ duplicate patterns in metrics.py.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

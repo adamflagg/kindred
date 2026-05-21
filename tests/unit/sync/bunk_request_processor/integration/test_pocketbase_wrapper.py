@@ -5,8 +5,6 @@ Tests cover:
 2. PocketBaseWrapper - collection wrapping and delegation
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.data.pocketbase_wrapper import (

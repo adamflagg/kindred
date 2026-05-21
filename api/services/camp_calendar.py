@@ -10,8 +10,6 @@ This module is the single source of truth for:
 - Computing day/week offsets from registration anchors
 """
 
-from __future__ import annotations
-
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 

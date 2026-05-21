@@ -32,8 +32,6 @@ Avoids the mixed-grade case (has_older AND has_younger) — see
 AGE_PREF_EXPECTED_SATISFACTION's note on the solver/predicate semantic gap.
 """
 
-from __future__ import annotations
-
 from bunking.models_v2 import DirectSolverInput
 from tests.unit.solver.impossibility.conftest import (
     make_bunk,

@@ -10,8 +10,6 @@ This tests the missing functionality needed for self-reference first-name valida
             continue
         # Count same-first-name peers in same session"""
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, Mock
 
 import pytest

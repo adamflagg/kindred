@@ -6,8 +6,6 @@ after find_infeasibility_cause identifies parent_paramount as the
 cause.
 """
 
-from __future__ import annotations
-
 from bunking.config import ConfigLoader
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
 from bunking.solver import feasibility

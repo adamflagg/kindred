@@ -10,8 +10,6 @@ Shared prompt partials can be defined in config/prompts/_partials/*.txt
 and are automatically available as {filename_without_extension} placeholders.
 """
 
-from __future__ import annotations
-
 from functools import lru_cache
 from pathlib import Path
 

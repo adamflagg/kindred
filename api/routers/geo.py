@@ -8,8 +8,6 @@ This router provides endpoints for:
 - Managing geo overrides (CRUD)
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query

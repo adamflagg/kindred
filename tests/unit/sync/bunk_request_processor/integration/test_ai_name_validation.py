@@ -4,8 +4,6 @@ Tests that non-name targets (bunk preferences, descriptions, conditions)
 are filtered out during post-parse processing.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock

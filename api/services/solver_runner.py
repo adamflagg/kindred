@@ -5,8 +5,6 @@ This service handles running solver tasks in background.
 Main + AG sessions are automatically fetched together via get_related_session_ids.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import traceback

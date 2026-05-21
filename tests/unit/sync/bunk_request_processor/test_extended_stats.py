@@ -4,8 +4,6 @@ TDD Red Phase: These tests define the expected behavior for
 status/type/declined breakdown tracking that matches monolith observability.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

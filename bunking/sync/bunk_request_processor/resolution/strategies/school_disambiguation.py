@@ -3,8 +3,6 @@
 Uses school information to help disambiguate between multiple candidates
 with the same or similar names."""
 
-from __future__ import annotations
-
 from typing import Any, ClassVar
 
 from ...core.models import Person

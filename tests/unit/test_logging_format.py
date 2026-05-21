@@ -7,8 +7,6 @@ When LOG_COMPACT=true (default), omits timestamp and top-level source labels.
 Sub-labels (containing "/") are preserved even in compact mode.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 import os

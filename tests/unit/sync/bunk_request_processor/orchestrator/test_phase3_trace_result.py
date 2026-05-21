@@ -8,8 +8,6 @@ Issue #838: trace result was always "still_ambiguous" for unresolved Phase 3
 results; it should use rr.metadata["disambiguation_status"] when present.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.sync.bunk_request_processor.core.models import (

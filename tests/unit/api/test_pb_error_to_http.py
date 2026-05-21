@@ -14,8 +14,6 @@ The current behaviour (before the fix) is 500 for all ClientResponseError
 statuses because the global handler catches the re-raised exception.
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Iterator
 from pathlib import Path

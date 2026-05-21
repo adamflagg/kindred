@@ -13,8 +13,6 @@ Tests:
 - Missing file errors
 """
 
-from __future__ import annotations
-
 import sqlite3
 import types
 from pathlib import Path

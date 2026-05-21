@@ -8,8 +8,6 @@ Covers:
   raw exception text. Unexpected exceptions bubble to the global handler (500).
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any

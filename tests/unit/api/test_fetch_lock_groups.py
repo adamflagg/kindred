@@ -1,7 +1,5 @@
 """Tests for fetch_lock_groups function in data_fetcher."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

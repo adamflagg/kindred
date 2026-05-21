@@ -18,8 +18,6 @@ those parametrize rows exercise only the Python evaluators, not OR-Tools
 alignment.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -21,8 +21,6 @@ exports, and the new delete migration so a future regression that reintroduces
 any of the deleted keys or the orphan function fails fast.
 """
 
-from __future__ import annotations
-
 import inspect
 import re
 from pathlib import Path

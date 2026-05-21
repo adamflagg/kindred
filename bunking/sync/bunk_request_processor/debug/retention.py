@@ -8,8 +8,6 @@ Dual policy (whichever triggers first):
   (summaries cascade-delete via trace relation, but traces need explicit deletion)
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime, timedelta
 from typing import Any
 

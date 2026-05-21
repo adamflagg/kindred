@@ -11,8 +11,6 @@ This hook pre-empts that generic message with the actionable group + age
 spread.
 """
 
-from __future__ import annotations
-
 from bunking.models_v2 import DirectSolverInput
 
 from .impossibility.conftest import make_bunk, make_input, make_person

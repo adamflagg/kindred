@@ -1,7 +1,5 @@
 """Tests for GET /api/debug/original-requests/by-camper/{cm_id} endpoint."""
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

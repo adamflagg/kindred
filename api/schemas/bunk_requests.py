@@ -2,8 +2,6 @@
 Pydantic schemas for bunk request endpoints.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel
 
 

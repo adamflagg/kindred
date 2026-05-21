@@ -3,8 +3,6 @@
 All config-related exceptions for fast-fail behavior.
 """
 
-from __future__ import annotations
-
 
 class ConfigError(Exception):
     """Base exception for configuration errors."""

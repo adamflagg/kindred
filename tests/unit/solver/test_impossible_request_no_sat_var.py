@@ -14,8 +14,6 @@ Phase B switches the loop source to ``self.possible_requests`` (which
 pinned-to-0 var and freeing the slot.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from typing import Any, ClassVar
 from unittest.mock import MagicMock

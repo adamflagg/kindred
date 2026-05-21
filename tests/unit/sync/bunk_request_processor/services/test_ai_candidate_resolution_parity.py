@@ -13,8 +13,6 @@
 These three gaps are tracked in MONOLITH_PARITY_TRACKER.md:
 - Line 69: resolve_target_name_with_confidence REMAINING GAPS"""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import Mock
 

@@ -4,8 +4,6 @@ These tests define the expected behavior for the drilldown service that enables
 chart drill-down functionality: clicking a chart segment shows matching campers.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock

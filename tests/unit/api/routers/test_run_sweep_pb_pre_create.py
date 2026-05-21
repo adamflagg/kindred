@@ -9,8 +9,6 @@ when no child has completed yet, still finds rows to derive in-flight state
 from.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager

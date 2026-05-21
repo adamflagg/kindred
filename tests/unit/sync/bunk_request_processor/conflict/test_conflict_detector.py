@@ -2,8 +2,6 @@
 
 Specifically tests the session mismatch detection logic."""
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.conflict.conflict_detector import (

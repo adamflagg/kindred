@@ -5,8 +5,6 @@ Verifies that:
 2. detected_staff_names set is built from all bunking_notes and internal_notes
 3. The set is used for filtering during resolution (tested elsewhere)"""
 
-from __future__ import annotations
-
 from typing import Any, cast
 from unittest.mock import Mock, patch
 

@@ -5,8 +5,6 @@ Debug tab. Extracted from `direct_solver.py` (issue #1388) so Tier 1/Tier 2
 metric helpers have a focused home as the dashboard grows.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from typing import Any
 

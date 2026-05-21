@@ -9,8 +9,6 @@ To recapture after an intentional shape change:
     RECAPTURE=1 uv run pytest tests/unit/bunking/satisfaction/test_api_shape_parity.py
 """
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path

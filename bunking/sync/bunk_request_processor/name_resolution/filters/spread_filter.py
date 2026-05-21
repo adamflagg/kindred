@@ -3,8 +3,6 @@
 Filters potential matches based on grade and age spreads to ensure
 only age-appropriate candidates are considered."""
 
-from __future__ import annotations
-
 from ...core.models import Camper, Person
 
 

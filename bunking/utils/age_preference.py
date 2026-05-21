@@ -8,8 +8,6 @@ This module provides a single source of truth for this logic in Python.
 The TypeScript equivalent is in frontend/src/utils/agePreferenceSatisfaction.ts
 """
 
-from __future__ import annotations
-
 from collections import Counter
 
 

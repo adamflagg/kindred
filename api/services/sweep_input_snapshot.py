@@ -8,8 +8,6 @@ comparisons.
 Mirrors the input-fetching flow in ``solver_runner.run_solver_task_v2``.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.models_v2 import DirectSolverInput

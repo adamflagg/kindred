@@ -4,8 +4,6 @@ Tests for RepositoryFactory - centralized repository instantiation.
 TDD: These tests define the expected behavior before implementation.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock, patch
 
 import pytest

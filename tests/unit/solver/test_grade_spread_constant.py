@@ -14,8 +14,6 @@ Phase 2 collapsed four sources of the ``max unique grades per bunk`` value into
 These tests make sure no consumer drifts back to reading a config key.
 """
 
-from __future__ import annotations
-
 import inspect
 
 import pytest

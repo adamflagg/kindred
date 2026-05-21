@@ -4,8 +4,6 @@ Constraint Logger - Logging infrastructure for the solver.
 Tracks constraints added, violations, and solver progress.
 """
 
-from __future__ import annotations
-
 import json
 from collections import defaultdict
 from datetime import UTC, datetime

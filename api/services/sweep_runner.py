@@ -8,8 +8,6 @@ Sequential — not parallel — so 4 budgets × 8 worker threads don't compete
 for cores and contaminate walltime measurements.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

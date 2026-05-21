@@ -7,8 +7,6 @@ When a not_bunk_with request targets a camper in a different session, it should
 remain possible — session boundaries already guarantee separation.
 """
 
-from __future__ import annotations
-
 import logging
 
 from bunking.config import ConfigLoader

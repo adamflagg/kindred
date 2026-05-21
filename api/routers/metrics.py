@@ -5,8 +5,6 @@ This router provides endpoints for analyzing historical registration data,
 retention rates, and year-over-year comparisons.
 """
 
-from __future__ import annotations
-
 import os
 from typing import Any, Literal
 

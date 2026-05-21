@@ -8,8 +8,6 @@ High-confidence matches (>= threshold) are auto-resolved.
 Threshold comes from constants CONFIDENCE_THRESHOLDS.resolved (0.85).
 Note: _get_auto_resolve_threshold() uses .get("valid", 0.85) for backward compat."""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 

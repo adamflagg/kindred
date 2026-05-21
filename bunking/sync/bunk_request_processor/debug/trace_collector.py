@@ -4,8 +4,6 @@ Records data at each phase via method calls. Writes to PocketBase in a single
 batch at the end via flush(). NoOpTraceCollector does nothing (production default).
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any

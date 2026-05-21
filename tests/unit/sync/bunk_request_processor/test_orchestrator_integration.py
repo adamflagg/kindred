@@ -11,8 +11,6 @@ Tests cover:
 4. Progress reporting
 5. Dry run mode"""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

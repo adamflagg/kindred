@@ -8,8 +8,6 @@ Without this rule, input like "Riley Sam" parses as two bunk_with requests
 falls through to normal disambiguation instead of silently mis-assigning.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 
 import pytest

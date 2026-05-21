@@ -12,8 +12,6 @@ Empty scope is treated as a no-op (full graph) so the same code path can serve
 unfiltered requests.
 """
 
-from __future__ import annotations
-
 from typing import Any, Literal, cast
 
 import networkx as nx

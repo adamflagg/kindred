@@ -1,7 +1,5 @@
 """Registry discipline: every hard-constraint module has a matching predicate."""
 
-from __future__ import annotations
-
 import subprocess
 import sys
 

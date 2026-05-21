@@ -4,8 +4,6 @@ Tests POST run-phase2, run-phase3, run-from-phase/{phase}, and run-full-trace.
 These use PhaseRunner with mocked orchestrator dependencies.
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

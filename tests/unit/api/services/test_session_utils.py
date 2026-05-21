@@ -5,8 +5,6 @@ Covers the bug where AG sessions missing cm_id would emit 0 into
 downstream filter strings (e.g. session_id = 0).
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

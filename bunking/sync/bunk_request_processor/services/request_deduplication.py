@@ -6,8 +6,6 @@ and clones results to all requesters sharing the same text.
 This saves AI API costs when multiple requesters have the same
 request text (e.g., "John Smith" appears in multiple forms)."""
 
-from __future__ import annotations
-
 import re
 from copy import deepcopy
 

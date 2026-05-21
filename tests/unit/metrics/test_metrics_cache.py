@@ -9,8 +9,6 @@ Written FIRST (TDD). These tests define the expected behavior for the cache:
 - Stats tracking (hit/miss/eviction counts)
 """
 
-from __future__ import annotations
-
 import threading
 import time
 

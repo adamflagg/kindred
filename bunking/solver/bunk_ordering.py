@@ -11,8 +11,6 @@ bunks (because extract_bunk_level strips suffixes), causing no flow incentive
 between them.
 """
 
-from __future__ import annotations
-
 import re
 from functools import lru_cache
 

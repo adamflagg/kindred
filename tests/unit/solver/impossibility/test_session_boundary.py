@@ -1,7 +1,5 @@
 """SessionBoundaryImpossibility: bunk_with across sessions is impossible."""
 
-from __future__ import annotations
-
 from bunking.solver.constraints.session_boundary import SessionBoundaryImpossibility
 from bunking.solver.impossibility import _build_context
 

@@ -8,8 +8,6 @@ Tests cover:
 5. Confidence scoring integration
 6. Statistics tracking"""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 

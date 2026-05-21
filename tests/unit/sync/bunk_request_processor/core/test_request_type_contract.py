@@ -13,8 +13,6 @@ If this test fails, the two enums have diverged. Either:
 Do not "fix" by mutating one side to match the other without thinking.
 """
 
-from __future__ import annotations
-
 from bunking.models import RequestType as SolverRequestType
 from bunking.sync.bunk_request_processor.core.models import RequestType as SyncRequestType
 

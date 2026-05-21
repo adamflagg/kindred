@@ -3,8 +3,6 @@
 Handles all database operations related to Attendee records,
 which link persons to sessions for specific years."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 

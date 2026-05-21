@@ -1,7 +1,5 @@
 """Tests for reconstruct_daily_multi — single-pass daily reconstruction."""
 
-from __future__ import annotations
-
 from datetime import date
 from types import SimpleNamespace
 

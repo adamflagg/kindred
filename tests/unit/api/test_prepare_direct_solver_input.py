@@ -7,8 +7,6 @@ request appear non-first-pick to the solver — silently breaking the slot-0
 boost for the entire API solve path. This test pins that contract.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from api.services.data_fetcher import prepare_direct_solver_input

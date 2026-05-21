@@ -3,8 +3,6 @@ attributes _calculate_node_metrics depends on (source_field, request_id,
 requester_id).
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 

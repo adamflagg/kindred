@@ -4,8 +4,6 @@ Counts first-24h enrollments at each registration tier opening
 by matching attendee effective_date against tier opening dates.
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import date, datetime
 

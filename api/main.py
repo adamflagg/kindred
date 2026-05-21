@@ -10,8 +10,6 @@ for the React bunking interface. It orchestrates:
 - Sync scheduling
 """
 
-from __future__ import annotations
-
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any

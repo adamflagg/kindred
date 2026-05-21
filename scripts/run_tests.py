@@ -4,8 +4,6 @@ Comprehensive test runner for the bunking system
 Runs all test suites and generates coverage reports
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import subprocess

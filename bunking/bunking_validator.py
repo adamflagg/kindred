@@ -2,8 +2,6 @@
 Bunking validation system to analyze assignments and report issues.
 """
 
-from __future__ import annotations
-
 import json
 from collections import defaultdict, deque
 from dataclasses import dataclass

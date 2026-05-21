@@ -5,8 +5,6 @@ This is a soft constraint that penalizes bunks where a single grade
 makes up more than the configured percentage (default 67%) of the cabin.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 
 from ortools.sat.python import cp_model

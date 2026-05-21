@@ -1,7 +1,5 @@
 """Tests for camp_calendar — Pacific timezone camp-day boundary logic."""
 
-from __future__ import annotations
-
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 

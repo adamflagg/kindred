@@ -8,8 +8,6 @@ These tests verify waitlist analysis logic for the four use cases:
 - UC4: Previously waitlisted, declined (cancelled/withdrawn/dismissed)
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

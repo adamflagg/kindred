@@ -5,8 +5,6 @@ This router provides endpoints for validating bunking assignments
 against constraints and rules.
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime

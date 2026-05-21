@@ -12,8 +12,6 @@ Tests for:
 These tests are written FIRST before implementation (TDD).
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, Mock
 
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session

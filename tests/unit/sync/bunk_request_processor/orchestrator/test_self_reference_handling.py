@@ -19,8 +19,6 @@ The correct behavior (matching monolith) is to:
 4. Update notes with "SELF-REFERENTIAL REQUEST" prefix
 5. Let staff review and correct if needed"""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 

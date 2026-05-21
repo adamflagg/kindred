@@ -4,8 +4,6 @@ Extracts shared state from orchestrator.py to reduce coupling between phases.
 Each phase receives this context rather than accessing orchestrator internals.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any
 

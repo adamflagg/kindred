@@ -6,8 +6,6 @@ from attendee records at a given day offset from season start. This shared
 module is used by both velocity and forecast services.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock

@@ -12,8 +12,6 @@ The fix is to offload `solver.solve(...)` (and the failure-path
 runs.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from typing import Any

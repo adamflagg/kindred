@@ -20,8 +20,6 @@ This is the requestee-side complement to:
   - reconcile_request_lifecycle (marks OBRs unprocessed for moved requesters)
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock
 

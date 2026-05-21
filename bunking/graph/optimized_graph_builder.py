@@ -5,8 +5,6 @@ Implements batch operations, incremental updates, and efficient algorithms
 while maintaining all data fields and readability.
 """
 
-from __future__ import annotations
-
 import time
 from collections import defaultdict
 from typing import Any

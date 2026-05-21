@@ -7,8 +7,6 @@ placeholder vocabulary. Unresolved / unnamed inputs pass through Phase 2
 (see disposition_rules.py).
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 
 import pytest

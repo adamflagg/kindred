@@ -7,8 +7,6 @@ tests pin the values so a future change is a deliberate code edit, not config
 drift.
 """
 
-from __future__ import annotations
-
 
 def test_default_bunk_capacity_is_12():
     from bunking.solver.constants import DEFAULT_BUNK_CAPACITY

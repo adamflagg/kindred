@@ -5,8 +5,6 @@ with the same attribute interface (SimpleNamespace + expand dicts) that
 service-layer code expects.
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 from types import SimpleNamespace

@@ -5,8 +5,6 @@ line that allows an operator to reconcile the math from the log alone
 without opening `debug_pipeline_traces`.
 """
 
-from __future__ import annotations
-
 import logging
 
 import pytest

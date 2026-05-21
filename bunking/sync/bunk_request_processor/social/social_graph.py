@@ -4,8 +4,6 @@ Provides social network analysis for bunk request processing with support for
 family and school relationships. All edges are informational only - used for
 confidence scoring and name disambiguation, not for creating new requests."""
 
-from __future__ import annotations
-
 from enum import Enum
 from typing import Any
 

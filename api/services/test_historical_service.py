@@ -5,8 +5,6 @@ The service MUST use attendees+persons (not camper_history) for metrics.
 Implementation must conform to these tests, not the other way around.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 

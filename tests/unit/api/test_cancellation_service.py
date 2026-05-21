@@ -9,8 +9,6 @@ Tests verify:
 - Registration month breakdown (cancellations grouped by effective_date month)
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

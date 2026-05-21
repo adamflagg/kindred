@@ -6,8 +6,6 @@ After the fix, full AI content is at TRACE (level 5), with summaries at DEBUG.
 Affected module: openai_provider.py
 """
 
-from __future__ import annotations
-
 import logging
 from unittest.mock import AsyncMock, patch
 

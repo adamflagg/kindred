@@ -15,8 +15,6 @@ For each callsite the tests assert:
   3. No raw PocketBase body content leaks into the response detail.
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Iterator
 from pathlib import Path

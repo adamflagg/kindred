@@ -1,7 +1,5 @@
 """Debug Router - Debug tools for pipeline analysis, Phase 1 AI parse iteration, and on-demand phase execution."""
 
-from __future__ import annotations
-
 import json
 import os
 import re

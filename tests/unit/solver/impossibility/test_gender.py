@@ -1,7 +1,5 @@
 """GenderImpossibility: bunk_with pair with no gender-compatible bunk."""
 
-from __future__ import annotations
-
 from bunking.solver.constraints.gender import GenderImpossibility
 from bunking.solver.impossibility import _build_context
 

@@ -10,8 +10,6 @@ Provides sophisticated batch processing with:
 Technical parameters are hardcoded as they are infrastructure settings
 that don't affect bunking outcomes and shouldn't be exposed to staff."""
 
-from __future__ import annotations
-
 import asyncio
 import inspect
 import json

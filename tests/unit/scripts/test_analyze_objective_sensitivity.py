@@ -6,8 +6,6 @@ penalty changes, these tests fail and force a corresponding update to
 `docs/reference/objective-sensitivity.md`.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import sys
 from pathlib import Path

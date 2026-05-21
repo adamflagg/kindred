@@ -4,8 +4,6 @@ These models define the schema for trace_data JSON stored in debug_pipeline_trac
 Each model represents one phase of the pipeline with all captured data points.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from pydantic import BaseModel, Field

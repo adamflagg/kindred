@@ -1,7 +1,5 @@
 """Phase 1 Parse Service - Handles batch AI parsing without ID resolution"""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace

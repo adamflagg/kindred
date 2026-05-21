@@ -6,8 +6,6 @@ result with ``grade_spread_warning``). Adjacency (consecutive grades only) is
 enforced separately by ``grade_adjacency``.
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK
 

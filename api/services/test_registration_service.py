@@ -4,8 +4,6 @@ These tests define the expected behavior for the registration metrics
 service layer that will replace the monolithic endpoint code.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock

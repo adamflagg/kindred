@@ -6,8 +6,6 @@ AND grade-distant) rather than triaging into whichever bucket Python's
 import order happened to register first.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.solver.impossibility import _build_context, validate_impossibility

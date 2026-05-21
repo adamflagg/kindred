@@ -6,8 +6,6 @@ buckets unsatisfied campers; this PR layers symmetric met/total counts for
 the 'all requests' and 'MP requests' scopes on top.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest, DirectPerson, DirectSolverInput

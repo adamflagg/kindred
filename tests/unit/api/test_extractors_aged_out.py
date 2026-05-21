@@ -4,8 +4,6 @@ Tests the exclude_aged_out_persons() and filter_aged_out_attendees() helpers
 that filter 10th graders (and above) from retention calculations.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from api.services.extractors import (

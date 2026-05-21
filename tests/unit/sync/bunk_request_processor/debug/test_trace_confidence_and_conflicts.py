@@ -5,8 +5,6 @@ Verifies that post-pipeline trace includes serialized conflict details from V2Co
 These tests replicate the orchestrator's trace-building logic to verify correct wiring.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.sync.bunk_request_processor.conflict.conflict_detector import (

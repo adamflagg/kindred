@@ -5,8 +5,6 @@ during a pipeline run. Uses a mock collector to capture calls without
 requiring a real PocketBase connection.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 

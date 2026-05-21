@@ -6,8 +6,6 @@ such as "6/4 wants separate bunks | 6/5 changed minds, want together".
 This test file follows TDD - written before implementation.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from unittest.mock import Mock
 

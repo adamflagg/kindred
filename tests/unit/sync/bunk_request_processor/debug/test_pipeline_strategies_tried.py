@@ -6,8 +6,6 @@ Downstream debug_pipeline_traces.phase2_resolution[*].pipeline_strategies_tried
 (field already declared in trace_models.Phase2FinalResult) is populated from
 this metadata in the trace recorder (Task 6)."""
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

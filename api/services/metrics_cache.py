@@ -5,8 +5,6 @@ Metrics data only changes on sync runs, so responses are stable between syncs.
 Thread-safe via RLock, modeled after bunking/graph/graph_cache_manager.py.
 """
 
-from __future__ import annotations
-
 import threading
 import time
 from typing import Any

@@ -4,8 +4,6 @@ TDD tests to define expected behavior for scenario scoring.
 Written BEFORE fixing implementation (tests should initially fail due to import error).
 """
 
-from __future__ import annotations
-
 from typing import ClassVar
 from unittest.mock import MagicMock
 

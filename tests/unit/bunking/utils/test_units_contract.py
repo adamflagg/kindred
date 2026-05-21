@@ -6,8 +6,6 @@ without updating both + the fixture, this test (or its TS sibling at
 frontend/src/utils/unitMapping.contract.test.ts) will fail in CI.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any

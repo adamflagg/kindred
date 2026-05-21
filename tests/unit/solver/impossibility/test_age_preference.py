@@ -1,7 +1,5 @@
 """AgePreferenceImpossibility: requests at pool grade bounds are impossible."""
 
-from __future__ import annotations
-
 from bunking.solver.constraints.age_preference import AgePreferenceImpossibility
 from bunking.solver.impossibility import _build_context
 

@@ -7,8 +7,6 @@ These tests verify drilldown filtering logic for new breakdown types:
 - first_summer_year (based on enrollment history)
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

@@ -4,8 +4,6 @@ This module provides reusable functions for computing breakdown statistics,
 eliminating the 26+ duplicate breakdown patterns in metrics.py.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any

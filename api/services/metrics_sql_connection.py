@@ -4,8 +4,6 @@ Provides a read-only connection to PocketBase's SQLite database with
 WAL mode for safe concurrent reads while PocketBase writes.
 """
 
-from __future__ import annotations
-
 import os
 import sqlite3
 from pathlib import Path

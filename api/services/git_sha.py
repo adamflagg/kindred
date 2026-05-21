@@ -8,8 +8,6 @@ Resolution order:
 Cached on first call. Process restart re-reads.
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 

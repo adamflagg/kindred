@@ -4,8 +4,6 @@ Unit tests for SessionContext service.
 Tests the centralized session/year validation and filter building logic.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

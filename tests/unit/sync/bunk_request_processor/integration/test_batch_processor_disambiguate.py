@@ -3,8 +3,6 @@
 Verifies that batch_disambiguate correctly calls ai_provider.disambiguate()
 with (parsed_request, context) — not parse_request() with (target_name, context)."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest

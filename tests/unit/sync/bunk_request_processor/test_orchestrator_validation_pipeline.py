@@ -8,8 +8,6 @@ Note: Reciprocal detection now occurs in the batch_signals stage before request 
 
 These tests define the expected behavior. The implementation must make them pass."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

@@ -21,8 +21,6 @@ method is called with the expected arguments. The full PocketBase write path
 is mocked at the boundary — these are unit-level contract tests.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from types import SimpleNamespace

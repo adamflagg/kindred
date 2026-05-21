@@ -7,8 +7,6 @@ Verifies that:
 4. run-from-phase passes stop_at_phase through to PhaseRunner
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

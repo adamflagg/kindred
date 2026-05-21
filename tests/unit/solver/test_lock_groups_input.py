@@ -1,7 +1,5 @@
 """Tests for lock_groups_data field on DirectSolverInput."""
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.models_v2 import DirectBunk, DirectPerson, DirectSolverInput

@@ -9,8 +9,6 @@ Usage:
     uv run python scripts/setup/seed_from_prod.py [--dev-db PATH] [--prod-db PATH] [--dry-run]
 """
 
-from __future__ import annotations
-
 import argparse
 import os
 import shutil

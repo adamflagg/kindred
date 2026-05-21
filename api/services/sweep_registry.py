@@ -5,8 +5,6 @@ restart kills any in-flight sweep anyway, and the value of cancelling
 across a restart is zero.
 """
 
-from __future__ import annotations
-
 import threading
 from dataclasses import dataclass
 

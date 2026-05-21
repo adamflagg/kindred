@@ -1,7 +1,5 @@
 """Session boundary: campers can only bunk with peers in the same session."""
 
-from __future__ import annotations
-
 from bunking.models_v2 import DirectBunkRequest
 from bunking.solver.impossibility import (
     HardConstraintImpossibility,

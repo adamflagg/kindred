@@ -1,7 +1,5 @@
 """TDD tests for in-memory sweep registry."""
 
-from __future__ import annotations
-
 from api.services.sweep_registry import SweepRegistry
 
 

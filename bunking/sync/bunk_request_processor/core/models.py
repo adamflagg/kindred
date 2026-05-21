@@ -3,8 +3,6 @@
 These models represent the fundamental business concepts and are
 independent of any external dependencies."""
 
-from __future__ import annotations
-
 import json
 import warnings
 from dataclasses import dataclass, field

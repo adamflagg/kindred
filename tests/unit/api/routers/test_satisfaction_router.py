@@ -8,8 +8,6 @@ Auth override pattern mirrors test_bunk_graph_satisfaction_fields.py:
   no real PB or network calls occur.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

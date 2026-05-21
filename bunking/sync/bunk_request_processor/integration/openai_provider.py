@@ -4,8 +4,6 @@ Uses the Responses API for schema-enforced structured outputs.
 GPT-4.1 and GPT-5 models fully support structured outputs via this API.
 """
 
-from __future__ import annotations
-
 import traceback
 from typing import Any
 

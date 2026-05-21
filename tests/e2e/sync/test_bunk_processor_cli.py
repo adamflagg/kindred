@@ -3,8 +3,6 @@
 These tests run the actual CLI command and verify it completes without errors.
 """
 
-from __future__ import annotations
-
 import os
 import subprocess
 from pathlib import Path

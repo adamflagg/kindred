@@ -4,8 +4,6 @@ Pydantic schemas for metrics API endpoints.
 Defines response models for retention, registration, and comparison metrics.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 

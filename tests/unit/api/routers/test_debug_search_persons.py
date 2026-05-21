@@ -1,7 +1,5 @@
 """Tests for GET /api/debug/search-persons endpoint."""
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

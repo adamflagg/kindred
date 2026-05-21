@@ -5,8 +5,6 @@ shared between parent_paramount (hard MP constraint) and add_objective via
 the canonical `solver.request_satisfied_vars` map.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from typing import Any, ClassVar
 from unittest.mock import MagicMock

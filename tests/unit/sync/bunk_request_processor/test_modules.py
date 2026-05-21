@@ -8,8 +8,6 @@ Usage:
     uv run python scripts/test/bunk_request_processor/test_modules.py --phase 1 --limit 10
     uv run python scripts/test/bunk_request_processor/test_modules.py --all --limit 3"""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import json

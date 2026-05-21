@@ -3,8 +3,6 @@
 Validate PocketBase migration files for SQL standards compliance.
 """
 
-from __future__ import annotations
-
 import re
 import sys
 from pathlib import Path

@@ -3,8 +3,6 @@
 Tests the pre-built name cache that enables O(1) name lookups,
 matching monolith's build_temporal_name_cache() behavior."""
 
-from __future__ import annotations
-
 from datetime import datetime
 from unittest.mock import Mock
 

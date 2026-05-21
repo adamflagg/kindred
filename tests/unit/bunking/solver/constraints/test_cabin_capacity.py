@@ -8,8 +8,6 @@ deleted along with ``constraint.cabin_capacity.{mode, penalty}``. The
 ``docs/reference/solver-config-decisions.md``.
 """
 
-from __future__ import annotations
-
 from ortools.sat.python import cp_model
 
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY

@@ -1,7 +1,5 @@
 """Phase 2 Resolution Service - Handles local name resolution using V2's advanced strategies"""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from typing import Any, ClassVar
 

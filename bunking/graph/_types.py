@@ -15,8 +15,6 @@ or other consumers need the same shapes, lift into a shared ``bunking/pb_types/`
 package in a follow-up issue.
 """
 
-from __future__ import annotations
-
 from typing import Any, TypedDict
 
 # ---------------------------------------------------------------------------

@@ -4,8 +4,6 @@ TDD: These tests define the expected behavior for bunk ordering.
 The implementation must satisfy these tests.
 """
 
-from __future__ import annotations
-
 from bunking.solver.bunk_ordering import compare_bunks, get_bunk_rank
 
 

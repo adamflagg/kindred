@@ -6,8 +6,6 @@ Verifies that:
 - aged_out_count is reported per trend year
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 

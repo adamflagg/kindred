@@ -6,8 +6,6 @@ for staff review and debugging.
 Updated for SDK migration: Uses Pydantic models instead of raw dicts.
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

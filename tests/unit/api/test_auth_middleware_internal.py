@@ -5,8 +5,6 @@ PocketBase (Go) and FastAPI. These endpoints must bypass auth because the
 caller has no user context. External access is blocked by Caddy.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

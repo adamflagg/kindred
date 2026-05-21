@@ -10,8 +10,6 @@ Tests for:
 These tests are written FIRST before implementation (TDD).
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

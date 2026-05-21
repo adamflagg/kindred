@@ -6,8 +6,6 @@ The monolith generates IDs using:
 
 The modular SHOULD match this behavior for backward compatibility."""
 
-from __future__ import annotations
-
 import hashlib
 
 import pytest

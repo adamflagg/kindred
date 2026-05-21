@@ -10,8 +10,6 @@ Hand-mirrored TypeScript types live in frontend/src/types/satisfaction.ts
 replace the hand-mirroring with output from FastAPI's OpenAPI spec.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field, model_validator
 
 from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket

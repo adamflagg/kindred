@@ -7,8 +7,6 @@ This script will:
 3. Sync historical data (2018-2024) after current year is complete
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import subprocess

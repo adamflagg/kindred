@@ -3,8 +3,6 @@ Direct models for solver V2 - works directly with PocketBase schema.
 No transformation needed.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Any
 

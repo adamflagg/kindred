@@ -7,8 +7,6 @@ Tests cover:
 4. Factory method creation
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.core.phase_context import PhaseContext

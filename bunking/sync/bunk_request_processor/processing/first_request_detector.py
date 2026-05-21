@@ -15,8 +15,6 @@ Consumers that need only the bool can still use the legacy
 ``is_first_requested()`` wrapper.
 """
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 

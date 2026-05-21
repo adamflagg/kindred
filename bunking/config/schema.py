@@ -4,8 +4,6 @@ Defines all valid configuration keys with their types and validation rules.
 This is the single source of truth for configuration structure.
 """
 
-from __future__ import annotations
-
 from .types import ConfigKey, ConfigType
 
 # =============================================================================

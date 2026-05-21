@@ -11,8 +11,6 @@ Tests cover:
 8. Skip single-item groups (need 2+ for verification)
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

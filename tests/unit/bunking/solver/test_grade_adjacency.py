@@ -8,8 +8,6 @@ Tests the core business logic:
 - This is a HARD constraint - violations make solution infeasible
 """
 
-from __future__ import annotations
-
 
 class TestGradeAdjacencyDetection:
     """Test the grade adjacency detection logic."""

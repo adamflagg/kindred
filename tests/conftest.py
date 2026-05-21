@@ -10,8 +10,6 @@ This conftest.py provides common fixtures for all test categories:
 Note: sys.path manipulation is handled here to ensure imports work correctly.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 from pathlib import Path

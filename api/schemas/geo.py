@@ -5,8 +5,6 @@ Defines response models for gap classification, canonical search,
 source inspection, and override CRUD.
 """
 
-from __future__ import annotations
-
 from typing import Literal
 
 from pydantic import BaseModel, Field

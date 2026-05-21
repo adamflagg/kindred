@@ -10,8 +10,6 @@ Single source of truth for:
 - Field groupings for processing
 """
 
-from __future__ import annotations
-
 import re
 from re import Pattern
 

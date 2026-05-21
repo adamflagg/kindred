@@ -5,8 +5,6 @@ DataAccessContext pattern while maintaining backward compatibility with
 direct PocketBase client usage.
 """
 
-from __future__ import annotations
-
 import warnings
 from unittest.mock import MagicMock, patch
 

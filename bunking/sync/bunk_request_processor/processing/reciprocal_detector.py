@@ -3,8 +3,6 @@
 Identifies when two campers have requested to bunk with each other,
 which increases the request's confidence score."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from ..core.models import BunkRequest, RequestType

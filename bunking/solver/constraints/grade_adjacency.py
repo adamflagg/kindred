@@ -17,8 +17,6 @@ Only AG bunks are exempt (by design).
 Edge bunks are NOT exempt - all bunks must have adjacent grades.
 """
 
-from __future__ import annotations
-
 import logging
 
 from bunking.logging_config import get_logger

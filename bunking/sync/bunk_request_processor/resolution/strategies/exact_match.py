@@ -2,8 +2,6 @@
 
 Implements exact name matching with session context awareness."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from ...core.models import Person

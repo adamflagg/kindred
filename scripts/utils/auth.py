@@ -4,8 +4,6 @@ Centralized authentication module for PocketBase.
 Uses environment variables for credentials to avoid hardcoding.
 """
 
-from __future__ import annotations
-
 import os
 
 # Note: ClientResponseError import may show as attr-defined error due to

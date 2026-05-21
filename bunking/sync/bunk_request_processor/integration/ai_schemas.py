@@ -4,8 +4,6 @@ These schemas define the expected response format for AI parsing and disambiguat
 The SDK will enforce these schemas via constrained decoding, guaranteeing valid output.
 """
 
-from __future__ import annotations
-
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator

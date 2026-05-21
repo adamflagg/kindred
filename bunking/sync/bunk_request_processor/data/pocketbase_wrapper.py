@@ -4,8 +4,6 @@ The PocketBase Python SDK URL-encodes query parameters with '+' for spaces,
 but PocketBase server expects %20 for spaces in filter parameters. This
 wrapper fixes that issue."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from pocketbase.models.list_result import ListResult

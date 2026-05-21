@@ -5,8 +5,6 @@ orchestrator _stats, initialized correctly, and joined from phase1 service
 stats after batch_parse.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 

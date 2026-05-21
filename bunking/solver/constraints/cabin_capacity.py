@@ -12,8 +12,6 @@ If per-bunk variance is ever needed, ``DirectBunk.capacity`` is still the
 right per-bunk attribute — wire it up to a real PB column at that point.
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 

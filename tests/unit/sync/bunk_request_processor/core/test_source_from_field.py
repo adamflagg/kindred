@@ -4,8 +4,6 @@ Pins the 6→2 deterministic mapping from source_field values to "family" / "sta
 strings. This is the authoritative spec — every other consumer derives from this.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import source_from_field

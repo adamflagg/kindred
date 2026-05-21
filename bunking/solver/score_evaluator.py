@@ -27,8 +27,6 @@ See `docs/reference/objective-sensitivity.md` for the per-component
 magnitudes and the canonical solver-objective composition.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass

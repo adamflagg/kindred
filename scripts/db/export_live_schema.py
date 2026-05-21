@@ -3,8 +3,6 @@
 Export the current live database schema from PocketBase.
 """
 
-from __future__ import annotations
-
 import json
 import re
 import sqlite3

@@ -3,8 +3,6 @@
 Per-session forecast data with budget goals and revenue projections.
 """
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 

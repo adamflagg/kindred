@@ -5,8 +5,6 @@ Provides server-side caching of NetworkX graphs with TTL and invalidation.
 Thread-safe implementation for concurrent access.
 """
 
-from __future__ import annotations
-
 import threading
 import time
 from typing import Any

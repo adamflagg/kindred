@@ -6,8 +6,6 @@ Tests cover:
 3. Historical context
 4. Helper methods"""
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 from unittest.mock import Mock

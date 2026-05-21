@@ -4,8 +4,6 @@ Prepare the system for a new camp year.
 This script updates configuration and validates the transition.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

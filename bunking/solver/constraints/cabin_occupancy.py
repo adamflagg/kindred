@@ -9,8 +9,6 @@ Staff never put fewer than ~8 campers in a cabin. This module adds:
    non-AG bunks (penalty weight read from config — the lone tunable knob)
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from ortools.sat.python import cp_model

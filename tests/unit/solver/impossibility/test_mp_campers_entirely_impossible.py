@@ -1,7 +1,5 @@
 """ImpossibilityReport.mp_campers_entirely_impossible — camper-level MP rollup."""
 
-from __future__ import annotations
-
 from bunking.solver.impossibility import _camper_dict, validate_impossibility
 
 from .conftest import make_bunk, make_input, make_person, make_request

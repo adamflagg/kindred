@@ -1,7 +1,5 @@
 """ImpossibilityReport.affected_campers — count unique requester cm_ids."""
 
-from __future__ import annotations
-
 from bunking.solver.impossibility import validate_impossibility
 
 from .conftest import make_bunk, make_input, make_person, make_request

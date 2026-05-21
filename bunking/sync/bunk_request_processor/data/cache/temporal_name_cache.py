@@ -9,8 +9,6 @@ Matches monolith's build_temporal_name_cache() behavior:
 This eliminates SQL queries for name resolution and fixes the apostrophe bug
 (where names like O'Brien caused SQL syntax errors)."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand

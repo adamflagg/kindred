@@ -5,8 +5,6 @@ TDD: These tests were written BEFORE implementation — they should fail until t
 implementation (removing the `default=` kwarg) is in place.
 """
 
-from __future__ import annotations
-
 import inspect
 from unittest.mock import MagicMock, patch
 

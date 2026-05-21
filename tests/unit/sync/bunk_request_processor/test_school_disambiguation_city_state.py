@@ -19,8 +19,6 @@ strategies expect (keys are tuples vs cm_id). This causes fallback to DB
 queries for requester info. That's a separate issue - this test focuses
 on city/state matching using the pre-loaded candidate Person objects."""
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

@@ -1,7 +1,5 @@
 """Tests for bunking.satisfaction.api_shape Pydantic models."""
 
-from __future__ import annotations
-
 import pytest
 from pydantic import ValidationError
 

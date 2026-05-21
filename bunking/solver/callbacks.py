@@ -2,8 +2,6 @@
 Solver Callbacks - Progress monitoring for OR-Tools CP-SAT solver.
 """
 
-from __future__ import annotations
-
 import time
 
 from ortools.sat.python import cp_model

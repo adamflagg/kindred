@@ -5,8 +5,6 @@ Provides singleton instances of repositories with proper dependency injection,
 ensuring all repositories share the same PocketBase client and caches.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.logging_config import get_logger

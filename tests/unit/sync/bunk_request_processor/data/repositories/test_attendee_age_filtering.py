@@ -5,8 +5,6 @@ Modular must also use CampMinder's age field, not calculate from birth_date.
 This is authoritative because bunking staff use CampMinder's age field for their
 calculations of allowed age difference ranges."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from unittest.mock import Mock

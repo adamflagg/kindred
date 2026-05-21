@@ -3,8 +3,6 @@
 These tests verify the session repository functionality, particularly
 the get_friendly_name method that mirrors monolith's _get_session_friendly_name."""
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest

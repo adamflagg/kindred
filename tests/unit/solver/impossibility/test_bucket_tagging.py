@@ -1,7 +1,5 @@
 """ImpossibleItem.bucket — classification from source_field."""
 
-from __future__ import annotations
-
 import logging
 
 from bunking.solver.impossibility import validate_impossibility

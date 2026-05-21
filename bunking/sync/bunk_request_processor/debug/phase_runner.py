@@ -7,8 +7,6 @@ Does NOT rebuild from scratch — accepts a pre-initialized orchestrator.
 Supports dry-run (default) and production-write modes for cascades.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.logging_config import get_logger
