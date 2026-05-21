@@ -16,7 +16,7 @@ If you were invoked with this prompt and no language/section specified, do **not
 > The modernization backlog has these sections:
 > - §1 Python (3.14)
 > - §2 Go (1.26) — uses §a/§b/§c structure
-> - §3 Frontend (React 19, TypeScript 5.8, Node 22)
+> - §3 Frontend (React 19, TypeScript 6.0, Node 22, Tailwind 4) — uses §a/§b/§c structure
 > - §4 Infrastructure + Caddy (hardening checklist, different artifact)
 >
 > Which section should I work in? And do you want **Part A** (re-run / upgrade the audit for that section) or **Part B** (execute the next row)?
