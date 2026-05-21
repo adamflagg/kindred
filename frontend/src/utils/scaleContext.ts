@@ -418,5 +418,5 @@ export function getImpactLevel(
       return level
     }
   }
-  return scale.levels[scale.levels.length - 1] ?? null
+  return scale.levels.at(-1) ?? null
 }

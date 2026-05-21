@@ -96,7 +96,7 @@ export function TrendLineChart({
       metric === 'cancellation_rate'
         ? getNiceTicks(Math.max(Math.ceil(dataMax / 5) * 5, 5))
         : getNiceTicks(dataMax)
-    return { ticks: t, axisMax: t[t.length - 1] ?? dataMax }
+    return { ticks: t, axisMax: t.at(-1) ?? dataMax }
   }, [chartData, metric])
 
   // Compute legend items based on metric

@@ -62,14 +62,14 @@ export function useUndoStack(): UseUndoStackResult {
   const pop = useCallback((): UndoEntry | undefined => {
     const cur = stackRef.current
     if (cur.length === 0) return undefined
-    const popped = cur[cur.length - 1]
+    const popped = cur.at(-1)
     const next = cur.slice(0, -1)
     stackRef.current = next
     setStack(next)
     return popped
   }, [])
 
-  const peek = (): UndoEntry | undefined => stack[stack.length - 1]
+  const peek = (): UndoEntry | undefined => stack.at(-1)
 
   const clear = useCallback(() => {
     stackRef.current = []

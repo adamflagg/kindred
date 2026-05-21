@@ -352,7 +352,7 @@ export function useVelocityChartData(
     })
     // Always include the last point if not already a milestone
     const lastIdx = dailyChartData.length - 1
-    const lastMilestone = milestones[milestones.length - 1]
+    const lastMilestone = milestones.at(-1)
     if (lastMilestone?.index !== lastIdx) {
       const lastPt = dailyChartData[lastIdx]
       if (lastPt) {

@@ -49,11 +49,11 @@ export function getNiceTicks(max: number, count = 5): number[] {
   const ticks: number[] = []
   for (let v = 0; v <= max; v += interval) {
     const rounded = Math.round(v)
-    if (ticks.length === 0 || rounded !== ticks[ticks.length - 1]) {
+    if (ticks.length === 0 || rounded !== ticks.at(-1)) {
       ticks.push(rounded)
     }
   }
-  const last = ticks[ticks.length - 1]
+  const last = ticks.at(-1)
   // Only add another tick if the data max meaningfully exceeds the last tick (>2% overshoot).
   // Prevents wasted headroom when max barely exceeds a tick (e.g., 301 vs 300 → skip 350).
   if (last !== undefined && last < max && (max - last) / interval > 0.02) {

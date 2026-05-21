@@ -203,7 +203,7 @@ export default function TrendsOverview() {
   }
 
   // Calculate summary metrics
-  const latestYear = data.years[data.years.length - 1]
+  const latestYear = data.years.at(-1)
   const earliestYear = data.years[0]
 
   const totalChange =

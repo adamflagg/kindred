@@ -58,7 +58,7 @@ function parseStaffAttribution(text: string | undefined): StaffAttribution | nul
   // Join all content, use most recent staff attribution
   const allContent = parsedLines.map((p) => p.content).join(' | ')
   const staffEntries = parsedLines.filter((p) => p.staff)
-  const mostRecent = staffEntries[staffEntries.length - 1]
+  const mostRecent = staffEntries.at(-1)
 
   return {
     content: allContent || text,

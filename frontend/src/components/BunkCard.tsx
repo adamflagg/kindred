@@ -255,7 +255,7 @@ function BunkCard({
     let ageGapWarning = false
     if (sorted.length > 0) {
       const youngestCamper = sorted[0]
-      const oldestCamper = sorted[sorted.length - 1]
+      const oldestCamper = sorted.at(-1)
       if (!youngestCamper || !oldestCamper) {
         ageRange = null
         ageGapWarning = false
@@ -365,7 +365,7 @@ function BunkCard({
             {ageRange &&
               (() => {
                 const youngest = sortedCampers[0]
-                const oldest = sortedCampers[sortedCampers.length - 1]
+                const oldest = sortedCampers.at(-1)
                 if (!youngest || !oldest) return null
                 return (
                   <div

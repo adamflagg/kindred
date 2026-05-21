@@ -128,7 +128,7 @@ export default function VelocityPage() {
     const currentWeekly = data.combined.weekly
     if (!currentWeekly.length) return null
 
-    const currentLatest = currentWeekly[currentWeekly.length - 1]
+    const currentLatest = currentWeekly.at(-1)
     if (!currentLatest) return null
     const currentMaxWeek = currentLatest.week_number
     const currentEnrolled = currentLatest.enrolled
@@ -143,7 +143,7 @@ export default function VelocityPage() {
         priorYear = py.year
         const pyMap = new Map(py.weekly.map((d) => [d.week_number, d]))
         priorAtWeek = pyMap.get(currentMaxWeek)?.enrolled ?? null
-        const pyLast = py.weekly[py.weekly.length - 1]
+        const pyLast = py.weekly.at(-1)
         priorFinal = pyLast?.enrolled ?? null
       }
     }
@@ -264,7 +264,7 @@ export default function VelocityPage() {
     {
       header: controls.splitByGender ? 'Total' : 'Latest Enrolled',
       accessor: (session) => {
-        const lastPoint = session.weekly[session.weekly.length - 1]
+        const lastPoint = session.weekly.at(-1)
         return (lastPoint?.enrolled ?? 0).toLocaleString()
       },
       className: 'text-right',
@@ -292,7 +292,7 @@ export default function VelocityPage() {
           {
             header: 'vs Prior',
             accessor: (session, priorSession) => {
-              const lastPoint = session.weekly[session.weekly.length - 1]
+              const lastPoint = session.weekly.at(-1)
               const currentEnrolled = lastPoint?.enrolled ?? 0
               const vsPrior =
                 priorSession != null ? currentEnrolled - priorSession.final_enrolled : null

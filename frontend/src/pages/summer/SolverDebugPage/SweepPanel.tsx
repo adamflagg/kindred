@@ -99,7 +99,7 @@ export function SweepPanel({
   const [budgetDraft, setBudgetDraft] = useState<string>('')
   const [label, setLabel] = useState<string>('')
 
-  const sessionCmId = pickedSessionCmId ?? sessions[sessions.length - 1]?.cm_id ?? 0
+  const sessionCmId = pickedSessionCmId ?? sessions.at(-1)?.cm_id ?? 0
   const sessionScenarios = scenarios.filter((s) => s.session_id === sessionCmId)
 
   // Notify parent when the resolved session changes (including initial default).

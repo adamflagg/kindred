@@ -104,7 +104,7 @@ export default function CancellationVelocityPage() {
     const currentWeekly = data.combined.weekly
     if (!currentWeekly.length) return null
 
-    const currentLatest = currentWeekly[currentWeekly.length - 1]
+    const currentLatest = currentWeekly.at(-1)
     if (!currentLatest) return null
     const currentMaxWeek = currentLatest.week_number
     const currentCancelled = currentLatest.enrolled // repurposed as cancelled count
@@ -129,7 +129,7 @@ export default function CancellationVelocityPage() {
         }
         priorFinal = priorCancelledSummary?.cancelled_final ?? null
         if (priorFinal == null) {
-          const pyLast = py.weekly[py.weekly.length - 1]
+          const pyLast = py.weekly.at(-1)
           priorFinal = pyLast?.enrolled ?? null
         }
       }
@@ -220,7 +220,7 @@ export default function CancellationVelocityPage() {
     {
       header: controls.splitByGender ? 'Total' : 'Total Cancelled',
       accessor: (session) => {
-        const lastPoint = session.weekly[session.weekly.length - 1]
+        const lastPoint = session.weekly.at(-1)
         return (
           <span className="text-red-600 dark:text-red-400">
             {(lastPoint?.enrolled ?? 0).toLocaleString()}
@@ -252,7 +252,7 @@ export default function CancellationVelocityPage() {
           {
             header: 'vs Prior',
             accessor: (session, priorSession) => {
-              const lastPoint = session.weekly[session.weekly.length - 1]
+              const lastPoint = session.weekly.at(-1)
               const currentCancelled = lastPoint?.enrolled ?? 0
               // Inverted: positive vsPrior = more cancellations = bad
               const vsPrior =

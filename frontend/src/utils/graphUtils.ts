@@ -47,8 +47,8 @@ export function convexHull(
   for (const point of sorted) {
     // Remove points that make a clockwise turn
     while (hull.length >= 2) {
-      const p1 = hull[hull.length - 2]
-      const p2 = hull[hull.length - 1]
+      const p1 = hull.at(-2)
+      const p2 = hull.at(-1)
 
       if (!p1 || !p2) break // Safety check
 
