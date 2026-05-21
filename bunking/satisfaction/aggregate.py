@@ -13,6 +13,7 @@ event loop.
 import concurrent.futures
 import re
 from collections import defaultdict
+from itertools import batched
 from typing import Any, Literal, NotRequired, TypedDict
 
 from api.constants.collections import (
@@ -323,8 +324,7 @@ def session_satisfaction(
     person_grades: dict[int, int] = {}
     if needed_cm_ids:
         chunk_size = 100
-        for chunk_start in range(0, len(needed_cm_ids), chunk_size):
-            chunk = needed_cm_ids[chunk_start : chunk_start + chunk_size]
+        for chunk in batched(needed_cm_ids, chunk_size, strict=False):
             cm_id_filter = " || ".join(f"cm_id = {cid}" for cid in chunk)
             persons = pb_client.collection(PERSONS).get_full_list(
                 query_params={"filter": f"year = {year} && ({cm_id_filter})"}

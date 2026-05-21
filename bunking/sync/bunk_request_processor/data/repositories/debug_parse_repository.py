@@ -7,6 +7,7 @@ Phase 1 parsing output separately from production bunk_requests.
 from __future__ import annotations
 
 import re
+from itertools import batched
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
@@ -467,8 +468,7 @@ class DebugParseRepository:
         try:
             # Collect debug IDs from batched queries
             debug_ids: set[str] = set()
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 id_conditions = [f'original_request = "{rid}"' for rid in batch_ids]
                 filter_str = "(" + " || ".join(id_conditions) + ")"
 
@@ -479,8 +479,7 @@ class DebugParseRepository:
 
             # For production: load original requests in batches to get (cm_id, content) pairs
             orig_lookup: dict[str, tuple[int, str]] = {}
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
@@ -506,8 +505,7 @@ class DebugParseRepository:
 
             if cm_ids:
                 # Batch the cm_id queries too
-                for i in range(0, len(cm_ids), BATCH_SIZE):
-                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                for batch_cm_ids in batched(cm_ids, BATCH_SIZE, strict=False):
                     cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
                     bunk_results = self.pb.collection("bunk_requests").get_full_list(
                         query_params={
@@ -566,8 +564,7 @@ class DebugParseRepository:
             orig_data: dict[str, dict[str, Any]] = {}
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
@@ -605,8 +602,7 @@ class DebugParseRepository:
 
             # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
                 debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
                     query_params={"filter": debug_filter}
@@ -622,8 +618,7 @@ class DebugParseRepository:
             prod_by_pair: dict[tuple[int, str], list[Any]] = {}
 
             if cm_ids:
-                for i in range(0, len(cm_ids), BATCH_SIZE):
-                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                for batch_cm_ids in batched(cm_ids, BATCH_SIZE, strict=False):
                     cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
                     bunk_results = self.pb.collection("bunk_requests").get_full_list(
                         query_params={"filter": f"({cm_id_filter})"}
@@ -754,8 +749,7 @@ class DebugParseRepository:
             orig_data: dict[str, dict[str, Any]] = {}
             orig_lookup: dict[str, tuple[int, str]] = {}  # id -> (cm_id, content)
 
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 orig_filter = "(" + " || ".join(f'id = "{rid}"' for rid in batch_ids) + ")"
                 orig_results = self.pb.collection("original_bunk_requests").get_full_list(
                     query_params={"filter": orig_filter, "expand": "requester"}
@@ -793,8 +787,7 @@ class DebugParseRepository:
 
             # Query 2: Load all debug results (batched)
             debug_by_orig: dict[str, Any] = {}
-            for i in range(0, len(original_request_ids), BATCH_SIZE):
-                batch_ids = original_request_ids[i : i + BATCH_SIZE]
+            for batch_ids in batched(original_request_ids, BATCH_SIZE, strict=False):
                 debug_filter = "(" + " || ".join(f'original_request = "{rid}"' for rid in batch_ids) + ")"
                 debug_results = self.pb.collection(self.COLLECTION_NAME).get_full_list(
                     query_params={"filter": debug_filter}
@@ -810,8 +803,7 @@ class DebugParseRepository:
             prod_by_pair: dict[tuple[int, str], list[Any]] = {}
 
             if cm_ids:
-                for i in range(0, len(cm_ids), BATCH_SIZE):
-                    batch_cm_ids = cm_ids[i : i + BATCH_SIZE]
+                for batch_cm_ids in batched(cm_ids, BATCH_SIZE, strict=False):
                     cm_id_filter = " || ".join(f"requester_id = {cm_id}" for cm_id in batch_cm_ids)
                     bunk_results = self.pb.collection("bunk_requests").get_full_list(
                         query_params={"filter": f"({cm_id_filter})"}

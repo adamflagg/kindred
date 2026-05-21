@@ -8,6 +8,7 @@ against constraints and rules.
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import batched
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -193,7 +194,7 @@ async def validate_bunking(
         persons = []
         if person_cm_ids:
             batch_size = 50
-            chunks = [person_cm_ids[i : i + batch_size] for i in range(0, len(person_cm_ids), batch_size)]
+            chunks = [list(c) for c in batched(person_cm_ids, batch_size, strict=False)]
 
             async def fetch_person_chunk(chunk_ids: list[int]) -> list[Any]:
                 person_filter = " || ".join(f"cm_id = {cm_id}" for cm_id in chunk_ids)
