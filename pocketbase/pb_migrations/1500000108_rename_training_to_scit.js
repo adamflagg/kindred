@@ -72,6 +72,21 @@ migrate(
     app.save(camperHistory);
   },
   (app) => {
+    // Backfill data first — mirrors the up path so a mid-rollback failure
+    // can't strand 'scit' rows under a schema that no longer accepts them.
+    app
+      .db()
+      .newQuery(
+        `UPDATE camp_sessions SET session_type = 'training' WHERE session_type = 'scit'`,
+      )
+      .execute();
+    app
+      .db()
+      .newQuery(
+        `UPDATE camper_history SET session_type = 'training' WHERE session_type = 'scit'`,
+      )
+      .execute();
+
     const oldValues = [
       "main",
       "embedded",
@@ -113,18 +128,5 @@ migrate(
       }),
     );
     app.save(camperHistory);
-
-    app
-      .db()
-      .newQuery(
-        `UPDATE camp_sessions SET session_type = 'training' WHERE session_type = 'scit'`,
-      )
-      .execute();
-    app
-      .db()
-      .newQuery(
-        `UPDATE camper_history SET session_type = 'training' WHERE session_type = 'scit'`,
-      )
-      .execute();
   },
 );
