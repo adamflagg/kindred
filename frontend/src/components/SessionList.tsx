@@ -88,7 +88,7 @@ function parseSessionForSort(name: string): [number, string] {
  * Sort sessions chronologically: by start_date ASC, then by session number
  */
 function sortSessionsChronologically<T extends CampSessionsResponse>(sessions: T[]): T[] {
-  return [...sessions].sort((a, b) => {
+  return sessions.toSorted((a, b) => {
     // All sessions sorted chronologically: earliest first
     const dateCompare = new Date(a.start_date).getTime() - new Date(b.start_date).getTime()
     if (dateCompare !== 0) return dateCompare

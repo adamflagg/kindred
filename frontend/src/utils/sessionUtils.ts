@@ -102,7 +102,7 @@ export function parseSessionName(name: string): [number, string] {
 export function sortSessionsByDate<T extends { name: string; start_date: string }>(
   sessions: T[]
 ): T[] {
-  return [...sessions].sort((a, b) => {
+  return sessions.toSorted((a, b) => {
     // Primary: sort by start_date
     const dateCompare = a.start_date.localeCompare(b.start_date)
     if (dateCompare !== 0) return dateCompare
@@ -129,7 +129,7 @@ export function filterSelectableSessions<T extends { session_type?: string | nul
  * Works with API response types that have session_name field.
  */
 export function sortSessionDataByName<T extends { session_name: string }>(data: T[]): T[] {
-  return [...data].sort((a, b) => {
+  return data.toSorted((a, b) => {
     const [numA, suffixA] = parseSessionName(a.session_name)
     const [numB, suffixB] = parseSessionName(b.session_name)
     if (numA !== numB) return numA - numB
@@ -193,7 +193,7 @@ export function sortSessionDataByDate<T extends { session_name: string }>(
   data: T[],
   dateLookup: SessionDateLookup
 ): T[] {
-  return [...data].sort((a, b) => compareByDateThenName(a.session_name, b.session_name, dateLookup))
+  return data.toSorted((a, b) => compareByDateThenName(a.session_name, b.session_name, dateLookup))
 }
 
 /**
@@ -205,7 +205,7 @@ export function sortPriorSessionDataByDate<T extends { prior_session: string }>(
   data: T[],
   dateLookup: SessionDateLookup
 ): T[] {
-  return [...data].sort((a, b) =>
+  return data.toSorted((a, b) =>
     compareByDateThenName(a.prior_session, b.prior_session, dateLookup)
   )
 }
@@ -262,7 +262,7 @@ export function sortSessionDataByCampThenQuest<T extends { session_name: string 
   dateLookup: SessionDateLookup,
   typeLookup: SessionTypeLookup
 ): T[] {
-  return [...data].sort((a, b) =>
+  return data.toSorted((a, b) =>
     compareByDateCampThenQuest(a.session_name, b.session_name, dateLookup, typeLookup)
   )
 }

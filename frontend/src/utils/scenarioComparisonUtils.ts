@@ -53,7 +53,7 @@ export function compareCamperByName(a: SortableCamper, b: SortableCamper): numbe
  * Returns a new array; does not mutate the input.
  */
 export function sortCampersByName<T extends SortableCamper>(campers: readonly T[]): T[] {
-  return campers.slice().sort(compareCamperByName)
+  return campers.toSorted(compareCamperByName)
 }
 
 /**

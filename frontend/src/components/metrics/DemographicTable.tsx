@@ -44,7 +44,7 @@ export function DemographicTable({ title, data, onRowClick }: DemographicTablePr
     }
 
     // Apply sorting
-    result = [...result].sort((a, b) => {
+    result = result.toSorted((a, b) => {
       let comparison = 0
       switch (sortField) {
         case 'name':

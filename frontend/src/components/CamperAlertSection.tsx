@@ -98,7 +98,7 @@ function rowColorClasses(severity: AlertSeverity): string {
 export function CamperAlertSection({ alerts, onRequestAlertClick }: CamperAlertSectionProps) {
   if (alerts.length === 0) return null
 
-  const sorted = [...alerts].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
+  const sorted = alerts.toSorted((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
 
   return (
     <section aria-label="Alerts" className="space-y-1">

@@ -84,7 +84,7 @@ export function buildCamperRows(
     filtered = campers.filter((c) => c.gender === options.filterGender)
   }
 
-  const sorted = [...filtered].sort((a, b) =>
+  const sorted = filtered.toSorted((a, b) =>
     compareNames(a.first_name ?? '', a.last_name ?? '', b.first_name ?? '', b.last_name ?? '')
   )
 
@@ -126,7 +126,7 @@ export interface MovedEntry {
  * @returns     - Array of string[] where each inner array is one CSV data row
  */
 export function buildMovedRows(moves: MovedEntry[]): string[][] {
-  const sorted = [...moves].sort((a, b) =>
+  const sorted = moves.toSorted((a, b) =>
     compareNames(a.firstName, a.lastName, b.firstName, b.lastName)
   )
   return sorted.map((m) => [

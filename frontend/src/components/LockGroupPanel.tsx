@@ -371,7 +371,7 @@ function LockGroupPanel({
 
   // Sort groups by average age of members (ascending)
   const sortedGroups = useMemo(() => {
-    return [...groups].sort((a, b) => {
+    return groups.toSorted((a, b) => {
       const avgA = getGroupAverageAge(membersByGroup[a.id] ?? []) ?? Infinity
       const avgB = getGroupAverageAge(membersByGroup[b.id] ?? []) ?? Infinity
       return avgA - avgB
