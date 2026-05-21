@@ -17,8 +17,9 @@ asserts every per-request/per-pair hard-constraint module has a matching
 predicate.
 """
 
+import copy
 from collections import defaultdict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader
@@ -117,7 +118,7 @@ def filter_immaterial_requests(report: ImpossibilityReport) -> ImpossibilityRepo
         bucket: count for bucket, count in report.by_bucket_count.items() if bucket != immaterial_bucket
     }
 
-    return replace(
+    return copy.replace(
         report,
         flat=filtered_flat,
         by_reason=filtered_by_reason,

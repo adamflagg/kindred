@@ -1,8 +1,8 @@
 """Phase 1 Parse Service - Handles batch AI parsing without ID resolution"""
 
 import asyncio
+import copy
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
 
 from bunking.logging_config import get_logger
@@ -241,7 +241,7 @@ class Phase1ParseService:
                 }
 
             # Create new request with sanitized text
-            sanitized_req = replace(req, request_text=result.sanitized_text)
+            sanitized_req = copy.replace(req, request_text=result.sanitized_text)
             sanitized_requests.append(sanitized_req)
 
         if self._stats["suspicious_inputs"] > 0:
