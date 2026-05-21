@@ -133,8 +133,11 @@ def evaluate_scenario_score(
         and int(r["requester_id"]) != int(r["requestee_id"])
     )
 
-    # Track request satisfaction per person
-    person_satisfaction: dict[int, list[tuple[dict[str, Any], int]]] = defaultdict(list)
+    # Track request satisfaction per person. Holds (request, weighted_score, is_satisfied)
+    # for every request, not just satisfied ones — the diminishing-returns loop
+    # iterates the full list to advance `i` across unsatisfied slots (matching
+    # the solver's full-list ordering — see #1524).
+    person_satisfaction: dict[int, list[tuple[dict[str, Any], int, bool]]] = defaultdict(list)
 
     # Field-level stats
     field_stats: dict[str, dict[str, Any]] = defaultdict(lambda: {"total": 0, "satisfied": 0, "raw_score": 0})
@@ -198,14 +201,16 @@ def evaluate_scenario_score(
             )
             is_satisfied = False
 
+        # Compute the per-request weight only when satisfied — unsatisfied
+        # requests contribute 0 to request_score (the diminishing-returns loop
+        # `continue`s past them), and calling weight_for() on an unknown
+        # (source, type) combo would raise. The placeholder 0 keeps the
+        # full-list position so `i` matches the solver's ordering (#1524).
         if is_satisfied:
             satisfied_count += 1
             field_stats[primary_field]["satisfied"] += 1
 
-            # Calculate base weight
             base_weight: float = float(BASE_REQUEST_WEIGHT)
-
-            # Apply source field multiplier
             multiplier = max(weight_for(f, request_type, config) for f in source_fields) if source_fields else 1.0
             base_weight = base_weight * multiplier
 
@@ -216,9 +221,11 @@ def evaluate_scenario_score(
                     base_weight = base_weight * mutual_request_boost
 
             weighted_score = int(base_weight)
-
-            person_satisfaction[requester_id].append((request, weighted_score))
             field_stats[primary_field]["raw_score"] += weighted_score
+        else:
+            weighted_score = 0
+
+        person_satisfaction[requester_id].append((request, weighted_score, is_satisfied))
 
     # Apply diminishing returns and calculate final request score
     request_score = 0
@@ -227,7 +234,9 @@ def evaluate_scenario_score(
         if enable_first_boost:
             satisfactions.sort(key=lambda x: x[0].get("is_first_requested", False), reverse=True)
 
-        for i, (request, base_score) in enumerate(satisfactions):
+        for i, (request, base_score, is_satisfied) in enumerate(satisfactions):
+            if not is_satisfied:
+                continue
             if i == 0:
                 final_score = base_score * FIRST_REQUEST_MULTIPLIER
             elif i == 1:

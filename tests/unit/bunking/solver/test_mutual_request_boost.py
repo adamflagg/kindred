@@ -283,6 +283,46 @@ def test_evaluator_not_bunk_with_never_boosts(evaluator):
     assert score == 2 * expected_per_request
 
 
+def test_objective_evaluator_unsatisfied_first_pick_does_not_promote_second(evaluator):
+    """#1524: slot-index alignment with solver.
+
+    Camper A has two bunk_with requests, sorted by is_first_requested DESC:
+      - A→B (is_first_requested=True): B placed in a different bunk → unsatisfied
+      - A→C (no first-pick flag):       C placed in A's bunk     → satisfied
+
+    The solver iterates the full list (sorted by is_first_requested DESC) and
+    multiplies each request's weight by its satisfaction BoolVar. So A→B's
+    BoolVar=0 contributes nothing at i=0, but i still advances; A→C lands at
+    i=1 → SECOND_REQUEST_MULTIPLIER (5x).
+
+    Pre-fix, the evaluator tracks a satisfied-only counter
+    (satisfied_count_for_person), so A→C is treated as the *first satisfied*
+    request and gets FIRST_REQUEST_MULTIPLIER (10x). Net 2x overcounting
+    versus the actual solver objective.
+
+    Post-fix, the evaluator uses the outer enumerate's `i`, matching the
+    solver. A→C scores `BASE × SECOND` (200), not `BASE × FIRST` (400).
+    """
+    assignments = {1: 100, 2: 200, 3: 100}  # A in 100, B in 200 (unsat), C in 100 (sat)
+    requests = [
+        _dict_req(1, 2, is_first_requested=True),  # A→B first-pick, will be unsatisfied
+        _dict_req(1, 3),  # A→C second-pick, will be satisfied
+    ]
+    person_by_cm_id = {
+        1: {"campminder_person_id": 1},
+        2: {"campminder_person_id": 2},
+        3: {"campminder_person_id": 3},
+    }
+
+    score, _ = evaluator._calculate_request_satisfaction(assignments, requests, person_by_cm_id)
+
+    expected = int(BASE_REQUEST_WEIGHT * 1.0 * SECOND_REQUEST_MULTIPLIER)
+    assert score == expected, (
+        f"Expected {expected} (BASE × SECOND, matching solver), got {score} — "
+        "evaluator is treating satisfied second-pick as slot 0 instead of slot 1"
+    )
+
+
 def test_evaluator_mutual_boost_applies_to_every_slot(evaluator):
     """A has two requests: A→B (mutual with B→A) and A→C (one-way).
     Both satisfied. With enable_first_boost=true and is_first_requested=true
@@ -494,6 +534,47 @@ def test_mutual_boost_schema_floor_is_one():
     assert entry.min_value == 1.0, (
         f"mutual_request_boost min_value must be 1.0 (got {entry.min_value}) — "
         "anything lower inversely downweights mutual pairs"
+    )
+
+
+def test_score_evaluator_unsatisfied_first_pick_does_not_promote_second():
+    """#1524: slot-index alignment with solver.
+
+    Same setup as the objective_evaluator twin test: A→B (first-pick) is
+    unsatisfied (B in a different bunk); A→C (second-pick) is satisfied.
+    The solver scores A→C at SECOND_REQUEST_MULTIPLIER (5x); pre-fix
+    score_evaluator only appends satisfied requests to `person_satisfaction`,
+    so A→C lands at i=0 → FIRST_REQUEST_MULTIPLIER (10x). 2x overcount.
+
+    Post-fix, all requests are appended (with their is_satisfied flag), the
+    diminishing-returns loop skips unsatisfied via `continue` but preserves
+    `i`, and A→C lands at i=1 matching the solver.
+    """
+    requests = [
+        _se_req(1, 2),  # A→B first-pick (is_first_requested=True via _se_req default)
+        {  # A→C — explicitly NOT first-pick to force B ahead in sort
+            "id": "r1_3",
+            "requester_id": 1,
+            "requestee_id": 3,
+            "request_type": "bunk_with",
+            "is_first_requested": False,
+            "source_field": None,
+        },
+    ]
+    assignments = [
+        {"person_cm_id": 1, "bunk_cm_id": 100},  # A
+        {"person_cm_id": 2, "bunk_cm_id": 200},  # B in different bunk → A→B unsat
+        {"person_cm_id": 3, "bunk_cm_id": 100},  # C with A → A→C sat
+    ]
+    persons = [{"cm_id": 1, "grade": 5}, {"cm_id": 2, "grade": 5}, {"cm_id": 3, "grade": 5}]
+    bunks = [{"cm_id": 100, "max_size": 12}, {"cm_id": 200, "max_size": 12}]
+    result = _run_score_evaluator(_ScoreEvalConfig(), requests, assignments, persons, bunks)
+
+    expected = int(BASE_REQUEST_WEIGHT * 1.0 * SECOND_REQUEST_MULTIPLIER)
+    assert result.request_satisfaction_score == expected, (
+        f"Expected {expected} (BASE × SECOND, matching solver), got "
+        f"{result.request_satisfaction_score} — score_evaluator is treating "
+        "satisfied second-pick as slot 0 instead of slot 1"
     )
 
 
