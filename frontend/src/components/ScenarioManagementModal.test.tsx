@@ -66,7 +66,7 @@ function renderModal(ctx: ScenarioContextType) {
   })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
-      <ScenarioContext.Provider value={ctx}>{children}</ScenarioContext.Provider>
+      <ScenarioContext value={ctx}>{children}</ScenarioContext>
       <Toaster />
     </QueryClientProvider>
   )

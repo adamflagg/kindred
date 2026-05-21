@@ -47,11 +47,11 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/analytics/retention/staff']}>
-        <CurrentYearContext.Provider value={mockYearContext}>
+        <CurrentYearContext value={mockYearContext}>
           <Routes>
             <Route path="/analytics/retention/staff" element={<StaffCabinAnalysisPage />} />
           </Routes>
-        </CurrentYearContext.Provider>
+        </CurrentYearContext>
       </MemoryRouter>
     </QueryClientProvider>
   )

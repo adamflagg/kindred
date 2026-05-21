@@ -48,7 +48,7 @@ const createWrapper = (year = 2026) => {
 
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <CurrentYearContext.Provider value={mockYearContext}>{children}</CurrentYearContext.Provider>
+      <CurrentYearContext value={mockYearContext}>{children}</CurrentYearContext>
     </QueryClientProvider>
   )
 }

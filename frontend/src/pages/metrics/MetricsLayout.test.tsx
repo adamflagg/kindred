@@ -57,7 +57,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
       { value: authCtx },
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[initialPath]}>
-          <CurrentYearContext.Provider value={mockYearContext}>
+          <CurrentYearContext value={mockYearContext}>
             <Routes>
               <Route path="/analytics/*" element={<MetricsLayout />}>
                 <Route path="registration/*" element={<TestChild text={childText} />} />
@@ -67,7 +67,7 @@ const renderWithRouter = (initialPath: string, childText = 'Child Content') => {
                 <Route path="trends" element={<TestChild text="Trends" />} />
               </Route>
             </Routes>
-          </CurrentYearContext.Provider>
+          </CurrentYearContext>
         </MemoryRouter>
       </QueryClientProvider>
     )

@@ -39,9 +39,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <ProgramContext.Provider value={{ currentProgram, setProgram, clearProgram }}>
-      {children}
-    </ProgramContext.Provider>
+    <ProgramContext value={{ currentProgram, setProgram, clearProgram }}>{children}</ProgramContext>
   )
 }
 

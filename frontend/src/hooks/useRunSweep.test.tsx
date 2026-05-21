@@ -17,9 +17,9 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const authCtx = createMockAuthContext({ user: createMockUser() })
   return (
-    <AuthContext.Provider value={authCtx}>
+    <AuthContext value={authCtx}>
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
-    </AuthContext.Provider>
+    </AuthContext>
   )
 }
 

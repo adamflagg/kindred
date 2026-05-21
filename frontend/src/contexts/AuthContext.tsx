@@ -231,7 +231,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     checkAuth,
   }
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return <AuthContext value={value}>{children}</AuthContext>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

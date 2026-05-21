@@ -47,11 +47,11 @@ const renderWithRouter = (initialPath: string) => {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <CurrentYearContext.Provider value={mockYearContext}>
+        <CurrentYearContext value={mockYearContext}>
           <MetricsSessionProvider>
             <MetricsTypeTabs />
           </MetricsSessionProvider>
-        </CurrentYearContext.Provider>
+        </CurrentYearContext>
       </MemoryRouter>
     </QueryClientProvider>
   )

@@ -286,5 +286,5 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     ]
   )
 
-  return <MetricsSessionContext.Provider value={value}>{children}</MetricsSessionContext.Provider>
+  return <MetricsSessionContext value={value}>{children}</MetricsSessionContext>
 }
