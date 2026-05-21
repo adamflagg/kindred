@@ -111,6 +111,15 @@ pocketbase/pb_migrations/*_updated_users.js
 !pocketbase/eslint.config.js
 
 # =============================================================================
+# Go workspace
+# =============================================================================
+# go.work is checked in (silences gopls multi-module LSP warning across
+# pocketbase/ and docker/healthcheck/). go.work.sum is a workspace-overlay
+# sum file regenerated on every workspace-aware `go` invocation — pure local
+# churn. Security-load-bearing sums live in pocketbase/go.sum.
+go.work.sum
+
+# =============================================================================
 # Database files
 # =============================================================================
 *.db
