@@ -70,7 +70,7 @@ export interface BuildCamperRowsOptions {
  * @returns        - Array of string[] where each inner array is one CSV data row
  */
 export function buildCamperRows(
-  campers: Camper[],
+  campers: readonly Camper[],
   sessions: Session[],
   options: BuildCamperRowsOptions = {}
 ): string[][] {
