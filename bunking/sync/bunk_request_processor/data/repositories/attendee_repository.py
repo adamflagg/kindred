@@ -3,7 +3,9 @@
 Handles all database operations related to Attendee records,
 which link persons to sessions for specific years."""
 
+from collections.abc import Sequence
 from datetime import datetime
+from itertools import batched
 from typing import Any
 
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
@@ -218,14 +220,13 @@ class AttendeeRepository:
 
         # Chunk to avoid PocketBase OR clause length limits
         sessions_dict: dict[int, int] = {}
-        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
-            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+        for chunk in batched(person_cm_ids, self._BULK_CHUNK_SIZE, strict=False):
             chunk_result = self._bulk_get_sessions_chunk(chunk, year)
             sessions_dict.update(chunk_result)
 
         return sessions_dict
 
-    def _bulk_get_sessions_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, int]:
+    def _bulk_get_sessions_chunk(self, person_cm_ids: Sequence[int], year: int) -> dict[int, int]:
         """Get sessions for a single chunk of person IDs.
 
         Uses get_full_list to handle campers enrolled in multiple sessions
@@ -294,15 +295,14 @@ class AttendeeRepository:
             return {}
 
         sessions_dict: dict[int, list[int]] = {}
-        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
-            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+        for chunk in batched(person_cm_ids, self._BULK_CHUNK_SIZE, strict=False):
             chunk_result = self._bulk_get_all_sessions_chunk(chunk, year)
             for cm_id, session_list in chunk_result.items():
                 sessions_dict.setdefault(cm_id, []).extend(session_list)
 
         return sessions_dict
 
-    def _bulk_get_all_sessions_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, list[int]]:
+    def _bulk_get_all_sessions_chunk(self, person_cm_ids: Sequence[int], year: int) -> dict[int, list[int]]:
         """Get all bunking sessions for a single chunk of person IDs.
 
         Mirrors `_bulk_get_sessions_chunk` but appends instead of overwriting,
@@ -357,14 +357,13 @@ class AttendeeRepository:
             return {}
 
         enrollment_dict: dict[int, EnrollmentInfo] = {}
-        for i in range(0, len(person_cm_ids), self._BULK_CHUNK_SIZE):
-            chunk = person_cm_ids[i : i + self._BULK_CHUNK_SIZE]
+        for chunk in batched(person_cm_ids, self._BULK_CHUNK_SIZE, strict=False):
             chunk_result = self._bulk_get_enrollment_chunk(chunk, year)
             enrollment_dict.update(chunk_result)
 
         return enrollment_dict
 
-    def _bulk_get_enrollment_chunk(self, person_cm_ids: list[int], year: int) -> dict[int, EnrollmentInfo]:
+    def _bulk_get_enrollment_chunk(self, person_cm_ids: Sequence[int], year: int) -> dict[int, EnrollmentInfo]:
         """Get enrollment info for a single chunk of person IDs."""
         try:
             or_conditions = [f"person_id = {cm_id}" for cm_id in person_cm_ids]

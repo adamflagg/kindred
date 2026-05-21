@@ -8,6 +8,7 @@ This service handles:
 
 import asyncio
 from collections import defaultdict
+from itertools import batched
 from typing import Any
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
@@ -108,8 +109,7 @@ async def fetch_session_data_v2(
         persons_dict = {}
         batch_size = 50
         if person_cm_ids:
-            for i in range(0, len(person_cm_ids), batch_size):
-                batch_ids = person_cm_ids[i : i + batch_size]
+            for batch_ids in batched(person_cm_ids, batch_size, strict=False):
                 filter_str = " || ".join([f"cm_id = {cm_id}" for cm_id in batch_ids])
                 batch_persons = await asyncio.to_thread(
                     client.collection("persons").get_full_list,
@@ -129,8 +129,7 @@ async def fetch_session_data_v2(
         # Fetch bunk requests
         requests = []
         if person_cm_ids:
-            for i in range(0, len(person_cm_ids), batch_size):
-                batch_ids = person_cm_ids[i : i + batch_size]
+            for batch_ids in batched(person_cm_ids, batch_size, strict=False):
                 filter_str = " || ".join([f"requester_id = {cm_id}" for cm_id in batch_ids])
                 batch_requests = await asyncio.to_thread(
                     client.collection("bunk_requests").get_full_list,
@@ -144,8 +143,7 @@ async def fetch_session_data_v2(
         assignments = []
         assignments_collection = "bunk_assignments_draft" if scenario else "bunk_assignments"
         if person_cm_ids:
-            for i in range(0, len(person_cm_ids), batch_size):
-                batch_ids = person_cm_ids[i : i + batch_size]
+            for batch_ids in batched(person_cm_ids, batch_size, strict=False):
                 filter_str = " || ".join([f"person.cm_id = {cm_id}" for cm_id in batch_ids])
                 # Add scenario filter for draft assignments
                 base_filter = f"({filter_str}) && ({session_relation_filter}) && year = {ctx.year}"

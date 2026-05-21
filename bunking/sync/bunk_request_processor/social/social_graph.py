@@ -5,6 +5,7 @@ family and school relationships. All edges are informational only - used for
 confidence scoring and name disambiguation, not for creating new requests."""
 
 from enum import Enum
+from itertools import batched
 from typing import Any
 
 import networkx as nx
@@ -265,8 +266,7 @@ class SocialGraph:
             chunk_size = 25
             all_assignments = []
 
-            for i in range(0, len(person_cm_ids), chunk_size):
-                chunk = person_cm_ids[i : i + chunk_size]
+            for chunk in batched(person_cm_ids, chunk_size, strict=False):
                 person_filter = " || ".join([f"person.cm_id = {pid}" for pid in chunk])
                 filter_str = f"year < {self.year} && ({person_filter})"
 

@@ -18,6 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
+from itertools import batched
 from typing import Any
 
 from bunking.logging_config import get_logger
@@ -364,7 +365,7 @@ class BatchProcessor:
             return self._create_dynamic_batches(items)
         else:
             # Fixed size batching (fallback)
-            return [items[i : i + BATCH_SIZE] for i in range(0, len(items), BATCH_SIZE)]
+            return [list(b) for b in batched(items, BATCH_SIZE, strict=False)]
 
     def _create_dynamic_batches(self, items: list[Any]) -> list[list[Any]]:
         """Create batches based on estimated token count (using hardcoded limits)"""
