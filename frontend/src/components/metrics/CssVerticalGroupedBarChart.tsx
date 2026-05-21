@@ -114,7 +114,7 @@ export function CssVerticalGroupedBarChart({
         : 0
     let max = yAxisMax ?? (dataMax > 0 ? dataMax : 1)
     const t = getNiceTicks(max)
-    max = t[t.length - 1] ?? max
+    max = t.at(-1) ?? max
     return { axisMax: max, ticks: t }
   }, [data, series, yAxisMax])
 

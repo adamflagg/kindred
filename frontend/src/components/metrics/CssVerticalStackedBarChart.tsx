@@ -109,7 +109,7 @@ export function CssVerticalStackedBarChart({
     const t = getNiceTicks(maxTotal)
     return {
       ticks: t,
-      axisMax: t[t.length - 1] ?? maxTotal,
+      axisMax: t.at(-1) ?? maxTotal,
       formatTick: undefined as ((tick: number) => string) | undefined,
     }
   }, [data, percentMode])

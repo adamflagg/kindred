@@ -52,7 +52,7 @@ export function CssHorizontalBarChart({
   const { axisMax, ticks, isDense, barHeight, rowGap } = useMemo(() => {
     const max = Math.max(...data.map((d) => d.value), 1)
     const t = getNiceTicks(max)
-    const am = t[t.length - 1] ?? max
+    const am = t.at(-1) ?? max
     const sizing = calculateBarSizing(height, data.length)
     return { axisMax: am, ticks: t, ...sizing }
   }, [data, height])
