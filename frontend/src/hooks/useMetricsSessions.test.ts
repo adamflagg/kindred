@@ -3,8 +3,41 @@
  *
  * TDD: These tests define the expected behavior before implementation.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
+import { createWrapper } from '../test/testUtils'
 import type { MetricsSession } from './useMetricsSessions'
+
+const mockGetFullList = vi.fn()
+const mockCollection = vi.fn((_name: string) => ({ getFullList: mockGetFullList }))
+
+vi.mock('../lib/pocketbase', () => ({
+  pb: {
+    collection: (name: string) => mockCollection(name),
+  },
+}))
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { id: '1', email: 'test@example.com' },
+    isLoading: false,
+    isAuthenticated: true,
+    isBypassMode: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    error: null,
+    checkAuth: vi.fn(),
+    pb: {},
+  }),
+}))
+
+import { useMetricsSessions } from './useMetricsSessions'
+
+beforeEach(() => {
+  mockGetFullList.mockReset()
+  mockCollection.mockClear()
+  mockGetFullList.mockResolvedValue([])
+})
 
 describe('useMetricsSessions', () => {
   it('should export useMetricsSessions hook', async () => {
@@ -64,6 +97,67 @@ describe('useMetricsSessions', () => {
       expect(sorted[1]?.name).toBe('Session 3')
       expect(sorted[2]?.name).toBe('Session 4')
     })
+  })
+})
+
+describe('useMetricsSessions teen window-gate wiring', () => {
+  it('includes summer scit + tli, excludes off-season fall scit (filter string + window gate together)', async () => {
+    // Two main sessions anchor the summer window (~2025-06-15 → 2025-08-02).
+    // Summer scit and tli overlap that window; the fall scit does not.
+    mockGetFullList.mockResolvedValue([
+      {
+        cm_id: 1,
+        name: 'Session 1',
+        session_type: 'main',
+        start_date: '2025-06-15',
+        end_date: '2025-06-28',
+      },
+      {
+        cm_id: 2,
+        name: 'Session 4',
+        session_type: 'main',
+        start_date: '2025-07-20',
+        end_date: '2025-08-02',
+      },
+      {
+        cm_id: 3,
+        name: 'SCIT Summer',
+        session_type: 'scit',
+        start_date: '2025-06-08',
+        end_date: '2025-07-04',
+      },
+      {
+        cm_id: 4,
+        name: 'TLI Summer',
+        session_type: 'tli',
+        start_date: '2025-07-11',
+        end_date: '2025-08-03',
+      },
+      {
+        cm_id: 5,
+        name: 'SCIT Fall',
+        session_type: 'scit',
+        start_date: '2025-09-12',
+        end_date: '2025-09-15',
+      },
+    ])
+
+    const { result } = renderHook(() => useMetricsSessions(2025), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    // The filter widened to fetch teens too.
+    expect(mockCollection).toHaveBeenCalledWith('camp_sessions')
+    const callArg = mockGetFullList.mock.calls[0]?.[0] as { filter?: string } | undefined
+    expect(callArg?.filter).toContain('session_type = "scit"')
+    expect(callArg?.filter).toContain('session_type = "tli"')
+
+    const cmIds = (result.current.data ?? []).map((s) => s.cm_id)
+    expect(cmIds).toContain(1) // main
+    expect(cmIds).toContain(2) // main
+    expect(cmIds).toContain(3) // summer scit overlaps window
+    expect(cmIds).toContain(4) // summer tli overlaps window
+    expect(cmIds).not.toContain(5) // fall scit is off-season → gated out
+    expect(result.current.data).toHaveLength(4)
   })
 })
 
