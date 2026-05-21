@@ -19,6 +19,18 @@ reviews:
   in_progress_fortune: false
   changed_files_summary: true
 
+  # Pre-merge checks default to mode: warning when omitted. Turn them off explicitly —
+  # title/description quality and docstring coverage aren't gates we want CR enforcing.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+
   # We don't open drafts (see CLAUDE.md global-preferences). No need to auto-review them.
   auto_review:
     drafts: false
@@ -51,7 +63,7 @@ reviews:
 
     - path: "pocketbase/**/*.go"
       instructions: |
-        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.0`). Idiomatic baseline:
+        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.3`). Idiomatic baseline:
         - `any` (not `interface{}`); `map[string]any` (not `map[string]interface{}`)
         - `slices`, `maps`, `cmp` packages over legacy `sort.*`
         - `min`/`max`/`clear` builtins; `cmp.Or` for first-non-zero
@@ -74,7 +86,7 @@ reviews:
 
     - path: "frontend/**/*.{ts,tsx}"
       instructions: |
-        React 19 + TypeScript 5.8 + ES2023 baseline. tsconfig already has bundler resolution, verbatimModuleSyntax, noImplicitOverride, erasableSyntaxOnly.
+        React 19 + TypeScript 5.8 + ES2022 baseline. tsconfig already has bundler resolution, verbatimModuleSyntax, noImplicitOverride, erasableSyntaxOnly.
         Style preferences (don't insist, but prefer):
         - `Array.toSorted()` / `toReversed()` over `[...arr].sort()` / `.reverse()`
         - `Object.groupBy()` over `reduce((acc, x) => ...)` groupBy patterns
@@ -85,6 +97,16 @@ reviews:
         Critical auth invariant: protected FastAPI endpoints MUST be called via `fetchWithAuth` (NOT raw `fetch` with `credentials: 'include'`). The PocketBase JWT lives in `localStorage`, NOT cookies — raw fetch silently 401s. Mutation-mocked hook tests cannot catch this; service-level tests must assert the Authorization header.
         Routing pattern: Caddy routes specific PocketBase patterns to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
 
+    - path: "bunking/**/*.py"
+      instructions: |
+        Camp-data Python (sync pipeline, satisfaction policy, social graph, RBAC, geo, config).
+        Domain invariants — same as the Go sync path:
+        - Cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs.
+        - All CampMinder-derived data carries a required `year` field; year filtering uses `CAMPMINDER_SEASON_ID` from env (frontend year dropdown is display-only).
+        - Sync order is fixed: sessions → attendees → persons → bunks → plans → assignments → requests. Don't suggest reordering.
+        - Active-attendee filter is `status_id = 2`.
+        - Family-camp data syncs alongside summer data — summer views filter `session_type` against `VALID_SUMMER_SESSION_TYPES`.
+
     - path: "bunking/solver/**/*.py"
       instructions: |
         OR-Tools CP-SAT solver. Constraint/objective changes need a unit test that exercises the constraint behavior, not just the solver's pass/fail. Soft-constraint penalties register through `weight_for(source_field, request_type)` — never collapse `(source_field, request_type)` keys that happen to share a numeric weight today; they're independent tunable dimensions.
@@ -94,6 +116,11 @@ reviews:
         Test data MUST use the fictional name set from CLAUDE.md: Emma Johnson, Liam Garcia, Olivia Chen, Riley Sam, Samuel Johnson, etc. Fictional schools: Riverside Elementary, Oak Valley Middle, Hillcrest High. Fictional session IDs: 1000001, 1000002.
         Tests are the spec — do NOT suggest modifying tests to match implementation behavior. TDD is required for new behavioral code.
         Integration tests that hit a running server (e.g. `test_metrics_retention.py`) will fail without one — that is expected, not a test bug.
+
+    - path: "frontend/src/**/*.test.{ts,tsx}"
+      instructions: |
+        Same fictional-name discipline as `tests/**/*.py`: Emma Johnson, Liam Garcia, Olivia Chen, Riley Sam, Samuel Johnson, etc. Fictional schools: Riverside Elementary, Oak Valley Middle, Hillcrest High. Fictional CampMinder IDs: 1000001, 1000002. Never propagate real names from production data into tests, fixtures, or snapshots.
+        Tests are the spec — do NOT suggest modifying tests to match implementation behavior. TDD is required for new behavioral code.
 
     - path: "**/*.md"
       instructions: |
@@ -109,6 +136,21 @@ reviews:
     - "!**/package-lock.json"
     - "!**/go.sum"
     - "!**/uv.lock"
+
+  # All linters default to enabled. Mute the Python/JS ones we deliberately don't run
+  # locally — they'd flag existing code against rules we don't enforce.
+  # Kept enabled (defaults): ruff, golangci-lint, eslint, shellcheck (mirror our pre-push hooks)
+  # plus hadolint, actionlint, gitleaks, markdownlint, yamllint, semgrep, ast-grep — no local
+  # equivalent, pure CR-side signal.
+  tools:
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
 
 knowledge_base:
   # Keep repo-specific learnings local — no cross-org pattern leakage.
