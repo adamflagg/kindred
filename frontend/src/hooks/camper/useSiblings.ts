@@ -109,19 +109,19 @@ export function useSiblings(
 
             return {
               ...siblingPerson,
-              session: session
-                ? {
-                    id: session.id,
-                    cm_id: session.cm_id,
-                    name: session.name,
-                    session_type: session.session_type,
-                    start_date: session.start_date,
-                    end_date: session.end_date,
-                  }
-                : undefined,
+              ...(session && {
+                session: {
+                  id: session.id,
+                  cm_id: session.cm_id,
+                  name: session.name,
+                  session_type: session.session_type,
+                  start_date: session.start_date,
+                  end_date: session.end_date,
+                },
+              }),
               bunkName,
               attendeeStatus: primaryAttendee.status,
-            } as SiblingWithEnrollment
+            } satisfies SiblingWithEnrollment
           } catch (err) {
             console.error(`Error checking enrollment for sibling ${siblingPerson.cm_id}:`, err)
             return null
@@ -129,8 +129,11 @@ export function useSiblings(
         })
       )
 
-      // Filter out nulls (siblings not enrolled)
-      return siblingsWithEnrollment.filter((s): s is SiblingWithEnrollment => s !== null)
+      // Filter out nulls (siblings not enrolled). TS infers the narrowing from
+      // `s !== null` (inferred type predicate), so no explicit annotation is
+      // needed — and the precise literal type is a subtype of
+      // SiblingWithEnrollment, which the hook's return boundary requires.
+      return siblingsWithEnrollment.filter((s) => s !== null)
     },
     enabled: !!(householdId && householdId > 0),
     staleTime: 0, // Always fetch fresh data
