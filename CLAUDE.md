@@ -170,7 +170,7 @@ Internalize these — violating them produces incorrect code or data corruption.
 8. **Attendee filtering** — solver uses `status_id = 2` for active enrolled attendees
 
 #### Tooling Notes
-1. **Language Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 5.8+/ES2022
+1. **Language Versions** — Python 3.14+, Go 1.26+, Node 22+, TypeScript 6.0+/ES2022
 2. **Use uv** — `uv sync` to install, `uv run <cmd>` to execute
 3. **AI model** — GPT-5-nano via `AI_MODEL` env var ($0.05/$0.40 per M tokens, reasoning enabled)
 4. **Token caching** — CampMinder JWT cached in `~/.campminder_token_cache.json`

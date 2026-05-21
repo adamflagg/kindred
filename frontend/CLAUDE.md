@@ -71,4 +71,4 @@ In a fresh worktree, hit the **Vite dev port printed by `new.sh`** (the port off
 
 ## Tech versions
 
-React 19, TypeScript 5.8+/ES2022, Vite, Tailwind CSS, @tanstack/react-query, @dnd-kit, Cytoscape.js. Node 22+.
+React 19, TypeScript 6.0+/ES2022, Vite, Tailwind CSS, @tanstack/react-query, @dnd-kit, Cytoscape.js. Node 22+.

@@ -1,0 +1,178 @@
+# CodeRabbit configuration — schema: https://docs.coderabbit.ai/reference/configuration
+# Companion to the **/CLAUDE.md hierarchy already auto-scanned via
+# knowledge_base.code_guidelines. This file scopes review-time behavior;
+# CLAUDE.md captures durable repo conventions.
+
+language: en-US
+
+tone_instructions: |
+  Direct and terse. No emojis, no poems, no fortune. Point out real bugs; skip cosmetic nits.
+
+reviews:
+  profile: chill
+
+  # Noise reduction — recent walkthroughs were dense and buried the actionable lines.
+  collapse_walkthrough: true
+  high_level_summary: true
+  sequence_diagrams: false
+  poem: false
+  in_progress_fortune: false
+  changed_files_summary: true
+
+  # Pre-merge checks default to mode: warning when omitted. Turn them off explicitly —
+  # title/description quality and docstring coverage aren't gates we want CR enforcing.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+
+  # We don't open drafts (see CLAUDE.md global-preferences). No need to auto-review them.
+  auto_review:
+    drafts: false
+
+  # Workflow surfacing — these earn their space on this repo.
+  related_issues: true
+  assess_linked_issues: true
+  suggested_labels: false
+  suggested_reviewers: false
+
+  # Path-scoped review guidance. 20k char/entry limit.
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |
+        Python 3.14+ codebase (see pyproject.toml `requires-python = ">=3.14"`).
+        Treat the following as valid syntax — do NOT flag as errors or "compatibility issues":
+        - PEP 758: `except A, B:` without parentheses
+        - PEP 649: bare runtime annotations (the codebase deliberately does NOT use `from __future__ import annotations`)
+        - PEP 695: generic type-parameter syntax — `def foo[T](x: T) -> T`, `class Box[T]:`, `type Alias[T] = list[T]`
+        - PEP 750: t-string literals
+        - Built-in generics: `dict[str, X]`, `list[X]`, `tuple[X, ...]` (no `typing.Dict/List/Tuple`)
+        - Union syntax: `X | None` (no `typing.Optional` / `typing.Union`)
+        - `typing.TypeIs` (3.13+), `typing.ReadOnly` (3.13+), `typing.override` (3.12+)
+        - `asyncio.TaskGroup`, `asyncio.timeout`, `itertools.batched`, `copy.replace`
+        Style preferences:
+        - Prefer `asyncio.TaskGroup` over `asyncio.gather` for new concurrent code (aggregates exceptions via ExceptionGroup).
+        - Prefer `itertools.batched(x, n)` over manual `range(0, len(x), n)` chunking.
+        - Pydantic v2 throughout — do not suggest v1 patterns.
+        - Use `datetime.UTC`, not `datetime.timezone.utc`.
+
+    - path: "pocketbase/**/*.go"
+      instructions: |
+        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.3`). Idiomatic baseline:
+        - `any` (not `interface{}`); `map[string]any` (not `map[string]interface{}`)
+        - `slices`, `maps`, `cmp` packages over legacy `sort.*`
+        - `min`/`max`/`clear` builtins; `cmp.Or` for first-non-zero
+        - `log/slog` with structured key/value attrs — do NOT suggest `fmt.Sprintf` inside `slog.*`
+        - `errors.Is` / `errors.As` with sentinel errors — never `strings.Contains(err.Error(), ...)`
+        - `slices.Chunk` for batching; `slices.SortFunc` / `slices.Sort`
+        - `math/rand/v2` (already adopted); `crypto/rand` for jitter
+        - `testing/synctest` for time-dependent tests
+        Logging contract: the `logging` package installs the default slog handler via `slog.SetDefault` at init — direct `slog.Info(...)` / `slog.Error(...)` / etc. calls are the correct pattern. There is no `logging.Info` wrapper. Do NOT flag direct `slog.*` calls as "bypasses logging contract" — that's a false positive.
+        Do NOT suggest `encoding/json/v2` — still `GOEXPERIMENT=jsonv2`-gated as of Go 1.26.3 and not subject to the Go 1 compatibility promise. The codebase deliberately uses `encoding/json` until v2 is GA.
+        Domain invariant: cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs. All CampMinder-derived tables include a required `year` field; year filtering must use `CAMPMINDER_SEASON_ID` from env.
+
+    - path: "pocketbase/pb_migrations/*.js"
+      instructions: |
+        PocketBase v0.23+ migration syntax. Specific gotchas:
+        - Field add() requires `new Field(...)` wrapper — bare object literal `add({...})` fails at server-boot apply time with "could not convert [object Object] to core.Field". Unit tests will NOT catch this.
+        - Do NOT use the old `options: {}` wrapper for field properties — v0.23 flattens them. Using the old wrapper causes silent data truncation.
+        - Filename numbering must exceed the highest filename on origin/main; never fill gaps left by consolidation runs (numbers are "burned" to preserve a monotonically increasing record).
+        - WAL checkpoint recommended after data-write migrations (`db.newQuery("PRAGMA wal_checkpoint(TRUNCATE)").execute()`).
+        Reference: docs/reference/pocketbase-migrations.md and the `pocketbase-migrations` skill's `templates/add-fields.js`.
+
+    - path: "frontend/**/*.{ts,tsx}"
+      instructions: |
+        React 19 + TypeScript 6.0 + ES2022 baseline. tsconfig already has bundler resolution, verbatimModuleSyntax, noImplicitOverride, erasableSyntaxOnly. Lib target is ES2022 — do NOT suggest ES2023+ APIs (e.g. `Object.groupBy`, `Map.groupBy`, `Promise.withResolvers`) unless tsconfig `lib` is bumped first.
+        Style preferences (don't insist, but prefer):
+        - `Array.toSorted()` / `toReversed()` over `[...arr].sort()` / `.reverse()`
+        - `use()` hook over `useContext` for new contexts
+        - `<Context>` shorthand over `<Context.Provider>`
+        - Error cause chaining: `throw new Error(msg, { cause: err })`
+        - `satisfies` for config / route / feature-map objects
+        Critical auth invariant: protected FastAPI endpoints MUST be called via `fetchWithAuth` (NOT raw `fetch` with `credentials: 'include'`). The PocketBase JWT lives in `localStorage`, NOT cookies — raw fetch silently 401s. Mutation-mocked hook tests cannot catch this; service-level tests must assert the Authorization header.
+        Routing pattern: Caddy routes specific PocketBase patterns to PocketBase; everything else under `/api/*` goes to FastAPI. New FastAPI endpoints automatically work — no Caddy enumeration needed.
+
+    - path: "api/**/*.py"
+      instructions: |
+        FastAPI HTTP layer — thin routers over `bunking/`. If a router accumulates logic, extract to `bunking/` and have the router call back in.
+        Global exception handler in `api/main.py` returns a generic `{"detail": "Internal server error"}` (never the actual error) and logs the traceback server-side with `exc_info=True`. Do NOT suggest `raise HTTPException(status_code=500, detail=str(e))` — that leaks internals; let the global handler catch it.
+        Auth: `bunking/auth_middleware.py` + `bunking/jwt_auth.py` verify PocketBase JWTs. Protected endpoints must verify auth or they silently 401 (the JWT lives in localStorage, not cookies — frontend must call them via `fetchWithAuth`, never raw `fetch` with `credentials: 'include'`).
+        Routers live in `api/routers/`, schemas in `api/schemas/`. Same Python 3.14 conventions as `bunking/` — tag the logger with `[api]`.
+
+    - path: "bunking/**/*.py"
+      instructions: |
+        Camp-data Python (sync pipeline, satisfaction policy, social graph, RBAC, geo, config).
+        Domain invariants — same as the Go sync path:
+        - Cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs.
+        - All CampMinder-derived data carries a required `year` field; year filtering uses `CAMPMINDER_SEASON_ID` from env (frontend year dropdown is display-only).
+        - Sync order is fixed: sessions → attendees → persons → bunks → plans → assignments → requests. Don't suggest reordering.
+        - Active-attendee filter is `status_id = 2`.
+        - Family-camp data syncs alongside summer data — summer views filter `session_type` against `VALID_SUMMER_SESSION_TYPES`.
+
+    - path: "bunking/solver/**/*.py"
+      instructions: |
+        OR-Tools CP-SAT solver. Constraint/objective changes need a unit test that exercises the constraint behavior, not just the solver's pass/fail. Soft-constraint penalties register through `weight_for(source_field, request_type)` — never collapse `(source_field, request_type)` keys that happen to share a numeric weight today; they're independent tunable dimensions.
+
+    - path: "tests/**/*.py"
+      instructions: |
+        Test data MUST use the fictional name set from CLAUDE.md: Emma Johnson, Liam Garcia, Olivia Chen, Riley Sam, Samuel Johnson, etc. Fictional schools: Riverside Elementary, Oak Valley Middle, Hillcrest High. Fictional session IDs: 1000001, 1000002.
+        Tests are the spec — do NOT suggest modifying tests to match implementation behavior. TDD is required for new behavioral code.
+        Integration tests that hit a running server (e.g. `test_metrics_retention.py`) will fail without one — that is expected, not a test bug.
+
+    - path: "frontend/src/**/*.test.{ts,tsx}"
+      instructions: |
+        Same fictional-name discipline as `tests/**/*.py`: Emma Johnson, Liam Garcia, Olivia Chen, Riley Sam, Samuel Johnson, etc. Fictional schools: Riverside Elementary, Oak Valley Middle, Hillcrest High. Fictional CampMinder IDs: 1000001, 1000002. Never propagate real names from production data into tests, fixtures, or snapshots.
+        Tests are the spec — do NOT suggest modifying tests to match implementation behavior. TDD is required for new behavioral code.
+
+    - path: "**/*.md"
+      instructions: |
+        Documentation may use Unicode dashes (— –), arrow characters, and unnumbered headings. Do not suggest TOC additions for docs under 500 lines. Do not flag non-ASCII characters as problems.
+
+  # Drop generated / vendored / lockfile noise.
+  path_filters:
+    - "!frontend/dist/**"
+    - "!frontend/node_modules/**"
+    - "!pocketbase/pb_data/**"
+    - "!pocketbase/pb_public/**"
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/go.sum"
+    - "!**/uv.lock"
+
+  # All linters default to enabled. Mute the Python/JS ones we deliberately don't run
+  # locally — they'd flag existing code against rules we don't enforce.
+  # Kept enabled (defaults): ruff, golangci-lint, eslint, shellcheck (mirror our pre-push hooks)
+  # plus hadolint, actionlint, gitleaks, markdownlint, yamllint, semgrep, ast-grep — no local
+  # equivalent, pure CR-side signal.
+  tools:
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
+
+knowledge_base:
+  # Keep repo-specific learnings local — no cross-org pattern leakage.
+  learnings:
+    scope: local
+  # Already default, set explicit for clarity. Auto-scans **/CLAUDE.md and **/AGENTS.md.
+  code_guidelines:
+    enabled: true
+
+chat:
+  art: false
+
+# Code-generation features are off — we don't ask CR to write code in this repo.
+code_generation:
+  docstrings:
+    language: en-US
+
+early_access: false
