@@ -6,7 +6,7 @@
  */
 import { useContext, createContext } from 'react'
 import type { MetricsSession } from './useMetricsSessions'
-import type { MetricsViewMode } from '../constants/sessionTypes'
+import type { MetricsViewMode } from '../utils/sessionTypePredicates'
 import type { DurationCategory } from '../utils/sessionUtils'
 import type { MetricsFilterOptions } from './useMetrics'
 

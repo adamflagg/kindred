@@ -26,7 +26,9 @@ import {
   DROPDOWN_TYPES,
   SUMMER_CAMP_TYPES,
   TEEN_PROGRAM_TYPES,
+  QUEST_SESSION_TYPES,
   SESSION_TYPE_LITERALS,
+  buildSummerSessionTypeFilter,
 } from '../sessionTypePredicates'
 import type { Session } from '../../types/app-types'
 
@@ -113,6 +115,25 @@ describe('typed set exports', () => {
     expect([...SESSION_TYPE_LITERALS].sort()).toEqual([...ALL_TYPES].sort())
     // 'taste' is NOT a session_type value — it's a name-match pattern
     expect(SESSION_TYPE_LITERALS).not.toContain('taste')
+  })
+
+  it('QUEST_SESSION_TYPES contains only quest', () => {
+    expect(QUEST_SESSION_TYPES).toEqual(['quest'])
+  })
+})
+
+// ============================================================================
+// buildSummerSessionTypeFilter — PocketBase OR-clause builder
+// ============================================================================
+
+describe('buildSummerSessionTypeFilter', () => {
+  it('builds an OR-clause over every summer camp session type', () => {
+    const filter = buildSummerSessionTypeFilter()
+    for (const t of SUMMER_CAMP_TYPES) {
+      expect(filter).toContain(`session.session_type = "${t}"`)
+    }
+    // Joined with " || ", one clause per type — no trailing/leading separator
+    expect(filter.split(' || ')).toHaveLength(SUMMER_CAMP_TYPES.length)
   })
 })
 

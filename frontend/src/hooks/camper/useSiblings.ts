@@ -5,7 +5,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { buildSummerSessionTypeFilter } from '../../constants/sessionTypes'
+import { buildSummerSessionTypeFilter } from '../../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
