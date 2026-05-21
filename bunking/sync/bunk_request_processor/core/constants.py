@@ -40,6 +40,13 @@ MAX_AGE_DIFFERENCE_MONTHS = 36  # For pre-filtering candidates
 # DEFAULT_AGE_SPREAD_MONTHS deleted in Age Spread Phase 2 — use
 # bunking.solver.constants.MAX_AGE_SPREAD_MONTHS (the single source of truth).
 
+# Context building: maximum age difference (months) used by ContextBuilder when
+# selecting peer attendees for AI disambiguation prompts. Was previously read
+# from `ai.context_building.max_age_difference_months` via the PB bulk-load
+# pattern; now hardcoded since the value has never been tuned and the PB row
+# is being deleted in the AI Config Phase 2 cleanup.
+CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS = 24
+
 # Confidence thresholds
 # These define base confidence values for match types and status thresholds.
 # Status determination:

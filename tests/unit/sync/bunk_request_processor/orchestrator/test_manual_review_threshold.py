@@ -94,31 +94,18 @@ class TestAutoResolveThreshold:
             graph.return_value = mock_instance
             yield graph
 
-    def test_loads_confidence_thresholds_from_config(self, mock_pb, mock_factory, mock_social_graph):
-        """Verify orchestrator loads confidence_thresholds from constants."""
+    def test_auto_resolve_threshold_uses_constant(self, mock_pb, mock_factory, mock_social_graph):
+        """Threshold comes from CONFIDENCE_THRESHOLDS['resolved'] (0.85) after
+        the AI Config (Unified) Phase 2 cleanup. The previous PB injection
+        path and `ai_config["confidence_thresholds"]` merging are gone — the
+        orchestrator reads the constant directly.
+        """
+        from bunking.sync.bunk_request_processor.core.constants import CONFIDENCE_THRESHOLDS
+
         orchestrator = RequestOrchestrator(mock_pb, year=2025)
 
-        # Must have confidence_thresholds loaded
-        assert "confidence_thresholds" in orchestrator.ai_config
-        thresholds = orchestrator.ai_config["confidence_thresholds"]
-
-        # Must have the 'resolved' threshold (0.85 per constants.py)
-        # Note: auto_accept (0.95) is also available for UI display purposes
-        assert "resolved" in thresholds
-        assert thresholds["resolved"] == 0.85
-        assert "auto_accept" in thresholds
-        assert thresholds["auto_accept"] == 0.95
-
-    def test_auto_resolve_threshold_used_from_config(self, mock_pb, mock_factory, mock_social_graph):
-        """Verify threshold comes from config, not hardcoded."""
-        custom_threshold = 0.75
-        orchestrator = RequestOrchestrator(
-            mock_pb, year=2025, ai_config={"provider": "openai", "confidence_thresholds": {"valid": custom_threshold}}
-        )
-
-        # The custom threshold should be used
-        assert orchestrator.ai_config["confidence_thresholds"]["valid"] == custom_threshold
-        assert orchestrator._get_auto_resolve_threshold() == custom_threshold
+        assert orchestrator._get_auto_resolve_threshold() == CONFIDENCE_THRESHOLDS["resolved"]
+        assert orchestrator._get_auto_resolve_threshold() == 0.85
 
 
 class TestLowConfidenceStatusBehavior:

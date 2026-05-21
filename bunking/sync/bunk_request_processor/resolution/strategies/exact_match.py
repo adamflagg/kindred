@@ -33,16 +33,14 @@ class ExactMatchStrategy(BaseMatchStrategy):
         self,
         person_repository: PersonRepository,
         attendee_repository: AttendeeRepository,
-        config: dict[str, Any] | None = None,
     ):
         """Initialize the exact match strategy.
 
         Args:
             person_repository: Repository for person data access
             attendee_repository: Repository for attendee data access
-            config: Optional config dict with confidence values
         """
-        super().__init__(person_repository, attendee_repository, config)
+        super().__init__(person_repository, attendee_repository)
         self._strategy_name = "exact_match"
 
     def resolve(

@@ -30,7 +30,7 @@ from ..core.models import (
     RequestStatus,
     RequestType,
 )
-from ..data.cache import CacheManager, CacheMonitor, create_cache_monitor
+from ..data.cache import CacheManager, CacheMonitor
 from ..data.cache.temporal_name_cache import TemporalNameCache
 from ..data.repositories.attendee_repository import AttendeeRepository
 from ..data.repositories.person_repository import PersonRepository
@@ -173,24 +173,6 @@ class RequestOrchestrator:
     - Phase 3: AI Disambiguation (V1 AI + minimal context)
     """
 
-    @staticmethod
-    def _is_smart_resolution_enabled(config: dict[str, Any] | None) -> bool:
-        """Check if smart resolution is enabled in config.
-
-        Matches monolith behavior: checks smart_local_resolution.enabled,
-        defaults to True if missing.
-
-        Args:
-            config: AI configuration dict
-
-        Returns:
-            True if smart resolution is enabled, False otherwise
-        """
-        if not config:
-            return True
-        smart_config = config.get("smart_local_resolution", {})
-        return bool(smart_config.get("enabled", True))
-
     def __init__(
         self,
         pb: PocketBase | None = None,
@@ -300,44 +282,24 @@ class RequestOrchestrator:
         self._phase1_first_error: str | None = None
 
     def _load_ai_config(self) -> dict[str, Any]:
-        """Load AI configuration via ConfigLoader with constant fallbacks.
+        """Load AI provider/model settings from env via ConfigLoader.
 
-        Delegates to ConfigLoader.get_ai_config() which:
-        - Loads provider settings from environment variables
-        - Queries PocketBase for category='ai' config records
-        - Builds nested dict from subcategory paths
-
-        Falls back to CONFIDENCE_THRESHOLDS from constants.py when PocketBase
-        config is unavailable (e.g., in CI/testing environments).
-
-        Returns:
-            AI configuration dict with provider, model, thresholds, etc.
+        Returns the env-derived blob (provider, api_key, model, etc.). PB-side
+        AI config was retired in the AI Config (Unified) Phase 2 cleanup —
+        confidence thresholds, name-matching, resolution scoring etc. are now
+        module-level constants under `core/constants.py` and the resolution
+        strategy modules.
         """
         loader = ConfigLoader.get_instance()
-        config = loader.get_ai_config()
-
-        # Merge confidence_thresholds from constants as defaults
-        # PocketBase values (if loaded) take precedence
-        if "confidence_thresholds" not in config:
-            config["confidence_thresholds"] = {
-                "auto_accept": CONFIDENCE_THRESHOLDS["auto_accept"],  # 0.95
-                "resolved": CONFIDENCE_THRESHOLDS["resolved"],  # 0.85
-            }
-
-        return config
+        return loader.get_ai_config()
 
     def _get_auto_resolve_threshold(self) -> float:
         """Get the confidence threshold for auto-resolving matches.
 
         Matches with confidence >= threshold are auto-resolved (status=RESOLVED).
         Matches with confidence < threshold stay PENDING for staff confirmation.
-
-        Returns confidence_thresholds.resolved from config (default 0.85).
-        Supports legacy 'valid' key for backward compatibility.
         """
-        thresholds = self.ai_config.get("confidence_thresholds", {})
-        # Try 'resolved' (preferred), then 'valid' (legacy), then default
-        return float(thresholds.get("resolved", thresholds.get("valid", 0.85)))
+        return float(CONFIDENCE_THRESHOLDS["resolved"])
 
     def _track_request_stats(self, request: BunkRequest) -> None:
         """Track extended statistics for a saved request.
@@ -670,17 +632,17 @@ class RequestOrchestrator:
             logger.info("Cache monitoring enabled")
 
     def _init_cache_system(self) -> None:
-        """Initialize cache manager, monitor, and temporal name cache."""
-        cache_config = self.ai_config.get("cache", {})
-        self.cache_manager = CacheManager(cache_config)
+        """Initialize cache manager and temporal name cache.
 
-        # Create cache monitor if monitoring is enabled
-        monitor: CacheMonitor | None
-        if cache_config.get("enable_monitoring", False):
-            monitor = create_cache_monitor(self.cache_manager, cache_config.get("monitor", {}))
-        else:
-            monitor = None
-        self.cache_monitor = monitor
+        Cache configuration (`ai.cache.*`) was a phantom dict-key path in the
+        AI config — it was never seeded as a PB row, so `CacheManager` always
+        ran with an empty config. Cache monitoring (`enable_monitoring`) was
+        likewise never reachable. Both lookups removed in the AI Config Phase 2
+        cleanup.
+        """
+
+        self.cache_manager = CacheManager({})
+        self.cache_monitor: CacheMonitor | None = None
 
         # Create temporal name cache for O(1) name lookups
         # Initialized lazily before Phase 2 resolution
@@ -692,14 +654,20 @@ class RequestOrchestrator:
         self._person_repo = PersonRepository(self.pb, name_cache=self.temporal_name_cache)
 
     def _init_ai_provider(self) -> None:
-        """Initialize AI provider, context builder, and batch processor."""
+        """Initialize AI provider, context builder, and batch processor.
+
+        `endpoint` was a phantom dict-key (`ai.endpoint` was never seeded);
+        `base_url` always defaulted to None. Removed in the AI Config Phase 2
+        cleanup. If a non-default OpenAI endpoint is needed in the future, add
+        it as an env var, not a PB row.
+        """
         # Create AI provider using factory
         provider_factory = ProviderFactory()
         ai_service_config = AIServiceConfig(
             provider=self.ai_config.get("provider", "openai"),
             api_key=self.ai_config.get("api_key"),
             model=self.ai_config.get("model", "gpt-4o-mini"),
-            base_url=self.ai_config.get("endpoint"),
+            base_url=None,
             debug=self.debug,
         )
         self.ai_provider = provider_factory.create(ai_service_config)
@@ -712,43 +680,49 @@ class RequestOrchestrator:
 
         # Create native V2 batch processor
         self.batch_processor = BatchProcessor(
-            ai_provider=self.ai_provider, config={"batch_processing": self.ai_config.get("batch_processing", {})}
+            ai_provider=self.ai_provider,
+            config={"batch_processing": self.ai_config.get("batch_processing", {})},
         )
 
     def _init_scoring_components(self) -> None:
-        """Initialize conflict detector, social-graph signals, and spread filter."""
+        """Initialize conflict detector, social-graph signals, and spread filter.
+
+        Both `conflict_detection.*` and `spread_validation.*` were AI Config
+        Phase 2 cleanup targets:
+        - `conflict_detection.*` was a phantom dict-key path — never seeded,
+          ConflictDetector always ran with `{}`.
+        - `spread_validation.enabled` was an always-on toggle — inline the True
+          branch and always construct the filter. Pattern-matched from Cabin
+          Capacity `mode`, Cabin Min Occupancy `enabled`, Grade Spread `mode`.
+        """
         # Social graph signals will be linked after social graph init
         self.social_graph_signals: SocialGraphSignalsAdapter | None = None
 
         # Create native V2 conflict detector
-        conflict_config = self.ai_config.get("conflict_detection", {})
         self.conflict_detector = ConflictDetector(
-            config=conflict_config,
+            config={},
             attendee_repo=self._attendee_repo,
             year=self.year,
         )
 
-        # Create spread filter from MAX_AGE_SPREAD_MONTHS / MAX_UNIQUE_GRADES_PER_BUNK constants
-        spread_enabled = self.ai_config.get("spread_validation", {}).get("enabled", True)
-        spread_filter: SpreadFilter | None
-        if spread_enabled:
-            spread_filter = SpreadFilter(
-                grade_spread=MAX_UNIQUE_GRADES_PER_BUNK,
-                age_spread_months=MAX_AGE_SPREAD_MONTHS,
-            )
-        else:
-            spread_filter = None
-        self.spread_filter = spread_filter
+        # Spread filter is always constructed — bounded by the unified
+        # solver-side constants.
+        self.spread_filter = SpreadFilter(
+            grade_spread=MAX_UNIQUE_GRADES_PER_BUNK,
+            age_spread_months=MAX_AGE_SPREAD_MONTHS,
+        )
 
     def _init_social_graph(self) -> None:
-        """Initialize social graph service if enabled."""
-        self._smart_resolution_enabled = self._is_smart_resolution_enabled(self.ai_config)
+        """Initialize social graph service.
 
-        if not self._smart_resolution_enabled:
-            logger.info("Smart resolution disabled via config - skipping social graph initialization")
-            self.social_graph = None
-            return
-
+        The old `smart_local_resolution.enabled` toggle lived in the
+        `smart_local_resolution` PB category — but `get_ai_config()` only ever
+        loaded `category='ai'`, so the toggle was unreachable and always
+        defaulted to True. Removed in the AI Config Phase 2 cleanup; the
+        social graph is now always constructed. (The full
+        `smart_local_resolution` PB category is queued for its own cleanup —
+        runtime values are already hardcoded in `phase2_resolution_service.py`.)
+        """
         # SocialGraph expects PocketBase - use the underlying client
         self.social_graph = SocialGraph(pb=self.pb, year=self.year, session_cm_ids=self.session_cm_ids)  # type: ignore[arg-type]
 
@@ -761,25 +735,21 @@ class RequestOrchestrator:
         self.social_graph_signals = signals_adapter
 
     def _init_resolution_pipeline(self) -> None:
-        """Initialize resolution pipeline with strategies."""
-        # Extract resolution config from PocketBase-loaded config
-        resolution_config = self.ai_config.get("confidence_scoring", {}).get("resolution", {})
-        fuzzy_config = resolution_config.get("fuzzy", {})
-        phonetic_config = resolution_config.get("phonetic", {})
+        """Initialize resolution pipeline with strategies.
+
+        Strategies no longer take a `config` arg — confidence values are
+        module-level constants on the strategy modules. Cleaned up in the
+        AI Config Phase 2 cleanup.
+        """
 
         self.resolution_pipeline = ResolutionPipeline(self._person_repo, self._attendee_repo)
         self.resolution_pipeline.add_strategy(ExactMatchStrategy(self._person_repo, self._attendee_repo))
-        self.resolution_pipeline.add_strategy(
-            FuzzyMatchStrategy(self._person_repo, self._attendee_repo, config=fuzzy_config)
-        )
-        self.resolution_pipeline.add_strategy(
-            PhoneticMatchStrategy(self._person_repo, self._attendee_repo, config=phonetic_config)
-        )
+        self.resolution_pipeline.add_strategy(FuzzyMatchStrategy(self._person_repo, self._attendee_repo))
+        self.resolution_pipeline.add_strategy(PhoneticMatchStrategy(self._person_repo, self._attendee_repo))
         self.resolution_pipeline.add_strategy(SchoolDisambiguationStrategy(self._person_repo, self._attendee_repo))
 
-        # Set spread filter if enabled
-        if self.spread_filter:
-            self.resolution_pipeline.set_spread_filter(self.spread_filter)
+        # Spread filter is always constructed — wire it in.
+        self.resolution_pipeline.set_spread_filter(self.spread_filter)
 
         # Set cache for resolution pipeline
         self.resolution_pipeline.set_cache(self.cache_manager)
@@ -1184,13 +1154,13 @@ class RequestOrchestrator:
         cache_stats = self.temporal_name_cache.get_stats()
         logger.info(f"Cache ready: {cache_stats['persons_loaded']} persons, {cache_stats['unique_names']} name keys")
 
-        # Initialize social graph between Phase 1 and Phase 2 (if enabled)
-        # This is when we need it for confidence scoring and resolution
-        if self._smart_resolution_enabled and self.social_graph:
+        # Initialize social graph between Phase 1 and Phase 2 — needed for
+        # confidence scoring and resolution. Always-on since the AI Config
+        # Phase 2 cleanup removed the unreachable smart_local_resolution
+        # toggle.
+        if self.social_graph:
             logger.info("=== Initializing Social Graph ===")
             await self.social_graph.initialize()
-        else:
-            logger.info("=== Skipping Social Graph (disabled via config) ===")
 
         # Phase 2: Local Resolution
         logger.info("=== Phase 2: Local Resolution ===")

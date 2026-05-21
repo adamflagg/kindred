@@ -122,9 +122,9 @@ class TestFullPipelineTracing:
         orch.temporal_name_cache.initialize = MagicMock()
         orch.temporal_name_cache.get_stats = MagicMock(return_value={"persons_loaded": 10, "unique_names": 10})
 
-        # Mock social graph
-        orch._smart_resolution_enabled = False
-        orch.social_graph = None
+        # Mock social graph (always-on after AI Config Phase 2 cleanup, but
+        # this test patches it to None and short-circuits the initialize() call)
+        orch.social_graph = None  # type: ignore[assignment]
 
         # Mock Phase 2 service
         mock_person = MagicMock()

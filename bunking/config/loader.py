@@ -450,16 +450,18 @@ class ConfigLoader:
 
     def get_ai_config(self) -> dict[str, Any]:
         """
-        Get all AI-related configuration.
+        Get AI provider/model/batching settings from environment.
 
-        AI settings (provider, api_key, model) come from environment variables
-        since they contain secrets. Other AI config comes from database.
+        Returns the env-derived blob only. The PB-side AI config (97 rows under
+        `category='ai'`) was retired in the AI Config (Unified) Phase 2
+        cleanup — 78 rows were dead, 18 are hardcoded as module-level
+        constants, and `ai.model` was an env-shadowed staff trap.
 
         Returns:
-            Nested dictionary with AI configuration.
+            Dict with `provider`, `api_key`, `model`, `temperature`,
+            `max_tokens`, and `batch_processing` keys.
         """
-        # Start with provider settings from environment (secrets stay in env)
-        config: dict[str, Any] = {
+        return {
             "provider": os.getenv("AI_PROVIDER", "openai"),
             "api_key": os.getenv("AI_API_KEY"),
             "model": os.getenv("AI_MODEL", "gpt-5-nano"),
@@ -467,58 +469,6 @@ class ConfigLoader:
             "max_tokens": 2000,
             "batch_processing": {"enabled": True, "batch_size": 10, "max_concurrent_batches": 3},
         }
-
-        # Query PocketBase for category='ai' records (non-secret config)
-        try:
-            records = self._pb.collection("config").get_full_list(query_params={"filter": "category = 'ai'"})
-
-            # Build nested dict from flat records
-            pb_config = self._build_nested_from_records(records)
-
-            # Merge PocketBase config into result
-            config.update(pb_config)
-
-            logger.debug(f"Loaded AI config from PocketBase: {len(records)} records")
-
-        except Exception as e:
-            logger.warning(f"Failed to load AI config from PocketBase: {e}")
-
-        return config
-
-    def _build_nested_from_records(self, records: list[Any]) -> dict[str, Any]:
-        """
-        Build nested dict from flat PocketBase config records.
-
-        Converts records with subcategory paths like 'confidence_thresholds.valid'
-        into nested dicts like {'confidence_thresholds': {'valid': 0.85}}.
-
-        Args:
-            records: List of PocketBase config records with subcategory, config_key, value
-
-        Returns:
-            Nested dict structure
-        """
-        result: dict[str, Any] = {}
-
-        for record in records:
-            subcategory = getattr(record, "subcategory", None) or ""
-            config_key = record.config_key
-            value = record.value
-
-            # Build the path: subcategory parts + config_key
-            parts = [*subcategory.split("."), config_key] if subcategory else [config_key]
-
-            # Navigate/create nested structure
-            current = result
-            for part in parts[:-1]:
-                if part not in current:
-                    current[part] = {}
-                current = current[part]
-
-            # Set the leaf value
-            current[parts[-1]] = value
-
-        return result
 
     def invalidate_cache(self, key: str | None = None) -> None:
         """

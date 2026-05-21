@@ -1,7 +1,9 @@
-"""Test-Driven Development for BaseMatchStrategy
+"""Tests for BaseMatchStrategy shared functionality.
 
-Tests the shared base class functionality for name resolution strategies.
-These tests are written BEFORE implementation per TDD methodology."""
+After the AI Config (Unified) Phase 2 cleanup, BaseMatchStrategy no longer
+takes a `config` arg — session-adjustment values are class attributes on the
+subclasses (Fuzzy / Phonetic), with the base class providing defaults.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 
 
-def create_concrete_strategy(config=None):
+def create_concrete_strategy():
     """Create a concrete subclass of BaseMatchStrategy for testing."""
     from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
         BaseMatchStrategy,
@@ -46,7 +48,7 @@ def create_concrete_strategy(config=None):
 
     mock_person_repo = Mock()
     mock_attendee_repo = Mock()
-    return ConcreteMatchStrategy(mock_person_repo, mock_attendee_repo, config or {})
+    return ConcreteMatchStrategy(mock_person_repo, mock_attendee_repo)
 
 
 class TestBaseMatchStrategyFilterSelfReferences:
@@ -54,8 +56,7 @@ class TestBaseMatchStrategyFilterSelfReferences:
 
     @pytest.fixture
     def base_strategy(self):
-        """Create a BaseMatchStrategy with minimal config"""
-        return create_concrete_strategy(config={})
+        return create_concrete_strategy()
 
     def test_filters_out_requester_from_matches(self, base_strategy):
         """Should remove the requester from the matches list"""
@@ -101,54 +102,16 @@ class TestBaseMatchStrategyFilterSelfReferences:
         assert result == []
 
 
-class TestBaseMatchStrategyCalculateBaseConfidence:
-    """Test _calculate_base_confidence method"""
-
-    @pytest.fixture
-    def base_strategy(self):
-        """Create a BaseMatchStrategy with various confidence config values"""
-        config = {
-            "nickname_base": 0.85,
-            "normalized_base": 0.80,
-            "soundex_base": 0.70,
-            "metaphone_base": 0.65,
-            "default_base": 0.75,
-        }
-        return create_concrete_strategy(config=config)
-
-    def test_returns_configured_value_for_known_match_type(self, base_strategy):
-        """Should return config value for known match types"""
-        assert base_strategy._calculate_base_confidence("nickname") == 0.85
-        assert base_strategy._calculate_base_confidence("normalized") == 0.80
-        assert base_strategy._calculate_base_confidence("soundex") == 0.70
-        assert base_strategy._calculate_base_confidence("metaphone") == 0.65
-
-    def test_returns_default_for_unknown_match_type(self, base_strategy):
-        """Should return default_base for unknown match types"""
-        assert base_strategy._calculate_base_confidence("unknown_type") == 0.75
-        assert base_strategy._calculate_base_confidence("") == 0.75
-
-    def test_uses_fallback_when_config_missing(self):
-        """Should use hardcoded fallback when config key is missing"""
-        strategy = create_concrete_strategy(config={})  # Empty config
-
-        # Should use fallback value (0.75) when config is empty
-        result = strategy._calculate_base_confidence("nickname")
-        assert result == 0.75  # Default fallback
-
-
 class TestBaseMatchStrategyApplySessionAdjustment:
-    """Test _apply_session_adjustment method"""
+    """Test _apply_session_adjustment uses class-attribute defaults.
+
+    Base class defaults: same_session_boost=0.05, different_session_penalty=-0.10,
+    not_enrolled_penalty=-0.05. Subclasses (Fuzzy / Phonetic) override.
+    """
 
     @pytest.fixture
     def base_strategy(self):
-        """Create a BaseMatchStrategy with session adjustment config"""
-        config = {
-            "same_session_boost": 0.05,
-            "different_session_penalty": -0.20,
-            "no_session_penalty": -0.05,
-        }
-        return create_concrete_strategy(config=config)
+        return create_concrete_strategy()
 
     def test_boosts_confidence_for_same_session(self, base_strategy):
         """Should boost confidence when person is in same session"""
@@ -163,7 +126,7 @@ class TestBaseMatchStrategyApplySessionAdjustment:
             attendee_info=attendee_info,
         )
 
-        assert result == pytest.approx(0.75)  # 0.70 + 0.05 boost
+        assert result == pytest.approx(0.75)  # 0.70 + 0.05 boost (base default)
 
     def test_penalizes_confidence_for_different_session(self, base_strategy):
         """Should penalize confidence when person is in different session"""
@@ -178,7 +141,7 @@ class TestBaseMatchStrategyApplySessionAdjustment:
             attendee_info=attendee_info,
         )
 
-        assert result == pytest.approx(0.50)  # 0.70 - 0.20 penalty
+        assert result == pytest.approx(0.60)  # 0.70 - 0.10 penalty (base default)
 
     def test_slight_penalty_when_no_session_info(self, base_strategy):
         """Should apply slight penalty when person not in attendee_info"""
@@ -193,7 +156,7 @@ class TestBaseMatchStrategyApplySessionAdjustment:
             attendee_info=attendee_info,
         )
 
-        assert result == pytest.approx(0.65)  # 0.70 - 0.05 penalty
+        assert result == pytest.approx(0.65)  # 0.70 - 0.05 not-enrolled penalty
 
     def test_slight_penalty_when_attendee_info_is_none(self, base_strategy):
         """Should apply slight penalty when attendee_info is None"""
@@ -206,7 +169,7 @@ class TestBaseMatchStrategyApplySessionAdjustment:
             attendee_info=None,
         )
 
-        assert result == pytest.approx(0.65)  # 0.70 - 0.05 penalty
+        assert result == pytest.approx(0.65)
 
     def test_slight_penalty_when_no_session_cm_id(self, base_strategy):
         """Should apply slight penalty when session_cm_id is None"""
@@ -220,7 +183,7 @@ class TestBaseMatchStrategyApplySessionAdjustment:
             attendee_info=attendee_info,
         )
 
-        assert result == pytest.approx(0.65)  # 0.70 - 0.05 penalty
+        assert result == pytest.approx(0.65)
 
 
 class TestBaseMatchStrategyBuildAmbiguousResult:
@@ -228,9 +191,7 @@ class TestBaseMatchStrategyBuildAmbiguousResult:
 
     @pytest.fixture
     def base_strategy(self):
-        """Create a BaseMatchStrategy"""
-        strategy = create_concrete_strategy(config={})
-        # Set a strategy name for testing
+        strategy = create_concrete_strategy()
         strategy._strategy_name = "test_strategy"
         return strategy
 
@@ -280,49 +241,6 @@ class TestBaseMatchStrategyBuildAmbiguousResult:
         )
 
         assert result.method == "test_strategy"
-
-
-class TestBaseMatchStrategyIntegration:
-    """Integration tests for BaseMatchStrategy"""
-
-    @pytest.fixture
-    def full_config(self):
-        """Return a complete config with all values"""
-        return {
-            "nickname_base": 0.85,
-            "spelling_base": 0.85,
-            "normalized_base": 0.80,
-            "soundex_base": 0.70,
-            "metaphone_base": 0.65,
-            "default_base": 0.75,
-            "session_match": 0.85,
-            "same_session_boost": 0.05,
-            "different_session_penalty": -0.20,
-            "no_session_penalty": -0.05,
-        }
-
-    @pytest.fixture
-    def base_strategy(self, full_config):
-        """Create a fully configured BaseMatchStrategy"""
-        return create_concrete_strategy(config=full_config)
-
-    def test_confidence_calculation_workflow(self, base_strategy):
-        """Test full workflow: base confidence + session adjustment"""
-        person = Person(cm_id=12345, first_name="John", last_name="Smith")
-        attendee_info = {12345: {"session_cm_id": 1000002}}
-
-        # Get base confidence for nickname match
-        base = base_strategy._calculate_base_confidence("nickname")
-        assert base == 0.85
-
-        # Apply session adjustment (same session)
-        adjusted = base_strategy._apply_session_adjustment(
-            base_confidence=base,
-            person=person,
-            session_cm_id=1000002,
-            attendee_info=attendee_info,
-        )
-        assert adjusted == pytest.approx(0.90)  # 0.85 + 0.05 boost
 
 
 class TestIsExactOrCloseFirstName:
@@ -391,8 +309,6 @@ class TestIsExactOrCloseFirstName:
         assert _is_exact_or_close_first_name("Liam", "", None) is False
 
     def test_empty_candidate_first_with_matching_preferred_passes(self):
-        # Person record with empty first_name but populated preferred_name
-        # should still gate-pass an exact preferred-name match.
         from bunking.sync.bunk_request_processor.resolution.strategies.base_match_strategy import (
             _is_exact_or_close_first_name,
         )

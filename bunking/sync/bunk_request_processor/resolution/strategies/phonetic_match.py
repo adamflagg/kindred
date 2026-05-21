@@ -5,7 +5,8 @@ to find names that sound similar but are spelled differently.
 
 Also integrates nickname group matching to find names like Mike=Michael.
 
-Confidence values are loaded from PocketBase config to avoid hardcoding."""
+Confidence values are module-level constants — the PB-driven config injection
+was removed in the AI Config (Unified) Phase 2 cleanup."""
 
 from __future__ import annotations
 
@@ -20,7 +21,10 @@ from ...shared.nickname_groups import find_nickname_variations, get_nickname_gro
 from ..interfaces import ResolutionResult
 from .base_match_strategy import BaseMatchStrategy
 
-# Default fallback values when config is missing
+# Confidence values used by PhoneticMatchStrategy. Were previously seeded as
+# `ai.confidence_scoring.resolution.phonetic.*` PB rows + read through the
+# `_get_confidence(config, key)` indirection; collapsed to constants after the
+# rows were never tuned and the bulk-load access pattern was retired.
 DEFAULT_SOUNDEX_BASE = 0.70
 DEFAULT_METAPHONE_BASE = 0.65
 DEFAULT_NICKNAME_BASE = 0.75
@@ -28,7 +32,7 @@ DEFAULT_CONFIDENCE = 0.60
 DEFAULT_SESSION_MATCH = 0.75
 DEFAULT_SAME_SESSION_BOOST = 0.05
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.20
-DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
+DEFAULT_NOT_ENROLLED_PENALTY = -0.05
 
 
 class PhoneticMatchStrategy(BaseMatchStrategy):
@@ -45,16 +49,14 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         self,
         person_repository: PersonRepository,
         attendee_repository: AttendeeRepository,
-        config: dict[str, Any] | None = None,
     ):
         """Initialize the phonetic match strategy.
 
         Args:
             person_repository: Repository for person data access
             attendee_repository: Repository for attendee data access
-            config: Optional config dict with confidence values from PocketBase
         """
-        super().__init__(person_repository, attendee_repository, config)
+        super().__init__(person_repository, attendee_repository)
         self._strategy_name = "phonetic_match"
 
     def _try_soundex_match(
@@ -430,7 +432,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         if len(same_session_matches) == 1:
             return ResolutionResult(
                 person=same_session_matches[0],
-                confidence=self._get_confidence("session_match", DEFAULT_SESSION_MATCH),
+                confidence=DEFAULT_SESSION_MATCH,
                 method=self.name,
                 metadata={"session_match": "exact"},
             )
@@ -454,13 +456,13 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
         the attendee repository.
         """
         if is_soundex:
-            base_confidence = float(self._get_confidence("soundex_base", DEFAULT_SOUNDEX_BASE))
+            base_confidence = DEFAULT_SOUNDEX_BASE
         elif is_metaphone:
-            base_confidence = float(self._get_confidence("metaphone_base", DEFAULT_METAPHONE_BASE))
+            base_confidence = DEFAULT_METAPHONE_BASE
         elif is_nickname:
-            base_confidence = float(self._get_confidence("nickname_base", DEFAULT_NICKNAME_BASE))
+            base_confidence = DEFAULT_NICKNAME_BASE
         else:
-            base_confidence = float(self._get_confidence("default_base", DEFAULT_CONFIDENCE))
+            base_confidence = DEFAULT_CONFIDENCE
 
         if year and session_cm_id:
             person_session: int | None
@@ -471,8 +473,7 @@ class PhoneticMatchStrategy(BaseMatchStrategy):
                 person_session = sessions_map.get(person.cm_id)
             return self._apply_session_adjustment_simple(base_confidence, person_session, session_cm_id)
 
-        penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
-        return base_confidence + penalty
+        return base_confidence + DEFAULT_NOT_ENROLLED_PENALTY
 
     def resolve(
         self,

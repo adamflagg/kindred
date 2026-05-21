@@ -8,7 +8,6 @@ import json
 from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 try:
     from nicknames import NickNamer
@@ -98,38 +97,12 @@ SPELLING_VARIATIONS = {
 }
 
 
-def get_nickname_groups(config_service: Any = None) -> list[set[str]]:
-    """Get nickname groups, optionally from configuration.
-
-    Args:
-        config_service: Optional configuration service to get custom mappings
+def get_nickname_groups() -> list[set[str]]:
+    """Get nickname groups.
 
     Returns:
         List of sets containing interchangeable names
     """
-    if config_service:
-        try:
-            ai_config = config_service.get_ai_config()
-            custom_mappings = ai_config.get("name_matching", {}).get("common_nicknames", {})
-
-            if custom_mappings:
-                # Convert custom format to groups
-                groups: list[set[str]] = []
-                processed: set[str] = set()
-
-                for full_name, nicknames in custom_mappings.items():
-                    full_lower = full_name.lower()
-                    if full_lower not in processed:
-                        group: set[str] = {full_lower}
-                        group.update(n.lower() for n in nicknames)
-                        groups.append(group)
-                        processed.update(group)
-
-                return groups
-        except Exception:  # noqa: S110 — intentional silent handling
-            # Fall back to defaults on any error
-            pass
-
     return DEFAULT_NICKNAME_GROUPS
 
 
@@ -173,7 +146,7 @@ def _get_override_variations(name_lower: str) -> set[str]:
     return results
 
 
-def find_nickname_variations(name: str, config_service: Any = None) -> list[str]:
+def find_nickname_variations(name: str) -> list[str]:
     """Find all nickname variations for a given name.
 
     Consults three sources in priority order:
@@ -183,7 +156,6 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
 
     Args:
         name: Name to find variations for (case insensitive)
-        config_service: Optional configuration service
 
     Returns:
         List of nickname variations (excluding the input name)
@@ -199,8 +171,7 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
                 variations.append(v)
 
     # 1. Check built-in nickname groups (highest priority)
-    groups = get_nickname_groups(config_service)
-    for group in groups:
+    for group in DEFAULT_NICKNAME_GROUPS:
         if name_lower in group:
             _add(n for n in group if n != name_lower)
             break
@@ -218,7 +189,7 @@ def find_nickname_variations(name: str, config_service: Any = None) -> list[str]
     return sorted(variations)
 
 
-def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None) -> bool:
+def names_match_via_nicknames(name1: str, name2: str) -> bool:
     """Check if two names match exactly or via nickname groups.
 
     Consults the same sources as find_nickname_variations:
@@ -227,7 +198,6 @@ def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None
     Args:
         name1: First name (case insensitive)
         name2: Second name (case insensitive)
-        config_service: Optional configuration service
 
     Returns:
         True if names match exactly or are in the same nickname group
@@ -240,4 +210,4 @@ def names_match_via_nicknames(name1: str, name2: str, config_service: Any = None
         return True
 
     # Check all variation sources: name2 in name1's variations
-    return name2_lower in find_nickname_variations(name1, config_service)
+    return name2_lower in find_nickname_variations(name1)
