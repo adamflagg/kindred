@@ -64,6 +64,48 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 # - tli: Teen Leadership Initiative (different program)
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
+# Summer teen programs: SCIT (CIT+SIT) and TLI. NOT a default-included cohort —
+# surfaced only when explicitly selected, and always summer-window-gated to
+# exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
+SUMMER_TEEN_TYPES = ("scit", "tli")
+
+
+def get_summer_window(sessions: dict[int, Any]) -> tuple[str, str] | None:
+    """Return (earliest main start_date, latest main end_date) as YYYY-MM-DD, or None.
+
+    Defines the per-year "summer" span from the main camp sessions, used to gate
+    which scit/tli sessions count as summer teen programs.
+    """
+    starts: list[str] = []
+    ends: list[str] = []
+    for s in sessions.values():
+        if getattr(s, "session_type", None) != "main":
+            continue
+        start = getattr(s, "start_date", None)
+        end = getattr(s, "end_date", None)
+        if start and end:
+            starts.append(str(start)[:10])
+            ends.append(str(end)[:10])
+    if not starts or not ends:
+        return None
+    return (min(starts), max(ends))
+
+
+def is_summer_teen_session(session: Any, window: tuple[str, str] | None) -> bool:
+    """True iff session is a teen type (scit/tli) AND its dates overlap the summer window."""
+    if getattr(session, "session_type", None) not in SUMMER_TEEN_TYPES:
+        return False
+    if window is None:
+        return False
+    start = getattr(session, "start_date", None)
+    end = getattr(session, "end_date", None)
+    if not start or not end:
+        return False
+    win_start, win_end = window
+    s_start, s_end = str(start)[:10], str(end)[:10]
+    # Overlap: session starts on/before window end AND ends on/after window start.
+    return s_start <= win_end and s_end >= win_start
+
 
 def get_session_from_expand(record: Any) -> Any:
     """Extract session from a record's PocketBase expand dict.

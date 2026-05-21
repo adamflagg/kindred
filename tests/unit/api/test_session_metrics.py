@@ -12,6 +12,7 @@ Tests for:
 These tests are written FIRST before implementation (TDD).
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session
@@ -958,3 +959,60 @@ class TestFilterAttendeesBySessionCmIds:
         )
         # Both should pass: 101 is in the set, 301 is an AG child
         assert len(result) == 2
+
+
+# ============================================================================
+# Summer Teen Cohort Tests (Task 1 — PR A)
+# ============================================================================
+
+
+def _sess(cm_id: int, stype: str, start: str | None, end: str | None) -> SimpleNamespace:
+    return SimpleNamespace(cm_id=cm_id, session_type=stype, start_date=start, end_date=end)
+
+
+def test_summer_teen_types_value() -> None:
+    from api.utils.session_metrics import SUMMER_TEEN_TYPES
+
+    assert "scit" in SUMMER_TEEN_TYPES
+    assert "tli" in SUMMER_TEEN_TYPES
+
+
+def test_get_summer_window_spans_main_sessions() -> None:
+    from api.utils.session_metrics import get_summer_window
+
+    sessions = {
+        1: _sess(1, "main", "2025-06-15 07:00:00.000Z", "2025-07-05 07:00:00.000Z"),
+        2: _sess(2, "main", "2025-07-20 07:00:00.000Z", "2025-08-02 07:00:00.000Z"),
+        3: _sess(3, "quest", "2025-09-01 07:00:00.000Z", "2025-09-05 07:00:00.000Z"),
+    }
+    assert get_summer_window(sessions) == ("2025-06-15", "2025-08-02")
+
+
+def test_get_summer_window_none_without_main() -> None:
+    from api.utils.session_metrics import get_summer_window
+
+    assert get_summer_window({1: _sess(1, "quest", "2025-06-15", "2025-06-20")}) is None
+
+
+def test_is_summer_teen_session_includes_summer_scit_tli() -> None:
+    from api.utils.session_metrics import is_summer_teen_session
+
+    window = ("2025-06-15", "2025-08-02")
+    assert is_summer_teen_session(_sess(1, "scit", "2025-06-08 07:00:00.000Z", "2025-07-04 07:00:00.000Z"), window)
+    assert is_summer_teen_session(_sess(2, "tli", "2025-07-11 07:00:00.000Z", "2025-08-03 07:00:00.000Z"), window)
+
+
+def test_is_summer_teen_session_excludes_offseason_noise() -> None:
+    from api.utils.session_metrics import is_summer_teen_session
+
+    window = ("2025-06-15", "2025-08-02")
+    assert not is_summer_teen_session(_sess(3, "scit", "2025-09-12 07:00:00.000Z", "2025-09-15 07:00:00.000Z"), window)
+    assert not is_summer_teen_session(_sess(4, "tli", "2025-08-23 07:00:00.000Z", "2026-05-01 07:00:00.000Z"), window)
+    assert not is_summer_teen_session(_sess(5, "tli", "2025-02-15 08:00:00.000Z", "2025-02-18 08:00:00.000Z"), window)
+
+
+def test_is_summer_teen_session_false_for_nonteen_or_no_window() -> None:
+    from api.utils.session_metrics import is_summer_teen_session
+
+    assert not is_summer_teen_session(_sess(6, "main", "2025-06-15", "2025-07-05"), ("2025-06-15", "2025-08-02"))
+    assert not is_summer_teen_session(_sess(7, "scit", "2025-06-15", "2025-07-05"), None)
