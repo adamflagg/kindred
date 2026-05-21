@@ -3,7 +3,7 @@
 Handles deduplication within batches and optionally checks against
 existing database records."""
 
-import dataclasses
+import copy
 from dataclasses import dataclass, field
 
 from bunking.logging_config import get_logger
@@ -188,7 +188,7 @@ class Deduplicator:
                 # staff review. Both rows survive — no merge.
                 if _is_conflicting_age_preference_pair(group_requests):
                     bunk_with_req, socialize_with_req = _split_age_pref_pair(group_requests)
-                    bunk_with_pending = dataclasses.replace(bunk_with_req, status=RequestStatus.PENDING)
+                    bunk_with_pending = copy.replace(bunk_with_req, status=RequestStatus.PENDING)
                     kept_requests.append(bunk_with_pending)
                     kept_requests.append(socialize_with_req)
                     # No entry in duplicate_groups: these are not merged duplicates,

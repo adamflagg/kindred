@@ -578,3 +578,46 @@ class TestAgeDirectionPhase1Conversion:
             "bug class age_direction was introduced to eliminate"
         )
         assert parsed.target_name is None
+
+
+class TestPhase1ParseServiceSanitization:
+    """Spec-lock for _sanitize_requests' field-replacement contract.
+
+    Locks the behavior of the `replace(req, request_text=...)` call so the
+    dataclasses.replace -> copy.replace modernization stays bit-equivalent:
+    a new ParseRequest is produced with only request_text swapped to the
+    sanitizer output; every other field is carried over unchanged.
+    """
+
+    def test_sanitize_replaces_only_request_text(self):
+        sanitizer = Mock()
+        sanitizer.process.return_value = Mock(
+            sanitized_text="cleaned text",
+            is_suspicious=False,
+        )
+        service = Phase1ParseService(
+            ai_service=Mock(),
+            context_builder=Mock(),
+            sanitizer=sanitizer,
+        )
+        req = _create_parse_request(request_text="raw text")
+
+        sanitized, metadata = service._sanitize_requests([req])
+
+        assert len(sanitized) == 1
+        result = sanitized[0]
+        # A new instance, not a mutated original
+        assert result is not req
+        # Only request_text is swapped, to the sanitizer's output
+        assert result.request_text == "cleaned text"
+        # Every other field is carried over unchanged
+        assert result.field_name == req.field_name
+        assert result.requester_name == req.requester_name
+        assert result.requester_cm_id == req.requester_cm_id
+        assert result.requester_grade == req.requester_grade
+        assert result.session_cm_id == req.session_cm_id
+        assert result.session_name == req.session_name
+        assert result.year == req.year
+        assert result.row_data == req.row_data
+        # Benign input records no security metadata
+        assert metadata == {}
