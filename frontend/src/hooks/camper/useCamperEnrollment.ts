@@ -135,7 +135,7 @@ export function useCamperEnrollment(
           grade: expandedPerson.grade,
           gender,
           session_cm_id: expandedSession?.cm_id ?? 0,
-          assigned_bunk_cm_id: assignedBunk?.cm_id,
+          ...(assignedBunk?.cm_id !== undefined && { assigned_bunk_cm_id: assignedBunk.cm_id }),
           assigned_bunk: assignedBunk?.id ?? '',
           person_cm_id: expandedPerson.cm_id,
           created: attendee.created || new Date().toISOString(),
@@ -153,10 +153,10 @@ export function useCamperEnrollment(
           gender_pronoun_write_in: expandedPerson.gender_pronoun_write_in,
           household_id: expandedPerson.household_id,
           expand: {
-            session: expandedSession,
-            assigned_bunk: assignedBunk,
+            session: expandedSession ?? null,
+            assigned_bunk: assignedBunk ?? null,
           },
-        } as Camper
+        } satisfies Camper
       })
 
       // Sort: enrolled first, then by session type priority
