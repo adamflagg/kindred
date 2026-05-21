@@ -9,7 +9,7 @@ Supports dry-run (default) and production-write modes for cascades.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from bunking.logging_config import get_logger
 from bunking.sync.bunk_request_processor.core.models import (
@@ -25,9 +25,6 @@ from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
 )
 from bunking.sync.bunk_request_processor.resolution.interfaces import ResolutionResult
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
-
-if TYPE_CHECKING:
-    pass
 
 from .trace_models import TraceData
 
