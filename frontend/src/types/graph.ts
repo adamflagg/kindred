@@ -40,7 +40,7 @@ export interface GraphEdge {
   readonly reciprocal: boolean
   readonly request_type?: string // 'bunk_with' | 'not_bunk_with' for edge_type='request' edges
   readonly confidence?: number // AI confidence score for request edges
-  readonly metadata?: Record<string, unknown> // Additional edge metadata
+  readonly metadata?: Readonly<Record<string, unknown>> // Additional edge metadata
   // Legacy fields that may still be referenced
   readonly is_reciprocal?: boolean
 }
@@ -73,10 +73,10 @@ export interface GraphData {
   readonly metrics: GraphMetrics
   // Session-level only. The bunk-graph endpoint (BunkGraphResponse) does not
   // emit this field, and the same GraphCacheService stores both shapes.
-  readonly communities?: Record<number, readonly number[]>
+  readonly communities?: Readonly<Record<number, readonly number[]>>
   readonly warnings?: readonly string[]
-  readonly layout_positions?: Record<number, readonly [number, number]>
-  readonly edge_type_counts?: Record<string, number>
+  readonly layout_positions?: Readonly<Record<number, readonly [number, number]>>
+  readonly edge_type_counts?: Readonly<Record<string, number>>
   /** Edges crossing the scope boundary when ?cross_scope=true. Frontend
    *  renders these as ghosted to show context without polluting the layout.
    *  Shape mirrors the Python CrossScopeEdge Pydantic model. */
