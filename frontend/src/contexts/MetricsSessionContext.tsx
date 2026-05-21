@@ -21,18 +21,18 @@ import { useMetricsSessions } from '../hooks/useMetricsSessions'
 import { metricsFilter } from '../hooks/useMetrics'
 import { MetricsSessionContext, type MetricsSessionContextType } from '../hooks/useMetricsSession'
 import {
-  CAMP_SESSION_TYPES,
-  QUEST_SESSION_TYPES,
-  ALL_SESSION_TYPES,
-  type MetricsViewMode,
-} from '../constants/sessionTypes'
-import {
   sortSessionsByDate,
   groupSessionsByDuration,
   type DurationCategory,
   DURATION_CATEGORIES,
 } from '../utils/sessionUtils'
-import { isQuestSession } from '../utils/sessionTypePredicates'
+import {
+  AT_CAMP_TYPES,
+  QUEST_SESSION_TYPES,
+  SUMMER_CAMP_TYPES,
+  isQuestSession,
+  type MetricsViewMode,
+} from '../utils/sessionTypePredicates'
 
 const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'
@@ -108,11 +108,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
 
   // Derive active session types based on view mode and selection
   const activeSessionTypes = useMemo(() => {
-    if (selectedSessionCmId !== null) return ALL_SESSION_TYPES
-    if (selectedDuration) return CAMP_SESSION_TYPES
-    if (viewMode === 'all') return ALL_SESSION_TYPES
+    if (selectedSessionCmId !== null) return SUMMER_CAMP_TYPES
+    if (selectedDuration) return AT_CAMP_TYPES
+    if (viewMode === 'all') return SUMMER_CAMP_TYPES
     if (viewMode === 'quests') return QUEST_SESSION_TYPES
-    return CAMP_SESSION_TYPES
+    return AT_CAMP_TYPES
   }, [selectedSessionCmId, selectedDuration, viewMode])
 
   const sessionTypesParam = useMemo(() => {

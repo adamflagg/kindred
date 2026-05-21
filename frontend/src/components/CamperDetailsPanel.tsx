@@ -30,8 +30,7 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { buildSummerSessionTypeFilter } from '../constants/sessionTypes'
-import { isAtCampSession } from '../utils/sessionTypePredicates'
+import { buildSummerSessionTypeFilter, isAtCampSession } from '../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,

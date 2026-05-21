@@ -5,7 +5,10 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
-import { buildSummerSessionTypeFilter, isValidSummerSession } from '../../constants/sessionTypes'
+import {
+  buildSummerSessionTypeFilter,
+  isSummerCampSessionType,
+} from '../../utils/sessionTypePredicates'
 import { queryKeys } from '../../utils/queryKeys'
 import { normalizeGender } from '../../utils/genderUtils'
 
@@ -108,7 +111,7 @@ export function useCamperEnrollment(
           expandedSession?.session_type === 'ag'
         ) {
           assignment = personAssignments.find((a) =>
-            isValidSummerSession(
+            isSummerCampSessionType(
               (a.expand as AssignmentExpand | undefined)?.session?.session_type ?? ''
             )
           )

@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
 import { useYear } from './useCurrentYear'
 import { toAppCamper } from '../utils/transforms'
-import { VALID_SUMMER_SESSION_TYPES } from '../constants/sessionTypes'
+import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
 import { sortEnrolledFirst } from '../utils/enrollmentSort'
 import type {
   PersonsResponse,
@@ -56,9 +56,9 @@ export function useCamperEnrollment(
       const person = persons[0] as PersonsResponse
 
       // 2. Fetch attendees filtered by summer session types
-      const sessionTypeFilter = VALID_SUMMER_SESSION_TYPES.map(
-        (t) => `session.session_type = "${t}"`
-      ).join(' || ')
+      const sessionTypeFilter = SUMMER_CAMP_TYPES.map((t) => `session.session_type = "${t}"`).join(
+        ' || '
+      )
       const attendees = await pb.collection('attendees').getFullList<AttendeesResponse>({
         filter: `person_id = ${numericId} && year = ${currentYear} && (${sessionTypeFilter})`,
         expand: 'session',

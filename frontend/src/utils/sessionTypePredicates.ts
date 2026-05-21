@@ -29,8 +29,14 @@ export const DROPDOWN_TYPES = ['main', 'embedded', 'quest'] as const
 /** All summer-camp session types — cabin assignment workflow applies */
 export const SUMMER_CAMP_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
 
+/** Quest session types only — narrow set used by metrics view-mode toggles */
+export const QUEST_SESSION_TYPES = ['quest'] as const
+
 /** Teen program session types */
 export const TEEN_PROGRAM_TYPES = ['tli', 'teen'] as const
+
+/** View mode for metrics: camp sessions, quest sessions, or all combined */
+export type MetricsViewMode = 'sessions' | 'quests' | 'all'
 
 /**
  * Every known session_type literal from the PocketBase CampSessionsSessionTypeOptions enum.
@@ -171,6 +177,21 @@ export function isSummerCampSessionType(sessionType: string | null | undefined):
 /** True if the session_type string is a teen program (tli | teen) */
 export function isTeenProgramType(sessionType: string | null | undefined): boolean {
   return TEEN_PROGRAM_TYPES.includes(sessionType as (typeof TEEN_PROGRAM_TYPES)[number])
+}
+
+// ============================================================================
+// PocketBase filter builders
+// ============================================================================
+
+/**
+ * Build a PocketBase OR-clause restricting `session.session_type` to valid
+ * summer types (main/embedded/ag/quest). Use when querying collections
+ * expanded through a session relation (attendees, bunk_assignments,
+ * bunk_requests). Callers should wrap the result in `(...)` when combining
+ * with `&&` clauses.
+ */
+export function buildSummerSessionTypeFilter(): string {
+  return SUMMER_CAMP_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
 }
 
 // ============================================================================
