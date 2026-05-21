@@ -230,13 +230,15 @@ class ObjectiveEvaluator:
                 # Sort by is_first_requested DESC (same as solver)
                 person_requests.sort(key=lambda x: x[0].get("is_first_requested", False), reverse=True)
 
-            satisfied_count_for_person = 0
-
+            # #1524: use the outer enumerate's `i` so the slot index reflects
+            # full-list position (matching the solver's `weight * satisfied_var`
+            # accumulator). An unsatisfied first-pick still advances `i`, so a
+            # satisfied second-pick lands at SECOND_REQUEST_MULTIPLIER, not
+            # FIRST. Pre-fix this tracked a satisfied-only counter, overcounting
+            # by 2x relative to the solver's ObjectiveValue.
             for i, (request, is_satisfied) in enumerate(person_requests):
                 if not is_satisfied:
                     continue
-
-                satisfied_count_for_person += 1
 
                 # Base weight (same as solver)
                 base_weight = float(BASE_REQUEST_WEIGHT)
@@ -265,11 +267,10 @@ class ObjectiveEvaluator:
                     if req_id and tgt_id and frozenset({int(req_id), int(tgt_id)}) in mutual_bunk_with_pairs:
                         base_weight = base_weight * mutual_request_boost
 
-                # Apply diminishing returns based on satisfaction order (always-on)
-                order_idx = satisfied_count_for_person - 1
-                if order_idx == 0:
+                # Apply diminishing returns based on full-list position.
+                if i == 0:
                     weight = base_weight * FIRST_REQUEST_MULTIPLIER
-                elif order_idx == 1:
+                elif i == 1:
                     weight = base_weight * SECOND_REQUEST_MULTIPLIER
                 else:
                     weight = base_weight * THIRD_PLUS_REQUEST_MULTIPLIER
