@@ -532,7 +532,7 @@ export default function AllCampersView() {
             {filteredCampers.length > 0 && (
               <button
                 onClick={() => {
-                  const rows = buildCamperRows(filteredCampers as Camper[], allSessions)
+                  const rows = buildCamperRows(filteredCampers, allSessions)
                   const csv = buildCsvContent([...CAMPER_CSV_HEADERS], rows)
                   const genderPart = filterSexCsvSegment(filterSex)
                   downloadCsv(csv, `all-campers${genderPart}-${todayIso()}.csv`)

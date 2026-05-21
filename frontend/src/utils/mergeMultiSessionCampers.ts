@@ -9,15 +9,15 @@
 import type { Camper, Session } from '../types/app-types'
 
 export interface AdditionalSession {
-  session_cm_id: number
-  session_name: string
-  bunk_cm_id?: number | undefined
-  bunk_name?: string | undefined
-  bunk_pb_id?: string | undefined
+  readonly session_cm_id: number
+  readonly session_name: string
+  readonly bunk_cm_id?: number | undefined
+  readonly bunk_name?: string | undefined
+  readonly bunk_pb_id?: string | undefined
 }
 
 export interface MergedCamper extends Camper {
-  additionalSessions?: AdditionalSession[] | undefined
+  readonly additionalSessions?: readonly AdditionalSession[] | undefined
 }
 
 /** Session type priority for picking the "primary" enrollment. */
