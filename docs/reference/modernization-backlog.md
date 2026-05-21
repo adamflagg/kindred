@@ -6,7 +6,7 @@ Reference audit of modern language/tooling features available to Kindred but not
 
 **Execution model:** Work this backlog one layer at a time (one PR per language/concept) rather than a single mega-PR. Each section governs its own execution order; there is no global cross-section ordering — pick which language to work on based on real-world signals (active PRs, blast radius, idle slot).
 
-**Section lifecycle:** Open language sections start in single-table audit format (§3 Frontend today). On first execution loop they're restructured to §a/§b/§c per `modernization-prompts.md` Part A (concrete rewrites + honest survey-status + ranked execution order); that in-progress shape is preserved in this doc's git history (see §1 Python before its closeout). Once every row has shipped, skipped, or deferred, the section collapses to a closeout summary capturing wins / deferrals / retired false positives / surveyed-clean (§1 Python and §2 Go today). §4 (Infrastructure) is a hardening checklist — different artifact, no lifecycle.
+**Section lifecycle:** Open language sections start in single-table audit format. On first execution loop they're restructured to §a/§b/§c per `modernization-prompts.md` Part A (concrete rewrites + honest survey-status + ranked execution order) — §3 Frontend is in this in-progress shape today; the pre-restructure single-table form is preserved in this doc's git history (see §3 Frontend before this pass, or §1 Python before its closeout). Once every row has shipped, skipped, or deferred, the section collapses to a closeout summary capturing wins / deferrals / retired false positives / surveyed-clean (§1 Python and §2 Go today). §4 (Infrastructure) is a hardening checklist — different artifact, no lifecycle.
 
 **Companion docs:** Ship rows by following `modernization-prompts.md` (Part B for execution, Part A for re-running an audit). The prompt doc names the false-positive lesson explicitly — every grep hit must be inspected with surrounding context before it lands in §a. When the last open section migrates, the §a/§b/§c template moves out of this doc into `modernization-prompts.md` as an appendix.
 
@@ -176,36 +176,74 @@ Survey scope: Go 1.18 through 1.26. Re-run Part A on a 1.27+ toolchain bump.
 
 ---
 
-## 3. Frontend — React 19, TypeScript 5.8, Node 22
+## 3. Frontend — React 19, TypeScript 6.0, Node 22, Tailwind 4
 
-> **Format note:** This section predates the §2 redo (toolchain/idiom-floor preamble + §a/§b/§c). Migrate to the new format on the next pickup — re-run `modernization-prompts.md` Part A in upgrade-in-place mode.
+**Toolchain at audit (May 2026):** Node `v22.17.1` (`engines.node >=22`, `.nvmrc` = `22`); TypeScript `6.0.3` (`typescript: ^6.0.2`); React `19.2`, `@tanstack/react-query` `5.100`, Tailwind `4.3` (`@tailwindcss/vite`), Vite `8`, ESLint `10` (flat). `tsconfig.json` `target`/`lib` = **ES2022**.
+**Idiom level pre-audit:** broadly ES2020 (optional chaining `?.` 1,091 sites, nullish `??` 1,198 — both pervasive) through ES2022, with modern React/TS layered on top (React 19 hooks; TS 6.0 strictness incl. `noUncheckedIndexedAccess` / `exactOptionalPropertyTypes` / `erasableSyntaxOnly`; `satisfies` in 4 files; comprehensive route-level lazy-loading). The misses are concentrated in **ES2023+ immutable array methods (zero `toSorted`/`toReversed`/`findLast`)** plus a few ES2021/ES2022 spot-misses.
+**Toolchain gate:** `tsconfig` `lib` = ES2022, so ES2023 `toSorted` and ES2024 `Object.groupBy` are **not in the type lib** — adopting them needs a `lib` bump to ES2024. Node 22 supports them at runtime, so the bump is safe; it's row #1 because it unblocks the cheapest wins.
+**Stale-header corrections from this pass:** "TypeScript 5.8" → actually **6.0**; "Tailwind 4 migration?" → **already on v4**; "100+ `useContext` consumers" → **13**; "~1,800 `as const`" → **208**; "only 2 components lazy-load" → **~50 lazy routes** (already adopted). Counts decay — Rules 1–3 apply.
 
-`tsconfig.json` is already modern (ES2022, bundler resolution, `verbatimModuleSyntax`, `noImplicitOverride`, `erasableSyntaxOnly`). The misses are idiomatic — code predating React 19 and ES2023 adoption.
+### 3a. Concrete rewrites (current targets)
 
-| Impact | Feature | Where | Count | Notes |
-|--------|---------|-------|-------|-------|
-| **HIGH** | `Array.prototype.toSorted()` vs `[...arr].sort()` | 24 files incl. `StaffCabinAnalysisPage.tsx`, `utils/retentionTransforms.ts:36`, `components/SessionList.tsx`, `utils/enrollmentSort.test.ts` | 24 | ES2023. Cheapest win. |
-| **HIGH** | React 19 `use()` hook for contexts | 9 context files + 100+ `useContext` consumers (`AuthContext`, `ProgramContext`, `ScenarioContext`, `LockGroupContext`, etc.) | 100+ | Eliminates the "`useX()` wrapper that throws on missing provider" pattern. |
-| **HIGH** | React Query v5: `queryOptions`, `skipToken`, `useSuspenseQuery`, `combine` | 30+ `useQuery`, 20+ `useMutation` callsites; none use these | 50+ | `queryOptions` gives type-safe shared query definitions; `skipToken` replaces conditional `enabled` logic. |
-| **HIGH** | Error cause chaining (`new Error(msg, { cause })`) | 140+ `throw` statements; only `hooks/session/useCamperMovement.ts` uses `cause` | 139 | Much better stack-trace fidelity when wrapping API errors. |
-| **MEDIUM** | `<Context.Provider>` → `<Context>` shorthand (React 19) | 25 providers | 25 | Cosmetic but clean. |
-| **MEDIUM** | `satisfies` operator | 4 files use it (velocity/cancellation pages); ~1,800 `as const` sites don't | 1,800 | Don't convert blindly — target config objects and route/feature maps where shape matters. |
-| **MEDIUM** | `Object.groupBy()` (ES2024) | `components/LockGroupPanel.tsx`, `contexts/LockGroupContext.tsx`, `providers/BunkRequestProvider.tsx:57` | 5–8 | Replaces manual `reduce((acc, x) => ...)` groupBy patterns. |
-| **MEDIUM** | `React.lazy` + `Suspense` for large modals | Only `RightPanelContainer.tsx` and `BunkingBoardByArea.tsx` currently lazy-load. Candidates: `MetricsLayout`, `CamperDetailsPanel`, `RequestReviewPanel`, scenario comparison modals | 5–10 candidates | Direct bundle-size impact on the initial load. |
-| **MEDIUM** | `readonly` modifiers on Record/interfaces | 9 files use `readonly`; ~240 type definitions (cache/store shapes, API response types) don't | 240 | Prevents accidental mutations. Apply to types that represent persisted / cached shape. |
-| **LOW** | React 19 `useActionState` / `useFormStatus` | 150+ `useState` sites for form submission state | 150 | Only worth doing if adopting Server Actions pattern broadly. |
-| **LOW** | `findLast` / `findLastIndex`, `structuredClone`, Temporal, `Intl.Segmenter`, regex `v` flag | — | — | No clear use cases surfaced. |
-| **?** | Tailwind 4 migration | `frontend/package.json` | — | Confirm current version; Tailwind 4 (2025) ships the Oxide engine + CSS-first config, but it's a real migration, not a drop-in. |
+| # | From (current idiom) | To (modern) | `from` since | `to` since | Impact | Where | Count |
+|---|---|---|---|---|---|---|---|
+| 1 | `tsconfig` `target`/`lib` = `ES2022` | `ES2024` (lib at minimum) | — | TS lib 5.4 / Node 21 rt | **prereq** (unblocks #2, #6) | `frontend/tsconfig.json` | 1 |
+| 2 | `[...arr].sort(cmp)` / `arr.slice().sort(cmp)` | `arr.toSorted(cmp)` | ES2015 | ES2023 | MEDIUM (cheapest mechanical) | ≈29 files (`utils/sessionUtils.ts` ×5, `utils/csvExportHelpers.ts`, `components/BunkCard.tsx`, `pages/.../StaffCabinAnalysisPage.tsx`, `utils/retentionTransforms.ts`, …) | ≈41 |
+| 3 | `arr[arr.length - 1]` | `arr.at(-1)` | ES5 | ES2022 (already in lib) | LOW–MED (readability) | 18 files (`hooks/useUndoStack.ts`, metrics chart utils, `components/BunkCard.tsx`, …) | 27 |
+| 4 | `<Context.Provider value=>` | `<Context value=>` | React <19 | React 19 | LOW–MED (cosmetic) | 9 files (`contexts/*`, `providers/BunkRequestProvider.tsx:126`, …) | 18 |
+| 5 | `catch (e) { throw new Error(msg) }` | `throw new Error(msg, { cause: e })` | ES2015 | ES2022 (already in lib) | **HIGH** (stack-trace fidelity) | catch-and-wrap subset of 93 `catch` blocks (`services/*`, hooks); only `useCamperMovement.ts` chains today | scope to catch-rethrow sites (NOT the 138 bare `throw`) |
+| 6 | `xs.reduce<Record<K, V[]>>((acc, x) => { acc[k].push(x) }, {})` | `Object.groupBy(xs, x => k)` | ES5 | ES2024 | LOW–MED | `components/LockGroupPanel.tsx:339`, `contexts/LockGroupContext.tsx:165` (near-duplicates) | 2 |
+| 7 | ad-hoc `useQuery({queryKey, queryFn})` + `enabled: <bool>` | `queryOptions(...)` shared defs + `skipToken` | RQ v5 | RQ v5 (in use) | **HIGH** (type-safe shared defs; `skipToken` replaces conditional `enabled`) | 103 `useQuery`/55 files, 112 `enabled:` gates, 4 `useQueries` (no `combine`) | 50+ |
+| 8 | mutable `interface`/`type` for cache/store/API shapes | `readonly` fields / `Readonly<>` | TS | TS | MEDIUM (prevents accidental mutation) | ≈1,758 type defs (735 interface + 1,023 alias); 24 `readonly` today | targeted (persisted/cached shapes only) |
+| 9 | untyped / `as Type` config & route/feature maps | `… satisfies T` | TS 4.9 | TS 4.9 (in use) | MEDIUM | 4 files use it (`VelocityPage`, `CancellationVelocityPage`, `services/debug.ts`); 208 `as const` | targeted |
 
-### Recommended frontend PR order
+**Two-version note:** only rows 2 and 6 carry a *compile* gate — the ES2022 `lib` doesn't expose `toSorted`/`Object.groupBy` types (hence row 1). Every other rewrite is already accepted by the current toolchain, so it's stylistic/robustness with no compile-error pressure.
 
-1. `refactor(frontend): Array.toSorted + Object.groupBy` — 24 + 5–8 callsites, mechanical, great cleanup
-2. `refactor(frontend): error cause chaining on API/service throws` — behavioral (debugging quality)
-3. `refactor(frontend): adopt React 19 use() for contexts` — larger touch, own PR
-4. `refactor(frontend): React Query queryOptions + skipToken` — affects hook shapes, own PR
-5. `perf(frontend): lazy-load large modals` — bundle-size focus, own PR
-6. `refactor(frontend): readonly on cache/store types` — type-level only, low-risk
-7. Separate investigation: Tailwind 4 upgrade feasibility
+### 3b. Survey status (search expressions retained)
+
+| Feature | Status | Evidence |
+|---|---|---|
+| optional chaining `?.` (ES2020) | already adopted | `\?\.` → 1,091 |
+| nullish coalescing `??` (ES2020) | already adopted | `\?\?` → 1,198 |
+| `React.lazy` + `Suspense` | **already adopted** | `App.tsx` lazy-loads ≈50 route components (incl. `MetricsLayout`, `ScenarioComparisonPage`, every metrics page) under 37 `<Suspense>` boundaries; `CamperDetailsPanel` lazy via `LazyCamperDetailsPanel.ts`; `FriendGroupsView`/`RightPanelContainer`/`BunkingBoardByArea` lazy. Lone possible remainder: `RequestReviewPanel` (low value). Prior doc's "only 2 lazy-load, candidates `MetricsLayout`/`CamperDetailsPanel`" was simply wrong — both are already lazy. |
+| Tailwind 4 | **already adopted** | `tailwindcss ^4.3.0` + `@tailwindcss/vite ^4.2.2` |
+| `String.replaceAll` (ES2021) | surveyed — low value | `\.replace\(/_/g` → 9 literal-`_` candidates; the other ≈47 `.replace(/…/g)` use real regex (anchors, classes, lookbehind, `\s+`) that can't become a string `replaceAll`. Converting only the 9 is inconsistent churn. |
+| `structuredClone` (ES2022) | dismissed | `JSON\.parse\(JSON\.stringify` → 0; `structuredClone` → 0. No deep-clone sites. |
+| `Array.findLast` / `findLastIndex` (ES2023) | dismissed | `\.findLast(Index)?\(` → 0; `\.reverse\(\)\.find\(` → 0 |
+| `Promise.try` (ES2025) | dismissed | `Promise\.try` → 0; also beyond current `lib`/`target` |
+| React 19 `use()` hook | surveyed — **false premise, LOW** | `useContext\(` → 13/11 files; every wrapper is `if (!ctx) throw 'must be used within …'`. `use()` does **not** remove that guard (it only enables *conditional* context reads, which none of these need) — converting is pure churn. The prior HIGH "eliminates the throw-on-missing wrapper" claim is wrong about what `use()` does. |
+| React 19 `useActionState` / `useFormStatus` | dismissed | `useActionState\|useFormStatus` → 0; no Server-Actions form pattern |
+| RQ v5 `useSuspenseQuery` / `combine` | surveyed — deferred | both 0; `useQueries` used 4× without `combine`. `useSuspenseQuery` needs Suspense data boundaries (bigger change) — kept behind row 7's `queryOptions`/`skipToken` entry point. |
+| TS 5.0 `const` type params | dismissed | `<const [A-Za-z]` → 0; no generic fns to tighten |
+| TS 5.0 decorators (stage 3) | dismissed | `^\s*@[A-Z]` → 0; `erasableSyntaxOnly` forbids them anyway |
+| Temporal / `Intl.Segmenter` / regex `v` flag | not surveyed | no signals; revisit if a date/i18n/grapheme need arises |
+
+### Retired as false positives (calibration for future audits)
+
+| Pattern | Where (prior claim) | Why it failed |
+|---|---|---|
+| `[...].sort()` → `toSorted` | inflated count | `areas[area as BunkArea].sort(...)` (`BunkingBoardByArea.tsx:157`) is an **in-place** sort inside `forEach`; the `].sort(` matched an *index bracket*, not a spread. Converting changes behavior. **Lesson: confirm a `[...` or `.slice()` precedes `.sort(`.** |
+| `[...ids].sort().join(',')` | `utils/queryKeys.ts:384` | Inside a doc **comment**, not code. **Lesson: filter comment lines.** |
+| `use()` "eliminates throw-on-missing-provider wrapper" | prior HIGH row | `use(Context)` doesn't auto-throw or remove the null-guard; it only allows conditional reads. **Lesson: verify the feature's real semantics, not its reputation.** |
+| inflated counts | "100+ useContext", "~1,800 as const", "240 type defs", "only 2 lazy" | actual 13 / 208 / ≈1,758 / ≈50-lazy. **Lesson: counts decay — re-grep every pass (carried from §1/§2).** |
+
+### 3c. Ranked execution order
+
+| # | Status | Row | Title |
+|---|---|---|---|
+| 1 | `next` | 3a#1 | `build(frontend): bump tsconfig target+lib to ES2024` (unblocks #3, #5) |
+| 2 | | 3a#3 | `refactor(frontend): arr[len-1] → arr.at(-1)` (27 sites, no prereq) |
+| 3 | | 3a#2 | `refactor(frontend): [...].sort() → toSorted` (≈41 sites; needs #1) |
+| 4 | | 3a#4 | `refactor(frontend): <Context.Provider> → <Context> shorthand` (18 sites) |
+| 5 | | 3a#6 | `refactor(frontend): Object.groupBy for LockGroup membersByGroup` (2 sites; needs #1) |
+| 6 | | 3a#5 | `refactor(frontend): error cause chaining on catch-rethrow` (behavioral — TDD per Rule 3) |
+| 7 | | 3a#9 | `refactor(frontend): satisfies on config/route maps` (targeted) |
+| 8 | | 3a#8 | `refactor(frontend): readonly on cache/store/API types` (type-level, large surface) |
+| 9 | | 3a#7 | `refactor(frontend): React Query queryOptions + skipToken` (HIGH value, largest/most semantic — split as needed) |
+
+Ranking is easiest→hardest with the unblocker (#1) first per Part B's tie-breaker. The HIGH-impact-but-large rows (error cause, React Query) sit later because they carry test/semantic surface, not because they're low value.
+
+Survey scope: ES2020–ES2024 + React 19 + TS 6.0 + RQ v5. Re-run Part A after a Node/TS/React major bump or when `tsconfig` `lib` moves past ES2024.
 
 ---
 
