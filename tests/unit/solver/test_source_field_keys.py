@@ -7,8 +7,6 @@ Issue: #546 — solver stat/multiplier lookups use snake_case keys against
 canonical source_field values, causing all lookups to silently fail.
 """
 
-from __future__ import annotations
-
 from typing import Any, ClassVar
 from unittest.mock import MagicMock
 

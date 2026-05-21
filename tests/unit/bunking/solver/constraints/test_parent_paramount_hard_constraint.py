@@ -13,8 +13,6 @@ MP = source_field == "bunk_request_form" (MATERIAL_PARENT bucket per bucket.py).
 Non-MP = source_field == "bunking_notes" (STAFF bucket, explicit but not MP).
 """
 
-from __future__ import annotations
-
 from ortools.sat.python import cp_model
 
 from bunking.models_v2 import DirectBunkRequest

@@ -8,8 +8,6 @@ penalty}`` config rows were removed, and the phantom
 hard-only; staff can override on the bunking board.
 """
 
-from __future__ import annotations
-
 from ortools.sat.python import cp_model
 
 from bunking.solver.constants import MAX_UNIQUE_GRADES_PER_BUNK

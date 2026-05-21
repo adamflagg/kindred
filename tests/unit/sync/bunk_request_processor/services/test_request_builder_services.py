@@ -6,8 +6,6 @@ Tests the RequestBuilder class in services/ which handles:
 - Status determination
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -6,8 +6,6 @@ and preferred name matching.
 Confidence values are module-level constants — the PB-driven config injection
 was removed in the AI Config (Unified) Phase 2 cleanup."""
 
-from __future__ import annotations
-
 import json
 from typing import Any
 

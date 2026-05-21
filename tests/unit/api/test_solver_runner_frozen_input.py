@@ -6,8 +6,6 @@ corrupted snapshot. solver_runner must defensively copy frozen_input before
 any mutation so all sweep children see identical inputs as the spec promises.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

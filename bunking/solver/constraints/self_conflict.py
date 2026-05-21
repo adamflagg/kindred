@@ -1,7 +1,5 @@
 """Self-conflict impossibility: same requester has both bunk_with and not_bunk_with to same target."""
 
-from __future__ import annotations
-
 from bunking.models_v2 import DirectBunkRequest
 from bunking.solver.impossibility import (
     HardConstraintImpossibility,

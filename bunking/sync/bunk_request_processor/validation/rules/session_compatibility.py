@@ -2,8 +2,6 @@
 
 Ensures requests are only made within the same exact session."""
 
-from __future__ import annotations
-
 from ...core.models import BunkRequest
 from ...data.repositories import AttendeeRepository
 from ...data.repositories.session_repository import SessionRepository

@@ -6,8 +6,6 @@ Tests cover:
 - Edge cases: missing person, ai_no_match=True, empty candidates
 """
 
-from __future__ import annotations
-
 from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.services.disambiguation_reranker import (
     FIRST_NAME_ONLY_CONFIDENCE_CAP,

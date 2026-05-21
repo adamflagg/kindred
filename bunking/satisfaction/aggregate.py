@@ -10,8 +10,6 @@ per person. The caller wraps it in asyncio.to_thread to avoid blocking the
 event loop.
 """
 
-from __future__ import annotations
-
 import concurrent.futures
 import re
 from collections import defaultdict

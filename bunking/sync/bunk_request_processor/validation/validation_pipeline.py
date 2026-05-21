@@ -2,8 +2,6 @@
 
 Manages the execution of validation rules in priority order with short-circuit logic."""
 
-from __future__ import annotations
-
 from ..core.models import BunkRequest
 from .interfaces import ValidationResult, ValidationRule
 

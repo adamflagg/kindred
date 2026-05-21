@@ -12,8 +12,6 @@ These tests assert that:
   3. When scenario_id is omitted the calls use None (production slot).
 """
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch

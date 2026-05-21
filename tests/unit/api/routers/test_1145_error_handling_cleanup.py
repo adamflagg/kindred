@@ -14,8 +14,6 @@ This module covers the lower-priority items deferred from PR #1141:
           explicitly and route non-404 PB errors via `pb_error_to_http`.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any

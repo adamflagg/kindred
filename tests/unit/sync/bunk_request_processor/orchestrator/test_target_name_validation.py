@@ -12,8 +12,6 @@ And preserves:
 - age_preference request types
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 from bunking.sync.bunk_request_processor.core.models import (

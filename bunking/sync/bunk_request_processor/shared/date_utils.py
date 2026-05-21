@@ -1,7 +1,5 @@
 """Shared date utilities for the bunk request processor."""
 
-from __future__ import annotations
-
 from datetime import datetime
 
 

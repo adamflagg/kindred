@@ -4,8 +4,6 @@ Provides an in-memory SQLite database with PocketBase-compatible schema
 and seeded fictional test data per CLAUDE.md conventions.
 """
 
-from __future__ import annotations
-
 import json
 import sqlite3
 

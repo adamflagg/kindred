@@ -2,8 +2,6 @@
 
 Provides periodic logging of cache statistics and performance metrics."""
 
-from __future__ import annotations
-
 import json
 import threading
 import time

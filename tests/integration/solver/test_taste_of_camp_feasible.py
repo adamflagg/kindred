@@ -8,8 +8,6 @@ for either camper, and the solver returns a non-None DirectSolverOutput.
 Ship-gate for Stream 6 in PR #1391.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 import pytest

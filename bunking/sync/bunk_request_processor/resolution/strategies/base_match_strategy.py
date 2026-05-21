@@ -11,8 +11,6 @@ see `docs/reference/solver-config-decisions.md`. GATE_DEMOTION_CONFIDENCE
 to PENDING regardless of the bunk_with/not_bunk_with thresholds — it's not a
 tunable knob."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import jellyfish

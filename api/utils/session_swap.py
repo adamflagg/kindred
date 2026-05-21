@@ -5,8 +5,6 @@ short window (default 1 day), indicating a session change rather than a
 true departure from camp.
 """
 
-from __future__ import annotations
-
 from datetime import datetime, timedelta
 from typing import Any
 

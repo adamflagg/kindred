@@ -20,8 +20,6 @@ The diagnostic only changes reporting — the soft constraint, hard constraints,
 and objective are unchanged.
 """
 
-from __future__ import annotations
-
 import logging
 
 from bunking.config import ConfigLoader

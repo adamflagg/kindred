@@ -1,7 +1,5 @@
 """Tests for internal service-to-service endpoints."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, patch
 
 import pytest

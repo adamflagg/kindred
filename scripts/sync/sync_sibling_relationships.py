@@ -3,8 +3,6 @@
 Sync sibling relationships based on shared FamilyID
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import sys

@@ -2,8 +2,6 @@
 Authentication middleware v2 - supports both JWT validation and legacy modes.
 """
 
-from __future__ import annotations
-
 import json
 import os
 import time

@@ -7,8 +7,6 @@ These tests define the expected behavior for:
 4. Group verification with confidence boost
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock
 
 import pytest

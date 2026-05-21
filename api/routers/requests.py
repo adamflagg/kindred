@@ -4,8 +4,6 @@ Requests Router - Bunk request management endpoints.
 This router provides endpoints for merging and splitting bunk_requests.
 """
 
-from __future__ import annotations
-
 import json
 from typing import Any
 

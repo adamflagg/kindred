@@ -1,7 +1,5 @@
 """Tests for PhaseRunner stop_at_phase capability."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

@@ -6,8 +6,6 @@ The global exception handler should:
 - NOT leak internal error messages (str(e)) to clients
 """
 
-from __future__ import annotations
-
 from unittest.mock import patch
 
 import pytest

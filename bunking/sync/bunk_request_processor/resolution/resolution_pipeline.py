@@ -3,8 +3,6 @@
 Manages the flow of resolution attempts through multiple strategies,
 handling caching, fallbacks, and ambiguous results."""
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.logging_config import get_logger

@@ -18,8 +18,6 @@ Grade spread is enforced as a hard solver constraint (see
 ``MAX_UNIQUE_GRADES_PER_BUNK``); there is no soft-path penalty to mirror.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any

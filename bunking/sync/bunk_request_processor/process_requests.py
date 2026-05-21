@@ -4,8 +4,6 @@
 This script provides a clean interface to the three-phase bunk request processor.
 It handles configuration, initialization, and execution of the request processing pipeline."""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import json

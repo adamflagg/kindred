@@ -1,7 +1,5 @@
 """Pydantic models for Day 1 registration response."""
 
-from __future__ import annotations
-
 from pydantic import BaseModel, Field
 
 

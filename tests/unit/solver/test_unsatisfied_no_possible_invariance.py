@@ -16,8 +16,6 @@ The fix consults the canonical input-property rollup
 placed campers — independent of post-solve satisfaction.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.models_v2 import DirectBunk, DirectBunkAssignment, DirectBunkRequest, DirectPerson, DirectSolverInput

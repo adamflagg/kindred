@@ -13,8 +13,6 @@ Auth override pattern mirrors test_satisfaction_router.py:
 - Patch module-level deps so no real PB or network calls occur.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from unittest.mock import AsyncMock, MagicMock, patch
 

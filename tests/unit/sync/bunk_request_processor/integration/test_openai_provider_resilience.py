@@ -4,8 +4,6 @@ Verifies that transient errors (timeout, 500, 429, connection) propagate
 to callers instead of being swallowed into empty responses.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

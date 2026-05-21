@@ -19,8 +19,6 @@ and re-run; the doc's tables and the test suite both lock in the current
 values.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 
 

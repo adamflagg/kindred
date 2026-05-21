@@ -6,8 +6,6 @@ ADR 6: Staff name detection guarded on notes fields only.
 ADR 8: Phase 3 exclusion uses RequestType enum instead of raw string.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 from unittest.mock import Mock

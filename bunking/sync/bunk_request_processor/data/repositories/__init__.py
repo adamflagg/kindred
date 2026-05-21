@@ -2,8 +2,6 @@
 
 Provides database access layer for all entities."""
 
-from __future__ import annotations
-
 from .attendee_repository import AttendeeRepository
 from .debug_parse_repository import DebugParseRepository
 from .person_repository import PersonRepository

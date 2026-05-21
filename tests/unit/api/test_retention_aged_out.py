@@ -9,8 +9,6 @@ Verifies that:
 - Compare pool only counts summer session enrollments (not TLI/family/training)
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

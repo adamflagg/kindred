@@ -6,8 +6,6 @@ Used for rekeying the forecast page from calendar-date snapshots to
 week-relative offsets.
 """
 
-from __future__ import annotations
-
 from datetime import date
 from unittest.mock import AsyncMock
 

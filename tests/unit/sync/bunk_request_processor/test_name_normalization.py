@@ -7,8 +7,6 @@ The function should:
 3. Collapse multiple spaces into single spaces
 4. Remove punctuation: . , ' " ( )"""
 
-from __future__ import annotations
-
 
 class TestNormalizeName:
     """Test normalize_name parity with monolith."""

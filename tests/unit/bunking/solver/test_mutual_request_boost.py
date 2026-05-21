@@ -8,8 +8,6 @@ set the config to 1.0 to disable in-place. Only `bunk_with` is eligible —
 reciprocal `not_bunk_with` is meaningless to boost.
 """
 
-from __future__ import annotations
-
 import inspect
 from collections import defaultdict
 from typing import Any

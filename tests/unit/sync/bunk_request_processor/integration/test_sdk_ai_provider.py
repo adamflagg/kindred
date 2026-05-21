@@ -4,8 +4,6 @@ TDD tests written BEFORE implementation to define expected behavior.
 Uses Pydantic structured outputs via the Responses API.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

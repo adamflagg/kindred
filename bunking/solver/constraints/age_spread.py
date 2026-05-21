@@ -19,8 +19,6 @@ spread regardless of edge/middle, and the feasibility-warning hook in
 a middle bunk forces infeasibility.
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 from bunking.solver.constants import (
     EDGE_AGE_OVERFLOW_PENALTY,

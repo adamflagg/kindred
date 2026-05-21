@@ -5,8 +5,6 @@ Detects signals that require cross-request visibility:
 - Household co-request: requester's sibling also requested same target
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from dataclasses import dataclass
 

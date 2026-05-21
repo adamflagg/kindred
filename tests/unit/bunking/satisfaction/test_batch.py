@@ -6,8 +6,6 @@ behavior divergences from the retired solution.calculate_satisfied_requests.
 See docs/superpowers/specs/2026-05-14-retire-calculate-satisfied-requests-design.md.
 """
 
-from __future__ import annotations
-
 from bunking.models_v2 import DirectBunkAssignment, DirectBunkRequest, DirectPerson
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
 from bunking.satisfaction.predicate import is_request_satisfied

@@ -3,8 +3,6 @@
 TDD Red Phase: These tests define the expected behavior for content hashing
 used to detect changes in individual bunk request fields."""
 
-from __future__ import annotations
-
 
 class TestContentHash:
     """Test content hash calculation for change detection."""

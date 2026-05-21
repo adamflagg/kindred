@@ -7,8 +7,6 @@ and revenue projections.
 These tests are written FIRST before implementation (TDD).
 """
 
-from __future__ import annotations
-
 from datetime import date
 from unittest.mock import AsyncMock
 

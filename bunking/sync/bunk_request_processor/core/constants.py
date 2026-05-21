@@ -3,8 +3,6 @@
 These constants define configuration values and mappings that are
 used throughout the system."""
 
-from __future__ import annotations
-
 # Valid session types for bunking (kept as simple constant for reference)
 # For DB-based session queries, use SessionRepository.get_valid_bunking_session_ids()
 VALID_SESSION_TYPES = {"main", "embedded", "ag"}

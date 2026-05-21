@@ -17,8 +17,6 @@ Import notes:
 - No port binding occurs — we never call uvicorn.run().
 """
 
-from __future__ import annotations
-
 import json
 import os
 import sys

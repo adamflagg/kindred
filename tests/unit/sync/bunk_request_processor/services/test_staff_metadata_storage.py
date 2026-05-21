@@ -11,8 +11,6 @@ Example:
 -> staff_name: "Jordan Rivers", staff_timestamp: "May 30 2024 2:18PM"
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.services.staff_note_parser import (

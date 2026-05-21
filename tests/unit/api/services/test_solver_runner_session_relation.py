@@ -1,7 +1,5 @@
 """Test resolve_session_relation: cm_id+year -> camp_sessions PB id or None."""
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 import pytest

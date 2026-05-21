@@ -1,7 +1,5 @@
 """TargetNotInSolverImpossibility: bunk_with to a non-roster requestee."""
 
-from __future__ import annotations
-
 from bunking.solver.constraints.bunk_requests import TargetNotInSolverImpossibility
 from bunking.solver.impossibility import _build_context
 

@@ -7,8 +7,6 @@ The headline tests are the "true implies" honesty tests — they fail for any
 one-way (falsifiable) encoding and pass only for the bidirectional one.
 """
 
-from __future__ import annotations
-
 from ortools.sat.python import cp_model
 
 from bunking.models import RequestType

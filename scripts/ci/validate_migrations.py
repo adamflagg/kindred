@@ -16,8 +16,6 @@ Usage:
     curl -s http://127.0.0.1:8090/api/collections | python validate_migrations.py -
 """
 
-from __future__ import annotations
-
 import json
 import sys
 from typing import Any

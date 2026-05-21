@@ -4,8 +4,6 @@ Pydantic schemas for the Bunking API.
 Re-exports all schemas for convenient importing.
 """
 
-from __future__ import annotations
-
 from .admin import (
     BunkRequestUpload,
     UpdateAdminSetting,

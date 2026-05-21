@@ -6,8 +6,6 @@ The refresh mechanism should:
 - Survive authentication failures (log error, continue loop)
 """
 
-from __future__ import annotations
-
 import asyncio
 from unittest.mock import AsyncMock, patch
 

@@ -4,8 +4,6 @@ Tests the ability to load shared prompt partials from _partials/ directory
 and inject them into prompts via {partial_name} placeholders.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.prompts.loader import (

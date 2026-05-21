@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from __future__ import annotations
 
 """
 Tests for prompt injection detection and sanitization in AI input processing.

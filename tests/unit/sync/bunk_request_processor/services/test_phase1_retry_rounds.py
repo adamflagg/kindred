@@ -4,8 +4,6 @@ Verifies that Phase 1 collects transient failures from BatchProcessor,
 waits, re-submits them, and logs reconciliation.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

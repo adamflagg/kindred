@@ -10,8 +10,6 @@ Mixed/AG cabins accept any gender.
 This is the highest-risk constraint - a bug here means wrong-gender assignments.
 """
 
-from __future__ import annotations
-
 from ortools.sat.python import cp_model
 
 from bunking.solver.constraints.gender import add_gender_constraints

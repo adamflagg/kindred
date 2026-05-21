@@ -15,8 +15,6 @@ silently reads the canonical ``.min`` / ``.preferred`` keys instead of the
 constants, fails fast.
 """
 
-from __future__ import annotations
-
 import inspect
 import re
 from pathlib import Path

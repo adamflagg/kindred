@@ -1,7 +1,5 @@
 """Test NetworkX friend group detection integration"""
 
-from __future__ import annotations
-
 from datetime import datetime
 from unittest.mock import MagicMock
 

@@ -3,8 +3,6 @@
 Auto-mocks ProviderFactory and ConfigLoader to avoid external dependencies in unit tests.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock, patch
 
 import pytest

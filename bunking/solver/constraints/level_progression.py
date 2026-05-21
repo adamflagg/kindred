@@ -5,8 +5,6 @@ Soft constraint: Penalty for moving campers down levels (e.g., from B-5 to B-3)
 Soft incentive: Prefer moving campers up levels (handled in objective function)
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 
 from .base import SolverContext

@@ -7,8 +7,6 @@ Verifies that:
 - Non-retention drilldowns are NOT affected
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

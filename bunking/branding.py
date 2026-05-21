@@ -11,8 +11,6 @@ Usage:
     camp_name = get_camp_name()  # "Summer Camp" or local override
 """
 
-from __future__ import annotations
-
 import json
 from functools import lru_cache
 from pathlib import Path

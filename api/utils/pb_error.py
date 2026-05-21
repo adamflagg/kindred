@@ -32,8 +32,6 @@ just cannot be fulfilled. Mapping to 401 would trigger a misleading login
 redirect that wouldn't fix the underlying problem.
 """
 
-from __future__ import annotations
-
 import logging
 
 from fastapi import HTTPException

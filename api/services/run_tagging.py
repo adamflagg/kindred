@@ -10,8 +10,6 @@ Source labels are pre-rendered at run time so historical rows survive
 scenario rename or deletion.
 """
 
-from __future__ import annotations
-
 import asyncio
 import re
 from typing import Any

@@ -4,8 +4,6 @@ Configure PocketBase OAuth2 provider from environment variables.
 Run after PocketBase starts to set up Pocket ID authentication.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 import time

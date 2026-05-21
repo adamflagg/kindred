@@ -5,8 +5,6 @@ JSON fixture (tests/fixtures/unit_mapping_cases.json) consumed by contract tests
 in both languages so drift is caught in CI.
 """
 
-from __future__ import annotations
-
 import re
 
 CABIN_NUMBER_TO_UNIT: dict[int, str] = {

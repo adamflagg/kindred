@@ -8,8 +8,6 @@ This router handles:
 - Incremental position updates for drag-drop operations
 """
 
-from __future__ import annotations
-
 import asyncio
 from datetime import UTC, datetime
 from typing import Annotated

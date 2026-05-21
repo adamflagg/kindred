@@ -4,8 +4,6 @@ Verifies that BatchProcessor retries on all transient errors (timeout, 500, 429,
 connection), not just rate limit errors.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

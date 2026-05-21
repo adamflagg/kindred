@@ -1,7 +1,5 @@
 """MalformedRequestImpossibility: malformed bunk_with/not_bunk_with requests."""
 
-from __future__ import annotations
-
 from bunking.solver.constraints.bunk_requests import MalformedRequestImpossibility
 from bunking.solver.impossibility import _build_context
 

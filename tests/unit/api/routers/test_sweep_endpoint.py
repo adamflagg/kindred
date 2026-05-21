@@ -6,8 +6,6 @@ Endpoint integration is exercised manually; here we cover:
 - SweepResponse shape
 """
 
-from __future__ import annotations
-
 import pytest
 from pydantic import ValidationError
 

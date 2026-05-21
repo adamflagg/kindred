@@ -26,8 +26,6 @@ Additional coverage:
     must not surface PocketBase-internal details to the client.
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

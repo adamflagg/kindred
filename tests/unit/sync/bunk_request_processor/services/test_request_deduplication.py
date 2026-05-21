@@ -4,8 +4,6 @@ Tests the deduplication logic that groups identical request texts,
 parses them once, and clones results back to all requesters.
 These tests are written BEFORE implementation per TDD methodology."""
 
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 

@@ -5,8 +5,6 @@ Tests the core business logic:
 - "prefer younger" = PASS if has younger kids OR no older kids (all same grade or lower is OK)
 """
 
-from __future__ import annotations
-
 from bunking.utils.age_preference import is_age_preference_satisfied
 
 

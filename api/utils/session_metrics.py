@@ -4,8 +4,6 @@ This module provides shared constants and functions for computing
 summer enrollment metrics across registration and retention services.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 

@@ -12,8 +12,6 @@ The pre-Phase-2 ``excess_spread`` / ``has_violation`` machinery is gone —
 ``soft_constraint_violations`` no longer contains any ``age_spread_*`` keys.
 """
 
-from __future__ import annotations
-
 from datetime import UTC, datetime
 
 from ortools.sat.python import cp_model

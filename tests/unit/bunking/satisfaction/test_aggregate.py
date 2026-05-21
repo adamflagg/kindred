@@ -1,7 +1,5 @@
 """Tests for bunking.satisfaction.aggregate.camper_satisfaction."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

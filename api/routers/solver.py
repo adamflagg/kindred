@@ -11,8 +11,6 @@ This router handles:
 - Clearing session assignments
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 from collections import defaultdict

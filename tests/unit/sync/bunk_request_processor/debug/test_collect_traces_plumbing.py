@@ -8,8 +8,6 @@ Verifies that:
 5. flush() failure does not fail the overall request
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

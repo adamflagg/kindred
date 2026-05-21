@@ -17,8 +17,6 @@ asserts every per-request/per-pair hard-constraint module has a matching
 predicate.
 """
 
-from __future__ import annotations
-
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from typing import Any, NamedTuple

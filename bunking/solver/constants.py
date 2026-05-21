@@ -40,8 +40,6 @@ real ``max_size`` integer column on the ``bunks`` PocketBase collection with a
 sync path that populates it. That's a feature, not a refactor.
 """
 
-from __future__ import annotations
-
 DEFAULT_BUNK_CAPACITY = 12
 """Solver hard cap per bunk; also the reference cabin size for grade-ratio
 math and post-solve evaluator displays."""

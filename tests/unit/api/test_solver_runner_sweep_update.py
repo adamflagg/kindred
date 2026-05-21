@@ -10,8 +10,6 @@ Solo solver runs (sweep_id=None) keep the existing CREATE behavior since no
 pre-created row exists for them.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, _patch, patch
 

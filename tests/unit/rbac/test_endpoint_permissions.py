@@ -5,8 +5,6 @@ Uses FastAPI's dependency_overrides to test permission enforcement without
 needing to mock PocketBase or auth middleware.
 """
 
-from __future__ import annotations
-
 import inspect
 
 import pytest

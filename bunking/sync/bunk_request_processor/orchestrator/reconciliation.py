@@ -9,8 +9,6 @@ The line is additive: it supplements (does not replace) the existing
 "Processing complete:" summary and per-phase reconciliation logs.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.logging_config import get_logger

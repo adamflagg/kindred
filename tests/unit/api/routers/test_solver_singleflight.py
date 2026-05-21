@@ -12,8 +12,6 @@ Decision from issue #1178:
     per-session check for each child session it would dispatch.
 """
 
-from __future__ import annotations
-
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any

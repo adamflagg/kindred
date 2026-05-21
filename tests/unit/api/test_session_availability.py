@@ -9,8 +9,6 @@ Tests verify the availability matrix computation:
 - Config-based grade eligibility and capacity overrides
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

@@ -22,8 +22,6 @@ env-shadowed + 18 hardcoded as constants). See
 full surface walk and per-key decisions.
 """
 
-from __future__ import annotations
-
 import inspect
 
 import pytest

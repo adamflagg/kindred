@@ -7,8 +7,6 @@ Pydantic response models for the pipeline debug endpoints:
 - Phase execution (run-phase2, run-phase3, run-from-phase, run-full-trace)
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
 

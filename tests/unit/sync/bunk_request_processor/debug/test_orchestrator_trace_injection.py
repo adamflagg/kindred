@@ -6,8 +6,6 @@ Verifies that:
 3. Stores the collector as self.trace_collector
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 import pytest

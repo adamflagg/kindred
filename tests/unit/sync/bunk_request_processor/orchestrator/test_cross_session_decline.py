@@ -4,8 +4,6 @@ Verifies that requests with session mismatch conflicts get DECLINED status
 
 TDD Red Phase: This test should FAIL until the fix is implemented."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

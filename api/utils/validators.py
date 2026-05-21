@@ -1,7 +1,5 @@
 """Shared validation helpers for API routers."""
 
-from __future__ import annotations
-
 from fastapi import HTTPException
 
 

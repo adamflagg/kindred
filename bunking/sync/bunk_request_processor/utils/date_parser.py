@@ -4,8 +4,6 @@ This module provides utilities for parsing date strings like '6/4', 'June 5'
 into datetime objects for temporal conflict resolution in bunk requests.
 """
 
-from __future__ import annotations
-
 import re
 from datetime import datetime
 

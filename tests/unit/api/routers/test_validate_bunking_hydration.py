@@ -10,8 +10,6 @@ GUI" by checking the DB data instead of the hydration path.
 This pins the hydration seam so the field can't be silently dropped again.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from api.routers.validation import _build_validator_bunks

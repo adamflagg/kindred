@@ -6,8 +6,6 @@ when that isn't possible. If a stale AI response sends group_kind or
 group_metadata, the schema must fail loudly rather than silently drop it.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.integration.ai_schemas import (

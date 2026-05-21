@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Parser for sync script output to extract structured results."""
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from datetime import datetime

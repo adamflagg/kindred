@@ -4,8 +4,6 @@ These tests define the expected behavior for the data access layer that
 isolates PocketBase interactions for testability.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock

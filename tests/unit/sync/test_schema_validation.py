@@ -1,6 +1,5 @@
 # mypy: ignore-errors
 # NOTE: This test requires PocketBase running on localhost:8090 and skips in CI
-from __future__ import annotations
 
 #!/usr/bin/env python3
 """

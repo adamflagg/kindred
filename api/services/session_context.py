@@ -14,8 +14,6 @@ Usage:
     # for all PocketBase queries in the endpoint
 """
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 

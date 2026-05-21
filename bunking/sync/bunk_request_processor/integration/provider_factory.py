@@ -2,8 +2,6 @@
 
 Supports OpenAI (with SDK structured outputs) and Mock providers."""
 
-from __future__ import annotations
-
 import os
 import re
 

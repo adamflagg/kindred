@@ -6,8 +6,6 @@ Ensures that certain source fields enforce specific request types:
 
 If AI returns the wrong type for a strict field, this validator corrects it."""
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 
 from ..core.models import ParsedRequest, RequestType

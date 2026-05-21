@@ -5,8 +5,6 @@ from bunk_assignments_draft (scenario data) instead of bunk_assignments
 (CampMinder production data).
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 

@@ -8,8 +8,6 @@ Example: 10.03 = 10 years, 3 months = 123 total months
 These tests verify that age filtering correctly handles this format
 by using age_in_months for comparisons, not raw float arithmetic."""
 
-from __future__ import annotations
-
 from bunking.sync.bunk_request_processor.core.models import Person
 from bunking.sync.bunk_request_processor.name_resolution.filters.spread_filter import SpreadFilter
 

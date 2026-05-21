@@ -4,8 +4,6 @@ Verifies that run_solver_task_v2 saves correct field names and values
 to the solver_runs PocketBase collection on both success and failure paths.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

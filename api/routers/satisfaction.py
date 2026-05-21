@@ -5,8 +5,6 @@ Uses SessionContext to widen scope to AG-related sessions automatically — a
 main session with AG children gets satisfaction computed across the cluster.
 """
 
-from __future__ import annotations
-
 import asyncio
 import time
 from typing import Annotated

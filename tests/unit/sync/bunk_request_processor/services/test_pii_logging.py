@@ -13,8 +13,6 @@ alongside the deletion of bunking/.../services/group_resolvers.py and
 services/placeholder_expander.py.
 """
 
-from __future__ import annotations
-
 import logging
 from unittest.mock import MagicMock
 

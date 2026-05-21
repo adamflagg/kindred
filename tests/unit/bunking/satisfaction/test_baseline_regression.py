@@ -9,8 +9,6 @@ To recapture (after intentional spec change): RECAPTURE=1 uv run pytest \\
     tests/unit/bunking/satisfaction/test_baseline_regression.py -s
 """
 
-from __future__ import annotations
-
 import json
 import os
 from pathlib import Path

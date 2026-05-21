@@ -7,8 +7,6 @@ the PocketBase ``solver_runs`` collection. Otherwise refresh-recovery
 shows ghost pending rows forever.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 import pytest

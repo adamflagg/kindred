@@ -7,8 +7,6 @@ Gap addressed: MONOLITH_PARITY_TRACKER.md Section 4 - Disambiguation
 FIX: smart_resolve_candidates should return ranked candidates even when
 not auto-resolving, so Phase 3 gets the best 5 candidates."""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import Mock
 

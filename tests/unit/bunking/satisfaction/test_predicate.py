@@ -1,7 +1,5 @@
 """Truth-table tests for bunking.satisfaction.predicate.is_request_satisfied."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

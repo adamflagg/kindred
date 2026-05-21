@@ -5,8 +5,6 @@ These tests require external services (PocketBase, solver service).
 Skip them when SKIP_POCKETBASE_TESTS is set.
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

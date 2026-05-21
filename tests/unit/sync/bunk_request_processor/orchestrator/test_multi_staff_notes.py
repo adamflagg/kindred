@@ -5,8 +5,6 @@ multiple staff entries (one per line), each with their own signature.
 
 Gap: Line 222 in MONOLITH_PARITY_TRACKER.md"""
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.services.staff_note_parser import (

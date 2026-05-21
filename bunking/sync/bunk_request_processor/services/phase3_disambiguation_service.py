@@ -1,7 +1,5 @@
 """Phase 3 Disambiguation Service - Handles AI-assisted disambiguation with minimal context"""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from typing import Any
 

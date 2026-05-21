@@ -8,8 +8,6 @@ Demographics extractors (school, city, synagogue) use persons' normalized
 fields, falling back to raw fields when normalized values are not available.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 # Grade at or above which campers are excluded from retention analysis.

@@ -4,8 +4,6 @@ Pair layer: a bunk_with pair whose grade gap > max_grade_range - 1
 cannot co-occupy any bunk satisfying grade_spread + grade_adjacency.
 """
 
-from __future__ import annotations
-
 from bunking.solver.constraints.grade_spread import GradeCompatibilityImpossibility
 from bunking.solver.impossibility import _build_context
 

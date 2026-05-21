@@ -3,8 +3,6 @@
 Uses a mocked PocketBase client so tests are pure (no IO).
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock
 

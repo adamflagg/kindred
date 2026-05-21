@@ -4,8 +4,6 @@ Tests for DataAccessContext - unified data access layer entry point.
 TDD: These tests define the expected behavior before implementation.
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock, patch
 
 

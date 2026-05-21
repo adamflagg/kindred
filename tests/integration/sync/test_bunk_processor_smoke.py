@@ -6,8 +6,6 @@ without mocks, catching interface mismatches early.
 Requires: SKIP_POCKETBASE_TESTS=false or running PocketBase instance
 """
 
-from __future__ import annotations
-
 import os
 
 import pytest

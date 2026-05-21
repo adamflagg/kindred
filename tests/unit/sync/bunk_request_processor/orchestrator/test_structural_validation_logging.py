@@ -6,8 +6,6 @@ when skipping BUNK_WITH/NOT_BUNK_WITH requests that have no target_name.
     if parsed.request_type in ['bunk_with', 'not_bunk_with'] and not parsed.target_name:
         logger.warning(f"Invalid {parsed.request_type} request without target name from {parsed.source_field} - skipping")"""
 
-from __future__ import annotations
-
 import logging
 from unittest.mock import Mock
 

@@ -8,8 +8,6 @@ This service provides:
 - Override CRUD with optional Nominatim geocoding
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import time

@@ -8,8 +8,6 @@ Architecture Decision: Option 2 (Hybrid)
 - DB query for cross-run mutual requests
 - Graph stays pure (informational relationships only)"""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 

@@ -6,8 +6,6 @@ solver/graph output against this fixture and comparing post-migration is the
 core regression guard for the #1041 consolidation work.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

@@ -6,8 +6,6 @@ Uses the unified logging format from bunking.logging_config.
 Format: 2026-01-06T14:05:52Z [sync/layer_name] LEVEL message
 """
 
-from __future__ import annotations
-
 import inspect
 import logging
 

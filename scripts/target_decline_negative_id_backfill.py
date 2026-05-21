@@ -29,8 +29,6 @@ The script does not start or stop the docker stack itself — the operator must
 ensure the SQLite file is not held by PocketBase before running. Idempotent.
 """
 
-from __future__ import annotations
-
 import argparse
 import sqlite3
 import sys

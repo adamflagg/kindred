@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Create admin user for PocketBase using environment variables."""
 
-from __future__ import annotations
-
 import os
 import sys
 import time

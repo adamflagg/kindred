@@ -21,8 +21,6 @@ trusted signal. If structured signal isn't enough, change the AI schema rather
 than re-introducing prose sniffing.
 """
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest

@@ -4,8 +4,6 @@ Session utilities for the Bunking API.
 This module provides session-related utility functions used across multiple routers.
 """
 
-from __future__ import annotations
-
 import asyncio
 
 from bunking.logging_config import get_logger

@@ -1,7 +1,5 @@
 """Tests for compress_pre_anchor_events — proportional Week 0 compression."""
 
-from __future__ import annotations
-
 from datetime import date
 
 from api.services.reconstruction import compress_pre_anchor_events

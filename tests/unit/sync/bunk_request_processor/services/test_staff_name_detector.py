@@ -8,8 +8,6 @@ These tests verify:
 5. Known staff name patterns (e.g., Jordan)
 6. Build of global detected_staff_names set from multiple requests"""
 
-from __future__ import annotations
-
 import json
 import tempfile
 from pathlib import Path

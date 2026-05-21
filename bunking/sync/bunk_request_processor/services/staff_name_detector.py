@@ -9,8 +9,6 @@ This service:
 3. Provides lookup to check if a target name matches a detected staff name
 4. Loads known staff names from config/staff_list.json for dynamic pattern generation"""
 
-from __future__ import annotations
-
 import json
 import re
 from pathlib import Path

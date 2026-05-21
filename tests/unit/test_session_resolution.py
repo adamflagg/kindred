@@ -6,8 +6,6 @@ because it caused name collisions (e.g., Taste of Camp 1 and 2 both mapping to "
 and cross-year AG ghost sessions.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, Mock
 
 import pytest

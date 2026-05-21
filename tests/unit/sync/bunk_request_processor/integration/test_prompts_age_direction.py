@@ -9,8 +9,6 @@ Each of the 4 prompts that can emit age_preference requests must:
 `parse_not_bunk_with.txt` is excluded — it forbids age_preference output entirely.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

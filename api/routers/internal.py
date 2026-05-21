@@ -5,8 +5,6 @@ These endpoints are NOT authenticated (auth middleware skips /api/internal/ pref
 They are only accessible on the Docker internal network. Caddy blocks external access.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from typing import Any

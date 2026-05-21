@@ -1,7 +1,5 @@
 """Tests for solver-domain hardcoded constants in ``bunking.solver.constants``."""
 
-from __future__ import annotations
-
 
 def test_max_age_spread_months_is_24() -> None:
     from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS

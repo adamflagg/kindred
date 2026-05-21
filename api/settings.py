@@ -5,8 +5,6 @@ All environment variables are centralized here with proper typing, validation,
 and sensible defaults. Settings are loaded once at startup and cached.
 """
 
-from __future__ import annotations
-
 import os
 from functools import lru_cache
 from pathlib import Path

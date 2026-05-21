@@ -3,8 +3,6 @@
 Provides multi-level caching with TTL support, statistics tracking,
 and separate caches for different phases of processing."""
 
-from __future__ import annotations
-
 import time
 from collections import OrderedDict
 from typing import Any

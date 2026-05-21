@@ -24,8 +24,6 @@ active loader (real PocketBase-backed loader in production, a
 ``MockConfigLoader`` injected via ``ConfigLoader.use(...)`` in tests).
 """
 
-from __future__ import annotations
-
 from bunking.config import ConfigLoader
 from bunking.solver.constants import MIN_BUNK_OCCUPANCY
 

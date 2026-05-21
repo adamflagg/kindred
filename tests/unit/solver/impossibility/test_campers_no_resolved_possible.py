@@ -9,8 +9,6 @@ solve outcomes — it counts an input-property fact (the camper has zero
 solver-actionable resolved requests), not a post-solve placement fact.
 """
 
-from __future__ import annotations
-
 from bunking.solver.impossibility import validate_impossibility
 
 from .conftest import make_bunk, make_input, make_person, make_request

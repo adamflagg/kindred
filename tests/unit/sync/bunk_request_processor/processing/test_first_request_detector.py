@@ -5,8 +5,6 @@ boolean producer signal. Only family BUNK_WITH requests can be first-pick;
 other types/sources always return False.
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (

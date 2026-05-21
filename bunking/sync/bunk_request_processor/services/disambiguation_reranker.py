@@ -6,8 +6,6 @@ Candidates with JW < JW_LAST_NAME_FLOOR are filtered out.
 First-name-only targets use AI's top pick but confidence is capped.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from ..core.models import Person

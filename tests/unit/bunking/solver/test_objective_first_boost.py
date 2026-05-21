@@ -5,8 +5,6 @@ lands in slot 0 of the diminishing-returns stack (10x multiplier). When false,
 slot 0 falls to natural iteration order from PB.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.solver.direct_solver import (

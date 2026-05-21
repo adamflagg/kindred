@@ -4,8 +4,6 @@ Force WAL checkpoint after running PocketBase migration.
 This should be run after the spread_limited removal migration.
 """
 
-from __future__ import annotations
-
 import logging
 import sqlite3
 import sys

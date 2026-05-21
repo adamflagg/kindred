@@ -3,8 +3,6 @@ Tests for retention metrics endpoints - specifically the enrollment_by_year fiel
 for the 3-year enrollment comparison feature.
 """
 
-from __future__ import annotations
-
 import os
 from collections.abc import Callable
 from typing import Any

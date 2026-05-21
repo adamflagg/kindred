@@ -7,8 +7,6 @@ CRITICAL SAFETY CONSTRAINT:
 - AG- cabins: Any gender allowed (Mixed)
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 
 from .base import SolverContext

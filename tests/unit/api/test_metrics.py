@@ -5,8 +5,6 @@ These tests verify retention and registration metrics calculations
 using mocked PocketBase data.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import Mock, patch
 

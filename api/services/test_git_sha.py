@@ -1,7 +1,5 @@
 """TDD tests for git SHA capture used in solver run tagging."""
 
-from __future__ import annotations
-
 import os
 import subprocess
 from unittest.mock import patch

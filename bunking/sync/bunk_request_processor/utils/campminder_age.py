@@ -9,8 +9,6 @@ Examples:
 - 10.11 = 10 years and 11 months
 - 11.00 = 11 years and 0 months (next value after 10.11)"""
 
-from __future__ import annotations
-
 from datetime import UTC, date, datetime
 
 

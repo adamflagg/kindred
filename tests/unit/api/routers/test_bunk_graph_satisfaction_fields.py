@@ -8,8 +8,6 @@ BunkGraphResponse — data populated by Task 9 (build_bunk_graph now calls
 _calculate_node_metrics).
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

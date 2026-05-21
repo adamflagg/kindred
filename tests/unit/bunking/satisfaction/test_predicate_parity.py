@@ -15,8 +15,6 @@ To change predicate logic: update the fixture's expected_satisfied/detail,
 then update both predicates to match.
 """
 
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from typing import Any, cast

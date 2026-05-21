@@ -2,8 +2,6 @@
 
 Each rule implements a specific validation check."""
 
-from __future__ import annotations
-
 from .self_reference import SelfReferenceRule
 from .session_compatibility import SessionCompatibilityRule
 

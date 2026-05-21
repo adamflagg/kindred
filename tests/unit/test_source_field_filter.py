@@ -6,8 +6,6 @@ These tests verify that source field filtering works correctly:
 - Combination with session and limit filters
 """
 
-from __future__ import annotations
-
 import pytest
 
 from bunking.sync.bunk_request_processor.shared.constants import (

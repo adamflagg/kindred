@@ -10,8 +10,6 @@ Tests cover:
 7. Metadata preservation
 8. Statistics tracking"""
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 

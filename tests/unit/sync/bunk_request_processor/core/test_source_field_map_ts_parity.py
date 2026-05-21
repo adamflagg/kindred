@@ -11,8 +11,6 @@ helper will silently throw at runtime in the browser when that value reaches
 agree, so drift fails CI rather than the user.
 """
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

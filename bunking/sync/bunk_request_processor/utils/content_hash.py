@@ -7,8 +7,6 @@ Each original_bunk_requests record represents ONE field (e.g., share_bunk_with,
 do_not_share_with, internal_notes). By storing a hash of the field's content,
 we can detect changes on subsequent syncs and only reprocess modified records."""
 
-from __future__ import annotations
-
 import hashlib
 
 

@@ -32,8 +32,6 @@ Both halves running together close the gap where attendee state changes
 silently leave stale `resolved` rows in `bunk_requests` between CSV uploads.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Literal
 

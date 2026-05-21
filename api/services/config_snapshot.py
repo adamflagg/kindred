@@ -13,8 +13,6 @@ Schema reference (per migration `1500000011_config.js`):
   ``solver`` — all other rows (ai/tour/spread/etc.) are out of scope here.
 """
 
-from __future__ import annotations
-
 import asyncio
 from typing import Any
 

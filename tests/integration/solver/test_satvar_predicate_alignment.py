@@ -21,8 +21,6 @@ acceptance criteria file a follow-up to investigate which path — the encoding
 or the predicate — is wrong.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from ortools.sat.python import cp_model

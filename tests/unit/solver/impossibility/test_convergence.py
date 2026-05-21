@@ -1,7 +1,5 @@
 """Convergence: pre_validate_solver and _validate_requests agree per input."""
 
-from __future__ import annotations
-
 from bunking.solver.direct_solver import DirectBunkingSolver
 from bunking.solver.impossibility import validate_impossibility
 

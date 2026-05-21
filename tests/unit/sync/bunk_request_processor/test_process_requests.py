@@ -7,8 +7,6 @@ Tests cover:
 4. Error handling
 """
 
-from __future__ import annotations
-
 import os
 from unittest.mock import AsyncMock, Mock, patch
 

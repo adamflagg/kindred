@@ -9,8 +9,6 @@ a candidate person. Business gates check enrollment/session.
 Resolution quality checks determine auto-resolve vs staff review.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from ..core.models import RequestStatus, RequestType

@@ -5,8 +5,6 @@ pipeline-traces/{trace_id}, pipeline-traces/by-camper/{cm_id},
 and POST pipeline-runs/{run_id}/pin.
 """
 
-from __future__ import annotations
-
 import sys
 from collections.abc import Generator
 from pathlib import Path

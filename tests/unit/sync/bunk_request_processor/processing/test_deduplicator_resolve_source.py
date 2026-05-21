@@ -5,8 +5,6 @@ when `source_field` is empty/unknown must return the string "family" directly
 (matches the historical read-path default).
 """
 
-from __future__ import annotations
-
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
     RequestStatus,

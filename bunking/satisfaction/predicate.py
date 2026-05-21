@@ -23,8 +23,6 @@ Two parallel impls — `is_request_satisfied` (bool-only, solver hot path) and
 sync; their branching is identical, only the return shape differs.
 """
 
-from __future__ import annotations
-
 from collections.abc import Mapping
 from typing import Any
 

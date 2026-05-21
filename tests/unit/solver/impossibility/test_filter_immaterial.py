@@ -11,8 +11,6 @@ double-counts multi-reason requests, mirroring the bug that ``validate_impossibi
 already guards against.
 """
 
-from __future__ import annotations
-
 from bunking.solver.impossibility import (
     ImpossibilityReport,
     ImpossibleItem,

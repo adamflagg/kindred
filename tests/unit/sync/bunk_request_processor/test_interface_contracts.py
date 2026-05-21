@@ -8,8 +8,6 @@ These would have caught the bugs fixed in commit eb9d928:
 - Missing DataAccessContext.initialize_sync() call
 """
 
-from __future__ import annotations
-
 import asyncio
 from unittest.mock import Mock
 

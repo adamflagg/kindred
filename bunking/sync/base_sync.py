@@ -2,8 +2,6 @@
 Base sync service providing common functionality for sync scripts.
 """
 
-from __future__ import annotations
-
 import os
 
 from pocketbase import PocketBase

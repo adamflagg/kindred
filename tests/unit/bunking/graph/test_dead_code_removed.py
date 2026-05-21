@@ -9,8 +9,6 @@ does not depend on ``_bundle_edges`` either.
 These tests pin the cleanup so the dead methods cannot reappear.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder

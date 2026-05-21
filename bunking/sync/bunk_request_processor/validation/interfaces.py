@@ -2,8 +2,6 @@
 
 Defines the contracts for validation rules and their results."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 

@@ -9,8 +9,6 @@ The PR replaced `weight = 1.0 + (priority / 10.0)` with `weight =
 confidence_score`, removing the priority bottom-bound that used to mask this.
 """
 
-from __future__ import annotations
-
 from types import SimpleNamespace
 
 from bunking.graph.social_graph_builder import build_request_edge_attrs

@@ -4,8 +4,6 @@ This module contains the foundational types used by the AI service layer.
 Separated to avoid circular imports between ai_service, provider_factory, and providers.
 """
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum

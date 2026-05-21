@@ -6,8 +6,6 @@ Tests the expanded candidate generation that handles three name patterns:
 3. Family/household references (last name lookup)
 """
 
-from __future__ import annotations
-
 from unittest.mock import Mock, patch
 
 from bunking.sync.bunk_request_processor.core.models import (

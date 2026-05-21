@@ -12,8 +12,6 @@ This service extracts these patterns to:
 3. Handle multi-line notes with multiple staff entries
 """
 
-from __future__ import annotations
-
 import re
 from typing import Any
 

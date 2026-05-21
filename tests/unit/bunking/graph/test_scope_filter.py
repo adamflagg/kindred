@@ -10,8 +10,6 @@ This module is a pure function — no PocketBase, no FastAPI. Endpoint wiring is
 tested separately.
 """
 
-from __future__ import annotations
-
 import networkx as nx
 import pytest
 from pydantic import ValidationError

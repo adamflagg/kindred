@@ -4,8 +4,6 @@ TDD tests for the discover_oidc_endpoints function that will be added to
 scripts/setup/configure_pocketbase_oauth.py
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock, patch
 
 

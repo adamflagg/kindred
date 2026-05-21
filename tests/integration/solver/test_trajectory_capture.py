@@ -3,8 +3,6 @@
 Implementation must conform to these tests, not the other way around.
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any, ClassVar
 from unittest.mock import MagicMock

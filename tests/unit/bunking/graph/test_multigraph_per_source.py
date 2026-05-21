@@ -5,8 +5,6 @@ Red phase: these tests fail because nx.Graph() overwrites attributes on the
 second add_edge call — only the last edge's source_field/request_id survives.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 import networkx as nx

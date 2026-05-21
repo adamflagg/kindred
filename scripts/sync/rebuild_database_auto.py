@@ -4,8 +4,6 @@ Rebuild the entire database from scratch in the proper order.
 Non-interactive version that proceeds automatically.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import subprocess

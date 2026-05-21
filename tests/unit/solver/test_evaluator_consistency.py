@@ -15,8 +15,6 @@ soft path is gone and the hard threshold is hardcoded in
 ``bunking/solver/constants.py:MAX_UNIQUE_GRADES_PER_BUNK``.)
 """
 
-from __future__ import annotations
-
 import bunking.solver.constraints.cabin_occupancy as cabin_occupancy_mod
 import bunking.solver.constraints.grade_spread as grade_spread_mod
 

@@ -2,8 +2,6 @@
 
 Provides a clean abstraction for parsing bunk requests using various AI providers."""
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json

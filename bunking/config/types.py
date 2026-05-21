@@ -3,8 +3,6 @@
 Defines the schema for configuration keys including types and validation rules.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum

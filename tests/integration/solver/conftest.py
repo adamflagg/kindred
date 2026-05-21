@@ -15,8 +15,6 @@ the ConfigLoader singleton, which the shallow _PenaltyStubLoader here does not
 cover.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 from typing import Any, ClassVar
 from unittest.mock import MagicMock

@@ -2,8 +2,6 @@
 
 Provides clean interfaces for AI services and provider management."""
 
-from __future__ import annotations
-
 from .ai_service import (
     AIProvider,
     AIRequestContext,

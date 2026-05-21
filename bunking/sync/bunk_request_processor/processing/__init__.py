@@ -6,8 +6,6 @@ This module contains components for processing parsed requests:
 - Batch signal detection
 - Deduplication"""
 
-from __future__ import annotations
-
 from .deduplicator import DeduplicationResult, Deduplicator, DuplicateGroup
 from .first_request_detector import is_first_requested
 from .reciprocal_detector import ReciprocalDetector, ReciprocalPair

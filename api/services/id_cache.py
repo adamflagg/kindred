@@ -4,8 +4,6 @@ ID Translation Cache Service.
 Provides efficient CM ID <-> PB ID translations with caching.
 """
 
-from __future__ import annotations
-
 import asyncio
 
 from api.constants.collections import (

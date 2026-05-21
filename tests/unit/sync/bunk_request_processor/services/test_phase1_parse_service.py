@@ -7,8 +7,6 @@ These tests verify:
 4. Error handling for AI failures
 5. Statistics tracking"""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, Mock
 
 import pytest

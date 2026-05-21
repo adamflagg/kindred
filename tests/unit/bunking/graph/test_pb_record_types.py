@@ -11,8 +11,6 @@ These tests verify that:
 4. Regression: ``nx.clustering()`` result is safely iterable as a dict.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock
 

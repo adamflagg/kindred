@@ -1,7 +1,5 @@
 """TDD tests for sweep input snapshotting."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

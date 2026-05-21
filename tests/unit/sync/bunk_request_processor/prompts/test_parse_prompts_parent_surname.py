@@ -5,8 +5,6 @@ AI behavior on real inputs is verified separately via production trace inspectio
 post-merge — this guard catches accidental rule deletion or example drift.
 """
 
-from __future__ import annotations
-
 from collections.abc import Generator
 
 import pytest

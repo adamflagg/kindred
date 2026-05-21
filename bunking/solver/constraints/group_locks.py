@@ -5,8 +5,6 @@ Groups of campers that are locked together can be moved as a unit
 to any cabin, but must stay together.
 """
 
-from __future__ import annotations
-
 from bunking.logging_config import get_logger
 
 from .base import SolverContext

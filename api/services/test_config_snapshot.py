@@ -6,8 +6,6 @@ the code's assumed collection/field names and the real schema fails loudly
 instead of being papered over by MagicMock's auto-attributes.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock
 

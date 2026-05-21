@@ -19,8 +19,6 @@ this invariant was always true. Restore the guard and add coverage for
 the sparse case before merging the sparsifying change.
 """
 
-from __future__ import annotations
-
 from unittest.mock import MagicMock
 
 from bunking.solver.constraints.age_preference import _build_bunk_has_grade_vars

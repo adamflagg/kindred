@@ -4,8 +4,6 @@ Builds BunkRequest objects from parsed requests and resolution info.
 Extracted from orchestrator to reduce class size and improve testability.
 """
 
-from __future__ import annotations
-
 from typing import Any
 
 from bunking.logging_config import get_logger

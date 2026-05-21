@@ -3,8 +3,6 @@
 This module provides security utilities for detecting and sanitizing
 potentially malicious input before sending to AI providers."""
 
-from __future__ import annotations
-
 import re
 import unicodedata
 from dataclasses import dataclass, field

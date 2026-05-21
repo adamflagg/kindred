@@ -4,8 +4,6 @@ These tests verify the JWTValidator class correctly validates OIDC tokens
 using the PyJWT library. Written as TDD before migration from python-jose.
 """
 
-from __future__ import annotations
-
 import base64
 import json
 import time

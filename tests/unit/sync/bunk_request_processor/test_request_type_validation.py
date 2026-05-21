@@ -6,8 +6,6 @@ This ensures that certain source fields enforce specific request types:
 
 If AI returns the wrong type for a strict field, the orchestrator should correct it."""
 
-from __future__ import annotations
-
 from bunking.sync.bunk_request_processor.core.models import (
     AgePreference,
     ParsedRequest,

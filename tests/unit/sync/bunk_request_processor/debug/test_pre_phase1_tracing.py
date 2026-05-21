@@ -4,8 +4,6 @@ Verifies that trace_collector.record_pre_phase1() is called at each
 decision point in _prepare_parse_requests with correct actions.
 """
 
-from __future__ import annotations
-
 from typing import Any
 from unittest.mock import MagicMock, patch
 
