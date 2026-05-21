@@ -1061,3 +1061,18 @@ def test_resolve_cohort_none_returns_nonteen_plus_gated_teens():
         14: _sess(14, "scit", "2025-09-12 07:00:00.000Z", "2025-09-15 07:00:00.000Z"),  # fall noise
     }
     assert resolve_cohort_session_ids(s, None) == {10, 16, 11, 12, 13}
+
+
+# ============================================================================
+# DEFAULT_SUMMER_SESSION_TYPES Shared Constant Tests (Task 4 — PR A)
+# ============================================================================
+
+
+def test_default_summer_types_shared_constant():
+    from api.services.cancellation_service import SUMMER_SESSION_TYPES as cancel_types
+    from api.services.waitlist_service import SUMMER_SESSION_TYPES as waitlist_types
+
+    assert cancel_types == ("main", "embedded", "ag", "quest")
+    assert cancel_types == waitlist_types
+    # Default deliberately excludes teens (teens are opt-in via the picker).
+    assert "scit" not in cancel_types and "tli" not in cancel_types

@@ -22,6 +22,11 @@ from typing import Any
 # - tli: Teen Leadership Initiative (different program)
 DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
+# Default cohort for endpoints that scope to summer when the client sends no
+# session_types (param-less / direct API calls). The UI always sends an explicit
+# set, so teens are reached via the picker, not this default.
+DEFAULT_SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+
 # Session types that have cabin/bunk assignments relevant to the heatmap.
 # Used for filtering _build_session_bunk_breakdown to prevent family camp,
 # quest, training, and TLI sessions from appearing in the bunk heatmap.
