@@ -114,7 +114,7 @@ export function CurrentYearProvider({ children }: { children: ReactNode }) {
   )
 
   return (
-    <CurrentYearContext.Provider
+    <CurrentYearContext
       value={{
         currentYear,
         setCurrentYear,
@@ -124,6 +124,6 @@ export function CurrentYearProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </CurrentYearContext.Provider>
+    </CurrentYearContext>
   )
 }

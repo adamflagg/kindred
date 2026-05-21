@@ -123,5 +123,5 @@ export function BunkRequestProvider({ sessionCmId, children }: BunkRequestProvid
     ]
   )
 
-  return <BunkRequestContext.Provider value={value}>{children}</BunkRequestContext.Provider>
+  return <BunkRequestContext value={value}>{children}</BunkRequestContext>
 }

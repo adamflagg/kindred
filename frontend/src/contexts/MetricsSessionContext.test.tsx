@@ -124,9 +124,9 @@ function createWrapper(initialPath: string = '/analytics/registration') {
     return (
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[initialPath]}>
-          <CurrentYearContext.Provider value={mockYearContext}>
+          <CurrentYearContext value={mockYearContext}>
             <MetricsSessionProvider>{children}</MetricsSessionProvider>
-          </CurrentYearContext.Provider>
+          </CurrentYearContext>
         </MemoryRouter>
       </QueryClientProvider>
     )
@@ -308,13 +308,13 @@ describe('MetricsSessionContext', () => {
       render(
         <QueryClientProvider client={queryClient}>
           <MemoryRouter initialEntries={['/analytics/registration?year=2025']}>
-            <CurrentYearContext.Provider value={mockYearContext}>
+            <CurrentYearContext value={mockYearContext}>
               <MetricsSessionProvider>
                 <TestSetter sessionCmId={1001} />
                 <YearParamViewer />
                 <UrlParamViewer />
               </MetricsSessionProvider>
-            </CurrentYearContext.Provider>
+            </CurrentYearContext>
           </MemoryRouter>
         </QueryClientProvider>
       )

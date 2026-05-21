@@ -405,7 +405,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
   }
 
   return (
-    <LockGroupContext.Provider value={value}>
+    <LockGroupContext value={value}>
       {children}
       <GroupConflictDialog
         isOpen={conflictConfirm.dialogState.isOpen}
@@ -415,7 +415,7 @@ export function LockGroupProvider({ children }: LockGroupProviderProps) {
         onConfirm={conflictConfirm.dialogState.onConfirm}
         onCancel={conflictConfirm.dialogState.onCancel}
       />
-    </LockGroupContext.Provider>
+    </LockGroupContext>
   )
 }
 

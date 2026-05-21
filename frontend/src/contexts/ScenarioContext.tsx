@@ -243,5 +243,5 @@ export const ScenarioProvider: FC<ScenarioProviderProps> = ({ children }) => {
     clearScenario,
   }
 
-  return <ScenarioContext.Provider value={value}>{children}</ScenarioContext.Provider>
+  return <ScenarioContext value={value}>{children}</ScenarioContext>
 }

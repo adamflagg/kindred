@@ -148,5 +148,5 @@ export function CamperHistoryProvider({
     error: error,
   }
 
-  return <CamperHistoryContext.Provider value={value}>{children}</CamperHistoryContext.Provider>
+  return <CamperHistoryContext value={value}>{children}</CamperHistoryContext>
 }
