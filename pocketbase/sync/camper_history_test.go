@@ -1780,7 +1780,7 @@ func TestV2_IsReturningFamilyOnlyConsidersFamilyTypes(t *testing.T) {
 func TestV2_SessionTypeSelectValues(t *testing.T) {
 	// These are all the valid session types from camp_sessions enum
 	validTypes := []string{
-		"main", "embedded", "ag", "family", "quest", "training",
+		"main", "embedded", "ag", "family", "quest", "scit",
 		"bmitzvah", "tli", "adult", "school", "hebrew", "teen", "other",
 	}
 

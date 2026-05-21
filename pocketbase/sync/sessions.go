@@ -20,7 +20,7 @@ const (
 	sessionTypeFamily   = "family"
 	sessionTypeEmbedded = "embedded"
 	sessionTypeTLI      = "tli"
-	sessionTypeTraining = "training"
+	sessionTypeSCIT     = "scit"
 	sessionTypeOther    = "other"
 )
 
@@ -30,7 +30,7 @@ const (
 	groupSummerCamp     = 937   // Summer Camp → main/embedded/ag (refined further)
 	groupFamilyCamp     = 940   // Family Camp Weekends → family
 	groupQuests         = 938   // Teen Adventure Quests → quest
-	groupLeadership     = 939   // Teen Leadership Programs → tli or training
+	groupLeadership     = 939   // Teen Leadership Programs → tli or scit
 	groupTeenRetreat    = 4447  // Teen Winter Retreat → teen
 	groupBMitzvahHebrew = 4445  // B*Mitzvah + Hebrew Lessons → bmitzvah or hebrew
 	groupAdult          = 11600 // Adult Programs → adult
@@ -608,12 +608,12 @@ func (s *SessionsSync) getSessionTypeFromName(sessionName string) string {
 		return sessionTypeAdult
 	}
 
-	// Training programs
+	// SCIT (Specialist + Counselor In-Training)
 	if strings.Contains(nameLower, "counselor in-training") || strings.Contains(nameLower, "cit") {
-		return sessionTypeTraining
+		return sessionTypeSCIT
 	}
 	if strings.Contains(nameLower, "specialist in-training") || strings.Contains(nameLower, "sit") {
-		return sessionTypeTraining
+		return sessionTypeSCIT
 	}
 
 	// Quest programs
@@ -672,10 +672,10 @@ func (s *SessionsSync) getSessionTypeFromGroupID(groupCMID int, sessionName stri
 		return "quest"
 
 	case groupLeadership:
-		// Distinguish between TLI and training programs
+		// Distinguish between TLI and SCIT programs
 		if strings.Contains(nameLower, "counselor") || strings.Contains(nameLower, "cit") ||
 			strings.Contains(nameLower, "specialist") || strings.Contains(nameLower, "sit") {
-			return sessionTypeTraining
+			return sessionTypeSCIT
 		}
 		return sessionTypeTLI
 

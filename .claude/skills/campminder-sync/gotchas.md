@@ -63,7 +63,7 @@ filter := fmt.Sprintf("status = '%s'", status)  // Correct
 **Problem:** Family camp sessions have different structures than main summer camp sessions. Including them in the solver or general bunking logic causes incorrect results.
 
 **How it works:**
-- Sessions are classified by `session_type` field (main, family, adult, embedded, tli, training, other)
+- Sessions are classified by `session_type` field (main, family, adult, embedded, tli, scit, other)
 - Classification is based on `session_group` CM IDs defined in `sessions.go` constants
 - The solver and bunking logic filter to `session_type = "main"` or specific types
 - `family_camp_derived` handles family camp data separately via its own transform sync
