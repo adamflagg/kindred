@@ -41,7 +41,7 @@ export function getNodeColor(degree: number): string {
 /** Map each grade present in a bunk to a color from the light/dark ramp.
  *  Younger grades get the lighter end of the scale. */
 export function getBunkGradeColors(grades: readonly number[]): Record<number, string> {
-  const sorted = [...grades].sort((a, b) => a - b)
+  const sorted = grades.toSorted((a, b) => a - b)
   const result: Record<number, string> = {}
   sorted.forEach((grade, index) => {
     if (index === 0) {

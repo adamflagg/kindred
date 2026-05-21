@@ -51,7 +51,7 @@ function generateDefaultGroupName(campers: Camper[]): string {
   if (lastNames.length === 1) return lastNames[0] ?? ''
 
   // Sort by length, take shortest two
-  const sorted = [...lastNames].sort((a, b) => a.length - b.length)
+  const sorted = lastNames.toSorted((a, b) => a.length - b.length)
   const shortest = sorted.slice(0, 2)
 
   // Sort alphabetically for consistent display

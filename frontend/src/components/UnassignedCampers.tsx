@@ -29,7 +29,7 @@ export default function UnassignedCampers({
 
   // Sort campers by age (youngest to oldest)
   const sortedCampers = useMemo(() => {
-    return [...campers].sort(
+    return campers.toSorted(
       (a, b) =>
         (getDisplayAgeForYear(a, viewingYear) ?? 0) - (getDisplayAgeForYear(b, viewingYear) ?? 0)
     )

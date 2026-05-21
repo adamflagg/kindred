@@ -26,7 +26,7 @@ export function convexHull(
   }
 
   // Sort points by polar angle with respect to start
-  const sorted = points.slice().sort((a, b) => {
+  const sorted = points.toSorted((a, b) => {
     if (a === start) return -1
     if (b === start) return 1
 

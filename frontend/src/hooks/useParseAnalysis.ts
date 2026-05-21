@@ -157,7 +157,7 @@ export function useParseResultsBatch(originalRequestIds: string[]) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Create a stable key from sorted IDs to avoid unnecessary refetches
-  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : ''
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.toSorted().join(',') : ''
 
   return useQuery({
     queryKey: ['parse-results-batch', idsKey],
@@ -175,7 +175,7 @@ export function useParseResultsBatchDual(originalRequestIds: string[]) {
   const { fetchWithAuth, isAuthenticated } = useApiWithAuth()
 
   // Create a stable key from sorted IDs to avoid unnecessary refetches
-  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.slice().sort().join(',') : ''
+  const idsKey = originalRequestIds.length > 0 ? originalRequestIds.toSorted().join(',') : ''
 
   return useQuery({
     queryKey: ['parse-results-batch-dual', idsKey],

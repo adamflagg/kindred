@@ -122,7 +122,7 @@ export function filterEnrollmentsByStatus<T>(
     return { enrolled: [], fallback: null }
   }
 
-  const sorted = [...items].sort(
+  const sorted = items.toSorted(
     (a, b) => getStatusPriority(getStatus(a)) - getStatusPriority(getStatus(b))
   )
 

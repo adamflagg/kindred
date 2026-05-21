@@ -262,7 +262,7 @@ export const queryKeys = {
     sessionCmId: number,
     year: number,
     personCmIds: number[]
-  ) => ['cohort-bunk-assignments', scenarioId, sessionCmId, year, [...personCmIds].sort()] as const,
+  ) => ['cohort-bunk-assignments', scenarioId, sessionCmId, year, personCmIds.toSorted()] as const,
 
   // Camper Request Summary (Tier 2 - user data, used in expanded row)
   camperRequestSummary: (requesterCmId: number, year: number) =>

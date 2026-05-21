@@ -31,7 +31,7 @@ interface HoveredCell {
 }
 
 function sortRows(rows: StaffRetentionRow[], field: SortField, dir: SortDir): StaffRetentionRow[] {
-  return [...rows].sort((a, b) => {
+  return rows.toSorted((a, b) => {
     let cmp: number
     if (field === 'name') {
       cmp = a.name.localeCompare(b.name)
@@ -59,7 +59,7 @@ export default function StaffCabinAnalysisPage() {
   // Sort sessions chronologically
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(campSessions), [campSessions])
   const sortedSessions = useMemo(
-    () => [...sessions].sort((a, b) => compareByDateThenName(a, b, sessionDateLookup)),
+    () => sessions.toSorted((a, b) => compareByDateThenName(a, b, sessionDateLookup)),
     [sessions, sessionDateLookup]
   )
 

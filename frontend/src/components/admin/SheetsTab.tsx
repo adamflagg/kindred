@@ -122,7 +122,7 @@ export function SheetsTab() {
   }
 
   // Combine all workbooks: globals first, then years descending
-  const sortedWorkbooks = [...(workbooks ?? [])].sort((a, b) => {
+  const sortedWorkbooks = (workbooks ?? []).toSorted((a, b) => {
     if (a.workbook_type === 'globals') return -1
     if (b.workbook_type === 'globals') return 1
     return b.year - a.year

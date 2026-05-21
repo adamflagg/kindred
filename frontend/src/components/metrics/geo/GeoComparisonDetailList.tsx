@@ -71,7 +71,7 @@ export function GeoComparisonDetailList({
   }
 
   // Sort by primary value descending
-  const sorted = [...merged].sort((a, b) => b.primaryValue - a.primaryValue)
+  const sorted = merged.toSorted((a, b) => b.primaryValue - a.primaryValue)
 
   return (
     <div className={`card-lodge overflow-hidden ${className}`}>

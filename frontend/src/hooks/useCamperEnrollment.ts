@@ -88,7 +88,7 @@ export function useCamperEnrollment(
       }
 
       // 3. Get primary attendee (prefer main session)
-      const sortedAttendees = [...attendees].sort((a, b) => {
+      const sortedAttendees = attendees.toSorted((a, b) => {
         const aType = (a.expand as { session?: { session_type?: string } }).session?.session_type
         const bType = (b.expand as { session?: { session_type?: string } }).session?.session_type
         return sortEnrolledFirst(a.status, aType, b.status, bType)

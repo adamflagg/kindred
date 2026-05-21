@@ -170,7 +170,7 @@ function BunkCard({
   const calculateBunkStats = () => {
     // Quick path when dragging - just sort campers
     if (isDragging) {
-      const sorted = [...bunk.campers].sort((a, b) => a.age - b.age)
+      const sorted = bunk.campers.toSorted((a, b) => a.age - b.age)
       return {
         gradeDistribution: null,
         ageRange: null,
@@ -185,7 +185,7 @@ function BunkCard({
     const isOverCapacity = bunk.occupancy > defaultCapacity
 
     // Sort campers by age (youngest to oldest)
-    const sorted = [...bunk.campers].sort((a, b) => a.age - b.age)
+    const sorted = bunk.campers.toSorted((a, b) => a.age - b.age)
 
     // Calculate grade distribution
     const gradeCounts = new Map<number, number>()

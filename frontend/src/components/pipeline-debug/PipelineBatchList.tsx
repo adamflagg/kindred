@@ -138,7 +138,7 @@ export function PipelineBatchList({
 
     if (!sort) return filtered
     const { field, desc } = sort
-    return [...filtered].sort((a, b) => {
+    return filtered.toSorted((a, b) => {
       const cmp = compareValues(a[field], b[field])
       return desc ? -cmp : cmp
     })

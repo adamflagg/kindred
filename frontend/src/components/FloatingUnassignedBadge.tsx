@@ -39,7 +39,7 @@ export default function FloatingUnassignedBadge({
 
   // Sort campers by lastname (alpha), then firstname, then filter by search term
   const sortedCampers = useMemo(() => {
-    const sorted = [...campers].sort((a, b) => {
+    const sorted = campers.toSorted((a, b) => {
       const lastNameA = a.last_name ?? a.name.split(' ').pop() ?? ''
       const lastNameB = b.last_name ?? b.name.split(' ').pop() ?? ''
       const lastNameCompare = lastNameA.localeCompare(lastNameB)
