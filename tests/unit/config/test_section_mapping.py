@@ -24,30 +24,29 @@ def test_empty_sections_removed():
 def test_required_sections_present():
     text = SECTIONS_MIGRATION.read_text()
     # Sections referenced in SECTION_MAPPING but missing from config_sections.
-    for section in ["cabin-occupancy", "ai-request-parsing", "history-tracking"]:
+    # AI sections (ai-request-parsing, history-tracking, etc.) deleted in the
+    # AI Config (Unified) Phase 2 cleanup.
+    for section in ["cabin-occupancy"]:
         assert f'"{section}"' in text, f"required section {section} missing"
 
 
-def test_historical_context_keys_in_history_tracking_section():
-    text = MAIN_MIGRATION.read_text()
-    # Both groups should be mapped to 'history-tracking', not 'ai-validation-rules'.
-    assert "'ai.historical_context.enabled': 'history-tracking'" in text
-    assert "'ai.history_tracking.enabled': 'history-tracking'" in text
-
-
-def test_history_tracking_seed_bakeover_in_main_migration():
-    """The standalone fix-up migration was absorbed into the base config CREATE
-    (1500000011) — the SECTION_MAPPING in #011 now seeds these keys directly into
-    'history-tracking', so the fix-up file is unreachable on a fresh DB and was
-    deleted during config consolidation. This test guards the bakeover."""
-    text = MAIN_MIGRATION.read_text()
-    for key in [
-        "ai.historical_context.enabled",
-        "ai.historical_context.years_to_check",
-        "ai.history_tracking.enabled",
+def test_ai_sections_removed():
+    """AI-specific sections were deleted in the AI Config (Unified) Phase 2
+    cleanup along with all 97 `ai.*` config rows. Guards against re-adding
+    them by accident."""
+    sections_text = SECTIONS_MIGRATION.read_text()
+    main_text = MAIN_MIGRATION.read_text()
+    for section in [
+        "ai-model-settings",
+        "ai-confidence-thresholds",
+        "ai-name-matching",
+        "ai-confidence-scoring",
+        "ai-validation-rules",
+        "ai-request-parsing",
+        "history-tracking",
     ]:
-        assert f"'{key}': 'history-tracking'" in text, f"{key} must be seeded with section='history-tracking' in #011"
-    for key in ["ai.historical_context.enabled", "ai.history_tracking.enabled"]:
-        assert f"'{key}': 'ai-validation-rules'" not in text, (
-            f"{key} must not leak back into 'ai-validation-rules' section"
+        assert f'section_key: "{section}"' not in sections_text, (
+            f"AI section {section} should be deleted from config_sections seed"
         )
+        # The SECTION_MAPPING entries in 1500000011_config.js should not reference these sections.
+        assert f"'{section}'" not in main_text, f"SECTION_MAPPING in 1500000011_config.js still references {section}"

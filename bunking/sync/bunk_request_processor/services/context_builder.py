@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
 
+from ..core.constants import CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS
 from ..core.models import Person
 from ..integration.ai_service import AIRequestContext
 from ..shared.nickname_groups import find_nickname_variations
@@ -27,18 +28,15 @@ class ContextBuilder:
         self,
         person_repository: PersonRepository | None = None,
         attendee_repository: AttendeeRepository | None = None,
-        config_service: Any | None = None,
     ):
         """Initialize context builder with optional dependencies.
 
         Args:
             person_repository: Repository for person data access
             attendee_repository: Repository for attendee data access
-            config_service: Configuration service for AI config
         """
         self.person_repository = person_repository
         self.attendee_repository = attendee_repository
-        self.config_service = config_service
 
     def build_parse_only_context(
         self,
@@ -123,14 +121,6 @@ class ContextBuilder:
             "needs_historical_context": needs_historical,
             "NEVER_USE_AS_TARGET": requester_cm_id,
         }
-
-        if self.config_service:
-            try:
-                ai_config = self.config_service.get_ai_config()
-                nickname_mappings = ai_config.get("name_matching", {}).get("common_nicknames", {})
-                additional_context["nickname_mappings"] = nickname_mappings
-            except Exception as e:
-                logger.warning(f"Failed to get nickname_mappings from config: {e}")
 
         if needs_historical:
             additional_context["previous_year"] = year - 1
@@ -358,22 +348,12 @@ class ContextBuilder:
         if not self.attendee_repository:
             return []
 
-        # Get config value for max age difference
-        max_age_diff_months = 24  # Default
-        if self.config_service:
-            try:
-                ai_config = self.config_service.get_ai_config()
-                context_config = ai_config.get("context_building", {})
-                max_age_diff_months = context_config.get("max_age_difference_months", 24)
-            except Exception:  # noqa: S110 — intentional silent handling
-                pass
-
         # Use repository's age-filtered method
         peers = self.attendee_repository.get_age_filtered_session_peers(
             person_cm_id=requester_cm_id,
             session_cm_id=session_cm_id,
             year=year,
-            max_age_diff_months=max_age_diff_months,
+            max_age_diff_months=CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS,
         )
 
         # Get prior year bunkmates to populate was_bunkmate flag

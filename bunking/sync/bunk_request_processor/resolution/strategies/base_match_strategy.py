@@ -3,10 +3,13 @@
 Provides shared functionality for FuzzyMatchStrategy and PhoneticMatchStrategy,
 including session disambiguation, confidence calculation, and result building.
 
-All tunable confidence/boost values are loaded from PocketBase config to avoid
-hardcoding. The one exception is GATE_DEMOTION_CONFIDENCE (0.5), a control-flow
-sentinel chosen so disposition rule 8 routes the result to PENDING regardless of
-the bunk_with/not_bunk_with thresholds — it's not a tunable knob."""
+Tunable confidence/boost values live as module-level constants on the concrete
+strategy modules (`fuzzy_match.py` and `phonetic_match.py`). The PB-driven
+config injection point was removed in the AI Config (Unified) Phase 2 cleanup —
+see `docs/reference/solver-config-decisions.md`. GATE_DEMOTION_CONFIDENCE
+(0.5) is a control-flow sentinel chosen so disposition rule 8 routes the result
+to PENDING regardless of the bunk_with/not_bunk_with thresholds — it's not a
+tunable knob."""
 
 from __future__ import annotations
 
@@ -18,12 +21,13 @@ from ...core.models import Person
 from ...data.repositories import AttendeeRepository, PersonRepository
 from ..interfaces import ResolutionResult, ResolutionStrategy
 
-# Default fallback values when config is missing
+# Default values used by BaseMatchStrategy's session-adjustment when a
+# subclass doesn't override `_default_*` class attributes.
 DEFAULT_CONFIDENCE = 0.75
 DEFAULT_SESSION_MATCH = 0.80
 DEFAULT_SAME_SESSION_BOOST = 0.05
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.10
-DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
+DEFAULT_NOT_ENROLLED_PENALTY = -0.05
 
 
 class BaseMatchStrategy(ResolutionStrategy):
@@ -32,14 +36,13 @@ class BaseMatchStrategy(ResolutionStrategy):
     Provides common functionality for:
     - Filtering self-references from matches
     - Session-based disambiguation
-    - Config-driven confidence calculation
     - Building consistent ambiguous results
+
+    Subclasses override the `_default_*` class attributes to set strategy-
+    specific session-adjustment values.
     """
 
-    # Subclasses override these to set strategy-specific defaults
-    # Subclass-overridable session-adjustment defaults.
-    # These are fallbacks when config keys are missing — subclasses should
-    # override them to set strategy-specific values.
+    # Subclass-overridable session-adjustment values.
     _default_same_session_boost: float = DEFAULT_SAME_SESSION_BOOST
     _default_different_session_penalty: float = DEFAULT_DIFFERENT_SESSION_PENALTY
     _default_not_enrolled_penalty: float = DEFAULT_NOT_ENROLLED_PENALTY
@@ -48,18 +51,15 @@ class BaseMatchStrategy(ResolutionStrategy):
         self,
         person_repository: PersonRepository,
         attendee_repository: AttendeeRepository,
-        config: dict[str, Any] | None = None,
     ):
         """Initialize the base match strategy.
 
         Args:
             person_repository: Repository for person data access
             attendee_repository: Repository for attendee data access
-            config: Strategy-specific confidence config from PocketBase
         """
         self.person_repo = person_repository
         self.attendee_repo = attendee_repository
-        self.config = config or {}
 
         # Allow subclasses to set their strategy name
         self._strategy_name = "base_match"
@@ -81,24 +81,6 @@ class BaseMatchStrategy(ResolutionStrategy):
         """
         return [m for m in matches if m.cm_id != requester_cm_id]
 
-    def _calculate_base_confidence(self, match_type: str) -> float:
-        """Calculate base confidence for a match type from config.
-
-        Args:
-            match_type: The type of match (nickname, normalized, soundex, etc.)
-
-        Returns:
-            Base confidence value from config, or default fallback
-        """
-        # Map match type to config key
-        config_key = f"{match_type}_base"
-
-        # Try to get from config, fall back to default_base, then hardcoded default
-        if config_key in self.config:
-            return float(self.config[config_key])
-
-        return float(self.config.get("default_base", DEFAULT_CONFIDENCE))
-
     def _apply_session_adjustment(
         self,
         base_confidence: float,
@@ -117,40 +99,18 @@ class BaseMatchStrategy(ResolutionStrategy):
         Returns:
             Adjusted confidence value
         """
-        # If no session context available (missing data), apply slight penalty
         if not session_cm_id or not attendee_info:
-            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
-            return base_confidence + penalty
+            return base_confidence + self._default_not_enrolled_penalty
 
         person_info = attendee_info.get(person.cm_id)
-
-        # If person not enrolled as attendee this year, apply penalty
         if not person_info:
-            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
-            return base_confidence + penalty
+            return base_confidence + self._default_not_enrolled_penalty
 
         person_session = person_info.get("session_cm_id")
 
         if person_session == session_cm_id:
-            # Same session - apply boost
-            boost = float(self._get_confidence("same_session_boost", self._default_same_session_boost))
-            return base_confidence + boost
-        else:
-            # Different session - apply penalty
-            penalty = float(self._get_confidence("different_session_penalty", self._default_different_session_penalty))
-            return base_confidence + penalty
-
-    def _get_confidence(self, key: str, default: float) -> float:
-        """Get confidence value from config with fallback to default.
-
-        Args:
-            key: Config key like 'soundex_base', 'session_match', etc.
-            default: Default value if not in config
-
-        Returns:
-            Confidence value from config or default
-        """
-        return float(self.config.get(key, default))
+            return base_confidence + self._default_same_session_boost
+        return base_confidence + self._default_different_session_penalty
 
     def _apply_session_adjustment_simple(
         self, base_confidence: float, person_session: int | None, requester_session: int | None
@@ -167,24 +127,12 @@ class BaseMatchStrategy(ResolutionStrategy):
         Returns:
             Adjusted confidence value
         """
-        if requester_session is None:
-            # No session context - apply slight penalty
-            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
-            return base_confidence + penalty
-
-        if person_session is None:
-            # Person not in known session - apply slight penalty
-            penalty = float(self._get_confidence("not_enrolled_penalty", self._default_not_enrolled_penalty))
-            return base_confidence + penalty
+        if requester_session is None or person_session is None:
+            return base_confidence + self._default_not_enrolled_penalty
 
         if person_session == requester_session:
-            # Same session - apply boost
-            boost = float(self._get_confidence("same_session_boost", self._default_same_session_boost))
-            return base_confidence + boost
-        else:
-            # Different session - apply penalty
-            penalty = float(self._get_confidence("different_session_penalty", self._default_different_session_penalty))
-            return base_confidence + penalty
+            return base_confidence + self._default_same_session_boost
+        return base_confidence + self._default_different_session_penalty
 
     def _build_ambiguous_result(
         self,

@@ -3,7 +3,8 @@
 Implements fuzzy name matching including nicknames, spelling variations,
 and preferred name matching.
 
-Confidence values are loaded from PocketBase config to avoid hardcoding."""
+Confidence values are module-level constants — the PB-driven config injection
+was removed in the AI Config (Unified) Phase 2 cleanup."""
 
 from __future__ import annotations
 
@@ -25,16 +26,22 @@ from .base_match_strategy import (
     _is_exact_or_close_first_name,
 )
 
-# Default fallback values when config is missing
+# Confidence values used by FuzzyMatchStrategy. Were previously seeded as
+# `ai.confidence_scoring.resolution.fuzzy.*` PB rows + read through a
+# `_get_confidence(config, key)` indirection; collapsed to constants after the
+# rows were never tuned and the bulk-load access pattern was retired.
 DEFAULT_NICKNAME_BASE = 0.85
-DEFAULT_SPELLING_BASE = 0.85
 DEFAULT_NORMALIZED_BASE = 0.80
 DEFAULT_CONFIDENCE = 0.75
 DEFAULT_SESSION_MATCH = 0.85
-DEFAULT_SAME_SESSION_BOOST = 0.0  # Fuzzy match maintains base confidence for same session
+DEFAULT_SAME_SESSION_BOOST = 0.0  # Fuzzy maintains base confidence for same session
 DEFAULT_DIFFERENT_SESSION_PENALTY = -0.10
-DEFAULT_NOT_ENROLLED_PENALTY = -0.05  # Person not in attendee list for this year
+DEFAULT_NOT_ENROLLED_PENALTY = -0.05
 DEFAULT_JARO_WINKLER_THRESHOLD = 0.85
+# Phantom-key promotion: `resolution.fuzzy.parent_surname_base` was read at
+# runtime but never seeded — silently defaulted to 0.70. Promoted to a real
+# constant in the AI Config (Unified) cleanup.
+DEFAULT_PARENT_SURNAME_BASE = 0.70
 
 
 class FuzzyMatchStrategy(BaseMatchStrategy):
@@ -54,7 +61,6 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         person_repository: PersonRepository,
         attendee_repository: AttendeeRepository,
         relationship_analyzer: RelationshipAnalyzer | None = None,
-        config: dict[str, Any] | None = None,
     ):
         """Initialize the fuzzy match strategy.
 
@@ -62,9 +68,8 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             person_repository: Repository for person data access
             attendee_repository: Repository for attendee data access
             relationship_analyzer: Optional analyzer for relationship-based confidence boosting
-            config: Optional config dict with confidence values from PocketBase
         """
-        super().__init__(person_repository, attendee_repository, config)
+        super().__init__(person_repository, attendee_repository)
         self._strategy_name = "fuzzy_match"
         self.relationship_analyzer = relationship_analyzer
 
@@ -448,10 +453,9 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
             return ResolutionResult(confidence=0.0, method=self.name)
 
         if len(all_matches) == 1:
-            base_conf = self._get_confidence("parent_surname_base", 0.70)
             confidence = self._calculate_confidence(all_matches[0], requester_cm_id, session_cm_id, year, attendee_info)
-            # Use parent_surname_base as max since it's lower confidence
-            confidence = min(confidence, base_conf)
+            # Cap at parent_surname_base since it's lower confidence
+            confidence = min(confidence, DEFAULT_PARENT_SURNAME_BASE)
             return ResolutionResult(
                 person=all_matches[0],
                 confidence=confidence,
@@ -521,10 +525,9 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
                 same_session.append(person)
 
         if len(same_session) == 1:
-            confidence = self._get_confidence("session_match", DEFAULT_SESSION_MATCH)
             return ResolutionResult(
                 person=same_session[0],
-                confidence=confidence,
+                confidence=DEFAULT_SESSION_MATCH,
                 method=self.name,
                 metadata={"sub_method": "session_disambiguated"},
             )
@@ -557,7 +560,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
 
         using_full_pool = not candidates and bool(all_persons)
 
-        jw_threshold = float(self._get_confidence("jaro_winkler_threshold", DEFAULT_JARO_WINKLER_THRESHOLD))
+        jw_threshold = DEFAULT_JARO_WINKLER_THRESHOLD
         first_lower = parsed.first.lower()
         matches = []
 
@@ -612,13 +615,13 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
         is_normalized: bool = False,
     ) -> float:
         """Calculate confidence based on match type and session verification."""
-        # Base confidence by match type (from config)
+        # Base confidence by match type
         if is_nickname or is_spelling:
-            base_confidence = float(self._get_confidence("nickname_base", DEFAULT_NICKNAME_BASE))
+            base_confidence = DEFAULT_NICKNAME_BASE
         elif is_normalized:
-            base_confidence = float(self._get_confidence("normalized_base", DEFAULT_NORMALIZED_BASE))
+            base_confidence = DEFAULT_NORMALIZED_BASE
         else:
-            base_confidence = float(self._get_confidence("default_base", DEFAULT_CONFIDENCE))
+            base_confidence = DEFAULT_CONFIDENCE
 
         # Verify session
         if year and session_cm_id:
@@ -633,8 +636,7 @@ class FuzzyMatchStrategy(BaseMatchStrategy):
 
             confidence = self._apply_session_adjustment_simple(base_confidence, person_session, session_cm_id)
         else:
-            penalty = float(self._get_confidence("not_enrolled_penalty", DEFAULT_NOT_ENROLLED_PENALTY))
-            confidence = base_confidence + penalty
+            confidence = base_confidence + DEFAULT_NOT_ENROLLED_PENALTY
 
         # Apply relationship boost if analyzer available (skip for context path for performance)
         if self.relationship_analyzer is not None and session_cm_id and attendee_info is None:

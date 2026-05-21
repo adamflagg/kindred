@@ -156,56 +156,9 @@ migrate((app) => {
       display_order: 13,
       expanded_by_default: false
     },
-    // AI-specific sections - clearly separated from solver sections
-    {
-      section_key: "ai-model-settings",
-      title: "AI Model Configuration",
-      description: "Configure AI provider, model selection, and processing parameters",
-      display_order: 20,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ai-confidence-thresholds",
-      title: "AI Confidence Thresholds",
-      description: "Set confidence levels for automatic acceptance, validation, and rejection",
-      display_order: 21,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ai-name-matching",
-      title: "AI Name Matching",
-      description: "Configure fuzzy matching, phonetic matching, and name resolution rules",
-      display_order: 22,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ai-confidence-scoring",
-      title: "AI Confidence Scoring",
-      description: "Weights and parameters for calculating request confidence scores",
-      display_order: 23,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ai-validation-rules",
-      title: "AI Validation Rules",
-      description: "Spread validation, manual review triggers, and field parsing rules",
-      display_order: 25,
-      expanded_by_default: false
-    },
-    {
-      section_key: "ai-request-parsing",
-      title: "AI Request Parsing",
-      description: "Settings for AI parsing of bunk requests from raw text",
-      display_order: 27,
-      expanded_by_default: false
-    },
-    {
-      section_key: "history-tracking",
-      title: "Historical Context & Tracking",
-      description: "Settings for incorporating historical bunking and request data",
-      display_order: 28,
-      expanded_by_default: false
-    }
+    // 7 AI-specific sections removed in the AI Config (Unified) Phase 2
+    // cleanup along with the underlying `category='ai'` config rows. See drop
+    // migration `1500000109_drop_ai_configs.js`.
   ];
 
   // Insert each section

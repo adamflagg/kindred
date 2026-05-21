@@ -622,26 +622,14 @@ class TestDisambiguationContextNeverUseAsTarget:
 
 
 class TestDisambiguationContextNicknameMappings:
-    """"""
+    """The `name_matching.common_nicknames` PB lookup was a phantom dict-key
+    path — it was never seeded, so both callers always got `{}` and fell
+    through to the hardcoded NICKNAME_GROUPS table. Both lookups removed in
+    the AI Config (Unified) Phase 2 cleanup. The disambiguation context no
+    longer emits a `nickname_mappings` key."""
 
-    def test_disambiguation_context_includes_nickname_mappings_from_config(self):
-        """
-        if hasattr(self, 'config_service'):
-            ai_config = self.config_service.get_ai_config()
-            context["nickname_mappings"] = ai_config.get('name_matching', {}).get('common_nicknames', {})
-        """
-        # Create mock config service
-        mock_config_service = Mock()
-        mock_config_service.get_ai_config.return_value = {
-            "name_matching": {
-                "common_nicknames": {
-                    "Michael": ["Mike", "Mikey"],
-                    "Robert": ["Rob", "Bobby", "Bob"],
-                }
-            }
-        }
-
-        builder = ContextBuilder(config_service=mock_config_service)
+    def test_disambiguation_context_omits_nickname_mappings(self):
+        builder = ContextBuilder()
         candidates = [_create_person()]
 
         context = builder.build_disambiguation_context(
@@ -657,35 +645,8 @@ class TestDisambiguationContextNicknameMappings:
             local_confidence=0.5,
         )
 
-        # Must include nickname_mappings from config
-        nickname_mappings = context.additional_context.get("nickname_mappings")
-        assert nickname_mappings is not None
-        assert nickname_mappings == {
-            "Michael": ["Mike", "Mikey"],
-            "Robert": ["Rob", "Bobby", "Bob"],
-        }
-
-    def test_disambiguation_context_no_nickname_mappings_without_config(self):
-        """Without config service, nickname_mappings should be empty or default"""
-        builder = ContextBuilder()  # No config service
-        candidates = [_create_person()]
-
-        context = builder.build_disambiguation_context(
-            target_name="Mike Smith",
-            candidates=candidates,
-            requester_name="John Doe",
-            requester_cm_id=11111,
-            requester_school=None,
-            session_cm_id=1000002,
-            session_name="Session 2",
-            year=2025,
-            ambiguity_reason="Multiple matches",
-            local_confidence=0.5,
-        )
-
-        # Without config, should have empty dict or None (not error)
-        nickname_mappings = context.additional_context.get("nickname_mappings")
-        assert nickname_mappings is None or nickname_mappings == {}
+        # The phantom `nickname_mappings` key is no longer emitted.
+        assert "nickname_mappings" not in context.additional_context
 
 
 # =============================================================================
@@ -1008,24 +969,17 @@ class TestGetAgeFilteredSessionAttendees:
     - As a fallback when no specific candidates are found
     """
 
-    def test_age_filtered_uses_config_max_age_difference(self):
-        """
-        max_age_diff_months = context_config.get('max_age_difference_months', 24)
-        """
-        mock_config_service = Mock()
-        mock_config_service.get_ai_config.return_value = {
-            "context_building": {
-                "max_age_difference_months": 36  # Custom value
-            }
-        }
+    def test_age_filtered_uses_constant_max_age_difference(self):
+        """After AI Config Phase 2 cleanup, max_age_difference_months is a
+        hardcoded constant (CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS=24)."""
+        from bunking.sync.bunk_request_processor.core.constants import (
+            CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS,
+        )
 
         mock_attendee_repo = Mock()
         mock_attendee_repo.get_age_filtered_session_peers.return_value = []
 
-        builder = ContextBuilder(
-            config_service=mock_config_service,
-            attendee_repository=mock_attendee_repo,
-        )
+        builder = ContextBuilder(attendee_repository=mock_attendee_repo)
 
         builder.get_age_filtered_session_attendees(
             requester_cm_id=11111,
@@ -1033,10 +987,10 @@ class TestGetAgeFilteredSessionAttendees:
             year=2025,
         )
 
-        # Should have called with the config value
         mock_attendee_repo.get_age_filtered_session_peers.assert_called_once()
         call_args = mock_attendee_repo.get_age_filtered_session_peers.call_args
-        assert call_args[1].get("max_age_diff_months") == 36 or call_args[0][3] == 36
+        passed = call_args[1].get("max_age_diff_months")
+        assert passed == CONTEXT_BUILDING_MAX_AGE_DIFFERENCE_MONTHS
 
     def test_age_filtered_defaults_to_24_months(self):
         """ """
@@ -1112,21 +1066,21 @@ class TestContextBuilderDependencyInjection:
     """Tests for ContextBuilder dependency injection"""
 
     def test_context_builder_accepts_optional_dependencies(self):
-        """ContextBuilder should accept optional repository and config dependencies"""
+        """ContextBuilder should accept optional repository dependencies.
+
+        `config_service` was dropped in the AI Config (Unified) Phase 2
+        cleanup — the ContextBuilder no longer needs a PB lookup hook.
+        """
         mock_person_repo = Mock()
         mock_attendee_repo = Mock()
-        mock_config_service = Mock()
 
-        # Should not raise
         builder = ContextBuilder(
             person_repository=mock_person_repo,
             attendee_repository=mock_attendee_repo,
-            config_service=mock_config_service,
         )
 
         assert builder.person_repository is mock_person_repo
         assert builder.attendee_repository is mock_attendee_repo
-        assert builder.config_service is mock_config_service
 
     def test_context_builder_works_without_dependencies(self):
         """ContextBuilder should work without dependencies (backward compatible)"""

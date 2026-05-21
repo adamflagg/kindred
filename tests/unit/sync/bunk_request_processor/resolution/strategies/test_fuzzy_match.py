@@ -564,7 +564,7 @@ class TestFuzzyMatchDefaultOverrideMechanism:
         mock_person_repo.find_by_first_name.return_value = []
         mock_person_repo.name_cache = {}
         mock_person_repo.find_by_first_and_parent_surname.return_value = []
-        return FuzzyMatchStrategy(mock_person_repo, mock_attendee_repo, config={})
+        return FuzzyMatchStrategy(mock_person_repo, mock_attendee_repo)
 
     def test_same_session_no_boost_with_empty_config(self, strategy_with_empty_config):
         """FuzzyMatchStrategy with empty config gives no boost for same session.
@@ -607,7 +607,7 @@ class TestFuzzyMatchDefaultOverrideMechanism:
 
         mock_person_repo = Mock()
         mock_attendee_repo = Mock()
-        base = ConcreteBase(mock_person_repo, mock_attendee_repo, config={})
+        base = ConcreteBase(mock_person_repo, mock_attendee_repo)
         result = base._apply_session_adjustment_simple(
             base_confidence=0.75,
             person_session=1001,
