@@ -18,7 +18,8 @@ predicate.
 """
 
 from collections import defaultdict
-from dataclasses import dataclass, field, replace
+from copy import replace
+from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
 from bunking.config import ConfigLoader

@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import replace
+from copy import replace
 from typing import Any
 
 from bunking.logging_config import get_logger
