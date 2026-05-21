@@ -591,17 +591,19 @@ async def get_forecast(
 @router.get("/registration/day1", response_model=Day1Response)
 async def get_day1(
     year: int = Query(description="Camp year", ge=2000, le=2100),
+    session_types: str | None = Query(None, description="Comma-separated session types to filter (e.g., 'main,quest')"),
     user: AuthUser = Depends(get_current_user),
 ) -> Day1Response:
     """Get Day 1 first-24h registration counts by tier."""
-    cache_params = {"year": year}
+    cache_params = {"year": year, "session_types": session_types}
     cached: Day1Response | None = metrics_cache.get("day1", **cache_params)
     if cached is not None:
         return cached
 
+    type_filter = session_types.split(",") if session_types else None
     repository = _create_repository()
     service = Day1Service(repository)
-    result = await service.get_day1(year)
+    result = await service.get_day1(year, session_types=type_filter)
 
     metrics_cache.set("day1", result, **cache_params)
     return result
