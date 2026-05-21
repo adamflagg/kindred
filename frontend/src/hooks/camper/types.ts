@@ -2,7 +2,7 @@
  * Shared types for camper hooks
  */
 
-import type { PersonsResponse } from '../../types/pocketbase-types'
+import type { PersonsResponse, CampSessionsSessionTypeOptions } from '../../types/pocketbase-types'
 
 // Historical camp record
 export interface HistoricalRecord {
@@ -44,7 +44,7 @@ export interface SiblingWithEnrollment extends PersonsResponse {
     id: string
     cm_id: number
     name: string
-    session_type: string
+    session_type: CampSessionsSessionTypeOptions
     start_date?: string
     end_date?: string
   }
