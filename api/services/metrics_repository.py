@@ -7,6 +7,7 @@ enabling dependency injection and testability.
 from __future__ import annotations
 
 import asyncio
+from itertools import batched
 from typing import TYPE_CHECKING, Any
 
 from api.constants.collections import (
@@ -173,8 +174,7 @@ class MetricsRepository:
         sorted_ids = sorted(person_ids)
         all_results: list[Any] = []
 
-        for i in range(0, len(sorted_ids), self.BATCH_SIZE):
-            batch_ids = sorted_ids[i : i + self.BATCH_SIZE]
+        for batch_ids in batched(sorted_ids, self.BATCH_SIZE, strict=False):
             person_filter = " || ".join(f"person_id = {pid}" for pid in batch_ids)
             filter_str = f"({person_filter}) && status_id = 2 && year <= {max_year}"
 

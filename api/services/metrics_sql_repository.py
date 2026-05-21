@@ -7,6 +7,7 @@ service-layer code expects.
 
 import json
 import sqlite3
+from itertools import batched
 from types import SimpleNamespace
 from typing import Any
 
@@ -270,8 +271,7 @@ class MetricsSQLRepository:
         sorted_ids = sorted(person_ids)
         all_results: list[Any] = []
 
-        for i in range(0, len(sorted_ids), self.BATCH_SIZE):
-            batch = sorted_ids[i : i + self.BATCH_SIZE]
+        for batch in batched(sorted_ids, self.BATCH_SIZE, strict=False):
             placeholders = ",".join("?" for _ in batch)
             rows = self._query(
                 f"""SELECT a.person_id, a.year,
