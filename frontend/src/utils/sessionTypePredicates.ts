@@ -33,10 +33,10 @@ export const SUMMER_CAMP_TYPES = ['main', 'embedded', 'ag', 'quest'] as const
 export const QUEST_SESSION_TYPES = ['quest'] as const
 
 /** Teen program session types */
-export const TEEN_PROGRAM_TYPES = ['tli', 'teen'] as const
+export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
-/** View mode for metrics: camp sessions, quest sessions, or all combined */
-export type MetricsViewMode = 'sessions' | 'quests' | 'all'
+/** View mode for metrics: camp sessions, quest sessions, all combined, or teens */
+export type MetricsViewMode = 'sessions' | 'quests' | 'all' | 'teens'
 
 /**
  * Every known session_type literal from the PocketBase CampSessionsSessionTypeOptions enum.
@@ -115,7 +115,7 @@ export function isSummerCampSession(session: SessionLike): boolean {
   return SUMMER_CAMP_TYPES.includes(session.session_type as (typeof SUMMER_CAMP_TYPES)[number])
 }
 
-/** True for teen programs: tli, teen */
+/** True for teen programs: scit, tli */
 export function isTeenProgram(session: SessionLike): boolean {
   return TEEN_PROGRAM_TYPES.includes(session.session_type as (typeof TEEN_PROGRAM_TYPES)[number])
 }
@@ -174,7 +174,7 @@ export function isSummerCampSessionType(sessionType: string | null | undefined):
   return SUMMER_CAMP_TYPES.includes(sessionType as (typeof SUMMER_CAMP_TYPES)[number])
 }
 
-/** True if the session_type string is a teen program (tli | teen) */
+/** True if the session_type string is a teen program (scit | tli) */
 export function isTeenProgramType(sessionType: string | null | undefined): boolean {
   return TEEN_PROGRAM_TYPES.includes(sessionType as (typeof TEEN_PROGRAM_TYPES)[number])
 }
@@ -192,6 +192,39 @@ export function isTeenProgramType(sessionType: string | null | undefined): boole
  */
 export function buildSummerSessionTypeFilter(): string {
   return SUMMER_CAMP_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
+}
+
+// ============================================================================
+// Summer-teen window helpers (mirror api/utils/session_metrics.py)
+// ============================================================================
+
+/** Min main start / max main end (YYYY-MM-DD), or null. Mirrors get_summer_window(). */
+export function getSummerWindow(
+  sessions: Array<{ session_type?: string | null; start_date: string; end_date: string }>
+): [string, string] | null {
+  const starts: string[] = []
+  const ends: string[] = []
+  for (const s of sessions) {
+    if (s.session_type !== 'main') continue
+    if (s.start_date && s.end_date) {
+      starts.push(s.start_date.slice(0, 10))
+      ends.push(s.end_date.slice(0, 10))
+    }
+  }
+  if (!starts.length || !ends.length) return null
+  return [starts.reduce((a, b) => (a < b ? a : b)), ends.reduce((a, b) => (a > b ? a : b))]
+}
+
+/** True iff a scit/tli session overlaps the summer window. Mirrors is_summer_teen_session(). */
+export function isSummerTeenSession(
+  session: { session_type?: string | null; start_date?: string; end_date?: string },
+  window: [string, string] | null
+): boolean {
+  if (!TEEN_PROGRAM_TYPES.includes(session.session_type as (typeof TEEN_PROGRAM_TYPES)[number]))
+    return false
+  if (!window || !session.start_date || !session.end_date) return false
+  const [winStart, winEnd] = window
+  return session.start_date.slice(0, 10) <= winEnd && session.end_date.slice(0, 10) >= winStart
 }
 
 // ============================================================================
