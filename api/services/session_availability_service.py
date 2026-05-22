@@ -214,9 +214,13 @@ class SessionAvailabilityService:
                     )
                 )
 
-        # Build aggregated teen rows (window-gated sessions already filtered above)
-        teen_sessions = self._build_teen_availability_rows(
-            sessions, session_configs, enrollment, waitlist_data, threshold
+        # Build aggregated teen rows (window-gated sessions already filtered above).
+        # Suppressed on single-session drill-down: teens have no single-session
+        # drill target (mirrors forecast_service's session_cm_id guard).
+        teen_sessions = (
+            self._build_teen_availability_rows(sessions, session_configs, enrollment, waitlist_data, threshold)
+            if session_cm_id is None
+            else []
         )
 
         # Filter by specific session if requested
@@ -496,6 +500,10 @@ class SessionAvailabilityService:
                 wl = waitlist_data.get(c, {})
                 for g, n in (wl.get("by_grade_total", {}) or {}).items():
                     by_grade[g] = by_grade.get(g, 0) + n
+                # Approximate union: each sub-session contributes its own top-N list,
+                # so merged positions can collide (not a globally-ordered queue).
+                # Acceptable for the small teen cohort; a true global ordering would
+                # need enrollment-date fields that WaitlistedPerson drops.
                 persons.extend(wl.get("persons_total", []) or [])
 
             capacity = cfg.get("capacity_override")

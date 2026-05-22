@@ -219,6 +219,100 @@ class TestTeenAggregation:
         assert scit.enrolled == 1  # only 3001/101
         assert scit.waitlisted == 2  # 3001/102 + 3002/103
 
+    @pytest.mark.asyncio
+    async def test_waitlisted_by_grade_merged_across_cit_sit(self, service, mock_repository):
+        """SCIT row sums waitlisted_by_grade across CIT + SIT sub-sessions."""
+        main_session = create_mock_session(
+            1001, "Session 1", session_type="main", start_date="2026-06-15", end_date="2026-07-05"
+        )
+        cit_session = create_mock_session(
+            3001, "CIT", session_type="scit", start_date="2026-06-20", end_date="2026-07-04"
+        )
+        sit_session = create_mock_session(
+            3002, "SIT", session_type="scit", start_date="2026-06-20", end_date="2026-07-04"
+        )
+
+        sessions = {1001: main_session, 3001: cit_session, 3002: sit_session}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        # Grade-12 waitlister on CIT + another grade-12 waitlister on SIT → {12: 2}.
+        # Plus a grade-11 waitlister on CIT to confirm distinct grades stay separate.
+        attendees = [
+            create_mock_attendee(
+                101,
+                3001,
+                gender="M",
+                status="waitlisted",
+                grade=12,
+                effective_date="2025-12-01",
+                enrollment_date="2025-12-02T10:00:00Z",
+            ),
+            create_mock_attendee(
+                102,
+                3002,
+                gender="F",
+                status="waitlisted",
+                grade=12,
+                effective_date="2025-12-03",
+                enrollment_date="2025-12-04T10:00:00Z",
+            ),
+            create_mock_attendee(
+                103,
+                3001,
+                gender="F",
+                status="waitlisted",
+                grade=11,
+                effective_date="2025-12-05",
+                enrollment_date="2025-12-06T10:00:00Z",
+            ),
+        ]
+        mock_repository.fetch_attendees_with_persons.return_value = attendees
+
+        result = await service.calculate_availability(year=2026, session_types=["main", "scit"])
+
+        assert len(result.teen_sessions) == 1
+        scit = result.teen_sessions[0]
+        assert scit.waitlisted == 3
+        assert scit.waitlisted_by_grade == {12: 2, 11: 1}
+
+    @pytest.mark.asyncio
+    async def test_no_teen_rows_for_single_session_drilldown(self, service, mock_repository):
+        """When drilling into one session (session_cm_id set), no teen rows are emitted."""
+        main_session = create_mock_session(
+            1001, "Session 1", session_type="main", start_date="2026-06-15", end_date="2026-07-05"
+        )
+        cit_session = create_mock_session(
+            3001, "CIT", session_type="scit", start_date="2026-06-20", end_date="2026-07-04"
+        )
+        sit_session = create_mock_session(
+            3002, "SIT", session_type="scit", start_date="2026-06-20", end_date="2026-07-04"
+        )
+        tli_session = create_mock_session(
+            4001, "TLI", session_type="tli", start_date="2026-06-20", end_date="2026-07-04"
+        )
+
+        sessions = {1001: main_session, 3001: cit_session, 3002: sit_session, 4001: tli_session}
+        mock_repository.fetch_sessions.return_value = sessions
+
+        attendees = [
+            create_mock_attendee(101, 3001, gender="M", status="enrolled"),
+            create_mock_attendee(102, 3002, gender="F", status="enrolled"),
+            create_mock_attendee(201, 4001, gender="F", status="enrolled"),
+        ]
+        mock_repository.fetch_attendees_with_persons.return_value = attendees
+
+        config_records = [
+            create_mock_config("type_scit", {"min_grade": 12, "max_grade": 12, "capacity_override": 50}, "cfg_scit"),
+            create_mock_config("type_tli", {"min_grade": 11, "max_grade": 11, "capacity_override": 40}, "cfg_tli"),
+        ]
+        mock_repository.pb.collection.return_value.get_full_list.return_value = config_records
+
+        result = await service.calculate_availability(
+            year=2026, session_types=["main", "scit", "tli"], session_cm_id=1001
+        )
+
+        assert result.teen_sessions == []
+
 
 # ============================================================================
 # Window gate: off-season teens excluded
