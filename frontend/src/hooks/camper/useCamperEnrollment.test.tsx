@@ -327,4 +327,34 @@ describe('useCamperEnrollment', () => {
     expect(result.current.allAttendees).toHaveLength(1)
     expect(expectDefined(result.current.allAttendees[0]).assigned_bunk_cm_id).toBe(7000099)
   })
+
+  it('loads a teen-only (scit) attendee and queries attendees with teen types included', async () => {
+    mockAttendeesGetFullList.mockResolvedValue([
+      makeAttendee({
+        id: 'att_scit',
+        sessionPbId: 'sess_scit',
+        sessionCmId: 1407000,
+        sessionType: 'scit',
+      }),
+    ])
+    mockAssignmentsGetFullList.mockResolvedValue([]) // teens are never bunked
+
+    const { result } = renderHook(() => useCamperEnrollment(PERSON_CM_ID, YEAR), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.allAttendees).toHaveLength(1)
+    const teen = expectDefined(result.current.allAttendees[0], 'teen attendee')
+    expect(teen.session_cm_id).toBe(1407000)
+    expect(teen.assigned_bunk).toBe('')
+
+    // The attendee fetch must include teen types in its filter.
+    const attendeeFilter = String(mockAttendeesGetFullList.mock.calls[0]?.[0]?.filter ?? '')
+    expect(attendeeFilter).toContain('session.session_type = "scit"')
+    expect(attendeeFilter).toContain('session.session_type = "tli"')
+    // The assignment fetch stays summer-only (no teen types).
+    const assignmentFilter = String(mockAssignmentsGetFullList.mock.calls[0]?.[0]?.filter ?? '')
+    expect(assignmentFilter).not.toContain('"scit"')
+  })
 })

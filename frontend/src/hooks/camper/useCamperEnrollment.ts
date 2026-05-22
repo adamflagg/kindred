@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { pb } from '../../lib/pocketbase'
 import {
   buildSummerSessionTypeFilter,
+  buildCamperDetailSessionTypeFilter,
   isSummerCampSessionType,
 } from '../../utils/sessionTypePredicates'
 import { queryKeys } from '../../utils/queryKeys'
@@ -54,10 +55,10 @@ export function useCamperEnrollment(
     queryFn: async () => {
       if (!personCmId) throw new Error('Invalid person ID')
 
-      // Query attendees with enrollment status check - source of truth for enrollment
-      // Filter to only valid summer session types (main, embedded, ag)
-      const sessionTypeFilter = buildSummerSessionTypeFilter()
-      const filter = `person_id = ${personCmId} && year = ${currentYear} && (${sessionTypeFilter})`
+      // Query attendees — source of truth for enrollment. Teen programs
+      // (scit/tli) are included so a teen-only camper's page loads.
+      const attendeeTypeFilter = buildCamperDetailSessionTypeFilter()
+      const filter = `person_id = ${personCmId} && year = ${currentYear} && (${attendeeTypeFilter})`
 
       const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
         filter,
@@ -74,11 +75,12 @@ export function useCamperEnrollment(
         throw new Error(`Person with CampMinder ID ${personCmId} not found`)
       }
 
-      // Load this person's assignments for valid summer session types only.
-      // Restricting by session_type prevents family-camp bunks (which sync but
-      // are out-of-scope for the summer bunking views) from leaking onto a
+      // Load this person's assignments for valid *summer* session types only.
+      // Teens have no bunk; restricting to summer also prevents family-camp bunks
+      // (which sync but are out-of-scope for summer views) from leaking onto a
       // summer attendee row via the AG fallback below.
-      const assignmentFilter = `person.cm_id = ${personCmId} && year = ${currentYear} && (${sessionTypeFilter})`
+      const assignmentTypeFilter = buildSummerSessionTypeFilter()
+      const assignmentFilter = `person.cm_id = ${personCmId} && year = ${currentYear} && (${assignmentTypeFilter})`
       const personAssignments = await pb
         .collection<BunkAssignmentsResponse>('bunk_assignments')
         .getFullList({
