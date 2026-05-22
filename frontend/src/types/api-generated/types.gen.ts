@@ -8285,6 +8285,12 @@ export type GetRetentionMetricsApiMetricsRetentionGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Include Teen Pipeline
+     *
+     * Credit grade-10 campers who continue into a summer teen program (main->teen bridge)
+     */
+    include_teen_pipeline?: boolean
   }
   url: '/api/metrics/retention'
 }
