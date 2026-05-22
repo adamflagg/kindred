@@ -30,7 +30,7 @@ import {
   getSessionDisplayNameFromString,
   getSessionShortName as getSessionShortNameUtil,
 } from '../utils/sessionDisplay'
-import { buildSummerSessionTypeFilter, isAtCampSession } from '../utils/sessionTypePredicates'
+import { buildSummerSessionTypeFilter } from '../utils/sessionTypePredicates'
 import type {
   PersonsResponse,
   AttendeesResponse,
@@ -52,6 +52,9 @@ import {
 import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
+import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
+import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
+import type { HistoricalRecord } from '../hooks/camper/types'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
 import { CampMinderIcon } from './icons'
@@ -96,22 +99,12 @@ interface ExpandedSession {
   id?: string
   cm_id?: number
   name?: string
-}
-
-interface ExpandedPerson {
-  cm_id?: number
-  grade?: number
+  parent_id?: number
 }
 
 interface ExpandedBunk {
   cm_id?: number
   name?: string
-}
-
-interface ExpandedAssignment {
-  session?: ExpandedSession
-  person?: ExpandedPerson
-  bunk?: ExpandedBunk
 }
 
 // Animation state machine - replaces isOpen/isClosing booleans
@@ -152,20 +145,12 @@ interface CamperDetailsPanelProps {
   getBunkForPerson?: (cmId: number) => number | null
 }
 
-// Interface for historical records
-interface HistoricalRecord {
-  year: number
-  sessionName: string
-  sessionType: string
-  bunkName: string
-  attendeeStatus?: string
-}
-
 // Interface for current-year enrollment (one per attendee record)
 interface CurrentEnrollment {
   sessionName: string
   sessionType: string
   sessionCmId: number
+  parentId: number
   bunkName: string | null
   attendeeStatus?: string
 }
@@ -336,6 +321,7 @@ export default function CamperDetailsPanel({
           sessionName: sess?.name ?? 'Unknown',
           sessionType: sess?.session_type ?? '',
           sessionCmId: sess?.cm_id ?? 0,
+          parentId: sess?.parent_id ?? 0,
           bunkName,
           attendeeStatus: att.status,
         })
@@ -357,7 +343,22 @@ export default function CamperDetailsPanel({
         primarySession as CampSessionsResponse | null
       )
 
-      return { camper, enrollments }
+      // AG is never shown as its own session — collapse Main+AG and relabel any
+      // surviving AG enrollment to its parent main (spec §6.3).
+      const collapsed = collapseAgEnrollments(enrollments)
+      const agPairs = buildAgParentPairs(collapsed, currentYear)
+      const parentByKey = await fetchParentMainSessions(agPairs)
+      const visibleEnrollments: CurrentEnrollment[] = collapsed.map((e) =>
+        e.sessionType === 'ag'
+          ? {
+              ...e,
+              sessionName: parentByKey.get(`${currentYear}:${e.parentId}`)?.name ?? e.sessionName,
+              sessionType: 'main',
+            }
+          : e
+      )
+
+      return { camper, enrollments: visibleEnrollments }
     },
     retry: false,
   })
@@ -382,34 +383,10 @@ export default function CamperDetailsPanel({
     enabled: !!camperId,
   })
 
-  // Fetch historical bunking data
-  const { data: historicalData = [] } = useQuery({
+  // Fetch historical journey via the shared enrollment-sourced fetcher.
+  const { data: historicalData = [] } = useQuery<HistoricalRecord[]>({
     queryKey: queryKeys.camperHistory(camperId, currentYear),
-    queryFn: async () => {
-      const personCmId = parseInt(camperId)
-      const filter = `person.cm_id = ${personCmId} && year < ${currentYear}`
-      const assignments = await pb.collection('bunk_assignments').getFullList({
-        filter,
-        expand: 'person,session,bunk',
-        sort: '-year',
-      })
-
-      return assignments
-        .filter((record) => {
-          const expanded = record.expand as ExpandedAssignment | undefined
-          const session = expanded?.session
-          return session ? isAtCampSession(session) : false
-        })
-        .map((record) => {
-          const expanded = record.expand as ExpandedAssignment | undefined
-          return {
-            year: record.year,
-            sessionName: expanded?.session?.name ?? '',
-            sessionType: expanded?.session?.session_type ?? '',
-            bunkName: expanded?.bunk?.name ?? 'Unassigned',
-          }
-        })
-    },
+    queryFn: () => fetchCamperJourney(parseInt(camperId), currentYear),
     enabled: !!camper,
   })
 
@@ -1077,12 +1054,16 @@ export default function CamperDetailsPanel({
                       <span className="text-muted-foreground truncate text-xs">
                         {getSessionDisplayNameFromString(record.sessionName, record.sessionType)}
                       </span>
-                      <span className="text-muted-foreground text-xs">·</span>
-                      <span
-                        className={`truncate text-xs ${record.bunkName === 'Unassigned' ? 'text-amber-600 italic' : 'text-foreground'}`}
-                      >
-                        {record.bunkName}
-                      </span>
+                      {record.bunkName !== undefined && (
+                        <>
+                          <span className="text-muted-foreground text-xs">·</span>
+                          <span
+                            className={`truncate text-xs ${record.bunkName === 'Unassigned' ? 'text-amber-600 italic' : 'text-foreground'}`}
+                          >
+                            {record.bunkName}
+                          </span>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -4,35 +4,63 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { pb } from '../../lib/pocketbase'
-import { isSummerCampSessionType, isMainSession } from '../../utils/sessionTypePredicates'
+import { isAtCampSessionType } from '../../utils/sessionTypePredicates'
 import { filterEnrollmentsByStatus, toDisplayList } from '../../utils/enrollmentFilter'
+import { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
 import type { Camper } from '../../types/app-types'
-import type {
-  BunkAssignmentsResponse,
-  CampSessionsResponse,
-  BunksResponse,
-} from '../../types/pocketbase-types'
+import type { CampSessionsResponse } from '../../types/pocketbase-types'
 import type { HistoricalRecord } from './types'
 
-/** Build HistoricalRecord entries from current-year campers */
-function buildCurrentYearRecords(campers: Camper[], currentYear: number): HistoricalRecord[] {
+/**
+ * Drop a current-year AG camper when its parent main is also enrolled this year
+ * (AG is a sub-track, not a separate attendance → show one Main row). An AG
+ * camper without its parent main enrolled keeps its row (to be relabeled).
+ */
+function collapseAgIntoMain(campers: Camper[]): Camper[] {
+  const cmIds = new Set<number>()
+  for (const c of campers) {
+    const cm = c.expand?.session?.cm_id
+    if (cm !== undefined) cmIds.add(cm)
+  }
+  return campers.filter((c) => {
+    const s = c.expand?.session
+    if (s?.session_type !== 'ag') return true
+    return !cmIds.has(s.parent_id)
+  })
+}
+
+/**
+ * Build HistoricalRecord entries from current-year campers. AG is never shown as
+ * its own session — a surviving AG camper is relabeled to its parent main (name
+ * from `parentByKey`, type forced to 'main'). "Unassigned" appears only for a
+ * current-year *bunkable* (main/embedded/ag) session with no bunk yet.
+ */
+function buildCurrentYearRecords(
+  campers: Camper[],
+  currentYear: number,
+  parentByKey: Map<string, CampSessionsResponse>
+): HistoricalRecord[] {
   const records: HistoricalRecord[] = []
   for (const c of campers) {
-    if (c.expand?.session) {
-      const session = c.expand.session
-      const assignedBunk = c.expand.assigned_bunk
-      const isEnrolled = c.attendee_status === 'enrolled'
-      records.push({
-        year: currentYear,
-        sessionName: session.name || 'Unknown',
-        sessionType: session.session_type,
-        bunkName: assignedBunk?.name ?? 'Unassigned',
-        startDate: session.start_date,
-        endDate: session.end_date,
-        ...(isEnrolled ? {} : { attendeeStatus: c.attendee_status }),
-      })
-    }
+    const session = c.expand?.session
+    if (!session) continue
+    const assignedBunk = c.expand.assigned_bunk
+    const isEnrolled = c.attendee_status === 'enrolled'
+    const isAg = session.session_type === 'ag'
+    const parent = isAg ? parentByKey.get(`${currentYear}:${session.parent_id}`) : undefined
+    const sessionName = parent?.name || session.name || 'Unknown'
+    const sessionType = isAg ? 'main' : session.session_type
+    const bunkName =
+      assignedBunk?.name ?? (isAtCampSessionType(sessionType) ? 'Unassigned' : undefined)
+    records.push({
+      year: currentYear,
+      sessionName,
+      sessionType,
+      ...(bunkName !== undefined ? { bunkName } : {}),
+      startDate: session.start_date,
+      endDate: session.end_date,
+      ...(isEnrolled ? {} : { attendeeStatus: c.attendee_status }),
+    })
   }
   return records
 }
@@ -75,69 +103,30 @@ export function useCamperHistory(
     ],
     queryFn: async () => {
       if (!personCmId) return []
-
       try {
         const allHistory: HistoricalRecord[] = []
-
-        // Add current year records from enrolled (or best fallback) attendees
-        const currentYearCampers = resolveCurrentYearCampers(allAttendees ?? [], camper)
-        allHistory.push(...buildCurrentYearRecords(currentYearCampers, currentYear))
-
-        // Fetch historical data from bunk_assignments for previous years
-        // Query by person.cm_id to get assignments across all year-specific person records
-        // (Person records are created per-year to preserve historical school info)
-        const historicalFilter = `person.cm_id = ${personCmId} && year < ${currentYear}`
-        const historicalAssignments = await pb
-          .collection('bunk_assignments')
-          .getFullList<
-            BunkAssignmentsResponse<{ session?: CampSessionsResponse; bunk?: BunksResponse }>
-          >({
-            filter: historicalFilter,
-            expand: 'session,bunk',
-            sort: '-year',
-            $autoCancel: false,
-          })
-
-        // Group by year and format
-        const yearMap = new Map<number, HistoricalRecord>()
-
-        for (const assignment of historicalAssignments) {
-          const session = assignment.expand.session
-          const bunk = assignment.expand.bunk
-
-          if (session && isSummerCampSessionType(session.session_type)) {
-            const year = assignment.year
-
-            // Format session name based on type
-            const sessionName = session.name
-
-            // If we haven't seen this year yet, or if this is a main session (preferred), add it
-            const existing = yearMap.get(year)
-            if (!existing || isMainSession(session)) {
-              yearMap.set(year, {
-                year,
-                sessionName,
-                sessionType: session.session_type,
-                bunkName: bunk?.name ?? 'Unassigned',
-                startDate: session.start_date,
-                endDate: session.end_date,
-              })
-            }
-          }
+        // Current year from live attendees, with AG collapse + relabel.
+        const currentCampers = collapseAgIntoMain(
+          resolveCurrentYearCampers(allAttendees ?? [], camper)
+        )
+        const agPairs: Array<{ year: number; cmId: number }> = []
+        for (const c of currentCampers) {
+          const s = c.expand?.session
+          if (s?.session_type === 'ag') agPairs.push({ year: currentYear, cmId: s.parent_id })
         }
-
-        // Add historical records to array
-        allHistory.push(...Array.from(yearMap.values()))
-
-        // Sort by year descending
+        const parentByKey = await fetchParentMainSessions(agPairs)
+        allHistory.push(...buildCurrentYearRecords(currentCampers, currentYear, parentByKey))
+        // Prior years from the shared enrollment-sourced fetcher.
+        allHistory.push(...(await fetchCamperJourney(personCmId, currentYear)))
+        // Sort by year descending.
         allHistory.sort((a, b) => b.year - a.year)
-
         return allHistory
       } catch (err) {
         console.error('Error fetching camp history:', err)
-        // If error, at least return current year data from enrolled campers
-        const fallbackCampers = resolveCurrentYearCampers(allAttendees ?? [], camper)
-        return buildCurrentYearRecords(fallbackCampers, currentYear)
+        const fallbackCampers = collapseAgIntoMain(
+          resolveCurrentYearCampers(allAttendees ?? [], camper)
+        )
+        return buildCurrentYearRecords(fallbackCampers, currentYear, new Map())
       }
     },
     enabled: !!personCmId && !!camper,

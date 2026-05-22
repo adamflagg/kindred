@@ -9,6 +9,7 @@ export type { HistoricalRecord, OriginalBunkData, SiblingWithEnrollment } from '
 // Hooks
 export { useCamperEnrollment, type UseCamperEnrollmentResult } from './useCamperEnrollment'
 export { useCamperHistory, type UseCamperHistoryResult } from './useCamperHistory'
+export { fetchCamperJourney, fetchParentMainSessions } from './fetchCamperJourney'
 export { useSiblings, type UseSiblingsResult } from './useSiblings'
 export { useOriginalBunkData, type UseOriginalBunkDataResult } from './useOriginalBunkData'
 export {

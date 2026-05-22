@@ -31,6 +31,10 @@ import {
   buildSummerSessionTypeFilter,
   getSummerWindow,
   isSummerTeenSession,
+  CAMPER_JOURNEY_TYPES,
+  CAMPER_DETAIL_TYPES,
+  buildCamperJourneySessionTypeFilter,
+  buildCamperDetailSessionTypeFilter,
 } from '../sessionTypePredicates'
 import type { Session } from '../../types/app-types'
 
@@ -484,5 +488,32 @@ describe('teen cohort', () => {
     expect(isSummerTeenSession(sess('tli', '2025-08-23', '2026-05-01'), w)).toBe(false) // interns
     expect(isSummerTeenSession(sess('main', '2025-06-15', '2025-07-05'), w)).toBe(false)
     expect(isSummerTeenSession(sess('scit', '2025-06-08', '2025-07-04'), null)).toBe(false)
+  })
+})
+
+describe('camper journey/detail session-type sets', () => {
+  it('CAMPER_JOURNEY_TYPES is summer + teen, no family (mirrors All Campers / metrics)', () => {
+    expect(CAMPER_JOURNEY_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
+    expect(CAMPER_JOURNEY_TYPES).not.toContain('family')
+  })
+
+  it('CAMPER_DETAIL_TYPES is summer + teen, no family', () => {
+    expect(CAMPER_DETAIL_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
+    expect(CAMPER_DETAIL_TYPES).not.toContain('family')
+  })
+
+  it('buildCamperJourneySessionTypeFilter ORs every journey type on session.session_type', () => {
+    const f = buildCamperJourneySessionTypeFilter()
+    for (const t of CAMPER_JOURNEY_TYPES) expect(f).toContain(`session.session_type = "${t}"`)
+    expect(f).toContain('||')
+    expect(f).not.toContain('"family"') // family is excluded from the journey
+    expect(f.startsWith('(')).toBe(false) // caller wraps, matching buildSummerSessionTypeFilter
+  })
+
+  it('buildCamperDetailSessionTypeFilter includes teens and excludes family', () => {
+    const f = buildCamperDetailSessionTypeFilter()
+    expect(f).toContain('session.session_type = "scit"')
+    expect(f).toContain('session.session_type = "tli"')
+    expect(f).not.toContain('"family"')
   })
 })
