@@ -294,6 +294,10 @@ export function SessionConfigTable() {
         queryClient.invalidateQueries({
           queryKey: queryKeys.sessionBudgetConfig(currentYear),
         }),
+        // Metrics views read this config server-side; refetch them so edits show
+        // without a hard refresh (prefix-match across all years/params).
+        queryClient.invalidateQueries({ queryKey: ['metrics', 'forecast'] }),
+        queryClient.invalidateQueries({ queryKey: ['session-availability'] }),
       ])
       toast.success('Session config saved')
     } catch (error) {

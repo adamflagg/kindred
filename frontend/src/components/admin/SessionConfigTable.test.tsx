@@ -808,6 +808,38 @@ describe('SessionConfigTable', () => {
     expect(staleUpdate).toBeUndefined()
   })
 
+  it('invalidates forecast + availability queries on save so config edits propagate', async () => {
+    const user = userEvent.setup()
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    mockGetFullList
+      .mockResolvedValueOnce(mockSessions)
+      .mockResolvedValueOnce(mockGradeConfigRecords)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(mockBudgetConfigRecords)
+    mockUpdate.mockResolvedValue({})
+    mockCreate.mockResolvedValue({})
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SessionConfigTable />
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(screen.getByText('Taste of Camp')).toBeInTheDocument())
+
+    const selects = screen.getAllByRole('combobox')
+    await user.selectOptions(selects[0]!, '3')
+    await user.click(screen.getByText(/save/i))
+
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map((c) =>
+        JSON.stringify((c[0] as { queryKey: unknown }).queryKey)
+      )
+      expect(keys.some((k) => k.includes('forecast'))).toBe(true)
+      expect(keys.some((k) => k.includes('session-availability'))).toBe(true)
+    })
+  })
+
   describe('accessibility: aria-labels on form controls', () => {
     beforeEach(() => {
       mockGetFullList
