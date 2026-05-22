@@ -33,12 +33,17 @@ import {
   FILTER_ALL,
   FILTER_AT_CAMP,
   FILTER_QUESTS,
+  FILTER_TEENS,
 } from '../utils/allCampersUtils'
 import { mergeMultiSessionCampers } from '../utils/mergeMultiSessionCampers'
 import type { MergedCamper } from '../utils/mergeMultiSessionCampers'
 import type { Camper, Session } from '../types/app-types'
 import type { BunksResponse } from '../types/pocketbase-types'
-import { SUMMER_CAMP_TYPES } from '../utils/sessionTypePredicates'
+import {
+  SUMMER_CAMP_TYPES,
+  TEEN_PROGRAM_TYPES,
+  isTeenProgram,
+} from '../utils/sessionTypePredicates'
 import { buildCsvContent, downloadCsv, todayIso } from '../utils/csvExport'
 import { buildCamperRows, CAMPER_CSV_HEADERS } from '../utils/csvExportHelpers'
 import { filterSexLabel, filterSexCsvSegment } from '../utils/filterSexFormat'
@@ -139,11 +144,14 @@ export default function AllCampersView() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Fetch all valid sessions
+  // Fetch all valid sessions (summer camp types + teen programs for window-gated teen picker)
   const { data: allSessions = [] } = useQuery({
     queryKey: ['all-sessions', currentYear],
     queryFn: async () => {
-      const sessionTypeFilter = createInclusionFilter('session_type', [...SUMMER_CAMP_TYPES])
+      const sessionTypeFilter = createInclusionFilter('session_type', [
+        ...SUMMER_CAMP_TYPES,
+        ...TEEN_PROGRAM_TYPES,
+      ])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
 
@@ -154,11 +162,15 @@ export default function AllCampersView() {
     },
   })
 
-  // Fetch all campers
+  // Fetch all campers (summer camp types + teen programs; off-season teen
+  // sessions are filtered out downstream via the window-gated dropdownSessions)
   const { data: allCampers = [], isLoading } = useQuery({
     queryKey: ['all-campers', currentYear],
     queryFn: async () => {
-      const sessionTypeFilter = createInclusionFilter('session_type', [...SUMMER_CAMP_TYPES])
+      const sessionTypeFilter = createInclusionFilter('session_type', [
+        ...SUMMER_CAMP_TYPES,
+        ...TEEN_PROGRAM_TYPES,
+      ])
       const yearFilter = `year = ${currentYear}`
       const filter = formatFilter(`${sessionTypeFilter} && ${yearFilter}`)
 
@@ -203,12 +215,6 @@ export default function AllCampersView() {
     return filterSummerCampBunks(bunksData.bunks, bunksData.bunkPlans, allSessions)
   }, [bunksData, allSessions])
 
-  // Merge multi-session campers into single entries
-  const mergedCampers: MergedCamper[] = useMemo(
-    () => mergeMultiSessionCampers(allCampers, allSessions),
-    [allCampers, allSessions]
-  )
-
   const dropdownSessions = useMemo(() => getDropdownSessions(allSessions), [allSessions])
   const sessionRelationships = useMemo(
     () => getSessionRelationshipsForCamperView(allSessions),
@@ -218,6 +224,46 @@ export default function AllCampersView() {
   const { campSessions, questSessions } = useMemo(
     () => splitDropdownSessionsByType(dropdownSessions),
     [dropdownSessions]
+  )
+
+  const teenSessions = useMemo(() => dropdownSessions.filter(isTeenProgram), [dropdownSessions])
+
+  // PocketBase session IDs in scope: every window-gated dropdown session plus
+  // its relationship-grouped children (AG sessions under their parent main).
+  // Teen sessions are window-gated, so off-season teen sessions are excluded.
+  const scopedSessionPbIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const session of dropdownSessions) {
+      const related = sessionRelationships.get(session.id) ?? [session.id]
+      related.forEach((id) => ids.add(id))
+    }
+    return ids
+  }, [dropdownSessions, sessionRelationships])
+
+  // cm_id → PocketBase id lookup for resolving camper enrollments to sessions.
+  const sessionPbIdByCmId = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const s of allSessions) map.set(s.cm_id, s.id)
+    return map
+  }, [allSessions])
+
+  // Drop per-attendee camper records tied to off-season (non-window-gated)
+  // sessions — e.g. year-round teen interns — before merge, so they never leak
+  // into counts. Raw campers are one-per-enrollment, so a main + off-season-teen
+  // person keeps the main record and drops the teen record.
+  const summerCampers = useMemo(
+    () =>
+      allCampers.filter((camper) => {
+        const pbId = sessionPbIdByCmId.get(camper.session_cm_id)
+        return pbId ? scopedSessionPbIds.has(pbId) : false
+      }),
+    [allCampers, scopedSessionPbIds, sessionPbIdByCmId]
+  )
+
+  // Merge multi-session campers into single entries
+  const mergedCampers: MergedCamper[] = useMemo(
+    () => mergeMultiSessionCampers(summerCampers, allSessions),
+    [summerCampers, allSessions]
   )
 
   const scopedSessions = useMemo(
@@ -241,18 +287,20 @@ export default function AllCampersView() {
       })
     }
 
+    // mergedCampers is already scoped to window-gated dropdown sessions
+    // (off-season teens dropped via summerCampers), so FILTER_ALL = show all.
     if (filterSession !== FILTER_ALL) {
       const relatedSessionIds = new Set<string>()
+      const addRelated = (session: Session) => {
+        const ids = sessionRelationships.get(session.id) ?? [session.id]
+        ids.forEach((id) => relatedSessionIds.add(id))
+      }
       if (filterSession === FILTER_AT_CAMP) {
-        for (const session of campSessions) {
-          const ids = sessionRelationships.get(session.id) ?? [session.id]
-          ids.forEach((id) => relatedSessionIds.add(id))
-        }
+        campSessions.forEach(addRelated)
       } else if (filterSession === FILTER_QUESTS) {
-        for (const session of questSessions) {
-          const ids = sessionRelationships.get(session.id) ?? [session.id]
-          ids.forEach((id) => relatedSessionIds.add(id))
-        }
+        questSessions.forEach(addRelated)
+      } else if (filterSession === FILTER_TEENS) {
+        teenSessions.forEach(addRelated)
       } else {
         const ids = sessionRelationships.get(filterSession) ?? [filterSession]
         ids.forEach((id) => relatedSessionIds.add(id))
@@ -295,6 +343,7 @@ export default function AllCampersView() {
     allSessions,
     campSessions,
     questSessions,
+    teenSessions,
   ])
 
   // Check if any filters are active
@@ -363,12 +412,14 @@ export default function AllCampersView() {
                         ? 'At Camp'
                         : filterSession === FILTER_QUESTS
                           ? 'Quests'
-                          : (() => {
-                              const session = dropdownSessions.find((s) => s.id === filterSession)
-                              return session
-                                ? getSessionDisplayName(session, allSessions)
-                                : 'Unknown Session'
-                            })()}
+                          : filterSession === FILTER_TEENS
+                            ? 'Teen Programs'
+                            : (() => {
+                                const session = dropdownSessions.find((s) => s.id === filterSession)
+                                return session
+                                  ? getSessionDisplayName(session, allSessions)
+                                  : 'Unknown Session'
+                              })()}
                   </span>
                   <ChevronDown className="text-muted-foreground h-4 w-4 flex-shrink-0" />
                 </ListboxButton>
@@ -380,6 +431,11 @@ export default function AllCampersView() {
                   <ListboxOption value={FILTER_AT_CAMP} className="listbox-option py-1.5">
                     At Camp
                   </ListboxOption>
+                  {teenSessions.length > 0 && (
+                    <ListboxOption value={FILTER_TEENS} className="listbox-option py-1.5">
+                      Teen Programs
+                    </ListboxOption>
+                  )}
                   <ListboxOption value={FILTER_QUESTS} className="listbox-option py-1.5">
                     Quests
                   </ListboxOption>
@@ -395,6 +451,28 @@ export default function AllCampersView() {
                         Camp Sessions
                       </div>
                       {campSessions.map((session) => (
+                        <ListboxOption
+                          key={session.id}
+                          value={session.id}
+                          className="listbox-option py-1.5"
+                        >
+                          {getSessionDisplayName(session, allSessions)}
+                        </ListboxOption>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Teen Programs */}
+                  {teenSessions.length > 0 && (
+                    <div role="group" aria-labelledby="campers-teen-programs-group-label">
+                      <div className="border-border my-1 border-t" />
+                      <div
+                        id="campers-teen-programs-group-label"
+                        className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                      >
+                        Teen Programs
+                      </div>
+                      {teenSessions.map((session) => (
                         <ListboxOption
                           key={session.id}
                           value={session.id}

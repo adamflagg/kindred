@@ -5,10 +5,11 @@
  * across most metrics tabs (hidden on Bunk Analysis tab which uses unfiltered data).
  *
  * Dropdown structure:
- * - At Camp / Quests / All Summer (type groupings)
+ * - At Camp / Quests / Teens / All Summer (type groupings)
  * - By Duration section (1 Week, 2 Week, etc.)
  * - Camp Sessions section (individual camp sessions)
  * - Quests section (individual quest sessions)
+ * - Teen Programs section (individual SCIT / TLI sessions)
  */
 
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -19,7 +20,9 @@ import type { DurationCategory } from '../../utils/sessionUtils'
 const ALL_SESSIONS_VALUE = 'all-sessions'
 const ALL_QUESTS_VALUE = 'all-quests'
 const ALL_SUMMER_VALUE = 'all-summer'
+const ALL_TEENS_VALUE = 'all-teens'
 const DURATION_PREFIX = 'duration:'
+const TEEN_PREFIX = 'teen:'
 
 /** Display labels for duration categories */
 const DURATION_LABELS: Record<DurationCategory, string> = {
@@ -42,29 +45,43 @@ export function MetricsSessionSelector() {
     campSessions,
     questSessions,
     durationGroups,
+    hasScit,
+    hasTli,
+    selectedTeenType,
+    setSelectedTeenType,
   } = useMetricsSession()
 
   // Display name for current selection
   const displayName = selectedSession
     ? selectedSession.name
-    : selectedDuration
-      ? DURATION_LABELS[selectedDuration]
-      : viewMode === 'all'
-        ? 'All Summer'
-        : viewMode === 'quests'
-          ? 'Quests'
-          : 'At Camp'
+    : selectedTeenType
+      ? selectedTeenType === 'scit'
+        ? 'SCIT'
+        : 'TLI'
+      : selectedDuration
+        ? DURATION_LABELS[selectedDuration]
+        : viewMode === 'all'
+          ? 'All Summer'
+          : viewMode === 'quests'
+            ? 'Quests'
+            : viewMode === 'teens'
+              ? 'Teens'
+              : 'At Camp'
 
   // Determine current listbox value
   const currentValue = selectedSessionCmId
     ? selectedSessionCmId.toString()
-    : selectedDuration
-      ? `${DURATION_PREFIX}${selectedDuration}`
-      : viewMode === 'all'
-        ? ALL_SUMMER_VALUE
-        : viewMode === 'quests'
-          ? ALL_QUESTS_VALUE
-          : ALL_SESSIONS_VALUE
+    : selectedTeenType
+      ? `${TEEN_PREFIX}${selectedTeenType}`
+      : selectedDuration
+        ? `${DURATION_PREFIX}${selectedDuration}`
+        : viewMode === 'all'
+          ? ALL_SUMMER_VALUE
+          : viewMode === 'quests'
+            ? ALL_QUESTS_VALUE
+            : viewMode === 'teens'
+              ? ALL_TEENS_VALUE
+              : ALL_SESSIONS_VALUE
 
   const handleChange = (value: string) => {
     if (value === ALL_SESSIONS_VALUE) {
@@ -73,6 +90,10 @@ export function MetricsSessionSelector() {
       setViewMode('quests')
     } else if (value === ALL_SUMMER_VALUE) {
       setViewMode('all')
+    } else if (value === ALL_TEENS_VALUE) {
+      setViewMode('teens')
+    } else if (value.startsWith(TEEN_PREFIX)) {
+      setSelectedTeenType(value.slice(TEEN_PREFIX.length) as 'scit' | 'tli')
     } else if (value.startsWith(DURATION_PREFIX)) {
       setSelectedDuration(value.slice(DURATION_PREFIX.length) as DurationCategory)
     } else {
@@ -96,6 +117,11 @@ export function MetricsSessionSelector() {
             <ListboxOption value={ALL_SESSIONS_VALUE} className="listbox-option">
               At Camp
             </ListboxOption>
+            {(hasScit || hasTli) && (
+              <ListboxOption value={ALL_TEENS_VALUE} className="listbox-option">
+                Teens
+              </ListboxOption>
+            )}
             <ListboxOption value={ALL_QUESTS_VALUE} className="listbox-option">
               Quests
             </ListboxOption>
@@ -144,6 +170,29 @@ export function MetricsSessionSelector() {
                     {session.name}
                   </ListboxOption>
                 ))}
+              </div>
+            )}
+
+            {/* Teen Programs (SCIT / TLI) */}
+            {(hasScit || hasTli) && (
+              <div role="group" aria-labelledby="teen-programs-group-label">
+                <div className="border-border my-1 border-t" />
+                <div
+                  id="teen-programs-group-label"
+                  className="text-muted-foreground px-3 py-1 text-[10px] font-semibold tracking-wider uppercase"
+                >
+                  Teen Programs
+                </div>
+                {hasScit && (
+                  <ListboxOption value={`${TEEN_PREFIX}scit`} className="listbox-option">
+                    SCIT
+                  </ListboxOption>
+                )}
+                {hasTli && (
+                  <ListboxOption value={`${TEEN_PREFIX}tli`} className="listbox-option">
+                    TLI
+                  </ListboxOption>
+                )}
               </div>
             )}
 

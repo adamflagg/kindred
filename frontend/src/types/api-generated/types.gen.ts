@@ -823,13 +823,13 @@ export type Day1Category = {
   /**
    * Category
    *
-   * 'at_camp' or 'quest'
+   * 'at_camp', 'quest', or 'teen'
    */
   category: string
   /**
    * Label
    *
-   * 'At Camp' or 'Quest'
+   * 'At Camp', 'Quest', or 'Teens'
    */
   label: string
   /**
@@ -8879,6 +8879,12 @@ export type GetDay1ApiMetricsRegistrationDay1GetData = {
      * Camp year
      */
     year: number
+    /**
+     * Session Types
+     *
+     * Comma-separated session types to filter (e.g., 'main,quest')
+     */
+    session_types?: string | null
   }
   url: '/api/metrics/registration/day1'
 }

@@ -315,7 +315,7 @@ export const queryKeys = {
   geoOverrideCoords: (year: number) => ['geo', 'override-coords', year] as const,
 
   // Day 1 Registration (Tier 1 - sync data, historical analysis)
-  day1: (year: number) => ['metrics', 'day1', year] as const,
+  day1: (year: number, sessionTypes?: string) => ['metrics', 'day1', year, sessionTypes] as const,
 
   // Velocity (Tier 1 - sync data, historical analysis)
   velocity: (

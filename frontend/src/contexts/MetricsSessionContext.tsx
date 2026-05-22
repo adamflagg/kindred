@@ -5,8 +5,10 @@
  * (Registration, Retention, Trends). Session selection persists in URL
  * params (?session=<cm_id>) and survives tab navigation.
  *
- * View mode (?view=quests) switches between camp sessions and quest sessions.
- * Default (no view param) shows camp sessions only.
+ * View mode (?view=) selects a session-type grouping: 'quests' (quest
+ * sessions), 'teens' (SCIT/TLI), or 'all' (every summer type including teens).
+ * Default (no view param) shows camp sessions only. Individual teen sessions
+ * are selected via ?teen=<scit|tli>, never via ?session=<cm_id>.
  *
  * Duration filter (?duration=<category>) filters sessions by length category
  * (e.g., "1-week", "2-week"). Mutually exclusive with session selection --
@@ -30,7 +32,9 @@ import {
   AT_CAMP_TYPES,
   QUEST_SESSION_TYPES,
   SUMMER_CAMP_TYPES,
+  TEEN_PROGRAM_TYPES,
   isQuestSession,
+  isMainOrEmbedded,
   type MetricsViewMode,
 } from '../utils/sessionTypePredicates'
 
@@ -38,6 +42,7 @@ const SESSION_PARAM = 'session'
 const VIEW_PARAM = 'view'
 const COMPARE_PARAM = 'compare'
 const DURATION_PARAM = 'duration'
+const TEEN_PARAM = 'teen'
 
 /**
  * Parse session param from URL
@@ -67,7 +72,18 @@ function parseDurationParam(param: string | null): DurationCategory | null {
 function parseViewParam(param: string | null): MetricsViewMode {
   if (param === 'quests') return 'quests'
   if (param === 'all') return 'all'
+  if (param === 'teens') return 'teens'
   return 'sessions'
+}
+
+/**
+ * Parse teen type param from URL
+ * Returns null for invalid/missing values
+ */
+function parseTeenTypeParam(param: string | null): 'scit' | 'tli' | null {
+  if (param === 'scit') return 'scit'
+  if (param === 'tli') return 'tli'
+  return null
 }
 
 export function MetricsSessionProvider({ children }: { children: ReactNode }) {
@@ -98,6 +114,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     return parseSessionParam(searchParams.get(COMPARE_PARAM))
   }, [searchParams])
 
+  // Get selected teen type from URL param
+  const selectedTeenType = useMemo(() => {
+    return parseTeenTypeParam(searchParams.get(TEEN_PARAM))
+  }, [searchParams])
+
   const isComparing = compareYear !== null
 
   // Find the selected session object
@@ -108,30 +129,49 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
 
   // Derive active session types based on view mode and selection
   const activeSessionTypes = useMemo(() => {
+    // SUMMER_CAMP_TYPES excludes scit/tli, and the backend applies session_types
+    // AND session_cm_id conjunctively. Teen programs are intentionally selected
+    // via selectedTeenType (type-based), NEVER via setSelectedSessionCmId. If a
+    // future change makes individual teen sessions cm_id-selectable, this branch
+    // MUST include the teen types or it will silently zero out the selected
+    // session's own attendees (session_type ∈ SUMMER_CAMP_TYPES filters them all out).
     if (selectedSessionCmId !== null) return SUMMER_CAMP_TYPES
-    if (selectedDuration) return AT_CAMP_TYPES
-    if (viewMode === 'all') return SUMMER_CAMP_TYPES
+    if (selectedTeenType) return [selectedTeenType] as const
+    if (selectedDuration) return [...AT_CAMP_TYPES, ...TEEN_PROGRAM_TYPES] as const
+    if (viewMode === 'all') return [...SUMMER_CAMP_TYPES, ...TEEN_PROGRAM_TYPES] as const
+    if (viewMode === 'teens') return TEEN_PROGRAM_TYPES
     if (viewMode === 'quests') return QUEST_SESSION_TYPES
     return AT_CAMP_TYPES
-  }, [selectedSessionCmId, selectedDuration, viewMode])
+  }, [selectedSessionCmId, selectedTeenType, selectedDuration, viewMode])
 
   const sessionTypesParam = useMemo(() => {
     return activeSessionTypes.join(',')
   }, [activeSessionTypes])
 
-  // Split sessions into camp and quest groups
+  // Split sessions into camp (main/embedded only), quest, and teen groups
   const campSessions = useMemo(() => {
-    return sortSessionsByDate(sessions.filter((s) => !isQuestSession(s)))
+    return sortSessionsByDate(sessions.filter(isMainOrEmbedded))
   }, [sessions])
 
   const questSessions = useMemo(() => {
     return sortSessionsByDate(sessions.filter(isQuestSession))
   }, [sessions])
 
-  // Group camp sessions by duration for dropdown
+  const teenSessions = useMemo(() => {
+    return sortSessionsByDate(
+      sessions.filter((s) =>
+        TEEN_PROGRAM_TYPES.includes(s.session_type as (typeof TEEN_PROGRAM_TYPES)[number])
+      )
+    )
+  }, [sessions])
+
+  const hasScit = useMemo(() => teenSessions.some((s) => s.session_type === 'scit'), [teenSessions])
+  const hasTli = useMemo(() => teenSessions.some((s) => s.session_type === 'tli'), [teenSessions])
+
+  // Group camp + teen sessions by duration for dropdown
   const durationGroups = useMemo(() => {
-    return groupSessionsByDuration(campSessions)
-  }, [campSessions])
+    return groupSessionsByDuration([...campSessions, ...teenSessions])
+  }, [campSessions, teenSessions])
 
   // Duration param for API calls
   const durationParam = selectedDuration ?? undefined
@@ -147,7 +187,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     [sessionTypesParam, selectedSessionCmId, durationParam]
   )
 
-  // Set duration filter (clears session and view params)
+  // Set duration filter (clears session, view, and teen params)
   const setSelectedDuration = useCallback(
     (duration: DurationCategory | null) => {
       setSearchParams(
@@ -155,6 +195,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
           const newParams = new URLSearchParams(prev)
           newParams.delete(SESSION_PARAM)
           newParams.delete(VIEW_PARAM)
+          newParams.delete(TEEN_PARAM)
           if (duration) {
             newParams.set(DURATION_PARAM, duration)
           } else {
@@ -168,13 +209,14 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     [setSearchParams]
   )
 
-  // Update URL param when session changes (clears view and duration params)
+  // Update URL param when session changes (clears view, duration, and teen params)
   const setSelectedSessionCmId = useCallback(
     (cmId: number | null) => {
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev)
           newParams.delete(DURATION_PARAM)
+          newParams.delete(TEEN_PARAM)
           if (cmId === null) {
             newParams.delete(SESSION_PARAM)
           } else {
@@ -189,7 +231,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     [setSearchParams]
   )
 
-  // Set view mode (clears session and duration params)
+  // Set view mode (clears session, duration, and teen params)
   const setViewMode = useCallback(
     (mode: MetricsViewMode) => {
       setSearchParams(
@@ -197,12 +239,37 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
           const newParams = new URLSearchParams(prev)
           newParams.delete(SESSION_PARAM)
           newParams.delete(DURATION_PARAM)
+          newParams.delete(TEEN_PARAM)
           if (mode === 'quests') {
             newParams.set(VIEW_PARAM, 'quests')
           } else if (mode === 'all') {
             newParams.set(VIEW_PARAM, 'all')
+          } else if (mode === 'teens') {
+            newParams.set(VIEW_PARAM, 'teens')
           } else {
             newParams.delete(VIEW_PARAM)
+          }
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
+  // Set teen sub-type (clears session, view, and duration params)
+  const setSelectedTeenType = useCallback(
+    (t: 'scit' | 'tli' | null) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          newParams.delete(SESSION_PARAM)
+          newParams.delete(VIEW_PARAM)
+          newParams.delete(DURATION_PARAM)
+          if (t) {
+            newParams.set(TEEN_PARAM, t)
+          } else {
+            newParams.delete(TEEN_PARAM)
           }
           return newParams
         },
@@ -250,6 +317,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       sessionTypesParam,
       campSessions,
       questSessions,
+      teenSessions,
+      hasScit,
+      hasTli,
+      selectedTeenType,
+      setSelectedTeenType,
       selectedDuration,
       setSelectedDuration,
       durationParam,
@@ -274,6 +346,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       sessionTypesParam,
       campSessions,
       questSessions,
+      teenSessions,
+      hasScit,
+      hasTli,
+      selectedTeenType,
+      setSelectedTeenType,
       selectedDuration,
       setSelectedDuration,
       durationParam,

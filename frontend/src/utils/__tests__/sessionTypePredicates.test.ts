@@ -29,6 +29,8 @@ import {
   QUEST_SESSION_TYPES,
   SESSION_TYPE_LITERALS,
   buildSummerSessionTypeFilter,
+  getSummerWindow,
+  isSummerTeenSession,
 } from '../sessionTypePredicates'
 import type { Session } from '../../types/app-types'
 
@@ -104,9 +106,10 @@ describe('typed set exports', () => {
     expect(SUMMER_CAMP_TYPES).not.toContain('teen')
   })
 
-  it('TEEN_PROGRAM_TYPES contains tli, teen', () => {
+  it('TEEN_PROGRAM_TYPES contains scit, tli (not teen/winter)', () => {
+    expect(TEEN_PROGRAM_TYPES).toContain('scit')
     expect(TEEN_PROGRAM_TYPES).toContain('tli')
-    expect(TEEN_PROGRAM_TYPES).toContain('teen')
+    expect(TEEN_PROGRAM_TYPES).not.toContain('teen')
     expect(TEEN_PROGRAM_TYPES).not.toContain('main')
     expect(TEEN_PROGRAM_TYPES).not.toContain('quest')
   })
@@ -250,12 +253,12 @@ describe('isSummerCampSession', () => {
 })
 
 // ============================================================================
-// isTeenProgram — tli | teen
+// isTeenProgram — scit | tli
 // ============================================================================
 
 describe('isTeenProgram', () => {
-  const trueFor: AllType[] = ['tli', 'teen']
-  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'quest', 'family', 'scit']
+  const trueFor: AllType[] = ['scit', 'tli']
+  const falseFor: AllType[] = ['main', 'embedded', 'ag', 'quest', 'family', 'teen']
 
   trueFor.forEach((t) => {
     it(`returns true for "${t}"`, () => {
@@ -412,8 +415,9 @@ describe('isSummerCampSessionType (string predicate)', () => {
 })
 
 describe('isTeenProgramType (string predicate)', () => {
+  it('returns true for "scit"', () => expect(isTeenProgramType('scit')).toBe(true))
   it('returns true for "tli"', () => expect(isTeenProgramType('tli')).toBe(true))
-  it('returns true for "teen"', () => expect(isTeenProgramType('teen')).toBe(true))
+  it('returns false for "teen"', () => expect(isTeenProgramType('teen')).toBe(false))
   it('returns false for "main"', () => expect(isTeenProgramType('main')).toBe(false))
 })
 
@@ -434,7 +438,7 @@ describe('exhaustiveness: every known literal is covered by at least one predica
       isQuestSession(s) ||
       isTeenProgram(s) ||
       s.session_type === 'family' ||
-      s.session_type === 'scit' ||
+      s.session_type === 'teen' ||
       s.session_type === 'bmitzvah' ||
       s.session_type === 'adult' ||
       s.session_type === 'school' ||
@@ -448,5 +452,37 @@ describe('exhaustiveness: every known literal is covered by at least one predica
       .filter(([, covered]) => !covered)
       .map(([t]) => t)
     expect(uncovered).toEqual([])
+  })
+})
+
+// ============================================================================
+// Teen cohort — summer-window helpers (mirror api/utils/session_metrics.py)
+// ============================================================================
+
+describe('teen cohort', () => {
+  const sess = (session_type: string, start_date: string, end_date: string) =>
+    ({ session_type, start_date, end_date }) as never
+
+  it('TEEN_PROGRAM_TYPES is scit + tli (not teen/winter)', () => {
+    expect(TEEN_PROGRAM_TYPES).toEqual(['scit', 'tli'])
+  })
+
+  it('getSummerWindow spans main sessions', () => {
+    const window = getSummerWindow([
+      sess('main', '2025-06-15', '2025-07-05'),
+      sess('main', '2025-07-20', '2025-08-02'),
+      sess('quest', '2025-09-01', '2025-09-05'),
+    ])
+    expect(window).toEqual(['2025-06-15', '2025-08-02'])
+  })
+
+  it('isSummerTeenSession includes summer scit/tli, excludes off-season', () => {
+    const w: [string, string] = ['2025-06-15', '2025-08-02']
+    expect(isSummerTeenSession(sess('scit', '2025-06-08', '2025-07-04'), w)).toBe(true)
+    expect(isSummerTeenSession(sess('tli', '2025-07-11', '2025-08-03'), w)).toBe(true)
+    expect(isSummerTeenSession(sess('scit', '2025-09-12', '2025-09-15'), w)).toBe(false) // fall
+    expect(isSummerTeenSession(sess('tli', '2025-08-23', '2026-05-01'), w)).toBe(false) // interns
+    expect(isSummerTeenSession(sess('main', '2025-06-15', '2025-07-05'), w)).toBe(false)
+    expect(isSummerTeenSession(sess('scit', '2025-06-08', '2025-07-04'), null)).toBe(false)
   })
 })

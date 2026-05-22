@@ -17,25 +17,38 @@ from api.schemas.day1 import (
 from api.services.camp_calendar import REGISTRATION_TIERS, day1_window
 from api.services.metrics_repository import MetricsRepository
 from api.services.reconstruction import ENROLLMENT_STATUSES, parse_date_only
-from api.utils.session_metrics import get_session_from_expand
+from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
+    filter_attendees_by_session,
+    get_session_from_expand,
+)
 from bunking.logging_config import get_logger
 
 logger = get_logger(__name__)
 
 AT_CAMP_TYPES = {"main", "embedded", "ag"}
 QUEST_TYPES = {"quest"}
+TEEN_TYPES = set(SUMMER_TEEN_TYPES)
 
 
 class Day1Service:
     def __init__(self, repository: MetricsRepository) -> None:
         self.repository = repository
 
-    async def get_day1(self, year: int) -> Day1Response:
-        """Get Day 1 registration counts for current year + 2 prior years."""
+    async def get_day1(self, year: int, session_types: list[str] | None = None) -> Day1Response:
+        """Get Day 1 registration counts for current year + 2 prior years.
+
+        Args:
+            year: The camp year to compute counts for.
+            session_types: Optional list of session types to include
+                (e.g. ``["main", "quest"]``). ``None`` preserves the existing
+                summer behaviour (At Camp + Quest); teens (scit/tli) are counted
+                only when explicitly requested via ``session_types``.
+        """
         current, prior_1, prior_2 = await asyncio.gather(
-            self._count_year(year),
-            self._count_year(year - 1),
-            self._count_year(year - 2),
+            self._count_year(year, session_types),
+            self._count_year(year - 1, session_types),
+            self._count_year(year - 2, session_types),
         )
         prior_years = [
             Day1YearData(year=year - 1, tiers=prior_1),
@@ -43,7 +56,7 @@ class Day1Service:
         ]
         return Day1Response(year=year, tiers=current, prior_years=prior_years)
 
-    async def _count_year(self, year: int) -> list[Day1TierData]:
+    async def _count_year(self, year: int, session_types: list[str] | None = None) -> list[Day1TierData]:
         """Count Day 1 registrations for a single year.
 
         Single-pass: iterates attendees once, bucketing each into matching tier windows.
@@ -60,6 +73,13 @@ class Day1Service:
         for cm_id, session in sessions.items():
             session_type_map[cm_id] = session.session_type
 
+        # Apply session type filter when specified. Teens (scit/tli) are counted
+        # only when the caller passes an explicit filter; the param-less (None)
+        # path keeps the historical At Camp + Quest summer scope.
+        count_teens = session_types is not None
+        if session_types is not None:
+            attendees = filter_attendees_by_session(attendees, session_types)
+
         # Pre-compute tier windows
         tier_windows: list[tuple[str, str, str, date, datetime, datetime]] = []
         for tier_key, date_key, tier_label in REGISTRATION_TIERS:
@@ -73,8 +93,8 @@ class Day1Service:
         if not tier_windows:
             return []
 
-        # Per-tier counters: tier_key -> {at_camp, quest, approximate}
-        counts: dict[str, dict[str, int]] = {tw[0]: {"at_camp": 0, "quest": 0} for tw in tier_windows}
+        # Per-tier counters: tier_key -> {at_camp, quest, teen}
+        counts: dict[str, dict[str, int]] = {tw[0]: {"at_camp": 0, "quest": 0, "teen": 0} for tw in tier_windows}
         approximate_flags: dict[str, bool] = {tw[0]: False for tw in tier_windows}
 
         # Build tier date lookup for simple date comparison
@@ -106,16 +126,20 @@ class Day1Service:
                     counts[tier_key]["at_camp"] += 1
                 elif stype in QUEST_TYPES:
                     counts[tier_key]["quest"] += 1
+                elif count_teens and stype in TEEN_TYPES:
+                    counts[tier_key]["teen"] += 1
 
         # Build response
         tiers: list[Day1TierData] = []
         for tier_key, _date_key, tier_label, tier_date, window_start, window_end in tier_windows:
             at_camp_count = counts[tier_key]["at_camp"]
             quest_count = counts[tier_key]["quest"]
-            total = at_camp_count + quest_count
+            teen_count = counts[tier_key]["teen"]
+            total = at_camp_count + quest_count + teen_count
             categories = [
                 Day1Category(category="at_camp", label="At Camp", count=at_camp_count),
                 Day1Category(category="quest", label="Quest", count=quest_count),
+                Day1Category(category="teen", label="Teens", count=teen_count),
             ]
             tiers.append(
                 Day1TierData(

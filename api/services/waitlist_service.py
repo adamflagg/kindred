@@ -22,16 +22,22 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
+from api.utils.session_metrics import (
+    DEFAULT_SUMMER_SESSION_TYPES,
+    SUMMER_TEEN_TYPES,
+    build_ag_parent_map,
+    get_session_from_expand,
+    resolve_duration_sessions,
+)
 from bunking.logging_config import get_logger
+
+# Back-compat alias as an explicit module export (shared default lives in session_metrics).
+SUMMER_SESSION_TYPES = DEFAULT_SUMMER_SESSION_TYPES
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
 logger = get_logger(__name__)
-
-# Summer session types to include in analysis
-SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Statuses that indicate a camper declined placement
 DECLINED_STATUSES = ["cancelled", "withdrawn", "dismissed"]
@@ -60,8 +66,15 @@ class WaitlistService:
         Returns:
             WaitlistMetricsResponse with summary counts and breakdowns.
         """
-        # Fetch ALL sessions for enrollment lookup (cross-type visibility)
+        # Fetch ALL summer sessions for display + cross-session enrollment lookup.
         all_sessions = await self.repository.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
+
+        # Teen programs (SCIT/TLI) also count as "enrolled at camp": a waitlisted
+        # teen who is enrolled in another teen session reads as has_enrollment,
+        # not no_enrollment. Fold teen session ids into the enrollment lookup only
+        # -- the display scope below stays summer-only / the requested filter.
+        teen_sessions = await self.repository.fetch_sessions(year, list(SUMMER_TEEN_TYPES))
+        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys())
 
         # Fetch filtered sessions for waitlist display
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
@@ -83,8 +96,9 @@ class WaitlistService:
         enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
 
         # Filter waitlisted to selected session types, enrolled to ALL types
+        # (summer + teen) so cross-session enrollment spans teen programs too.
         waitlisted_attendees = self._filter_to_sessions(waitlisted_attendees, valid_session_ids)
-        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()))
+        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, enrollment_session_ids)
 
         # Build mapping: person_id -> list of (session_cm_id, session_name) they're enrolled in
         enrolled_sessions_by_person: dict[int, list[tuple[int, str]]] = defaultdict(list)

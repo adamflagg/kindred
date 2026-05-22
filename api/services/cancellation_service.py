@@ -23,17 +23,23 @@ from api.schemas.metrics import (
 )
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
-from api.utils.session_metrics import build_ag_parent_map, get_session_from_expand, resolve_duration_sessions
+from api.utils.session_metrics import (
+    DEFAULT_SUMMER_SESSION_TYPES,
+    SUMMER_TEEN_TYPES,
+    build_ag_parent_map,
+    get_session_from_expand,
+    resolve_duration_sessions,
+)
 from api.utils.session_swap import detect_session_swaps
 from bunking.logging_config import get_logger
+
+# Back-compat alias as an explicit module export (shared default lives in session_metrics).
+SUMMER_SESSION_TYPES = DEFAULT_SUMMER_SESSION_TYPES
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
 
 logger = get_logger(__name__)
-
-# Summer session types to include in analysis
-SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Statuses that indicate cancellation
 CANCELLED_STATUSES = ["cancelled", "withdrawn", "dismissed"]
@@ -68,8 +74,15 @@ class CancellationService:
         Returns:
             CancellationMetricsResponse with summary counts and breakdowns.
         """
-        # Fetch ALL sessions for enrollment lookup (cross-type visibility)
+        # Fetch ALL summer sessions for display + cross-session enrollment lookup.
         all_sessions = await self.repository.fetch_sessions(year, list(SUMMER_SESSION_TYPES))
+
+        # Teen programs (SCIT/TLI) also count as "still attending camp": a camper
+        # who cancels one teen session but keeps another reads as has_other_sessions,
+        # not a true departure. Fold teen session ids into the enrollment lookup
+        # only -- the display scope below stays summer-only / the requested filter.
+        teen_sessions = await self.repository.fetch_sessions(year, list(SUMMER_TEEN_TYPES))
+        enrollment_session_ids = set(all_sessions.keys()) | set(teen_sessions.keys())
 
         # Fetch filtered sessions for display
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
@@ -91,8 +104,9 @@ class CancellationService:
         enrolled_attendees = await self.repository.fetch_attendees(year, status_filter="enrolled")
 
         # Filter cancelled to selected sessions, enrolled to ALL session types
+        # (summer + teen) so cross-session retention spans teen programs too.
         cancelled_attendees = self._filter_to_sessions(cancelled_attendees, valid_session_ids)
-        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, set(all_sessions.keys()))
+        enrolled_attendees = self._filter_to_sessions(enrolled_attendees, enrollment_session_ids)
 
         # Build enrolled person set
         enrolled_person_ids: set[int] = set()

@@ -209,6 +209,48 @@ class TestWaitlistedHasEnrollment:
         assert result.waitlisted_has_enrollment == 1
         assert result.total_waitlisted == 2
 
+    @pytest.mark.asyncio
+    async def test_teen_waitlisted_with_other_teen_enrollment(
+        self,
+        waitlist_service: WaitlistService,
+        mock_repository: Mock,
+        sample_persons: dict[int, Mock],
+    ) -> None:
+        """A teen waitlisted for one teen session but enrolled in another teen
+        session counts as has_enrollment -- the cross-session lookup must span
+        teen programs, not summer-camp types only.
+        """
+        scit = create_mock_session(2001, "SCIT", 2026, "scit")
+        tli = create_mock_session(2002, "TLI", 2026, "tli")
+        summer_sessions = {1001: create_mock_session(1001, "Session 1", 2026, "main")}
+        teen_sessions = {2001: scit, 2002: tli}
+
+        waitlisted_attendees = [
+            create_mock_attendee(103, session_cm_id=scit.cm_id, session=scit, status="waitlisted", status_id=8),
+        ]
+        enrolled_attendees = [
+            create_mock_attendee(103, session_cm_id=tli.cm_id, session=tli, status="enrolled", status_id=2),
+        ]
+
+        def fetch_sessions_side_effect(year, session_types=None):
+            requested = set(session_types or [])
+            if requested and requested <= {"scit", "tli"}:
+                return teen_sessions
+            return summer_sessions
+
+        mock_repository.fetch_sessions = AsyncMock(side_effect=fetch_sessions_side_effect)
+        mock_repository.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status_filter=None: (
+                waitlisted_attendees if status_filter == "waitlisted" else enrolled_attendees
+            )
+        )
+        mock_repository.fetch_persons.return_value = sample_persons
+
+        result = await waitlist_service.calculate_waitlist(year=2026, session_types=["scit", "tli"])
+
+        assert result.waitlisted_no_enrollment == 0
+        assert result.waitlisted_has_enrollment == 1
+
 
 # ============================================================================
 # UC3: Previously Waitlisted, Accepted (Now Enrolled)

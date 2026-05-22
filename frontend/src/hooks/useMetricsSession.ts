@@ -31,10 +31,20 @@ export interface MetricsSessionContextType {
   activeSessionTypes: readonly string[]
   /** Comma-joined activeSessionTypes for API calls */
   sessionTypesParam: string
-  /** Non-quest sessions, sorted by date */
+  /** Main/embedded sessions only, sorted by date */
   campSessions: MetricsSession[]
   /** Quest sessions only, sorted by date */
   questSessions: MetricsSession[]
+  /** scit/tli sessions for the year (window-gated upstream), sorted by date */
+  teenSessions: MetricsSession[]
+  /** Whether any summer SCIT sessions exist this year */
+  hasScit: boolean
+  /** Whether any summer TLI sessions exist this year */
+  hasTli: boolean
+  /** Currently selected teen sub-type (null = none) */
+  selectedTeenType: 'scit' | 'tli' | null
+  /** Select a teen sub-type (clears session/duration/view) */
+  setSelectedTeenType: (t: 'scit' | 'tli' | null) => void
   /** Currently selected duration category (null = no duration filter) */
   selectedDuration: DurationCategory | null
   /** Set the duration filter and clear session selection */
@@ -43,7 +53,7 @@ export interface MetricsSessionContextType {
   durationParam: string | undefined
   /** Pre-built filter options for metrics hooks (sessionTypes + sessionCmId/duration, mutually exclusive) */
   filterOptions: MetricsFilterOptions
-  /** Camp sessions grouped by duration, for the dropdown */
+  /** Camp + teen sessions grouped by duration, for the dropdown */
   durationGroups: Map<DurationCategory, MetricsSession[]>
   /** Whether expanded retention analysis is enabled (5 years instead of 3) */
   expandedRetention: boolean

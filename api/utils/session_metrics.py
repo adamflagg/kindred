@@ -18,13 +18,18 @@ from typing import Any
 #
 # Excludes:
 # - family: Family camp (adult-focused, separate program)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative (different program)
 DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
+# Default cohort for endpoints that scope to summer when the client sends no
+# session_types (param-less / direct API calls). The UI always sends an explicit
+# set, so teens are reached via the picker, not this default.
+DEFAULT_SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+
 # Session types that have cabin/bunk assignments relevant to the heatmap.
 # Used for filtering _build_session_bunk_breakdown to prevent family camp,
-# quest, training, and TLI sessions from appearing in the bunk heatmap.
+# quest, scit, and tli sessions from appearing in the bunk heatmap.
 #
 # Includes:
 # - main: Standard sessions (Session 1, 2, 3, 4) with B-*/G-* bunks
@@ -34,7 +39,7 @@ DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # Excludes:
 # - quest: Adventure program (no traditional cabin bunking)
 # - family: Family camp (adult-focused, same bunk names but separate program)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative
 BUNK_SESSION_TYPES = ("main", "embedded", "ag")
 
@@ -60,9 +65,75 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 #
 # Excludes:
 # - family: Family camp (adult-focused)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative (different program)
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+
+# Summer teen programs: SCIT (CIT+SIT) and TLI. NOT a default-included cohort —
+# surfaced only when explicitly selected, and always summer-window-gated to
+# exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
+SUMMER_TEEN_TYPES = ("scit", "tli")
+
+
+def get_summer_window(sessions: dict[int, Any]) -> tuple[str, str] | None:
+    """Return (earliest main start_date, latest main end_date) as YYYY-MM-DD, or None.
+
+    Defines the per-year "summer" span from the main camp sessions, used to gate
+    which scit/tli sessions count as summer teen programs.
+    """
+    starts: list[str] = []
+    ends: list[str] = []
+    for s in sessions.values():
+        if getattr(s, "session_type", None) != "main":
+            continue
+        start = getattr(s, "start_date", None)
+        end = getattr(s, "end_date", None)
+        if start and end:
+            starts.append(str(start)[:10])
+            ends.append(str(end)[:10])
+    if not starts or not ends:
+        return None
+    return (min(starts), max(ends))
+
+
+def is_summer_teen_session(session: Any, window: tuple[str, str] | None) -> bool:
+    """True iff session is a teen type (scit/tli) AND its dates overlap the summer window."""
+    if getattr(session, "session_type", None) not in SUMMER_TEEN_TYPES:
+        return False
+    if window is None:
+        return False
+    start = getattr(session, "start_date", None)
+    end = getattr(session, "end_date", None)
+    if not start or not end:
+        return False
+    win_start, win_end = window
+    s_start, s_end = str(start)[:10], str(end)[:10]
+    # Overlap: session starts on/before window end AND ends on/after window start.
+    return s_start <= win_end and s_end >= win_start
+
+
+def resolve_cohort_session_ids(sessions: dict[int, Any], requested_types: list[str] | None) -> set[int]:
+    """Resolve requested session types to valid session cm_ids for a year.
+
+    Non-teen types pass on type membership alone. Teen types (scit/tli) are
+    additionally summer-window-gated via is_summer_teen_session so off-season
+    rows (fall Family-Camp CIT, year-long Teen Interns, Feb L.A. Trip) are excluded.
+    requested_types=None means "all summer cohorts" (non-teen displayable + gated teens).
+    """
+    window = get_summer_window(sessions)
+    result: set[int] = set()
+    for cm_id, s in sessions.items():
+        stype = getattr(s, "session_type", None)
+        if requested_types is not None and stype not in requested_types:
+            continue
+        if stype in SUMMER_TEEN_TYPES:
+            if not is_summer_teen_session(s, window):
+                continue
+        elif requested_types is None and stype not in DISPLAY_SESSION_TYPES:
+            # "all summer" only spans displayable summer types + gated teens
+            continue
+        result.add(int(cm_id))
+    return result
 
 
 def get_session_from_expand(record: Any) -> Any:

@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 from api.schemas.metrics import DrilldownAttendee, DrilldownSession
 from api.services.cancellation_service import CANCELLED_STATUSES
 from api.services.extractors import filter_aged_out_attendees
-from api.services.waitlist_service import DECLINED_STATUSES, SUMMER_SESSION_TYPES
+from api.services.waitlist_service import DECLINED_STATUSES
+from api.utils.session_metrics import (
+    DEFAULT_SUMMER_SESSION_TYPES as SUMMER_SESSION_TYPES,
+)
 from api.utils.session_metrics import (
     compute_summer_metrics,
     filter_attendees_by_session,

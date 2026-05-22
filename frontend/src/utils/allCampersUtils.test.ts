@@ -9,6 +9,7 @@ import {
   FILTER_ALL,
   FILTER_AT_CAMP,
   FILTER_QUESTS,
+  FILTER_TEENS,
   type SessionWithType,
 } from './allCampersUtils'
 import type { BunksResponse, BunkPlansResponse } from '../types/pocketbase-types'
@@ -468,19 +469,54 @@ describe('allCampersUtils', () => {
     })
   })
 
-  // ── #6: Teen-program exclusion ───────────────────────────────────────────
-  describe('getDropdownSessions — teen program exclusion (#6)', () => {
-    it('should EXCLUDE tli sessions from the picker', () => {
+  // ── #6: Teen-program inclusion (window-gated) ────────────────────────────
+  describe('getDropdownSessions — teen program inclusion (#6)', () => {
+    it('should INCLUDE summer-window-overlapping tli sessions in the picker', () => {
+      // Both sessions share the same default dates → tli overlaps the window
       const sessions = [
         createMockSession({ name: 'Session 2', session_type: 'main' }),
         createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+      ]
+      const result = getDropdownSessions(sessions)
+      expect(result).toHaveLength(2)
+      expect(result.map((s: Session) => s.name)).toContain('Session 2')
+      expect(result.map((s: Session) => s.name)).toContain('TLI: Rising 11th')
+    })
+
+    it('should INCLUDE summer-window-overlapping scit sessions in the picker', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 3', session_type: 'main' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit' }),
+      ]
+      const result = getDropdownSessions(sessions)
+      expect(result).toHaveLength(2)
+      expect(result.map((s: Session) => s.name)).toContain('Session 3')
+      expect(result.map((s: Session) => s.name)).toContain('SCIT: Rising 12th')
+    })
+
+    it('should EXCLUDE off-season teen sessions (no window overlap)', () => {
+      // off-season tli has dates that don't overlap the main-session window
+      const sessions = [
+        createMockSession({
+          name: 'Session 2',
+          session_type: 'main',
+          start_date: '2025-06-01',
+          end_date: '2025-06-14',
+        }),
+        createMockSession({
+          name: 'TLI: Fall Program',
+          session_type: 'tli',
+          start_date: '2025-09-01',
+          end_date: '2025-09-14',
+        }),
       ]
       const result = getDropdownSessions(sessions)
       expect(result).toHaveLength(1)
       expect(result[0]?.name).toBe('Session 2')
     })
 
-    it('should EXCLUDE teen sessions from the picker', () => {
+    it('should EXCLUDE legacy "teen" session_type (not in TEEN_PROGRAM_TYPES)', () => {
+      // session_type 'teen' is not the same as 'scit' or 'tli'
       const sessions = [
         createMockSession({ name: 'Session 3', session_type: 'main' }),
         createMockSession({ name: 'SCIT: Rising 12th', session_type: 'teen' }),
@@ -490,19 +526,85 @@ describe('allCampersUtils', () => {
       expect(result[0]?.name).toBe('Session 3')
     })
 
-    it('should still include quest sessions after teen exclusion', () => {
+    it('should include quest sessions alongside summer teen sessions', () => {
       const sessions = [
         createMockSession({ name: 'Session 2', session_type: 'main' }),
         createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
         createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
-        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'teen' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit' }),
+        createMockSession({ name: 'Legacy Teen', session_type: 'teen' }),
       ]
       const result = getDropdownSessions(sessions)
-      expect(result).toHaveLength(2)
+      // main + quest + tli + scit (4); 'teen' type excluded
+      expect(result).toHaveLength(4)
       expect(result.map((s: Session) => s.name)).toContain('Session 2')
       expect(result.map((s: Session) => s.name)).toContain('Quest: Pacific Crest')
-      expect(result.map((s: Session) => s.name)).not.toContain('TLI: Rising 11th')
-      expect(result.map((s: Session) => s.name)).not.toContain('SCIT: Rising 12th')
+      expect(result.map((s: Session) => s.name)).toContain('TLI: Rising 11th')
+      expect(result.map((s: Session) => s.name)).toContain('SCIT: Rising 12th')
+      expect(result.map((s: Session) => s.name)).not.toContain('Legacy Teen')
+    })
+  })
+
+  // ── FILTER_TEENS constant ─────────────────────────────────────────────────
+  describe('FILTER_TEENS constant', () => {
+    it('equals the string "teens"', () => {
+      expect(FILTER_TEENS).toBe('teens')
+    })
+  })
+
+  // ── resolveScopedSessions with FILTER_TEENS ───────────────────────────────
+  describe('resolveScopedSessions — FILTER_TEENS', () => {
+    const mainSession = createMockSession({ name: 'Session 2', session_type: 'main', id: 'main-2' })
+    const questSession = createMockSession({
+      name: 'Quest: Pacific Crest',
+      session_type: 'quest',
+      id: 'quest-1',
+    })
+    const scitSession = createMockSession({
+      name: 'SCIT: Rising 12th',
+      session_type: 'scit',
+      id: 'scit-1',
+    })
+    const tliSession = createMockSession({
+      name: 'TLI: Rising 11th',
+      session_type: 'tli',
+      id: 'tli-1',
+    })
+    const allSessions = [mainSession, questSession, scitSession, tliSession]
+
+    it(`'${FILTER_TEENS}' returns only teen sessions`, () => {
+      const result = resolveScopedSessions(FILTER_TEENS, allSessions)
+      expect(result).toHaveLength(2)
+      expect(result.map((s) => s.id)).toContain('scit-1')
+      expect(result.map((s) => s.id)).toContain('tli-1')
+    })
+
+    it(`'${FILTER_TEENS}' returns empty array when no teen sessions present`, () => {
+      const result = resolveScopedSessions(FILTER_TEENS, [mainSession, questSession])
+      expect(result).toEqual([])
+    })
+  })
+
+  // ── getSessionRelationshipsForCamperView — teen sessions ──────────────────
+  describe('getSessionRelationshipsForCamperView — teen sessions', () => {
+    it('teen sessions map to themselves (independent self-entry)', () => {
+      const sessions: SessionWithType[] = [
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit', id: 'scit-1' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli', id: 'tli-1' }),
+      ]
+      const relationships = getSessionRelationshipsForCamperView(sessions)
+      expect(relationships.get('scit-1')).toEqual(['scit-1'])
+      expect(relationships.get('tli-1')).toEqual(['tli-1'])
+    })
+
+    it('teen sessions are independent of main sessions', () => {
+      const sessions: SessionWithType[] = [
+        createMockSession({ name: 'Session 2', session_type: 'main', id: 'main-2' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit', id: 'scit-1' }),
+      ]
+      const relationships = getSessionRelationshipsForCamperView(sessions)
+      expect(relationships.get('main-2')).toEqual(['main-2'])
+      expect(relationships.get('scit-1')).toEqual(['scit-1'])
     })
   })
 
@@ -683,6 +785,73 @@ describe('allCampersUtils', () => {
     it('embedded sessions count as at-camp for noun purposes', () => {
       const embeddedSessions = [createMockSession({ name: 'Session 2a', session_type: 'embedded' })]
       expect(getCampersHeadlineNoun(embeddedSessions, 2)).toBe('campers')
+    })
+  })
+
+  // ── getCampersHeadlineNoun — teens (#10) ──────────────────────────────────
+  describe('getCampersHeadlineNoun — teens (#10)', () => {
+    it('returns "teen"/"teens" when only teen sessions are selected', () => {
+      const teenSessions = [
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+      ]
+      expect(getCampersHeadlineNoun(teenSessions, 1)).toBe('teen')
+      expect(getCampersHeadlineNoun(teenSessions, 5)).toBe('teens')
+    })
+
+    it('returns "campers and teens" when at-camp + teen only', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit' }),
+      ]
+      expect(getCampersHeadlineNoun(sessions, 1)).toBe('camper and teen')
+      expect(getCampersHeadlineNoun(sessions, 5)).toBe('campers and teens')
+    })
+
+    it('returns "questers and teens" when quest + teen only', () => {
+      const sessions = [
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+      ]
+      expect(getCampersHeadlineNoun(sessions, 5)).toBe('questers and teens')
+    })
+
+    it('returns "campers, questers, and teens" when all three cohorts present', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+        createMockSession({ name: 'SCIT: Rising 12th', session_type: 'scit' }),
+      ]
+      expect(getCampersHeadlineNoun(sessions, 5)).toBe('campers, questers, and teens')
+    })
+
+    it('singular "camper, quester, and teen" for count=1 all three cohorts', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+        createMockSession({ name: 'TLI: Rising 11th', session_type: 'tli' }),
+      ]
+      expect(getCampersHeadlineNoun(sessions, 1)).toBe('camper, quester, and teen')
+    })
+
+    it('no-teen fixtures remain unchanged (at-camp only)', () => {
+      const atCampSessions = [createMockSession({ name: 'Session 2', session_type: 'main' })]
+      expect(getCampersHeadlineNoun(atCampSessions, 5)).toBe('campers')
+    })
+
+    it('no-teen fixtures remain unchanged (quest only)', () => {
+      const questSessions = [
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+      ]
+      expect(getCampersHeadlineNoun(questSessions, 5)).toBe('questers')
+    })
+
+    it('no-teen fixtures remain unchanged (at-camp + quest)', () => {
+      const sessions = [
+        createMockSession({ name: 'Session 2', session_type: 'main' }),
+        createMockSession({ name: 'Quest: Pacific Crest', session_type: 'quest' }),
+      ]
+      expect(getCampersHeadlineNoun(sessions, 5)).toBe('campers and questers')
     })
   })
 })
