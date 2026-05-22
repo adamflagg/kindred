@@ -7,6 +7,7 @@ import type { SatisfactionResponse } from '../types/satisfaction'
 
 let mockSessionYear = 2026
 let mockAttendeeYear = 2026
+let mockSessionType = 'main'
 
 // Mock the camper data hooks to return a minimal fixture.
 vi.mock('../hooks/camper', () => ({
@@ -20,7 +21,14 @@ vi.mock('../hooks/camper', () => ({
         year: mockAttendeeYear,
         first_name: 'Emma',
         last_name: 'Johnson',
-        expand: { session: { cm_id: 2, name: 'Session 2', year: mockSessionYear } },
+        expand: {
+          session: {
+            cm_id: 2,
+            name: 'Session 2',
+            year: mockSessionYear,
+            session_type: mockSessionType,
+          },
+        },
       },
     ],
     allAttendees: [],
@@ -151,6 +159,7 @@ beforeEach(() => {
   mockAuthValue = { user: null, isLoading: false }
   mockSessionYear = 2026
   mockAttendeeYear = 2026
+  mockSessionType = 'main'
   // Finding #19: tests below mutate `mockFetchWithAuth`; reset to default so
   // a later test doesn't inherit a prior suite's stub state.
   mockFetchWithAuth = _defaultMockFetchWithAuth
@@ -280,5 +289,29 @@ describe('CamperDetail satisfaction summary', () => {
     renderDetail()
     // "1/2 met" should appear once the provider resolves and BunkingStatusPanel renders
     expect(await screen.findByText(/1\/2 met/i)).toBeTruthy()
+  })
+})
+
+describe('CamperDetail teen programs', () => {
+  beforeEach(() => {
+    mockAuthValue = { user: { is_admin: true, cached_permissions: [] }, isLoading: false }
+  })
+
+  it('hides bunking panels and cohort context for a teen-program (scit) camper', async () => {
+    mockSessionType = 'scit'
+    renderDetail()
+    // Journey still renders (identity + journey + siblings are kept).
+    expect(await screen.findByText(/Camp Journey/i)).toBeTruthy()
+    // Bunking panels are gone for teens.
+    expect(screen.queryByText(/Parsed Bunk Requests/i)).toBeNull()
+    expect(screen.queryByText(/Raw Bunking Data/i)).toBeNull()
+    // cohortContext is suppressed → no cohort badges.
+    expect(screen.queryByTestId('cohort-badge-school')).toBeNull()
+  })
+
+  it('keeps bunking panels for a normal summer (main) camper', async () => {
+    mockSessionType = 'main'
+    renderDetail()
+    expect(await screen.findByText(/Parsed Bunk Requests/i)).toBeTruthy()
   })
 })

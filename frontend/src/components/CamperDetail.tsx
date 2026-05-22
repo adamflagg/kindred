@@ -14,6 +14,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
 import { getLocationDisplay } from '../utils/addressUtils'
 import { getSessionShortName } from '../utils/sessionDisplay'
+import { isTeenProgram } from '../utils/sessionTypePredicates'
 import { BunkRequestContext } from '../contexts/BunkRequestContext'
 import { BunkRequestProvider } from '../providers/BunkRequestProvider'
 import type { PersonsResponse } from '../types/pocketbase-types'
@@ -100,6 +101,10 @@ function CamperDetailBody({
   const bunkRequestCtx = useContext(BunkRequestContext)!
   const camperSatisfaction = bunkRequestCtx.getSatisfiedRequestInfo(camper.person_cm_id)
 
+  // Teens aren't bunked and never enter request processing — hide bunk panels
+  // and cohort context for teen-program sessions (spec §6.6).
+  const isTeen = camper.expand?.session ? isTeenProgram(camper.expand.session) : false
+
   // Single source of truth for per-row satisfaction pills: read directly from
   // BunkRequestProvider's /api/satisfaction response. Replaces the previous
   // useSatisfactionData hook which independently fetched bunk_assignments.
@@ -168,6 +173,7 @@ function CamperDetailBody({
             defaultExpanded={true}
             cohortContext={
               camper.attendee_status === 'enrolled' &&
+              !isTeen &&
               camper.expand?.session?.year === currentYear &&
               camper.person_cm_id &&
               camper.session_cm_id > 0
@@ -182,8 +188,8 @@ function CamperDetailBody({
             }
           />
 
-          {/* Bunking panels - only shown for enrolled campers */}
-          {camper.attendee_status === 'enrolled' && (
+          {/* Bunking panels - only shown for enrolled, non-teen campers */}
+          {camper.attendee_status === 'enrolled' && !isTeen && (
             <>
               {/* Bunking Status */}
               <BunkingStatusPanel
