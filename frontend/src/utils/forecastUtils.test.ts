@@ -332,6 +332,45 @@ describe('buildForecastSections', () => {
     expect(sections[1]!.total.enrolled).toBe(20)
     expect(sections[1]!.total.session_name).toBe('Quests')
   })
+
+  const scitRow = session({
+    session_cm_id: 0,
+    session_name: 'SCIT',
+    session_type: 'scit',
+    enrolled: 30,
+  })
+  const tliRow = session({
+    session_cm_id: 0,
+    session_name: 'TLI',
+    session_type: 'tli',
+    enrolled: 40,
+  })
+
+  it('appends a Teen Programs section after camp and quest', () => {
+    const sections = buildForecastSections([campSession1], [questSession1], [scitRow, tliRow])
+    expect(sections).toHaveLength(3)
+    expect(sections[2]!.key).toBe('teen')
+    expect(sections[2]!.label).toBe('Teen Programs')
+    expect(sections[2]!.sessions.map((s) => s.session_name)).toEqual(['SCIT', 'TLI'])
+    expect(sections[2]!.total.enrolled).toBe(70)
+    expect(sections[2]!.total.session_name).toBe('Teen Programs')
+  })
+
+  it('omits the teen section when there are no teen sessions', () => {
+    const sections = buildForecastSections([campSession1], [questSession1], [])
+    expect(sections.find((s) => s.key === 'teen')).toBeUndefined()
+  })
+
+  it('defaults teenSessions to empty (back-compat with 2-arg callers)', () => {
+    const sections = buildForecastSections([campSession1], [questSession1])
+    expect(sections).toHaveLength(2)
+  })
+
+  it('returns only the teen section when camp and quest are empty', () => {
+    const sections = buildForecastSections([], [], [scitRow, tliRow])
+    expect(sections).toHaveLength(1)
+    expect(sections[0]!.key).toBe('teen')
+  })
 })
 
 // ==========================================================================
