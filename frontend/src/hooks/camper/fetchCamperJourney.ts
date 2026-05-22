@@ -72,14 +72,14 @@ export async function fetchCamperJourney(
   // stay distinct).
   const enrolledByYear = new Map<number, Set<number>>()
   for (const att of attendees) {
-    const cmId = att.expand?.session?.cm_id
+    const cmId = att.expand.session?.cm_id
     if (cmId === undefined) continue
     const set = enrolledByYear.get(att.year) ?? new Set<number>()
     set.add(cmId)
     enrolledByYear.set(att.year, set)
   }
   const deduped = attendees.filter((att) => {
-    const session = att.expand?.session
+    const session = att.expand.session
     if (session?.session_type !== 'ag') return true
     // AG row drops only when its parent main is also enrolled that year;
     // an unmatched parent_id (e.g. 0) is never present in enrolledByYear → kept.
@@ -94,7 +94,7 @@ export async function fetchCamperJourney(
       expand: 'session,bunk',
     })
 
-  const assignmentsByYear = new Map<number, BunkAssignmentsResponse<AssignmentExpand>[]>()
+  const assignmentsByYear = new Map<number, Array<BunkAssignmentsResponse<AssignmentExpand>>>()
   for (const a of assignments) {
     const list = assignmentsByYear.get(a.year) ?? []
     list.push(a)
@@ -105,23 +105,23 @@ export async function fetchCamperJourney(
   // parent main; AG names aren't derivable). One query, fires only when AG present.
   const agPairs: Array<{ year: number; cmId: number }> = []
   for (const att of deduped) {
-    const s = att.expand?.session
+    const s = att.expand.session
     if (s?.session_type === 'ag') agPairs.push({ year: att.year, cmId: s.parent_id })
   }
   const parentByKey = await fetchParentMainSessions(agPairs)
 
   const records = deduped.map((att): HistoricalRecord => {
-    const session = att.expand?.session
+    const session = att.expand.session
     const year = att.year
     const yearAssignments = assignmentsByYear.get(year) ?? []
 
     // Bunk-label join precedence (spec §7):
     // 1. exact (year, session) match
-    let match = yearAssignments.find((a) => a.expand?.session?.cm_id === session?.cm_id)
+    let match = yearAssignments.find((a) => a.expand.session?.cm_id === session?.cm_id)
     // 2. else year-fallback ONLY when the year has exactly one assignment
     if (!match && yearAssignments.length === 1) match = yearAssignments[0]
     // 3. else (>=2 assignments, no match, or zero) → no label
-    const bunkName = match?.expand?.bunk?.name
+    const bunkName = match?.expand.bunk?.name
 
     // AG is never shown as its own session (spec §3). For a surviving AG-only row,
     // relabel to its parent main: name from the camp_sessions lookup (AG names

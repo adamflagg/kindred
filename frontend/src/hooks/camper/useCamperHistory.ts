@@ -44,7 +44,7 @@ function buildCurrentYearRecords(
   for (const c of campers) {
     const session = c.expand?.session
     if (!session) continue
-    const assignedBunk = c.expand?.assigned_bunk
+    const assignedBunk = c.expand.assigned_bunk
     const isEnrolled = c.attendee_status === 'enrolled'
     const isAg = session.session_type === 'ag'
     const parent = isAg ? parentByKey.get(`${currentYear}:${session.parent_id}`) : undefined
