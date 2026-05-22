@@ -35,6 +35,20 @@ export const QUEST_SESSION_TYPES = ['quest'] as const
 /** Teen program session types */
 export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
+/** Curated set shown in a camper's journey timeline: summer + teen + family. */
+export const CAMPER_JOURNEY_TYPES = [
+  'main',
+  'embedded',
+  'ag',
+  'quest',
+  'scit',
+  'tli',
+  'family',
+] as const
+
+/** Curated set driving a camper detail page's current-year fetch: summer + teen, no family. */
+export const CAMPER_DETAIL_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const
+
 /** View mode for metrics: camp sessions, quest sessions, all combined, or teens */
 export type MetricsViewMode = 'sessions' | 'quests' | 'all' | 'teens'
 
@@ -192,6 +206,22 @@ export function isTeenProgramType(sessionType: string | null | undefined): boole
  */
 export function buildSummerSessionTypeFilter(): string {
   return SUMMER_CAMP_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
+}
+
+/**
+ * Build a PocketBase OR-clause restricting `session.session_type` to the camper
+ * journey set (summer + teen + family). Caller wraps the result in `(...)`.
+ */
+export function buildCamperJourneySessionTypeFilter(): string {
+  return CAMPER_JOURNEY_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
+}
+
+/**
+ * Build a PocketBase OR-clause restricting `session.session_type` to the camper
+ * detail-page current-year set (summer + teen, no family). Caller wraps in `(...)`.
+ */
+export function buildCamperDetailSessionTypeFilter(): string {
+  return CAMPER_DETAIL_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')
 }
 
 // ============================================================================
