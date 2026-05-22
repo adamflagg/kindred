@@ -1,6 +1,6 @@
 /**
  * Shared prior-year journey source. Lists every prior year a camper was
- * ENROLLED (curated types: summer + teen + family), labeling each row with its
+ * ENROLLED (curated types: summer + teen, no family), labeling each row with its
  * bunk/day-group when an assignment exists. Sourcing from attendees (not
  * bunk_assignments) is what surfaces 2022 (a CampMinder export gap), teens, and
  * family camp uniformly.
@@ -87,10 +87,13 @@ export async function fetchCamperJourney(
   })
 
   // 2. Prior-year bunk assignments — used ONLY to label a row, never to gate it.
+  // Restricted to journey session types: without this, a lone family-camp bunk in
+  // a year could be attached to a summer row via the year-fallback below (the same
+  // leak fb1a88d2 closed for current-year views in useCamperEnrollment).
   const assignments = await pb
     .collection<BunkAssignmentsResponse<AssignmentExpand>>('bunk_assignments')
     .getFullList({
-      filter: `person.cm_id = ${personCmId} && year < ${currentYear}`,
+      filter: `person.cm_id = ${personCmId} && year < ${currentYear} && (${typeFilter})`,
       expand: 'session,bunk',
     })
 

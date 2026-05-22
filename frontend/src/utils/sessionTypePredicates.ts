@@ -206,7 +206,7 @@ export function buildSummerSessionTypeFilter(): string {
 
 /**
  * Build a PocketBase OR-clause restricting `session.session_type` to the camper
- * journey set (summer + teen + family). Caller wraps the result in `(...)`.
+ * journey set (summer + teen, no family). Caller wraps the result in `(...)`.
  */
 export function buildCamperJourneySessionTypeFilter(): string {
   return CAMPER_JOURNEY_TYPES.map((t) => `session.session_type = "${t}"`).join(' || ')

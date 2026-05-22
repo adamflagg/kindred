@@ -83,6 +83,20 @@ describe('fetchCamperJourney', () => {
     expect(filter).toContain('session.session_type = "scit"')
   })
 
+  it('restricts the bunk_assignments query to journey session types (no family-camp bunk leak)', async () => {
+    // A summer enrollment with no summer bunk + a lone family-camp bunk that year
+    // must NOT have the family bunk attached via the length===1 fallback. The
+    // query itself excludes non-journey (family) session types — mirrors the
+    // fb1a88d2 fix applied to current-year views in useCamperEnrollment.
+    mockAttendeesGetFullList.mockResolvedValue([attendee(2022, 100, 'main', 'Session 3')])
+    await fetchCamperJourney(PERSON, CURRENT_YEAR)
+    const filter = String(mockAssignmentsGetFullList.mock.calls[0]?.[0]?.filter ?? '')
+    expect(filter).toContain(`person.cm_id = ${PERSON}`)
+    expect(filter).toContain(`year < ${CURRENT_YEAR}`)
+    expect(filter).not.toContain('"family"')
+    expect(filter).toContain('session.session_type = "main"')
+  })
+
   it('labels a row via exact (year, session) assignment match', async () => {
     mockAttendeesGetFullList.mockResolvedValue([attendee(2023, 100, 'main', 'Session 3')])
     mockAssignmentsGetFullList.mockResolvedValue([assignment(2023, 100, 'G-8B')])

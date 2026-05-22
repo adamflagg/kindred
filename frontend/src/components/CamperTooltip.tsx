@@ -43,7 +43,7 @@ export default function CamperTooltip({ camper, isVisible, position }: CamperToo
 
   // Fetch the prior-year journey via the shared enrollment-sourced fetcher,
   // limited to the 3 most recent years for the compact tooltip. Routing through
-  // the fetcher surfaces real attended years (family/teen/2022 gap), not only
+  // the fetcher surfaces real attended years (teen/2022 gap), not only
   // bunked at-camp years.
   const { data: history = [] } = useQuery<HistoricalRecord[]>({
     queryKey: queryKeys.camperHistory(String(camper.person_cm_id), currentYear),

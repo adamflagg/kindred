@@ -53,6 +53,7 @@ import type { RequestBucket, SatisfactionEntry } from '../types/satisfaction'
 import type { EnhancedBunkRequest } from '../hooks/camper/useAllBunkRequests'
 import { useOriginalBunkData } from '../hooks/camper/useOriginalBunkData'
 import { fetchCamperJourney, fetchParentMainSessions } from '../hooks/camper/fetchCamperJourney'
+import { collapseAgEnrollments, buildAgParentPairs } from '../hooks/camper/agCollapse'
 import type { HistoricalRecord } from '../hooks/camper/types'
 import { useYear } from '../hooks/useCurrentYear'
 import { getDisplayAgeForYear } from '../utils/displayAge'
@@ -344,13 +345,8 @@ export default function CamperDetailsPanel({
 
       // AG is never shown as its own session — collapse Main+AG and relabel any
       // surviving AG enrollment to its parent main (spec §6.3).
-      const enrolledCmIds = new Set(enrollments.map((e) => e.sessionCmId))
-      const collapsed = enrollments.filter(
-        (e) => !(e.sessionType === 'ag' && enrolledCmIds.has(e.parentId))
-      )
-      const agPairs = collapsed
-        .filter((e) => e.sessionType === 'ag')
-        .map((e) => ({ year: currentYear, cmId: e.parentId }))
+      const collapsed = collapseAgEnrollments(enrollments)
+      const agPairs = buildAgParentPairs(collapsed, currentYear)
       const parentByKey = await fetchParentMainSessions(agPairs)
       const visibleEnrollments: CurrentEnrollment[] = collapsed.map((e) =>
         e.sessionType === 'ag'
