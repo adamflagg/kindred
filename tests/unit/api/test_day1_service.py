@@ -260,3 +260,38 @@ async def test_day1_session_types_quest_only():
     # Only the 1 quest attendee passes the filter
     assert priority_tier.total.count == 1
     assert priority_tier.total.count < 3  # fewer than unfiltered (None = 3)
+
+
+@pytest.mark.asyncio
+async def test_day1_session_types_scit_only_counts_teens():
+    """session_types=['scit'] counts the teen attendee in a dedicated 'teen' bucket.
+
+    Regression guard: previously scit/tli fell through both AT_CAMP_TYPES and
+    QUEST_TYPES, so any teen-only filter silently returned a total of 0.
+    """
+    repo = _make_repo_with_mixed_sessions()
+    service = Day1Service(repo)
+    result = await service.get_day1(2026, session_types=["scit"])
+
+    priority_tier = next(t for t in result.tiers if t.tier == "priority")
+    teen = next(c for c in priority_tier.categories if c.category == "teen")
+    assert teen.count == 1
+    assert priority_tier.total.count == 1
+
+
+@pytest.mark.asyncio
+async def test_day1_session_types_all_including_teens():
+    """A filter covering camp + quest + teen counts all three buckets."""
+    repo = _make_repo_with_mixed_sessions()
+    service = Day1Service(repo)
+    result = await service.get_day1(2026, session_types=["main", "embedded", "ag", "quest", "scit", "tli"])
+
+    priority_tier = next(t for t in result.tiers if t.tier == "priority")
+    at_camp = next(c for c in priority_tier.categories if c.category == "at_camp")
+    quest = next(c for c in priority_tier.categories if c.category == "quest")
+    teen = next(c for c in priority_tier.categories if c.category == "teen")
+    assert at_camp.count == 2
+    assert quest.count == 1
+    assert teen.count == 1
+    # 2 main + 1 quest + 1 scit
+    assert priority_tier.total.count == 4

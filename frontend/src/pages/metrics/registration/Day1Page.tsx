@@ -1,9 +1,14 @@
 /**
  * Day1Page - First-24-hour registration analysis per tier opening.
  *
+ * Honors the shared metrics session picker (like every other registration
+ * page): the picker's session_types flow into the Day 1 query, so "All Summer"
+ * includes teens and "Teens" scopes to SCIT/TLI.
+ *
  * Shows:
  * - Hero cards (one per tier: priority/early/open) with current year totals
- * - Comparison table with At Camp / Quest / Total rows across tiers and years
+ * - Comparison table with At Camp / Quest / Teens / Total rows across tiers and
+ *   years (the Teens row appears only when teen counts are present)
  * - Delta indicators vs prior year
  * - Approximate count indicators when data is reconstructed
  */
@@ -11,6 +16,7 @@
 import { useMemo } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useDay1 } from '../../../hooks/useDay1'
+import { useMetricsSession } from '../../../hooks/useMetricsSession'
 import { MetricsQueryGuard } from '../../../components/metrics/MetricsQueryGuard'
 import type { Day1Response, Day1TierData, Day1YearData } from '../../../types/day1'
 
@@ -101,6 +107,7 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
   const upcoming = isFutureTier(tier)
   const atCamp = getCategoryCount(tier, 'at_camp')
   const quest = getCategoryCount(tier, 'quest')
+  const teen = getCategoryCount(tier, 'teen')
 
   // Find prior year data for delta
   const priorYear = priorYears.length > 0 ? priorYears[0] : undefined
@@ -158,6 +165,12 @@ function HeroCard({ tier, priorYears }: HeroCardProps) {
                 <span className="font-semibold">{fmtCount(quest)}</span>
               </div>
             )}
+            {teen !== null && teen > 0 && (
+              <div>
+                <span className={config.accent}>Teens</span>{' '}
+                <span className="font-semibold">{fmtCount(teen)}</span>
+              </div>
+            )}
           </div>
 
           {/* Delta vs prior year */}
@@ -184,19 +197,25 @@ const TIER_LABELS: Array<{ tier: string; label: string }> = [
   { tier: 'open', label: 'Open' },
 ]
 
-/** Row categories for the comparison table */
-const ROW_CATEGORIES = [
-  { key: 'at_camp', label: 'At Camp' },
-  { key: 'quest', label: 'Quest' },
-  { key: 'total', label: 'Total' },
-]
-
 interface ComparisonTableProps {
   data: Day1Response
   currentYear: number
 }
 
 function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
+  // The Teens row only appears when any tier (current or prior year) has teen
+  // counts, so the default At Camp / Quest views stay uncluttered.
+  const rowCategories = useMemo(() => {
+    const allTiers: Day1TierData[] = [...data.tiers, ...data.prior_years.flatMap((py) => py.tiers)]
+    const hasTeens = allTiers.some((t) => (getCategoryCount(t, 'teen') ?? 0) > 0)
+    return [
+      { key: 'at_camp', label: 'At Camp' },
+      { key: 'quest', label: 'Quest' },
+      ...(hasTeens ? [{ key: 'teen', label: 'Teens' }] : []),
+      { key: 'total', label: 'Total' },
+    ]
+  }, [data])
+
   // Build ordered year list: current year first, then prior years
   const years = useMemo(() => {
     const result = [currentYear]
@@ -283,7 +302,7 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
           </tr>
         </thead>
         <tbody>
-          {ROW_CATEGORIES.map((row) => (
+          {rowCategories.map((row) => (
             <tr
               key={row.key}
               className={
@@ -318,7 +337,8 @@ function ComparisonTable({ data, currentYear }: ComparisonTableProps) {
 
 export default function Day1Page() {
   const { currentYear } = useCurrentYear()
-  const { data, isLoading, error } = useDay1(currentYear)
+  const { sessionTypesParam } = useMetricsSession()
+  const { data, isLoading, error } = useDay1(currentYear, sessionTypesParam)
 
   return (
     <div className="space-y-6">

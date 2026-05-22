@@ -8,8 +8,8 @@ class Day1CategoryCounts(BaseModel):
 
 
 class Day1Category(BaseModel):
-    category: str = Field(description="'at_camp' or 'quest'")
-    label: str = Field(description="'At Camp' or 'Quest'")
+    category: str = Field(description="'at_camp', 'quest', or 'teen'")
+    label: str = Field(description="'At Camp', 'Quest', or 'Teens'")
     count: int = Field(description="Enrollments in the 24h window for this category")
 
 

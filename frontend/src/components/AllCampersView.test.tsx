@@ -173,7 +173,7 @@ describe('AllCampersView — teen program support', () => {
         camper({ person_cm_id: 2, session_cm_id: SESSIONS.quest.cm_id, name: 'Liam Garcia' }),
         // two summer scit teens → count 2 → plural "teens"
         camper({ person_cm_id: 3, session_cm_id: SESSIONS.scit.cm_id, name: 'Olivia Chen' }),
-        camper({ person_cm_id: 5, session_cm_id: SESSIONS.scit.cm_id, name: 'Noah Brooks' }),
+        camper({ person_cm_id: 5, session_cm_id: SESSIONS.scit.cm_id, name: 'Samuel Johnson' }),
         // off-season teen — must never appear in any count
         camper({ person_cm_id: 4, session_cm_id: SESSIONS.offseasonTli.cm_id, name: 'Riley Sam' }),
       ]

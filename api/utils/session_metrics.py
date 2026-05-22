@@ -18,7 +18,7 @@ from typing import Any
 #
 # Excludes:
 # - family: Family camp (adult-focused, separate program)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative (different program)
 DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
@@ -29,7 +29,7 @@ DEFAULT_SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Session types that have cabin/bunk assignments relevant to the heatmap.
 # Used for filtering _build_session_bunk_breakdown to prevent family camp,
-# quest, training, and TLI sessions from appearing in the bunk heatmap.
+# quest, scit, and tli sessions from appearing in the bunk heatmap.
 #
 # Includes:
 # - main: Standard sessions (Session 1, 2, 3, 4) with B-*/G-* bunks
@@ -39,7 +39,7 @@ DEFAULT_SUMMER_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # Excludes:
 # - quest: Adventure program (no traditional cabin bunking)
 # - family: Family camp (adult-focused, same bunk names but separate program)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative
 BUNK_SESSION_TYPES = ("main", "embedded", "ag")
 
@@ -65,7 +65,7 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 #
 # Excludes:
 # - family: Family camp (adult-focused)
-# - training: Staff training sessions
+# - scit: SCIT teen program (different program)
 # - tli: Teen Leadership Initiative (different program)
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 

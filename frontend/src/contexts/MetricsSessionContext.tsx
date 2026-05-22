@@ -5,8 +5,10 @@
  * (Registration, Retention, Trends). Session selection persists in URL
  * params (?session=<cm_id>) and survives tab navigation.
  *
- * View mode (?view=quests) switches between camp sessions and quest sessions.
- * Default (no view param) shows camp sessions only.
+ * View mode (?view=) selects a session-type grouping: 'quests' (quest
+ * sessions), 'teens' (SCIT/TLI), or 'all' (every summer type including teens).
+ * Default (no view param) shows camp sessions only. Individual teen sessions
+ * are selected via ?teen=<scit|tli>, never via ?session=<cm_id>.
  *
  * Duration filter (?duration=<category>) filters sessions by length category
  * (e.g., "1-week", "2-week"). Mutually exclusive with session selection --

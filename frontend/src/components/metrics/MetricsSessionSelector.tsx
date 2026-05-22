@@ -5,10 +5,11 @@
  * across most metrics tabs (hidden on Bunk Analysis tab which uses unfiltered data).
  *
  * Dropdown structure:
- * - At Camp / Quests / All Summer (type groupings)
+ * - At Camp / Quests / Teens / All Summer (type groupings)
  * - By Duration section (1 Week, 2 Week, etc.)
  * - Camp Sessions section (individual camp sessions)
  * - Quests section (individual quest sessions)
+ * - Teen Programs section (individual SCIT / TLI sessions)
  */
 
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'

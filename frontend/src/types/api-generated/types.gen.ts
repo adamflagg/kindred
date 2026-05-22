@@ -823,13 +823,13 @@ export type Day1Category = {
   /**
    * Category
    *
-   * 'at_camp' or 'quest'
+   * 'at_camp', 'quest', or 'teen'
    */
   category: string
   /**
    * Label
    *
-   * 'At Camp' or 'Quest'
+   * 'At Camp', 'Quest', or 'Teens'
    */
   label: string
   /**

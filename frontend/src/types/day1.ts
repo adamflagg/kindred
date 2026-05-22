@@ -3,7 +3,7 @@ export interface Day1CategoryCounts {
 }
 
 export interface Day1Category {
-  category: 'at_camp' | 'quest'
+  category: 'at_camp' | 'quest' | 'teen'
   label: string
   count: number
 }
