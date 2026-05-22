@@ -1,13 +1,16 @@
 /**
  * Tests for MetricsSessionContext - URL-based session state for metrics module
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { MemoryRouter, useSearchParams } from 'react-router'
+import { renderHook } from '@testing-library/react'
+import { MemoryRouter, Routes, Route, useSearchParams, useLocation } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { MetricsSessionProvider } from './MetricsSessionContext'
 import { useMetricsSession } from '../hooks/useMetricsSession'
 import { CurrentYearContext, type CurrentYearContextType } from '../hooks/useCurrentYear'
+import type { MetricsSession } from '../hooks/useMetricsSessions'
 
 // Mock useMetricsSessions hook
 vi.mock('../hooks/useMetricsSessions', () => ({
@@ -607,3 +610,267 @@ describe('MetricsSessionContext "all" viewMode', () => {
     })
   })
 })
+
+// =============================================================================
+// Teen session derivation tests
+//
+// Uses a separate session fixture that includes end_date (required for duration
+// grouping) and teen sessions (scit, tli).
+// Wrapped in an outer describe so beforeEach only affects these blocks.
+// =============================================================================
+
+// Import the mocked hook so we can swap its return value per-describe.
+import { useMetricsSessions } from '../hooks/useMetricsSessions'
+
+const TEEN_TEST_SESSIONS: MetricsSession[] = [
+  {
+    cm_id: 1,
+    name: 'Session 1',
+    session_type: 'main',
+    start_date: '2025-06-15',
+    end_date: '2025-07-05',
+  },
+  {
+    cm_id: 2,
+    name: 'Session 4',
+    session_type: 'main',
+    start_date: '2025-07-20',
+    end_date: '2025-08-02',
+  },
+  {
+    cm_id: 3,
+    name: 'Quest',
+    session_type: 'quest',
+    start_date: '2025-06-22',
+    end_date: '2025-07-06',
+  },
+  {
+    cm_id: 4,
+    name: 'SCIT',
+    session_type: 'scit',
+    start_date: '2025-06-08',
+    end_date: '2025-07-04',
+  },
+  {
+    cm_id: 5,
+    name: 'TLI',
+    session_type: 'tli',
+    start_date: '2025-07-11',
+    end_date: '2025-08-03',
+  },
+]
+
+// URL probe — captures latest search string after each act()
+let lastSearch = ''
+function LocationProbe() {
+  const loc = useLocation()
+  lastSearch = loc.search
+  return null
+}
+
+// Wrapper that uses MemoryRouter (for URL control) + MetricsSessionProvider + probe
+function makeTeenWrapper(initialEntry = '/') {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const mockYearContext: CurrentYearContextType = {
+    currentYear: 2025,
+    setCurrentYear: vi.fn(),
+    availableYears: [2025, 2024],
+    isTransitioning: false,
+    isYearReady: true,
+  }
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes>
+            <Route
+              path="*"
+              element={
+                <CurrentYearContext value={mockYearContext}>
+                  <MetricsSessionProvider>
+                    {children}
+                    <LocationProbe />
+                  </MetricsSessionProvider>
+                </CurrentYearContext>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+  }
+}
+
+describe('MetricsSessionProvider — teen features', () => {
+  beforeEach(() => {
+    lastSearch = ''
+    vi.mocked(useMetricsSessions).mockReturnValue({
+      data: TEEN_TEST_SESSIONS,
+      isLoading: false,
+    } as ReturnType<typeof useMetricsSessions>)
+  })
+
+  describe('MetricsSessionProvider — teen session derivation', () => {
+    it('teenSessions contains only scit and tli (cm_ids 4, 5)', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      const ids = result.current.teenSessions.map((s) => s.cm_id)
+      expect(ids).toContain(4)
+      expect(ids).toContain(5)
+      expect(ids).toHaveLength(2)
+    })
+
+    it('campSessions contains only main/embedded (cm_ids 1, 2) — NOT teens or quest', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      const ids = result.current.campSessions.map((s) => s.cm_id)
+      expect(ids).toContain(1)
+      expect(ids).toContain(2)
+      expect(ids).not.toContain(3) // quest
+      expect(ids).not.toContain(4) // scit
+      expect(ids).not.toContain(5) // tli
+      expect(ids).toHaveLength(2)
+    })
+
+    it('questSessions contains only quest (cm_id 3)', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      const ids = result.current.questSessions.map((s) => s.cm_id)
+      expect(ids).toEqual([3])
+    })
+
+    it('hasScit is true when scit session present', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      expect(result.current.hasScit).toBe(true)
+    })
+
+    it('hasTli is true when tli session present', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      expect(result.current.hasTli).toBe(true)
+    })
+  })
+
+  describe('MetricsSessionProvider — view mode + teen session types', () => {
+    it("setViewMode('teens') → sessionTypesParam === 'scit,tli'", () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setViewMode('teens'))
+      expect(result.current.sessionTypesParam).toBe('scit,tli')
+    })
+
+    it("setViewMode('all') → sessionTypesParam contains scit and tli", () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setViewMode('all'))
+      expect(result.current.sessionTypesParam).toContain('scit')
+      expect(result.current.sessionTypesParam).toContain('tli')
+    })
+
+    it("setViewMode('teens') writes view=teens to URL", () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setViewMode('teens'))
+      expect(lastSearch).toContain('view=teens')
+    })
+  })
+
+  describe('MetricsSessionProvider — selectedTeenType', () => {
+    it('selectedTeenType is null initially', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      expect(result.current.selectedTeenType).toBeNull()
+    })
+
+    it('derives selectedTeenType from ?teen=scit on reload (parse path)', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?teen=scit'),
+      })
+      expect(result.current.selectedTeenType).toBe('scit')
+    })
+
+    it("setSelectedTeenType('scit') → sessionTypesParam === 'scit'", () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setSelectedTeenType('scit'))
+      expect(result.current.sessionTypesParam).toBe('scit')
+    })
+
+    it("setSelectedTeenType('tli') → sessionTypesParam === 'tli'", () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setSelectedTeenType('tli'))
+      expect(result.current.sessionTypesParam).toBe('tli')
+    })
+
+    it('setSelectedTeenType writes teen param to URL', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      act(() => result.current.setSelectedTeenType('scit'))
+      expect(lastSearch).toContain('teen=scit')
+    })
+
+    it('setSelectedTeenType(null) clears the teen param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?teen=scit'),
+      })
+      act(() => result.current.setSelectedTeenType(null))
+      expect(lastSearch).not.toContain('teen=')
+    })
+  })
+
+  describe('MetricsSessionProvider — mutual exclusion with teen param', () => {
+    it('setViewMode clears teen param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?teen=scit'),
+      })
+      act(() => result.current.setViewMode('sessions'))
+      expect(lastSearch).not.toContain('teen=')
+    })
+
+    it('setSelectedTeenType clears view param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?view=teens'),
+      })
+      act(() => result.current.setSelectedTeenType('tli'))
+      expect(lastSearch).not.toContain('view=')
+    })
+
+    it('setSelectedTeenType clears session param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?session=1'),
+      })
+      act(() => result.current.setSelectedTeenType('scit'))
+      expect(lastSearch).not.toContain('session=')
+    })
+
+    it('setSelectedTeenType clears duration param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?duration=3-week'),
+      })
+      act(() => result.current.setSelectedTeenType('scit'))
+      expect(lastSearch).not.toContain('duration=')
+    })
+
+    it('setSelectedDuration clears teen param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?teen=scit'),
+      })
+      act(() => result.current.setSelectedDuration('2-week'))
+      expect(lastSearch).not.toContain('teen=')
+    })
+
+    it('setSelectedSessionCmId clears teen param', () => {
+      const { result } = renderHook(() => useMetricsSession(), {
+        wrapper: makeTeenWrapper('/?teen=scit'),
+      })
+      act(() => result.current.setSelectedSessionCmId(1))
+      expect(lastSearch).not.toContain('teen=')
+    })
+  })
+
+  describe('MetricsSessionProvider — durationGroups includes teen sessions', () => {
+    it('durationGroups includes SCIT (cm_id 4) — 27 days → 4-week+', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      const allGrouped = Array.from(result.current.durationGroups.values()).flat()
+      const ids = allGrouped.map((s) => s.cm_id)
+      expect(ids).toContain(4)
+    })
+
+    it('durationGroups includes TLI (cm_id 5) — 24 days → 4-week+', () => {
+      const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper() })
+      const allGrouped = Array.from(result.current.durationGroups.values()).flat()
+      const ids = allGrouped.map((s) => s.cm_id)
+      expect(ids).toContain(5)
+    })
+  })
+}) // end describe('MetricsSessionProvider — teen features')
