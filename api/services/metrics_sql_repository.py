@@ -643,26 +643,32 @@ class MetricsSQLRepository:
     # 14. fetch_budget_config
     # ------------------------------------------------------------------
 
-    async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
-        """Fetch budget config: session cm_id → config dict."""
+    async def fetch_budget_config(self, year: int) -> dict[int | str, dict[str, Any]]:
+        """Fetch budget config: session cm_id (int) or 'type:<name>' (str) → config dict."""
         rows = self._query(
             """SELECT config_key, value FROM config
                WHERE category = 'budget' AND subcategory = ?""",
             (str(year),),
         )
-        result: dict[int, dict[str, Any]] = {}
+        result: dict[int | str, dict[str, Any]] = {}
         for r in rows:
             key = r["config_key"] or ""
+            raw = r["value"]
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError, TypeError, json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
             if key.startswith("session_"):
                 try:
-                    cm_id = int(key.replace("session_", ""))
-                    value = r["value"]
-                    if isinstance(value, str):
-                        parsed = json.loads(value)
-                        if isinstance(parsed, dict):
-                            result[cm_id] = parsed
-                except ValueError, TypeError, json.JSONDecodeError:
+                    result[int(key.replace("session_", ""))] = parsed
+                except ValueError, TypeError:
                     pass
+            elif key.startswith("type_"):
+                type_name = key.replace("type_", "", 1)
+                if type_name:
+                    result[f"type:{type_name}"] = parsed
         return result
 
     # ------------------------------------------------------------------
