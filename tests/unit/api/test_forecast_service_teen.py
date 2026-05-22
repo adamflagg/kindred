@@ -102,10 +102,11 @@ async def test_scit_row_sums_cit_and_sit(service, repo):
 
 
 @pytest.mark.asyncio
-async def test_teens_excluded_from_grand_total(service, repo):
+async def test_teens_included_in_grand_total_when_displayed(service, repo):
+    # A displayed cohort belongs in the total: grand total counts main + teens.
     _wire(service.repository, _summer_sessions(), _enrolled(), {})
     result = await service.calculate_forecast(year=2026, session_types=["main", "scit", "tli"])
-    assert result.grand_total.enrolled == 4  # main only; teens excluded
+    assert result.grand_total.enrolled == 10  # main 4 + SCIT 3 (CIT 2 + SIT 1) + TLI 3
 
 
 @pytest.mark.asyncio

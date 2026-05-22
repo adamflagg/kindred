@@ -320,15 +320,16 @@ class ForecastService:
                 )
             )
 
-        # Grand total (non-teen rows only — teens are a separate cohort, spec §13)
-        grand_total = self._compute_grand_total(session_forecasts)
-
         # Aggregated teen rows (SCIT = CIT+SIT summed; TLI). Live mode only, and not
         # for single-session drill-downs (teens have no AG children / drill target).
         if reconstruction is None and session_cm_id is None:
             session_forecasts.extend(
                 self._build_teen_forecast_rows(sessions, enrolled_attendees, waitlisted_attendees, budget_config)
             )
+
+        # Grand total over everything displayed — teen rows included (they're a
+        # shown cohort, so the total reflects them).
+        grand_total = self._compute_grand_total(session_forecasts)
 
         return ForecastResponse(
             year=year,
