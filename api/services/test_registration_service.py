@@ -667,3 +667,259 @@ class TestRegistrationServiceGenderByGrade:
         assert grade_dict[6].male_count == 1
         assert grade_dict[6].female_count == 0
         assert grade_dict[6].total == 1
+
+
+class TestRegistrationTeenCohortGating:
+    """Tests for window-gating teen (scit/tli) sessions in registration counts.
+
+    Off-season teen sessions (fall Family-Camp CIT, Feb trips, year-long interns)
+    must be excluded from both totals and by_session breakdown rows.
+    Summer-overlapping teen sessions must appear normally.
+    Non-teen behavior must be identical before and after the change.
+    """
+
+    # Main session window anchor for 2026: June 15 – July 5
+    # Summer SCIT: overlaps (June 20 – July 10) → IN
+    # Fall CIT:    does not overlap (Sept 12 – Sept 15) → OUT
+
+    def _make_all_sessions_dict(self) -> dict[int, MockSession]:
+        """Full year session dict with main + both SCIT variants."""
+        return {
+            3001: MockSession(
+                cm_id=3001,
+                name="Session 2",
+                session_type="main",
+                start_date="2026-06-15",
+                end_date="2026-07-05",
+            ),
+            3010: MockSession(
+                cm_id=3010,
+                name="Summer SCIT",
+                session_type="scit",
+                start_date="2026-06-20",
+                end_date="2026-07-10",
+            ),
+            3020: MockSession(
+                cm_id=3020,
+                name="Fall CIT",
+                session_type="scit",
+                start_date="2026-09-12",
+                end_date="2026-09-15",
+            ),
+        }
+
+    def _make_fetch_sessions_side_effect(self, all_sessions: dict[int, MockSession]):
+        """Return a side_effect coroutine for fetch_sessions(year, types).
+
+        Called with types=None → returns the full dict.
+        Called with explicit types → returns only sessions of those types.
+        """
+
+        async def _fetch(year: int, types: list[str] | None = None) -> dict[int, MockSession]:
+            if types is None:
+                return all_sessions
+            return {sid: s for sid, s in all_sessions.items() if s.session_type in types}
+
+        return _fetch
+
+    @pytest.mark.asyncio
+    async def test_registration_summer_teen_session_appears_in_breakdown(self) -> None:
+        """Summer-overlapping SCIT session must appear in by_session and count toward total.
+
+        Year has a main session (window anchor) + a summer SCIT that overlaps the window.
+        A grade-11 attendee enrolled in the summer SCIT.
+        Calling calculate_registration(year, ["scit"], ["enrolled"]) must:
+          - total_enrolled == 1
+          - by_session contains a row for the summer SCIT session (cm_id=3010)
+        """
+        from api.services.registration_service import RegistrationService
+
+        all_sessions = self._make_all_sessions_dict()
+
+        summer_scit = all_sessions[3010]
+        enrollee = MockAttendee(
+            person_id=201,
+            expand={"session": summer_scit},
+        )
+
+        mock_repo = AsyncMock()
+        mock_repo.fetch_sessions.side_effect = self._make_fetch_sessions_side_effect(all_sessions)
+        mock_repo.fetch_attendees.return_value = [enrollee]
+        mock_repo.fetch_persons.return_value = {201: MockPerson(person_id=201, gender="M", grade=11)}
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_synagogue_by_household.return_value = {}
+
+        service = RegistrationService(mock_repo)
+        result = await service.calculate_registration(2026, session_types=["scit"], status_filter=["enrolled"])
+
+        assert result.total_enrolled == 1, f"Expected 1 enrolled for summer SCIT, got {result.total_enrolled}"
+        session_ids = {s.session_cm_id for s in result.by_session}
+        assert 3010 in session_ids, f"Summer SCIT session (3010) must appear in by_session; got {session_ids}"
+
+    @pytest.mark.asyncio
+    async def test_registration_offseason_teen_excluded(self) -> None:
+        """Off-season SCIT session (fall dates) must be excluded from counts AND by_session.
+
+        Year has a main session (window anchor) + a fall CIT outside the window.
+        A grade-11 attendee enrolled in the fall CIT.
+        Calling calculate_registration(year, ["scit"], ["enrolled"]) must:
+          - total_enrolled == 0  (off-season teen excluded)
+          - by_session == []     (no row for the excluded session)
+        """
+        from api.services.registration_service import RegistrationService
+
+        all_sessions = self._make_all_sessions_dict()
+
+        fall_cit = all_sessions[3020]
+        enrollee = MockAttendee(
+            person_id=202,
+            expand={"session": fall_cit},
+        )
+
+        mock_repo = AsyncMock()
+        mock_repo.fetch_sessions.side_effect = self._make_fetch_sessions_side_effect(all_sessions)
+        mock_repo.fetch_attendees.return_value = [enrollee]
+        mock_repo.fetch_persons.return_value = {202: MockPerson(person_id=202, gender="F", grade=11)}
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_synagogue_by_household.return_value = {}
+
+        service = RegistrationService(mock_repo)
+        result = await service.calculate_registration(2026, session_types=["scit"], status_filter=["enrolled"])
+
+        assert result.total_enrolled == 0, (
+            f"Off-season fall CIT must not count toward total_enrolled; got {result.total_enrolled}"
+        )
+        assert result.by_session == [], f"Off-season fall CIT must not appear in by_session; got {result.by_session}"
+
+    @pytest.mark.asyncio
+    async def test_registration_nonteen_unchanged(self) -> None:
+        """Non-teen session types (main, embedded, ag, quest) must be unaffected.
+
+        Baseline fixture: main + embedded sessions, no teens.
+        calculate_registration(year, ["main", "embedded", "ag", "quest"], ["enrolled"])
+        must produce the same totals and by_session as before the teen-gating change.
+        """
+        from api.services.registration_service import RegistrationService
+
+        main_session = MockSession(
+            cm_id=4001,
+            name="Session 2",
+            session_type="main",
+            start_date="2026-06-15",
+            end_date="2026-07-05",
+        )
+        embedded_session = MockSession(
+            cm_id=4002,
+            name="Taste of Camp",
+            session_type="embedded",
+            start_date="2026-06-20",
+            end_date="2026-06-23",
+        )
+        all_sessions: dict[int, MockSession] = {
+            4001: main_session,
+            4002: embedded_session,
+        }
+        non_teen_types = ["main", "embedded", "ag", "quest"]
+
+        enrollees = [
+            MockAttendee(person_id=301, expand={"session": main_session}),
+            MockAttendee(person_id=302, expand={"session": main_session}),
+            MockAttendee(person_id=303, expand={"session": embedded_session}),
+        ]
+        persons = {
+            301: MockPerson(person_id=301, gender="M", grade=6),
+            302: MockPerson(person_id=302, gender="F", grade=7),
+            303: MockPerson(person_id=303, gender="M", grade=5),
+        }
+
+        mock_repo = AsyncMock()
+        mock_repo.fetch_sessions.side_effect = self._make_fetch_sessions_side_effect(all_sessions)
+        mock_repo.fetch_attendees.return_value = enrollees
+        mock_repo.fetch_persons.return_value = persons
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_synagogue_by_household.return_value = {}
+
+        service = RegistrationService(mock_repo)
+        result = await service.calculate_registration(2026, session_types=non_teen_types, status_filter=["enrolled"])
+
+        # All 3 non-teen enrollees must be counted
+        assert result.total_enrolled == 3, f"Non-teen total must be 3; got {result.total_enrolled}"
+        # Both sessions must appear in breakdown
+        session_ids = {s.session_cm_id for s in result.by_session}
+        assert 4001 in session_ids, "Main session must appear in by_session"
+        assert 4002 in session_ids, "Embedded session must appear in by_session"
+        # Counts per session
+        by_session_map = {s.session_cm_id: s.count for s in result.by_session}
+        assert by_session_map[4001] == 2, f"Main session must have 2 enrollees; got {by_session_map[4001]}"
+        assert by_session_map[4002] == 1, f"Embedded session must have 1 enrollee; got {by_session_map[4002]}"
+
+    @pytest.mark.asyncio
+    async def test_registration_offseason_teen_excluded_even_with_matching_duration(self) -> None:
+        """Cohort gate excludes an off-season teen even when it matches the duration filter.
+
+        Guards the new ``cohort_ids & duration_session_ids`` intersection branch.
+
+        Year has a main session (window anchor) + a fall Family-Camp CIT (scit,
+        2026-09-12..2026-09-15 → "1-week" category, off-season). A grade-11 attendee
+        is enrolled in the fall CIT. Calling
+        ``calculate_registration(year, ["scit"], ["enrolled"], duration="1-week")`` must:
+          - total_enrolled == 0
+          - by_session == []
+
+        Discrimination: the fall CIT IS a "1-week" session, so the old code path
+        (session_cm_ids=duration_session_ids) would have admitted it → total_enrolled
+        would be 1. The cohort gate makes resolve_cohort_session_ids(["scit"]) empty
+        (off-season window-gated out), so cohort_ids & duration_ids == {} and the
+        attendee is dropped.
+        """
+        from api.services.registration_service import RegistrationService
+
+        # Window anchor + off-season fall CIT that lands in the "1-week" bucket.
+        all_sessions: dict[int, MockSession] = {
+            5001: MockSession(
+                cm_id=5001,
+                name="Session 2",
+                session_type="main",
+                start_date="2026-06-15",
+                end_date="2026-07-05",
+            ),
+            5020: MockSession(
+                cm_id=5020,
+                name="Fall CIT",
+                session_type="scit",
+                start_date="2026-09-12",
+                end_date="2026-09-15",
+            ),
+        }
+
+        fall_cit = all_sessions[5020]
+        enrollee = MockAttendee(
+            person_id=205,
+            expand={"session": fall_cit},
+        )
+
+        mock_repo = AsyncMock()
+        mock_repo.fetch_sessions.side_effect = self._make_fetch_sessions_side_effect(all_sessions)
+        mock_repo.fetch_attendees.return_value = [enrollee]
+        mock_repo.fetch_persons.return_value = {205: MockPerson(person_id=205, gender="M", grade=11)}
+        mock_repo.fetch_bunk_plans.return_value = []
+        mock_repo.fetch_capacity_config.return_value = 12
+        mock_repo.fetch_summer_enrollment_history.return_value = []
+        mock_repo.fetch_synagogue_by_household.return_value = {}
+
+        service = RegistrationService(mock_repo)
+        result = await service.calculate_registration(
+            2026, session_types=["scit"], status_filter=["enrolled"], duration="1-week"
+        )
+
+        assert result.total_enrolled == 0, (
+            f"Off-season fall CIT must be cohort-gated out even though it matches the "
+            f"1-week duration; got {result.total_enrolled}"
+        )
+        assert result.by_session == [], f"Off-season fall CIT must not appear in by_session; got {result.by_session}"
