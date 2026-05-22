@@ -20,11 +20,22 @@ from api.schemas.session_availability import (
     GenderAvailability,
     SessionAvailability,
     SessionAvailabilityResponse,
+    TeenSessionAvailability,
     WaitlistedPerson,
 )
-from api.utils.session_metrics import get_person_from_expand, get_session_from_expand, resolve_duration_sessions
+from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
+    get_person_from_expand,
+    get_session_from_expand,
+    get_summer_window,
+    is_summer_teen_session,
+    resolve_duration_sessions,
+)
 
 logger = get_logger(__name__)
+
+# Display labels for the merged teen availability rows (one row per teen session_type).
+TEEN_AVAILABILITY_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
 
 
 class SessionAvailabilityService:
@@ -79,6 +90,19 @@ class SessionAvailabilityService:
             sessions_task, bunk_plans_task, capacity_config_task, enrolled_task
         )
 
+        # Window-gate teen sessions: scit/tli must overlap the year's main-camp
+        # window (excludes fall Family-Camp CIT, year-round Teen Interns, etc.).
+        if any(getattr(s, "session_type", "") in SUMMER_TEEN_TYPES for s in sessions.values()):
+            window = get_summer_window(sessions)
+            if window is None:
+                # Requested scope had no main sessions (e.g. teens-only) — fetch mains.
+                window = get_summer_window(await self.repository.fetch_sessions(year, ["main"]))
+            sessions = {
+                sid: s
+                for sid, s in sessions.items()
+                if getattr(s, "session_type", "") not in SUMMER_TEEN_TYPES or is_summer_teen_session(s, window)
+            }
+
         # Filter sessions by duration category
         if duration:
             duration_session_ids = resolve_duration_sessions(sessions, duration)
@@ -109,6 +133,10 @@ class SessionAvailabilityService:
             cm_id = int(getattr(session, "cm_id", 0))
             session_type = getattr(session, "session_type", "")
             name = getattr(session, "name", "")
+
+            # Teen sessions are aggregated separately into teen_sessions rows.
+            if session_type in SUMMER_TEEN_TYPES:
+                continue
 
             if session_type == "ag":
                 # AG session
@@ -186,6 +214,11 @@ class SessionAvailabilityService:
                     )
                 )
 
+        # Build aggregated teen rows (window-gated sessions already filtered above)
+        teen_sessions = self._build_teen_availability_rows(
+            sessions, session_configs, enrollment, waitlist_data, threshold
+        )
+
         # Filter by specific session if requested
         if session_cm_id is not None:
             result_sessions = [s for s in result_sessions if s.session_cm_id == session_cm_id]
@@ -199,6 +232,7 @@ class SessionAvailabilityService:
         return SessionAvailabilityResponse(
             sessions=result_sessions,
             ag_sessions=result_ag,
+            teen_sessions=teen_sessions,
             limited_threshold=threshold,
         )
 
@@ -213,20 +247,27 @@ class SessionAvailabilityService:
             logger.warning("Could not fetch session availability config")
             return []
 
-    def _parse_session_configs(self, config_records: list[Any]) -> dict[int, dict[str, Any]]:
-        """Parse config records into a dict keyed by session cm_id."""
-        result: dict[int, dict[str, Any]] = {}
+    def _parse_session_configs(self, config_records: list[Any]) -> dict[int | str, dict[str, Any]]:
+        """Parse config records into a dict keyed by session cm_id or type string.
+
+        Integer keys: per-session cm_id configs (grade range, capacity override).
+        String keys of the form 'type:<name>': per-teen-type configs (type_scit → 'type:scit').
+        """
+        result: dict[int | str, dict[str, Any]] = {}
         for rec in config_records:
             key = getattr(rec, "config_key", "")
             value = getattr(rec, "value", None)
-            if key == "limited_threshold" or not value:
+            if key == "limited_threshold" or not value or not isinstance(value, dict):
+                continue
+            if key.startswith("type_"):
+                name = key.replace("type_", "", 1)
+                if name:
+                    result[f"type:{name}"] = value
                 continue
             try:
-                cm_id = int(key)
+                result[int(key)] = value
             except ValueError, TypeError:
                 continue
-            if isinstance(value, dict):
-                result[cm_id] = value
         return result
 
     def _parse_threshold(self, config_records: list[Any]) -> int:
@@ -243,7 +284,7 @@ class SessionAvailabilityService:
         sessions: dict[int, Any],
         bunk_plans: list[Any],
         default_capacity: int,
-        session_configs: dict[int, dict[str, Any]],
+        session_configs: dict[int | str, dict[str, Any]],
     ) -> dict[int, dict[str, int | None]]:
         """Calculate capacity per session per gender from bunk_plans.
 
@@ -419,3 +460,58 @@ class SessionAvailabilityService:
             waitlist_data[session_cm_id] = session_result
 
         return enrollment, waitlist_data
+
+    def _build_teen_availability_rows(
+        self,
+        sessions: dict[int, Any],
+        session_configs: dict[int | str, dict[str, Any]],
+        enrollment: dict[int, dict[str, int]],
+        waitlist_data: dict[int, dict[str, Any]],
+        threshold: int,
+    ) -> list[TeenSessionAvailability]:
+        """Aggregate window-gated teen sessions into one row per teen session_type.
+
+        SCIT merges all CIT + SIT sub-sessions; TLI is its own row.
+        Grade and capacity come from 'type:<name>' config keys.
+        Emitted in SUMMER_TEEN_TYPES order (scit, then tli).
+        """
+        teen_cm_ids_by_type: dict[str, list[int]] = {}
+        for sid, s in sessions.items():
+            stype = getattr(s, "session_type", "")
+            if stype in SUMMER_TEEN_TYPES:
+                teen_cm_ids_by_type.setdefault(stype, []).append(int(getattr(s, "cm_id", sid)))
+
+        rows: list[TeenSessionAvailability] = []
+        for teen_type in SUMMER_TEEN_TYPES:  # deterministic order: scit, then tli
+            cm_ids = teen_cm_ids_by_type.get(teen_type)
+            if not cm_ids:
+                continue
+            cfg = session_configs.get(f"type:{teen_type}", {}) or {}
+            enrolled = sum(enrollment.get(c, {}).get("enrolled_total", 0) for c in cm_ids)
+            waitlisted = sum(enrollment.get(c, {}).get("waitlisted_total", 0) for c in cm_ids)
+
+            by_grade: dict[int, int] = {}
+            persons: list[Any] = []
+            for c in cm_ids:
+                wl = waitlist_data.get(c, {})
+                for g, n in (wl.get("by_grade_total", {}) or {}).items():
+                    by_grade[g] = by_grade.get(g, 0) + n
+                persons.extend(wl.get("persons_total", []) or [])
+
+            capacity = cfg.get("capacity_override")
+            rows.append(
+                TeenSessionAvailability(
+                    session_cm_id=0,
+                    session_name=TEEN_AVAILABILITY_DISPLAY_NAMES.get(teen_type, teen_type.upper()),
+                    session_type=teen_type,
+                    min_grade=cfg.get("min_grade"),
+                    max_grade=cfg.get("max_grade"),
+                    enrolled=enrolled,
+                    waitlisted=waitlisted,
+                    capacity=capacity,
+                    status=self.compute_status(enrolled, waitlisted, capacity, threshold),
+                    waitlisted_by_grade=by_grade,
+                    waitlisted_persons=persons,
+                )
+            )
+        return rows
