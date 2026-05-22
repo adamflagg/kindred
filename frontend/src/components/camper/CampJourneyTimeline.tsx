@@ -89,8 +89,9 @@ export function CampJourneyTimeline({
                       </span>
                     )}
 
-                    {/* Only show bunk for enrolled records */}
-                    {!statusIndicator && (
+                    {/* Bunk — only for enrolled records that actually have a label.
+                        No-bunk prior years (teen / 2022 gap / family) show no segment. */}
+                    {!statusIndicator && record.bunkName !== undefined && (
                       <>
                         <span className="text-muted-foreground">·</span>
 
