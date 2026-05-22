@@ -4,6 +4,7 @@ These tests define the expected behavior for the registration metrics
 service layer that will replace the monolithic endpoint code.
 """
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -708,7 +709,9 @@ class TestRegistrationTeenCohortGating:
             ),
         }
 
-    def _make_fetch_sessions_side_effect(self, all_sessions: dict[int, MockSession]):
+    def _make_fetch_sessions_side_effect(
+        self, all_sessions: dict[int, MockSession]
+    ) -> Callable[[int, list[str] | None], Awaitable[dict[int, MockSession]]]:
         """Return a side_effect coroutine for fetch_sessions(year, types).
 
         Called with types=None → returns the full dict.
