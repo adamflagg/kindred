@@ -8879,6 +8879,12 @@ export type GetDay1ApiMetricsRegistrationDay1GetData = {
      * Camp year
      */
     year: number
+    /**
+     * Session Types
+     *
+     * Comma-separated session types to filter (e.g., 'main,quest')
+     */
+    session_types?: string | null
   }
   url: '/api/metrics/registration/day1'
 }

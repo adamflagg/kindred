@@ -1069,10 +1069,11 @@ def test_resolve_cohort_none_returns_nonteen_plus_gated_teens():
 
 
 def test_default_summer_types_shared_constant():
-    from api.services.cancellation_service import SUMMER_SESSION_TYPES as cancel_types
-    from api.services.waitlist_service import SUMMER_SESSION_TYPES as waitlist_types
+    from api.services.cancellation_service import SUMMER_SESSION_TYPES as CANCEL_TYPES
+    from api.services.waitlist_service import SUMMER_SESSION_TYPES as WAITLIST_TYPES
 
-    assert cancel_types == ("main", "embedded", "ag", "quest")
-    assert cancel_types == waitlist_types
+    assert CANCEL_TYPES == ("main", "embedded", "ag", "quest")
+    assert CANCEL_TYPES == WAITLIST_TYPES
     # Default deliberately excludes teens (teens are opt-in via the picker).
-    assert "scit" not in cancel_types and "tli" not in cancel_types
+    assert "scit" not in CANCEL_TYPES
+    assert "tli" not in CANCEL_TYPES

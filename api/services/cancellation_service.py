@@ -24,15 +24,16 @@ from api.schemas.metrics import (
 from api.services.breakdown_calculator import calculate_percentage, compute_registration_breakdown
 from api.services.extractors import extract_gender, extract_grade
 from api.utils.session_metrics import (
-    DEFAULT_SUMMER_SESSION_TYPES as SUMMER_SESSION_TYPES,
-)
-from api.utils.session_metrics import (
+    DEFAULT_SUMMER_SESSION_TYPES,
     build_ag_parent_map,
     get_session_from_expand,
     resolve_duration_sessions,
 )
 from api.utils.session_swap import detect_session_swaps
 from bunking.logging_config import get_logger
+
+# Back-compat alias as an explicit module export (shared default lives in session_metrics).
+SUMMER_SESSION_TYPES = DEFAULT_SUMMER_SESSION_TYPES
 
 if TYPE_CHECKING:
     from .metrics_repository import MetricsRepository
