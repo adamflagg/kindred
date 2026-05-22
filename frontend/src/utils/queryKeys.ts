@@ -163,9 +163,19 @@ export const queryKeys = {
     compareYear: number,
     sessionTypes?: string,
     sessionCmId?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
-    ['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId, duration] as const,
+    [
+      'metrics',
+      'retention',
+      baseYear,
+      compareYear,
+      sessionTypes,
+      sessionCmId,
+      duration,
+      includeTeenPipeline,
+    ] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
   registration: (
     year: number,

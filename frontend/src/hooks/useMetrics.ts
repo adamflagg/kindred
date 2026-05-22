@@ -61,7 +61,8 @@ export function metricsFilter(params: {
 export function useRetentionMetrics(
   baseYear: number,
   compareYear: number,
-  options?: MetricsFilterOptions
+  options?: MetricsFilterOptions,
+  includeTeenPipeline = false
 ) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
@@ -71,7 +72,8 @@ export function useRetentionMetrics(
       compareYear,
       options?.sessionTypes,
       options?.sessionCmId,
-      options?.duration
+      options?.duration,
+      includeTeenPipeline
     ),
     queryFn: async (): Promise<RetentionMetrics> => {
       const params = new URLSearchParams({
@@ -86,6 +88,9 @@ export function useRetentionMetrics(
       }
       if (options?.duration) {
         params.set('duration', options.duration)
+      }
+      if (includeTeenPipeline) {
+        params.set('include_teen_pipeline', 'true')
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention?${params}`)
