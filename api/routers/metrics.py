@@ -72,6 +72,10 @@ async def get_retention_metrics(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
+    include_teen_pipeline: bool = Query(
+        False,
+        description="Credit grade-10 campers who continue into a summer teen program (main->teen bridge)",
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> RetentionMetricsResponse:
     """Get retention metrics comparing two years.
@@ -87,6 +91,7 @@ async def get_retention_metrics(
         "session_types": session_types,
         "session_cm_id": session_cm_id,
         "duration": duration,
+        "include_teen_pipeline": include_teen_pipeline,
     }
     cached: RetentionMetricsResponse | None = metrics_cache.get("retention", **cache_params)
     if cached is not None:
@@ -101,6 +106,7 @@ async def get_retention_metrics(
         session_types=type_filter,
         session_cm_id=session_cm_id,
         duration=duration,
+        include_teen_pipeline=include_teen_pipeline,
     )
     metrics_cache.set("retention", result, **cache_params)
     return result

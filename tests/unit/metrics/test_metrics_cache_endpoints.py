@@ -132,6 +132,60 @@ class TestRetentionEndpointCaching:
             )
             assert mock_service.calculate_retention.call_count == 2
 
+    def test_include_teen_pipeline_param_forwarded_to_service(self, test_client, fresh_cache):
+        """Route must forward include_teen_pipeline=True to RetentionService.calculate_retention."""
+        mock_service = AsyncMock()
+        mock_service.calculate_retention = AsyncMock(return_value=_make_retention_response())
+
+        with (
+            patch("api.routers.metrics.RetentionService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            resp = test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026, "include_teen_pipeline": "true"},
+            )
+            assert resp.status_code == 200, resp.text
+
+            # The service must have been called with include_teen_pipeline=True
+            mock_service.calculate_retention.assert_called_once()
+            call_kwargs = mock_service.calculate_retention.call_args.kwargs
+            assert call_kwargs.get("include_teen_pipeline") is True, (
+                f"Expected include_teen_pipeline=True in service call, got: {call_kwargs}"
+            )
+
+    def test_include_teen_pipeline_flag_off_caches_separately(self, test_client, fresh_cache):
+        """include_teen_pipeline=True and =False must produce separate cache entries.
+
+        Two requests with different flag values must each invoke the service once
+        (not share a cache hit).
+        """
+        mock_service = AsyncMock()
+        mock_service.calculate_retention = AsyncMock(
+            side_effect=[
+                _make_retention_response(base_year=2025, compare_year=2026),
+                _make_retention_response(base_year=2025, compare_year=2026),
+            ]
+        )
+
+        with (
+            patch("api.routers.metrics.RetentionService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            # flag OFF (default)
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026, "include_teen_pipeline": "false"},
+            )
+            # flag ON — must NOT hit the flag-off cache entry
+            test_client.get(
+                "/api/metrics/retention",
+                params={"base_year": 2025, "compare_year": 2026, "include_teen_pipeline": "true"},
+            )
+            assert mock_service.calculate_retention.call_count == 2, (
+                "Both flag=true and flag=false must cache independently"
+            )
+
 
 class TestRegistrationEndpointCaching:
     """Test that the registration endpoint uses the cache."""
