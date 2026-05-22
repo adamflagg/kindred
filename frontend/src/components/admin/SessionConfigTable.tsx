@@ -130,6 +130,8 @@ export function SessionConfigTable() {
           if (teenTypesSeen.has(sType)) continue
           teenTypesSeen.add(sType)
 
+          const gradeRec = gradeData?.find((r) => r.config_key === `type_${sType}`)
+          const gradeVal = gradeRec?.value as GradeConfig | null
           const budgetRec = budgetData?.find((r) => r.config_key === `type_${sType}`)
           const budgetVal = budgetRec?.value as BudgetValue | null
 
@@ -138,9 +140,9 @@ export function SessionConfigTable() {
             cm_id: 0,
             name: TEEN_DISPLAY_NAMES[sType] ?? sType.toUpperCase(),
             session_type: sType,
-            min_grade: null,
-            max_grade: null,
-            capacity_override: null,
+            min_grade: gradeVal?.min_grade ?? null,
+            max_grade: gradeVal?.max_grade ?? null,
+            capacity_override: gradeVal?.capacity_override ?? null,
             participant_goal: budgetVal?.participant_goal ?? null,
             session_fee: budgetVal?.session_fee ?? null,
           })
@@ -216,8 +218,10 @@ export function SessionConfigTable() {
     try {
       // Save grade eligibility config
       for (const row of rows) {
-        if (isTeenProgramType(row.session_type)) continue // teens have no grade config
-        const existingGrade = gradeRecords?.find((r) => r.config_key === String(row.cm_id))
+        const gradeKey = isTeenProgramType(row.session_type)
+          ? `type_${row.session_type}`
+          : String(row.cm_id)
+        const existingGrade = gradeRecords?.find((r) => r.config_key === gradeKey)
 
         // Skip rows with no grade values set
         if (
@@ -231,7 +235,7 @@ export function SessionConfigTable() {
         const gradePayload = {
           category: 'session_availability',
           subcategory: String(currentYear),
-          config_key: String(row.cm_id),
+          config_key: gradeKey,
           value: {
             min_grade: row.min_grade,
             max_grade: row.max_grade,
@@ -339,56 +343,46 @@ export function SessionConfigTable() {
         <th scope="row" id={idBase} className="py-2 pr-4 text-left font-medium">
           {row.name}
         </th>
-        {isTeen ? (
-          <>
-            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
-            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
-            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
-          </>
-        ) : (
-          <>
-            <td className="px-2 py-2">
-              <select
-                value={row.min_grade ?? ''}
-                onChange={(e) => handleChange(row.rowKey, 'min_grade', e.target.value)}
-                aria-labelledby={`${idBase} col-min-grade`}
-                className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
-              >
-                <option value="" />
-                {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
-                  <option key={g} value={g}>
-                    {formatGradeOrdinal(g)}
-                  </option>
-                ))}
-              </select>
-            </td>
-            <td className="px-2 py-2">
-              <select
-                value={row.max_grade ?? ''}
-                onChange={(e) => handleChange(row.rowKey, 'max_grade', e.target.value)}
-                aria-labelledby={`${idBase} col-max-grade`}
-                className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
-              >
-                <option value="" />
-                {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
-                  <option key={g} value={g}>
-                    {formatGradeOrdinal(g)}
-                  </option>
-                ))}
-              </select>
-            </td>
-            <td className="px-2 py-2">
-              <input
-                type="number"
-                min={0}
-                value={row.capacity_override ?? ''}
-                onChange={(e) => handleChange(row.rowKey, 'capacity_override', e.target.value)}
-                aria-labelledby={`${idBase} col-cap-override`}
-                className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-              />
-            </td>
-          </>
-        )}
+        <td className="px-2 py-2">
+          <select
+            value={row.min_grade ?? ''}
+            onChange={(e) => handleChange(row.rowKey, 'min_grade', e.target.value)}
+            aria-labelledby={`${idBase} col-min-grade`}
+            className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+          >
+            <option value="" />
+            {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+              <option key={g} value={g}>
+                {formatGradeOrdinal(g)}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="px-2 py-2">
+          <select
+            value={row.max_grade ?? ''}
+            onChange={(e) => handleChange(row.rowKey, 'max_grade', e.target.value)}
+            aria-labelledby={`${idBase} col-max-grade`}
+            className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+          >
+            <option value="" />
+            {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+              <option key={g} value={g}>
+                {formatGradeOrdinal(g)}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td className="px-2 py-2">
+          <input
+            type="number"
+            min={0}
+            value={row.capacity_override ?? ''}
+            onChange={(e) => handleChange(row.rowKey, 'capacity_override', e.target.value)}
+            aria-labelledby={`${idBase} col-cap-override`}
+            className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+          />
+        </td>
         <td className="px-2 py-2">
           <input
             type="number"
