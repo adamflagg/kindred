@@ -8,6 +8,7 @@ Covers BOTH repositories (METRICS_SQL_ENABLED defaults to true → SQL repo is l
 import json
 import sqlite3
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,7 +17,7 @@ from api.services.metrics_repository import MetricsRepository
 from api.services.metrics_sql_repository import MetricsSQLRepository
 
 
-def _pb_record(config_key: str, value: dict) -> SimpleNamespace:
+def _pb_record(config_key: str, value: dict[str, Any]) -> SimpleNamespace:
     return SimpleNamespace(config_key=config_key, value=value)
 
 
@@ -48,7 +49,7 @@ async def test_pb_repo_ignores_malformed_keys():
     assert await repo.fetch_budget_config(2026) == {}
 
 
-def _sql_conn_with_budget(rows: list[tuple[str, dict]]) -> sqlite3.Connection:
+def _sql_conn_with_budget(rows: list[tuple[str, dict[str, Any]]]) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute("CREATE TABLE config (config_key TEXT, value TEXT, category TEXT, subcategory TEXT)")
