@@ -15,6 +15,12 @@ These tests are written FIRST before implementation (TDD).
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
 
+from api.utils.session_metrics import (
+    BUNK_SESSION_TYPES,
+    DISPLAY_SESSION_TYPES,
+    SUMMER_PROGRAM_SESSION_TYPES,
+    resolve_cohort_session_ids,
+)
 from tests.unit.api.conftest import create_mock_attendee, create_mock_session
 
 # ============================================================================
@@ -132,24 +138,26 @@ class TestSummerProgramSessionTypesConstant:
 class TestConstantRelationship:
     """Tests verifying the relationship between the two constants."""
 
-    def test_display_types_is_subset_of_summer_types(self) -> None:
-        """DISPLAY_SESSION_TYPES should be a subset of SUMMER_PROGRAM_SESSION_TYPES.
+    def test_summer_types_is_subset_of_display_types(self) -> None:
+        """SUMMER_PROGRAM_SESSION_TYPES should be a subset of DISPLAY_SESSION_TYPES.
 
-        Everything displayed should also count toward summer metrics.
+        Everything that counts toward 'summers at camp' is also display-eligible,
+        but DISPLAY additionally includes teens (scit/tli) which are window-gated
+        at filter time and excluded from the 'summers at camp' count (#1599).
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
-        assert set(DISPLAY_SESSION_TYPES).issubset(set(SUMMER_PROGRAM_SESSION_TYPES))
+        assert set(SUMMER_PROGRAM_SESSION_TYPES).issubset(set(DISPLAY_SESSION_TYPES))
 
-    def test_constants_are_equal(self) -> None:
-        """Both constants should now contain the same session types.
+    def test_display_types_is_strict_superset_of_summer_types(self) -> None:
+        """DISPLAY_SESSION_TYPES now strictly contains SUMMER_PROGRAM_SESSION_TYPES.
 
-        DISPLAY_SESSION_TYPES and SUMMER_PROGRAM_SESSION_TYPES are equal
-        since quest sessions are now included in display views.
+        After adding scit/tli to DISPLAY (Task 2), the two constants are no longer
+        equal — teens appear in display rows but not in 'summers at camp' counts.
         """
         from api.utils.session_metrics import DISPLAY_SESSION_TYPES, SUMMER_PROGRAM_SESSION_TYPES
 
-        assert set(SUMMER_PROGRAM_SESSION_TYPES) == set(DISPLAY_SESSION_TYPES)
+        assert set(DISPLAY_SESSION_TYPES) > set(SUMMER_PROGRAM_SESSION_TYPES)
 
 
 # ============================================================================
@@ -1077,3 +1085,36 @@ def test_default_summer_types_shared_constant():
     # Default deliberately excludes teens (teens are opt-in via the picker).
     assert "scit" not in CANCEL_TYPES
     assert "tli" not in CANCEL_TYPES
+
+
+# ============================================================================
+# Task 2: DISPLAY_SESSION_TYPES includes scit/tli
+# ============================================================================
+
+
+def test_display_types_include_teens():
+    """Teen types are display-eligible (breakdown rows)."""
+    assert {"scit", "tli"}.issubset(DISPLAY_SESSION_TYPES)
+
+
+def test_summer_program_types_still_exclude_teens():
+    """Per #1599, 'summers at camp' stays main+quest — teens NOT added here."""
+    assert {"scit", "tli"}.isdisjoint(SUMMER_PROGRAM_SESSION_TYPES)
+
+
+def test_bunk_types_still_exclude_teens():
+    """Teens have no bunk assignments (spec §9)."""
+    assert {"scit", "tli"}.isdisjoint(BUNK_SESSION_TYPES)
+
+
+def test_resolver_still_window_gates_after_display_change():
+    # Regression guard: adding teens to DISPLAY must NOT defeat the window gate.
+    sessions = {
+        10: _sess(10, "main", "2025-06-15 07:00:00.000Z", "2025-07-05 07:00:00.000Z"),
+        16: _sess(16, "main", "2025-07-20 07:00:00.000Z", "2025-08-02 07:00:00.000Z"),
+        12: _sess(12, "scit", "2025-06-08 07:00:00.000Z", "2025-07-04 07:00:00.000Z"),  # summer
+        14: _sess(14, "scit", "2025-09-12 07:00:00.000Z", "2025-09-15 07:00:00.000Z"),  # fall noise
+        15: _sess(15, "tli", "2025-02-15 08:00:00.000Z", "2025-02-18 08:00:00.000Z"),  # Feb noise
+    }
+    assert resolve_cohort_session_ids(sessions, None) == {10, 16, 12}
+    assert resolve_cohort_session_ids(sessions, ["scit", "tli"]) == {12}
