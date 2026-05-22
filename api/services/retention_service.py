@@ -31,12 +31,12 @@ from api.utils.session_metrics import (
     compute_summer_metrics,
     get_person_from_expand,
     get_session_from_expand,
+    resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
 
 from .breakdown_calculator import compute_breakdown, safe_rate
 from .extractors import (
-    RETENTION_AGED_OUT_GRADE,
     exclude_aged_out_persons,
     extract_city,
     extract_gender,
@@ -44,6 +44,7 @@ from .extractors import (
     extract_school,
     extract_synagogue,
     extract_years_at_camp,
+    is_aged_out,
 )
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ class RetentionService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        include_teen_pipeline: bool = False,
     ) -> RetentionMetricsResponse:
         """Calculate retention metrics comparing two years.
 
@@ -78,6 +80,8 @@ class RetentionService:
             session_cm_id: Optional specific session ID to filter.
             duration: Optional duration category (e.g., "1-week", "2-week") to filter
                 sessions by length.
+            include_teen_pipeline: credit grade-10 campers who continue into a summer
+                teen program (the main->teen bridge).
 
         Returns:
             RetentionMetricsResponse with all breakdown metrics.
@@ -100,14 +104,28 @@ class RetentionService:
         sessions_compare_filtered = cast(dict[int, Any], _results[5])
         sessions_compare_all = cast(dict[int, Any], _results[6])
 
-        # Default to summer session types when no filter specified, so non-summer
-        # enrollments (TLI, family, training) don't count toward retention.
-        summer_types = list(DISPLAY_SESSION_TYPES)
-        effective_types = session_types if session_types is not None else summer_types
+        # Window-gated cohort cm_ids. resolve_cohort_session_ids applies type
+        # membership + the summer-window gate, so only summer teens enter the pools.
+        # session_types=None resolves to "all summer cohorts" (DISPLAY non-teen + gated teens).
+        cohort_ids_base = resolve_cohort_session_ids(sessions_base_all, session_types)
+        cohort_ids_compare = resolve_cohort_session_ids(sessions_compare_all, session_types)
+        # Unfiltered ("returned to camp at all?") pools always span the full summer cohort.
+        display_cohort_base = resolve_cohort_session_ids(sessions_base_all, None)
+        display_cohort_compare = resolve_cohort_session_ids(sessions_compare_all, None)
 
         # Resolve duration filter for both years
         duration_session_ids_base = resolve_duration_sessions(sessions_base_all, duration) if duration else None
         duration_session_ids_compare = resolve_duration_sessions(sessions_compare_all, duration) if duration else None
+
+        # Combine cohort gating with the duration restriction when present.
+        filtered_ids_base = (
+            cohort_ids_base if duration_session_ids_base is None else cohort_ids_base & duration_session_ids_base
+        )
+        filtered_ids_compare = (
+            cohort_ids_compare
+            if duration_session_ids_compare is None
+            else cohort_ids_compare & duration_session_ids_compare
+        )
 
         # Resolve session_cm_id per year via alias system. When a session is
         # renamed across years (e.g. "Session 2b" → "Taste of Camp 2"), the
@@ -117,42 +135,42 @@ class RetentionService:
             session_cm_id, sessions_base_all, sessions_compare_all
         )
 
-        # Get unique person IDs for base year, filtered by session
-        person_ids_base, _ = self._filter_base_attendees(
-            attendees_base, effective_types, base_session_cm_id, duration_session_ids_base
-        )
+        # Get unique person IDs for base year, filtered by cohort (+ specific session)
+        person_ids_base, _ = self._filter_base_attendees(attendees_base, None, base_session_cm_id, filtered_ids_base)
 
-        # Get person IDs for compare year, filtered by session type and cm_id
+        # Compare-year person IDs, filtered the same way
         person_ids_compare, _ = self._filter_base_attendees(
-            attendees_compare, effective_types, compare_session_cm_id, duration_session_ids_compare
+            attendees_compare, None, compare_session_cm_id, filtered_ids_compare
         )
 
-        # "Unfiltered" pools for session chart semantics and session flow.
-        # Still filtered to summer types (no session_cm_id filter) so non-summer
-        # enrollments don't inflate "returned" counts in heatmap/Sankey/prior-session.
-        person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, summer_types, None)
+        # "Unfiltered" pools: full summer cohort (window-gated teens included), no cm_id filter.
+        # Attendees with no resolvable session (expand missing / cm_id None) are excluded from
+        # every summer-cohort pool — they can't be classified into a cohort, so they don't count
+        # as returned-to-summer. Real fetch_attendees always expands session, so this only
+        # affects broken/missing session relations.
+        person_ids_base_unfiltered, _ = self._filter_base_attendees(attendees_base, None, None, display_cohort_base)
         person_ids_compare_unfiltered, attendee_sessions_compare = self._filter_base_attendees(
-            attendees_compare, summer_types, None
+            attendees_compare, None, None, display_cohort_compare
         )
 
-        # Exclude aged-out persons (grade >= 10) from retention base pools.
-        # These campers have no eligible session to return to, so counting them
-        # as "did not return" unfairly penalizes retention metrics.
+        # Exclude aged-out persons from retention base pools (spec §8). The flag credits
+        # the grade-10 -> teen bridge; otherwise grade 10 is aged out (legacy behavior).
         pre_filter_count = len(person_ids_base)
-        person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base)
+        person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base, include_teen_pipeline)
         aged_out_count = pre_filter_count - len(person_ids_base)
-        person_ids_base_unfiltered = exclude_aged_out_persons(person_ids_base_unfiltered, persons_base)
-        # Build set of aged-out person IDs for methods that iterate attendees directly
+        person_ids_base_unfiltered = exclude_aged_out_persons(
+            person_ids_base_unfiltered, persons_base, include_teen_pipeline
+        )
+        # Aged-out person IDs for methods that iterate attendees directly
         aged_out_person_ids = {
             pid
             for pid, person in persons_base.items()
-            if getattr(person, "grade", None) is not None
-            and int(getattr(person, "grade", 0)) >= RETENTION_AGED_OUT_GRADE
+            if is_aged_out(getattr(person, "grade", None), include_teen_pipeline)
         }
 
-        # Base year attendee sessions (filtered by session_types and base_session_cm_id) for session flow
+        # Base year attendee sessions (cohort + specific session) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(
-            attendees_base, session_types, base_session_cm_id, duration_session_ids_base
+            attendees_base, None, base_session_cm_id, filtered_ids_base
         )
 
         # Calculate returned campers
@@ -245,10 +263,9 @@ class RetentionService:
             attendees_base,
             person_ids_compare_unfiltered,
             sessions_base_all,
-            session_types,
-            base_session_cm_id,
+            session_cm_id=base_session_cm_id,
             aged_out_person_ids=aged_out_person_ids,
-            session_cm_ids=duration_session_ids_base,
+            session_cm_ids=filtered_ids_base,
         )
 
         # Session flow: Sankey diagram data showing session-to-session transitions
@@ -534,7 +551,6 @@ class RetentionService:
         attendees_base: list[Any],
         person_ids_compare: set[int],
         sessions_base_all: dict[int, Any],
-        session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         aged_out_person_ids: set[int] | None = None,
         session_cm_ids: set[int] | None = None,
@@ -542,17 +558,17 @@ class RetentionService:
         """Build session breakdown for base year (Chart 2: "Retention by 2025 Session").
 
         Shows each base year session's FULL enrollment and how many returned
-        to ANY compare year session (unfiltered). The dropdown controls which
-        prior sessions are SHOWN, not what counts as "returned".
+        to ANY compare year session (unfiltered). The session_cm_ids cohort set
+        controls which prior sessions are included (window-gated).
 
         Args:
             attendees_base: Raw base year attendee records (all types, unfiltered).
             person_ids_compare: Compare year person IDs (unfiltered).
             sessions_base_all: All base year sessions (unfiltered).
-            session_types: If set, only show prior sessions matching these types.
             session_cm_id: If set, only show the prior session with this cm_id.
             aged_out_person_ids: Person IDs to exclude (aged out of eligible sessions).
-            session_cm_ids: If set, only include attendees in these sessions (duration filter).
+            session_cm_ids: Cohort cm_id set; if set, only include attendees in these
+                sessions (window-gated + optional duration filter).
 
         Returns:
             List of RetentionByPriorSession models.
@@ -582,7 +598,7 @@ class RetentionService:
                 continue
             sid = int(raw_sid)
 
-            # Filter by duration group if specified
+            # Filter by cohort gate (window-gated + optional duration) if specified
             if session_cm_ids is not None and sid not in session_cm_ids:
                 continue
 
@@ -602,8 +618,6 @@ class RetentionService:
                 continue
             session_type = getattr(session, "session_type", None)
             if session_type not in DISPLAY_SESSION_TYPES:
-                continue
-            if session_types and session_type not in session_types:
                 continue
             if session_cm_id is not None and out_sid != session_cm_id:
                 continue

@@ -50,6 +50,7 @@ def _make_session(
     session_type: str = "main",
     parent_id: int | None = None,
     start_date: str = "2025-06-15",
+    end_date: str = "2025-07-05",
 ) -> Mock:
     s = Mock()
     s.cm_id = cm_id
@@ -57,7 +58,7 @@ def _make_session(
     s.session_type = session_type
     s.parent_id = parent_id
     s.start_date = start_date
-    s.end_date = "2025-07-05"
+    s.end_date = end_date
     return s
 
 
@@ -470,10 +471,10 @@ class TestRetentionQuestAgedOut:
 
 
 class TestRetentionComparePoolFiltering:
-    """Compare pool should only count summer session enrollments.
+    """Compare pool window-gates summer teen programs (SCIT/TLI).
 
-    Non-summer sessions (TLI, family, training) should not count as "returned"
-    in the heatmap, Sankey, or prior session charts.
+    A teen session overlapping the summer window counts as "returned".
+    A teen session outside the summer window (off-season) does NOT count.
     """
 
     @pytest.fixture
@@ -482,11 +483,12 @@ class TestRetentionComparePoolFiltering:
 
     @pytest.fixture
     def compare_session_main(self) -> Mock:
-        return _make_session(2001, "Session 2", "main", start_date="2026-06-15")
+        return _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
 
     @pytest.fixture
     def compare_session_tli(self) -> Mock:
-        return _make_session(2099, "TLI", "tli", start_date="2026-06-01")
+        # Overlaps the 2026 main window -> a summer teen program (gated IN).
+        return _make_session(2099, "TLI", "tli", start_date="2026-06-20", end_date="2026-07-10")
 
     @pytest.fixture
     def repo(self) -> AsyncMock:
@@ -514,54 +516,13 @@ class TestRetentionComparePoolFiltering:
         repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
     @pytest.mark.asyncio
-    async def test_tli_only_enrollment_not_counted_as_returned(
-        self, repo: AsyncMock, base_session: Mock, compare_session_tli: Mock
+    async def test_tli_only_enrollment_counted_as_returned(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock, compare_session_tli: Mock
     ) -> None:
-        """A 9th grader enrolled ONLY in TLI for compare year should NOT count as returned."""
-        persons = {
-            1: _make_person(1, grade=9),
-            2: _make_person(2, grade=8),
-        }
-        attendees_base = [
-            _make_attendee(1, base_session),
-            _make_attendee(2, base_session),
-        ]
-        # Person 1 only in TLI next year, person 2 not enrolled at all
+        """A 9th grader returning ONLY in a summer TLI now counts as returned (teens tracked)."""
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=8)}
+        attendees_base = [_make_attendee(1, base_session), _make_attendee(2, base_session)]
         attendees_compare = [_make_attendee(1, compare_session_tli)]
-
-        self._setup_repo_multi(
-            repo,
-            {base_session.cm_id: base_session},
-            {compare_session_tli.cm_id: compare_session_tli},
-            persons,
-            attendees_base,
-            attendees_compare,
-        )
-        svc = RetentionService(repo)
-        result = await svc.calculate_retention(2025, 2026)
-
-        # Person 1's TLI enrollment should NOT count as "returned"
-        assert result.returned_count == 0
-
-    @pytest.mark.asyncio
-    async def test_summer_plus_tli_enrollment_counted_as_returned(
-        self,
-        repo: AsyncMock,
-        base_session: Mock,
-        compare_session_main: Mock,
-        compare_session_tli: Mock,
-    ) -> None:
-        """A 9th grader in both summer + TLI should count as returned (from summer)."""
-        persons = {
-            1: _make_person(1, grade=9),
-        }
-        attendees_base = [_make_attendee(1, base_session)]
-        # Person 1 in both summer and TLI next year
-        attendees_compare = [
-            _make_attendee(1, compare_session_main),
-            _make_attendee(1, compare_session_tli),
-        ]
-
         self._setup_repo_multi(
             repo,
             {base_session.cm_id: base_session},
@@ -570,94 +531,136 @@ class TestRetentionComparePoolFiltering:
             attendees_base,
             attendees_compare,
         )
-        svc = RetentionService(repo)
-        result = await svc.calculate_retention(2025, 2026)
-
-        # Person 1 returned via summer enrollment
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
         assert result.returned_count == 1
 
     @pytest.mark.asyncio
-    async def test_tli_only_returner_shows_as_did_not_return_in_sankey(
-        self, repo: AsyncMock, base_session: Mock, compare_session_tli: Mock
+    async def test_summer_plus_tli_enrollment_counted_as_returned(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock, compare_session_tli: Mock
     ) -> None:
-        """A 9th grader who only enrolled in TLI should appear as 'Did Not Return' in Sankey."""
-        persons = {
-            1: _make_person(1, grade=9),
-        }
+        """A 9th grader in both summer main + summer TLI counts as returned (unchanged)."""
+        persons = {1: _make_person(1, grade=9)}
         attendees_base = [_make_attendee(1, base_session)]
-        # Person 1 only in TLI next year
-        attendees_compare = [_make_attendee(1, compare_session_tli)]
-
+        attendees_compare = [_make_attendee(1, compare_session_main), _make_attendee(1, compare_session_tli)]
         self._setup_repo_multi(
             repo,
             {base_session.cm_id: base_session},
-            {compare_session_tli.cm_id: compare_session_tli},
+            {compare_session_main.cm_id: compare_session_main, compare_session_tli.cm_id: compare_session_tli},
             persons,
             attendees_base,
             attendees_compare,
         )
-        svc = RetentionService(repo)
-        result = await svc.calculate_retention(2025, 2026)
-
-        # Person 1 should show as "Did Not Return" since TLI doesn't count
-        dnr_flow = [f for f in result.session_flow if f.target == "Did Not Return"]
-        assert len(dnr_flow) == 1
-        assert dnr_flow[0].value == 1
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
+        assert result.returned_count == 1
 
     @pytest.mark.asyncio
-    async def test_tli_only_not_counted_in_heatmap(
-        self, repo: AsyncMock, base_session: Mock, compare_session_tli: Mock
+    async def test_tli_returner_shows_as_flow_to_tli_not_dnr(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock, compare_session_tli: Mock
     ) -> None:
-        """Heatmap should not count TLI-only enrollment as returned."""
-        persons = {
-            1: _make_person(1, grade=9),
-        }
+        """A 9th grader returning to summer TLI flows base->TLI in the Sankey (not 'Did Not Return')."""
+        persons = {1: _make_person(1, grade=9)}
         attendees_base = [_make_attendee(1, base_session)]
         attendees_compare = [_make_attendee(1, compare_session_tli)]
-        bunk_assignments = [_make_bunk_assignment(1, base_session, "B-1")]
-
         self._setup_repo_multi(
             repo,
             {base_session.cm_id: base_session},
-            {compare_session_tli.cm_id: compare_session_tli},
+            {compare_session_main.cm_id: compare_session_main, compare_session_tli.cm_id: compare_session_tli},
+            persons,
+            attendees_base,
+            attendees_compare,
+        )
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
+        dnr_flow = [f for f in result.session_flow if f.target == "Did Not Return"]
+        assert sum(f.value for f in dnr_flow) == 0
+        tli_flow = [f for f in result.session_flow if f.target == "TLI"]
+        assert sum(f.value for f in tli_flow) == 1
+
+    @pytest.mark.asyncio
+    async def test_tli_returner_counted_in_heatmap(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock, compare_session_tli: Mock
+    ) -> None:
+        """Heatmap counts a base camper who returns to summer TLI as returned."""
+        persons = {1: _make_person(1, grade=9)}
+        attendees_base = [_make_attendee(1, base_session)]
+        attendees_compare = [_make_attendee(1, compare_session_tli)]
+        bunk_assignments = [_make_bunk_assignment(1, base_session, "B-1")]
+        self._setup_repo_multi(
+            repo,
+            {base_session.cm_id: base_session},
+            {compare_session_main.cm_id: compare_session_main, compare_session_tli.cm_id: compare_session_tli},
             persons,
             attendees_base,
             attendees_compare,
             bunk_assignments,
         )
-        svc = RetentionService(repo)
-        result = await svc.calculate_retention(2025, 2026)
-
-        # Heatmap: person 1 in B-1 but NOT returned (TLI doesn't count)
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
         bunk = next((b for b in result.by_session_bunk if b.bunk == "B-1"), None)
         assert bunk is not None
         assert bunk.base_count == 1
-        assert bunk.returned_count == 0
+        assert bunk.returned_count == 1
 
     @pytest.mark.asyncio
-    async def test_tli_only_not_counted_in_prior_session(
-        self, repo: AsyncMock, base_session: Mock, compare_session_tli: Mock
+    async def test_tli_returner_counted_in_prior_session(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock, compare_session_tli: Mock
     ) -> None:
-        """Prior session chart should not count TLI-only enrollment as returned."""
-        persons = {
-            1: _make_person(1, grade=9),
-        }
+        """Prior-session chart counts a base camper who returns to summer TLI as returned."""
+        persons = {1: _make_person(1, grade=9)}
         attendees_base = [_make_attendee(1, base_session)]
         attendees_compare = [_make_attendee(1, compare_session_tli)]
-
         self._setup_repo_multi(
             repo,
             {base_session.cm_id: base_session},
-            {compare_session_tli.cm_id: compare_session_tli},
+            {compare_session_main.cm_id: compare_session_main, compare_session_tli.cm_id: compare_session_tli},
             persons,
             attendees_base,
             attendees_compare,
         )
-        svc = RetentionService(repo)
-        result = await svc.calculate_retention(2025, 2026)
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
+        assert result.by_prior_session, "expected a prior-session row"
+        prior = result.by_prior_session[0]
+        assert prior.base_count == 1
+        assert prior.returned_count == 1
 
-        # Prior session: person 1 in base but NOT returned via summer
-        if result.by_prior_session:
-            prior = result.by_prior_session[0]
-            assert prior.base_count == 1
-            assert prior.returned_count == 0
+    @pytest.mark.asyncio
+    async def test_prior_session_breakdown_respects_session_types_scope(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock
+    ) -> None:
+        """Prior-session chart shows ONLY the user's selected session types (dropdown scoping)."""
+        base_quest = _make_session(1010, "Quest Adventure", "quest")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=9)}
+        attendees_base = [_make_attendee(1, base_session), _make_attendee(2, base_quest)]
+        attendees_compare = [
+            _make_attendee(1, compare_session_main),
+            _make_attendee(2, compare_session_main),
+        ]
+        self._setup_repo_multi(
+            repo,
+            {base_session.cm_id: base_session, base_quest.cm_id: base_quest},
+            {compare_session_main.cm_id: compare_session_main},
+            persons,
+            attendees_base,
+            attendees_compare,
+        )
+        result = await RetentionService(repo).calculate_retention(2025, 2026, session_types=["main"])
+        prior_names = {p.prior_session for p in result.by_prior_session}
+        assert prior_names == {"Session 2"}  # quest excluded by the session_types scope
+
+    @pytest.mark.asyncio
+    async def test_offseason_teen_return_not_counted(
+        self, repo: AsyncMock, base_session: Mock, compare_session_main: Mock
+    ) -> None:
+        """A return into a fall Family-Camp CIT (scit, outside summer window) does NOT count."""
+        fall_cit = _make_session(2098, "Family Camp 5 CIT", "scit", start_date="2026-09-12", end_date="2026-09-15")
+        persons = {1: _make_person(1, grade=9)}
+        attendees_base = [_make_attendee(1, base_session)]
+        attendees_compare = [_make_attendee(1, fall_cit)]
+        self._setup_repo_multi(
+            repo,
+            {base_session.cm_id: base_session},
+            {compare_session_main.cm_id: compare_session_main, fall_cit.cm_id: fall_cit},
+            persons,
+            attendees_base,
+            attendees_compare,
+        )
+        result = await RetentionService(repo).calculate_retention(2025, 2026)
+        assert result.returned_count == 0

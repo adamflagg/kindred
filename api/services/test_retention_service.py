@@ -142,10 +142,26 @@ class TestRetentionServiceCalculateRetention:
             ],
             # Compare year attendees (persons 1, 2, 4 returned)
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
-                MockAttendee(person_id=2, year=2026, expand={}),
-                MockAttendee(person_id=4, year=2026, expand={}),
-                MockAttendee(person_id=6, year=2026, expand={}),  # New camper
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=2,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1000, name="Session 1", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=4,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
+                ),
+                MockAttendee(
+                    person_id=6,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1001, name="Session 2", session_type="main")},
+                ),  # New camper
             ],
         ]
 
@@ -212,9 +228,15 @@ class TestRetentionServiceCalculateRetention:
                 ),
             ],
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
-                MockAttendee(person_id=3, year=2026, expand={}),
-                MockAttendee(person_id=4, year=2026, expand={}),
+                MockAttendee(
+                    person_id=1, year=2026, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=3, year=2026, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
+                MockAttendee(
+                    person_id=4, year=2026, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}
+                ),
             ],
         ]
 
@@ -294,6 +316,8 @@ class TestRetentionServiceCalculateRetention:
 
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="Session 1", session_type="main"),
+            # Person 1 returns in a 2026 main session (CampMinder mints new cm_ids per year)
+            2000: MockSession(cm_id=2000, name="Session 1", session_type="main"),
         }
         mock_repo.fetch_bunk_assignments.return_value = []
         mock_repo.fetch_summer_enrollment_history.return_value = []
@@ -1799,8 +1823,8 @@ class TestSessionBunkBreakdownFromBunkAssignments:
                 MockAttendee(person_id=3, year=2025, expand={"session": session1}),
             ],
             [
-                MockAttendee(person_id=1, year=2026, expand={}),
-                MockAttendee(person_id=2, year=2026, expand={}),
+                MockAttendee(person_id=1, year=2026, expand={"session": session1}),
+                MockAttendee(person_id=2, year=2026, expand={"session": session1}),
             ],
         ]
 
@@ -1940,7 +1964,13 @@ class TestDemographicBreakdownsFromPersons:
                     expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
                 ),
             ],
-            [MockAttendee(person_id=1, year=2026, expand={})],
+            [
+                MockAttendee(
+                    person_id=1,
+                    year=2026,
+                    expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")},
+                )
+            ],
         ]
 
         mock_repo.fetch_persons.return_value = {
