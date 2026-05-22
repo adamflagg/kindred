@@ -35,16 +35,12 @@ export const QUEST_SESSION_TYPES = ['quest'] as const
 /** Teen program session types */
 export const TEEN_PROGRAM_TYPES = ['scit', 'tli'] as const
 
-/** Curated set shown in a camper's journey timeline: summer + teen + family. */
-export const CAMPER_JOURNEY_TYPES = [
-  'main',
-  'embedded',
-  'ag',
-  'quest',
-  'scit',
-  'tli',
-  'family',
-] as const
+/**
+ * Curated set shown in a camper's journey timeline: summer + teen, no family —
+ * mirrors what's visible on the All Campers page and metrics. (Family camp made
+ * the journey noisy for multi-session staff kids; intentionally excluded.)
+ */
+export const CAMPER_JOURNEY_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const
 
 /** Curated set driving a camper detail page's current-year fetch: summer + teen, no family. */
 export const CAMPER_DETAIL_TYPES = ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'] as const

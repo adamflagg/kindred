@@ -79,7 +79,7 @@ describe('fetchCamperJourney', () => {
     expect(filter).toContain(`person_id = ${PERSON}`)
     expect(filter).toContain(`year < ${CURRENT_YEAR}`)
     expect(filter).toContain('status = "enrolled"')
-    expect(filter).toContain('session.session_type = "family"')
+    expect(filter).not.toContain('"family"') // family excluded — journey mirrors All Campers
     expect(filter).toContain('session.session_type = "scit"')
   })
 

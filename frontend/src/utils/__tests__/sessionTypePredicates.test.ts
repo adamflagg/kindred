@@ -492,16 +492,9 @@ describe('teen cohort', () => {
 })
 
 describe('camper journey/detail session-type sets', () => {
-  it('CAMPER_JOURNEY_TYPES is summer + teen + family', () => {
-    expect(CAMPER_JOURNEY_TYPES).toEqual([
-      'main',
-      'embedded',
-      'ag',
-      'quest',
-      'scit',
-      'tli',
-      'family',
-    ])
+  it('CAMPER_JOURNEY_TYPES is summer + teen, no family (mirrors All Campers / metrics)', () => {
+    expect(CAMPER_JOURNEY_TYPES).toEqual(['main', 'embedded', 'ag', 'quest', 'scit', 'tli'])
+    expect(CAMPER_JOURNEY_TYPES).not.toContain('family')
   })
 
   it('CAMPER_DETAIL_TYPES is summer + teen, no family', () => {
@@ -513,6 +506,7 @@ describe('camper journey/detail session-type sets', () => {
     const f = buildCamperJourneySessionTypeFilter()
     for (const t of CAMPER_JOURNEY_TYPES) expect(f).toContain(`session.session_type = "${t}"`)
     expect(f).toContain('||')
+    expect(f).not.toContain('"family"') // family is excluded from the journey
     expect(f.startsWith('(')).toBe(false) // caller wraps, matching buildSummerSessionTypeFilter
   })
 
