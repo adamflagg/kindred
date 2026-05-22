@@ -10,7 +10,12 @@ import {
   buildSessionTypeLookup,
   sortSessionDataByCampThenQuest,
 } from '../../../utils/sessionUtils'
-import { isMainOrEmbedded, isAgSession, isQuestSession } from '../../../utils/sessionTypePredicates'
+import {
+  isMainOrEmbedded,
+  isAgSession,
+  isQuestSession,
+  isTeenProgram,
+} from '../../../utils/sessionTypePredicates'
 import { shortenSessionName } from '../../../utils/sessionDisplay'
 import { buildForecastSections } from '../../../utils/forecastUtils'
 import { resolveWeekOffset } from '../../../utils/resolveWeekOffset'
@@ -198,6 +203,8 @@ export default function ForecastPage() {
   }, [allSessions])
   const questSessions = useMemo(() => allSessions.filter(isQuestSession), [allSessions])
 
+  const teenSessions = useMemo(() => (data ? data.sessions.filter(isTeenProgram) : []), [data])
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -228,7 +235,7 @@ export default function ForecastPage() {
 
   const { grand_total } = data
 
-  const sections = buildForecastSections(campSessions, questSessions)
+  const sections = buildForecastSections(campSessions, questSessions, teenSessions)
   const showSectionHeadings = sections.length >= 2
   const showGrandTotal = sections.length >= 2 && selectedSessionCmId === null
 
@@ -282,7 +289,7 @@ export default function ForecastPage() {
                   <ForecastTableHeader />
                   <tbody>
                     {section.sessions.map((s) => (
-                      <SessionRow key={s.session_cm_id} session={s} />
+                      <SessionRow key={`${s.session_type}-${s.session_cm_id}`} session={s} />
                     ))}
                   </tbody>
                   {showSectionTotal && (
