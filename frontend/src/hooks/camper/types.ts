@@ -9,7 +9,8 @@ export interface HistoricalRecord {
   year: number
   sessionName: string
   sessionType: string
-  bunkName: string
+  /** Bunk/day-group name. Absent when the enrolled session had no bunk assignment. */
+  bunkName?: string
   startDate?: string
   endDate?: string
   /** Non-enrolled status (e.g. 'waitlisted', 'cancelled'). Absent for enrolled records. */
