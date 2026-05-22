@@ -17,6 +17,9 @@ import {
   isMainSession,
   isEmbeddedSession,
   isAtCampSession,
+  isTeenProgram,
+  getSummerWindow,
+  isSummerTeenSession,
 } from './sessionTypePredicates'
 
 // Export type alias for sessions with type information
@@ -49,15 +52,14 @@ export function filterSummerCampBunks(
 /**
  * Get sessions for the dropdown in AllCampers view
  * - Includes: main, embedded, quest sessions
- * - Excludes: AG (grouped with parent), family, training, etc.
- * - Embedded and quest sessions are independent entries (not grouped with main)
+ * - Includes: scit/tli teen sessions that overlap the summer main-session window
+ * - Excludes: AG (grouped with parent), family, training, off-season teen sessions, etc.
+ * - Embedded, quest, and teen sessions are independent entries (not grouped with main)
  */
 export function getDropdownSessions(sessions: Session[]): Session[] {
-  // Filter to only dropdown-eligible session types
-  const filteredSessions = sessions.filter(isInDropdown)
-
-  // Sort using shared utility (date primary, then session number+suffix)
-  return sortSessionsByDate(filteredSessions)
+  const window = getSummerWindow(sessions)
+  const filtered = sessions.filter((s) => isInDropdown(s) || isSummerTeenSession(s, window))
+  return sortSessionsByDate(filtered)
 }
 
 /**
@@ -106,6 +108,9 @@ export function getSessionRelationshipsForCamperView(
     } else if (isQuestSession(session)) {
       // Quest sessions are independent - only include themselves
       relationships.set(session.id, [session.id])
+    } else if (isTeenProgram(session)) {
+      // Teen sessions are independent - only include themselves
+      relationships.set(session.id, [session.id])
     }
   })
 
@@ -121,13 +126,15 @@ export function getSessionRelationshipsForCamperView(
 //              included in the camper-filter even though AG never appears in
 //              dropdownSessions itself)
 // 'quests'   → quest only
+// 'teens'    → scit + tli (summer-window-gated teen programs only)
 //
 // resolveScopedSessions returns the dropdown-level scope list for the headline
 // noun. Camper-level filtering in AllCampersView walks sessionRelationships
-// for AT_CAMP / QUESTS so AG inclusion comes from a single source of truth.
+// for AT_CAMP / QUESTS / TEENS so AG inclusion comes from a single source of truth.
 export const FILTER_ALL = 'all'
 export const FILTER_AT_CAMP = 'at-camp'
 export const FILTER_QUESTS = 'quests'
+export const FILTER_TEENS = 'teens'
 
 /**
  * Split an already-filtered dropdown session list into camp sessions
@@ -163,6 +170,9 @@ export function resolveScopedSessions(filterValue: string, dropdownSessions: Ses
   if (filterValue === FILTER_QUESTS) {
     return dropdownSessions.filter(isQuestSession)
   }
+  if (filterValue === FILTER_TEENS) {
+    return dropdownSessions.filter(isTeenProgram)
+  }
   // Specific session ID
   const match = dropdownSessions.find((s) => s.id === filterValue)
   return match ? [match] : []
@@ -172,10 +182,12 @@ export function resolveScopedSessions(filterValue: string, dropdownSessions: Ses
  * Return the collective noun for the /campers page header based on which
  * session types are represented in `sessions`.
  *
- * Rules (spec #5):
+ * Rules (spec #5 + #10):
  *   - At-camp only (main / embedded / ag)  → "camper" / "campers"
  *   - Quest only                            → "quester" / "questers"
- *   - Mixed at-camp + quest                 → "camper and quester" / "campers and questers"
+ *   - Teen only (scit / tli)                → "teen" / "teens"
+ *   - Mixed two cohorts                     → Oxford "X and Y"
+ *   - All three cohorts                     → Oxford "campers, questers, and teens"
  *
  * `count` controls singular vs plural.
  * Only collective count nouns are affected; individual-referring copy
@@ -183,16 +195,14 @@ export function resolveScopedSessions(filterValue: string, dropdownSessions: Ses
  */
 export function getCampersHeadlineNoun(sessions: Session[], count: number): string {
   const plural = count !== 1
+  const parts: string[] = []
 
-  const hasAtCamp = sessions.some(isAtCampSession)
-  const hasQuest = sessions.some(isQuestSession)
+  if (sessions.some(isAtCampSession)) parts.push(plural ? 'campers' : 'camper')
+  if (sessions.some(isQuestSession)) parts.push(plural ? 'questers' : 'quester')
+  if (sessions.some(isTeenProgram)) parts.push(plural ? 'teens' : 'teen')
 
-  if (hasAtCamp && hasQuest) {
-    return plural ? 'campers and questers' : 'camper and quester'
-  }
-  if (hasQuest) {
-    return plural ? 'questers' : 'quester'
-  }
-  // Default: at-camp only (or empty list — fall back to "campers")
-  return plural ? 'campers' : 'camper'
+  if (parts.length === 0 || parts[0] === undefined) return plural ? 'campers' : 'camper'
+  if (parts.length === 1) return parts[0]
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`
+  return `${parts[0]}, ${parts[1]}, and ${parts[2]}`
 }
