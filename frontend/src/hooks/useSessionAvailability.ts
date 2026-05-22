@@ -45,9 +45,24 @@ export interface AGSessionAvailabilityData {
   waitlisted_persons: WaitlistedPerson[]
 }
 
+export interface TeenSessionAvailabilityData {
+  session_cm_id: number
+  session_name: string
+  session_type: string
+  min_grade: number | null
+  max_grade: number | null
+  enrolled: number
+  waitlisted: number
+  capacity: number | null
+  status: 'open' | 'limited' | 'full'
+  waitlisted_by_grade: Record<number, number>
+  waitlisted_persons: WaitlistedPerson[]
+}
+
 export interface SessionAvailabilityResponse {
   sessions: SessionAvailabilityData[]
   ag_sessions: AGSessionAvailabilityData[]
+  teen_sessions: TeenSessionAvailabilityData[]
   limited_threshold: number
 }
 

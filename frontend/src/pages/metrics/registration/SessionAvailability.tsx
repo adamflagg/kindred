@@ -5,6 +5,7 @@ import {
   useSessionAvailability,
   type SessionAvailabilityData,
   type AGSessionAvailabilityData,
+  type TeenSessionAvailabilityData,
   type WaitlistedPerson,
 } from '../../../hooks/useSessionAvailability'
 import { splitCampAndQuest } from '../../../utils/sessionUtils'
@@ -176,6 +177,82 @@ function AGSessionRow({
   onCellClick,
 }: {
   session: AGSessionAvailabilityData
+} & WaitlistHandlers) {
+  const hasWaitlist = session.waitlisted > 0
+
+  return (
+    <>
+      {GRADES.map((g) => {
+        const status = statusForGrade(
+          { min_grade: session.min_grade, max_grade: session.max_grade, status: session.status },
+          g
+        )
+        const wlCount = session.waitlisted_by_grade[g] ?? 0
+        return (
+          <td
+            key={g}
+            className={[cellClass(status), wlCount > 0 && 'cursor-pointer']
+              .filter(Boolean)
+              .join(' ')}
+            onMouseEnter={
+              wlCount > 0 ? (e) => onHover?.(e, wlCount, '', [], `(${gradeLabel(g)})`) : undefined
+            }
+            onMouseMove={wlCount > 0 ? (e) => onMove?.(e) : undefined}
+            onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
+            onClick={
+              wlCount > 0
+                ? () =>
+                    onCellClick?.(
+                      session.session_cm_id,
+                      session.session_name,
+                      '',
+                      '',
+                      session.waitlisted,
+                      g
+                    )
+                : undefined
+            }
+          >
+            {wlCount > 0 ? (
+              <span className="text-[10px] font-bold text-amber-800 dark:text-amber-400">
+                {wlCount}
+              </span>
+            ) : (
+              <CellContent status={status} />
+            )}
+          </td>
+        )
+      })}
+      {/* WL pill column */}
+      <td className="border-border/50 min-w-[2.5rem] border px-2 py-2 text-center">
+        {hasWaitlist ? (
+          <span
+            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-amber-400 bg-amber-50 px-1.5 text-[10px] font-bold text-amber-800 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+            onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
+            onMouseMove={(e) => onMove?.(e)}
+            onMouseLeave={() => onLeave?.()}
+            onClick={() =>
+              onCellClick?.(session.session_cm_id, session.session_name, '', '', session.waitlisted)
+            }
+          >
+            {session.waitlisted}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">&mdash;</span>
+        )}
+      </td>
+    </>
+  )
+}
+
+function TeenSessionRow({
+  session,
+  onHover,
+  onMove,
+  onLeave,
+  onCellClick,
+}: {
+  session: TeenSessionAvailabilityData
 } & WaitlistHandlers) {
   const hasWaitlist = session.waitlisted > 0
 
@@ -460,7 +537,11 @@ export default function SessionAvailability() {
       emptyMessage="No availability data for the selected filters"
     >
       {(guardedData) => {
-        if (guardedData.sessions.length === 0 && guardedData.ag_sessions.length === 0) {
+        if (
+          guardedData.sessions.length === 0 &&
+          guardedData.ag_sessions.length === 0 &&
+          guardedData.teen_sessions.length === 0
+        ) {
           return (
             <div className="text-muted-foreground flex items-center justify-center py-12">
               No availability data for the selected filters
@@ -469,6 +550,7 @@ export default function SessionAvailability() {
         }
 
         const { ag_sessions } = guardedData
+        const teenSessions = guardedData.teen_sessions
 
         return (
           <div className="space-y-6">
@@ -519,6 +601,47 @@ export default function SessionAvailability() {
                                 {session.session_name}
                               </td>
                               <AGSessionRow session={session} {...waitlistHandlers} />
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Teen Programs (SCIT / TLI) */}
+                {teenSessions.length > 0 && (
+                  <div>
+                    <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
+                      Teen Programs
+                    </h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-separate border-spacing-0 text-xs">
+                        <thead>
+                          <tr>
+                            <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
+                              Session
+                            </th>
+                            {GRADES.map((g) => (
+                              <th
+                                key={g}
+                                className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20"
+                              >
+                                {gradeLabel(g)}
+                              </th>
+                            ))}
+                            <th className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20">
+                              WL
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {teenSessions.map((session) => (
+                            <tr key={`${session.session_type}-${session.session_cm_id}`}>
+                              <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
+                                {session.session_name}
+                              </td>
+                              <TeenSessionRow session={session} {...waitlistHandlers} />
                             </tr>
                           ))}
                         </tbody>
