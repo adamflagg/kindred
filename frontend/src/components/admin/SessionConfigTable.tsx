@@ -8,7 +8,12 @@ import { useCurrentYear } from '../../hooks/useCurrentYear'
 import { useAdminSessions } from '../../hooks/useAdminSessions'
 import { queryKeys, userDataOptions } from '../../utils/queryKeys'
 import type { ConfigRecord } from '../../types/pocketbase-types'
-import { isQuestSession, isAgSession } from '../../utils/sessionTypePredicates'
+import {
+  isQuestSession,
+  isAgSession,
+  isTeenProgram,
+  isTeenProgramType,
+} from '../../utils/sessionTypePredicates'
 
 interface GradeConfig {
   min_grade: number | null
@@ -22,6 +27,7 @@ interface BudgetValue {
 }
 
 interface SessionRow {
+  rowKey: string // 'session_<cmId>' for normal rows, 'type_<sType>' for teen rows
   cm_id: number
   name: string
   session_type: string
@@ -33,6 +39,8 @@ interface SessionRow {
 }
 
 const DEFAULT_THRESHOLD = 80
+
+const TEEN_DISPLAY_NAMES: Record<string, string> = { scit: 'SCIT', tli: 'TLI' }
 
 function useGradeConfig(year: number) {
   return useQuery({
@@ -109,6 +117,7 @@ export function SessionConfigTable() {
       if (!sessionData) return []
 
       const result: SessionRow[] = []
+      const teenTypesSeen = new Set<string>()
 
       for (const s of sessionData) {
         const rec = s as Record<string, unknown>
@@ -116,13 +125,35 @@ export function SessionConfigTable() {
         const name = rec['name'] as string
         const sType = rec['session_type'] as string
 
+        // Teen programs collapse to one row per type, keyed on `type_<sType>`.
+        if (isTeenProgramType(sType)) {
+          if (teenTypesSeen.has(sType)) continue
+          teenTypesSeen.add(sType)
+
+          const budgetRec = budgetData?.find((r) => r.config_key === `type_${sType}`)
+          const budgetVal = budgetRec?.value as BudgetValue | null
+
+          result.push({
+            rowKey: `type_${sType}`,
+            cm_id: 0,
+            name: TEEN_DISPLAY_NAMES[sType] ?? sType.toUpperCase(),
+            session_type: sType,
+            min_grade: null,
+            max_grade: null,
+            capacity_override: null,
+            participant_goal: budgetVal?.participant_goal ?? null,
+            session_fee: budgetVal?.session_fee ?? null,
+          })
+          continue
+        }
+
         const gradeRec = gradeData?.find((r) => r.config_key === String(cmId))
         const gradeVal = gradeRec?.value as GradeConfig | null
-
         const budgetRec = budgetData?.find((r) => r.config_key === `session_${cmId}`)
         const budgetVal = budgetRec?.value as BudgetValue | null
 
         result.push({
+          rowKey: `session_${cmId}`,
           cm_id: cmId,
           name,
           session_type: sType,
@@ -155,10 +186,10 @@ export function SessionConfigTable() {
     | 'participant_goal'
     | 'session_fee'
 
-  const handleChange = (cmId: number, field: EditableField, value: string) => {
+  const handleChange = (rowKey: string, field: EditableField, value: string) => {
     setRows((prev) =>
       prev.map((r) =>
-        r.cm_id === cmId ? { ...r, [field]: value === '' ? null : Number(value) } : r
+        r.rowKey === rowKey ? { ...r, [field]: value === '' ? null : Number(value) } : r
       )
     )
   }
@@ -166,7 +197,7 @@ export function SessionConfigTable() {
   const hasChanges = useMemo(() => {
     const origRows = buildRows(sessions, gradeRecords, budgetRecords)
     const rowsChanged = rows.some((r) => {
-      const orig = origRows.find((o) => o.cm_id === r.cm_id)
+      const orig = origRows.find((o) => o.rowKey === r.rowKey)
       return (
         r.min_grade !== orig?.min_grade ||
         r.max_grade !== orig?.max_grade ||
@@ -185,6 +216,7 @@ export function SessionConfigTable() {
     try {
       // Save grade eligibility config
       for (const row of rows) {
+        if (isTeenProgramType(row.session_type)) continue // teens have no grade config
         const existingGrade = gradeRecords?.find((r) => r.config_key === String(row.cm_id))
 
         // Skip rows with no grade values set
@@ -229,15 +261,17 @@ export function SessionConfigTable() {
 
       // Save budget config
       for (const row of rows) {
-        const existingBudget = budgetRecords?.find((r) => r.config_key === `session_${row.cm_id}`)
+        const budgetKey = isTeenProgramType(row.session_type)
+          ? `type_${row.session_type}`
+          : `session_${row.cm_id}`
+        const existingBudget = budgetRecords?.find((r) => r.config_key === budgetKey)
 
-        // Skip rows with no budget values set
         if (row.participant_goal === null && row.session_fee === null && !existingBudget) continue
 
         const budgetPayload = {
           category: 'budget',
           subcategory: String(currentYear),
-          config_key: `session_${row.cm_id}`,
+          config_key: budgetKey,
           value: {
             participant_goal: row.participant_goal,
             session_fee: row.session_fee,
@@ -288,81 +322,96 @@ export function SessionConfigTable() {
     )
   }
 
-  const mainRows = rows.filter((r) => !isQuestSession(r) && !isAgSession(r))
+  const mainRows = rows.filter((r) => !isQuestSession(r) && !isAgSession(r) && !isTeenProgram(r))
   const questRows = rows.filter(isQuestSession)
   const agRows = rows.filter(isAgSession)
+  const teenRows = rows.filter(isTeenProgram)
 
-  const renderRow = (row: SessionRow) => (
-    <tr key={row.cm_id} className="border-border border-b">
-      <th scope="row" id={`session-${row.cm_id}`} className="py-2 pr-4 text-left font-medium">
-        {row.name}
-      </th>
-      <td className="px-2 py-2">
-        <select
-          value={row.min_grade ?? ''}
-          onChange={(e) => handleChange(row.cm_id, 'min_grade', e.target.value)}
-          aria-labelledby={`session-${row.cm_id} col-min-grade`}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
-        >
-          <option value="" />
-          {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
-            <option key={g} value={g}>
-              {formatGradeOrdinal(g)}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-2">
-        <select
-          value={row.max_grade ?? ''}
-          onChange={(e) => handleChange(row.cm_id, 'max_grade', e.target.value)}
-          aria-labelledby={`session-${row.cm_id} col-max-grade`}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
-        >
-          <option value="" />
-          {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
-            <option key={g} value={g}>
-              {formatGradeOrdinal(g)}
-            </option>
-          ))}
-        </select>
-      </td>
-      <td className="px-2 py-2">
-        <input
-          type="number"
-          min={0}
-          value={row.capacity_override ?? ''}
-          onChange={(e) => handleChange(row.cm_id, 'capacity_override', e.target.value)}
-          aria-labelledby={`session-${row.cm_id} col-cap-override`}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
-        />
-      </td>
-      <td className="px-2 py-2">
-        <input
-          type="number"
-          min={0}
-          value={row.participant_goal ?? ''}
-          onChange={(e) => handleChange(row.cm_id, 'participant_goal', e.target.value)}
-          aria-labelledby={`session-${row.cm_id} col-participant-goal`}
-          className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
-        />
-      </td>
-      <td className="px-2 py-2">
-        <div className="flex items-center justify-center gap-1">
-          <span className="text-muted-foreground text-sm">$</span>
+  const renderRow = (row: SessionRow) => {
+    const isTeen = isTeenProgramType(row.session_type)
+    const idBase = isTeen ? `session-${row.rowKey}` : `session-${row.cm_id}`
+    return (
+      <tr key={row.rowKey} className="border-border border-b">
+        <th scope="row" id={idBase} className="py-2 pr-4 text-left font-medium">
+          {row.name}
+        </th>
+        {isTeen ? (
+          <>
+            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
+            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
+            <td className="text-muted-foreground px-2 py-2 text-center">—</td>
+          </>
+        ) : (
+          <>
+            <td className="px-2 py-2">
+              <select
+                value={row.min_grade ?? ''}
+                onChange={(e) => handleChange(row.rowKey, 'min_grade', e.target.value)}
+                aria-labelledby={`${idBase} col-min-grade`}
+                className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+              >
+                <option value="" />
+                {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+                  <option key={g} value={g}>
+                    {formatGradeOrdinal(g)}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td className="px-2 py-2">
+              <select
+                value={row.max_grade ?? ''}
+                onChange={(e) => handleChange(row.rowKey, 'max_grade', e.target.value)}
+                aria-labelledby={`${idBase} col-max-grade`}
+                className="bg-muted/30 dark:bg-muted/50 border-border w-20 rounded border px-1 py-1 text-center text-sm"
+              >
+                <option value="" />
+                {Array.from({ length: 11 }, (_, i) => i + 2).map((g) => (
+                  <option key={g} value={g}>
+                    {formatGradeOrdinal(g)}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td className="px-2 py-2">
+              <input
+                type="number"
+                min={0}
+                value={row.capacity_override ?? ''}
+                onChange={(e) => handleChange(row.rowKey, 'capacity_override', e.target.value)}
+                aria-labelledby={`${idBase} col-cap-override`}
+                className="bg-muted/30 dark:bg-muted/50 border-border w-16 rounded border px-2 py-1 text-center text-sm"
+              />
+            </td>
+          </>
+        )}
+        <td className="px-2 py-2">
           <input
             type="number"
             min={0}
-            step={0.01}
-            value={row.session_fee ?? ''}
-            onChange={(e) => handleChange(row.cm_id, 'session_fee', e.target.value)}
-            aria-labelledby={`session-${row.cm_id} col-session-fee`}
+            value={row.participant_goal ?? ''}
+            onChange={(e) => handleChange(row.rowKey, 'participant_goal', e.target.value)}
+            aria-labelledby={`${idBase} col-participant-goal`}
             className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
           />
-        </div>
-      </td>
-    </tr>
-  )
+        </td>
+        <td className="px-2 py-2">
+          <div className="flex items-center justify-center gap-1">
+            <span className="text-muted-foreground text-sm">$</span>
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={row.session_fee ?? ''}
+              onChange={(e) => handleChange(row.rowKey, 'session_fee', e.target.value)}
+              aria-labelledby={`${idBase} col-session-fee`}
+              className="bg-muted/30 dark:bg-muted/50 border-border w-24 rounded border px-2 py-1 text-center text-sm"
+            />
+          </div>
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <div className="border-border mt-6 rounded-xl border p-4 sm:p-6">
@@ -439,6 +488,17 @@ export function SessionConfigTable() {
               </tr>
             )}
             {agRows.map(renderRow)}
+            {teenRows.length > 0 && (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="text-muted-foreground pt-4 pb-2 text-sm font-semibold uppercase"
+                >
+                  Teen Programs
+                </td>
+              </tr>
+            )}
+            {teenRows.map(renderRow)}
           </tbody>
         </table>
       </div>
