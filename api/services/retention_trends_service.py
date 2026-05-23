@@ -27,7 +27,6 @@ from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     filter_attendees_by_session,
-    get_session_from_expand,
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
@@ -92,7 +91,7 @@ class RetentionTrendsService:
         effective_pipeline = include_teen_pipeline and scope_has_teens
 
         # Fetch data for all years in parallel
-        data_by_year = await self._fetch_all_years_data(years, session_types)
+        data_by_year = await self._fetch_all_years_data(years)
 
         # Apply filters to attendees using cohort-id gating.
         # resolve_cohort_session_ids handles type membership AND the summer-window
@@ -154,13 +153,11 @@ class RetentionTrendsService:
     async def _fetch_all_years_data(
         self,
         years: list[int],
-        session_types: list[str] | None,
     ) -> dict[int, dict[str, Any]]:
         """Fetch all data for the specified years.
 
         Args:
             years: List of years to fetch data for.
-            session_types: Optional session types filter.
 
         Returns:
             Dictionary mapping year to data (attendees, persons, sessions).
@@ -193,48 +190,6 @@ class RetentionTrendsService:
             }
 
         return data_by_year
-
-    def _filter_by_session_type(
-        self,
-        attendees: list[Any],
-        session_types: list[str],
-    ) -> list[Any]:
-        """Filter attendees by session type.
-
-        Args:
-            attendees: List of attendees.
-            session_types: Session types to include.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if session and getattr(session, "session_type", None) in session_types:
-                filtered.append(a)
-        return filtered
-
-    def _filter_by_session_cm_id(
-        self,
-        attendees: list[Any],
-        session_cm_id: int,
-    ) -> list[Any]:
-        """Filter attendees by specific session cm_id.
-
-        Args:
-            attendees: List of attendees.
-            session_cm_id: Session cm_id to filter by.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if session and getattr(session, "cm_id", None) == session_cm_id:
-                filtered.append(a)
-        return filtered
 
     def _calculate_retention_transitions(
         self,
