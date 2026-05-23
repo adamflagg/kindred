@@ -94,23 +94,27 @@ class RetentionTrendsService:
         # Fetch data for all years in parallel
         data_by_year = await self._fetch_all_years_data(years, session_types)
 
-        # Apply filters to attendees
+        # Apply filters to attendees using cohort-id gating.
+        # resolve_cohort_session_ids handles type membership AND the summer-window
+        # gate for teen types (scit/tli), so off-season teen sessions are excluded.
         for year in years:
             year_data = data_by_year[year]
             attendees = year_data["attendees"]
+            sessions = year_data["sessions"]
 
-            # Filter by session type
-            if session_types:
-                attendees = self._filter_by_session_type(attendees, session_types)
+            # Resolve the cohort session IDs (summer-window-gated for teen types).
+            cohort_ids = resolve_cohort_session_ids(sessions, session_types)
 
-            # Filter by specific session ID
+            # Further restrict to a specific session if requested.
             if session_cm_id is not None:
-                attendees = self._filter_by_session_cm_id(attendees, session_cm_id)
+                cohort_ids = {cid for cid in cohort_ids if cid == session_cm_id}
 
-            # Filter by duration category
+            # Intersect with duration filter when present.
             if duration:
-                duration_session_ids = resolve_duration_sessions(year_data["sessions"], duration)
-                attendees = filter_attendees_by_session(attendees, None, session_cm_ids=duration_session_ids)
+                duration_session_ids = resolve_duration_sessions(sessions, duration)
+                cohort_ids = cohort_ids & duration_session_ids
+
+            attendees = filter_attendees_by_session(attendees, None, session_cm_ids=cohort_ids)
 
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees
@@ -161,12 +165,16 @@ class RetentionTrendsService:
         Returns:
             Dictionary mapping year to data (attendees, persons, sessions).
         """
-        # Build fetch tasks for all years
+        # Build fetch tasks for all years.
+        # Always fetch ALL sessions (None = no type filter) so that
+        # resolve_cohort_session_ids can derive the summer window from main
+        # sessions even in a teen-only scope.  Type filtering is done later
+        # via resolve_cohort_session_ids(sessions, session_types).
         fetch_tasks: list[Any] = []
         for year in years:
             fetch_tasks.append(self.repo.fetch_attendees(year))
             fetch_tasks.append(self.repo.fetch_persons(year))
-            fetch_tasks.append(self.repo.fetch_sessions(year, session_types))
+            fetch_tasks.append(self.repo.fetch_sessions(year, None))
 
         results = await asyncio.gather(*fetch_tasks)
 
