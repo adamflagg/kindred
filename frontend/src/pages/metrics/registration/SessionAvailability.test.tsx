@@ -205,6 +205,39 @@ describe('SessionAvailability', () => {
     expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
   })
 
+  it('shortens raw AG cabin names to "AG Session N (grades)"', async () => {
+    const resp = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+          parent_session_name: 'Session 2',
+          min_grade: 7,
+          max_grade: 8,
+          enrolled: 10,
+          waitlisted: 0,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => resp })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('AG Session 2 (7th & 8th)')).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText('All-Gender Cabin-Session 2 (7th & 8th grades)')
+    ).not.toBeInTheDocument()
+  })
+
   it('renders full status cells', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

@@ -62,6 +62,36 @@ export function shortenSessionName(name: string): string {
 }
 
 /**
+ * Verbose AG label for the availability matrix — keeps "Session N" and the
+ * ordinal grade range, dropping only the "All-Gender Cabin-" wrapper and the
+ * trailing "grades" word. Intentionally longer than `shortenSessionName`
+ * ("AG 2 (7-8)"): the availability table has the horizontal room and staff
+ * prefer the explicit form there.
+ *
+ * Examples:
+ *   "All-Gender Cabin-Session 2 (7th & 8th grades)" → "AG Session 2 (7th & 8th)"
+ *   "All-Gender Cabin-Session 4 (4th - 6th grades)" → "AG Session 4 (4th - 6th)"
+ *   "Session 4 (All-Gender Cabin)-6th & 7th grades" → "AG Session 4 (6th & 7th)"
+ *   "Session B (All-Gender Cabins)"                 → "AG Session B"
+ *   "Session 2" (non-AG)                            → "Session 2" (unchanged)
+ */
+export function formatAgSessionLabel(name: string): string {
+  const lower = name.toLowerCase()
+  if (!lower.includes('gender') && !/\bag[\s-]/i.test(name)) return name
+
+  const sessionMatch = name.match(/session\s*(\w+)/i)
+  const sessionPart = sessionMatch?.[1] ? `Session ${sessionMatch[1]}` : ''
+
+  // Capture an ordinal grade range — "7th & 8th", "4th - 6th" — dropping "grades".
+  const gradeText = name.match(
+    /(\d+(?:st|nd|rd|th)?\s*[-–&]\s*\d+(?:st|nd|rd|th)?)\s*grades?/i
+  )?.[1]
+  const gradeRange = gradeText ? ` (${gradeText.replace(/\s+/g, ' ').trim()})` : ''
+
+  return `AG${sessionPart ? ` ${sessionPart}` : ''}${gradeRange}`
+}
+
+/**
  * Get the properly formatted session name for display
  * @param session The session to format
  * @param allSessions Optional array of all sessions for parent lookup

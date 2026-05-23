@@ -218,7 +218,7 @@ export default function RetentionOverview() {
             <>
               Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)} and {gradExcluded}{' '}
               rising 12th {graderS(gradExcluded)}. Only showing retention within camp sessions or
-              teen programs — check the box above to credit camp → TLI/SCIT continuation.
+              teen programs — check the box above to include 10th grader retention stats.
             </>
           )
         } else if (tenthExcluded > 0) {
@@ -226,8 +226,8 @@ export default function RetentionOverview() {
             noteContent = (
               <>
                 Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}. Only showing
-                retention within camp sessions or teen programs — check the box above to credit camp
-                → TLI/SCIT continuation.
+                retention within camp sessions or teen programs — check the box above to include
+                10th grader retention stats.
               </>
             )
           } else {

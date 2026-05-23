@@ -8,6 +8,7 @@ import {
   getSessionShorthand,
   getSessionShortName,
   shortenSessionName,
+  formatAgSessionLabel,
 } from './sessionDisplay'
 import type { Session } from '../types/app-types'
 
@@ -351,6 +352,38 @@ describe('sessionDisplay utilities', () => {
 
     it('should handle AG prefix in name', () => {
       expect(shortenSessionName('AG-Session 3 (4th - 6th grades)')).toBe('AG 3 (4-6)')
+    })
+  })
+
+  describe('formatAgSessionLabel', () => {
+    it('keeps "Session N" and ordinal grades, dropping "All-Gender Cabin-" and "grades"', () => {
+      expect(formatAgSessionLabel('All-Gender Cabin-Session 2 (7th & 8th grades)')).toBe(
+        'AG Session 2 (7th & 8th)'
+      )
+      expect(formatAgSessionLabel('All-Gender Cabin-Session 3 (9th & 10th grades)')).toBe(
+        'AG Session 3 (9th & 10th)'
+      )
+    })
+
+    it('preserves a dash connector in the grade range', () => {
+      expect(formatAgSessionLabel('All-Gender Cabin-Session 4 (4th - 6th grades)')).toBe(
+        'AG Session 4 (4th - 6th)'
+      )
+    })
+
+    it('handles older-format AG names', () => {
+      expect(formatAgSessionLabel('Session 4 (All-Gender Cabin)-6th & 7th grades')).toBe(
+        'AG Session 4 (6th & 7th)'
+      )
+    })
+
+    it('handles AG names without a grade range', () => {
+      expect(formatAgSessionLabel('Session B (All-Gender Cabins)')).toBe('AG Session B')
+    })
+
+    it('returns non-AG names unchanged', () => {
+      expect(formatAgSessionLabel('Session 2')).toBe('Session 2')
+      expect(formatAgSessionLabel('Taste of Camp 2')).toBe('Taste of Camp 2')
     })
   })
 

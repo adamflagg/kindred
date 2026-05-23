@@ -180,10 +180,10 @@ describe('RetentionOverview aged-out note — scope-aware composition', () => {
       expect(screen.getByText(new RegExp(`${n12} rising 12th grader`))).toBeInTheDocument()
     })
 
-    it('note mentions "check the box" / camp → TLI/SCIT phrasing', () => {
+    it('note mentions "check the box" to include 10th grader retention stats', () => {
       render(<RetentionOverview />)
       expect(
-        screen.getByText(/check the box above to credit camp → TLI\/SCIT/i)
+        screen.getByText(/check the box above to include 10th grader retention stats/i)
       ).toBeInTheDocument()
     })
 
