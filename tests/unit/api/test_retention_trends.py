@@ -401,6 +401,9 @@ class TestRetentionTrendsEndpoint:
             # Will 500 or 200 depending on implementation status
             assert response.status_code != 404
 
+    # Intentionally NOT @requires_pb_db: the missing required param yields a 422
+    # in FastAPI validation before the handler builds a repository, so no DB is
+    # touched and this runs in CI. If current_year ever becomes optional, gate it.
     def test_endpoint_requires_current_year(self, client: TestClient) -> None:
         """The current_year parameter should be required."""
         with patch("api.routers.metrics.pb") as mock_pb:
