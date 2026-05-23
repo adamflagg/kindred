@@ -338,7 +338,9 @@ class RetentionService:
             attendees: List of attendee records with session expansion.
             session_types: Optional session types to filter.
             session_cm_id: Optional specific session ID to filter.
-            session_cm_ids: Optional set of session cm_ids to filter (duration groups).
+            session_cm_ids: Optional set of session cm_ids to filter. Carries whatever
+                gate the caller computed — the summer-window cohort from
+                resolve_cohort_session_ids, a duration filter, or their intersection.
 
         Returns:
             Tuple of (person_ids set, dict mapping person_id to session cm_ids).

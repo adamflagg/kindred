@@ -154,3 +154,33 @@ describe('TrendsOverview — Camp → Teen checkbox', () => {
     expect(mockMetricsSession.setIncludeTeenPipeline).toHaveBeenCalledWith(true)
   })
 })
+
+describe('TrendsOverview — teen-pipeline flag gating', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useRetentionTrends).mockReturnValue(
+      mockRetentionTrends as unknown as ReturnType<typeof useRetentionTrends>
+    )
+  })
+
+  it('forwards includeTeenPipeline to useRetentionTrends in a teen scope', () => {
+    mockMetricsSession.activeSessionTypes = ['scit', 'tli']
+    mockMetricsSession.includeTeenPipeline = true
+    renderWithClient()
+    expect(useRetentionTrends).toHaveBeenLastCalledWith(
+      2026,
+      expect.objectContaining({ includeTeenPipeline: true })
+    )
+  })
+
+  it('does NOT forward includeTeenPipeline when the scope has no teens', () => {
+    mockMetricsSession.activeSessionTypes = ['main', 'embedded']
+    mockMetricsSession.includeTeenPipeline = true
+    renderWithClient()
+    // Hidden flag must not leak into the hook call / cache key in a non-teen scope.
+    expect(useRetentionTrends).toHaveBeenLastCalledWith(
+      2026,
+      expect.objectContaining({ includeTeenPipeline: false })
+    )
+  })
+})

@@ -71,6 +71,41 @@ describe('useDrilldownAttendees includeTeenPipeline', () => {
   })
 })
 
+describe('useDrilldownAttendees auth', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.includeTeenPipeline = false
+    mockFetchWithAuth.mockResolvedValue({ ok: true, json: async () => [] })
+  })
+
+  it('fetches the protected drilldown endpoint via fetchWithAuth, never raw fetch', async () => {
+    // The PocketBase JWT lives in localStorage, not cookies, so a raw fetch
+    // would 401. Pin that the hook routes through fetchWithAuth and never the
+    // global fetch — a URL-only assertion can't catch a regression to raw fetch.
+    const rawFetch = vi.fn()
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = rawFetch as unknown as typeof fetch
+    try {
+      const { useDrilldownAttendees } = await import('./useDrilldownAttendees')
+      const { result } = renderHook(
+        () =>
+          useDrilldownAttendees({
+            year: 2026,
+            filter: { type: 'gender', value: 'F', label: 'Female' },
+          }),
+        { wrapper: createWrapper() }
+      )
+      await waitFor(() => expect(result.current.isLoading).toBe(false))
+      expect(mockFetchWithAuth).toHaveBeenCalledWith(
+        expect.stringContaining('/api/metrics/drilldown')
+      )
+      expect(rawFetch).not.toHaveBeenCalled()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
 describe('queryKeys.drilldown includeTeenPipeline', () => {
   it('distinguishes cache key by includeTeenPipeline flag', async () => {
     const { queryKeys } = await import('../utils/queryKeys')

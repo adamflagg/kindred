@@ -86,6 +86,7 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
     isComparing: false,
     includeTeenPipeline: mockIncludeTeenPipeline,
     setIncludeTeenPipeline: vi.fn(),
+    scopeHasTeens: mockActiveSessionTypes.some((t) => t === 'scit' || t === 'tli'),
   }),
 }))
 
@@ -134,11 +135,22 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('passes includeTeenPipeline from context (true) as 4th arg to useRetentionMetrics', () => {
+  it('passes includeTeenPipeline from context (true) as 4th arg in a teen scope', () => {
+    mockActiveSessionTypes = ['scit', 'tli']
     render(<RetentionOverview />)
 
-    // Context mock returns includeTeenPipeline: true — verify it flows into the hook call
+    // Teen scope + flag on -> the flag flows into the hook call as true.
     expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), true)
+  })
+
+  it('does NOT forward includeTeenPipeline when the scope has no teens', () => {
+    mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
+    mockIncludeTeenPipeline = true
+    render(<RetentionOverview />)
+
+    // Non-teen scope: the hidden flag must not leak into the hook (and the cache
+    // key) — the backend treats it as inert, so it should be passed as false.
+    expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), false)
   })
 })
 

@@ -494,3 +494,41 @@ class TestTrendsByGradeCarveOut:
         )
         grades = {row.grade for row in res.years[-1].by_grade}
         assert 10 in grades
+
+
+class TestRetentionTrendsAgChildren:
+    """Selecting a parent session must keep its AG children in the cohort."""
+
+    @pytest.mark.asyncio
+    async def test_session_scoped_trend_includes_ag_children(self) -> None:
+        """A session-scoped trend must count campers in the session's AG children.
+
+        When the user picks a main session, its AG child sessions (separate
+        cm_ids carrying parent_id) belong to that selection. Filtering the cohort
+        to the exact cm_id alone drops the AG campers and understates base_count.
+        """
+        main_2025 = _make_session_with_dates(1001, "Session 2", "main", "2025-06-15", "2025-07-05")
+        ag_2025 = _make_session_with_dates(1010, "Session 2 AG", "ag", "2025-06-15", "2025-07-05")
+        ag_2025.parent_id = 1001
+        main_2026 = _make_session_with_dates(2001, "Session 2", "main", "2026-06-15", "2026-07-05")
+
+        # Camper 1 enrolled directly in the parent main session; camper 2 in its AG child.
+        attendees_2025 = [_make_attendee(1, main_2025), _make_attendee(2, ag_2025)]
+        data_by_year: dict[int, dict[str, Any]] = {
+            2025: {
+                "attendees": attendees_2025,
+                "persons": {1: _make_person(1, grade=7), 2: _make_person(2, grade=7)},
+                "sessions": {1001: main_2025, 1010: ag_2025},
+            },
+            2026: {
+                "attendees": [],
+                "persons": {},
+                "sessions": {2001: main_2026},
+            },
+        }
+        svc = RetentionTrendsService(_build_repo(data_by_year))
+        result = await svc.calculate_retention_trends(2026, num_years=1, session_cm_id=1001)
+
+        # Both campers belong to the selected parent session (one directly, one
+        # via its AG child), so the base pool must be 2 — not just the direct one.
+        assert result.years[0].base_count == 2

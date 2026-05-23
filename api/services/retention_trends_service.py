@@ -27,6 +27,7 @@ from api.utils.session_metrics import (
     SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     filter_attendees_by_session,
+    find_ag_sessions_for_parent,
     resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
@@ -104,9 +105,11 @@ class RetentionTrendsService:
             # Resolve the cohort session IDs (summer-window-gated for teen types).
             cohort_ids = resolve_cohort_session_ids(sessions, session_types)
 
-            # Further restrict to a specific session if requested.
+            # Further restrict to a specific session if requested, keeping the
+            # session's AG children (separate cm_ids) so their campers aren't dropped.
             if session_cm_id is not None:
-                cohort_ids = {cid for cid in cohort_ids if cid == session_cm_id}
+                selected_ids = {session_cm_id, *find_ag_sessions_for_parent(sessions, session_cm_id)}
+                cohort_ids &= selected_ids
 
             # Intersect with duration filter when present.
             if duration:

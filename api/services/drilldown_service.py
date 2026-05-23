@@ -194,6 +194,7 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                duration=duration,
                 effective_pipeline=effective_pipeline,
             )
 
@@ -207,6 +208,7 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                duration=duration,
                 effective_pipeline=effective_pipeline,
             )
 
@@ -334,8 +336,11 @@ class DrilldownService:
         if compare_year is not None:
             compare_attendees = await self.repo.fetch_attendees(compare_year, ["enrolled"])
             # Window-gate the returned set to match the retention card (off-season
-            # teen sessions don't count as a summer return).
-            returned_person_ids = await self._gated_returned_person_ids(compare_attendees, compare_year, session_types)
+            # teen sessions don't count as a summer return), carrying the same
+            # session/duration scope this path applies to its base attendees.
+            returned_person_ids = await self._gated_returned_person_ids(
+                compare_attendees, compare_year, session_types, session_cm_id=session_cm_id, duration=duration
+            )
             enrolled_attendee_groups = {}
             for a in compare_attendees:
                 pid = getattr(a, "person_id", None)
@@ -359,6 +364,8 @@ class DrilldownService:
         compare_attendees: list[Any],
         compare_year: int,
         session_types: list[str] | None,
+        session_cm_id: int | None = None,
+        duration: str | None = None,
     ) -> set[int]:
         """Compute the window-gated "returned" person set, matching the retention card.
 
@@ -369,9 +376,20 @@ class DrilldownService:
         We apply the IDENTICAL gate here so drilldown lists reconcile with the
         card's returned_count. ``session_types=None`` resolves to the full summer
         cohort, same as the card.
+
+        When the caller scopes the view to a specific session or duration, the
+        card intersects its compare pool with those filters too (``filtered_ids_compare
+        = cohort_ids_compare & duration``), so the returned set must carry the same
+        gates or the returned/not_returned drilldowns drift from the card counts.
+        ``session_cm_id`` expands to include the session's AG children; ``duration``
+        is resolved against the compare-year sessions (lengths are per-year).
         """
         compare_sessions = await self.repo.fetch_sessions(compare_year, None)
         cohort_ids = resolve_cohort_session_ids(compare_sessions, session_types)
+        if session_cm_id is not None:
+            cohort_ids &= {session_cm_id, *find_ag_sessions_for_parent(compare_sessions, session_cm_id)}
+        if duration is not None:
+            cohort_ids &= resolve_duration_sessions(compare_sessions, duration)
         returned: set[int] = set()
         for a in compare_attendees:
             pid = getattr(a, "person_id", None)
@@ -552,6 +570,7 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        duration: str | None = None,
         effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention_session breakdown - find base year campers who returned to a specific compare year session.
@@ -585,8 +604,11 @@ class DrilldownService:
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
         # Window-gate the returned set to match the retention card (off-season
-        # teen sessions don't count as a summer return).
-        returned_person_ids = await self._gated_returned_person_ids(compare_attendees, compare_year, session_types)
+        # teen sessions don't count as a summer return), carrying the duration
+        # gate the card applies to its compare pool.
+        returned_person_ids = await self._gated_returned_person_ids(
+            compare_attendees, compare_year, session_types, duration=duration
+        )
 
         # Find compare year person_ids enrolled in the target (clicked) session.
         # target_person_ids is the drilldown's own filter criterion and is NOT
@@ -641,6 +663,7 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        duration: str | None = None,
         effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention top-card drilldowns (all, returned, not_returned).
@@ -673,9 +696,12 @@ class DrilldownService:
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
         # Build returned_person_ids (window-gated to match the retention card so
-        # off-season teen sessions don't count as a summer return) and
+        # off-season teen sessions don't count as a summer return, and carrying
+        # the duration gate the card applies to its compare pool) and
         # enrolled_attendee_groups from compare year.
-        returned_person_ids = await self._gated_returned_person_ids(compare_attendees, compare_year, session_types)
+        returned_person_ids = await self._gated_returned_person_ids(
+            compare_attendees, compare_year, session_types, duration=duration
+        )
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for a in compare_attendees:
             pid = getattr(a, "person_id", None)

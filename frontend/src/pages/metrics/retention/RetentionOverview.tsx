@@ -49,8 +49,14 @@ export default function RetentionOverview() {
     durationParam,
     filterOptions,
     includeTeenPipeline,
+    scopeHasTeens,
   } = useMetricsSession()
   const priorYear = currentYear - 1
+
+  // The teen-pipeline flag is only meaningful in a teen scope; outside one the
+  // backend treats it as inert, so don't let hidden state leak into the hook
+  // call or the React Query cache key (mirrors MetricsTypeTabs hiding the toggle).
+  const effectiveTeenPipeline = scopeHasTeens && includeTeenPipeline
 
   // Build date lookups for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
@@ -81,7 +87,7 @@ export default function RetentionOverview() {
     priorYear,
     currentYear,
     filterOptions,
-    includeTeenPipeline
+    effectiveTeenPipeline
   )
 
   // Build date lookup from API response (prior year sessions have start_date)
@@ -200,8 +206,7 @@ export default function RetentionOverview() {
       </div>
 
       {(() => {
-        const scopeHasTeens = activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
-        const effectiveOn = includeTeenPipeline && scopeHasTeens
+        const effectiveOn = effectiveTeenPipeline
         const gradeTenInBase = data.by_grade.find((g) => g.grade === 10)?.base_count ?? 0
         const agedOut = data.aged_out_count ?? 0
         // Split the aged-out total into its two reasons

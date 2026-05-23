@@ -590,7 +590,10 @@ export default function SessionAvailability() {
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                     {/* AG Sessions */}
                     {ag_sessions.length > 0 && (
-                      <div data-section="ag" className="lg:col-span-2">
+                      <div
+                        data-section="ag"
+                        className={teenSessions.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3'}
+                      >
                         <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
                           AG Sessions
                         </h4>
@@ -631,7 +634,10 @@ export default function SessionAvailability() {
 
                     {/* Teen Programs (SCIT / TLI) — 11th & 12th grade only */}
                     {teenSessions.length > 0 && (
-                      <div data-section="teen" className="lg:col-span-1">
+                      <div
+                        data-section="teen"
+                        className={ag_sessions.length > 0 ? 'lg:col-span-1' : 'lg:col-span-3'}
+                      >
                         <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
                           Teen Programs
                         </h4>

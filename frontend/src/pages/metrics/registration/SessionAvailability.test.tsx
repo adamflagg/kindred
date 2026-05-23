@@ -923,4 +923,45 @@ describe('SessionAvailability', () => {
     // ...and they live in the same grid row
     expect(agWrapper?.parentElement).toBe(teenWrapper?.parentElement)
   })
+
+  it('AG section spans full width when there are no teen programs', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+      durationParam: undefined,
+    })
+
+    const resp = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'AG Session 2',
+          parent_session_name: 'Session 2',
+          min_grade: 4,
+          max_grade: 10,
+          enrolled: 10,
+          waitlisted: 0,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => resp })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText(/ag sessions/i)).toBeInTheDocument())
+
+    const agWrapper = screen.getByText(/ag sessions/i).closest('[data-section="ag"]')
+    expect(agWrapper).not.toBeNull()
+    // No teen section present -> AG takes the full grid width, not 2/3.
+    expect(agWrapper).toHaveClass('lg:col-span-3')
+    expect(screen.queryByText(/teen programs/i)).not.toBeInTheDocument()
+  })
 })

@@ -280,13 +280,20 @@ def _build_drilldown_service(grade: int, session: str) -> DrilldownService:
     sessions_base = {base_main.cm_id: base_main, base_session.cm_id: base_session}
     sessions_compare = {compare_main.cm_id: compare_main, compare_session.cm_id: compare_session}
 
+    def _filter_sessions(sessions: dict[int, Mock], types: list[str] | None) -> dict[int, Mock]:
+        if not types:
+            return sessions
+        return {cid: s for cid, s in sessions.items() if getattr(s, "session_type", None) in types}
+
     repo = AsyncMock()
     repo.fetch_attendees = AsyncMock(
         side_effect=lambda year, *a, **kw: base_attendees if year == 2025 else compare_attendees
     )
     repo.fetch_persons = AsyncMock(return_value=persons)
     repo.fetch_sessions = AsyncMock(
-        side_effect=lambda year, types=None: sessions_base if year == 2025 else sessions_compare
+        side_effect=lambda year, types=None: _filter_sessions(
+            sessions_base if year == 2025 else sessions_compare, types
+        )
     )
     return DrilldownService(repo)
 
@@ -458,3 +465,63 @@ class TestDrilldownReconcilesWithRetentionCard:
                 include_teen_pipeline=flag,
             )
             assert len(returned) == card.returned_count, f"flag={flag}"
+
+
+class _DurationFixtures:
+    """Shared repo data for a duration-filter reconciliation test.
+
+    A grade-7 camper does a 2-week base session, then returns ONLY to a 1-week
+    compare session. Under duration="2-week", the retention card counts them as
+    NOT returned (their compare-year enrollment is the wrong length), so the
+    retention_returned drilldown must agree: the returned set has to carry the
+    same duration gate the card applies to its compare pool.
+    """
+
+    def __init__(self) -> None:
+        base_2wk = _dated_session(1001, "Session A", "main", "2025-06-15", "2025-06-28")  # 14d -> 2-week
+        compare_2wk = _dated_session(2001, "Session A", "main", "2026-06-15", "2026-06-28")  # window + 2-week
+        compare_1wk = _dated_session(2002, "Session B", "main", "2026-06-15", "2026-06-21")  # 7d -> 1-week
+
+        self.persons_base = {1: _make_person(1, grade=7)}
+        self.attendees_base = [_make_attendee(1, base_2wk)]
+        self.attendees_compare = [_make_attendee(1, compare_1wk)]  # returns to the WRONG length
+        self.sessions_base = {base_2wk.cm_id: base_2wk}
+        self.sessions_compare = {compare_2wk.cm_id: compare_2wk, compare_1wk.cm_id: compare_1wk}
+
+    def repo(self) -> AsyncMock:
+        repo = AsyncMock()
+        repo.fetch_attendees = AsyncMock(
+            side_effect=lambda year, *a, **kw: self.attendees_base if year == 2025 else self.attendees_compare
+        )
+        repo.fetch_persons = AsyncMock(side_effect=lambda year: self.persons_base if year == 2025 else {})
+        repo.fetch_bunk_assignments = AsyncMock(return_value=[])
+        repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
+
+        def _fetch_sessions(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+            all_sessions = self.sessions_base if year == 2025 else self.sessions_compare
+            if not types:
+                return all_sessions
+            return {cid: s for cid, s in all_sessions.items() if getattr(s, "session_type", None) in types}
+
+        repo.fetch_sessions = AsyncMock(side_effect=_fetch_sessions)
+        return repo
+
+
+class TestDrilldownReconcilesWithDurationFilter:
+    """retention_returned drilldown must equal the card returned_count under a duration filter."""
+
+    @pytest.mark.asyncio
+    async def test_returned_drilldown_respects_duration_filter(self) -> None:
+        fixtures = _DurationFixtures()
+        card = await RetentionService(fixtures.repo()).calculate_retention(2025, 2026, duration="2-week")
+        returned = await DrilldownService(fixtures.repo()).get_attendees_for_breakdown(
+            2025,
+            "retention_returned",
+            "returned",
+            compare_year=2026,
+            duration="2-week",
+        )
+        # Compare-year enrollment is a 1-week session, so the camper is NOT a
+        # 2-week returner; the card and the drilldown must both report zero.
+        assert card.returned_count == 0
+        assert len(returned) == card.returned_count

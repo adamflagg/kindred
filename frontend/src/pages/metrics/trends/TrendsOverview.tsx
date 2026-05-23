@@ -162,7 +162,9 @@ export default function TrendsOverview() {
   } = useRetentionTrends(currentYear, {
     numYears: 5,
     ...filterOptions,
-    includeTeenPipeline,
+    // Only meaningful in a teen scope; outside one the backend treats it as
+    // inert, so don't let hidden state leak into the cache key.
+    includeTeenPipeline: scopeHasTeens ? includeTeenPipeline : false,
   })
 
   // Slice enrollment data based on expanded toggle (3 or 5 years)
