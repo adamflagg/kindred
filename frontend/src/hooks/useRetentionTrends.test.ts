@@ -4,7 +4,75 @@
  * Tests are written FIRST before implementation (TDD).
  * This hook fetches 3-year retention trend data for the retention tab.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
+import { createWrapper } from '../test/testUtils'
+
+// Track fetch calls
+const mockFetchWithAuth = vi.fn()
+
+vi.mock('./useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetchWithAuth,
+    isAuthLoading: false,
+  }),
+}))
+
+describe('queryKeys.retentionTrends includeTeenPipeline', () => {
+  it('distinguishes cache key by includeTeenPipeline flag', async () => {
+    const { queryKeys } = await import('../utils/queryKeys')
+    const off = queryKeys.retentionTrends(2026, 3, undefined, undefined, undefined, false)
+    const on = queryKeys.retentionTrends(2026, 3, undefined, undefined, undefined, true)
+    expect(off).not.toEqual(on)
+    expect(on[on.length - 1]).toBe(true)
+  })
+})
+
+describe('useRetentionTrends includeTeenPipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        years: [],
+        avg_retention_rate: 0,
+        trend_direction: 'stable',
+        enrollment_by_year: [],
+      }),
+    })
+  })
+
+  it('includes include_teen_pipeline=true in URL when flag is true', async () => {
+    const { useRetentionTrends } = await import('./useRetentionTrends')
+    const { result } = renderHook(() => useRetentionTrends(2026, { includeTeenPipeline: true }), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      expect.stringContaining('include_teen_pipeline=true')
+    )
+  })
+
+  it('does NOT include include_teen_pipeline in URL when flag is false', async () => {
+    const { useRetentionTrends } = await import('./useRetentionTrends')
+    const { result } = renderHook(() => useRetentionTrends(2026, { includeTeenPipeline: false }), {
+      wrapper: createWrapper(),
+    })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      expect.not.stringContaining('include_teen_pipeline')
+    )
+  })
+
+  it('does NOT include include_teen_pipeline in URL when flag is omitted', async () => {
+    const { useRetentionTrends } = await import('./useRetentionTrends')
+    const { result } = renderHook(() => useRetentionTrends(2026, {}), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      expect.not.stringContaining('include_teen_pipeline')
+    )
+  })
+})
 
 describe('useRetentionTrends', () => {
   describe('hook export', () => {

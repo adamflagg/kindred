@@ -14,6 +14,8 @@ import type { MetricsFilterOptions } from './useMetrics'
 export type UseRetentionTrendsOptions = MetricsFilterOptions & {
   /** Number of years to include (default: 3) */
   numYears?: number | undefined
+  /** Credit the grade-10 → teen pipeline in retention numbers */
+  includeTeenPipeline?: boolean | undefined
 }
 
 /**
@@ -28,10 +30,17 @@ export type UseRetentionTrendsOptions = MetricsFilterOptions & {
  */
 export function useRetentionTrends(currentYear: number, options: UseRetentionTrendsOptions = {}) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
-  const { numYears = 3, sessionTypes, sessionCmId, duration } = options
+  const { numYears = 3, sessionTypes, sessionCmId, duration, includeTeenPipeline = false } = options
 
   return useQuery({
-    queryKey: queryKeys.retentionTrends(currentYear, numYears, sessionTypes, sessionCmId, duration),
+    queryKey: queryKeys.retentionTrends(
+      currentYear,
+      numYears,
+      sessionTypes,
+      sessionCmId,
+      duration,
+      includeTeenPipeline
+    ),
     queryFn: async (): Promise<RetentionTrendsResponse> => {
       const params = new URLSearchParams({
         current_year: currentYear.toString(),
@@ -51,6 +60,10 @@ export function useRetentionTrends(currentYear: number, options: UseRetentionTre
 
       if (duration) {
         params.set('duration', duration)
+      }
+
+      if (includeTeenPipeline) {
+        params.set('include_teen_pipeline', 'true')
       }
 
       const response = await fetchWithAuth(`/api/metrics/retention-trends?${params}`)

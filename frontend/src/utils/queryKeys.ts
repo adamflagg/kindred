@@ -198,7 +198,8 @@ export const queryKeys = {
     numYears?: number,
     sessionTypes?: string,
     sessionCmId?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
     [
       'metrics',
@@ -208,6 +209,7 @@ export const queryKeys = {
       sessionTypes,
       sessionCmId,
       duration,
+      includeTeenPipeline,
     ] as const,
   waitlist: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'waitlist', year, sessionTypes, sessionCmId, duration] as const,
