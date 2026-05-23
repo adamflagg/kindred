@@ -432,7 +432,6 @@ class TestRegistrationServiceNormalizedFlow:
         mock_repo.fetch_sessions = AsyncMock(return_value={})
         mock_repo.fetch_bunk_plans = AsyncMock(return_value=[])
         mock_repo.fetch_capacity_config = AsyncMock(return_value=12)
-        mock_repo.fetch_synagogue_by_household = AsyncMock(return_value={})
         mock_repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
         # The service should call fetch_normalized_geo for geo breakdowns
