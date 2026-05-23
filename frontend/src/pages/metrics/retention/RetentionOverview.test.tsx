@@ -1,11 +1,11 @@
 /**
- * TDD: RetentionOverview "Include summer → teen retention" checkbox (Task 8)
+ * TDD: RetentionOverview reads includeTeenPipeline from MetricsSessionContext (Task 8 → R3)
  *
  * Strategy: provide full mock data (not isLoading:true) so the component renders
- * past all early-return guards and the checkbox is reachable via getByLabelText.
- * The checkbox is placed near the aged_out_count note, after the loading guard.
+ * past all early-return guards. The checkbox has MOVED to MetricsTypeTabs; here we
+ * verify useRetentionMetrics is called with the flag sourced from context.
  */
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import RetentionOverview from './RetentionOverview'
 import type { RetentionMetrics } from '../../../types/metrics'
@@ -68,6 +68,8 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
     compareYear: null,
     setCompareYear: vi.fn(),
     isComparing: false,
+    includeTeenPipeline: true,
+    setIncludeTeenPipeline: vi.fn(),
   }),
 }))
 
@@ -100,22 +102,24 @@ vi.mock('../../../components/metrics/RetentionNotableOutliers', () => ({
   OutlierSection: () => null,
 }))
 
-describe('RetentionOverview teen-pipeline checkbox', () => {
+describe('RetentionOverview teen-pipeline flag from context', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useRetentionMetricsMock.mockReturnValue({ data: mockData, isLoading: false, error: null })
   })
 
-  it('defaults off and toggles include_teen_pipeline', () => {
+  it('does NOT render the teen-pipeline checkbox (it lives in MetricsTypeTabs now)', () => {
     render(<RetentionOverview />)
 
-    const checkbox = screen.getByLabelText<HTMLInputElement>(/include summer.*teen retention/i)
-    expect(checkbox.checked).toBe(false)
-    // Initial render: called with includeTeenPipeline = false
-    expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), false)
+    expect(
+      screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+    ).not.toBeInTheDocument()
+  })
 
-    fireEvent.click(checkbox)
-    // After toggle: called with includeTeenPipeline = true
+  it('passes includeTeenPipeline from context (true) as 4th arg to useRetentionMetrics', () => {
+    render(<RetentionOverview />)
+
+    // Context mock returns includeTeenPipeline: true — verify it flows into the hook call
     expect(useRetentionMetricsMock).toHaveBeenLastCalledWith(2025, 2026, expect.anything(), true)
   })
 })

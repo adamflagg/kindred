@@ -181,4 +181,30 @@ describe('MetricsTypeTabs', () => {
       expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
   })
+
+  describe('retention teen-pipeline checkbox', () => {
+    it('shows "Include summer → teen retention" checkbox on retention route', () => {
+      renderWithRouter('/analytics/retention')
+
+      expect(
+        screen.getByRole('checkbox', { name: /include summer.*teen retention/i })
+      ).toBeInTheDocument()
+    })
+
+    it('does NOT show the retention checkbox on registration route', () => {
+      renderWithRouter('/analytics/registration')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+      ).not.toBeInTheDocument()
+    })
+
+    it('does NOT show the retention checkbox on trends route', () => {
+      renderWithRouter('/analytics/trends')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+      ).not.toBeInTheDocument()
+    })
+  })
 })

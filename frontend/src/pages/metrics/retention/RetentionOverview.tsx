@@ -7,7 +7,7 @@
  * - Geographic retention (city, school, synagogue)
  */
 
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useCurrentYear } from '../../../hooks/useCurrentYear'
 import { useRetentionMetrics } from '../../../hooks/useMetrics'
 import { useMetricsSession } from '../../../hooks/useMetricsSession'
@@ -42,10 +42,15 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, activeSessionTypes, durationParam, filterOptions } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessions,
+    activeSessionTypes,
+    durationParam,
+    filterOptions,
+    includeTeenPipeline,
+  } = useMetricsSession()
   const priorYear = currentYear - 1
-  const [includeTeenPipeline, setIncludeTeenPipeline] = useState(false)
 
   // Build date lookups for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
@@ -200,16 +205,6 @@ export default function RetentionOverview() {
           out of eligible sessions
         </p>
       )}
-
-      <label className="text-muted-foreground flex items-center gap-2 text-xs">
-        <input
-          type="checkbox"
-          checked={includeTeenPipeline}
-          onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
-          className="accent-primary h-3.5 w-3.5 rounded"
-        />
-        Include summer → teen retention (credits 10th graders continuing to SCIT/TLI)
-      </label>
 
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
