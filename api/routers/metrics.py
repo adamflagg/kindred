@@ -454,6 +454,11 @@ async def get_drilldown_attendees(
     duration: Literal["1-week", "2-week", "3-week", "4-week+"] | None = Query(
         None, description="Filter by session duration category (1-week, 2-week, 3-week, 4-week+)"
     ),
+    include_teen_pipeline: bool = Query(
+        False,
+        description="Credit grade-10 campers who continue into a summer teen program (main->teen bridge). "
+        "Mirrors the retention card so drilldown lists reconcile with it.",
+    ),
     user: AuthUser = Depends(get_current_user),
 ) -> list[DrilldownAttendee]:
     """Get attendee list for a specific breakdown value.
@@ -478,6 +483,7 @@ async def get_drilldown_attendees(
         status_filter=status_list,
         compare_year=compare_year,
         duration=duration,
+        include_teen_pipeline=include_teen_pipeline,
     )
 
 

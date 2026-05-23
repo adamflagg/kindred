@@ -113,18 +113,18 @@ class TestDrilldownRetentionCardAgedOut:
         assert 2 not in person_ids  # grade 10 excluded
 
     @pytest.mark.asyncio
-    async def test_retention_all_excludes_11th_graders(
+    async def test_retention_all_keeps_11th_graders(
         self, repo: AsyncMock, base_session: Mock, compare_session: Mock
     ) -> None:
-        """Drilldowns use the legacy ceiling: grade 11 is aged out, like grade 10.
+        """Drilldowns now track grade 11 (teen-pipeline aware), unlike grade 10.
 
-        Teen-pipeline tracking (grade 11 -> SCIT) lives only on the main retention
-        surface; the drilldown keeps the pre-pipeline grade>=10 exclusion so its
-        lists reconcile with that surface's default (flag-off) numbers.
+        The legacy grade>=10 ceiling has been replaced by effective_pipeline, which
+        mirrors the retention card: grade 11 returns to a teen program so it is always
+        tracked; only grade 10 is gated by the flag and graduating grades (>=12) drop.
         """
         persons = {
             1: _make_person(1, grade=7, first_name="Emma", last_name="Johnson"),
-            2: _make_person(2, grade=11, first_name="Olivia", last_name="Chen"),  # aged out
+            2: _make_person(2, grade=11, first_name="Olivia", last_name="Chen"),  # tracked
         }
         base_attendees = [_make_attendee(1, base_session), _make_attendee(2, base_session)]
         compare_attendees = [_make_attendee(1, compare_session)]
@@ -145,7 +145,7 @@ class TestDrilldownRetentionCardAgedOut:
 
         person_ids = {a.person_id for a in result}
         assert 1 in person_ids
-        assert 2 not in person_ids  # grade 11 excluded
+        assert 2 in person_ids  # grade 11 tracked (no longer aged out)
 
     @pytest.mark.asyncio
     async def test_retention_not_returned_excludes_10th_graders(
@@ -247,3 +247,111 @@ class TestDrilldownNonRetentionNotAffected:
 
         assert len(result) == 1
         assert result[0].person_id == 1
+
+
+# ============================================================================
+# Teen-pipeline (effective_pipeline) aged-out gating
+# ============================================================================
+
+# Teen session window: 2025 base + 2026 compare both overlap the main camp window.
+_BASE_TEEN_SESSION = _make_session(1002, "SCIT", session_type="scit")
+_BASE_MAIN_SESSION = _make_session(1001, "Session 2", session_type="main")
+_COMPARE_TEEN_SESSION = _make_session(2002, "SCIT", session_type="scit")
+_COMPARE_MAIN_SESSION = _make_session(2001, "Session 2", session_type="main")
+
+
+def _build_drilldown_service(grade: int, session: str) -> DrilldownService:
+    """Build a DrilldownService backed by a single base camper of ``grade``.
+
+    The camper is enrolled in a ``session`` ("scit" or "main") session in the
+    base year (2025) and re-enrolled in the equivalent compare-year (2026)
+    session, so they count as returned. The base year also carries a main
+    session so the summer window resolves for teen-window gating.
+    """
+    if session == "scit":
+        base_session = _make_session(1002, "SCIT", session_type="scit")
+        compare_session = _make_session(2002, "SCIT", session_type="scit")
+    else:
+        base_session = _make_session(1001, "Session 2", session_type="main")
+        compare_session = _make_session(2001, "Session 2", session_type="main")
+
+    base_main = _make_session(1001, "Session 2", session_type="main")
+    compare_main = _make_session(2001, "Session 2", session_type="main")
+
+    persons = {1: _make_person(1, grade=grade)}
+    base_attendees = [_make_attendee(1, base_session)]
+    compare_attendees = [_make_attendee(1, compare_session)]
+
+    sessions_base = {base_main.cm_id: base_main, base_session.cm_id: base_session}
+    sessions_compare = {compare_main.cm_id: compare_main, compare_session.cm_id: compare_session}
+
+    repo = AsyncMock()
+    repo.fetch_attendees = AsyncMock(
+        side_effect=lambda year, *a, **kw: base_attendees if year == 2025 else compare_attendees
+    )
+    repo.fetch_persons = AsyncMock(return_value=persons)
+    repo.fetch_sessions = AsyncMock(
+        side_effect=lambda year, types=None: sessions_base if year == 2025 else sessions_compare
+    )
+    return DrilldownService(repo)
+
+
+class TestDrilldownEffectivePipeline:
+    """include_teen_pipeline gating mirrors the retention card's effective_pipeline."""
+
+    @pytest.mark.asyncio
+    async def test_drilldown_grade11_always_listed_teen_scope(self) -> None:
+        svc = _build_drilldown_service(grade=11, session="scit")
+        off = await svc.get_attendees_for_breakdown(
+            2025,
+            "retention_all",
+            "all",
+            session_types=["scit", "tli"],
+            compare_year=2026,
+            include_teen_pipeline=False,
+        )
+        on = await svc.get_attendees_for_breakdown(
+            2025,
+            "retention_all",
+            "all",
+            session_types=["scit", "tli"],
+            compare_year=2026,
+            include_teen_pipeline=True,
+        )
+        assert len(off) == 1
+        assert len(on) == 1
+
+    @pytest.mark.asyncio
+    async def test_drilldown_grade10_gated_by_flag(self) -> None:
+        svc = _build_drilldown_service(grade=10, session="main")
+        off = await svc.get_attendees_for_breakdown(
+            2025,
+            "retention_all",
+            "all",
+            session_types=["main", "scit", "tli"],
+            compare_year=2026,
+            include_teen_pipeline=False,
+        )
+        on = await svc.get_attendees_for_breakdown(
+            2025,
+            "retention_all",
+            "all",
+            session_types=["main", "scit", "tli"],
+            compare_year=2026,
+            include_teen_pipeline=True,
+        )
+        assert len(off) == 0
+        assert len(on) == 1
+
+    @pytest.mark.asyncio
+    async def test_drilldown_non_teen_scope_flag_inert(self) -> None:
+        svc = _build_drilldown_service(grade=10, session="main")
+        on = await svc.get_attendees_for_breakdown(
+            2025,
+            "retention_all",
+            "all",
+            session_types=["main", "quest"],
+            compare_year=2026,
+            include_teen_pipeline=True,
+        )
+        assert len(on) == 0  # no teen destination in scope -> grade 10 still aged out

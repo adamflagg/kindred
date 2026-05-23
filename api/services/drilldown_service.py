@@ -147,6 +147,7 @@ class DrilldownService:
         status_filter: list[str] | None = None,
         compare_year: int | None = None,
         duration: str | None = None,
+        include_teen_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Get attendees matching a specific breakdown criteria.
 
@@ -159,6 +160,9 @@ class DrilldownService:
             status_filter: Optional status filter (default: enrolled).
             compare_year: Optional compare year for retention drilldowns. When set,
                 is_returning is based on whether the person returned to the compare year.
+            include_teen_pipeline: When the scope includes teen sessions, credit the
+                grade-10 -> teen bridge (mirrors RetentionService.calculate_retention).
+                Only meaningful in retention context (compare_year set).
 
         Returns:
             List of DrilldownAttendee records matching the criteria.
@@ -166,6 +170,13 @@ class DrilldownService:
         # Default status filter
         if status_filter is None:
             status_filter = ["enrolled"]
+
+        # The teen-pipeline story is only meaningful when the selected scope includes
+        # teen sessions (All Summer / Teens / a specific SCIT·TLI). In a non-teen scope
+        # (At Camp / Quests) a rising-11th-grader has no teen destination, so the flag is
+        # inert and grade-10 is simply aged out. Mirrors RetentionService.calculate_retention.
+        scope_has_teens = session_types is None or any(t in SUMMER_TEEN_TYPES for t in session_types)
+        effective_pipeline = include_teen_pipeline and scope_has_teens
 
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
@@ -182,6 +193,7 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                effective_pipeline=effective_pipeline,
             )
 
         # retention_session needs special handling - different from other breakdowns
@@ -194,6 +206,7 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                effective_pipeline=effective_pipeline,
             )
 
         # Cancellation breakdown types need separate fetching logic
@@ -268,11 +281,11 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons when in retention context. Drilldowns use the
-        # legacy ceiling (grade >= 10, 11 included) so their lists reconcile with
-        # the main retention surface's default (flag-off) numbers.
+        # Exclude aged-out persons when in retention context. effective_pipeline
+        # mirrors the retention card: grade-11 is always tracked in a teen scope,
+        # grade-10 is gated by the flag, and graduating grades (>=12) always drop.
         if compare_year is not None:
-            attendees = filter_aged_out_attendees(attendees, persons, legacy_aged_out=True)
+            attendees = filter_aged_out_attendees(attendees, persons, effective_pipeline)
 
         # Filter by session type and/or session_cm_id
         filtered_attendees = filter_attendees_by_session(
@@ -506,6 +519,7 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention_session breakdown - find base year campers who returned to a specific compare year session.
 
@@ -517,6 +531,8 @@ class DrilldownService:
             session_types: Session type filter.
             status_filter: Status filter for attendees.
             duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            effective_pipeline: include_teen_pipeline AND the scope has teens; credits
+                the grade-10 -> teen bridge (mirrors the retention card).
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -528,9 +544,9 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns (legacy ceiling,
-        # grade >= 10, to reconcile with the main retention surface's defaults).
-        base_attendees = filter_aged_out_attendees(base_attendees, persons, legacy_aged_out=True)
+        # Exclude aged-out persons from retention drilldowns. effective_pipeline
+        # mirrors the retention card so the lists reconcile with its numbers.
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
@@ -588,6 +604,7 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention top-card drilldowns (all, returned, not_returned).
 
@@ -599,6 +616,8 @@ class DrilldownService:
             session_types: Session type filter.
             status_filter: Status filter for attendees.
             duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            effective_pipeline: include_teen_pipeline AND the scope has teens; credits
+                the grade-10 -> teen bridge (mirrors the retention card).
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -609,9 +628,9 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns (legacy ceiling,
-        # grade >= 10, to reconcile with the main retention surface's defaults).
-        base_attendees = filter_aged_out_attendees(base_attendees, persons, legacy_aged_out=True)
+        # Exclude aged-out persons from retention drilldowns. effective_pipeline
+        # mirrors the retention card so the lists reconcile with its numbers.
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
