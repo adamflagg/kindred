@@ -121,7 +121,7 @@ describe('TrendsOverview — Camp → Teen checkbox', () => {
     mockMetricsSession.includeTeenPipeline = false
     mockMetricsSession.setIncludeTeenPipeline = vi.fn()
     vi.mocked(useRetentionTrends).mockReturnValue(
-      mockRetentionTrends as ReturnType<typeof useRetentionTrends>
+      mockRetentionTrends as unknown as ReturnType<typeof useRetentionTrends>
     )
   })
 
