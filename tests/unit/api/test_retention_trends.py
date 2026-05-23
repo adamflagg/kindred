@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from tests.markers import requires_pb_db
 from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
@@ -383,6 +384,7 @@ class TestRetentionTrendsParameters:
 class TestRetentionTrendsEndpoint:
     """Integration tests for the /api/metrics/retention-trends endpoint."""
 
+    @requires_pb_db
     def test_endpoint_exists(self, client: TestClient) -> None:
         """The retention-trends endpoint should exist and accept GET requests."""
         with patch("api.routers.metrics.pb") as mock_pb:
@@ -399,6 +401,9 @@ class TestRetentionTrendsEndpoint:
             # Will 500 or 200 depending on implementation status
             assert response.status_code != 404
 
+    # Intentionally NOT @requires_pb_db: the missing required param yields a 422
+    # in FastAPI validation before the handler builds a repository, so no DB is
+    # touched and this runs in CI. If current_year ever becomes optional, gate it.
     def test_endpoint_requires_current_year(self, client: TestClient) -> None:
         """The current_year parameter should be required."""
         with patch("api.routers.metrics.pb") as mock_pb:
@@ -412,6 +417,7 @@ class TestRetentionTrendsEndpoint:
             # or 404 if endpoint not yet implemented
             assert response.status_code in (404, 422)
 
+    @requires_pb_db
     def test_endpoint_accepts_optional_params(self, client: TestClient) -> None:
         """Optional parameters should be accepted."""
         with patch("api.routers.metrics.pb") as mock_pb:
@@ -433,6 +439,7 @@ class TestRetentionTrendsEndpoint:
             # 404 if endpoint not implemented, 200/500 otherwise
             assert response.status_code != 422
 
+    @requires_pb_db
     def test_response_structure(self, client: TestClient) -> None:
         """Response should have expected structure once implemented."""
         with patch("api.routers.metrics.pb") as mock_pb:

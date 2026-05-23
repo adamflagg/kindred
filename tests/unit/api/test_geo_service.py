@@ -1274,16 +1274,21 @@ class TestPersonIdCache:
     @pytest.mark.asyncio
     async def test_cache_expires_after_ttl(self, service: GeoService, mock_pb: MagicMock) -> None:
         """Cache should expire after TTL seconds."""
-        from api.services.geo_service import _PERSON_ID_CACHE
+        import time
+
+        from api.services.geo_service import _PERSON_ID_CACHE, _PERSON_ID_CACHE_TTL_SECONDS
 
         attendees = [_make_attendee_record("p1")]
         mock_pb.collection.return_value.get_full_list.return_value = attendees
 
         await service._fetch_active_person_pb_ids(2025)
 
-        # Manually expire the cache by setting timestamp to 0
+        # Force expiry relative to the monotonic clock. The cache ages via
+        # time.monotonic() (arbitrary origin ~ boot), so an absolute 0.0 is not
+        # reliably "expired" on a freshly-booted CI runner where monotonic() < TTL.
+        stale = time.monotonic() - _PERSON_ID_CACHE_TTL_SECONDS - 1
         for key in _PERSON_ID_CACHE:
-            _PERSON_ID_CACHE[key] = (_PERSON_ID_CACHE[key][0], 0.0)
+            _PERSON_ID_CACHE[key] = (_PERSON_ID_CACHE[key][0], stale)
 
         await service._fetch_active_person_pb_ids(2025)
         assert mock_pb.collection.return_value.get_full_list.call_count == 2

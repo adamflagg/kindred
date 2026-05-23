@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.markers import requires_pb_db
+
 # ============================================================================
 # Test fixtures
 # ============================================================================
@@ -40,6 +42,7 @@ def test_client():
 # ============================================================================
 
 
+@requires_pb_db
 class TestRetentionTrendsEnrollmentByYear:
     """Tests for the enrollment_by_year field in RetentionTrendsResponse."""
 
@@ -255,6 +258,7 @@ class TestEnrollmentByYearSchemas:
 # ============================================================================
 
 
+@requires_pb_db
 class TestRetentionTrendsEnrollmentIntegration:
     """Integration tests for enrollment_by_year calculation."""
 
@@ -337,6 +341,7 @@ class TestRetentionTrendsEnrollmentIntegration:
         assert len(enrollment_by_year) == 4, f"Expected 4 entries, got {len(enrollment_by_year)}"
 
 
+@requires_pb_db
 class TestEnrollmentByYearAllSessions:
     """Tests for enrollment_by_year when 'All Sessions' is selected (no session_cm_id filter).
 

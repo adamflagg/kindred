@@ -90,6 +90,17 @@ pre-push:
         - "pyproject.toml"
       run: uv run ruff check .
 
+    # Full mockable Python suite, parallelized (~37s on 12 cores via xdist
+    # worksteal). SKIP_POCKETBASE_TESTS gates the server/DB-dependent suites;
+    # runs in parallel with the checks below. CI runs the same suite serially
+    # (deterministic merge gate); pre-push optimizes for local speed.
+    pytest:
+      glob:
+        - "**/*.py"
+        - "pyproject.toml"
+        - "conftest.py"
+      run: SKIP_POCKETBASE_TESTS=true uv run pytest tests/ -n auto --dist worksteal -q -p no:cacheprovider
+
     mypy:
       glob:
         - "**/*.py"

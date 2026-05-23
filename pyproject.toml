@@ -85,6 +85,7 @@ dev = [
     "pip-audit>=2.7.0",
     # Code metrics
     "radon>=6.0.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.setuptools.packages.find]

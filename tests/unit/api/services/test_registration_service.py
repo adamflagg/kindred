@@ -23,6 +23,10 @@ class MockPerson:
     school: str | None = None
     address: dict[str, Any] | None = None
     household_id: int | None = None
+    normalized_school: str | None = None
+    normalized_city: str | None = None
+    address_city: str | None = None
+    normalized_congregation: str | None = None
 
 
 @dataclass
@@ -431,13 +435,13 @@ class TestRegistrationServiceDemographics:
     """Tests for demographic breakdowns from persons data."""
 
     @pytest.mark.asyncio
-    async def test_school_breakdown_top_20(self) -> None:
-        """School breakdown returns top 20 by count from persons.school field."""
+    async def test_school_breakdown_returns_all_schools(self) -> None:
+        """School breakdown returns all schools sorted by count (descending)."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
-        # Create 25 persons, each with different schools
-        # But to test "top 20", we need multiple persons per school
+        # Create 25 schools with descending person counts so the result is
+        # ordered by count; verifies all schools are returned (no top-N slice).
         attendees = []
         persons = {}
         for i in range(25):
@@ -464,15 +468,15 @@ class TestRegistrationServiceDemographics:
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
 
-        # Should only have 20 schools
-        assert len(result.by_school) == 20
+        # Service returns all schools sorted by count (descending), not a top-N slice.
+        assert len(result.by_school) == 25
         # First school should be School 0 (most common - 25 persons)
         assert result.by_school[0].school == "School 0"
         assert result.by_school[0].count == 25
 
     @pytest.mark.asyncio
     async def test_city_breakdown_excludes_empty(self) -> None:
-        """City breakdown excludes empty/null cities from persons.address.city field."""
+        """City breakdown excludes empty/null cities from persons.address_city field."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
@@ -483,10 +487,10 @@ class TestRegistrationServiceDemographics:
             MockAttendee(person_id=4, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
         ]
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1, address={"city": "Oakland"}),
-            2: MockPerson(person_id=2, address={"city": ""}),
-            3: MockPerson(person_id=3, address=None),  # No address
-            4: MockPerson(person_id=4, address={"city": "Berkeley"}),
+            1: MockPerson(person_id=1, address_city="Oakland"),
+            2: MockPerson(person_id=2, address_city=""),
+            3: MockPerson(person_id=3, address_city=None),  # No city
+            4: MockPerson(person_id=4, address_city="Berkeley"),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
@@ -507,7 +511,7 @@ class TestRegistrationServiceDemographics:
 
     @pytest.mark.asyncio
     async def test_synagogue_breakdown(self) -> None:
-        """Synagogue breakdown works correctly from household custom values."""
+        """Synagogue breakdown works correctly from persons.normalized_congregation."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
@@ -516,11 +520,11 @@ class TestRegistrationServiceDemographics:
             MockAttendee(person_id=2, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
             MockAttendee(person_id=3, expand={"session": MockSession(cm_id=1000, name="S1", session_type="main")}),
         ]
-        # Persons with household_id for synagogue lookup
+        # Service reads persons.normalized_congregation (set by normalize_geographic sync)
         mock_repo.fetch_persons.return_value = {
-            1: MockPerson(person_id=1, household_id=100),
-            2: MockPerson(person_id=2, household_id=100),  # Same household as person 1
-            3: MockPerson(person_id=3, household_id=200),
+            1: MockPerson(person_id=1, normalized_congregation="Temple Beth Sholom"),
+            2: MockPerson(person_id=2, normalized_congregation="Temple Beth Sholom"),
+            3: MockPerson(person_id=3, normalized_congregation="Congregation Shalom"),
         }
         mock_repo.fetch_sessions.return_value = {
             1000: MockSession(cm_id=1000, name="S1", session_type="main"),
@@ -529,11 +533,8 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        # Synagogue by household mapping
-        mock_repo.fetch_synagogue_by_household.return_value = {
-            100: "Temple Beth Sholom",
-            200: "Congregation Shalom",
-        }
+        # Household→synagogue lookup is no longer consulted (service uses normalized_congregation).
+        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -572,13 +573,27 @@ class TestRegistrationServiceSummerMetrics:
 
         # Return history showing different summer years
         # Person 1: 2 summers (2023, 2024), Person 2: 1 summer (2024), Person 3: 3 summers (2022, 2023, 2024)
+        # year=None pins the mock so compute_summer_metrics falls through to
+        # session.start_date (a bare MagicMock's .year int()s to 1, collapsing all years).
         mock_repo.fetch_summer_enrollment_history.return_value = [
-            MagicMock(person_id=1, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}),
-            MagicMock(person_id=1, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}),
-            MagicMock(person_id=2, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}),
-            MagicMock(person_id=3, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}),
-            MagicMock(person_id=3, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}),
-            MagicMock(person_id=3, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}),
+            MagicMock(
+                person_id=1, year=None, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=1, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=2, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=3, year=None, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=3, year=None, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=3, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            ),
         ]
 
         service = RegistrationService(mock_repo)
@@ -613,11 +628,20 @@ class TestRegistrationServiceSummerMetrics:
         mock_repo.fetch_synagogue_by_household.return_value = {}
 
         # Person 1 started 2022, Person 2 started 2024
+        # year=None pins the mock so compute_summer_metrics uses session.start_date.
         mock_repo.fetch_summer_enrollment_history.return_value = [
-            MagicMock(person_id=1, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}),
-            MagicMock(person_id=1, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}),
-            MagicMock(person_id=1, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}),
-            MagicMock(person_id=2, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}),
+            MagicMock(
+                person_id=1, year=None, expand={"session": MagicMock(start_date="2022-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=1, year=None, expand={"session": MagicMock(start_date="2023-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=1, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            ),
+            MagicMock(
+                person_id=2, year=None, expand={"session": MagicMock(start_date="2024-06-01", session_type="main")}
+            ),
         ]
 
         service = RegistrationService(mock_repo)
