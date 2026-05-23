@@ -668,6 +668,14 @@ jobs:
       with:
         persist-credentials: false
 
+    - name: Setup Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version-file: '.python-version'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
       with:
@@ -737,6 +745,22 @@ jobs:
         }
         test_endpoint "http://localhost:8080/health" "Health check" || exit 1
         test_endpoint "http://localhost:8080/api/config" "FastAPI config" || exit 1
+
+    - name: Run server contract tests against the stack
+      env:
+        SKIP_POCKETBASE_TESTS: "false"
+        # PB (:8090) and FastAPI (:8000) are internal-only; reach PocketBase through caddy
+        # (:8080), which proxies /api/collections/* to PB. Admin creds match .env.ci above.
+        POCKETBASE_URL: http://127.0.0.1:8080
+        POCKETBASE_ADMIN_EMAIL: ci@test.local
+        POCKETBASE_ADMIN_PASSWORD: ci-test-password
+      run: |
+        uv sync --frozen -q
+        # Data-tolerant integration/sync contract tests (component wiring + dry-run): they
+        # validate connectivity/instantiation against the booted stack and pass against an
+        # empty PB. Data-dependent suites (e2e CLI, the 27 requires_pb_db metrics tests,
+        # performance) need a seeded dataset CD lacks — tracked in #1623.
+        uv run pytest tests/integration/sync -v --tb=short -p no:cacheprovider
 
     - name: Verify non-root user and distroless containers
       run: |
