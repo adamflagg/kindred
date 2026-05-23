@@ -754,18 +754,20 @@ jobs:
         POCKETBASE_URL: http://127.0.0.1:8080
         POCKETBASE_ADMIN_EMAIL: ci@test.local
         POCKETBASE_ADMIN_PASSWORD: ci-test-password
+        # The orchestrator/full-pipeline smoke tests construct an AI provider; its init is a
+        # *presence* check on the key. CD's PB is empty ⇒ the dry-run has 0 requests ⇒ no real
+        # AI call is made, so a placeholder satisfies init without a secret or API spend
+        # (verified: both pass with a deliberately-invalid key against an empty PB). When
+        # #1623 seeds data the pipeline would actually call the provider — a real key (secret)
+        # is needed then.
+        AI_PROVIDER: openai
+        AI_API_KEY: ci-placeholder-not-called
       run: |
         uv sync --frozen -q
-        # Connectivity/wiring contract tests: validate PocketBase reachability (through caddy)
-        # + repository/cache instantiation against the booted stack; they pass against an
-        # empty PB. The Orchestrator + full-pipeline smoke tests are deselected — they
-        # construct an AI provider (needs AI_API_KEY) that CD does not configure. Those, plus
-        # the data-dependent suites (e2e CLI, the 27 requires_pb_db metrics tests,
-        # performance), are tracked in #1623.
-        uv run pytest tests/integration/sync \
-          --deselect "tests/integration/sync/test_bunk_processor_smoke.py::TestOrchestratorSmoke::test_orchestrator_initializes_with_data_context" \
-          --deselect "tests/integration/sync/test_bunk_processor_smoke.py::TestFullPipelineSmoke::test_full_pipeline_dry_run" \
-          -v --tb=short -p no:cacheprovider
+        # Connectivity/wiring contract tests against the booted stack; pass against an empty
+        # PB. Data-dependent suites (e2e CLI, the 27 requires_pb_db metrics tests, performance)
+        # need a seeded dataset CD lacks — tracked in #1623.
+        uv run pytest tests/integration/sync -v --tb=short -p no:cacheprovider
 
     - name: Verify non-root user and distroless containers
       run: |
