@@ -10,12 +10,13 @@ This conftest.py provides common fixtures for all test categories:
 Note: sys.path manipulation is handled here to ensure imports work correctly.
 """
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
+
+from tests._env import is_truthy_env
 
 # Add project root to path to allow imports
 project_root = Path(__file__).parent.parent
@@ -82,7 +83,7 @@ def mock_all_external_services():
     services like PocketBase, unless explicitly disabled.
     """
     # Skip mocking for integration tests that explicitly need real connections
-    if os.environ.get("SKIP_MOCKING") == "true":
+    if is_truthy_env("SKIP_MOCKING"):
         yield {}
         return
 

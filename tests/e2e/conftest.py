@@ -5,18 +5,18 @@ These tests require all services running (PocketBase, solver service, frontend).
 Skip them when SKIP_POCKETBASE_TESTS is set.
 """
 
-import os
-
 import pytest
 
+from tests._env import is_truthy_env
+
 # Skip all e2e tests when SKIP_POCKETBASE_TESTS is set
-if os.environ.get("SKIP_POCKETBASE_TESTS") == "true":
+if is_truthy_env("SKIP_POCKETBASE_TESTS"):
     collect_ignore_glob = ["**/*.py"]
 
 
 def pytest_collection_modifyitems(config, items):
     """Skip e2e tests when SKIP_POCKETBASE_TESTS is set."""
-    if os.environ.get("SKIP_POCKETBASE_TESTS") == "true":
+    if is_truthy_env("SKIP_POCKETBASE_TESTS"):
         skip_pb = pytest.mark.skip(reason="SKIP_POCKETBASE_TESTS is set")
         for item in items:
             if "e2e" in str(item.fspath):

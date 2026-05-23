@@ -7,11 +7,11 @@ tests living in the unit tree; they run locally and in CD (where a DB exists) an
 are skipped under ``SKIP_POCKETBASE_TESTS`` (CI / pre-push, where there is no DB).
 """
 
-import os
-
 import pytest
 
+from tests._env import is_truthy_env
+
 requires_pb_db = pytest.mark.skipif(
-    os.environ.get("SKIP_POCKETBASE_TESTS") == "true",
+    is_truthy_env("SKIP_POCKETBASE_TESTS"),
     reason="Hits PocketBase SQLite directly; needs a real DB (PB_DATA_DIR / pocketbase/pb_data/data.db).",
 )

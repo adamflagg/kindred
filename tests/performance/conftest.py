@@ -7,7 +7,7 @@ pre-push) so `pytest tests/` neither imports nor runs them; they run in CD again
 booted stack.
 """
 
-import os
+from tests._env import is_truthy_env
 
-if os.environ.get("SKIP_POCKETBASE_TESTS") == "true":
+if is_truthy_env("SKIP_POCKETBASE_TESTS"):
     collect_ignore_glob = ["**/*.py"]
