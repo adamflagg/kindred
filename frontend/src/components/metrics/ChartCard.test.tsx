@@ -110,4 +110,13 @@ describe('ChartCard', () => {
     )
     expect(container.querySelector('.card-lodge')).not.toBeNull()
   })
+
+  it('renders headerRight content in the header', () => {
+    render(
+      <ChartCard title="Overall Retention Rate Trend" headerRight={<span>Camp → Teen</span>}>
+        <div />
+      </ChartCard>
+    )
+    expect(screen.getByText('Camp → Teen')).toBeInTheDocument()
+  })
 })

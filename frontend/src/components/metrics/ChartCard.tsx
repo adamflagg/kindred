@@ -13,6 +13,7 @@ export interface ChartCardYAxis {
 
 export interface ChartCardProps {
   title?: string
+  headerRight?: ReactNode
   height?: number
   className?: string
   yAxis?: ChartCardYAxis
@@ -29,6 +30,7 @@ export interface ChartCardProps {
 
 export function ChartCard({
   title,
+  headerRight,
   className = '',
   yAxis,
   xLabels,
@@ -44,7 +46,12 @@ export function ChartCard({
   if (isEmpty) {
     return (
       <div className={`card-lodge p-4 ${className}`}>
-        {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+        {(title || headerRight) && (
+          <div className="mb-2 flex items-center justify-between gap-2">
+            {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
+            {headerRight}
+          </div>
+        )}
         <div className="text-muted-foreground flex h-[200px] items-center justify-center">
           {emptyMessage}
         </div>
@@ -56,7 +63,12 @@ export function ChartCard({
 
   return (
     <div className={`card-lodge flex flex-col px-4 pt-4 pb-4 ${className}`}>
-      {title && <h3 className="text-foreground mb-2 text-base font-semibold">{title}</h3>}
+      {(title || headerRight) && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {title && <h3 className="text-foreground text-base font-semibold">{title}</h3>}
+          {headerRight}
+        </div>
+      )}
 
       <div className="relative flex-1">
         {yAxis ? (
