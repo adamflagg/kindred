@@ -220,13 +220,19 @@ class TestRetentionAgedOutExclusion:
         assert m_breakdown.base_count == 1
 
     @pytest.mark.asyncio
-    async def test_10th_graders_excluded_from_grade_breakdown(
+    async def test_10th_graders_present_in_grade_breakdown(
         self, repo: AsyncMock, base_session: Mock, compare_session: Mock
     ) -> None:
-        """Grade breakdown should not include 10th graders."""
+        """Grade breakdown ALWAYS includes grade-10 row (carve-out).
+
+        Even though grade-10 is excluded from the headline (base_year_total /
+        overall_retention_rate), by_grade always shows the grade-10 row so staff
+        can see that cohort's retention rate (their only forward path is a teen
+        program, so the rate is meaningful).  Graduating grades (≥12) still drop.
+        """
         persons = {
             1: _make_person(1, grade=7),
-            2: _make_person(2, grade=10),  # aged out
+            2: _make_person(2, grade=10),  # aged out from headline, but kept in by_grade
         }
         attendees_base = [_make_attendee(pid, base_session) for pid in [1, 2]]
         attendees_compare = [_make_attendee(1, compare_session)]
@@ -235,9 +241,9 @@ class TestRetentionAgedOutExclusion:
         svc = RetentionService(repo)
         result = await svc.calculate_retention(2025, 2026)
 
-        # Grade 10 should not appear in grade breakdown
+        # Grade 10 ALWAYS appears in grade breakdown (carve-out from headline exclusion)
         grade_values = [g.grade for g in result.by_grade]
-        assert 10 not in grade_values
+        assert 10 in grade_values
         assert 7 in grade_values
 
     @pytest.mark.asyncio
@@ -786,3 +792,102 @@ class TestRetentionTeenPipeline:
             on.returned_count,
             on.aged_out_count,
         )
+
+
+class TestRetentionFlagCarveOuts:
+    """by_grade always shows grade-10; 'by 2026 session' hides TLI when flag off."""
+
+    @pytest.fixture
+    def repo(self) -> AsyncMock:
+        return AsyncMock()
+
+    def _setup(
+        self,
+        repo: AsyncMock,
+        sessions_base: dict[int, Mock],
+        sessions_compare: dict[int, Mock],
+        persons_base: dict[int, Mock],
+        attendees_base: list[Mock],
+        attendees_compare: list[Mock],
+    ) -> None:
+        repo.fetch_attendees = AsyncMock(
+            side_effect=lambda year, *a, **kw: attendees_base if year == 2025 else attendees_compare
+        )
+        repo.fetch_persons = AsyncMock(side_effect=lambda year: persons_base if year == 2025 else {})
+        repo.fetch_bunk_assignments = AsyncMock(return_value=[])
+        repo.fetch_sessions = AsyncMock(
+            side_effect=lambda year, types: sessions_base if year == 2025 else sessions_compare
+        )
+        repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
+
+    @pytest.mark.asyncio
+    async def test_grade_10_row_always_present_in_by_grade(self, repo) -> None:
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=10)}
+        attendees_base = [_make_attendee(1, base_main), _make_attendee(2, base_main)]
+        attendees_compare = [_make_attendee(1, compare_main), _make_attendee(2, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        for flag in (False, True):
+            self._setup(
+                repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare
+            )
+            result = await RetentionService(repo).calculate_retention(2025, 2026, include_teen_pipeline=flag)
+            grades = {g.grade for g in result.by_grade}
+            assert 10 in grades, f"grade-10 row missing when flag={flag}"
+            assert 9 in grades
+            row10 = next(g for g in result.by_grade if g.grade == 10)
+            assert row10.base_count == 1
+            assert row10.returned_count == 1
+
+    @pytest.mark.asyncio
+    async def test_grade_10_excluded_from_overall_rate_when_flag_off(self, repo) -> None:
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=10)}
+        attendees_base = [_make_attendee(1, base_main), _make_attendee(2, base_main)]
+        attendees_compare = [_make_attendee(1, compare_main), _make_attendee(2, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        result = await RetentionService(repo).calculate_retention(2025, 2026, include_teen_pipeline=False)
+        assert result.base_year_total == 1
+        assert result.aged_out_count == 1
+
+    @pytest.mark.asyncio
+    async def test_by_2026_session_hides_tli_when_flag_off_shows_when_on(self, repo) -> None:
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=10)}
+        attendees_base = [_make_attendee(1, base_main)]
+        attendees_compare = [_make_attendee(1, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        off = await RetentionService(repo).calculate_retention(2025, 2026, include_teen_pipeline=False)
+        assert "TLI" not in {s.session_name for s in off.by_session}
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        on = await RetentionService(repo).calculate_retention(2025, 2026, include_teen_pipeline=True)
+        tli_row = next((s for s in on.by_session if s.session_name == "TLI"), None)
+        assert tli_row is not None
+        assert tli_row.base_count == 1
+        assert tli_row.returned_count == 1
+
+    @pytest.mark.asyncio
+    async def test_by_2026_session_scit_shown_regardless_of_flag(self, repo) -> None:
+        base_tli = _make_session(1002, "TLI", "tli", start_date="2025-06-15", end_date="2025-07-05")
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_scit = _make_session(2002, "SCIT", "scit", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=11)}
+        attendees_base = [_make_attendee(1, base_tli)]
+        attendees_compare = [_make_attendee(1, compare_scit)]
+        sessions_base = {base_main.cm_id: base_main, base_tli.cm_id: base_tli}
+        sessions_compare = {compare_main.cm_id: compare_main, compare_scit.cm_id: compare_scit}
+        for flag in (False, True):
+            self._setup(repo, sessions_base, sessions_compare, persons, attendees_base, attendees_compare)
+            result = await RetentionService(repo).calculate_retention(
+                2025, 2026, session_types=["scit", "tli"], include_teen_pipeline=flag
+            )
+            assert "SCIT" in {s.session_name for s in result.by_session}, f"SCIT missing when flag={flag}"

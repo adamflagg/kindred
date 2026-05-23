@@ -155,6 +155,8 @@ class RetentionService:
 
         # Exclude aged-out persons from retention base pools (spec §8). The flag credits
         # the grade-10 -> teen bridge; otherwise grade 10 is aged out (legacy behavior).
+        # person_ids_base_cohort captures the pre-aged-out cohort for grade-specific breakdown.
+        person_ids_base_cohort = set(person_ids_base)
         pre_filter_count = len(person_ids_base)
         person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base, include_teen_pipeline)
         aged_out_count = pre_filter_count - len(person_ids_base)
@@ -167,6 +169,13 @@ class RetentionService:
             for pid, person in persons_base.items()
             if is_aged_out(getattr(person, "grade", None), include_teen_pipeline)
         }
+        # by_grade ALWAYS keeps grade-10 (its retention rate is meaningful even when excluded
+        # from the headline); only graduating grades (>=12) drop. include_teen_pipeline=True here
+        # forces grade-10 in regardless of the actual flag.
+        person_ids_base_grade = exclude_aged_out_persons(
+            person_ids_base_cohort, persons_base, include_teen_pipeline=True
+        )
+        returned_ids_grade = person_ids_base_grade & person_ids_compare
 
         # Base year attendee sessions (cohort + specific session) for session flow
         _, attendee_sessions_base_filtered = self._filter_base_attendees(
@@ -188,8 +197,8 @@ class RetentionService:
         )
 
         by_grade = self._build_retention_breakdown(
-            person_ids_base,
-            returned_ids,
+            person_ids_base_grade,
+            returned_ids_grade,
             persons_base,
             extract_grade,
             RetentionByGrade,
@@ -199,7 +208,7 @@ class RetentionService:
 
         # Session breakdown: compare year sessions, returning = was in any base year session
         by_session = self._build_compare_year_session_breakdown(
-            attendee_sessions_compare, person_ids_base_unfiltered, sessions_compare_filtered
+            attendee_sessions_compare, person_ids_base_unfiltered, sessions_compare_filtered, include_teen_pipeline
         )
 
         by_years_at_camp = self._build_retention_breakdown(
@@ -485,6 +494,7 @@ class RetentionService:
         attendee_sessions_compare: dict[int, list[int]],
         person_ids_base_unfiltered: set[int],
         sessions_compare: dict[int, Any],
+        include_teen_pipeline: bool = False,
     ) -> list[RetentionBySession]:
         """Build session breakdown for compare year (Chart 1: "Retention by 2026 Session").
 
@@ -532,6 +542,12 @@ class RetentionService:
                 continue
             session_type = getattr(session, "session_type", None)
             if session_type not in DISPLAY_SESSION_TYPES:
+                continue
+            if not include_teen_pipeline and session_type == "tli" and stats["returned"] == 0:
+                # When the pipeline toggle is off, a 2026 TLI row is fed by the gated
+                # grade-10 bridge, so it's 0% — hide it rather than show a misleading 0%.
+                # A non-zero TLI row (rare off-grade returner) is kept so it reconciles
+                # with the headline, which still counts tracked grade-11 returns.
                 continue
 
             result.append(
