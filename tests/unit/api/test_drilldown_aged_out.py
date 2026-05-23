@@ -254,12 +254,6 @@ class TestDrilldownNonRetentionNotAffected:
 # Teen-pipeline (effective_pipeline) aged-out gating
 # ============================================================================
 
-# Teen session window: 2025 base + 2026 compare both overlap the main camp window.
-_BASE_TEEN_SESSION = _make_session(1002, "SCIT", session_type="scit")
-_BASE_MAIN_SESSION = _make_session(1001, "Session 2", session_type="main")
-_COMPARE_TEEN_SESSION = _make_session(2002, "SCIT", session_type="scit")
-_COMPARE_MAIN_SESSION = _make_session(2001, "Session 2", session_type="main")
-
 
 def _build_drilldown_service(grade: int, session: str) -> DrilldownService:
     """Build a DrilldownService backed by a single base camper of ``grade``.
@@ -273,8 +267,8 @@ def _build_drilldown_service(grade: int, session: str) -> DrilldownService:
         base_session = _make_session(1002, "SCIT", session_type="scit")
         compare_session = _make_session(2002, "SCIT", session_type="scit")
     else:
-        base_session = _make_session(1001, "Session 2", session_type="main")
-        compare_session = _make_session(2001, "Session 2", session_type="main")
+        base_session = _make_session(1003, "Session 2", session_type="main")
+        compare_session = _make_session(2003, "Session 2", session_type="main")
 
     base_main = _make_session(1001, "Session 2", session_type="main")
     compare_main = _make_session(2001, "Session 2", session_type="main")
