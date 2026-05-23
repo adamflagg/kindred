@@ -10,11 +10,31 @@ fields, falling back to raw fields when normalized values are not available.
 
 from typing import Any
 
-# Grade at or above which campers are excluded from retention analysis.
-# All summer sessions (camp and quest) have a maximum grade of 10th.
-# 10th graders have no eligible summer session to return to the following year,
-# so counting them as "did not return" would unfairly penalize retention metrics.
+# Grade boundaries for retention aged-out logic (spec §8).
+# RETENTION_AGED_OUT_GRADE is the main-camp ceiling (the 10th-grade -> teen bridge);
+# RETENTION_GRADUATING_GRADE is the grade at/above which a camper has graduated and
+# has no eligible program the following year.
 RETENTION_AGED_OUT_GRADE = 10
+RETENTION_GRADUATING_GRADE = 12
+
+
+def is_aged_out(grade: int | None, include_teen_pipeline: bool = False) -> bool:
+    """Per-person aged-out test for retention base pools.
+
+    - None grade is never aged out (unknown — keep).
+    - grade >= 12: graduating, no program next year -> aged out.
+    - grade == 10: the main->teen bridge. Aged out unless include_teen_pipeline
+      credits the continuation into a teen program.
+    - grades <= 9 (return to main) and 11 (return to a teen program) are tracked.
+    """
+    if grade is None:
+        return False
+    g = int(grade)
+    if g >= RETENTION_GRADUATING_GRADE:
+        return True
+    if g == RETENTION_AGED_OUT_GRADE:
+        return not include_teen_pipeline
+    return False
 
 
 def extract_gender(person: Any) -> str:
@@ -49,10 +69,15 @@ def extract_years_at_camp(person: Any) -> int:
     return years if years is not None else 0
 
 
-def exclude_aged_out_persons(person_ids: set[int], persons: dict[int, Any]) -> set[int]:
-    """Remove persons whose grade >= RETENTION_AGED_OUT_GRADE from the set.
+def exclude_aged_out_persons(
+    person_ids: set[int],
+    persons: dict[int, Any],
+    include_teen_pipeline: bool = False,
+) -> set[int]:
+    """Remove aged-out persons (see is_aged_out) from the set.
 
     Persons not found in the persons dict or with None grade are kept.
+    include_teen_pipeline=False preserves legacy grade-10 exclusion.
     """
     result: set[int] = set()
     for pid in person_ids:
@@ -60,15 +85,20 @@ def exclude_aged_out_persons(person_ids: set[int], persons: dict[int, Any]) -> s
             result.add(pid)
             continue
         grade = getattr(persons[pid], "grade", None)
-        if grade is None or int(grade) < RETENTION_AGED_OUT_GRADE:
+        if not is_aged_out(grade, include_teen_pipeline):
             result.add(pid)
     return result
 
 
-def filter_aged_out_attendees(attendees: list[Any], persons: dict[int, Any]) -> list[Any]:
-    """Remove attendees whose person's grade >= RETENTION_AGED_OUT_GRADE.
+def filter_aged_out_attendees(
+    attendees: list[Any],
+    persons: dict[int, Any],
+    include_teen_pipeline: bool = False,
+) -> list[Any]:
+    """Remove attendees whose person is aged out (see is_aged_out).
 
     Attendees without a person_id or not found in persons dict are kept.
+    include_teen_pipeline=False preserves legacy grade-10 exclusion.
     """
     result = []
     for a in attendees:
@@ -81,6 +111,6 @@ def filter_aged_out_attendees(attendees: list[Any], persons: dict[int, Any]) -> 
             result.append(a)
             continue
         grade = getattr(person, "grade", None)
-        if grade is None or int(grade) < RETENTION_AGED_OUT_GRADE:
+        if not is_aged_out(grade, include_teen_pipeline):
             result.append(a)
     return result

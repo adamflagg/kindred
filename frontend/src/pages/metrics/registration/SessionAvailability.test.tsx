@@ -205,6 +205,39 @@ describe('SessionAvailability', () => {
     expect(screen.getByText(/ag sessions/i)).toBeInTheDocument()
   })
 
+  it('shortens raw AG cabin names to "AG Session N (grades)"', async () => {
+    const resp = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'All-Gender Cabin-Session 2 (7th & 8th grades)',
+          parent_session_name: 'Session 2',
+          min_grade: 7,
+          max_grade: 8,
+          enrolled: 10,
+          waitlisted: 0,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => resp })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText('AG Session 2 (7th & 8th)')).toBeInTheDocument()
+    })
+    expect(
+      screen.queryByText('All-Gender Cabin-Session 2 (7th & 8th grades)')
+    ).not.toBeInTheDocument()
+  })
+
   it('renders full status cells', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
@@ -776,5 +809,159 @@ describe('SessionAvailability', () => {
       // value carries the teen type (scit), not the ambiguous session_cm_id=0
       expect(drilldownCall).toContain('breakdown_value=scit')
     })
+  })
+
+  it('teen table shows only 11th and 12th grade columns (not 2nd–10th)', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'scit,tli',
+      activeSessionTypes: ['scit', 'tli'],
+      durationParam: undefined,
+    })
+
+    const teenResponse = {
+      sessions: [],
+      ag_sessions: [],
+      teen_sessions: [
+        {
+          session_cm_id: 0,
+          session_name: 'SCIT',
+          session_type: 'scit',
+          min_grade: 12,
+          max_grade: 12,
+          enrolled: 45,
+          waitlisted: 0,
+          capacity: 50,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+        {
+          session_cm_id: 0,
+          session_name: 'TLI',
+          session_type: 'tli',
+          min_grade: 11,
+          max_grade: 11,
+          enrolled: 47,
+          waitlisted: 0,
+          capacity: 40,
+          status: 'full',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => teenResponse })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText(/teen programs/i)).toBeInTheDocument())
+
+    // Teen box is 11th/12th only — no elementary/middle-school columns
+    expect(screen.getByText('11th')).toBeInTheDocument()
+    expect(screen.getByText('12th')).toBeInTheDocument()
+    expect(screen.queryByText('2nd')).not.toBeInTheDocument()
+    expect(screen.queryByText('10th')).not.toBeInTheDocument()
+  })
+
+  it('renders AG (wider) and Teen (narrower) sections side-by-side', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest,scit,tli',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'],
+      durationParam: undefined,
+    })
+
+    const resp = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'AG Session 2',
+          parent_session_name: 'Session 2',
+          min_grade: 4,
+          max_grade: 10,
+          enrolled: 10,
+          waitlisted: 0,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [
+        {
+          session_cm_id: 0,
+          session_name: 'SCIT',
+          session_type: 'scit',
+          min_grade: 12,
+          max_grade: 12,
+          enrolled: 45,
+          waitlisted: 0,
+          capacity: 50,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => resp })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText(/ag sessions/i)).toBeInTheDocument())
+
+    const agWrapper = screen.getByText(/ag sessions/i).closest('[data-section="ag"]')
+    const teenWrapper = screen.getByText(/teen programs/i).closest('[data-section="teen"]')
+    expect(agWrapper).not.toBeNull()
+    expect(teenWrapper).not.toBeNull()
+    // AG is the wide 2/3 column, teen is the narrow 1/3 column
+    expect(agWrapper).toHaveClass('lg:col-span-2')
+    expect(teenWrapper).toHaveClass('lg:col-span-1')
+    // ...and they live in the same grid row
+    expect(agWrapper?.parentElement).toBe(teenWrapper?.parentElement)
+  })
+
+  it('AG section spans full width when there are no teen programs', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+      durationParam: undefined,
+    })
+
+    const resp = {
+      sessions: [],
+      ag_sessions: [
+        {
+          session_cm_id: 2001,
+          session_name: 'AG Session 2',
+          parent_session_name: 'Session 2',
+          min_grade: 4,
+          max_grade: 10,
+          enrolled: 10,
+          waitlisted: 0,
+          capacity: 24,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      teen_sessions: [],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => resp })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText(/ag sessions/i)).toBeInTheDocument())
+
+    const agWrapper = screen.getByText(/ag sessions/i).closest('[data-section="ag"]')
+    expect(agWrapper).not.toBeNull()
+    // No teen section present -> AG takes the full grid width, not 2/3.
+    expect(agWrapper).toHaveClass('lg:col-span-3')
+    expect(screen.queryByText(/teen programs/i)).not.toBeInTheDocument()
   })
 })

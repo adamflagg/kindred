@@ -132,7 +132,13 @@ function buildGroupedChartData(
 }
 
 export default function TrendsOverview() {
-  const { expandedRetention, filterOptions } = useMetricsSession()
+  const {
+    expandedRetention,
+    filterOptions,
+    includeTeenPipeline,
+    setIncludeTeenPipeline,
+    scopeHasTeens,
+  } = useMetricsSession()
   const { currentYear } = useCurrentYear()
 
   const numYearsDisplay = expandedRetention ? 5 : 3
@@ -156,6 +162,9 @@ export default function TrendsOverview() {
   } = useRetentionTrends(currentYear, {
     numYears: 5,
     ...filterOptions,
+    // Only meaningful in a teen scope; outside one the backend treats it as
+    // inert, so don't let hidden state leak into the cache key.
+    includeTeenPipeline: scopeHasTeens ? includeTeenPipeline : false,
   })
 
   // Slice enrollment data based on expanded toggle (3 or 5 years)
@@ -368,6 +377,19 @@ export default function TrendsOverview() {
             data={retentionYears}
             title="Overall Retention Rate Trend"
             height={250}
+            headerRight={
+              scopeHasTeens ? (
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={includeTeenPipeline}
+                    onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
+                    className="accent-primary h-3.5 w-3.5 rounded"
+                  />
+                  <span className="text-muted-foreground">Camp → Teen</span>
+                </label>
+              ) : undefined
+            }
           />
         )}
         {data.years.some((y) => (y.total_cancelled ?? 0) > 0) && (

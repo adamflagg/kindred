@@ -27,6 +27,7 @@ from api.utils.session_metrics import (
     get_session_length_category,
     get_summer_window,
     is_summer_teen_session,
+    resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
 
@@ -147,6 +148,7 @@ class DrilldownService:
         status_filter: list[str] | None = None,
         compare_year: int | None = None,
         duration: str | None = None,
+        include_teen_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Get attendees matching a specific breakdown criteria.
 
@@ -159,6 +161,9 @@ class DrilldownService:
             status_filter: Optional status filter (default: enrolled).
             compare_year: Optional compare year for retention drilldowns. When set,
                 is_returning is based on whether the person returned to the compare year.
+            include_teen_pipeline: When the scope includes teen sessions, credit the
+                grade-10 -> teen bridge (mirrors RetentionService.calculate_retention).
+                Only meaningful in retention context (compare_year set).
 
         Returns:
             List of DrilldownAttendee records matching the criteria.
@@ -166,6 +171,13 @@ class DrilldownService:
         # Default status filter
         if status_filter is None:
             status_filter = ["enrolled"]
+
+        # The teen-pipeline story is only meaningful when the selected scope includes
+        # teen sessions (All Summer / Teens / a specific SCIT·TLI). In a non-teen scope
+        # (At Camp / Quests) a rising-11th-grader has no teen destination, so the flag is
+        # inert and grade-10 is simply aged out. Mirrors RetentionService.calculate_retention.
+        scope_has_teens = session_types is None or any(t in SUMMER_TEEN_TYPES for t in session_types)
+        effective_pipeline = include_teen_pipeline and scope_has_teens
 
         # Fetch sessions first to find AG sessions with matching parent
         sessions = await self.repo.fetch_sessions(year, session_types)
@@ -182,6 +194,8 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                duration=duration,
+                effective_pipeline=effective_pipeline,
             )
 
         # retention_session needs special handling - different from other breakdowns
@@ -194,6 +208,8 @@ class DrilldownService:
                 session_types=session_types,
                 status_filter=status_filter,
                 duration_session_ids=duration_session_ids,
+                duration=duration,
+                effective_pipeline=effective_pipeline,
             )
 
         # Cancellation breakdown types need separate fetching logic
@@ -268,9 +284,11 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons when in retention context
+        # Exclude aged-out persons when in retention context. effective_pipeline
+        # mirrors the retention card: grade-11 is always tracked in a teen scope,
+        # grade-10 is gated by the flag, and graduating grades (>=12) always drop.
         if compare_year is not None:
-            attendees = filter_aged_out_attendees(attendees, persons)
+            attendees = filter_aged_out_attendees(attendees, persons, effective_pipeline)
 
         # Filter by session type and/or session_cm_id
         filtered_attendees = filter_attendees_by_session(
@@ -317,13 +335,17 @@ class DrilldownService:
         enrolled_attendee_groups: dict[int, list[Any]] | None = None
         if compare_year is not None:
             compare_attendees = await self.repo.fetch_attendees(compare_year, ["enrolled"])
-            returned_person_ids = set()
+            # Window-gate the returned set to match the retention card (off-season
+            # teen sessions don't count as a summer return), carrying the same
+            # session/duration scope this path applies to its base attendees.
+            returned_person_ids = await self._gated_returned_person_ids(
+                compare_attendees, compare_year, session_types, session_cm_id=session_cm_id, duration=duration
+            )
             enrolled_attendee_groups = {}
             for a in compare_attendees:
                 pid = getattr(a, "person_id", None)
                 if pid is not None:
                     pid_int = int(pid)
-                    returned_person_ids.add(pid_int)
                     if self._matches_session_types(a, session_types):
                         enrolled_attendee_groups.setdefault(pid_int, []).append(a)
 
@@ -336,6 +358,50 @@ class DrilldownService:
             enrolled_attendee_groups=enrolled_attendee_groups,
             returned_person_ids=returned_person_ids,
         )
+
+    async def _gated_returned_person_ids(
+        self,
+        compare_attendees: list[Any],
+        compare_year: int,
+        session_types: list[str] | None,
+        session_cm_id: int | None = None,
+        duration: str | None = None,
+    ) -> set[int]:
+        """Compute the window-gated "returned" person set, matching the retention card.
+
+        The retention card derives its returned pool from
+        ``resolve_cohort_session_ids(sessions_compare_all, session_types)`` —
+        which applies the summer-window gate to teen (scit/tli) sessions — so an
+        off-season teen session (e.g. a Feb L.A. trip) does NOT count as a return.
+        We apply the IDENTICAL gate here so drilldown lists reconcile with the
+        card's returned_count. ``session_types=None`` resolves to the full summer
+        cohort, same as the card.
+
+        When the caller scopes the view to a specific session or duration, the
+        card intersects its compare pool with those filters too (``filtered_ids_compare
+        = cohort_ids_compare & duration``), so the returned set must carry the same
+        gates or the returned/not_returned drilldowns drift from the card counts.
+        ``session_cm_id`` expands to include the session's AG children; ``duration``
+        is resolved against the compare-year sessions (lengths are per-year).
+        """
+        compare_sessions = await self.repo.fetch_sessions(compare_year, None)
+        cohort_ids = resolve_cohort_session_ids(compare_sessions, session_types)
+        if session_cm_id is not None:
+            cohort_ids &= {session_cm_id, *find_ag_sessions_for_parent(compare_sessions, session_cm_id)}
+        if duration is not None:
+            cohort_ids &= resolve_duration_sessions(compare_sessions, duration)
+        returned: set[int] = set()
+        for a in compare_attendees:
+            pid = getattr(a, "person_id", None)
+            if pid is None:
+                continue
+            session = get_session_from_expand(a)
+            if not session:
+                continue
+            sid = getattr(session, "cm_id", None)
+            if sid is not None and int(sid) in cohort_ids:
+                returned.add(int(pid))
+        return returned
 
     def _matches_session_types(self, attendee: Any, session_types: list[str] | None) -> bool:
         """Check if an attendee's session matches the allowed session types.
@@ -504,6 +570,8 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        duration: str | None = None,
+        effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention_session breakdown - find base year campers who returned to a specific compare year session.
 
@@ -515,6 +583,8 @@ class DrilldownService:
             session_types: Session type filter.
             status_filter: Status filter for attendees.
             duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            effective_pipeline: include_teen_pipeline AND the scope has teens; credits
+                the grade-10 -> teen bridge (mirrors the retention card).
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -526,22 +596,30 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns
-        base_attendees = filter_aged_out_attendees(base_attendees, persons)
+        # Exclude aged-out persons from retention drilldowns. effective_pipeline
+        # mirrors the retention card so the lists reconcile with its numbers.
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
-        # Find compare year person_ids enrolled in the target session
+        # Window-gate the returned set to match the retention card (off-season
+        # teen sessions don't count as a summer return), carrying the duration
+        # gate the card applies to its compare pool.
+        returned_person_ids = await self._gated_returned_person_ids(
+            compare_attendees, compare_year, session_types, duration=duration
+        )
+
+        # Find compare year person_ids enrolled in the target (clicked) session.
+        # target_person_ids is the drilldown's own filter criterion and is NOT
+        # window-gated — the user picked a specific compare-year session.
         target_person_ids: set[int] = set()
-        returned_person_ids: set[int] = set()
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for a in compare_attendees:
             pid = getattr(a, "person_id", None)
             if pid is None:
                 continue
             pid_int = int(pid)
-            returned_person_ids.add(pid_int)
             if self._matches_session_types(a, session_types):
                 enrolled_attendee_groups.setdefault(pid_int, []).append(a)
             session = get_session_from_expand(a)
@@ -585,6 +663,8 @@ class DrilldownService:
         session_types: list[str] | None,
         status_filter: list[str],
         duration_session_ids: set[int] | None = None,
+        duration: str | None = None,
+        effective_pipeline: bool = False,
     ) -> list[DrilldownAttendee]:
         """Handle retention top-card drilldowns (all, returned, not_returned).
 
@@ -596,6 +676,8 @@ class DrilldownService:
             session_types: Session type filter.
             status_filter: Status filter for attendees.
             duration_session_ids: Optional set of session cm_ids matching the duration filter.
+            effective_pipeline: include_teen_pipeline AND the scope has teens; credits
+                the grade-10 -> teen bridge (mirrors the retention card).
 
         Returns:
             List of DrilldownAttendee records from the base year.
@@ -606,20 +688,25 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns
-        base_attendees = filter_aged_out_attendees(base_attendees, persons)
+        # Exclude aged-out persons from retention drilldowns. effective_pipeline
+        # mirrors the retention card so the lists reconcile with its numbers.
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, effective_pipeline)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
 
-        # Build returned_person_ids and enrolled_attendee_groups from compare year
-        returned_person_ids: set[int] = set()
+        # Build returned_person_ids (window-gated to match the retention card so
+        # off-season teen sessions don't count as a summer return, and carrying
+        # the duration gate the card applies to its compare pool) and
+        # enrolled_attendee_groups from compare year.
+        returned_person_ids = await self._gated_returned_person_ids(
+            compare_attendees, compare_year, session_types, duration=duration
+        )
         enrolled_attendee_groups: dict[int, list[Any]] = {}
         for a in compare_attendees:
             pid = getattr(a, "person_id", None)
             if pid is not None:
                 pid_int = int(pid)
-                returned_person_ids.add(pid_int)
                 if self._matches_session_types(a, session_types):
                     enrolled_attendee_groups.setdefault(pid_int, []).append(a)
 

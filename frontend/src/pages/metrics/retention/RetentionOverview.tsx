@@ -42,9 +42,21 @@ import { Loader2, AlertCircle } from 'lucide-react'
 
 export default function RetentionOverview() {
   const { currentYear } = useCurrentYear()
-  const { selectedSessionCmId, sessions, activeSessionTypes, durationParam, filterOptions } =
-    useMetricsSession()
+  const {
+    selectedSessionCmId,
+    sessions,
+    activeSessionTypes,
+    durationParam,
+    filterOptions,
+    includeTeenPipeline,
+    scopeHasTeens,
+  } = useMetricsSession()
   const priorYear = currentYear - 1
+
+  // The teen-pipeline flag is only meaningful in a teen scope; outside one the
+  // backend treats it as inert, so don't let hidden state leak into the hook
+  // call or the React Query cache key (mirrors MetricsTypeTabs hiding the toggle).
+  const effectiveTeenPipeline = scopeHasTeens && includeTeenPipeline
 
   // Build date lookups for chronological session sorting (must be before early returns)
   const sessionDateLookup = useMemo(() => buildSessionDateLookup(sessions), [sessions])
@@ -71,7 +83,12 @@ export default function RetentionOverview() {
     [priorYear, currentYear]
   )
 
-  const { data, isLoading, error } = useRetentionMetrics(priorYear, currentYear, filterOptions)
+  const { data, isLoading, error } = useRetentionMetrics(
+    priorYear,
+    currentYear,
+    filterOptions,
+    effectiveTeenPipeline
+  )
 
   // Build date lookup from API response (prior year sessions have start_date)
   const priorSessionDateLookup = useMemo(() => {
@@ -188,12 +205,53 @@ export default function RetentionOverview() {
         />
       </div>
 
-      {data.aged_out_count != null && data.aged_out_count > 0 && (
-        <p className="text-muted-foreground text-xs">
-          Excluding {data.aged_out_count} 10th grader{data.aged_out_count !== 1 ? 's' : ''} who aged
-          out of eligible sessions
-        </p>
-      )}
+      {(() => {
+        const effectiveOn = effectiveTeenPipeline
+        const gradeTenInBase = data.by_grade.find((g) => g.grade === 10)?.base_count ?? 0
+        const agedOut = data.aged_out_count ?? 0
+        // Split the aged-out total into its two reasons
+        const tenthExcluded = effectiveOn ? 0 : scopeHasTeens ? gradeTenInBase : agedOut
+        const gradExcluded = effectiveOn ? agedOut : Math.max(0, agedOut - tenthExcluded)
+
+        if (tenthExcluded === 0 && gradExcluded === 0) return null
+
+        const graderS = (n: number) => `grader${n === 1 ? '' : 's'}`
+
+        let noteContent: React.ReactNode
+        if (tenthExcluded > 0 && gradExcluded > 0) {
+          noteContent = (
+            <>
+              Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)} and {gradExcluded}{' '}
+              rising 12th {graderS(gradExcluded)}. Only showing retention within camp sessions or
+              teen programs — check the box above to include 10th grader retention stats.
+            </>
+          )
+        } else if (tenthExcluded > 0) {
+          if (scopeHasTeens) {
+            noteContent = (
+              <>
+                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}. Only showing
+                retention within camp sessions or teen programs — check the box above to include
+                10th grader retention stats.
+              </>
+            )
+          } else {
+            noteContent = (
+              <>
+                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}.
+              </>
+            )
+          }
+        } else {
+          noteContent = (
+            <>
+              Excluding {gradExcluded} rising 12th {graderS(gradExcluded)}.
+            </>
+          )
+        }
+
+        return <p className="text-muted-foreground text-xs">{noteContent}</p>
+      })()}
 
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">

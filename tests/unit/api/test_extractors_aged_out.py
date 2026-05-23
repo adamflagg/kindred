@@ -8,8 +8,10 @@ from unittest.mock import Mock
 
 from api.services.extractors import (
     RETENTION_AGED_OUT_GRADE,
+    RETENTION_GRADUATING_GRADE,
     exclude_aged_out_persons,
     filter_aged_out_attendees,
+    is_aged_out,
 )
 
 
@@ -26,9 +28,38 @@ def _make_attendee(person_id: int) -> Mock:
     return a
 
 
-class TestRetentionAgedOutGradeConstant:
-    def test_constant_is_10(self) -> None:
+class TestAgedOutConstants:
+    def test_aged_out_grade_is_10(self) -> None:
         assert RETENTION_AGED_OUT_GRADE == 10
+
+    def test_graduating_grade_is_12(self) -> None:
+        assert RETENTION_GRADUATING_GRADE == 12
+
+
+class TestIsAgedOut:
+    """Per-person aged-out model (spec §8). The flag changes ONLY grade 10."""
+
+    def test_none_grade_never_aged_out(self) -> None:
+        assert is_aged_out(None, include_teen_pipeline=False) is False
+        assert is_aged_out(None, include_teen_pipeline=True) is False
+
+    def test_grade_9_and_below_tracked(self) -> None:
+        for g in (5, 8, 9):
+            assert is_aged_out(g, include_teen_pipeline=False) is False
+            assert is_aged_out(g, include_teen_pipeline=True) is False
+
+    def test_grade_11_tracked_in_both_states(self) -> None:
+        assert is_aged_out(11, include_teen_pipeline=False) is False
+        assert is_aged_out(11, include_teen_pipeline=True) is False
+
+    def test_grade_12_and_above_aged_out_in_both_states(self) -> None:
+        for g in (12, 13):
+            assert is_aged_out(g, include_teen_pipeline=False) is True
+            assert is_aged_out(g, include_teen_pipeline=True) is True
+
+    def test_grade_10_is_the_bridge(self) -> None:
+        assert is_aged_out(10, include_teen_pipeline=False) is True
+        assert is_aged_out(10, include_teen_pipeline=True) is False
 
 
 class TestExcludeAgedOutPersons:
@@ -43,15 +74,24 @@ class TestExcludeAgedOutPersons:
         result = exclude_aged_out_persons({1, 2}, persons)
         assert result == {2}
 
-    def test_excludes_grade_above_10(self) -> None:
-        """Grades 11, 12 should also be excluded."""
+    def test_grade_12_excluded_grade_11_kept_by_default(self) -> None:
+        """Default (flag off): grade 12 aged out, grade 11 now tracked."""
         persons = {
             1: _make_person(1, grade=11),
             2: _make_person(2, grade=12),
             3: _make_person(3, grade=8),
         }
         result = exclude_aged_out_persons({1, 2, 3}, persons)
-        assert result == {3}
+        assert result == {1, 3}
+
+    def test_grade_10_kept_when_teen_pipeline_enabled(self) -> None:
+        """Flag on: grade 10 kept (the main->teen bridge)."""
+        persons = {
+            1: _make_person(1, grade=10),
+            2: _make_person(2, grade=9),
+        }
+        result = exclude_aged_out_persons({1, 2}, persons, include_teen_pipeline=True)
+        assert result == {1, 2}
 
     def test_keeps_grade_9(self) -> None:
         """Grade 9 should NOT be excluded."""
@@ -111,6 +151,12 @@ class TestFilterAgedOutAttendees:
         result = filter_aged_out_attendees(attendees, persons)
         assert len(result) == 1
         assert result[0].person_id == 2
+
+    def test_grade_10_attendees_kept_when_teen_pipeline_enabled(self) -> None:
+        persons = {1: _make_person(1, grade=10), 2: _make_person(2, grade=8)}
+        attendees = [_make_attendee(1), _make_attendee(2)]
+        result = filter_aged_out_attendees(attendees, persons, include_teen_pipeline=True)
+        assert {a.person_id for a in result} == {1, 2}
 
     def test_keeps_none_grade_attendees(self) -> None:
         """Attendees with None grade should be kept."""

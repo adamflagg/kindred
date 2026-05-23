@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { DrilldownAttendee, DrilldownFilter } from '../types/metrics'
 import { queryKeys, syncDataOptions } from '../utils/queryKeys'
 import { useApiWithAuth } from './useApiWithAuth'
+import { useMetricsSession } from './useMetricsSession'
 
 interface UseDrilldownAttendeesOptions {
   year: number
@@ -28,6 +29,7 @@ export function useDrilldownAttendees({
   duration,
 }: UseDrilldownAttendeesOptions) {
   const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
+  const { includeTeenPipeline } = useMetricsSession()
   const sessionTypesParam = sessionTypes?.join(',')
   // Use statusOverride from filter if present, otherwise use default statusFilter
   const effectiveStatusFilter = filter?.statusOverride ?? statusFilter
@@ -43,7 +45,8 @@ export function useDrilldownAttendees({
       sessionTypesParam,
       statusFilterParam,
       compareYear,
-      duration
+      duration,
+      includeTeenPipeline
     ),
     queryFn: async (): Promise<DrilldownAttendee[]> => {
       if (!filter) {
@@ -70,6 +73,10 @@ export function useDrilldownAttendees({
       }
       if (duration) {
         params.set('duration', duration)
+      }
+
+      if (includeTeenPipeline) {
+        params.set('include_teen_pipeline', 'true')
       }
 
       const res = await fetchWithAuth(`/api/metrics/drilldown?${params}`)

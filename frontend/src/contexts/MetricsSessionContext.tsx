@@ -43,6 +43,7 @@ const VIEW_PARAM = 'view'
 const COMPARE_PARAM = 'compare'
 const DURATION_PARAM = 'duration'
 const TEEN_PARAM = 'teen'
+const TEEN_PIPELINE_PARAM = 'teen_pipeline'
 
 /**
  * Parse session param from URL
@@ -118,6 +119,12 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
   const selectedTeenType = useMemo(() => {
     return parseTeenTypeParam(searchParams.get(TEEN_PARAM))
   }, [searchParams])
+
+  // Get includeTeenPipeline flag from URL param
+  const includeTeenPipeline = useMemo(
+    () => searchParams.get(TEEN_PIPELINE_PARAM) === '1',
+    [searchParams]
+  )
 
   const isComparing = compareYear !== null
 
@@ -298,10 +305,31 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     [setSearchParams]
   )
 
+  // Set teen pipeline inclusion flag (URL: teen_pipeline=1)
+  const setIncludeTeenPipeline = useCallback(
+    (value: boolean) => {
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev)
+          if (value) newParams.set(TEEN_PIPELINE_PARAM, '1')
+          else newParams.delete(TEEN_PIPELINE_PARAM)
+          return newParams
+        },
+        { replace: true }
+      )
+    },
+    [setSearchParams]
+  )
+
   // Clear session filter
   const clearSession = useCallback(() => {
     setSelectedSessionCmId(null)
   }, [setSelectedSessionCmId])
+
+  const scopeHasTeens = useMemo(
+    () => activeSessionTypes.some((t) => t === 'scit' || t === 'tli'),
+    [activeSessionTypes]
+  )
 
   const value: MetricsSessionContextType = useMemo(
     () => ({
@@ -332,6 +360,9 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       compareYear,
       setCompareYear,
       isComparing,
+      includeTeenPipeline,
+      setIncludeTeenPipeline,
+      scopeHasTeens,
     }),
     [
       selectedSessionCmId,
@@ -360,6 +391,9 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       compareYear,
       setCompareYear,
       isComparing,
+      includeTeenPipeline,
+      setIncludeTeenPipeline,
+      scopeHasTeens,
     ]
   )
 

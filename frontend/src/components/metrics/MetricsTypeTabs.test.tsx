@@ -181,4 +181,49 @@ describe('MetricsTypeTabs', () => {
       expect(screen.getByText('At Camp')).toBeInTheDocument()
     })
   })
+
+  describe('retention teen-pipeline checkbox', () => {
+    // New label: "Include camp → teen transition"
+    // New visibility: only shown in teen-inclusive scopes (?view=all or ?view=teens)
+
+    it('shows "Include camp → teen transition" checkbox on retention route with teen-inclusive scope (?view=all)', () => {
+      renderWithRouter('/analytics/retention?view=all')
+
+      expect(
+        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
+      ).toBeInTheDocument()
+    })
+
+    it('shows checkbox on retention route with teens-only scope (?view=teens)', () => {
+      renderWithRouter('/analytics/retention?view=teens')
+
+      expect(
+        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
+      ).toBeInTheDocument()
+    })
+
+    it('does NOT show the checkbox on retention route with non-teen scope (default / At Camp)', () => {
+      renderWithRouter('/analytics/retention')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
+      ).not.toBeInTheDocument()
+    })
+
+    it('does NOT show the checkbox on registration route', () => {
+      renderWithRouter('/analytics/registration?view=all')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
+      ).not.toBeInTheDocument()
+    })
+
+    it('does NOT show the checkbox on trends route', () => {
+      renderWithRouter('/analytics/trends?view=all')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
+      ).not.toBeInTheDocument()
+    })
+  })
 })

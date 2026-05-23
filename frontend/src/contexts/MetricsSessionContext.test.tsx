@@ -874,3 +874,38 @@ describe('MetricsSessionProvider — teen features', () => {
     })
   })
 }) // end describe('MetricsSessionProvider — teen features')
+
+describe('MetricsSessionProvider — includeTeenPipeline', () => {
+  beforeEach(() => {
+    lastSearch = ''
+    vi.mocked(useMetricsSessions).mockReturnValue({
+      data: TEEN_TEST_SESSIONS,
+      isLoading: false,
+    } as ReturnType<typeof useMetricsSessions>)
+  })
+
+  it('reads includeTeenPipeline from the URL (teen_pipeline=1) and toggles it', async () => {
+    // default (no param) → false
+    const { result: resultDefault } = renderHook(() => useMetricsSession(), {
+      wrapper: makeTeenWrapper('/'),
+    })
+    expect(resultDefault.current.includeTeenPipeline).toBe(false)
+
+    // initial URL '?teen_pipeline=1' → true
+    const { result: resultTrue } = renderHook(() => useMetricsSession(), {
+      wrapper: makeTeenWrapper('/?teen_pipeline=1'),
+    })
+    expect(resultTrue.current.includeTeenPipeline).toBe(true)
+
+    // calling setIncludeTeenPipeline(true) adds teen_pipeline=1 to the URL
+    const { result } = renderHook(() => useMetricsSession(), { wrapper: makeTeenWrapper('/') })
+    act(() => result.current.setIncludeTeenPipeline(true))
+    expect(result.current.includeTeenPipeline).toBe(true)
+    expect(lastSearch).toContain('teen_pipeline=1')
+
+    // calling setIncludeTeenPipeline(false) removes the param
+    act(() => result.current.setIncludeTeenPipeline(false))
+    expect(result.current.includeTeenPipeline).toBe(false)
+    expect(lastSearch).not.toContain('teen_pipeline=')
+  })
+})

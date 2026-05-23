@@ -15,12 +15,16 @@ from typing import Any
 # - embedded: Standalone partial sessions (2a, 2b, 3a, etc.)
 # - ag: All-Gender sessions (displayed merged into parent main session)
 # - quest: Quest adventure programs (child-oriented, shown in metrics/camper views)
+# - scit: SCIT teen program — display-eligible for breakdown rows
+# - tli: Teen Leadership Initiative — display-eligible for breakdown rows
+#
+# Note: teens (scit/tli) are always summer-window-gated at filter time via
+# resolve_cohort_session_ids, which runs the SUMMER_TEEN_TYPES branch BEFORE
+# the DISPLAY membership check — so adding teens here does NOT bypass the gate.
 #
 # Excludes:
 # - family: Family camp (adult-focused, separate program)
-# - scit: SCIT teen program (different program)
-# - tli: Teen Leadership Initiative (different program)
-DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest")
+DISPLAY_SESSION_TYPES = ("main", "embedded", "ag", "quest", "scit", "tli")
 
 # Default cohort for endpoints that scope to summer when the client sends no
 # session_types (param-less / direct API calls). The UI always sends an explicit
@@ -273,8 +277,10 @@ def filter_attendees_by_session(
         session_types: Session types to include (None = all).
         session_cm_id: Specific session to filter to (None = all).
         ag_session_ids: AG sessions that belong to the parent session.
-        session_cm_ids: Optional set of session cm_ids to restrict to (e.g., from
-            duration filtering via resolve_duration_sessions). AG children of
+        session_cm_ids: Optional set of session cm_ids to restrict to. Carries
+            whatever gate the caller computed -- the summer-window cohort from
+            resolve_cohort_session_ids, a duration filter from
+            resolve_duration_sessions, or their intersection. AG children of
             matching sessions are also allowed through.
 
     Returns:

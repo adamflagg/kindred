@@ -24,9 +24,11 @@ from api.schemas.metrics import (
     YearEnrollment,
 )
 from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     filter_attendees_by_session,
-    get_session_from_expand,
+    find_ag_sessions_for_parent,
+    resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
 
@@ -62,6 +64,7 @@ class RetentionTrendsService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        include_teen_pipeline: bool = False,
     ) -> RetentionTrendsResponse:
         """Calculate retention trends across multiple year transitions.
 
@@ -72,6 +75,10 @@ class RetentionTrendsService:
             session_cm_id: Optional specific session ID to filter.
             duration: Optional duration category (e.g., "1-week", "2-week") to filter
                 sessions by length.
+            include_teen_pipeline: When True, credit the grade-10 -> teen-program
+                bridge (so grade-10 campers are kept in the base pool).  Only
+                meaningful when the selected scope includes teen sessions; in a
+                non-teen scope the flag is inert.
 
         Returns:
             RetentionTrendsResponse with trend data.
@@ -79,26 +86,37 @@ class RetentionTrendsService:
         # Build list of years to analyze
         years = list(range(current_year - num_years, current_year + 1))
 
-        # Fetch data for all years in parallel
-        data_by_year = await self._fetch_all_years_data(years, session_types)
+        # Determine whether the selected scope includes teen sessions so we know
+        # whether include_teen_pipeline is meaningful (mirrors retention_service).
+        scope_has_teens = session_types is None or any(t in SUMMER_TEEN_TYPES for t in session_types)
+        effective_pipeline = include_teen_pipeline and scope_has_teens
 
-        # Apply filters to attendees
+        # Fetch data for all years in parallel
+        data_by_year = await self._fetch_all_years_data(years)
+
+        # Apply filters to attendees using cohort-id gating.
+        # resolve_cohort_session_ids handles type membership AND the summer-window
+        # gate for teen types (scit/tli), so off-season teen sessions are excluded.
         for year in years:
             year_data = data_by_year[year]
             attendees = year_data["attendees"]
+            sessions = year_data["sessions"]
 
-            # Filter by session type
-            if session_types:
-                attendees = self._filter_by_session_type(attendees, session_types)
+            # Resolve the cohort session IDs (summer-window-gated for teen types).
+            cohort_ids = resolve_cohort_session_ids(sessions, session_types)
 
-            # Filter by specific session ID
+            # Further restrict to a specific session if requested, keeping the
+            # session's AG children (separate cm_ids) so their campers aren't dropped.
             if session_cm_id is not None:
-                attendees = self._filter_by_session_cm_id(attendees, session_cm_id)
+                selected_ids = {session_cm_id, *find_ag_sessions_for_parent(sessions, session_cm_id)}
+                cohort_ids &= selected_ids
 
-            # Filter by duration category
+            # Intersect with duration filter when present.
             if duration:
-                duration_session_ids = resolve_duration_sessions(year_data["sessions"], duration)
-                attendees = filter_attendees_by_session(attendees, None, session_cm_ids=duration_session_ids)
+                duration_session_ids = resolve_duration_sessions(sessions, duration)
+                cohort_ids = cohort_ids & duration_session_ids
+
+            attendees = filter_attendees_by_session(attendees, None, session_cm_ids=cohort_ids)
 
             # Update attendees and compute person_ids
             year_data["attendees"] = attendees
@@ -107,7 +125,9 @@ class RetentionTrendsService:
             }
 
         # Calculate retention for each year transition
-        retention_years = self._calculate_retention_transitions(years, data_by_year)
+        retention_years = self._calculate_retention_transitions(
+            years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
+        )
 
         # Calculate average retention rate
         rates = [y.retention_rate for y in retention_years]
@@ -136,23 +156,25 @@ class RetentionTrendsService:
     async def _fetch_all_years_data(
         self,
         years: list[int],
-        session_types: list[str] | None,
     ) -> dict[int, dict[str, Any]]:
         """Fetch all data for the specified years.
 
         Args:
             years: List of years to fetch data for.
-            session_types: Optional session types filter.
 
         Returns:
             Dictionary mapping year to data (attendees, persons, sessions).
         """
-        # Build fetch tasks for all years
+        # Build fetch tasks for all years.
+        # Always fetch ALL sessions (None = no type filter) so that
+        # resolve_cohort_session_ids can derive the summer window from main
+        # sessions even in a teen-only scope.  Type filtering is done later
+        # via resolve_cohort_session_ids(sessions, session_types).
         fetch_tasks: list[Any] = []
         for year in years:
             fetch_tasks.append(self.repo.fetch_attendees(year))
             fetch_tasks.append(self.repo.fetch_persons(year))
-            fetch_tasks.append(self.repo.fetch_sessions(year, session_types))
+            fetch_tasks.append(self.repo.fetch_sessions(year, None))
 
         results = await asyncio.gather(*fetch_tasks)
 
@@ -172,58 +194,24 @@ class RetentionTrendsService:
 
         return data_by_year
 
-    def _filter_by_session_type(
-        self,
-        attendees: list[Any],
-        session_types: list[str],
-    ) -> list[Any]:
-        """Filter attendees by session type.
-
-        Args:
-            attendees: List of attendees.
-            session_types: Session types to include.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if session and getattr(session, "session_type", None) in session_types:
-                filtered.append(a)
-        return filtered
-
-    def _filter_by_session_cm_id(
-        self,
-        attendees: list[Any],
-        session_cm_id: int,
-    ) -> list[Any]:
-        """Filter attendees by specific session cm_id.
-
-        Args:
-            attendees: List of attendees.
-            session_cm_id: Session cm_id to filter by.
-
-        Returns:
-            Filtered list of attendees.
-        """
-        filtered = []
-        for a in attendees:
-            session = get_session_from_expand(a)
-            if session and getattr(session, "cm_id", None) == session_cm_id:
-                filtered.append(a)
-        return filtered
-
     def _calculate_retention_transitions(
         self,
         years: list[int],
         data_by_year: dict[int, dict[str, Any]],
+        effective_pipeline: bool = False,
+        scope_has_teens: bool = False,
     ) -> list[RetentionTrendYear]:
         """Calculate retention for each year transition.
 
         Args:
             years: List of years.
             data_by_year: Data for each year.
+            effective_pipeline: Whether grade-10 -> teen bridge is credited for
+                the headline base_count and returned_count.
+            scope_has_teens: Whether the selected scope includes teen sessions.
+                When True, by_grade always includes a grade-10 row (carve-out)
+                even when effective_pipeline=False, so staff can see the
+                pipeline even with the toggle off.
 
         Returns:
             List of RetentionTrendYear objects.
@@ -241,9 +229,11 @@ class RetentionTrendsService:
             compare_person_ids = compare_data["person_ids"]
             persons_base = base_data["persons"]
 
-            # Exclude aged-out persons from retention base (not from enrollment)
+            # Exclude aged-out persons from retention base (not from enrollment).
+            # Capture the pre-aged-out set for the grade carve-out (Task 3).
+            pre_aged_out_base_ids = set(base_person_ids)
             pre_filter_count = len(base_person_ids)
-            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base)
+            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base, effective_pipeline)
             aged_out_count = pre_filter_count - len(base_person_ids)
 
             returned_ids = base_person_ids & compare_person_ids
@@ -251,9 +241,20 @@ class RetentionTrendsService:
             returned_count = len(returned_ids)
             retention_rate = safe_rate(returned_count, base_count)
 
+            # by_grade carve-out: when the scope includes teen sessions, always show
+            # grade-10 in the breakdown regardless of the headline flag, so staff can
+            # see how many grade-10 campers are in the pipeline (mirrors retention_service).
+            if scope_has_teens:
+                base_for_grade = exclude_aged_out_persons(
+                    pre_aged_out_base_ids, persons_base, include_teen_pipeline=True
+                )
+            else:
+                base_for_grade = base_person_ids
+            returned_for_grade = base_for_grade & compare_person_ids
+
             # Compute breakdowns
             by_gender = self._compute_gender_breakdown(base_person_ids, returned_ids, persons_base)
-            by_grade = self._compute_grade_breakdown(base_person_ids, returned_ids, persons_base)
+            by_grade = self._compute_grade_breakdown(base_for_grade, returned_for_grade, persons_base)
 
             retention_years.append(
                 RetentionTrendYear(

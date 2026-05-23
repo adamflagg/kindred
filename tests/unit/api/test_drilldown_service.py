@@ -2483,7 +2483,10 @@ class TestCompareYearIsReturning:
                 return compare_attendees
             return []
 
-        mock_repository.fetch_sessions.return_value = sample_sessions
+        async def fetch_sessions_side_effect(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+            return sample_sessions if year == 2025 else compare_sessions
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
         mock_repository.fetch_persons.return_value = persons
         mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
 
@@ -2615,7 +2618,14 @@ class TestRetentionCardBreakdown:
         compare_attendees: list[Mock],
     ) -> None:
         """Set up mocks for retention card tests."""
-        mock_repository.fetch_sessions.return_value = base_sessions
+
+        async def fetch_sessions_side_effect(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+            sessions = base_sessions if year == 2025 else compare_sessions
+            if not types:
+                return sessions
+            return {cid: s for cid, s in sessions.items() if getattr(s, "session_type", None) in types}
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
         mock_repository.fetch_persons.return_value = persons
 
         async def fetch_attendees_side_effect(year: int, status_filter: list[str] | None = None) -> list[Mock]:
@@ -3002,7 +3012,9 @@ class TestRetentionSessionTypeFiltering:
 
     The session_types parameter controls which sessions appear in both the
     "Prior Session" (person_attendee_groups) and "Session" (enrolled_attendee_groups)
-    columns. returned_person_ids is NOT filtered — is_returning reflects any-session return.
+    columns. returned_person_ids is also window-/cohort-gated by session_types
+    (via resolve_cohort_session_ids), matching the retention card: a return into a
+    session outside the scope does NOT count as a summer return.
     """
 
     @pytest.fixture
@@ -3223,14 +3235,19 @@ class TestRetentionSessionTypeFiltering:
         assert enrolled_cm_ids == {2001, 2002}
 
     @pytest.mark.asyncio
-    async def test_returned_person_ids_not_filtered(
+    async def test_returned_set_window_gated_to_scope(
         self,
         drilldown_service: DrilldownService,
         mock_repository: Mock,
         base_year_sessions: dict[int, Mock],
         compare_year_sessions: dict[int, Mock],
     ) -> None:
-        """is_returning should be True even if camper only enrolled in non-matching session types."""
+        """A return into a session outside the scope does NOT count as returned.
+
+        Mirrors the retention card: returned_person_ids is window-/cohort-gated by
+        session_types via resolve_cohort_session_ids, so a family-camp-only return
+        (family is not in the summer cohort) is NOT a summer return.
+        """
         persons = {
             101: create_mock_person(101, "Emma", "Johnson", "F", 5, years_at_camp=2),
         }
@@ -3239,7 +3256,7 @@ class TestRetentionSessionTypeFiltering:
             create_mock_attendee(101, base_year_sessions[1001], 2025),
         ]
 
-        # Only enrolled in family camp in compare year
+        # Only enrolled in family camp in compare year (outside the summer cohort)
         compare_attendees = [
             create_mock_attendee(101, compare_year_sessions[2003], 2026),
         ]
@@ -3251,7 +3268,13 @@ class TestRetentionSessionTypeFiltering:
                 return compare_attendees
             return []
 
-        mock_repository.fetch_sessions.return_value = base_year_sessions
+        async def fetch_sessions_side_effect(year: int, types: list[str] | None = None) -> dict[int, Mock]:
+            sessions = base_year_sessions if year == 2025 else compare_year_sessions
+            if not types:
+                return sessions
+            return {cid: s for cid, s in sessions.items() if getattr(s, "session_type", None) in types}
+
+        mock_repository.fetch_sessions.side_effect = fetch_sessions_side_effect
         mock_repository.fetch_persons.return_value = persons
         mock_repository.fetch_attendees.side_effect = fetch_attendees_side_effect
 
@@ -3264,9 +3287,9 @@ class TestRetentionSessionTypeFiltering:
         )
 
         assert len(result) == 1
-        # Camper IS still returning (returned_person_ids not filtered by session type)
-        assert result[0].is_returning is True
-        # But enrolled_sessions should be empty since family is filtered out
+        # Family-only return is outside the summer cohort -> not a summer return
+        assert result[0].is_returning is False
+        # And enrolled_sessions is empty since family is filtered out of the scope
         assert len(result[0].enrolled_sessions) == 0
 
     @pytest.mark.asyncio

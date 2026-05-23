@@ -38,8 +38,15 @@ const METRIC_TYPES: MetricTypeTab[] = [
 
 export default function MetricsTypeTabs() {
   const location = useLocation()
-  const { expandedRetention, setExpandedRetention, compareYear, setCompareYear } =
-    useMetricsSession()
+  const {
+    expandedRetention,
+    setExpandedRetention,
+    compareYear,
+    setCompareYear,
+    includeTeenPipeline,
+    setIncludeTeenPipeline,
+    scopeHasTeens,
+  } = useMetricsSession()
   const { currentYear, availableYears } = useCurrentYear()
 
   // Determine active tab based on current path
@@ -109,6 +116,22 @@ export default function MetricsTypeTabs() {
                   className="accent-primary h-3.5 w-3.5 rounded"
                 />
                 <span className="text-muted-foreground whitespace-nowrap">Expanded analysis</span>
+              </label>
+            )}
+            {activeTab === 'retention' && scopeHasTeens && (
+              <label
+                className="flex cursor-pointer items-center gap-1.5 text-sm"
+                data-tour="metrics-teen-pipeline"
+              >
+                <input
+                  type="checkbox"
+                  checked={includeTeenPipeline}
+                  onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
+                  className="accent-primary h-3.5 w-3.5 rounded"
+                />
+                <span className="text-muted-foreground whitespace-nowrap">
+                  Include camp → teen transition
+                </span>
               </label>
             )}
             <MetricsSessionSelector />

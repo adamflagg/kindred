@@ -36,6 +36,7 @@ from api.utils.session_metrics import (
     find_ag_sessions_for_parent,
     get_session_from_expand,
     get_session_length_category,
+    resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
 
@@ -89,10 +90,26 @@ class RegistrationService:
         if status_filter is None:
             status_filter = ["enrolled"]
 
-        # Fetch sessions first to find AG sessions with matching parent
+        # Fetch sessions first to find AG sessions with matching parent.
+        # The type-filtered dict is used for breakdown display; the full dict is
+        # required so resolve_cohort_session_ids can compute the summer window.
+        # On the unfiltered path the type-filtered fetch already returns every
+        # session, so reuse it rather than issuing an identical second query.
         sessions = await self.repo.fetch_sessions(year, session_types)
+        sessions_all = sessions if session_types is None else await self.repo.fetch_sessions(year, None)
         ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
         duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
+
+        # Window-gate the cohort: off-season teens (fall CIT, Feb trips) excluded.
+        # Only restrict when the caller specified session_types; the param-less path
+        # keeps its "all attendees" behavior.  Non-teen explicit types resolve to the
+        # same sessions as a plain type filter, so non-teen behavior is unchanged.
+        restrict_ids: set[int] | None
+        if session_types is not None:
+            cohort_ids = resolve_cohort_session_ids(sessions_all, session_types)
+            restrict_ids = cohort_ids if duration_session_ids is None else cohort_ids & duration_session_ids
+        else:
+            restrict_ids = duration_session_ids
 
         # Fetch data in parallel
         results = await asyncio.gather(
@@ -113,34 +130,34 @@ class RegistrationService:
         bunk_plans = cast(list[Any], results[5])
         default_capacity = cast(int, results[6])
 
-        # Filter attendees by session
+        # Filter attendees by session (cohort-gated: off-season teens excluded)
         combined_attendees = filter_attendees_by_session(
             requested_attendees,
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=restrict_ids,
         )
         enrolled_attendees = filter_attendees_by_session(
             enrolled_attendees,
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=restrict_ids,
         )
         waitlisted_attendees = filter_attendees_by_session(
             waitlisted_attendees,
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=restrict_ids,
         )
         cancelled_attendees = filter_attendees_by_session(
             cancelled_attendees,
             session_types,
             session_cm_id,
             ag_session_ids,
-            session_cm_ids=duration_session_ids,
+            session_cm_ids=restrict_ids,
         )
 
         # Get unique person IDs (deduplicated)

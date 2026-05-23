@@ -163,9 +163,19 @@ export const queryKeys = {
     compareYear: number,
     sessionTypes?: string,
     sessionCmId?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
-    ['metrics', 'retention', baseYear, compareYear, sessionTypes, sessionCmId, duration] as const,
+    [
+      'metrics',
+      'retention',
+      baseYear,
+      compareYear,
+      sessionTypes,
+      sessionCmId,
+      duration,
+      includeTeenPipeline,
+    ] as const,
   metricsSessions: (year: number) => ['metrics', 'sessions', year] as const,
   registration: (
     year: number,
@@ -188,7 +198,8 @@ export const queryKeys = {
     numYears?: number,
     sessionTypes?: string,
     sessionCmId?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
     [
       'metrics',
@@ -198,6 +209,7 @@ export const queryKeys = {
       sessionTypes,
       sessionCmId,
       duration,
+      includeTeenPipeline,
     ] as const,
   waitlist: (year: number, sessionTypes?: string, sessionCmId?: number, duration?: string) =>
     ['metrics', 'waitlist', year, sessionTypes, sessionCmId, duration] as const,
@@ -211,7 +223,8 @@ export const queryKeys = {
     sessionTypes?: string,
     statusFilter?: string,
     compareYear?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
     [
       'metrics',
@@ -224,6 +237,7 @@ export const queryKeys = {
       statusFilter,
       compareYear,
       duration,
+      includeTeenPipeline,
     ] as const,
 
   // Registration Config (Tier 2 - user data)

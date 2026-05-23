@@ -5,6 +5,7 @@
  * Uses ChartCard for standardized HTML-rendered axes with Recharts SVG content.
  */
 
+import type { ReactNode } from 'react'
 import {
   LineChart,
   Line,
@@ -23,6 +24,7 @@ import { calculateVerticalLayout } from './cssChartUtils'
 interface RetentionRateLineProps {
   data: RetentionTrendYear[]
   title?: string
+  headerRight?: ReactNode
   height?: number
   className?: string
 }
@@ -38,6 +40,7 @@ interface ChartDataItem {
 export function RetentionRateLine({
   data,
   title = 'Retention Rate Trend',
+  headerRight,
   height = 250,
   className = '',
 }: RetentionRateLineProps) {
@@ -83,6 +86,7 @@ export function RetentionRateLine({
     <ChartCard
       isEmpty={data.length === 0}
       title={title}
+      headerRight={headerRight}
       className={className}
       yAxis={{ ticks, axisMax, drawingHeight, barsHeight, formatTick: (v) => `${v}%` }}
       xLabels={chartData.map((d) => d.name)}
