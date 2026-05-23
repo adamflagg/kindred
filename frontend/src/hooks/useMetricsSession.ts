@@ -65,6 +65,9 @@ export interface MetricsSessionContextType {
   setCompareYear: (year: number | null) => void
   /** Whether comparison mode is active */
   isComparing: boolean
+  /** Retention: credit the grade-10 → teen pipeline in summary numbers (URL: teen_pipeline=1) */
+  includeTeenPipeline: boolean
+  setIncludeTeenPipeline: (value: boolean) => void
 }
 
 export const MetricsSessionContext = createContext<MetricsSessionContextType | undefined>(undefined)

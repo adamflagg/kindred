@@ -64,6 +64,8 @@ const baseMockContext = {
   compareYear: null,
   setCompareYear: vi.fn(),
   isComparing: false,
+  includeTeenPipeline: false,
+  setIncludeTeenPipeline: vi.fn(),
 } satisfies MetricsSessionContextType
 
 vi.mock('../../hooks/useMetricsSession', () => ({
