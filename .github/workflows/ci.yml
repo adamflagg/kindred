@@ -434,7 +434,7 @@ jobs:
     - name: Run Python unit tests (no external deps)
       env:
         SKIP_POCKETBASE_TESTS: true
-      run: uv run pytest tests/unit/ -v --tb=short --ignore=tests/unit/api/
+      run: uv run pytest tests/ -v --tb=short
 
   # Go tests (parallel)
   tests-go:

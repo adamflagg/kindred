@@ -132,7 +132,7 @@ Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook) via `.
 |-------|---------|-----------|-------|
 | **pre-commit** | Every commit | Formatters on staged files (prettier, ruff format, gofmt) | <1s |
 | **commit-msg** | Every commit | commitlint validation | Instant |
-| **pre-push** | Every push | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint) | ~15s |
+| **pre-push** | Every push | Type checks (mypy, tsc), go build, fast linters (ruff, shellcheck, pb-js-lint), full mockable pytest (`SKIP_POCKETBASE_TESTS=true`, xdist) | ~40s |
 | **post-merge** | After pull | Worktree cleanup notifications | ~5s |
 
 Escape hatches and manual runs: `docs/reference/git-workflow.md`

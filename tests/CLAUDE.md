@@ -12,6 +12,7 @@ Pytest for Python (`bunking/` + `api/`). See `frontend/CLAUDE.md` for Vitest. La
 |--------|--------------|
 | `ai_required` | Skipped in CI (needs live AI tokens). Run locally with `AI_API_KEY` set. |
 | `pocketbase_required` | Skipped in CI (needs running PocketBase). Run locally with `./scripts/start_dev.sh` up. |
+| `requires_pb_db` (`tests/markers.py`) | Skipped in CI and pre-push (`SKIP_POCKETBASE_TESTS=true`). Hits PocketBase's SQLite directly, so it needs a real `data.db`. Runs locally and in CD. |
 
 **CI passing does not mean these tests passed.** Verify locally before merging features that touch AI or DB paths.
 
@@ -39,7 +40,7 @@ uv run pytest tests/ -k "keyword"                   # by keyword
 SKIP_POCKETBASE_TESTS=true uv run pytest tests/     # explicit skip even locally
 ```
 
-Pre-push runs type checks and fast linters only (mypy, tsc, ruff, golangci-lint, shellcheck, pb-js-lint) — pytest and vitest are CI-only. Run them locally when you make test-affecting changes. Integration/e2e require a running dev server regardless of where they run.
+Pre-push runs type checks and fast linters (mypy, tsc, ruff, golangci-lint, shellcheck, pb-js-lint) **plus the full mockable Python suite** (`SKIP_POCKETBASE_TESTS=true uv run pytest tests/ -n auto`). Vitest is still CI-only. DB/server-coupled tests (`requires_pb_db`, integration/e2e) are skipped on both pre-push and CI — run them locally with a running dev server.
 
 ## Worktree gotcha
 

@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from tests.markers import requires_pb_db
 from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
@@ -542,6 +543,7 @@ class TestFirstSummerYearBreakdown:
 # ============================================================================
 
 
+@requires_pb_db
 class TestRegistrationEndpointWithSessionFilter:
     """Integration tests for the /api/metrics/registration endpoint with session filter."""
 

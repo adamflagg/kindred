@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from tests.markers import requires_pb_db
 from tests.unit.api.conftest import create_mock_attendee, create_mock_person, create_mock_session
 
 # ============================================================================
@@ -991,6 +992,7 @@ class TestCamperHistorySessionTypesFiltering:
         assert len(unfiltered) == 14  # All records
 
 
+@requires_pb_db
 class TestMetricsAPIEndpoints:
     """Integration tests for metrics API endpoints."""
 
@@ -1270,6 +1272,7 @@ class TestStatusesParameter:
         """Create test client."""
         return TestClient(app)
 
+    @requires_pb_db
     def test_registration_accepts_statuses_parameter(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that registration endpoint accepts statuses parameter.
 
@@ -1322,6 +1325,7 @@ class TestComparisonEndpointSessionTypes:
         """Create test client."""
         return TestClient(app)
 
+    @requires_pb_db
     def test_comparison_accepts_session_types_parameter(self, client: TestClient, mock_pocketbase: Mock) -> None:
         """Test that comparison endpoint accepts session_types parameter.
 
@@ -1434,6 +1438,7 @@ class TestDynamicStatusFetching:
 
         assert len(filtered) == 3
 
+    @requires_pb_db
     def test_registration_endpoint_uses_all_requested_statuses(
         self, attendees_with_all_statuses: list[Mock], mock_pocketbase: Mock
     ) -> None:
@@ -1477,6 +1482,7 @@ class TestDynamicStatusFetching:
         assert 'status = "waitlisted"' in expected_filter
         assert "||" in expected_filter
 
+    @requires_pb_db
     def test_empty_statuses_defaults_to_enrolled(self, mock_pocketbase: Mock) -> None:
         """Test that empty/missing statuses parameter defaults to enrolled.
 
@@ -1498,6 +1504,7 @@ class TestDynamicStatusFetching:
             response = client.get("/api/metrics/registration?year=2026")
             assert response.status_code == 200
 
+    @requires_pb_db
     def test_single_non_enrolled_status_works(self, mock_pocketbase: Mock) -> None:
         """Test that querying a single non-enrolled status works.
 
@@ -2832,6 +2839,7 @@ class TestBatchFetchSummerEnrollmentHistory:
         assert prior_sessions_by_person[103] == []  # No prior year enrollment
 
 
+@requires_pb_db
 class TestRetentionEndpointWithSessionCmId:
     """Integration tests for retention endpoint with session_cm_id parameter."""
 
