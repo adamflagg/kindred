@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from tests._env import is_truthy_env
+
 # Get project root relative to this test file
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("SKIP_POCKETBASE_TESTS", "true").lower() == "true",
+    is_truthy_env("SKIP_POCKETBASE_TESTS", default="true"),
     reason="E2E tests require running services",
 )
 

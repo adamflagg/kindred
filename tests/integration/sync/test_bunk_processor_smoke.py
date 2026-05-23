@@ -6,13 +6,13 @@ without mocks, catching interface mismatches early.
 Requires: SKIP_POCKETBASE_TESTS=false or running PocketBase instance
 """
 
-import os
-
 import pytest
+
+from tests._env import is_truthy_env
 
 # Skip if PocketBase not available
 pytestmark = pytest.mark.skipif(
-    os.environ.get("SKIP_POCKETBASE_TESTS", "true").lower() == "true",
+    is_truthy_env("SKIP_POCKETBASE_TESTS", default="true"),
     reason="PocketBase integration tests skipped",
 )
 
