@@ -18,12 +18,15 @@ from api.utils.session_metrics import (
     DEFAULT_SUMMER_SESSION_TYPES as SUMMER_SESSION_TYPES,
 )
 from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     filter_attendees_by_session,
     find_ag_sessions_for_parent,
     get_person_from_expand,
     get_session_from_expand,
     get_session_length_category,
+    get_summer_window,
+    is_summer_teen_session,
     resolve_duration_sessions,
 )
 
@@ -209,6 +212,18 @@ class DrilldownService:
         # Availability chart waitlist drilldown
         if breakdown_type == "waitlist_session_gender":
             return await self._handle_waitlist_session_gender(
+                year=year,
+                breakdown_value=breakdown_value,
+                sessions=sessions,
+                session_types=session_types,
+                duration_session_ids=duration_session_ids,
+            )
+
+        # Teen program (SCIT/TLI) availability waitlist drilldown. Teen rows
+        # carry session_cm_id=0, so we resolve the teen *type* to its real,
+        # window-gated session cm_ids here instead of matching a single id.
+        if breakdown_type == "waitlist_teen_program":
+            return await self._handle_waitlist_teen_program(
                 year=year,
                 breakdown_value=breakdown_value,
                 sessions=sessions,
@@ -1011,6 +1026,72 @@ class DrilldownService:
         target_gender = parts[1] if len(parts) > 1 and parts[1] else None
         target_grade = int(parts[2]) if len(parts) > 2 and parts[2] else None
 
+        return await self._collect_waitlisted_drilldown(
+            year=year,
+            match_cm_ids={target_session},
+            target_gender=target_gender,
+            target_grade=target_grade,
+            session_types=session_types,
+        )
+
+    async def _handle_waitlist_teen_program(
+        self,
+        year: int,
+        breakdown_value: str,
+        sessions: dict[int, Any],
+        session_types: list[str] | None,
+        duration_session_ids: set[int] | None,
+    ) -> list[DrilldownAttendee]:
+        """Handle SCIT/TLI availability waitlist drilldown.
+
+        Teen availability rows are aggregated under session_cm_id=0, so the
+        clicked identity is the teen *type* (scit/tli), not a session id.
+        Resolve it to the real, window-gated teen session cm_ids (matching how
+        the availability row was built) before collecting waitlisted attendees.
+
+        breakdown_value format: "<teen_type>[:grade]"  (e.g. "scit", "tli:12")
+        """
+        parts = breakdown_value.split(":")
+        teen_type = parts[0] if parts else ""
+        if teen_type not in SUMMER_TEEN_TYPES:
+            return []
+        target_grade = int(parts[1]) if len(parts) > 1 and parts[1] else None
+
+        window = get_summer_window(sessions)
+        match_cm_ids = {
+            int(sid)
+            for sid, s in sessions.items()
+            if getattr(s, "session_type", "") == teen_type and is_summer_teen_session(s, window)
+        }
+        if not match_cm_ids:
+            return []
+
+        # Teen sessions may not be in session_types; ensure they're treated as
+        # valid lookup targets so the "Waitlisted For" column shows them.
+        return await self._collect_waitlisted_drilldown(
+            year=year,
+            match_cm_ids=match_cm_ids,
+            target_gender=None,
+            target_grade=target_grade,
+            session_types=session_types,
+            extra_lookup_cm_ids=match_cm_ids,
+        )
+
+    async def _collect_waitlisted_drilldown(
+        self,
+        year: int,
+        match_cm_ids: set[int],
+        target_gender: str | None,
+        target_grade: int | None,
+        session_types: list[str] | None,
+        extra_lookup_cm_ids: set[int] | None = None,
+    ) -> list[DrilldownAttendee]:
+        """Collect waitlisted attendees for a set of session cm_ids.
+
+        Shared by the single-session (waitlist_session_gender) and teen-program
+        (waitlist_teen_program) drilldowns. An attendee matches when its session
+        cm_id is in match_cm_ids and it passes the optional gender/grade filters.
+        """
         # Fetch waitlisted and enrolled attendees in parallel
         waitlisted_attendees, enrolled_attendees = await asyncio.gather(
             self.repo.fetch_attendees_with_persons(year, status_filter=["waitlisted"]),
@@ -1021,6 +1102,8 @@ class DrilldownService:
         effective_types = session_types or list(SUMMER_SESSION_TYPES)
         summer_sessions = await self.repo.fetch_sessions(year, effective_types)
         summer_session_ids = set(summer_sessions.keys())
+        if extra_lookup_cm_ids:
+            summer_session_ids |= extra_lookup_cm_ids
 
         # Build enrolled sessions lookup: person_id -> list of enrolled summer session names
         enrolled_by_person: dict[int, list[DrilldownSession]] = {}
@@ -1072,7 +1155,7 @@ class DrilldownService:
                 continue
 
             session_cm_id = int(getattr(session, "cm_id", 0))
-            if session_cm_id != target_session:
+            if session_cm_id not in match_cm_ids:
                 continue
 
             gender = getattr(person, "gender", "")

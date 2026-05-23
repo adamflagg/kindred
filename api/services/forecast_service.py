@@ -26,6 +26,8 @@ from api.utils.session_metrics import (
     get_summer_window,
     is_summer_teen_session,
     resolve_duration_sessions,
+    teen_config_key,
+    teen_display_name,
 )
 from bunking.logging_config import get_logger
 
@@ -33,9 +35,6 @@ if TYPE_CHECKING:
     from api.services.metrics_repository import MetricsRepository
 
 logger = get_logger(__name__)
-
-# Display labels for the merged teen forecast rows (one row per teen session_type).
-TEEN_FORECAST_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
 
 
 class ForecastService:
@@ -244,7 +243,7 @@ class ForecastService:
         for sid, session in sessions.items():
             session_type = getattr(session, "session_type", "")
             if session_type in SUMMER_TEEN_TYPES:
-                continue  # teens aggregated into SCIT/TLI rows after the grand total
+                continue  # teens are aggregated into merged SCIT/TLI rows below (live mode only)
 
             # If filtering to specific session, include it + its AG children
             if session_cm_id is not None:
@@ -601,7 +600,7 @@ class ForecastService:
             enrolled = sum(self._count_attendees_for_session(enrolled_attendees, sid, set()) for sid in cm_ids)
             waitlisted = sum(self._count_attendees_for_session(waitlisted_attendees, sid, set()) for sid in cm_ids)
 
-            cfg = budget_config.get(f"type:{teen_type}", {}) or {}
+            cfg = budget_config.get(teen_config_key(teen_type), {}) or {}
             participant_goal = cfg.get("participant_goal")
             session_fee = cfg.get("session_fee")
 
@@ -622,7 +621,7 @@ class ForecastService:
             rows.append(
                 SessionForecast(
                     session_cm_id=0,
-                    session_name=TEEN_FORECAST_DISPLAY_NAMES.get(teen_type, teen_type.upper()),
+                    session_name=teen_display_name(teen_type),
                     session_type=teen_type,
                     participant_goal=participant_goal,
                     session_fee=session_fee,

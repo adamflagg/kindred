@@ -250,10 +250,12 @@ function TeenSessionRow({
   onHover,
   onMove,
   onLeave,
-  onCellClick,
+  onTeenCellClick,
 }: {
   session: TeenSessionAvailabilityData
-} & WaitlistHandlers) {
+  /** Teen rows share session_cm_id=0, so the drilldown keys off teen type. */
+  onTeenCellClick?: (teenType: string, sessionName: string, grade?: number) => void
+} & Omit<WaitlistHandlers, 'onCellClick'>) {
   const hasWaitlist = session.waitlisted > 0
 
   return (
@@ -277,15 +279,7 @@ function TeenSessionRow({
             onMouseLeave={wlCount > 0 ? () => onLeave?.() : undefined}
             onClick={
               wlCount > 0
-                ? () =>
-                    onCellClick?.(
-                      session.session_cm_id,
-                      session.session_name,
-                      '',
-                      '',
-                      session.waitlisted,
-                      g
-                    )
+                ? () => onTeenCellClick?.(session.session_type, session.session_name, g)
                 : undefined
             }
           >
@@ -307,9 +301,7 @@ function TeenSessionRow({
             onMouseEnter={(e) => onHover?.(e, session.waitlisted, '', session.waitlisted_persons)}
             onMouseMove={(e) => onMove?.(e)}
             onMouseLeave={() => onLeave?.()}
-            onClick={() =>
-              onCellClick?.(session.session_cm_id, session.session_name, '', '', session.waitlisted)
-            }
+            onClick={() => onTeenCellClick?.(session.session_type, session.session_name)}
           >
             {session.waitlisted}
           </span>
@@ -521,6 +513,25 @@ export default function SessionAvailability() {
     [setFilter]
   )
 
+  // Teen rows aggregate under session_cm_id=0, so the drilldown is keyed on the
+  // teen program type (scit/tli); the backend resolves it to real session ids.
+  const handleTeenCellClick = useCallback(
+    (teenType: string, sessionName: string, grade?: number) => {
+      setTooltipData(null)
+      const gradeStr = grade != null ? `:${grade}` : ''
+      const gradeSuffix = grade != null ? ` (${gradeLabel(grade)})` : ''
+      setFilter({
+        type: 'waitlist_teen_program',
+        value: `${teenType}${gradeStr}`,
+        label: `Campers Waitlisted — ${sessionName}${gradeSuffix}`,
+        titleFormat: 'adjective',
+        statusOverride: ['waitlisted'],
+        waitlistContext: true,
+      })
+    },
+    [setFilter]
+  )
+
   const waitlistHandlers: WaitlistHandlers = {
     onHover: handleHover,
     onMove: handleMove,
@@ -641,7 +652,11 @@ export default function SessionAvailability() {
                               <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
                                 {session.session_name}
                               </td>
-                              <TeenSessionRow session={session} {...waitlistHandlers} />
+                              <TeenSessionRow
+                                session={session}
+                                {...waitlistHandlers}
+                                onTeenCellClick={handleTeenCellClick}
+                              />
                             </tr>
                           ))}
                         </tbody>

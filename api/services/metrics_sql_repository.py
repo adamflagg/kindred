@@ -11,6 +11,7 @@ from itertools import batched
 from types import SimpleNamespace
 from typing import Any
 
+from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
@@ -665,10 +666,10 @@ class MetricsSQLRepository:
                     result[int(key.replace("session_", ""))] = parsed
                 except ValueError, TypeError:
                     pass
-            elif key.startswith("type_"):
-                type_name = key.replace("type_", "", 1)
-                if type_name:
-                    result[f"type:{type_name}"] = parsed
+            else:
+                teen_key = parse_teen_config_key(key)
+                if teen_key is not None:
+                    result[teen_key] = parsed
         return result
 
     # ------------------------------------------------------------------

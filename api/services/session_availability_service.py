@@ -29,13 +29,13 @@ from api.utils.session_metrics import (
     get_session_from_expand,
     get_summer_window,
     is_summer_teen_session,
+    parse_teen_config_key,
     resolve_duration_sessions,
+    teen_config_key,
+    teen_display_name,
 )
 
 logger = get_logger(__name__)
-
-# Display labels for the merged teen availability rows (one row per teen session_type).
-TEEN_AVAILABILITY_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
 
 
 class SessionAvailabilityService:
@@ -263,10 +263,9 @@ class SessionAvailabilityService:
             value = getattr(rec, "value", None)
             if key == "limited_threshold" or not value or not isinstance(value, dict):
                 continue
-            if key.startswith("type_"):
-                name = key.replace("type_", "", 1)
-                if name:
-                    result[f"type:{name}"] = value
+            teen_key = parse_teen_config_key(key)
+            if teen_key is not None:
+                result[teen_key] = value
                 continue
             try:
                 result[int(key)] = value
@@ -490,7 +489,7 @@ class SessionAvailabilityService:
             cm_ids = teen_cm_ids_by_type.get(teen_type)
             if not cm_ids:
                 continue
-            cfg = session_configs.get(f"type:{teen_type}", {}) or {}
+            cfg = session_configs.get(teen_config_key(teen_type), {}) or {}
             enrolled = sum(enrollment.get(c, {}).get("enrolled_total", 0) for c in cm_ids)
             waitlisted = sum(enrollment.get(c, {}).get("waitlisted_total", 0) for c in cm_ids)
 
@@ -510,7 +509,7 @@ class SessionAvailabilityService:
             rows.append(
                 TeenSessionAvailability(
                     session_cm_id=0,
-                    session_name=TEEN_AVAILABILITY_DISPLAY_NAMES.get(teen_type, teen_type.upper()),
+                    session_name=teen_display_name(teen_type),
                     session_type=teen_type,
                     min_grade=cfg.get("min_grade"),
                     max_grade=cfg.get("max_grade"),

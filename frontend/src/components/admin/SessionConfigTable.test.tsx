@@ -832,11 +832,11 @@ describe('SessionConfigTable', () => {
     await user.click(screen.getByText(/save/i))
 
     await waitFor(() => {
-      const keys = invalidateSpy.mock.calls.map((c) =>
-        JSON.stringify((c[0] as { queryKey: unknown }).queryKey)
-      )
-      expect(keys.some((k) => k.includes('forecast'))).toBe(true)
-      expect(keys.some((k) => k.includes('session-availability'))).toBe(true)
+      const keys = invalidateSpy.mock.calls.map((c) => (c[0] as { queryKey: unknown }).queryKey)
+      // Exact root keys, not substrings — must match queryKeys.forecastRoot() /
+      // sessionAvailabilityRoot() so invalidation can't silently drift.
+      expect(keys).toContainEqual(['metrics', 'forecast'])
+      expect(keys).toContainEqual(['session-availability'])
     })
   })
 

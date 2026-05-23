@@ -1,8 +1,10 @@
 """Teen Programs (SCIT, TLI) forecast aggregation.
 
 SCIT row = CIT + SIT sessions summed into one row; TLI is its own row.
-Teens are window-gated (off-season scit/tli excluded) and excluded from the
-grand total. Reconstruction / single-session drill-down emit no teen rows.
+Teens are window-gated (off-season scit/tli excluded). When teen rows are
+displayed (live mode) they are included in the grand total. Reconstruction /
+single-session drill-down emit no teen rows, so they're absent from both the
+rows and the total in those modes.
 """
 
 from unittest.mock import AsyncMock

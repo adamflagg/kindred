@@ -559,7 +559,8 @@ describe('ForecastPage — Teen Programs section', () => {
             participant_goal: 40,
           }),
         ],
-        { enrolled: 120 }
+        // Grand total reflects displayed teens: main 120 + SCIT 30 + TLI 40 = 190.
+        { enrolled: 190 }
       )
     )
 
@@ -571,6 +572,12 @@ describe('ForecastPage — Teen Programs section', () => {
     expect(screen.getByRole('heading', { name: 'Teen Programs' })).toBeInTheDocument()
     expect(screen.getByText('SCIT')).toBeInTheDocument()
     expect(screen.getByText('TLI')).toBeInTheDocument()
+
+    // Teens are a displayed cohort, so the grand total must include them (190),
+    // not just the camp sessions (120).
+    const grandTotalRow = screen.getByText('Grand Total').closest('tr')
+    expect(grandTotalRow).not.toBeNull()
+    expect(grandTotalRow).toHaveTextContent('190')
 
     const dupKeyWarning = errorSpy.mock.calls.some((c) => String(c[0]).includes('same key'))
     expect(dupKeyWarning).toBe(false)

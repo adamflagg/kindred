@@ -24,6 +24,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.reconstruction import parse_date_only
+from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
@@ -424,10 +425,10 @@ class MetricsRepository:
                         result[int(key.replace("session_", ""))] = value
                     except ValueError, TypeError:
                         pass
-                elif key.startswith("type_"):
-                    type_name = key.replace("type_", "", 1)
-                    if type_name:
-                        result[f"type:{type_name}"] = value
+                else:
+                    teen_key = parse_teen_config_key(key)
+                    if teen_key is not None:
+                        result[teen_key] = value
             return result
         except Exception as e:
             logger.warning(f"Could not fetch budget config for year {year}: {e}")

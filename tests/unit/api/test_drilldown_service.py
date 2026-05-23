@@ -4035,6 +4035,147 @@ class TestWaitlistSessionGenderDrilldown:
 
 
 # ============================================================================
+# Tests for waitlist_teen_program breakdown type (SCIT/TLI drilldown)
+# ============================================================================
+
+
+class TestWaitlistTeenProgramDrilldown:
+    """Teen rows aggregate to session_cm_id=0, so the drilldown must resolve the
+    teen *type* (scit/tli) to its real, window-gated session cm_ids."""
+
+    def _teen_world(self):
+        """Sessions: a main (defines summer window), CIT+SIT (scit), TLI, and an
+        off-season scit that must be window-gated out."""
+        return {
+            1001: create_mock_session(1001, "Session 1", session_type="main"),
+            5001: create_mock_session(5001, "CIT", session_type="scit"),
+            5002: create_mock_session(5002, "SIT", session_type="scit"),
+            6001: create_mock_session(6001, "TLI", session_type="tli"),
+            # Fall Family-Camp CIT — same type, outside the summer window.
+            5999: create_mock_session(
+                5999, "Fall CIT", session_type="scit", start_date="2026-10-01", end_date="2026-10-08"
+            ),
+        }
+
+    def _teen_waitlisted(self, sessions):
+        return [
+            create_mock_attendee_with_person(
+                101,
+                5001,
+                gender="M",
+                status="waitlisted",
+                grade=12,
+                effective_date="2025-11-12",
+                session=sessions[5001],
+            ),
+            create_mock_attendee_with_person(
+                102,
+                5002,
+                gender="F",
+                status="waitlisted",
+                grade=11,
+                effective_date="2025-11-13",
+                session=sessions[5002],
+            ),
+            create_mock_attendee_with_person(
+                103,
+                6001,
+                gender="F",
+                status="waitlisted",
+                grade=10,
+                effective_date="2025-11-14",
+                session=sessions[6001],
+            ),
+            # Waitlisted in main — must not appear for a teen-type drilldown.
+            create_mock_attendee_with_person(
+                104,
+                1001,
+                gender="M",
+                status="waitlisted",
+                grade=6,
+                effective_date="2025-11-15",
+                session=sessions[1001],
+            ),
+            # Waitlisted in the off-season scit — window-gated out.
+            create_mock_attendee_with_person(
+                105,
+                5999,
+                gender="M",
+                status="waitlisted",
+                grade=12,
+                effective_date="2025-11-16",
+                session=sessions[5999],
+            ),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_scit_merges_cit_and_sit_excludes_others(self, drilldown_service, mock_repository):
+        """value='scit' returns waitlisted from CIT+SIT only — not TLI, main, or off-season scit."""
+        sessions = self._teen_world()
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_persons = AsyncMock(return_value=self._teen_waitlisted(sessions))
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_teen_program",
+            breakdown_value="scit",
+            session_types=["main", "scit", "tli"],
+        )
+
+        pids = {a.person_id for a in result}
+        assert pids == {101, 102}
+        assert all(a.status == "waitlisted" for a in result)
+
+    @pytest.mark.asyncio
+    async def test_tli_distinct_from_scit(self, drilldown_service, mock_repository):
+        """value='tli' returns only the TLI waitlister, distinguishing it from SCIT."""
+        sessions = self._teen_world()
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_persons = AsyncMock(return_value=self._teen_waitlisted(sessions))
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_teen_program",
+            breakdown_value="tli",
+            session_types=["main", "scit", "tli"],
+        )
+
+        assert {a.person_id for a in result} == {103}
+
+    @pytest.mark.asyncio
+    async def test_scit_with_grade_filter(self, drilldown_service, mock_repository):
+        """value='scit:12' filters the merged SCIT pool to a single grade."""
+        sessions = self._teen_world()
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_persons = AsyncMock(return_value=self._teen_waitlisted(sessions))
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_teen_program",
+            breakdown_value="scit:12",
+            session_types=["main", "scit", "tli"],
+        )
+
+        assert {a.person_id for a in result} == {101}
+
+    @pytest.mark.asyncio
+    async def test_unknown_teen_type_returns_empty(self, drilldown_service, mock_repository):
+        """A non-teen breakdown value yields no rows rather than erroring."""
+        sessions = self._teen_world()
+        mock_repository.fetch_sessions.return_value = sessions
+        mock_repository.fetch_attendees_with_persons = AsyncMock(return_value=self._teen_waitlisted(sessions))
+
+        result = await drilldown_service.get_attendees_for_breakdown(
+            year=2026,
+            breakdown_type="waitlist_teen_program",
+            breakdown_value="main",
+            session_types=["main", "scit", "tli"],
+        )
+
+        assert result == []
+
+
+# ============================================================================
 # Tests for waitlist "Waitlisted For" summer session filtering
 # ============================================================================
 
