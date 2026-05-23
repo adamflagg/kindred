@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from api.services.metrics_cache import MetricsCache
 
 if TYPE_CHECKING:
-    from api.schemas.metrics import RegistrationMetricsResponse, RetentionMetricsResponse
+    from api.schemas.metrics import RegistrationMetricsResponse, RetentionMetricsResponse, RetentionTrendsResponse
 
 
 @pytest.fixture
@@ -269,6 +269,97 @@ class TestCacheStatsEndpoint:
         assert data["miss_count"] == 1
 
 
+class TestRetentionTrendsEndpointCaching:
+    """Test that the /retention-trends endpoint caches per include_teen_pipeline flag."""
+
+    def test_retention_trends_caches_per_teen_flag(self, test_client, fresh_cache):
+        """Two GETs differing only in include_teen_pipeline must produce two service calls.
+
+        Flag=false and flag=true must NOT share a cache entry.
+        """
+        mock_service = AsyncMock()
+        mock_service.calculate_retention_trends = AsyncMock(
+            side_effect=[
+                _make_retention_trends_response(),
+                _make_retention_trends_response(),
+            ]
+        )
+
+        with (
+            patch("api.routers.metrics.RetentionTrendsService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            # flag OFF (default)
+            resp1 = test_client.get(
+                "/api/metrics/retention-trends",
+                params={"current_year": 2026, "include_teen_pipeline": "false"},
+            )
+            assert resp1.status_code == 200, resp1.text
+
+            # flag ON — must NOT hit the flag-off cache entry
+            resp2 = test_client.get(
+                "/api/metrics/retention-trends",
+                params={"current_year": 2026, "include_teen_pipeline": "true"},
+            )
+            assert resp2.status_code == 200, resp2.text
+
+            assert mock_service.calculate_retention_trends.call_count == 2, (
+                "Both flag=true and flag=false must cache independently"
+            )
+
+    def test_retention_trends_forwards_teen_flag_to_service(self, test_client, fresh_cache):
+        """Route must forward include_teen_pipeline=True to RetentionTrendsService."""
+        mock_service = AsyncMock()
+        mock_service.calculate_retention_trends = AsyncMock(return_value=_make_retention_trends_response())
+
+        with (
+            patch("api.routers.metrics.RetentionTrendsService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            resp = test_client.get(
+                "/api/metrics/retention-trends",
+                params={"current_year": 2026, "include_teen_pipeline": "true"},
+            )
+            assert resp.status_code == 200, resp.text
+
+            mock_service.calculate_retention_trends.assert_called_once()
+            call_kwargs = mock_service.calculate_retention_trends.call_args.kwargs
+            assert call_kwargs.get("include_teen_pipeline") is True, (
+                f"Expected include_teen_pipeline=True in service call, got: {call_kwargs}"
+            )
+
+
+class TestDrilldownEndpointTeenFlag:
+    """Test that /drilldown already forwards include_teen_pipeline (no caching — not cached)."""
+
+    def test_drilldown_forwards_teen_flag(self, test_client, fresh_cache):
+        """GET /drilldown?...&include_teen_pipeline=true must call DrilldownService with True."""
+        mock_service = AsyncMock()
+        mock_service.get_attendees_for_breakdown = AsyncMock(return_value=[])
+
+        with (
+            patch("api.routers.metrics.DrilldownService", return_value=mock_service),
+            patch("api.services.metrics_repository.MetricsRepository"),
+        ):
+            resp = test_client.get(
+                "/api/metrics/drilldown",
+                params={
+                    "year": 2026,
+                    "breakdown_type": "grade",
+                    "breakdown_value": "10",
+                    "compare_year": 2026,
+                    "include_teen_pipeline": "true",
+                },
+            )
+            assert resp.status_code == 200, resp.text
+
+            mock_service.get_attendees_for_breakdown.assert_called_once()
+            call_kwargs = mock_service.get_attendees_for_breakdown.call_args.kwargs
+            assert call_kwargs.get("include_teen_pipeline") is True, (
+                f"Expected include_teen_pipeline=True in drilldown service call, got: {call_kwargs}"
+            )
+
+
 # ============================================================================
 # Mock response helpers
 # ============================================================================
@@ -316,4 +407,18 @@ def _make_registration_response(year: int = 2026) -> RegistrationMetricsResponse
             new_percentage=0.25,
             returning_percentage=0.75,
         ),
+    )
+
+
+def _make_retention_trends_response() -> RetentionTrendsResponse:
+    """Create a minimal RetentionTrendsResponse with required fields."""
+    from api.schemas.metrics import RetentionTrendsResponse
+
+    return RetentionTrendsResponse(
+        years=[],
+        avg_retention_rate=0.8,
+        trend_direction="stable",
+        by_gender_grouped=[],
+        by_grade_grouped=[],
+        enrollment_by_year=[],
     )
