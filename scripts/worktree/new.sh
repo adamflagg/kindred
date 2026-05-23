@@ -224,9 +224,13 @@ API_PORT=$FASTAPI_PORT
 WORKTREE_NAME=$FEATURE_NAME
 EOF
 
-# Install lefthook hooks in the worktree
+# Install lefthook hooks in the worktree.
+# --force overwrites stale .old backups: worktrees share the main repo's .git/hooks, and
+# lefthook backs up existing hooks to <hook>.old on install. A leftover .old from a prior
+# worktree makes the backup-rename fail ("can't rename pre-push to pre-push.old"), and with
+# set -e that aborts new.sh mid-setup (before deps/local-config/DB-seed). --force skips that.
 if command -v lefthook &> /dev/null; then
-    lefthook install --reset-hooks-path
+    lefthook install --reset-hooks-path --force
 else
     echo -e "${YELLOW}Warning: lefthook not installed — run 'go install github.com/evilmartians/lefthook/v2@latest'${NC}"
 fi
