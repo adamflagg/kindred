@@ -135,15 +135,13 @@ export default function TrendsOverview() {
   const {
     expandedRetention,
     filterOptions,
-    activeSessionTypes,
     includeTeenPipeline,
     setIncludeTeenPipeline,
+    scopeHasTeens,
   } = useMetricsSession()
   const { currentYear } = useCurrentYear()
 
   const numYearsDisplay = expandedRetention ? 5 : 3
-
-  const scopeHasTeens = activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
 
   // Build explicit years param from currentYear context (defense in depth)
   const yearsParam = useMemo(() => {
@@ -379,13 +377,14 @@ export default function TrendsOverview() {
             height={250}
             headerRight={
               scopeHasTeens ? (
-                <label className="text-muted-foreground flex items-center gap-1 text-xs">
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs">
                   <input
                     type="checkbox"
                     checked={includeTeenPipeline}
                     onChange={(e) => setIncludeTeenPipeline(e.target.checked)}
+                    className="accent-primary h-3.5 w-3.5 rounded"
                   />
-                  Camp → Teen
+                  <span className="text-muted-foreground">Camp → Teen</span>
                 </label>
               ) : undefined
             }

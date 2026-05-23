@@ -113,10 +113,19 @@ describe('ChartCard', () => {
 
   it('renders headerRight content in the header', () => {
     render(
-      <ChartCard title="Overall Retention Rate Trend" headerRight={<span>Camp → Teen</span>}>
+      <ChartCard title="My Chart" headerRight={<span>Camp → Teen</span>}>
         <div />
       </ChartCard>
     )
     expect(screen.getByText('Camp → Teen')).toBeInTheDocument()
+  })
+
+  it('renders headerRight content when no title is provided', () => {
+    render(
+      <ChartCard headerRight={<span>X</span>}>
+        <div />
+      </ChartCard>
+    )
+    expect(screen.getByText('X')).toBeInTheDocument()
   })
 })

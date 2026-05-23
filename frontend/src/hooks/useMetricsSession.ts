@@ -68,6 +68,8 @@ export interface MetricsSessionContextType {
   /** Retention: credit the grade-10 → teen pipeline in summary numbers (URL: teen_pipeline=1) */
   includeTeenPipeline: boolean
   setIncludeTeenPipeline: (value: boolean) => void
+  /** True when the active session scope includes at least one teen program (SCIT or TLI) */
+  scopeHasTeens: boolean
 }
 
 export const MetricsSessionContext = createContext<MetricsSessionContextType | undefined>(undefined)

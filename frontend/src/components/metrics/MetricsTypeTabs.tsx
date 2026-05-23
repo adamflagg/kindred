@@ -45,10 +45,8 @@ export default function MetricsTypeTabs() {
     setCompareYear,
     includeTeenPipeline,
     setIncludeTeenPipeline,
-    activeSessionTypes,
+    scopeHasTeens,
   } = useMetricsSession()
-
-  const scopeHasTeens = activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
   const { currentYear, availableYears } = useCurrentYear()
 
   // Determine active tab based on current path

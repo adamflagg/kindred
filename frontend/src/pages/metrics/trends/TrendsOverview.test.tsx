@@ -12,6 +12,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // Control mock state for useMetricsSession
 const mockMetricsSession = {
   activeSessionTypes: ['main', 'embedded'] as readonly string[],
+  get scopeHasTeens() {
+    return this.activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
+  },
   includeTeenPipeline: false,
   setIncludeTeenPipeline: vi.fn(),
   expandedRetention: false,

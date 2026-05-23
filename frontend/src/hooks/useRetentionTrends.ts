@@ -14,7 +14,7 @@ import type { MetricsFilterOptions } from './useMetrics'
 export type UseRetentionTrendsOptions = MetricsFilterOptions & {
   /** Number of years to include (default: 3) */
   numYears?: number | undefined
-  /** Credit the grade-10 → teen pipeline in retention numbers */
+  /** Credit grade-10 campers who continue into a summer teen program (SCIT/TLI) as retained. */
   includeTeenPipeline?: boolean | undefined
 }
 

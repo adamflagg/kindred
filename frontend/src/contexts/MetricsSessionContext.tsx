@@ -326,6 +326,11 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
     setSelectedSessionCmId(null)
   }, [setSelectedSessionCmId])
 
+  const scopeHasTeens = useMemo(
+    () => activeSessionTypes.some((t) => t === 'scit' || t === 'tli'),
+    [activeSessionTypes]
+  )
+
   const value: MetricsSessionContextType = useMemo(
     () => ({
       selectedSessionCmId,
@@ -357,6 +362,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       isComparing,
       includeTeenPipeline,
       setIncludeTeenPipeline,
+      scopeHasTeens,
     }),
     [
       selectedSessionCmId,
@@ -387,6 +393,7 @@ export function MetricsSessionProvider({ children }: { children: ReactNode }) {
       isComparing,
       includeTeenPipeline,
       setIncludeTeenPipeline,
+      scopeHasTeens,
     ]
   )
 
