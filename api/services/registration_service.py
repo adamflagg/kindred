@@ -93,8 +93,10 @@ class RegistrationService:
         # Fetch sessions first to find AG sessions with matching parent.
         # The type-filtered dict is used for breakdown display; the full dict is
         # required so resolve_cohort_session_ids can compute the summer window.
+        # On the unfiltered path the type-filtered fetch already returns every
+        # session, so reuse it rather than issuing an identical second query.
         sessions = await self.repo.fetch_sessions(year, session_types)
-        sessions_all = await self.repo.fetch_sessions(year, None)
+        sessions_all = sessions if session_types is None else await self.repo.fetch_sessions(year, None)
         ag_session_ids = find_ag_sessions_for_parent(sessions, session_cm_id)
         duration_session_ids = resolve_duration_sessions(sessions, duration) if duration else None
 

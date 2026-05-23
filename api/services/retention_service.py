@@ -291,8 +291,9 @@ class RetentionService:
             session_cm_ids=filtered_ids_base,
         )
 
-        # Session flow: Sankey diagram data showing session-to-session transitions
-        # Uses unfiltered compare-year data so destinations show all session types
+        # Session flow: Sankey diagram data showing session-to-session transitions.
+        # Uses unfiltered compare-year data so destinations show every displayed
+        # program (DISPLAY_SESSION_TYPES), not just the dropdown-selected types.
         session_flow = self._build_session_flow(
             person_ids_base,
             attendee_sessions_base_filtered,
@@ -515,10 +516,15 @@ class RetentionService:
         Shows each compare year session's total enrollment and how many are
         returning from ANY base year session (unfiltered).
 
+        Exception: when include_teen_pipeline is off, a TLI row with zero returners
+        is suppressed (it would be a misleading 0% fed only by the gated grade-10
+        bridge); a non-zero TLI row is kept so it reconciles with the headline.
+
         Args:
             attendee_sessions_compare: Dict mapping person_id to compare year session cm_ids.
             person_ids_base_unfiltered: All base year person IDs (no type filter).
             sessions_compare: Compare year sessions (filtered by dropdown).
+            include_teen_pipeline: When False, suppress zero-return TLI rows (see above).
 
         Returns:
             List of RetentionBySession models.
@@ -681,7 +687,11 @@ class RetentionService:
 
         Shows how campers flow from base year sessions to compare year sessions.
         AG sessions are merged into their parent on both source and target sides.
-        Destinations are unfiltered (show all session types).
+        Both sides are gated to DISPLAY_SESSION_TYPES (main, embedded, ag, quest,
+        scit, tli); the compare year is otherwise not filtered by the session-type
+        dropdown, so returns to any displayed program are shown. Teen programs
+        (scit/tli) are not summer-window-gated here -- see _build_session_flow's
+        callers if off-season teen destinations need to be excluded.
 
         Args:
             person_ids_base: Set of person IDs in base year (filtered).

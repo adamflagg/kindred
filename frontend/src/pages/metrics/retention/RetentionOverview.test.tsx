@@ -130,7 +130,7 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
     render(<RetentionOverview />)
 
     expect(
-      screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+      screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
     ).not.toBeInTheDocument()
   })
 

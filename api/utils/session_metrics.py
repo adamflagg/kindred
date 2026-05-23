@@ -277,8 +277,10 @@ def filter_attendees_by_session(
         session_types: Session types to include (None = all).
         session_cm_id: Specific session to filter to (None = all).
         ag_session_ids: AG sessions that belong to the parent session.
-        session_cm_ids: Optional set of session cm_ids to restrict to (e.g., from
-            duration filtering via resolve_duration_sessions). AG children of
+        session_cm_ids: Optional set of session cm_ids to restrict to. Carries
+            whatever gate the caller computed -- the summer-window cohort from
+            resolve_cohort_session_ids, a duration filter from
+            resolve_duration_sessions, or their intersection. AG children of
             matching sessions are also allowed through.
 
     Returns:
