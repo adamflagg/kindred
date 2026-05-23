@@ -821,7 +821,7 @@ class TestRetentionFlagCarveOuts:
         repo.fetch_summer_enrollment_history = AsyncMock(return_value=[])
 
     @pytest.mark.asyncio
-    async def test_grade_10_row_always_present_in_by_grade(self, repo) -> None:
+    async def test_grade_10_row_always_present_in_by_grade(self, repo: AsyncMock) -> None:
         base_main = _make_session(1001, "Session 2", "main")
         compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
         compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
@@ -842,7 +842,7 @@ class TestRetentionFlagCarveOuts:
             assert row10.returned_count == 1
 
     @pytest.mark.asyncio
-    async def test_grade_10_excluded_from_overall_rate_when_flag_off(self, repo) -> None:
+    async def test_grade_10_excluded_from_overall_rate_when_flag_off(self, repo: AsyncMock) -> None:
         base_main = _make_session(1001, "Session 2", "main")
         compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
         compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
@@ -856,7 +856,7 @@ class TestRetentionFlagCarveOuts:
         assert result.aged_out_count == 1
 
     @pytest.mark.asyncio
-    async def test_by_2026_session_hides_tli_when_flag_off_shows_when_on(self, repo) -> None:
+    async def test_by_2026_session_hides_tli_when_flag_off_shows_when_on(self, repo: AsyncMock) -> None:
         base_main = _make_session(1001, "Session 2", "main")
         compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
         compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
@@ -875,7 +875,7 @@ class TestRetentionFlagCarveOuts:
         assert tli_row.returned_count == 1
 
     @pytest.mark.asyncio
-    async def test_by_2026_session_scit_shown_regardless_of_flag(self, repo) -> None:
+    async def test_by_2026_session_scit_shown_regardless_of_flag(self, repo: AsyncMock) -> None:
         base_tli = _make_session(1002, "TLI", "tli", start_date="2025-06-15", end_date="2025-07-05")
         base_main = _make_session(1001, "Session 2", "main")
         compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
