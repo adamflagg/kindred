@@ -8566,6 +8566,12 @@ export type GetRetentionTrendsApiMetricsRetentionTrendsGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Include Teen Pipeline
+     *
+     * Credit grade-10 campers who continue into a summer teen program (SCIT/TLI) as retained.
+     */
+    include_teen_pipeline?: boolean
   }
   url: '/api/metrics/retention-trends'
 }
@@ -8746,6 +8752,12 @@ export type GetDrilldownAttendeesApiMetricsDrilldownGetData = {
      * Filter by session duration category (1-week, 2-week, 3-week, 4-week+)
      */
     duration?: '1-week' | '2-week' | '3-week' | '4-week+' | null
+    /**
+     * Include Teen Pipeline
+     *
+     * Credit grade-10 campers who continue into a summer teen program (main->teen bridge). Mirrors the retention card so drilldown lists reconcile with it.
+     */
+    include_teen_pipeline?: boolean
   }
   url: '/api/metrics/drilldown'
 }
