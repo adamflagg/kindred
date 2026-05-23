@@ -248,8 +248,12 @@ class RetentionTrendsService:
         Args:
             years: List of years.
             data_by_year: Data for each year.
-            effective_pipeline: Whether grade-10 -> teen bridge is credited.
+            effective_pipeline: Whether grade-10 -> teen bridge is credited for
+                the headline base_count and returned_count.
             scope_has_teens: Whether the selected scope includes teen sessions.
+                When True, by_grade always includes a grade-10 row (carve-out)
+                even when effective_pipeline=False, so staff can see the
+                pipeline even with the toggle off.
 
         Returns:
             List of RetentionTrendYear objects.
