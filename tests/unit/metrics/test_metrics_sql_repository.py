@@ -481,40 +481,6 @@ class TestFetchStatusHistory:
 
 
 # ============================================================================
-# Test: fetch_synagogue_by_household
-# ============================================================================
-
-
-class TestFetchSynagogueByHousehold:
-    """Test fetching synagogue mapping by household cm_id."""
-
-    @pytest.mark.asyncio
-    async def test_returns_dict_by_household_cm_id(self, sql_db: sqlite3.Connection) -> None:
-        """Returns dict[int, str] keyed by household cm_id."""
-        repo = _make_repo(sql_db)
-        result = await repo.fetch_synagogue_by_household(2025)
-        assert isinstance(result, dict)
-        assert result[2001] == "Temple Beth El"
-        assert result[2002] == "Congregation Shalom"
-        assert len(result) == 2
-
-    @pytest.mark.asyncio
-    async def test_empty_year(self, sql_db: sqlite3.Connection) -> None:
-        """Year with no data returns empty dict."""
-        repo = _make_repo(sql_db)
-        result = await repo.fetch_synagogue_by_household(2030)
-        assert result == {}
-
-    @pytest.mark.asyncio
-    async def test_int_keys(self, sql_db: sqlite3.Connection) -> None:
-        """Keys are int."""
-        repo = _make_repo(sql_db)
-        result = await repo.fetch_synagogue_by_household(2025)
-        for key in result:
-            assert isinstance(key, int)
-
-
-# ============================================================================
 # Test: fetch_enrollment_snapshots
 # ============================================================================
 

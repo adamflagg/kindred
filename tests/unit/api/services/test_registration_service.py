@@ -87,7 +87,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -125,7 +124,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -157,7 +155,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -196,7 +193,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         # Filter to only main sessions
@@ -226,7 +222,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025, session_cm_id=1000)
@@ -258,7 +253,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         # Filter to session 1000 - should also include AG session 1001
@@ -289,7 +283,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -326,7 +319,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -362,7 +354,6 @@ class TestRegistrationServiceCalculate:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -421,7 +412,6 @@ class TestRegistrationServiceStatusCategories:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -463,7 +453,6 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -499,7 +488,6 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -534,7 +522,6 @@ class TestRegistrationServiceDemographics:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         # Household→synagogue lookup is no longer consulted (service uses normalized_congregation).
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -569,7 +556,6 @@ class TestRegistrationServiceSummerMetrics:
 
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         # Return history showing different summer years
         # Person 1: 2 summers (2023, 2024), Person 2: 1 summer (2024), Person 3: 3 summers (2022, 2023, 2024)
@@ -625,7 +611,6 @@ class TestRegistrationServiceSummerMetrics:
 
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         # Person 1 started 2022, Person 2 started 2024
         # year=None pins the mock so compute_summer_metrics uses session.start_date.
@@ -680,7 +665,6 @@ class TestRegistrationServiceGenderByGrade:
         mock_repo.fetch_summer_enrollment_history.return_value = []
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2025)
@@ -776,7 +760,6 @@ class TestRegistrationTeenCohortGating:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2026, session_types=["scit"], status_filter=["enrolled"])
@@ -812,7 +795,6 @@ class TestRegistrationTeenCohortGating:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2026, session_types=["scit"], status_filter=["enrolled"])
@@ -870,7 +852,6 @@ class TestRegistrationTeenCohortGating:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(2026, session_types=non_teen_types, status_filter=["enrolled"])
@@ -938,7 +919,6 @@ class TestRegistrationTeenCohortGating:
         mock_repo.fetch_bunk_plans.return_value = []
         mock_repo.fetch_capacity_config.return_value = 12
         mock_repo.fetch_summer_enrollment_history.return_value = []
-        mock_repo.fetch_synagogue_by_household.return_value = {}
 
         service = RegistrationService(mock_repo)
         result = await service.calculate_registration(

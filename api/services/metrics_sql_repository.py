@@ -528,23 +528,6 @@ class MetricsSQLRepository:
         ]
 
     # ------------------------------------------------------------------
-    # 11. fetch_synagogue_by_household
-    # ------------------------------------------------------------------
-
-    async def fetch_synagogue_by_household(self, year: int) -> dict[int, str]:
-        """Fetch synagogue mapping: household cm_id → synagogue name."""
-        rows = self._query(
-            """SELECT h.cm_id AS household_cm_id, hcv.value
-               FROM household_custom_values hcv
-               JOIN custom_field_defs fd ON hcv.field_definition = fd.id
-               JOIN households h ON hcv.household = h.id
-               WHERE fd.name = 'Synagogue' AND hcv.year = ?
-                 AND hcv.value IS NOT NULL AND hcv.value != ''""",
-            (year,),
-        )
-        return {int(r["household_cm_id"]): r["value"] for r in rows}
-
-    # ------------------------------------------------------------------
     # 12. fetch_enrollment_snapshots
     # ------------------------------------------------------------------
 

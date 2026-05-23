@@ -18,8 +18,6 @@ from api.constants.collections import (
     CAMP_SESSIONS,
     CONFIG,
     ENROLLMENT_SNAPSHOTS,
-    FIELD_DEFINITIONS,
-    HOUSEHOLD_CUSTOM_VALUES,
     PERSONS,
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
@@ -290,55 +288,6 @@ class MetricsRepository:
         except Exception as e:
             logger.warning(f"Could not fetch status history: {e}")
             return []
-
-    async def fetch_synagogue_by_household(self, year: int) -> dict[int, str]:
-        """Fetch synagogue values mapped by household CampMinder ID.
-
-        Looks up the "Synagogue" custom field from household_custom_values
-        and returns a mapping from household cm_id to synagogue name.
-
-        Args:
-            year: The year to filter custom values for.
-
-        Returns:
-            Dictionary mapping household cm_id (int) to synagogue name (str).
-            Returns empty dict if Synagogue field not found.
-        """
-        try:
-            # Find the Synagogue field definition
-            field_def = await asyncio.to_thread(
-                self.pb.collection(FIELD_DEFINITIONS).get_first_list_item,
-                'name = "Synagogue"',
-            )
-        except Exception as e:
-            logger.debug(f"Synagogue field definition not found: {e}")
-            return {}
-
-        try:
-            # Fetch household_custom_values for this field with household expansion
-            filter_str = f'field = "{field_def.id}" && year = {year}'
-            custom_values = await asyncio.to_thread(
-                self.pb.collection(HOUSEHOLD_CUSTOM_VALUES).get_full_list,
-                query_params={"filter": filter_str, "expand": "household"},
-            )
-
-            # Build mapping from household cm_id to synagogue value
-            result: dict[int, str] = {}
-            for cv in custom_values:
-                value = getattr(cv, "value", "")
-                if not value:
-                    continue  # Skip empty values
-                expand = getattr(cv, "expand", {})
-                household = expand.get("household") if expand else None
-                if household:
-                    hh_cm_id = getattr(household, "cm_id", None)
-                    if hh_cm_id is not None:
-                        result[int(hh_cm_id)] = value
-
-            return result
-        except Exception as e:
-            logger.warning(f"Error fetching synagogue custom values: {e}")
-            return {}
 
     async def fetch_enrollment_snapshots(self, year: int, session_cm_id: int | None = None) -> list[Any]:
         """Fetch enrollment snapshots for a year, optionally filtered by session."""
