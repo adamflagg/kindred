@@ -891,3 +891,61 @@ class TestRetentionFlagCarveOuts:
                 2025, 2026, session_types=["scit", "tli"], include_teen_pipeline=flag
             )
             assert "SCIT" in {s.session_name for s in result.by_session}, f"SCIT missing when flag={flag}"
+
+    @pytest.mark.asyncio
+    async def test_grade_10_row_hidden_in_nonteen_scope(self, repo: AsyncMock) -> None:
+        """At Camp / Quests scope: no teen destination, so grade-10 must NOT appear in by_grade."""
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=10)}
+        attendees_base = [_make_attendee(1, base_main), _make_attendee(2, base_main)]
+        attendees_compare = [_make_attendee(1, compare_main), _make_attendee(2, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        for flag in (False, True):
+            self._setup(
+                repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare
+            )
+            result = await RetentionService(repo).calculate_retention(
+                2025, 2026, session_types=["main", "embedded", "ag", "quest"], include_teen_pipeline=flag
+            )
+            grades = {g.grade for g in result.by_grade}
+            assert 10 not in grades, f"grade-10 must be hidden in non-teen scope (flag={flag})"
+            assert 9 in grades
+
+    @pytest.mark.asyncio
+    async def test_grade_10_row_shown_in_allsummer_scope(self, repo: AsyncMock) -> None:
+        """All Summer scope (session_types includes scit/tli): grade-10 row IS shown."""
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=10)}
+        attendees_base = [_make_attendee(1, base_main), _make_attendee(2, base_main)]
+        attendees_compare = [_make_attendee(1, compare_main), _make_attendee(2, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        result = await RetentionService(repo).calculate_retention(
+            2025, 2026, session_types=["main", "embedded", "ag", "quest", "scit", "tli"], include_teen_pipeline=False
+        )
+        assert 10 in {g.grade for g in result.by_grade}
+
+    @pytest.mark.asyncio
+    async def test_flag_inert_in_nonteen_scope(self, repo: AsyncMock) -> None:
+        """In a non-teen scope, toggling the flag does nothing (grade-10 always aged out)."""
+        base_main = _make_session(1001, "Session 2", "main")
+        compare_main = _make_session(2001, "Session 2", "main", start_date="2026-06-15", end_date="2026-07-05")
+        compare_tli = _make_session(2099, "TLI", "tli", start_date="2026-06-15", end_date="2026-07-05")
+        persons = {1: _make_person(1, grade=9), 2: _make_person(2, grade=10)}
+        attendees_base = [_make_attendee(1, base_main), _make_attendee(2, base_main)]
+        attendees_compare = [_make_attendee(1, compare_main), _make_attendee(2, compare_tli)]
+        sessions_compare = {compare_main.cm_id: compare_main, compare_tli.cm_id: compare_tli}
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        off = await RetentionService(repo).calculate_retention(
+            2025, 2026, session_types=["main", "quest"], include_teen_pipeline=False
+        )
+        self._setup(repo, {base_main.cm_id: base_main}, sessions_compare, persons, attendees_base, attendees_compare)
+        on = await RetentionService(repo).calculate_retention(
+            2025, 2026, session_types=["main", "quest"], include_teen_pipeline=True
+        )
+        assert (off.base_year_total, off.aged_out_count) == (on.base_year_total, on.aged_out_count)
+        assert off.aged_out_count == 1  # the grade-10 is aged out in both

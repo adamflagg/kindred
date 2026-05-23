@@ -28,6 +28,7 @@ from api.utils.session_aliases import get_alias_group
 from api.utils.session_metrics import (
     BUNK_SESSION_TYPES,
     DISPLAY_SESSION_TYPES,
+    SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     get_person_from_expand,
     get_session_from_expand,
@@ -153,28 +154,41 @@ class RetentionService:
             attendees_compare, None, None, display_cohort_compare
         )
 
+        # The teen-pipeline story is only meaningful when the selected scope includes
+        # teen sessions (All Summer / Teens / a specific SCIT·TLI). In a non-teen scope
+        # (At Camp / Quests) a rising-11th-grader has no teen destination, so the flag is
+        # inert and grade-10 is simply aged out.
+        scope_has_teens = session_types is None or any(t in SUMMER_TEEN_TYPES for t in session_types)
+        effective_pipeline = include_teen_pipeline and scope_has_teens
+
         # Exclude aged-out persons from retention base pools (spec §8). The flag credits
         # the grade-10 -> teen bridge; otherwise grade 10 is aged out (legacy behavior).
         # person_ids_base_cohort captures the pre-aged-out cohort for grade-specific breakdown.
         person_ids_base_cohort = set(person_ids_base)
         pre_filter_count = len(person_ids_base)
-        person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base, include_teen_pipeline)
+        person_ids_base = exclude_aged_out_persons(person_ids_base, persons_base, effective_pipeline)
         aged_out_count = pre_filter_count - len(person_ids_base)
         person_ids_base_unfiltered = exclude_aged_out_persons(
-            person_ids_base_unfiltered, persons_base, include_teen_pipeline
+            person_ids_base_unfiltered, persons_base, effective_pipeline
         )
         # Aged-out person IDs for methods that iterate attendees directly
         aged_out_person_ids = {
             pid
             for pid, person in persons_base.items()
-            if is_aged_out(getattr(person, "grade", None), include_teen_pipeline)
+            if is_aged_out(getattr(person, "grade", None), effective_pipeline)
         }
-        # by_grade ALWAYS keeps grade-10 (its retention rate is meaningful even when excluded
-        # from the headline); only graduating grades (>=12) drop. include_teen_pipeline=True here
-        # forces grade-10 in regardless of the actual flag.
-        person_ids_base_grade = exclude_aged_out_persons(
-            person_ids_base_cohort, persons_base, include_teen_pipeline=True
-        )
+        # by_grade keeps grade-10 only when the scope includes teens (the carve-out only
+        # makes sense when a teen destination exists). In a non-teen scope (At Camp /
+        # Quests), grade-10 is simply aged out — no teen destination to credit — so the
+        # by_grade base matches the headline base (no grade-10 row). In a teen scope,
+        # force include_teen_pipeline=True so the grade-10 row always appears regardless
+        # of whether the user toggled the flag.
+        if scope_has_teens:
+            person_ids_base_grade = exclude_aged_out_persons(
+                person_ids_base_cohort, persons_base, include_teen_pipeline=True
+            )
+        else:
+            person_ids_base_grade = person_ids_base  # non-teen scope: by_grade matches the headline
         returned_ids_grade = person_ids_base_grade & person_ids_compare
 
         # Base year attendee sessions (cohort + specific session) for session flow
@@ -208,7 +222,7 @@ class RetentionService:
 
         # Session breakdown: compare year sessions, returning = was in any base year session
         by_session = self._build_compare_year_session_breakdown(
-            attendee_sessions_compare, person_ids_base_unfiltered, sessions_compare_filtered, include_teen_pipeline
+            attendee_sessions_compare, person_ids_base_unfiltered, sessions_compare_filtered, effective_pipeline
         )
 
         by_years_at_camp = self._build_retention_breakdown(
