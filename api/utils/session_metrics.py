@@ -74,6 +74,37 @@ SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 # exclude off-season noise (fall Family-Camp CIT, Aug->May Teen Interns, Feb L.A. Trip).
 SUMMER_TEEN_TYPES = ("scit", "tli")
 
+# Display labels for the merged teen rows (one row per teen session_type),
+# shared by the forecast and availability services.
+TEEN_DISPLAY_NAMES: dict[str, str] = {"scit": "SCIT", "tli": "TLI"}
+
+# Per-teen-type config rows are STORED with config_key "type_<name>" (underscore)
+# but looked up in-memory under "type:<name>" (colon). Keep both encodings here so
+# the storage<->lookup translation lives in one place across services/repos.
+TEEN_CONFIG_KEY_DB_PREFIX = "type_"
+
+
+def teen_display_name(teen_type: str) -> str:
+    """Display label for a teen row, falling back to the upper-cased type."""
+    return TEEN_DISPLAY_NAMES.get(teen_type, teen_type.upper())
+
+
+def teen_config_key(teen_type: str) -> str:
+    """In-memory config-dict key for a teen type (e.g. 'scit' -> 'type:scit')."""
+    return f"type:{teen_type}"
+
+
+def parse_teen_config_key(db_config_key: str) -> str | None:
+    """Map a stored 'type_<name>' config_key to its in-memory 'type:<name>' form.
+
+    Returns None when the key is not a teen-type config key (or carries no name),
+    so callers can fall through to their other key-shape handling.
+    """
+    if not db_config_key.startswith(TEEN_CONFIG_KEY_DB_PREFIX):
+        return None
+    name = db_config_key[len(TEEN_CONFIG_KEY_DB_PREFIX) :]
+    return teen_config_key(name) if name else None
+
 
 def get_summer_window(sessions: dict[int, Any]) -> tuple[str, str] | None:
     """Return (earliest main start_date, latest main end_date) as YYYY-MM-DD, or None.

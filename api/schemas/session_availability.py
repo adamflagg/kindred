@@ -54,9 +54,30 @@ class AGSessionAvailability(BaseModel):
     waitlisted_persons: list[WaitlistedPerson] = Field(default_factory=list)
 
 
+class TeenSessionAvailability(BaseModel):
+    """Aggregated availability row for a teen program (SCIT or TLI).
+
+    No gender split — mirrors AGSessionAvailability minus parent_session_name.
+    SCIT merges all CIT + SIT sub-sessions into one row.
+    """
+
+    session_cm_id: int = 0  # aggregated row — no single CM id
+    session_name: str
+    session_type: str  # 'scit' | 'tli'
+    min_grade: int | None = None
+    max_grade: int | None = None
+    enrolled: int = 0
+    waitlisted: int = 0
+    capacity: int | None = None
+    status: str = "open"
+    waitlisted_by_grade: dict[int, int] = Field(default_factory=dict)
+    waitlisted_persons: list[WaitlistedPerson] = Field(default_factory=list)
+
+
 class SessionAvailabilityResponse(BaseModel):
     """Full session availability response."""
 
     sessions: list[SessionAvailability] = Field(default_factory=list)
     ag_sessions: list[AGSessionAvailability] = Field(default_factory=list)
+    teen_sessions: list[TeenSessionAvailability] = Field(default_factory=list)
     limited_threshold: int = 80

@@ -516,6 +516,47 @@ describe('buildPreview', () => {
     expect(result.summary.unmatchedSessions).toBe(0)
     expect(result.summary.unmatchedSessionNames).toEqual([])
   })
+
+  it('carries teen type_<name> budget config forward to the same key', () => {
+    const prevBudgetConfig = [
+      makeConfig('budget', '2025', 'session_1001', {
+        participant_goal: 150,
+        session_fee: 3500,
+      }),
+      makeConfig('budget', '2025', 'type_scit', {
+        participant_goal: 50,
+        session_fee: 1500,
+      }),
+    ]
+
+    const result = buildPreview(matches, [], [], prevBudgetConfig, [], [], [], 2026)
+
+    const teen = result.budgetItems.find((b) => b.newConfigKey === 'type_scit')
+    expect(teen).toBeDefined()
+    expect(teen!.previousValue).toEqual({ participant_goal: 50, session_fee: 1500 })
+    expect(teen!.existingValue).toBeNull() // not yet set for the target year
+  })
+
+  it('does not overwrite type_<name> budget config already set for current year', () => {
+    const prevBudgetConfig = [
+      makeConfig('budget', '2025', 'type_scit', {
+        participant_goal: 50,
+        session_fee: 1500,
+      }),
+    ]
+    const curBudgetConfig = [
+      makeConfig('budget', '2026', 'type_scit', {
+        participant_goal: 60,
+        session_fee: 1600,
+      }),
+    ]
+
+    const result = buildPreview(matches, [], [], prevBudgetConfig, [], [], curBudgetConfig, 2026)
+
+    const teen = result.budgetItems.find((b) => b.newConfigKey === 'type_scit')
+    expect(teen).toBeDefined()
+    expect(teen!.existingValue).toEqual({ participant_goal: 60, session_fee: 1600 })
+  })
 })
 
 // ── isEmptyValue ──────────────────────────────────────────────────────

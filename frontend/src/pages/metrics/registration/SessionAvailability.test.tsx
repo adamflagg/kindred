@@ -117,6 +117,7 @@ const mockAvailabilityResponse = {
       waitlisted_persons: [],
     },
   ],
+  teen_sessions: [],
   limited_threshold: 80,
 }
 
@@ -353,6 +354,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -400,6 +402,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -485,6 +488,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -540,6 +544,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -601,6 +606,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -656,6 +662,7 @@ describe('SessionAvailability', () => {
         },
       ],
       ag_sessions: [],
+      teen_sessions: [],
       limited_threshold: 80,
     }
 
@@ -668,5 +675,106 @@ describe('SessionAvailability', () => {
     // WL pill always has cursor-pointer (always opens drilldown)
     const pill = screen.getByText('3', { selector: 'span.inline-flex' })
     expect(pill).toHaveClass('cursor-pointer')
+  })
+
+  it('renders Teen Programs section with SCIT and TLI rows', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest,scit,tli',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'],
+      durationParam: undefined,
+    })
+
+    const teenResponse = {
+      sessions: [],
+      ag_sessions: [],
+      teen_sessions: [
+        {
+          session_cm_id: 0,
+          session_name: 'SCIT',
+          session_type: 'scit',
+          min_grade: 12,
+          max_grade: 12,
+          enrolled: 45,
+          waitlisted: 0,
+          capacity: 50,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+        {
+          session_cm_id: 0,
+          session_name: 'TLI',
+          session_type: 'tli',
+          min_grade: 11,
+          max_grade: 11,
+          enrolled: 47,
+          waitlisted: 0,
+          capacity: 40,
+          status: 'full',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      limited_threshold: 80,
+    }
+
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => teenResponse })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/teen programs/i)).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('SCIT')).toBeInTheDocument()
+    expect(screen.getByText('TLI')).toBeInTheDocument()
+  })
+
+  it('teen WL pill drilldown keys off teen type, not session_cm_id=0', async () => {
+    mockUseMetricsSession.mockReturnValue({
+      selectedSessionCmId: null,
+      sessionTypesParam: 'main,embedded,ag,quest,scit,tli',
+      activeSessionTypes: ['main', 'embedded', 'ag', 'quest', 'scit', 'tli'],
+      durationParam: undefined,
+    })
+
+    const teenResponse = {
+      sessions: [],
+      ag_sessions: [],
+      teen_sessions: [
+        {
+          session_cm_id: 0,
+          session_name: 'SCIT',
+          session_type: 'scit',
+          min_grade: 12,
+          max_grade: 12,
+          enrolled: 45,
+          waitlisted: 4,
+          capacity: 50,
+          status: 'open',
+          waitlisted_by_grade: {},
+          waitlisted_persons: [],
+        },
+      ],
+      limited_threshold: 80,
+    }
+
+    // First fetch = availability data; subsequent fetch = drilldown after click.
+    mockFetch.mockResolvedValue({ ok: true, json: async () => teenResponse })
+    renderWithProviders(<SessionAvailability />)
+
+    await waitFor(() => expect(screen.getByText('SCIT')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('4', { selector: 'span.inline-flex' }))
+
+    await waitFor(() => {
+      const drilldownCall = mockFetch.mock.calls
+        .map((c) => String(c[0]))
+        .find((u) => u.includes('/api/metrics/drilldown'))
+      expect(drilldownCall).toBeDefined()
+      expect(drilldownCall).toContain('breakdown_type=waitlist_teen_program')
+      // value carries the teen type (scit), not the ambiguous session_cm_id=0
+      expect(drilldownCall).toContain('breakdown_value=scit')
+    })
   })
 })

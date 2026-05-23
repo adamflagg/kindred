@@ -523,3 +523,64 @@ describe('ForecastPage', () => {
     })
   })
 })
+
+describe('ForecastPage — Teen Programs section', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseMetricsSession.mockReturnValue({
+      ...defaultMetricsSession(),
+      sessionTypesParam: 'main,embedded,ag,quest,scit,tli',
+    })
+  })
+
+  it('renders SCIT and TLI rows under a Teen Programs heading without key collisions', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    setupMockFetch(
+      mockResponse(
+        [
+          session({
+            session_cm_id: 1001,
+            session_name: 'Session 2',
+            session_type: 'main',
+            enrolled: 120,
+          }),
+          session({
+            session_cm_id: 0,
+            session_name: 'SCIT',
+            session_type: 'scit',
+            enrolled: 30,
+            participant_goal: 50,
+          }),
+          session({
+            session_cm_id: 0,
+            session_name: 'TLI',
+            session_type: 'tli',
+            enrolled: 40,
+            participant_goal: 40,
+          }),
+        ],
+        // Grand total reflects displayed teens: main 120 + SCIT 30 + TLI 40 = 190.
+        { enrolled: 190 }
+      )
+    )
+
+    renderWithProviders(<ForecastPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Teen Programs').length).toBeGreaterThanOrEqual(1)
+    })
+    expect(screen.getByRole('heading', { name: 'Teen Programs' })).toBeInTheDocument()
+    expect(screen.getByText('SCIT')).toBeInTheDocument()
+    expect(screen.getByText('TLI')).toBeInTheDocument()
+
+    // Teens are a displayed cohort, so the grand total must include them (190),
+    // not just the camp sessions (120).
+    const grandTotalRow = screen.getByText('Grand Total').closest('tr')
+    expect(grandTotalRow).not.toBeNull()
+    expect(grandTotalRow).toHaveTextContent('190')
+
+    const dupKeyWarning = errorSpy.mock.calls.some((c) => String(c[0]).includes('same key'))
+    expect(dupKeyWarning).toBe(false)
+    errorSpy.mockRestore()
+  })
+})
