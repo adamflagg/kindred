@@ -132,7 +132,7 @@ export default function MetricsTypeTabs() {
                   className="accent-primary h-3.5 w-3.5 rounded"
                 />
                 <span className="text-muted-foreground whitespace-nowrap">
-                  Include camp → TLI/SCIT retention
+                  Include camp → teen transition
                 </span>
               </label>
             )}

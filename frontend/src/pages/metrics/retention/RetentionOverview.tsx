@@ -211,14 +211,13 @@ export default function RetentionOverview() {
         if (tenthExcluded === 0 && gradExcluded === 0) return null
 
         const graderS = (n: number) => `grader${n === 1 ? '' : 's'}`
-        const camperS = (n: number) => `camper${n === 1 ? '' : 's'}`
 
         let noteContent: React.ReactNode
         if (tenthExcluded > 0 && gradExcluded > 0) {
           noteContent = (
             <>
               Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)} and {gradExcluded}{' '}
-              graduating {camperS(gradExcluded)}. Only showing retention within camp sessions or
+              rising 12th {graderS(gradExcluded)}. Only showing retention within camp sessions or
               teen programs — check the box above to credit camp → TLI/SCIT continuation.
             </>
           )
@@ -241,8 +240,7 @@ export default function RetentionOverview() {
         } else {
           noteContent = (
             <>
-              Excluding {gradExcluded} graduating {camperS(gradExcluded)} (no program after this
-              summer).
+              Excluding {gradExcluded} rising 12th {graderS(gradExcluded)}.
             </>
           )
         }
@@ -268,23 +266,12 @@ export default function RetentionOverview() {
           />
         )}
         {gradeBars.length > 0 && (
-          <div>
-            <RetentionRateLineChart
-              data={gradeBars}
-              title="Retention by Grade"
-              tooltipLabelPrefix="Grade "
-              onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
-            />
-            {!(
-              includeTeenPipeline && activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
-            ) &&
-              data.by_grade.some((g) => g.grade === 10) && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  10th graders are shown for reference — their retention folds into the overall rate
-                  only when &ldquo;Include camp → TLI/SCIT&rdquo; is on.
-                </p>
-              )}
-          </div>
+          <RetentionRateLineChart
+            data={gradeBars}
+            title="Retention by Grade"
+            tooltipLabelPrefix="Grade "
+            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+          />
         )}
       </div>
 

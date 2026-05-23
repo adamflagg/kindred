@@ -183,14 +183,14 @@ describe('MetricsTypeTabs', () => {
   })
 
   describe('retention teen-pipeline checkbox', () => {
-    // New label: "Include camp → TLI/SCIT retention"
+    // New label: "Include camp → teen transition"
     // New visibility: only shown in teen-inclusive scopes (?view=all or ?view=teens)
 
-    it('shows "Include camp → TLI/SCIT retention" checkbox on retention route with teen-inclusive scope (?view=all)', () => {
+    it('shows "Include camp → teen transition" checkbox on retention route with teen-inclusive scope (?view=all)', () => {
       renderWithRouter('/analytics/retention?view=all')
 
       expect(
-        screen.getByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
       ).toBeInTheDocument()
     })
 
@@ -198,7 +198,7 @@ describe('MetricsTypeTabs', () => {
       renderWithRouter('/analytics/retention?view=teens')
 
       expect(
-        screen.getByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+        screen.getByRole('checkbox', { name: /include camp.*teen transition/i })
       ).toBeInTheDocument()
     })
 
@@ -206,7 +206,7 @@ describe('MetricsTypeTabs', () => {
       renderWithRouter('/analytics/retention')
 
       expect(
-        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
       ).not.toBeInTheDocument()
     })
 
@@ -214,7 +214,7 @@ describe('MetricsTypeTabs', () => {
       renderWithRouter('/analytics/registration?view=all')
 
       expect(
-        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
       ).not.toBeInTheDocument()
     })
 
@@ -222,7 +222,7 @@ describe('MetricsTypeTabs', () => {
       renderWithRouter('/analytics/trends?view=all')
 
       expect(
-        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+        screen.queryByRole('checkbox', { name: /include camp.*teen transition/i })
       ).not.toBeInTheDocument()
     })
   })

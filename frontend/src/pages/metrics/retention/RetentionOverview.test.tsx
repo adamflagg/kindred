@@ -175,23 +175,21 @@ describe('RetentionOverview aged-out note — scope-aware composition', () => {
       expect(screen.getByText(new RegExp(`${n10} rising 10th grader`))).toBeInTheDocument()
     })
 
-    it('note mentions graduating campers count', () => {
+    it('note mentions rising 12th graders count', () => {
       render(<RetentionOverview />)
-      expect(screen.getByText(new RegExp(`${n12} graduating camper`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${n12} rising 12th grader`))).toBeInTheDocument()
     })
 
     it('note mentions "check the box" / camp → TLI/SCIT phrasing', () => {
       render(<RetentionOverview />)
-      // Precise single-node assertion targeting the aged-out note specifically
-      // (the grade-10 reference footnote also mentions "camp → TLI/SCIT").
       expect(
         screen.getByText(/check the box above to credit camp → TLI\/SCIT/i)
       ).toBeInTheDocument()
     })
 
-    it('renders the grade-10 "shown for reference" footnote', () => {
+    it('does NOT render the removed grade-10 "shown for reference" footnote', () => {
       render(<RetentionOverview />)
-      expect(screen.getByText(/shown for reference/i)).toBeInTheDocument()
+      expect(screen.queryByText(/shown for reference/i)).not.toBeInTheDocument()
     })
   })
 
@@ -216,9 +214,9 @@ describe('RetentionOverview aged-out note — scope-aware composition', () => {
       })
     })
 
-    it('note mentions graduating campers', () => {
+    it('note mentions rising 12th graders', () => {
       render(<RetentionOverview />)
-      expect(screen.getByText(new RegExp(`${n12} graduating camper`))).toBeInTheDocument()
+      expect(screen.getByText(new RegExp(`${n12} rising 12th grader`))).toBeInTheDocument()
     })
 
     it('note does NOT mention rising 10th graders', () => {
@@ -259,9 +257,9 @@ describe('RetentionOverview aged-out note — scope-aware composition', () => {
       expect(screen.getByText(new RegExp(`${n10} rising 10th grader`))).toBeInTheDocument()
     })
 
-    it('note does NOT mention graduating', () => {
+    it('note does NOT mention rising 12th graders', () => {
       render(<RetentionOverview />)
-      expect(screen.queryByText(/graduating/i)).not.toBeInTheDocument()
+      expect(screen.queryByText(/rising 12th grader/i)).not.toBeInTheDocument()
     })
 
     it('note does NOT mention "check the box"', () => {
@@ -334,11 +332,11 @@ describe('RetentionOverview grade-10 reference marking + aged-out note (legacy)'
       expect(screen.queryByText(/shown for reference/i)).not.toBeInTheDocument()
     })
 
-    it('aged-out note uses the graduating-only copy (no by-grade chart mention)', () => {
+    it('aged-out note uses the rising-12th-only copy (no by-grade chart mention)', () => {
       render(<RetentionOverview />)
 
-      // Should see the flag-ON copy about graduating campers
-      expect(screen.getByText(/graduating/i)).toBeInTheDocument()
+      // Should see the flag-ON copy about rising 12th graders
+      expect(screen.getByText(/rising 12th grader/i)).toBeInTheDocument()
 
       // Must NOT point to by-grade chart (that's flag-OFF copy)
       expect(screen.queryByText(/by-grade chart/i)).not.toBeInTheDocument()
