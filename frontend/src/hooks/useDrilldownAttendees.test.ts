@@ -3,7 +3,103 @@
  *
  * Tests verify the hook uses authenticated fetch to prevent 401 errors.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, waitFor } from '@testing-library/react'
+import { createWrapper } from '../test/testUtils'
+
+// Track fetch calls
+const mockFetchWithAuth = vi.fn()
+
+vi.mock('./useApiWithAuth', () => ({
+  useApiWithAuth: () => ({
+    fetchWithAuth: mockFetchWithAuth,
+    isAuthLoading: false,
+  }),
+}))
+
+// Control the metrics session flag
+const mockMetricsSession = {
+  includeTeenPipeline: false,
+}
+
+vi.mock('./useMetricsSession', () => ({
+  useMetricsSession: () => mockMetricsSession,
+}))
+
+describe('useDrilldownAttendees includeTeenPipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMetricsSession.includeTeenPipeline = false
+    mockFetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    })
+  })
+
+  it('includes include_teen_pipeline=true when context flag is on', async () => {
+    mockMetricsSession.includeTeenPipeline = true
+    const { useDrilldownAttendees } = await import('./useDrilldownAttendees')
+    const { result } = renderHook(
+      () =>
+        useDrilldownAttendees({
+          year: 2026,
+          filter: { type: 'gender', value: 'F', label: 'Female' },
+        }),
+      { wrapper: createWrapper() }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      expect.stringContaining('include_teen_pipeline=true')
+    )
+  })
+
+  it('does NOT include include_teen_pipeline when context flag is off', async () => {
+    mockMetricsSession.includeTeenPipeline = false
+    const { useDrilldownAttendees } = await import('./useDrilldownAttendees')
+    const { result } = renderHook(
+      () =>
+        useDrilldownAttendees({
+          year: 2026,
+          filter: { type: 'gender', value: 'F', label: 'Female' },
+        }),
+      { wrapper: createWrapper() }
+    )
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      expect.not.stringContaining('include_teen_pipeline')
+    )
+  })
+})
+
+describe('queryKeys.drilldown includeTeenPipeline', () => {
+  it('distinguishes cache key by includeTeenPipeline flag', async () => {
+    const { queryKeys } = await import('../utils/queryKeys')
+    const off = queryKeys.drilldown(
+      2026,
+      'gender',
+      'F',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false
+    )
+    const on = queryKeys.drilldown(
+      2026,
+      'gender',
+      'F',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
+    )
+    expect(off).not.toEqual(on)
+    expect(on[on.length - 1]).toBe(true)
+  })
+})
 
 describe('useDrilldownAttendees', () => {
   describe('hook export', () => {

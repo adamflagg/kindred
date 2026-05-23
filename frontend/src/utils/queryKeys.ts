@@ -223,7 +223,8 @@ export const queryKeys = {
     sessionTypes?: string,
     statusFilter?: string,
     compareYear?: number,
-    duration?: string
+    duration?: string,
+    includeTeenPipeline?: boolean
   ) =>
     [
       'metrics',
@@ -236,6 +237,7 @@ export const queryKeys = {
       statusFilter,
       compareYear,
       duration,
+      includeTeenPipeline,
     ] as const,
 
   // Registration Config (Tier 2 - user data)
