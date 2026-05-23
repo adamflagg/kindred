@@ -201,8 +201,19 @@ export default function RetentionOverview() {
 
       {data.aged_out_count != null && data.aged_out_count > 0 && (
         <p className="text-muted-foreground text-xs">
-          Excluding {data.aged_out_count} 10th grader{data.aged_out_count !== 1 ? 's' : ''} who aged
-          out of eligible sessions
+          {includeTeenPipeline ? (
+            <>
+              Excluding {data.aged_out_count} graduating camper
+              {data.aged_out_count !== 1 ? 's' : ''} (no eligible program next year).
+            </>
+          ) : (
+            <>
+              Excluding {data.aged_out_count} camper{data.aged_out_count !== 1 ? 's' : ''}{' '}
+              who&apos;ve aged out (graduating, plus 10th graders with no main-camp session next
+              year). 10th-grade retention is shown in the by-grade chart — enable &ldquo;Include
+              summer → teen&rdquo; retention to fold it into the rate.
+            </>
+          )}
         </p>
       )}
 
@@ -224,12 +235,20 @@ export default function RetentionOverview() {
           />
         )}
         {gradeBars.length > 0 && (
-          <RetentionRateLineChart
-            data={gradeBars}
-            title="Retention by Grade"
-            tooltipLabelPrefix="Grade "
-            onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
-          />
+          <div>
+            <RetentionRateLineChart
+              data={gradeBars}
+              title="Retention by Grade"
+              tooltipLabelPrefix="Grade "
+              onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
+            />
+            {!includeTeenPipeline && data.by_grade.some((g) => g.grade === 10) && (
+              <p className="text-muted-foreground mt-1 text-xs">
+                10th graders are shown for reference — their retention folds into the overall rate
+                only when &ldquo;Include summer → teen&rdquo; is on.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
