@@ -24,9 +24,11 @@ from api.schemas.metrics import (
     YearEnrollment,
 )
 from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
     compute_summer_metrics,
     filter_attendees_by_session,
     get_session_from_expand,
+    resolve_cohort_session_ids,
     resolve_duration_sessions,
 )
 
@@ -62,6 +64,7 @@ class RetentionTrendsService:
         session_types: list[str] | None = None,
         session_cm_id: int | None = None,
         duration: str | None = None,
+        include_teen_pipeline: bool = False,
     ) -> RetentionTrendsResponse:
         """Calculate retention trends across multiple year transitions.
 
@@ -72,12 +75,21 @@ class RetentionTrendsService:
             session_cm_id: Optional specific session ID to filter.
             duration: Optional duration category (e.g., "1-week", "2-week") to filter
                 sessions by length.
+            include_teen_pipeline: When True, credit the grade-10 -> teen-program
+                bridge (so grade-10 campers are kept in the base pool).  Only
+                meaningful when the selected scope includes teen sessions; in a
+                non-teen scope the flag is inert.
 
         Returns:
             RetentionTrendsResponse with trend data.
         """
         # Build list of years to analyze
         years = list(range(current_year - num_years, current_year + 1))
+
+        # Determine whether the selected scope includes teen sessions so we know
+        # whether include_teen_pipeline is meaningful (mirrors retention_service).
+        scope_has_teens = session_types is None or any(t in SUMMER_TEEN_TYPES for t in session_types)
+        effective_pipeline = include_teen_pipeline and scope_has_teens
 
         # Fetch data for all years in parallel
         data_by_year = await self._fetch_all_years_data(years, session_types)
@@ -107,7 +119,9 @@ class RetentionTrendsService:
             }
 
         # Calculate retention for each year transition
-        retention_years = self._calculate_retention_transitions(years, data_by_year)
+        retention_years = self._calculate_retention_transitions(
+            years, data_by_year, effective_pipeline=effective_pipeline, scope_has_teens=scope_has_teens
+        )
 
         # Calculate average retention rate
         rates = [y.retention_rate for y in retention_years]
@@ -218,12 +232,16 @@ class RetentionTrendsService:
         self,
         years: list[int],
         data_by_year: dict[int, dict[str, Any]],
+        effective_pipeline: bool = False,
+        scope_has_teens: bool = False,
     ) -> list[RetentionTrendYear]:
         """Calculate retention for each year transition.
 
         Args:
             years: List of years.
             data_by_year: Data for each year.
+            effective_pipeline: Whether grade-10 -> teen bridge is credited.
+            scope_has_teens: Whether the selected scope includes teen sessions.
 
         Returns:
             List of RetentionTrendYear objects.
@@ -242,10 +260,10 @@ class RetentionTrendsService:
             persons_base = base_data["persons"]
 
             # Exclude aged-out persons from retention base (not from enrollment).
-            # Trends use the legacy ceiling (grade >= 10, 11 included): teen-pipeline
-            # tracking is modeled only on the main retention surface for now.
+            # Capture the pre-aged-out set for the grade carve-out (Task 3).
+            pre_aged_out_base_ids = set(base_person_ids)
             pre_filter_count = len(base_person_ids)
-            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base, legacy_aged_out=True)
+            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base, effective_pipeline)
             aged_out_count = pre_filter_count - len(base_person_ids)
 
             returned_ids = base_person_ids & compare_person_ids
@@ -253,9 +271,20 @@ class RetentionTrendsService:
             returned_count = len(returned_ids)
             retention_rate = safe_rate(returned_count, base_count)
 
+            # by_grade carve-out: when the scope includes teen sessions, always show
+            # grade-10 in the breakdown regardless of the headline flag, so staff can
+            # see how many grade-10 campers are in the pipeline (mirrors retention_service).
+            if scope_has_teens:
+                base_for_grade = exclude_aged_out_persons(
+                    pre_aged_out_base_ids, persons_base, include_teen_pipeline=True
+                )
+            else:
+                base_for_grade = base_person_ids
+            returned_for_grade = base_for_grade & compare_person_ids
+
             # Compute breakdowns
             by_gender = self._compute_gender_breakdown(base_person_ids, returned_ids, persons_base)
-            by_grade = self._compute_grade_breakdown(base_person_ids, returned_ids, persons_base)
+            by_grade = self._compute_grade_breakdown(base_for_grade, returned_for_grade, persons_base)
 
             retention_years.append(
                 RetentionTrendYear(
