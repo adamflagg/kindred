@@ -113,6 +113,41 @@ class TestDrilldownRetentionCardAgedOut:
         assert 2 not in person_ids  # grade 10 excluded
 
     @pytest.mark.asyncio
+    async def test_retention_all_excludes_11th_graders(
+        self, repo: AsyncMock, base_session: Mock, compare_session: Mock
+    ) -> None:
+        """Drilldowns use the legacy ceiling: grade 11 is aged out, like grade 10.
+
+        Teen-pipeline tracking (grade 11 -> SCIT) lives only on the main retention
+        surface; the drilldown keeps the pre-pipeline grade>=10 exclusion so its
+        lists reconcile with that surface's default (flag-off) numbers.
+        """
+        persons = {
+            1: _make_person(1, grade=7, first_name="Emma", last_name="Johnson"),
+            2: _make_person(2, grade=11, first_name="Olivia", last_name="Chen"),  # aged out
+        }
+        base_attendees = [_make_attendee(1, base_session), _make_attendee(2, base_session)]
+        compare_attendees = [_make_attendee(1, compare_session)]
+
+        repo.fetch_attendees = AsyncMock(
+            side_effect=lambda year, status=None: base_attendees if year == 2025 else compare_attendees
+        )
+        repo.fetch_persons = AsyncMock(return_value=persons)
+        repo.fetch_sessions = AsyncMock(return_value={base_session.cm_id: base_session})
+
+        svc = DrilldownService(repo)
+        result = await svc.get_attendees_for_breakdown(
+            year=2025,
+            breakdown_type="retention_all",
+            breakdown_value="all",
+            compare_year=2026,
+        )
+
+        person_ids = {a.person_id for a in result}
+        assert 1 in person_ids
+        assert 2 not in person_ids  # grade 11 excluded
+
+    @pytest.mark.asyncio
     async def test_retention_not_returned_excludes_10th_graders(
         self, repo: AsyncMock, base_session: Mock, compare_session: Mock
     ) -> None:

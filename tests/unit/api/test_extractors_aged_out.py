@@ -61,6 +61,19 @@ class TestIsAgedOut:
         assert is_aged_out(10, include_teen_pipeline=False) is True
         assert is_aged_out(10, include_teen_pipeline=True) is False
 
+    def test_legacy_aged_out_excludes_grade_10_11_and_above(self) -> None:
+        """Legacy mode restores the pre-teen-pipeline rule: grade >= 10 aged out."""
+        for g in (10, 11, 12, 13):
+            assert is_aged_out(g, legacy_aged_out=True) is True
+        for g in (5, 9):
+            assert is_aged_out(g, legacy_aged_out=True) is False
+        assert is_aged_out(None, legacy_aged_out=True) is False
+
+    def test_legacy_aged_out_ignores_teen_pipeline_flag(self) -> None:
+        """Legacy mode is the old ceiling; the teen-pipeline flag has no effect."""
+        assert is_aged_out(10, include_teen_pipeline=True, legacy_aged_out=True) is True
+        assert is_aged_out(11, include_teen_pipeline=True, legacy_aged_out=True) is True
+
 
 class TestExcludeAgedOutPersons:
     """Tests for exclude_aged_out_persons()."""
@@ -137,6 +150,16 @@ class TestExcludeAgedOutPersons:
         assert original == {1, 2}  # unchanged
         assert result != original
 
+    def test_legacy_aged_out_excludes_grade_11(self) -> None:
+        """Legacy mode (used by surfaces not yet teen-pipeline-aware) drops grade 11."""
+        persons = {
+            1: _make_person(1, grade=8),
+            2: _make_person(2, grade=11),
+            3: _make_person(3, grade=10),
+        }
+        result = exclude_aged_out_persons({1, 2, 3}, persons, legacy_aged_out=True)
+        assert result == {1}
+
 
 class TestFilterAgedOutAttendees:
     """Tests for filter_aged_out_attendees()."""
@@ -184,3 +207,10 @@ class TestFilterAgedOutAttendees:
         """Empty input returns empty list."""
         result = filter_aged_out_attendees([], {})
         assert result == []
+
+    def test_legacy_aged_out_excludes_grade_11_attendees(self) -> None:
+        """Legacy mode drops grade 11 attendees (pre-teen-pipeline ceiling)."""
+        persons = {1: _make_person(1, grade=8), 2: _make_person(2, grade=11)}
+        attendees = [_make_attendee(1), _make_attendee(2)]
+        result = filter_aged_out_attendees(attendees, persons, legacy_aged_out=True)
+        assert {a.person_id for a in result} == {1}

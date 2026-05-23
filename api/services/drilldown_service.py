@@ -268,9 +268,11 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons when in retention context
+        # Exclude aged-out persons when in retention context. Drilldowns use the
+        # legacy ceiling (grade >= 10, 11 included) so their lists reconcile with
+        # the main retention surface's default (flag-off) numbers.
         if compare_year is not None:
-            attendees = filter_aged_out_attendees(attendees, persons)
+            attendees = filter_aged_out_attendees(attendees, persons, legacy_aged_out=True)
 
         # Filter by session type and/or session_cm_id
         filtered_attendees = filter_attendees_by_session(
@@ -526,8 +528,9 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns
-        base_attendees = filter_aged_out_attendees(base_attendees, persons)
+        # Exclude aged-out persons from retention drilldowns (legacy ceiling,
+        # grade >= 10, to reconcile with the main retention surface's defaults).
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, legacy_aged_out=True)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)
@@ -606,8 +609,9 @@ class DrilldownService:
             self.repo.fetch_persons(year),
         )
 
-        # Exclude aged-out persons from retention drilldowns
-        base_attendees = filter_aged_out_attendees(base_attendees, persons)
+        # Exclude aged-out persons from retention drilldowns (legacy ceiling,
+        # grade >= 10, to reconcile with the main retention surface's defaults).
+        base_attendees = filter_aged_out_attendees(base_attendees, persons, legacy_aged_out=True)
 
         # Apply duration filter to base year attendees
         base_attendees = filter_attendees_by_session(base_attendees, session_types, session_cm_ids=duration_session_ids)

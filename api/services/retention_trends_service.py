@@ -241,9 +241,11 @@ class RetentionTrendsService:
             compare_person_ids = compare_data["person_ids"]
             persons_base = base_data["persons"]
 
-            # Exclude aged-out persons from retention base (not from enrollment)
+            # Exclude aged-out persons from retention base (not from enrollment).
+            # Trends use the legacy ceiling (grade >= 10, 11 included): teen-pipeline
+            # tracking is modeled only on the main retention surface for now.
             pre_filter_count = len(base_person_ids)
-            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base)
+            base_person_ids = exclude_aged_out_persons(base_person_ids, persons_base, legacy_aged_out=True)
             aged_out_count = pre_filter_count - len(base_person_ids)
 
             returned_ids = base_person_ids & compare_person_ids

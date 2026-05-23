@@ -124,6 +124,51 @@ class TestRetentionTrendsAgedOutExclusion:
         assert trend.returned_count == 2
 
     @pytest.mark.asyncio
+    async def test_11th_graders_excluded_from_trend_base_count(self, repo: AsyncMock) -> None:
+        """Trends use the legacy ceiling: grade 11 is aged out, not tracked into teens.
+
+        Teen-pipeline tracking (grade 11 -> SCIT) is only modeled on the main
+        retention surface; Trends keeps the pre-pipeline grade>=10 exclusion.
+        """
+        session_2025 = _make_session(1001, "Session 2")
+        session_2026 = _make_session(2001, "Session 2")
+
+        data = {
+            2025: {
+                "attendees": [
+                    _make_attendee(1, session_2025),  # grade 7
+                    _make_attendee(2, session_2025),  # grade 11 - excluded
+                    _make_attendee(3, session_2025),  # grade 8
+                ],
+                "persons": {
+                    1: _make_person(1, grade=7),
+                    2: _make_person(2, grade=11),
+                    3: _make_person(3, grade=8),
+                },
+                "sessions": {1001: session_2025},
+            },
+            2026: {
+                "attendees": [
+                    _make_attendee(1, session_2026),
+                    _make_attendee(3, session_2026),
+                ],
+                "persons": {
+                    1: _make_person(1, grade=8),
+                    3: _make_person(3, grade=9),
+                },
+                "sessions": {2001: session_2026},
+            },
+        }
+
+        self._setup_repo(repo, data)
+        svc = RetentionTrendsService(repo)
+        result = await svc.calculate_retention_trends(2026, num_years=1)
+
+        trend = result.years[0]
+        assert trend.base_count == 2  # persons 1, 3 (grade 11 excluded)
+        assert trend.aged_out_count == 1  # the grade-11 camper
+
+    @pytest.mark.asyncio
     async def test_10th_graders_excluded_returns_aged_out_count(self, repo: AsyncMock) -> None:
         """Each trend year should report aged_out_count."""
         session_2025 = _make_session(1001, "Session 2")
