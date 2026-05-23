@@ -183,27 +183,46 @@ describe('MetricsTypeTabs', () => {
   })
 
   describe('retention teen-pipeline checkbox', () => {
-    it('shows "Include summer → teen retention" checkbox on retention route', () => {
-      renderWithRouter('/analytics/retention')
+    // New label: "Include camp → TLI/SCIT retention"
+    // New visibility: only shown in teen-inclusive scopes (?view=all or ?view=teens)
+
+    it('shows "Include camp → TLI/SCIT retention" checkbox on retention route with teen-inclusive scope (?view=all)', () => {
+      renderWithRouter('/analytics/retention?view=all')
 
       expect(
-        screen.getByRole('checkbox', { name: /include summer.*teen retention/i })
+        screen.getByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
       ).toBeInTheDocument()
     })
 
-    it('does NOT show the retention checkbox on registration route', () => {
-      renderWithRouter('/analytics/registration')
+    it('shows checkbox on retention route with teens-only scope (?view=teens)', () => {
+      renderWithRouter('/analytics/retention?view=teens')
 
       expect(
-        screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+        screen.getByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+      ).toBeInTheDocument()
+    })
+
+    it('does NOT show the checkbox on retention route with non-teen scope (default / At Camp)', () => {
+      renderWithRouter('/analytics/retention')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
       ).not.toBeInTheDocument()
     })
 
-    it('does NOT show the retention checkbox on trends route', () => {
-      renderWithRouter('/analytics/trends')
+    it('does NOT show the checkbox on registration route', () => {
+      renderWithRouter('/analytics/registration?view=all')
 
       expect(
-        screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
+      ).not.toBeInTheDocument()
+    })
+
+    it('does NOT show the checkbox on trends route', () => {
+      renderWithRouter('/analytics/trends?view=all')
+
+      expect(
+        screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
       ).not.toBeInTheDocument()
     })
   })

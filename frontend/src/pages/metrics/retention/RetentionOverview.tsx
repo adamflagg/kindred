@@ -199,23 +199,56 @@ export default function RetentionOverview() {
         />
       </div>
 
-      {data.aged_out_count != null && data.aged_out_count > 0 && (
-        <p className="text-muted-foreground text-xs">
-          {includeTeenPipeline ? (
+      {(() => {
+        const scopeHasTeens = activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
+        const effectiveOn = includeTeenPipeline && scopeHasTeens
+        const gradeTenInBase = data.by_grade.find((g) => g.grade === 10)?.base_count ?? 0
+        const agedOut = data.aged_out_count ?? 0
+        // Split the aged-out total into its two reasons
+        const tenthExcluded = effectiveOn ? 0 : scopeHasTeens ? gradeTenInBase : agedOut
+        const gradExcluded = effectiveOn ? agedOut : Math.max(0, agedOut - tenthExcluded)
+
+        if (tenthExcluded === 0 && gradExcluded === 0) return null
+
+        const graderS = (n: number) => `grader${n === 1 ? '' : 's'}`
+        const camperS = (n: number) => `camper${n === 1 ? '' : 's'}`
+
+        let noteContent: React.ReactNode
+        if (tenthExcluded > 0 && gradExcluded > 0) {
+          noteContent = (
             <>
-              Excluding {data.aged_out_count} graduating camper
-              {data.aged_out_count !== 1 ? 's' : ''} (no eligible program next year).
+              Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)} and {gradExcluded}{' '}
+              graduating {camperS(gradExcluded)}. Only showing retention within camp sessions or
+              teen programs — check the box above to credit camp → TLI/SCIT continuation.
             </>
-          ) : (
+          )
+        } else if (tenthExcluded > 0) {
+          if (scopeHasTeens) {
+            noteContent = (
+              <>
+                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}. Only showing
+                retention within camp sessions or teen programs — check the box above to credit camp
+                → TLI/SCIT continuation.
+              </>
+            )
+          } else {
+            noteContent = (
+              <>
+                Excluding {tenthExcluded} rising 10th {graderS(tenthExcluded)}.
+              </>
+            )
+          }
+        } else {
+          noteContent = (
             <>
-              Excluding {data.aged_out_count} camper{data.aged_out_count !== 1 ? 's' : ''}{' '}
-              who&apos;ve aged out (graduating, plus 10th graders with no main-camp session next
-              year). 10th-grade retention is shown in the by-grade chart — enable &ldquo;Include
-              summer → teen&rdquo; retention to fold it into the rate.
+              Excluding {gradExcluded} graduating {camperS(gradExcluded)} (no program after this
+              summer).
             </>
-          )}
-        </p>
-      )}
+          )
+        }
+
+        return <p className="text-muted-foreground text-xs">{noteContent}</p>
+      })()}
 
       {/* Row 1: Gender + Grade side by side */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2" data-tour="retention-demographics">
@@ -242,12 +275,15 @@ export default function RetentionOverview() {
               tooltipLabelPrefix="Grade "
               onDotClick={(item) => setFilter(makeRetentionFilter('grade', item, 'Grade '))}
             />
-            {!includeTeenPipeline && data.by_grade.some((g) => g.grade === 10) && (
-              <p className="text-muted-foreground mt-1 text-xs">
-                10th graders are shown for reference — their retention folds into the overall rate
-                only when &ldquo;Include summer → teen&rdquo; is on.
-              </p>
-            )}
+            {!(
+              includeTeenPipeline && activeSessionTypes.some((t) => t === 'scit' || t === 'tli')
+            ) &&
+              data.by_grade.some((g) => g.grade === 10) && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  10th graders are shown for reference — their retention folds into the overall rate
+                  only when &ldquo;Include camp → TLI/SCIT&rdquo; is on.
+                </p>
+              )}
           </div>
         )}
       </div>

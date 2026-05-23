@@ -1,9 +1,11 @@
 /**
- * TDD: RetentionOverview reads includeTeenPipeline from MetricsSessionContext (Task 8 → R3)
+ * TDD: RetentionOverview reads includeTeenPipeline + activeSessionTypes from
+ * MetricsSessionContext (Task 8 → R3, FX2).
  *
  * Strategy: provide full mock data (not isLoading:true) so the component renders
  * past all early-return guards. The checkbox has MOVED to MetricsTypeTabs; here we
- * verify useRetentionMetrics is called with the flag sourced from context.
+ * verify useRetentionMetrics is called with the flag sourced from context, and that
+ * the aged-out note is scope-aware.
  */
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -43,7 +45,10 @@ const mockDataWithGrade10: RetentionMetrics = {
 }
 
 const useRetentionMetricsMock = vi.fn()
+
+// Mutable session state — updated per describe/it block before each render
 let mockIncludeTeenPipeline = true
+let mockActiveSessionTypes: string[] = ['main', 'embedded', 'ag', 'quest']
 
 vi.mock('../../../hooks/useMetrics', () => ({
   useRetentionMetrics: (...args: unknown[]) => useRetentionMetricsMock(...args),
@@ -53,7 +58,7 @@ vi.mock('../../../hooks/useMetricsSession', () => ({
   useMetricsSession: () => ({
     selectedSessionCmId: null,
     sessions: [],
-    activeSessionTypes: ['main', 'embedded', 'ag', 'quest'],
+    activeSessionTypes: mockActiveSessionTypes,
     durationParam: undefined,
     filterOptions: { sessionTypes: 'main,embedded,ag,quest' },
     // other fields used by useDrilldown init
@@ -117,6 +122,7 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIncludeTeenPipeline = true
+    mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
     useRetentionMetricsMock.mockReturnValue({ data: mockData, isLoading: false, error: null })
   })
 
@@ -124,7 +130,7 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
     render(<RetentionOverview />)
 
     expect(
-      screen.queryByRole('checkbox', { name: /include summer.*teen retention/i })
+      screen.queryByRole('checkbox', { name: /include camp.*tli\/scit retention/i })
     ).not.toBeInTheDocument()
   })
 
@@ -136,14 +142,150 @@ describe('RetentionOverview teen-pipeline flag from context', () => {
   })
 })
 
-describe('RetentionOverview grade-10 reference marking + aged-out note', () => {
+describe('RetentionOverview aged-out note — scope-aware composition', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('when includeTeenPipeline is false', () => {
+  describe('teen scope, flag OFF — both 10th and graduating excluded', () => {
+    // aged_out_count = n10 + n12 = 10 (grade-10 base_count) + 3 (graduating)
+    const n10 = 10
+    const n12 = 3
+    const dataTeenFlagOff: RetentionMetrics = {
+      ...mockData,
+      by_grade: [
+        { grade: 9, base_count: 20, returned_count: 15, retention_rate: 0.75 },
+        { grade: 10, base_count: n10, returned_count: 8, retention_rate: 0.8 },
+      ],
+      aged_out_count: n10 + n12,
+    }
+
     beforeEach(() => {
       mockIncludeTeenPipeline = false
+      mockActiveSessionTypes = ['main', 'embedded', 'ag', 'scit', 'tli']
+      useRetentionMetricsMock.mockReturnValue({
+        data: dataTeenFlagOff,
+        isLoading: false,
+        error: null,
+      })
+    })
+
+    it('note mentions rising 10th graders count', () => {
+      render(<RetentionOverview />)
+      expect(screen.getByText(new RegExp(`${n10} rising 10th grader`))).toBeInTheDocument()
+    })
+
+    it('note mentions graduating campers count', () => {
+      render(<RetentionOverview />)
+      expect(screen.getByText(new RegExp(`${n12} graduating camper`))).toBeInTheDocument()
+    })
+
+    it('note mentions "check the box" / camp → TLI/SCIT phrasing', () => {
+      render(<RetentionOverview />)
+      // Precise single-node assertion targeting the aged-out note specifically
+      // (the grade-10 reference footnote also mentions "camp → TLI/SCIT").
+      expect(
+        screen.getByText(/check the box above to credit camp → TLI\/SCIT/i)
+      ).toBeInTheDocument()
+    })
+
+    it('renders the grade-10 "shown for reference" footnote', () => {
+      render(<RetentionOverview />)
+      expect(screen.getByText(/shown for reference/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('teen scope, flag ON — only graduating excluded', () => {
+    const n12 = 3
+    const dataTeenFlagOn: RetentionMetrics = {
+      ...mockData,
+      by_grade: [
+        { grade: 9, base_count: 20, returned_count: 15, retention_rate: 0.75 },
+        { grade: 10, base_count: 10, returned_count: 8, retention_rate: 0.8 },
+      ],
+      aged_out_count: n12,
+    }
+
+    beforeEach(() => {
+      mockIncludeTeenPipeline = true
+      mockActiveSessionTypes = ['main', 'embedded', 'ag', 'scit', 'tli']
+      useRetentionMetricsMock.mockReturnValue({
+        data: dataTeenFlagOn,
+        isLoading: false,
+        error: null,
+      })
+    })
+
+    it('note mentions graduating campers', () => {
+      render(<RetentionOverview />)
+      expect(screen.getByText(new RegExp(`${n12} graduating camper`))).toBeInTheDocument()
+    })
+
+    it('note does NOT mention rising 10th graders', () => {
+      render(<RetentionOverview />)
+      expect(screen.queryByText(/rising 10th grader/i)).not.toBeInTheDocument()
+    })
+
+    it('does NOT render the grade-10 "shown for reference" footnote', () => {
+      render(<RetentionOverview />)
+      expect(screen.queryByText(/shown for reference/i)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('non-teen scope (At Camp) — only rising 10th graders excluded', () => {
+    const n10 = 7
+    const dataAtCamp: RetentionMetrics = {
+      ...mockData,
+      // No grade-10 row in by_grade (backend omits it for non-teen scopes)
+      by_grade: [
+        { grade: 9, base_count: 20, returned_count: 15, retention_rate: 0.75 },
+        { grade: 11, base_count: 5, returned_count: 4, retention_rate: 0.8 },
+      ],
+      aged_out_count: n10,
+    }
+
+    beforeEach(() => {
+      mockIncludeTeenPipeline = false
+      mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
+      useRetentionMetricsMock.mockReturnValue({
+        data: dataAtCamp,
+        isLoading: false,
+        error: null,
+      })
+    })
+
+    it('note mentions rising 10th graders count', () => {
+      render(<RetentionOverview />)
+      expect(screen.getByText(new RegExp(`${n10} rising 10th grader`))).toBeInTheDocument()
+    })
+
+    it('note does NOT mention graduating', () => {
+      render(<RetentionOverview />)
+      expect(screen.queryByText(/graduating/i)).not.toBeInTheDocument()
+    })
+
+    it('note does NOT mention "check the box"', () => {
+      render(<RetentionOverview />)
+      expect(screen.queryByText(/check the box/i)).not.toBeInTheDocument()
+    })
+
+    it('does NOT render the grade-10 "shown for reference" footnote (no grade-10 row)', () => {
+      render(<RetentionOverview />)
+      expect(screen.queryByText(/shown for reference/i)).not.toBeInTheDocument()
+    })
+  })
+})
+
+// Legacy tests preserved — keep these green
+describe('RetentionOverview grade-10 reference marking + aged-out note (legacy)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  describe('when includeTeenPipeline is false (non-teen scope)', () => {
+    beforeEach(() => {
+      mockIncludeTeenPipeline = false
+      mockActiveSessionTypes = ['main', 'embedded', 'ag', 'quest']
       useRetentionMetricsMock.mockReturnValue({
         data: mockDataWithGrade10,
         isLoading: false,
@@ -151,32 +293,15 @@ describe('RetentionOverview grade-10 reference marking + aged-out note', () => {
       })
     })
 
-    it('renders a grade-10 reference footnote below the grade chart', () => {
-      render(<RetentionOverview />)
-
-      // Should see a footnote indicating grade-10 is reference-only
-      expect(screen.getByText(/shown for reference/i)).toBeInTheDocument()
-    })
-
     it('aged-out note mentions the by-grade chart, not just 10th graders', () => {
       render(<RetentionOverview />)
 
-      // Must NOT say the old bare "10th grader" copy
+      // Must NOT say the old bare "10th grader.*aged out" copy
       expect(screen.queryByText(/10th grader.*aged out/i)).not.toBeInTheDocument()
-
-      // Must point the reader to the by-grade chart and the toggle
-      expect(screen.getByText(/by-grade chart/i)).toBeInTheDocument()
-    })
-
-    it('aged-out note mentions enabling the toggle to fold grade-10 into rate', () => {
-      render(<RetentionOverview />)
-
-      // Both the aged-out note and the chart footnote reference the toggle — at least one must appear
-      expect(screen.getAllByText(/include.*summer.*teen/i).length).toBeGreaterThan(0)
     })
 
     it('does NOT render the reference footnote when by_grade has no grade-10 row', () => {
-      // Teen-scope view (e.g. SCIT/TLI selected): base is all teens, no grade-10 bar.
+      // Non-teen-scope view: base is camp, no grade-10 bar.
       useRetentionMetricsMock.mockReturnValue({
         data: {
           ...mockDataWithGrade10,
@@ -192,11 +317,12 @@ describe('RetentionOverview grade-10 reference marking + aged-out note', () => {
     })
   })
 
-  describe('when includeTeenPipeline is true', () => {
+  describe('when includeTeenPipeline is true (teen scope)', () => {
     beforeEach(() => {
       mockIncludeTeenPipeline = true
+      mockActiveSessionTypes = ['main', 'embedded', 'ag', 'scit', 'tli']
       useRetentionMetricsMock.mockReturnValue({
-        data: mockDataWithGrade10,
+        data: { ...mockDataWithGrade10, aged_out_count: 3 },
         isLoading: false,
         error: null,
       })
