@@ -11,6 +11,7 @@ from itertools import batched
 from types import SimpleNamespace
 from typing import Any
 
+from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
@@ -643,26 +644,32 @@ class MetricsSQLRepository:
     # 14. fetch_budget_config
     # ------------------------------------------------------------------
 
-    async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
-        """Fetch budget config: session cm_id → config dict."""
+    async def fetch_budget_config(self, year: int) -> dict[int | str, dict[str, Any]]:
+        """Fetch budget config: session cm_id (int) or 'type:<name>' (str) → config dict."""
         rows = self._query(
             """SELECT config_key, value FROM config
                WHERE category = 'budget' AND subcategory = ?""",
             (str(year),),
         )
-        result: dict[int, dict[str, Any]] = {}
+        result: dict[int | str, dict[str, Any]] = {}
         for r in rows:
             key = r["config_key"] or ""
+            raw = r["value"]
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except ValueError, TypeError, json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
             if key.startswith("session_"):
                 try:
-                    cm_id = int(key.replace("session_", ""))
-                    value = r["value"]
-                    if isinstance(value, str):
-                        parsed = json.loads(value)
-                        if isinstance(parsed, dict):
-                            result[cm_id] = parsed
-                except ValueError, TypeError, json.JSONDecodeError:
+                    result[int(key.replace("session_", ""))] = parsed
+                except ValueError, TypeError:
                     pass
+            else:
+                teen_key = parse_teen_config_key(key)
+                if teen_key is not None:
+                    result[teen_key] = parsed
         return result
 
     # ------------------------------------------------------------------

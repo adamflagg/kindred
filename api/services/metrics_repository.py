@@ -24,6 +24,7 @@ from api.constants.collections import (
 )
 from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.services.reconstruction import parse_date_only
+from api.utils.session_metrics import parse_teen_config_key
 from bunking.logging_config import get_logger
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 
@@ -397,12 +398,14 @@ class MetricsRepository:
                 dates.append(date_str)
         return dates
 
-    async def fetch_budget_config(self, year: int) -> dict[int, dict[str, Any]]:
-        """Fetch budget config for all sessions.
+    async def fetch_budget_config(self, year: int) -> dict[int | str, dict[str, Any]]:
+        """Fetch budget config for all sessions and session-types.
 
-        Returns:
-            Dictionary mapping session_cm_id to config dict with
-            participant_goal and session_fee.
+        Keys:
+          - int  : CampMinder session cm_id  (from config_key 'session_<cm_id>')
+          - str  : 'type:<name>'             (from config_key 'type_<name>', e.g. teens)
+
+        Each value is a dict with at least participant_goal and session_fee.
         """
         try:
             records = await asyncio.to_thread(
@@ -411,17 +414,21 @@ class MetricsRepository:
                     "filter": f'category = "budget" && subcategory = "{year}"',
                 },
             )
-            result: dict[int, dict[str, Any]] = {}
+            result: dict[int | str, dict[str, Any]] = {}
             for r in records:
                 key = getattr(r, "config_key", "")
+                value = getattr(r, "value", {})
+                if not isinstance(value, dict):
+                    continue
                 if key.startswith("session_"):
                     try:
-                        cm_id = int(key.replace("session_", ""))
-                        value = getattr(r, "value", {})
-                        if isinstance(value, dict):
-                            result[cm_id] = value
+                        result[int(key.replace("session_", ""))] = value
                     except ValueError, TypeError:
                         pass
+                else:
+                    teen_key = parse_teen_config_key(key)
+                    if teen_key is not None:
+                        result[teen_key] = value
             return result
         except Exception as e:
             logger.warning(f"Could not fetch budget config for year {year}: {e}")

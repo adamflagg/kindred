@@ -19,10 +19,15 @@ from api.services.reconstruction import (
 )
 from api.utils.session_aliases import resolve_session_alias
 from api.utils.session_metrics import (
+    SUMMER_TEEN_TYPES,
     build_ag_parent_map,
     get_person_from_expand,
     get_session_from_expand,
+    get_summer_window,
+    is_summer_teen_session,
     resolve_duration_sessions,
+    teen_config_key,
+    teen_display_name,
 )
 from bunking.logging_config import get_logger
 
@@ -179,6 +184,19 @@ class ForecastService:
         # Fetch current year sessions
         sessions = await self.repository.fetch_sessions(year, session_types)
 
+        # Window-gate teen sessions: scit/tli must overlap the year's main-camp
+        # window (excludes fall Family-Camp CIT, year-round Teen Interns, Feb LA Trip).
+        if any(getattr(s, "session_type", "") in SUMMER_TEEN_TYPES for s in sessions.values()):
+            window = get_summer_window(sessions)
+            if window is None:
+                # Requested scope had no main sessions (e.g. teens-only) — fetch mains.
+                window = get_summer_window(await self.repository.fetch_sessions(year, ["main"]))
+            sessions = {
+                sid: s
+                for sid, s in sessions.items()
+                if getattr(s, "session_type", "") not in SUMMER_TEEN_TYPES or is_summer_teen_session(s, window)
+            }
+
         # Filter sessions by duration category
         if duration:
             duration_session_ids = resolve_duration_sessions(sessions, duration)
@@ -224,6 +242,8 @@ class ForecastService:
         session_forecasts: list[SessionForecast] = []
         for sid, session in sessions.items():
             session_type = getattr(session, "session_type", "")
+            if session_type in SUMMER_TEEN_TYPES:
+                continue  # teens are aggregated into merged SCIT/TLI rows below (live mode only)
 
             # If filtering to specific session, include it + its AG children
             if session_cm_id is not None:
@@ -299,7 +319,15 @@ class ForecastService:
                 )
             )
 
-        # Grand total
+        # Aggregated teen rows (SCIT = CIT+SIT summed; TLI). Live mode only, and not
+        # for single-session drill-downs (teens have no AG children / drill target).
+        if reconstruction is None and session_cm_id is None:
+            session_forecasts.extend(
+                self._build_teen_forecast_rows(sessions, enrolled_attendees, waitlisted_attendees, budget_config)
+            )
+
+        # Grand total over everything displayed — teen rows included (they're a
+        # shown cohort, so the total reflects them).
         grand_total = self._compute_grand_total(session_forecasts)
 
         return ForecastResponse(
@@ -543,3 +571,73 @@ class ForecastService:
             enrolled_boys=total_boys if has_gender else None,
             enrolled_girls=total_girls if has_gender else None,
         )
+
+    def _build_teen_forecast_rows(
+        self,
+        sessions: dict[int, Any],
+        enrolled_attendees: list[Any],
+        waitlisted_attendees: list[Any],
+        budget_config: dict[int | str, dict[str, Any]],
+    ) -> list[SessionForecast]:
+        """Aggregate window-gated teen sessions into one row per teen session_type.
+
+        SCIT merges CIT + SIT; TLI is its own row. Budget/goal come from the
+        per-type config key 'type:<name>'. Emitted in SUMMER_TEEN_TYPES order
+        (scit, then tli). Gender split and prior-year comparison are out of scope.
+        """
+        teen_cm_ids_by_type: dict[str, list[int]] = {}
+        for sid, s in sessions.items():
+            stype = getattr(s, "session_type", "")
+            if stype in SUMMER_TEEN_TYPES:
+                teen_cm_ids_by_type.setdefault(stype, []).append(sid)
+
+        rows: list[SessionForecast] = []
+        for teen_type in SUMMER_TEEN_TYPES:  # deterministic order: scit, then tli
+            cm_ids = teen_cm_ids_by_type.get(teen_type)
+            if not cm_ids:
+                continue
+
+            enrolled = sum(self._count_attendees_for_session(enrolled_attendees, sid, set()) for sid in cm_ids)
+            waitlisted = sum(self._count_attendees_for_session(waitlisted_attendees, sid, set()) for sid in cm_ids)
+
+            cfg = budget_config.get(teen_config_key(teen_type), {}) or {}
+            participant_goal = cfg.get("participant_goal")
+            session_fee = cfg.get("session_fee")
+
+            pct_of_goal = None
+            if participant_goal and participant_goal > 0:
+                pct_of_goal = round(enrolled / participant_goal * 100, 1)
+
+            budget_revenue = actual_revenue = revenue_delta = revenue_pct = None
+            if participant_goal is not None and session_fee is not None:
+                budget_revenue = participant_goal * session_fee
+                actual_revenue = enrolled * session_fee
+                revenue_delta = actual_revenue - budget_revenue
+                if budget_revenue > 0:
+                    revenue_pct = round(actual_revenue / budget_revenue * 100, 1)
+
+            participants_vs_budget = enrolled - participant_goal if participant_goal is not None else None
+
+            rows.append(
+                SessionForecast(
+                    session_cm_id=0,
+                    session_name=teen_display_name(teen_type),
+                    session_type=teen_type,
+                    participant_goal=participant_goal,
+                    session_fee=session_fee,
+                    enrolled=enrolled,
+                    waitlisted=waitlisted,
+                    pct_of_goal=pct_of_goal,
+                    prior_year_count=None,
+                    two_year_prior_count=None,
+                    participants_vs_budget=participants_vs_budget,
+                    participants_vs_prior_year=None,
+                    budget_revenue=budget_revenue,
+                    actual_revenue=actual_revenue,
+                    revenue_delta=revenue_delta,
+                    revenue_pct=revenue_pct,
+                    enrolled_boys=None,
+                    enrolled_girls=None,
+                )
+            )
+        return rows

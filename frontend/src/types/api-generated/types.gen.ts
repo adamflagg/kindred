@@ -4694,6 +4694,10 @@ export type SessionAvailabilityResponse = {
    */
   ag_sessions?: Array<AgSessionAvailability>
   /**
+   * Teen Sessions
+   */
+  teen_sessions?: Array<TeenSessionAvailability>
+  /**
    * Limited Threshold
    */
   limited_threshold?: number
@@ -5493,6 +5497,63 @@ export type SynagogueEnrollment = {
    * Number of campers
    */
   count: number
+}
+
+/**
+ * TeenSessionAvailability
+ *
+ * Aggregated availability row for a teen program (SCIT or TLI).
+ *
+ * No gender split — mirrors AGSessionAvailability minus parent_session_name.
+ * SCIT merges all CIT + SIT sub-sessions into one row.
+ */
+export type TeenSessionAvailability = {
+  /**
+   * Session Cm Id
+   */
+  session_cm_id?: number
+  /**
+   * Session Name
+   */
+  session_name: string
+  /**
+   * Session Type
+   */
+  session_type: string
+  /**
+   * Min Grade
+   */
+  min_grade?: number | null
+  /**
+   * Max Grade
+   */
+  max_grade?: number | null
+  /**
+   * Enrolled
+   */
+  enrolled?: number
+  /**
+   * Waitlisted
+   */
+  waitlisted?: number
+  /**
+   * Capacity
+   */
+  capacity?: number | null
+  /**
+   * Status
+   */
+  status?: string
+  /**
+   * Waitlisted By Grade
+   */
+  waitlisted_by_grade?: {
+    [key: string]: number
+  }
+  /**
+   * Waitlisted Persons
+   */
+  waitlisted_persons?: Array<WaitlistedPerson>
 }
 
 /**

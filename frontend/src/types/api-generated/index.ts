@@ -536,6 +536,7 @@ export type {
   SweepResponse,
   SynagogueBreakdown,
   SynagogueEnrollment,
+  TeenSessionAvailability,
   TimeBucket,
   TogglePipelineRunPinApiDebugPipelineRunsRunIdPinPostData,
   TogglePipelineRunPinApiDebugPipelineRunsRunIdPinPostError,

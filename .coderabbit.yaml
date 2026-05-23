@@ -150,9 +150,14 @@ reviews:
 
   # All linters default to enabled. Mute the Python/JS ones we deliberately don't run
   # locally — they'd flag existing code against rules we don't enforce.
-  # Kept enabled (defaults): ruff, golangci-lint, eslint, shellcheck (mirror our pre-push hooks)
+  # Kept enabled (defaults): ruff, golangci-lint, shellcheck (mirror our pre-push hooks)
   # plus hadolint, actionlint, gitleaks, markdownlint, yamllint, semgrep, ast-grep — no local
   # equivalent, pure CR-side signal.
+  # eslint is disabled: CR runs it from the repo root, but the flat config + deps live in
+  # frontend/ (eslint.config.js). Flat config resolves from cwd, so a root-level run can't
+  # find it and CR just emits "ESLint skipped: no ESLint configuration detected in root
+  # package.json" on every PR. Already enforced by CI's Frontend Lint job (npm run lint in
+  # frontend/) + the pre-push hook — CR adds nothing here.
   tools:
     flake8:
       enabled: false
@@ -161,6 +166,8 @@ reviews:
     biome:
       enabled: false
     oxc:
+      enabled: false
+    eslint:
       enabled: false
 
 knowledge_base:

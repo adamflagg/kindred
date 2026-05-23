@@ -282,6 +282,26 @@ export function buildPreview(
     })
   }
 
+  // Teen budget config (per session_type, keyed `type_<name>` — no cm_id remap).
+  for (const prev of prevBudgetConfig) {
+    if (!prev.config_key.startsWith('type_')) continue
+    if (isEmptyValue(prev.value)) continue
+
+    const newKey = prev.config_key // same key; target year lives in subcategory
+    const existing = curBudgetConfig.find((c) => c.config_key === newKey)
+    const isEmpty = existing && isEmptyValue(existing.value)
+
+    budgetItems.push({
+      sessionName: prev.config_key.replace('type_', '').toUpperCase(),
+      matchType: 'cm_id',
+      previousSessionName: null,
+      previousValue: prev.value,
+      newConfigKey: newKey,
+      existingValue: existing && !isEmpty ? existing.value : null,
+      existingRecordId: isEmpty ? existing.id : null,
+    })
+  }
+
   // Summary
   const allItems = [
     ...registrationDates.map((d) => ({ existing: d.existingValue })),

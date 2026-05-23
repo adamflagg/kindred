@@ -246,6 +246,8 @@ export const queryKeys = {
     sessionCmId?: number,
     duration?: string
   ) => ['session-availability', year, sessionTypes, sessionCmId, duration] as const,
+  /** Root prefix for invalidating every session-availability query at once. */
+  sessionAvailabilityRoot: () => ['session-availability'] as const,
   sessionBudgetConfig: (year: number) => ['session-budget-config', year] as const,
 
   // Forecast (Tier 1 - sync data)
@@ -256,6 +258,8 @@ export const queryKeys = {
     dayOffset?: number,
     duration?: string
   ) => ['metrics', 'forecast', year, sessionTypes, sessionCmId, dayOffset, duration] as const,
+  /** Root prefix for invalidating every forecast query at once. */
+  forecastRoot: () => ['metrics', 'forecast'] as const,
   forecastWeekOptions: (year: number) => ['metrics', 'forecast', 'week-options', year] as const,
 
   // Camper Cohorts (Tier 1 - sync data, per-session school/congregation/city counts)
