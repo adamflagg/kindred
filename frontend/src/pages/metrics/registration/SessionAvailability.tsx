@@ -14,6 +14,9 @@ import { WaitlistTooltip } from '../../../components/metrics/WaitlistTooltip'
 import { useDrilldown } from '../../../hooks/useDrilldown'
 
 const GRADES = [2, 3, 4, 5, 6, 7, 8, 9, 10]
+// Teen programs only serve rising-11th (TLI) and rising-12th (SCIT) graders,
+// so their box shows just these two columns instead of the full camp range.
+const TEEN_GRADES = [11, 12]
 
 function gradeLabel(grade: number): string {
   if (grade === 2) return '2nd'
@@ -260,7 +263,7 @@ function TeenSessionRow({
 
   return (
     <>
-      {GRADES.map((g) => {
+      {TEEN_GRADES.map((g) => {
         const status = statusForGrade(
           { min_grade: session.min_grade, max_grade: session.max_grade, status: session.status },
           g
@@ -579,89 +582,96 @@ export default function SessionAvailability() {
                   <SessionsTable sessions={campSessions} handlers={waitlistHandlers} />
                 )}
 
-                {/* AG Sessions */}
-                {ag_sessions.length > 0 && (
-                  <div>
-                    <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
-                      AG Sessions
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-separate border-spacing-0 text-xs">
-                        <thead>
-                          <tr>
-                            <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
-                              Session
-                            </th>
-                            {GRADES.map((g) => (
-                              <th
-                                key={g}
-                                className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20"
-                              >
-                                {gradeLabel(g)}
-                              </th>
-                            ))}
-                            <th className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20">
-                              WL
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ag_sessions.map((session) => (
-                            <tr key={session.session_cm_id}>
-                              <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
-                                {session.session_name}
-                              </td>
-                              <AGSessionRow session={session} {...waitlistHandlers} />
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+                {/* AG Sessions + Teen Programs share one row: AG is the wide
+                    2/3 column, the teen box slides into the narrow 1/3 column.
+                    Either may be absent depending on the selected scope. */}
+                {(ag_sessions.length > 0 || teenSessions.length > 0) && (
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    {/* AG Sessions */}
+                    {ag_sessions.length > 0 && (
+                      <div data-section="ag" className="lg:col-span-2">
+                        <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
+                          AG Sessions
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-separate border-spacing-0 text-xs">
+                            <thead>
+                              <tr>
+                                <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
+                                  Session
+                                </th>
+                                {GRADES.map((g) => (
+                                  <th
+                                    key={g}
+                                    className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20"
+                                  >
+                                    {gradeLabel(g)}
+                                  </th>
+                                ))}
+                                <th className="text-muted-foreground border-border border-b bg-purple-50/50 px-2 py-2 text-center font-medium dark:bg-purple-950/20">
+                                  WL
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ag_sessions.map((session) => (
+                                <tr key={session.session_cm_id}>
+                                  <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
+                                    {session.session_name}
+                                  </td>
+                                  <AGSessionRow session={session} {...waitlistHandlers} />
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
 
-                {/* Teen Programs (SCIT / TLI) */}
-                {teenSessions.length > 0 && (
-                  <div>
-                    <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
-                      Teen Programs
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-separate border-spacing-0 text-xs">
-                        <thead>
-                          <tr>
-                            <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
-                              Session
-                            </th>
-                            {GRADES.map((g) => (
-                              <th
-                                key={g}
-                                className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20"
-                              >
-                                {gradeLabel(g)}
-                              </th>
-                            ))}
-                            <th className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20">
-                              WL
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {teenSessions.map((session) => (
-                            <tr key={`${session.session_type}-${session.session_cm_id}`}>
-                              <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
-                                {session.session_name}
-                              </td>
-                              <TeenSessionRow
-                                session={session}
-                                {...waitlistHandlers}
-                                onTeenCellClick={handleTeenCellClick}
-                              />
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {/* Teen Programs (SCIT / TLI) — 11th & 12th grade only */}
+                    {teenSessions.length > 0 && (
+                      <div data-section="teen" className="lg:col-span-1">
+                        <h4 className="text-muted-foreground mb-3 text-sm font-semibold">
+                          Teen Programs
+                        </h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-separate border-spacing-0 text-xs">
+                            <thead>
+                              <tr>
+                                <th className="bg-muted/50 text-muted-foreground border-border sticky left-0 z-10 border-r border-b px-3 py-2 text-left font-medium">
+                                  Session
+                                </th>
+                                {TEEN_GRADES.map((g) => (
+                                  <th
+                                    key={g}
+                                    className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20"
+                                  >
+                                    {gradeLabel(g)}
+                                  </th>
+                                ))}
+                                <th className="text-muted-foreground border-border border-b bg-teal-50/50 px-2 py-2 text-center font-medium dark:bg-teal-950/20">
+                                  WL
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {teenSessions.map((session) => (
+                                <tr key={`${session.session_type}-${session.session_cm_id}`}>
+                                  <td className="bg-muted/50 text-foreground border-border sticky left-0 z-10 border-r px-3 py-2 text-xs font-semibold whitespace-nowrap">
+                                    {session.session_name}
+                                  </td>
+                                  <TeenSessionRow
+                                    session={session}
+                                    {...waitlistHandlers}
+                                    onTeenCellClick={handleTeenCellClick}
+                                  />
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
