@@ -439,8 +439,8 @@ class TestRegistrationServiceDemographics:
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
-        # Create 25 persons, each with different schools
-        # But to test "top 20", we need multiple persons per school
+        # Create 25 schools with descending person counts so the result is
+        # ordered by count; verifies all schools are returned (no top-N slice).
         attendees = []
         persons = {}
         for i in range(25):
@@ -475,7 +475,7 @@ class TestRegistrationServiceDemographics:
 
     @pytest.mark.asyncio
     async def test_city_breakdown_excludes_empty(self) -> None:
-        """City breakdown excludes empty/null cities from persons.address.city field."""
+        """City breakdown excludes empty/null cities from persons.address_city field."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
@@ -510,7 +510,7 @@ class TestRegistrationServiceDemographics:
 
     @pytest.mark.asyncio
     async def test_synagogue_breakdown(self) -> None:
-        """Synagogue breakdown works correctly from household custom values."""
+        """Synagogue breakdown works correctly from persons.normalized_congregation."""
         from api.services.registration_service import RegistrationService
 
         mock_repo = AsyncMock()
