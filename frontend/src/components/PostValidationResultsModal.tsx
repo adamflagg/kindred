@@ -671,6 +671,9 @@ export function PostCheckContents({
   )
   // Need to compute these even when modal is closed since Modal might render conditionally
   const statistics = results.statistics
+  const mpGuaranteeable = statistics.mp_campers_total ?? 0
+  const unguaranteeable = statistics.mp_campers_entirely_impossible?.length ?? 0
+  const mpWithRequests = mpGuaranteeable + unguaranteeable
   // Memoize issues to prevent dependency array changes on every render
   const issues = useMemo(() => results.issues, [results.issues])
   const parentTotal = statistics.material_parent_requests ?? 0
@@ -718,7 +721,9 @@ export function PostCheckContents({
       const decoratedSubRows = r.subRows.map((sub) => {
         let detail: React.ReactNode
         if (r.cohort === 'got_nothing') {
-          detail = (
+          detail = sub.honoredInPlan ? (
+            <span>Flagged impossible · met by the final cabin anyway</span>
+          ) : (
             <span>
               All requests impossible ·{' '}
               {(sub.reasonCodes ?? []).map(friendlyReasonLabel).join(', ')}
@@ -959,6 +964,16 @@ export function PostCheckContents({
               </div>
             </div>
           </div>
+
+          {unguaranteeable > 0 && (
+            <div
+              data-testid="coverage-reconciliation"
+              className="border-border/50 border-b px-5 pb-3 text-xs text-stone-600"
+            >
+              {mpGuaranteeable} guaranteeable · {unguaranteeable} can&rsquo;t be guaranteed ={' '}
+              {mpWithRequests} with parent requests
+            </div>
+          )}
 
           {/* TG-9: "Families to contact" — unified action list consolidating:
           - Cohort A: entirely-impossible MP campers (got nothing)
