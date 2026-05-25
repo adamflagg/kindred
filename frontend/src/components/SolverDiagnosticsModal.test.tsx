@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
 
@@ -75,5 +75,29 @@ describe('SolverDiagnosticsModal (#1638)', () => {
       />
     )
     expect(screen.getByText(/no diagnostic detail/i)).toBeInTheDocument()
+  })
+
+  it('does not auto-dismiss on a timer (persists until explicit close)', () => {
+    // Spec §6.6: the review surface must stay up for review — never close on a
+    // timeout the way the old transient red box did. Advancing timers must not
+    // close it or fire onClose.
+    vi.useFakeTimers()
+    try {
+      const onClose = vi.fn()
+      render(
+        <SolverDiagnosticsModal
+          isOpen
+          onClose={onClose}
+          diagnostics={diagnostics}
+          sessionCmId={1000001}
+          year={2026}
+        />
+      )
+      vi.advanceTimersByTime(60_000)
+      expect(onClose).not.toHaveBeenCalled()
+      expect(screen.getByText(/Solver could not find a solution/i)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

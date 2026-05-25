@@ -476,7 +476,7 @@ export default function SessionView() {
           isOpen={showDiagnostics}
           onClose={() => setShowDiagnostics(false)}
           diagnostics={diagnostics}
-          sessionCmId={session?.cm_id ?? null}
+          sessionCmId={session.cm_id}
           year={currentYear}
         />
       )}

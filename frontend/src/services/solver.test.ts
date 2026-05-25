@@ -140,7 +140,7 @@ describe('pollSolverStatus diagnostics (#1638)', () => {
     const fetchWithAuth = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => failedBody,
-    } as Response)
+    })
 
     const run = await solverService.pollSolverStatus('run-1', fetchWithAuth, 60)
 
