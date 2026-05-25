@@ -446,10 +446,13 @@ export const queryKeys = {
   // Solver pre-validate (debug view) — see frontend/src/pages/summer/SolverDebugPage
   preCheck: (sessionCmId: number | null, year: number) => ['pre-check', sessionCmId, year] as const,
 
-  // Solver post-check validation (popout) — see frontend/src/pages/PostCheckPopout
-  postCheck: (sessionCmId: number | null, scenarioId: string | undefined) =>
-    ['post-check', sessionCmId, scenarioId] as const,
-  /** Root prefix for invalidating every post-check query at once (all sessions/scenarios). */
+  // Solver post-check validation (popout) — see frontend/src/pages/PostCheckPopout.
+  // Year-scoped (mirrors the satisfaction key): CampMinder reuses session ids
+  // across years, so the key must include year or a season switch reuses the
+  // same cache slot and serves stale prior-year validator data.
+  postCheck: (sessionCmId: number | null, year: number, scenarioId: string | undefined) =>
+    ['post-check', sessionCmId, year, scenarioId] as const,
+  /** Root prefix for invalidating every post-check query at once (all sessions/scenarios/years). */
   postCheckPrefix: () => ['post-check'] as const,
 
   // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
@@ -462,8 +465,10 @@ export const queryKeys = {
  * mutation handler that changes a `bunk_requests` row.
  *
  * The full inventory of keys is pinned by
- * `frontend/src/hooks/session/__tests__/alert-invalidation.test.ts` —
- * adding a new key requires updating both this helper and that contract.
+ * `frontend/src/hooks/session/__tests__/alert-invalidation.test.ts`, except the
+ * post-check key (added in #1607/#1608) which is pinned by its sibling
+ * `post-check-invalidation.test.ts`. Adding a new key requires updating this
+ * helper and the matching contract test.
  *
  * Pass `includeSourceLinks: true` from merge/split handlers, which
  * additionally rewrite source linkages between rows.

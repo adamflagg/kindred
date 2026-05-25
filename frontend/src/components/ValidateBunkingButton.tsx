@@ -67,7 +67,7 @@ export default function ValidateBunkingButton({
   // visible; the initial data is seeded imperatively in handleValidate below
   // via setQueryData so the modal opens immediately without a second round-trip.
   const postCheckQuery = useQuery<ValidationResults>({
-    queryKey: queryKeys.postCheck(sessionCmId, scenarioId),
+    queryKey: queryKeys.postCheck(sessionCmId, year, scenarioId),
     queryFn: () =>
       solverService.validateBunking(
         sessionCmId.toString(),
@@ -117,7 +117,7 @@ export default function ValidateBunkingButton({
       // approve/decline) will trigger a background refetch via the useQuery
       // above while the modal stays open. #1607 / #1608.
       queryClient.setQueryData<ValidationResults>(
-        queryKeys.postCheck(sessionCmId, scenarioId),
+        queryKeys.postCheck(sessionCmId, year, scenarioId),
         results as unknown as ValidationResults
       )
       setShowResults(true)
@@ -158,6 +158,7 @@ export default function ValidateBunkingButton({
           preCheckError={preCheckQuery.isError}
           sessionName={sessionName}
           year={year}
+          isRefreshing={postCheckQuery.isFetching && !postCheckQuery.isLoading}
         />
       )}
     </>

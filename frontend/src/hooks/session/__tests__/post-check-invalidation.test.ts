@@ -30,6 +30,7 @@ import { invalidateAssignmentDerivedQueries } from '../../../utils/queryInvalida
 
 const SESSION_CM_ID = 1001
 const SCENARIO_ID = 'scenario-abc'
+const YEAR = 2025
 
 /**
  * Build a QueryClient pre-seeded with postCheck cache entries so we can
@@ -44,7 +45,7 @@ function buildQcWithPostCheckCache() {
     defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
   })
   // Production mode (no scenario)
-  qc.setQueryData(queryKeys.postCheck(SESSION_CM_ID, undefined), {
+  qc.setQueryData(queryKeys.postCheck(SESSION_CM_ID, YEAR, undefined), {
     statistics: {
       total_campers: 100,
       assigned_campers: 90,
@@ -56,7 +57,7 @@ function buildQcWithPostCheckCache() {
     validated_at: '2025-01-01T00:00:00Z',
   })
   // Scenario mode
-  qc.setQueryData(queryKeys.postCheck(SESSION_CM_ID, SCENARIO_ID), {
+  qc.setQueryData(queryKeys.postCheck(SESSION_CM_ID, YEAR, SCENARIO_ID), {
     statistics: {
       total_campers: 100,
       assigned_campers: 88,
@@ -73,18 +74,20 @@ function buildQcWithPostCheckCache() {
 function isPostCheckStale(
   qc: QueryClient,
   sessionCmId = SESSION_CM_ID,
+  year = YEAR,
   scenarioId: string | undefined = undefined
 ) {
-  const state = qc.getQueryState(queryKeys.postCheck(sessionCmId, scenarioId))
+  const state = qc.getQueryState(queryKeys.postCheck(sessionCmId, year, scenarioId))
   return state?.isInvalidated === true
 }
 
 function isPostCheckScenarioStale(
   qc: QueryClient,
   sessionCmId = SESSION_CM_ID,
+  year = YEAR,
   scenarioId: string = SCENARIO_ID
 ) {
-  const state = qc.getQueryState(queryKeys.postCheck(sessionCmId, scenarioId))
+  const state = qc.getQueryState(queryKeys.postCheck(sessionCmId, year, scenarioId))
   return state?.isInvalidated === true
 }
 
@@ -241,17 +244,17 @@ describe('postCheckPrefix — prefix invalidation covers both scenarios', () => 
   it('prefix-invalidating postCheckPrefix marks all postCheck entries stale', () => {
     void qc.invalidateQueries({ queryKey: queryKeys.postCheckPrefix() })
 
-    expect(isPostCheckStale(qc, SESSION_CM_ID, undefined)).toBe(true)
-    expect(isPostCheckScenarioStale(qc, SESSION_CM_ID, SCENARIO_ID)).toBe(true)
+    expect(isPostCheckStale(qc, SESSION_CM_ID, YEAR, undefined)).toBe(true)
+    expect(isPostCheckScenarioStale(qc, SESSION_CM_ID, YEAR, SCENARIO_ID)).toBe(true)
   })
 
   it('prefix invalidation is session-agnostic (catches a different session cm_id too)', () => {
     const OTHER_SESSION = 2002
-    qc.setQueryData(queryKeys.postCheck(OTHER_SESSION, undefined), { issues: [] })
+    qc.setQueryData(queryKeys.postCheck(OTHER_SESSION, YEAR, undefined), { issues: [] })
 
     void qc.invalidateQueries({ queryKey: queryKeys.postCheckPrefix() })
 
-    const otherState = qc.getQueryState(queryKeys.postCheck(OTHER_SESSION, undefined))
+    const otherState = qc.getQueryState(queryKeys.postCheck(OTHER_SESSION, YEAR, undefined))
     expect(otherState?.isInvalidated).toBe(true)
   })
 })

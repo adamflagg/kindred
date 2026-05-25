@@ -28,6 +28,7 @@ const LockGroupsHub = lazy(() => import('./LockGroupsHub'))
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import type { MoveCamperOptions } from '../hooks/session/useCamperMovement'
 import { DEFAULT_BUNK_CAPACITY, MAX_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
@@ -35,15 +36,6 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
-
-/** Options forwarded to the individual moveCamper call. */
-interface CamperMoveOptions {
-  /**
-   * Suppress the per-move success toast. Pass true when the caller will emit
-   * its own summary toast for the whole batch (e.g. swap, lock-group move).
-   */
-  silent?: boolean
-}
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -55,7 +47,7 @@ interface BunkingBoardByAreaProps {
   onCamperMove: (
     camperId: string,
     toBunkId: string | null,
-    options?: CamperMoveOptions
+    options?: MoveCamperOptions
   ) => Promise<void>
   onCamperLockToggle?: (camperId: string, locked: boolean, reason?: string) => Promise<void>
   isProductionMode?: boolean

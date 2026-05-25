@@ -152,7 +152,7 @@ function PostCheckPopoutContents({
   // Note: BunkingValidationResult in solver.ts is an older type definition —
   // the actual API response matches ValidationResults. Cast as ValidateBunkingButton does.
   const postCheckQuery = useQuery<ValidationResults>({
-    queryKey: queryKeys.postCheck(sessionCmId, scenarioId),
+    queryKey: queryKeys.postCheck(sessionCmId, year, scenarioId),
     queryFn: () =>
       solverService.validateBunking(
         String(sessionCmId),

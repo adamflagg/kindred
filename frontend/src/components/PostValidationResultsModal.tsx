@@ -20,6 +20,7 @@ import {
   Target,
   Activity,
   ExternalLink,
+  Loader2,
 } from 'lucide-react'
 import { useNavigate, useLocation } from 'react-router'
 import { sessionNameToUrl } from '../utils/sessionUtils'
@@ -78,6 +79,13 @@ interface PostValidationResultsModalProps {
    * Camp year for the PDF export filename and header.
    */
   year?: number | undefined
+  /**
+   * True while a background refetch of the post-check results is in flight
+   * (e.g. after a drag-drop or approve/decline invalidation while the modal is
+   * open). Surfaces a small "Updating…" indicator so the stale numbers on
+   * screen aren't mistaken for the refreshed result. #1607 / #1608.
+   */
+  isRefreshing?: boolean | undefined
 }
 
 /**
@@ -93,6 +101,8 @@ export interface PostCheckContentsProps {
   preCheckError?: boolean | undefined
   sessionName?: string | undefined
   year?: number | undefined
+  /** See PostValidationResultsModalProps.isRefreshing. */
+  isRefreshing?: boolean | undefined
   /**
    * When true, hides the "Close" button in the footer action area.
    * Used by the popout route where there's no modal to dismiss.
@@ -606,6 +616,7 @@ export function PostCheckContents({
   preCheckError = false,
   sessionName,
   year,
+  isRefreshing = false,
   hideCloseButton = false,
   onClose,
 }: PostCheckContentsProps) {
@@ -846,6 +857,15 @@ export function PostCheckContents({
               {status.sublabel}
               {scenarioId && <span className="ml-1 opacity-70">(Draft)</span>}
             </p>
+            {isRefreshing && (
+              <span
+                data-testid="postcheck-refreshing"
+                className="text-muted-foreground mt-0.5 inline-flex items-center gap-1 text-xs"
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Updating…
+              </span>
+            )}
           </div>
           {!isPopoutRoute && (
             <button
@@ -1357,6 +1377,7 @@ export default function PostValidationResultsModal({
   preCheckError = false,
   sessionName,
   year,
+  isRefreshing = false,
 }: PostValidationResultsModalProps) {
   return (
     <Modal
@@ -1376,6 +1397,7 @@ export default function PostValidationResultsModal({
         preCheckError={preCheckError}
         sessionName={sessionName}
         year={year}
+        isRefreshing={isRefreshing}
         onClose={onClose}
       />
     </Modal>
