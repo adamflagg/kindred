@@ -298,6 +298,7 @@ def find_infeasibility_cause(
     constraint_types = [
         "session_boundary",
         "parent_paramount",  # supersedes the former must_satisfy_one probe
+        "staff_separation",  # hard staff/manual not_bunk_with (#1541)
         "grade_spread",
         "age_spread",
         "gender",

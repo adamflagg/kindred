@@ -122,3 +122,21 @@ def test_yield_surfaced_in_request_validation_stats(mock_config):
     rv = output.stats["request_validation"]
     assert rv["staff_nbw_yielded_count"] == 1
     assert rv["staff_nbw_yielded"][0]["nbw_request_id"] == "n1"
+
+
+def test_find_infeasibility_cause_isolates_staff_separation(mock_config):
+    from bunking.solver.feasibility import find_infeasibility_cause
+
+    # 8 girls fit one cabin (min-occupancy 8 is satisfied). A staff NBW between
+    # two of them then demands a separation with no second cabin → the staff
+    # constraint is the SOLE cause; disabling it restores feasibility.
+    persons = [make_person(100, gender="F", grade=6), make_person(200, gender="F", grade=6)]
+    persons += [make_person(1000 + i, gender="F", grade=6) for i in range(6)]
+    bunks = [make_bunk(2001, gender="F")]  # single cabin, capacity 12
+    reqs = [
+        make_request(
+            "n1", requester=100, requestee=200, request_type="not_bunk_with", source_field="staff_not_bunk_with"
+        )
+    ]
+    cause = find_infeasibility_cause(make_input(persons, bunks, reqs), mock_config, time_limit_seconds=5)
+    assert "staff_separation" in cause
