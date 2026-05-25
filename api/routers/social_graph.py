@@ -610,17 +610,35 @@ async def get_bunk_social_graph(
                     include_cross_scope=True,
                 )
                 cross_scope_edges_out = scoped_cross_edges
+
+                # Resolve each ghost's bunk_cm_id → bunk name so the UI can show
+                # which bunk an out-of-bunk camper is currently assigned to.
+                # One lookup over the year's bunks (mirrors the session endpoint),
+                # only when there are ghost nodes to label.
+                bunk_name_by_cm_id: dict[int, str] = {}
+                if cross_scope_node_ids:
+                    session_bunks_resp = await asyncio.to_thread(
+                        pb.collection(BUNKS).get_full_list,
+                        query_params={"filter": f"year = {year}"},
+                    )
+                    bunk_name_by_cm_id = {
+                        b.cm_id: b.name  # type: ignore[attr-defined]
+                        for b in session_bunks_resp
+                    }
+
                 # Fetch person details for ghost nodes (same pattern as session graph endpoint)
                 for node_id in cross_scope_node_ids:
                     if node_id not in session_graph.nodes:
                         continue
                     node_data = session_graph.nodes[node_id]
+                    ghost_bunk_cm_id = node_data.get("bunk_cm_id")
                     cross_scope_nodes_out.append(
                         SocialGraphNode(
                             id=node_id,
                             name=node_data.get("name", f"Person {node_id}"),
                             grade=node_data.get("grade"),
-                            bunk_cm_id=node_data.get("bunk_cm_id"),
+                            bunk_cm_id=ghost_bunk_cm_id,
+                            bunk_name=bunk_name_by_cm_id.get(ghost_bunk_cm_id),
                             centrality=node_data.get("centrality", 0.0),
                             clustering=node_data.get("clustering", 0.0),
                             community=node_data.get("community"),

@@ -17,6 +17,9 @@ class SocialGraphNode(BaseModel):
     name: str
     grade: int | None = None
     bunk_cm_id: int | None = None
+    # Human-readable bunk name. Populated for cross-scope ghost nodes on the
+    # per-bunk graph so the UI can show which bunk an out-of-bunk camper is in.
+    bunk_name: str | None = None
     centrality: float = 0.0
     clustering: float = 0.0
     community: int | None = None

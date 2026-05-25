@@ -32,6 +32,7 @@ const _exhaustiveSocialGraphNode: Required<ApiSocialGraphNode> = {
   name: 'Emma Johnson',
   grade: 7,
   bunk_cm_id: 2001,
+  bunk_name: null,
   centrality: 0.5,
   clustering: 0.3,
   community: 1,

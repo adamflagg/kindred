@@ -27,6 +27,11 @@ export const BUNK_NODE_COLORS = {
  *  contrast across the palette. */
 export const FIRST_YEAR_RING_COLOR = '#fbbf24' // amber-400
 
+/** Fill for cross-scope ghost nodes (campers in a different bunk). Deliberately
+ *  off the green/red connection palette and the grade ramp so "from another
+ *  bunk" reads instantly. Violet has no other meaning on this graph. */
+export const CROSS_SCOPE_NODE_COLOR = '#8b5cf6' // violet-500
+
 /** Border thickness used for the first-year ring. The default border is 0;
  *  bumping this to 6 makes the ring the entire "first-year" signal — no
  *  inner badge needed, and Cytoscape keeps it perfectly centered at every
@@ -68,6 +73,9 @@ export interface BunkGraphNodeInput {
   first_year?: boolean
   last_year_session?: string | null
   last_year_bunk?: string | null
+  /** Current bunk name — populated for cross-scope ghost nodes so the label can
+   *  show which bunk an out-of-bunk camper is actually assigned to. */
+  bunk_name?: string | null
 }
 
 /** A single in-scope edge from the bunk-graph API. */
@@ -197,7 +205,11 @@ export function buildBunkGraphElements(
         group: 'nodes',
         data: {
           id: nodeId,
-          label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
+          // Ghost label shows the camper's current bunk on a second line so it's
+          // clear they belong to a different bunk (the violet fill reinforces it).
+          label: `${node.name} (${formatGradeOrdinal(node.grade)})${
+            node.bunk_name ? `\n→ ${node.bunk_name}` : ''
+          }`,
           fullName: node.name,
           degree: 0,
           gradeColor: '#666666',
@@ -327,12 +339,17 @@ export function getBunkCytoscapeStyles(): StylesheetStyle[] {
       },
     },
     {
-      // Ghost campers (out-of-scope endpoints of cross-scope edges). Body is
-      // faded so they read as secondary; events stay on so the detail panel
-      // can be opened on click — same as the session graph treatment.
+      // Ghost campers (out-of-scope endpoints of cross-scope edges). Given a
+      // distinct violet fill + dashed ring — overriding the degree-based
+      // green/red — so out-of-bunk campers are unmistakable. Slightly faded
+      // and click-through so the detail panel can still open on them.
       selector: 'node[?cross_scope]',
       style: {
-        'background-opacity': 0.55,
+        'background-color': CROSS_SCOPE_NODE_COLOR,
+        'background-opacity': 0.7,
+        'border-width': 3,
+        'border-color': CROSS_SCOPE_NODE_COLOR,
+        'border-style': 'dashed',
         'z-index': 100,
       },
     },

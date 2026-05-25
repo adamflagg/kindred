@@ -25,6 +25,7 @@ import clsx from 'clsx'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import {
   BUNK_NODE_COLORS,
+  CROSS_SCOPE_NODE_COLOR,
   FIRST_YEAR_RING_COLOR,
   buildBunkGraphElements,
   getBunkCytoscapeStyles,
@@ -66,6 +67,8 @@ interface GraphNode {
   first_year?: boolean
   last_year_session?: string | null
   last_year_bunk?: string | null
+  /** Current bunk name — populated for cross-scope ghost nodes. */
+  bunk_name?: string | null
 }
 
 interface GraphEdge {
@@ -536,91 +539,110 @@ export default function BunkSocialGraphModal({
                 </div>
               ) : (
                 <>
-                  {/* Metrics Bar */}
-                  <div className="mb-3 grid grid-cols-3 gap-2 sm:mb-4 sm:gap-4">
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-2 sm:p-3">
-                      <div className="text-muted-foreground flex items-center gap-1 text-xs sm:gap-2 sm:text-sm">
-                        <Users className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="hidden sm:inline">Total Campers</span>
-                        <span className="sm:hidden">Total</span>
-                      </div>
-                      <div className="text-foreground text-lg font-semibold sm:text-2xl">
-                        {graphData.nodes.length}
-                      </div>
-                    </div>
+                  {/* Compact stat + controls strip — replaces the three large
+                      metric cards AND the separate cross-scope checkbox row so
+                      the graph reclaims that vertical space (#1636). Stats sit
+                      inline on the left; the cross-scope toggle rides on the
+                      right. Wraps gracefully on narrow screens. */}
+                  <div className="bg-forest-50/40 dark:bg-forest-950/30 mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl px-3 py-2 sm:mb-4">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:gap-x-4">
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Total campers in this bunk"
+                      >
+                        <Users className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                        <span className="text-foreground font-semibold">
+                          {graphData.nodes.length}
+                        </span>
+                        <span className="text-muted-foreground">campers</span>
+                      </span>
 
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-2 sm:p-3">
-                      <div className="text-muted-foreground flex items-center gap-1 text-xs sm:gap-2 sm:text-sm">
-                        <ActivityIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="hidden sm:inline">Grade Range</span>
-                        <span className="sm:hidden">Grades</span>
-                      </div>
-                      <div className="text-sm font-semibold sm:text-lg">
-                        {(() => {
-                          const grades = graphData.nodes
-                            .map((n) => n.grade)
-                            .filter((g) => g !== null)
-                          if (grades.length === 0) return 'N/A'
+                      <span
+                        className="bg-border hidden h-4 w-px sm:inline-block"
+                        aria-hidden="true"
+                      />
 
-                          // Count campers per grade
-                          const gradeCounts: Record<number, number> = {}
-                          grades.forEach((grade) => {
-                            gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
-                          })
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Grade range (count per grade)"
+                      >
+                        <ActivityIcon className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                        <span className="text-foreground font-medium">
+                          {(() => {
+                            const grades = graphData.nodes
+                              .map((n) => n.grade)
+                              .filter((g) => g !== null)
+                            if (grades.length === 0) return 'N/A'
 
-                          const uniqueGrades = Object.keys(gradeCounts)
-                            .map(Number)
-                            .sort((a, b) => a - b)
-                          const minGrade = uniqueGrades[0]
-                          if (minGrade === undefined) {
-                            return 'Unknown grade'
-                          }
+                            // Count campers per grade
+                            const gradeCounts: Record<number, number> = {}
+                            grades.forEach((grade) => {
+                              gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
+                            })
 
-                          // Format grade range with counts
-                          if (uniqueGrades.length === 1) {
-                            const count = gradeCounts[minGrade]
-                            return `${formatGradeOrdinal(minGrade)} (${count ?? 0})`
-                          } else {
-                            // Format as "3rd (4) - 4th (8)" instead of "3rd - 4th (4, 8)"
-                            const formattedGrades = uniqueGrades
+                            const uniqueGrades = Object.keys(gradeCounts)
+                              .map(Number)
+                              .sort((a, b) => a - b)
+                            const minGrade = uniqueGrades[0]
+                            if (minGrade === undefined) {
+                              return 'Unknown grade'
+                            }
+
+                            // Format grade range with counts, e.g. "3rd (4) - 4th (8)"
+                            if (uniqueGrades.length === 1) {
+                              const count = gradeCounts[minGrade]
+                              return `${formatGradeOrdinal(minGrade)} (${count ?? 0})`
+                            }
+                            return uniqueGrades
                               .map((g) => `${formatGradeOrdinal(g)} (${gradeCounts[g]})`)
                               .join(' - ')
-                            return formattedGrades
-                          }
-                        })()}
-                      </div>
-                    </div>
+                          })()}
+                        </span>
+                      </span>
 
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-3">
-                      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                        <AlertTriangle className="h-4 w-4" />
-                        No Connections
-                      </div>
-                      <div
-                        className={clsx(
-                          'text-2xl font-semibold',
-                          graphData.metrics.isolated_count === 0
-                            ? 'text-forest-600'
-                            : 'text-destructive'
-                        )}
+                      <span
+                        className="bg-border hidden h-4 w-px sm:inline-block"
+                        aria-hidden="true"
+                      />
+
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Campers with no connections"
                       >
-                        {graphData.metrics.isolated_count}
-                      </div>
+                        <AlertTriangle
+                          className={clsx(
+                            'h-4 w-4 flex-shrink-0',
+                            graphData.metrics.isolated_count === 0
+                              ? 'text-forest-600'
+                              : 'text-destructive'
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            'font-semibold',
+                            graphData.metrics.isolated_count === 0
+                              ? 'text-forest-600'
+                              : 'text-destructive'
+                          )}
+                        >
+                          {graphData.metrics.isolated_count}
+                        </span>
+                        <span className="text-muted-foreground">no connections</span>
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Cross-scope edges toggle (#1606, #1610) */}
-                  <div className="mb-3 sm:mb-4">
+                    {/* Cross-scope edges toggle (#1606, #1610) — moved into the
+                        stat strip so it no longer consumes a dedicated row. */}
                     <label className="flex cursor-pointer items-center gap-2 text-sm">
                       <input
                         type="checkbox"
                         checked={showCrossScopeEdges}
                         onChange={(e) => setShowCrossScopeEdges(e.target.checked)}
                         className="rounded"
-                        aria-label="requests outside of current bunk"
+                        aria-label="Show requests to campers outside this bunk"
                       />
-                      <span className="text-muted-foreground">
-                        requests outside of current bunk
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        Show other bunks
                       </span>
                     </label>
                   </div>
@@ -694,6 +716,18 @@ export default function BunkSocialGraphModal({
                             ></div>
                             <span>Has connections</span>
                           </div>
+                          {showCrossScopeEdges && (
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full border-2 border-dashed"
+                                style={{
+                                  backgroundColor: CROSS_SCOPE_NODE_COLOR,
+                                  borderColor: CROSS_SCOPE_NODE_COLOR,
+                                }}
+                              ></div>
+                              <span>In another bunk</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

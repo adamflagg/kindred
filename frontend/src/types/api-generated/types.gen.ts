@@ -5077,6 +5077,10 @@ export type SocialGraphNode = {
    */
   bunk_cm_id?: number | null
   /**
+   * Bunk Name
+   */
+  bunk_name?: string | null
+  /**
    * Centrality
    */
   centrality?: number

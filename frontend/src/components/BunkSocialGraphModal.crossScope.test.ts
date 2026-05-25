@@ -130,6 +130,32 @@ describe('buildBunkGraphElements — bunk graph cross-scope rendering (#1606, #1
     expect(ghost?.data['fullName']).toBe('Olivia Chen')
   })
 
+  it('ghost node label shows the camper name AND their current bunk assignment', () => {
+    const ghostWithBunk: BunkGraphNodeInput = { ...GHOST_NODE, bunk_name: 'B-3' }
+    const els = buildBunkGraphElements(
+      makeInput({ cross_scope_edges: [CROSS_EDGE], cross_scope_nodes: [ghostWithBunk] }),
+      true,
+      FIXED_RNG
+    )
+    const ghost = nodesOf(els).find((n) => n.data.id === 'node-99')
+    const label = String(ghost?.data['label'] ?? '')
+    expect(label).toContain('Olivia Chen')
+    expect(label).toContain('B-3')
+  })
+
+  it('ghost node label omits the bunk line when no bunk name is present', () => {
+    const els = buildBunkGraphElements(
+      makeInput({ cross_scope_edges: [CROSS_EDGE], cross_scope_nodes: [GHOST_NODE] }),
+      true,
+      FIXED_RNG
+    )
+    const ghost = nodesOf(els).find((n) => n.data.id === 'node-99')
+    const label = String(ghost?.data['label'] ?? '')
+    expect(label).toContain('Olivia Chen')
+    // No trailing arrow/bunk separator when bunk_name is absent.
+    expect(label).not.toContain('→')
+  })
+
   it('toggle ON but NO cross-scope data present → no ghost elements (matches modal guard)', () => {
     // The modal only appends ghost elements when both cross_scope_nodes AND
     // cross_scope_edges are present. With neither, the result is the in-scope-only graph.
