@@ -51,3 +51,41 @@ describe('SolverProgressModal material-only count passthrough (Group 65 #1539)',
     expect(screen.getByText('42/50')).toBeInTheDocument()
   })
 })
+
+const completedWithYields: SolverProgressState = {
+  isOpen: true,
+  phase: 'completed',
+  elapsedSeconds: 60,
+  timeLimit: 60,
+  stats: {
+    satisfied_request_count: 200,
+    total_requests: 220,
+    duration_seconds: 60,
+    new_assignments: 100,
+    staff_separation_yields: [
+      {
+        subjectName: 'Emma Johnson',
+        targetName: 'Liam Garcia',
+        protectedCamperName: 'Liam Garcia',
+      },
+    ],
+  },
+}
+
+describe('SolverProgressModal staff-separation yields (#1638)', () => {
+  it('renders the yield advisory when yields are present', () => {
+    render(<SolverProgressModal state={completedWithYields} onClose={() => {}} />)
+    expect(screen.getByText(/staff separation/i)).toBeInTheDocument()
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+  })
+
+  it('omits the advisory when there are no yields', () => {
+    const noYields: SolverProgressState = {
+      ...completedWithYields,
+      stats: { ...completedWithYields.stats, staff_separation_yields: [] },
+    }
+    render(<SolverProgressModal state={noYields} onClose={() => {}} />)
+    expect(screen.queryByText(/staff separation/i)).toBeNull()
+  })
+})

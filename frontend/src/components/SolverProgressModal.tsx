@@ -33,6 +33,13 @@ export type SolverPhase =
   | 'failed'
   | 'applying'
 
+/** A staff-separation yield with names already resolved (by SessionView). */
+export interface ResolvedStaffSeparationYield {
+  subjectName: string
+  targetName: string
+  protectedCamperName: string
+}
+
 // Stats from solver results
 export interface SolverResultStats {
   satisfied_request_count?: number | undefined
@@ -48,6 +55,7 @@ export interface SolverResultStats {
         affected_campers: number
       }
     | undefined
+  staff_separation_yields?: ResolvedStaffSeparationYield[] | undefined
 }
 
 export interface SolverProgressState {
@@ -441,6 +449,29 @@ export default function SolverProgressModal({
                     <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
                       Open Pre-Check for the breakdown by reason
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* #1638 — staff separations that had to yield to protect a parent-paramount request. */}
+              {stats.staff_separation_yields && stats.staff_separation_yields.length > 0 && (
+                <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:ring-amber-800">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                        {stats.staff_separation_yields.length} staff separation
+                        {stats.staff_separation_yields.length === 1 ? '' : 's'} overridden
+                      </p>
+                      <ul className="mt-1 space-y-1 text-xs text-amber-600 dark:text-amber-400">
+                        {stats.staff_separation_yields.map((y, i) => (
+                          <li key={i}>
+                            {y.subjectName} ↔ {y.targetName} — placed together to protect{' '}
+                            {y.protectedCamperName}&apos;s only honorable parent request
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 </div>
               )}
