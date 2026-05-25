@@ -24,10 +24,19 @@ gh repo view --json nameWithOwner --jq '.nameWithOwner'
 ## Step 1: Fetch open issues from feedback repo
 
 ```bash
-gh issue list --repo {owner}/{repo}-feedback --state open --limit 50 --json number,title,body,labels
+gh issue list --repo {owner}/{repo}-feedback --state open --limit 50 --json number,title,body,labels --jq 'sort_by(.number)'
 ```
 
 If none: report "No new feedback" and stop.
+
+> **Order matters — oldest first.** `gh issue list` returns newest-first by
+> default; the `sort_by(.number)` re-sorts the working set ascending (oldest
+> feedback issue first, since GitHub issue numbers are monotonic with creation
+> order). **Preserve this ascending order through every later step — classify,
+> present, and especially create.** Creating newest-first inverts the mapping
+> (e.g. feedback #45 → public #1608, feedback #46 → public #1607), which is
+> confusing to reconcile. Oldest-first keeps public numbers increasing in
+> lockstep with feedback numbers.
 
 ### Step 1a: Filter out already-mirrored issues
 
@@ -71,7 +80,7 @@ Convert `[Bug]`/`[Feature Request]` prefix to conventional commit style:
 
 ## Step 5: Present table for approval
 
-Show all issues before creating anything. Use the **Mode** column to call out which issues need placeholder treatment:
+Show all issues before creating anything, **listed oldest-first (ascending feedback #)** so the approval order matches the creation order. Use the **Mode** column to call out which issues need placeholder treatment:
 
 | # (feedback) | Mode | New Title | Labels | PII Concerns |
 |---|---|---|---|---|
@@ -83,6 +92,12 @@ Modes: `transfer` (clean anonymize + close original) or `placeholder` (PII-free 
 Do NOT create issues until the user confirms. For placeholder mode, also confirm the generic title doesn't itself leak context.
 
 ## Step 7: Create in target repo
+
+**Create in ascending feedback-number order (oldest first), one at a time.**
+Walk the approved working set from the lowest feedback `#N` to the highest so the
+resulting public issue numbers stay monotonic with the feedback numbers. Do not
+batch or parallelize creation — out-of-order creation re-inverts the mapping that
+Step 1's sort fixed.
 
 For each approved issue, create in the target repo with appropriate labels.
 
