@@ -4,6 +4,11 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createElement, type ReactNode } from 'react'
+import { useSolverOperations } from './useSolverOperations'
+import { solverService } from '../../services/solver'
 
 // These tests verify the solver operation logic
 // The actual hook uses solverService which is mocked in tests
@@ -185,5 +190,50 @@ describe('solver result statistics', () => {
       validation?.impossible_requests && validation.impossible_requests > 0
 
     expect(hasImpossibleRequests).toBeFalsy()
+  })
+})
+
+function wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return createElement(QueryClientProvider, { client: qc }, children)
+}
+
+describe('useSolverOperations diagnostics passthrough (#1638)', () => {
+  it('returns diagnostics on a failed run', async () => {
+    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
+      id: 'run-1',
+      session: '1000001',
+      status: 'failed',
+      error_message: 'Solver failed to find a solution',
+      diagnostics: {
+        infeasibilityCause: 'The parent_paramount constraint is causing infeasibility',
+        localization: null,
+        impossibilityReport: null,
+      },
+      created: '',
+      updated: '',
+    } as never)
+
+    const { result } = renderHook(
+      () =>
+        useSolverOperations({
+          selectedSession: '1000001',
+          currentYear: 2026,
+          currentScenario: null,
+          scenarios: [],
+          autoApplyEnabled: false,
+          autoApplyTimeout: 0,
+          fetchWithAuth: vi.fn(),
+          respectLocks: true,
+        }),
+      { wrapper }
+    )
+
+    let outcome: Awaited<ReturnType<typeof result.current.handleRunSolver>> | undefined
+    await act(async () => {
+      outcome = await result.current.handleRunSolver(60)
+    })
+    expect(outcome?.success).toBe(false)
+    expect(outcome?.diagnostics?.infeasibilityCause).toContain('parent_paramount')
   })
 })
