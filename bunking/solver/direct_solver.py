@@ -1230,6 +1230,11 @@ class DirectBunkingSolver:
         self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
         self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
 
+        # Hard staff/manual not_bunk_with separations that yielded to a parent-paramount
+        # MSO (#1541) — populated at add_constraints time; surfaced for Stream B (#1638).
+        self.request_validation_summary["staff_nbw_yielded_count"] = len(self.staff_nbw_yields)
+        self.request_validation_summary["staff_nbw_yielded"] = list(self.staff_nbw_yields)
+
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet
         # = total - satisfied; we don't persist unmet redundantly.

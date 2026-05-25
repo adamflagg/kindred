@@ -106,3 +106,19 @@ def test_solver_carveout_places_together_and_records_yield(mock_config):
     assert _bunk_idx(solver, cp, 100) == _bunk_idx(solver, cp, 200)  # parent paramount forces sole MP wish
     assert len(solver.staff_nbw_yields) == 1
     assert solver.staff_nbw_yields[0]["nbw_request_id"] == "n1"
+
+
+def test_yield_surfaced_in_request_validation_stats(mock_config):
+    persons, bunks = _roster()
+    reqs = [
+        make_request(
+            "n1", requester=100, requestee=200, request_type="not_bunk_with", source_field="staff_not_bunk_with"
+        ),
+        make_request("p1", requester=200, requestee=100, request_type="bunk_with", source_field="bunk_request_form"),
+    ]
+    solver = DirectBunkingSolver(make_input(persons, bunks, reqs), mock_config)
+    output = solver.solve(time_limit_seconds=10)
+    assert output is not None
+    rv = output.stats["request_validation"]
+    assert rv["staff_nbw_yielded_count"] == 1
+    assert rv["staff_nbw_yielded"][0]["nbw_request_id"] == "n1"

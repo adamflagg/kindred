@@ -50,6 +50,11 @@ class RequestValidationSummary(_RequestValidationSummaryBase, total=False):
     all_campers_satisfied: int
     all_requests_total: int
     all_requests_satisfied: int
+    # Hard staff/manual not_bunk_with separations that yielded to a parent-paramount
+    # MSO (#1541). Each entry: {nbw_request_id, subject_cm, target_cm,
+    # protected_parent_request_id, protected_camper_cm}. Consumed by Stream B (#1638).
+    staff_nbw_yielded_count: int
+    staff_nbw_yielded: list[dict[str, Any]]
 
 
 def check_feasibility(
