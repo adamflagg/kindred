@@ -713,7 +713,7 @@ requires-dist = [
     { name = "apscheduler", specifier = ">=3.11.2" },
     { name = "croniter", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.136.1" },
-    { name = "httpx", specifier = ">=0.28.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jellyfish", specifier = ">=1.2.1" },
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "nicknames", specifier = ">=1.0.1" },
