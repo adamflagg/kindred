@@ -367,6 +367,10 @@ async def get_bunk_social_graph(
         str | None,
         Query(description="Scenario ID — when set, source bunk membership from bunk_assignments_draft"),
     ] = None,
+    cross_scope: Annotated[
+        bool,
+        Query(description="When true, include edges that cross outside the bunk as ghosted context edges"),
+    ] = False,
     user: AuthUser = Depends(get_current_user),
 ) -> BunkGraphResponse:
     """Get the social subgraph for a specific bunk.
@@ -579,6 +583,53 @@ async def get_bunk_social_graph(
             suggestions=[],  # No suggestions for bunk view
         )
 
+        # Cross-scope edges — fetch the full session graph (from cache if available),
+        # scope it to just this bunk, and collect the boundary edges + ghost nodes.
+        # Reuses the same apply_scope infra as the session-level endpoint.
+        cross_scope_edges_out: list[CrossScopeEdge] = []
+        cross_scope_nodes_out: list[SocialGraphNode] = []
+        if cross_scope:
+            session_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id=scenario_id)
+            if session_graph is None:
+                # Build and cache the session graph on demand. This is a fallback —
+                # in normal usage the session graph is already cached when a user
+                # navigates from the session view to the bunk modal.
+                builder_full = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
+                session_graph = builder_full.build_social_network(year, session_cm_id, scenario_id=scenario_id)
+                graph_cache.cache_session_graph(session_cm_id, year, session_graph, scenario_id=scenario_id)
+
+            if session_graph is not None:
+                _, scoped_cross_edges, cross_scope_node_ids = apply_scope(
+                    session_graph,
+                    in_scope_bunk_cm_ids={bunk_cm_id},
+                    include_cross_scope=True,
+                )
+                cross_scope_edges_out = scoped_cross_edges
+                # Fetch person details for ghost nodes (same pattern as session graph endpoint)
+                for node_id in cross_scope_node_ids:
+                    if node_id not in session_graph.nodes:
+                        continue
+                    node_data = session_graph.nodes[node_id]
+                    cross_scope_nodes_out.append(
+                        SocialGraphNode(
+                            id=node_id,
+                            name=node_data.get("name", f"Person {node_id}"),
+                            grade=node_data.get("grade"),
+                            bunk_cm_id=node_data.get("bunk_cm_id"),
+                            centrality=node_data.get("centrality", 0.0),
+                            clustering=node_data.get("clustering", 0.0),
+                            community=node_data.get("community"),
+                            satisfaction_status=node_data.get("satisfaction_status"),
+                            parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
+                            staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
+                        )
+                    )
+            logger.info(
+                f"Cross-scope for bunk {bunk_cm_id}: "
+                f"{len(cross_scope_edges_out)} cross edges, "
+                f"{len(cross_scope_nodes_out)} ghost nodes"
+            )
+
         return BunkGraphResponse(
             bunk_cm_id=bunk_cm_id,
             bunk_name=bunk_name,
@@ -586,6 +637,8 @@ async def get_bunk_social_graph(
             edges=edges,
             metrics=metrics,
             health_score=health_score,
+            cross_scope_edges=cross_scope_edges_out,
+            cross_scope_nodes=cross_scope_nodes_out,
         )
 
     except HTTPException:

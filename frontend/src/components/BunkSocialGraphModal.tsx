@@ -100,6 +100,19 @@ interface BunkGraphData {
   readonly edges: readonly GraphEdge[]
   metrics: BunkGraphMetrics
   health_score: number
+  /** Populated when ?cross_scope=true — edges that cross outside this bunk. */
+  readonly cross_scope_edges?: ReadonlyArray<{
+    source: number
+    target: number
+    edge_type: 'request'
+    weight: number
+    request_type: string | null
+    confidence: number | null
+    reciprocal: boolean
+    cross_scope: true
+  }>
+  /** Populated when ?cross_scope=true — ghost nodes (out-of-scope endpoints). */
+  readonly cross_scope_nodes?: readonly GraphNode[]
 }
 
 // Bunk-naming predicates live in `utils/bunkNaming` so utility modules
@@ -163,11 +176,17 @@ export default function BunkSocialGraphModal({
   const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [showLegend, setShowLegend] = useState<boolean>(false)
+  const [showCrossScopeEdges, setShowCrossScopeEdges] = useState<boolean>(false)
 
   // Fetch bunk graph data. The query key and in-memory graph cache both
   // include scenarioId so scenario-sourced and production graphs never collide.
+  // showCrossScopeEdges is keyed separately so toggling the checkbox triggers a
+  // fresh fetch (cross-scope data is not present in the cached non-cross response).
   const { data: graphData, isLoading } = useQuery<BunkGraphData>({
-    queryKey: queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
+    queryKey: [
+      ...queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
+      showCrossScopeEdges,
+    ],
     queryFn: async () => {
       const data = await graphCacheService.getBunkGraph(
         bunkCmId,
@@ -178,7 +197,8 @@ export default function BunkSocialGraphModal({
             sessionCmId,
             year,
             fetchWithAuth,
-            scenarioId
+            scenarioId,
+            showCrossScopeEdges
           )
         },
         year,
@@ -372,6 +392,55 @@ export default function BunkSocialGraphModal({
       })
     })
 
+    // Cross-scope ghost elements (#1606, #1610). Reuses the same `cross_scope: true`
+    // data attribute approach as the session graph (cytoscapeStyles.ts) so the
+    // `edge[?cross_scope]` and `node[?cross_scope]` selectors in
+    // getBunkCytoscapeStyles() ghost them consistently.
+    if (showCrossScopeEdges && graphData.cross_scope_nodes && graphData.cross_scope_edges) {
+      // Ghost nodes — out-of-scope campers on the far end of cross-scope edges.
+      // Rendered at reduced opacity but still clickable so users can open the
+      // detail panel for potential connections.
+      graphData.cross_scope_nodes.forEach((node) => {
+        const nodeId = `node-${node.id}`
+        // Skip if the ghost node is already present (defensive — shouldn't happen
+        // since a bunk's campers are strictly in-scope).
+        if (cy.getElementById(nodeId).length > 0) return
+
+        elements.push({
+          group: 'nodes',
+          data: {
+            id: nodeId,
+            label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
+            fullName: node.name,
+            degree: 0,
+            gradeColor: '#666666',
+            firstYear: false,
+            cross_scope: true,
+          },
+          position: { x: Math.random() * 400, y: Math.random() * 300 },
+          classes: '',
+        })
+      })
+
+      // Cross-scope edges — one endpoint in-bunk, one out-of-bunk. Tagged
+      // cross_scope: true so the ghost style applies.
+      graphData.cross_scope_edges.forEach((edge) => {
+        elements.push({
+          group: 'edges',
+          data: {
+            id: `cross-edge-${edgeIndex++}`,
+            source: `node-${edge.source}`,
+            target: `node-${edge.target}`,
+            edge_type: edge.edge_type,
+            request_type: edge.request_type,
+            confidence: edge.confidence,
+            reciprocal: edge.reciprocal,
+            cross_scope: true,
+          },
+        })
+      })
+    }
+
     cy.add(elements)
 
     // Run layout after adding elements
@@ -408,7 +477,7 @@ export default function BunkSocialGraphModal({
       }
       cyRef.current = null
     }
-  }, [graphData, isOpen])
+  }, [graphData, isOpen, showCrossScopeEdges])
 
   // Handle resize when details panel opens/closes
   useEffect(() => {
@@ -649,6 +718,22 @@ export default function BunkSocialGraphModal({
                         {graphData.metrics.isolated_count}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Cross-scope edges toggle (#1606, #1610) */}
+                  <div className="mb-3 sm:mb-4">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={showCrossScopeEdges}
+                        onChange={(e) => setShowCrossScopeEdges(e.target.checked)}
+                        className="rounded"
+                        aria-label="requests outside of current bunk"
+                      />
+                      <span className="text-muted-foreground">
+                        requests outside of current bunk
+                      </span>
+                    </label>
                   </div>
 
                   {/* Graph Container */}

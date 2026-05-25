@@ -142,5 +142,25 @@ export function getBunkCytoscapeStyles(): StylesheetStyle[] {
         'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
       },
     },
+    // Cross-scope ghost rendering — mirrors the session-graph stylesheet in
+    // graph/cytoscapeStyles.ts so the visual contract is identical on both surfaces.
+    {
+      selector: 'edge[?cross_scope]',
+      style: {
+        opacity: 0.35,
+        events: 'no',
+        'line-style': 'dashed',
+      },
+    },
+    {
+      // Ghost campers (out-of-scope endpoints of cross-scope edges). Body is
+      // faded so they read as secondary; events stay on so the detail panel
+      // can be opened on click — same as the session graph treatment.
+      selector: 'node[?cross_scope]',
+      style: {
+        'background-opacity': 0.55,
+        'z-index': 100,
+      },
+    },
   ]
 }

@@ -16,6 +16,8 @@ export interface UseGraphFilterResult {
   removeUnit: (unitName: string) => void
   addBunk: (bunkCode: string) => void
   removeBunk: (bunkCode: string) => void
+  /** Replace the entire bunk selection atomically (used by gender/AG tab selector). */
+  setBunks: (bunkCodes: string[]) => void
   setEdgeMode: (mode: FilterEdgeMode) => void
   clear: () => void
 }
@@ -73,6 +75,17 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     [filter, writeFilter]
   )
 
+  const setBunks = useCallback(
+    (bunkCodes: string[]) => {
+      writeFilter({
+        ...filter,
+        units: [],
+        bunks: bunkCodes.map((c) => c.toLowerCase()),
+      })
+    },
+    [filter, writeFilter]
+  )
+
   const setEdgeMode = useCallback(
     (mode: FilterEdgeMode) => {
       writeFilter({ ...filter, edgeMode: mode })
@@ -87,5 +100,15 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     )
   }, [setSearchParams])
 
-  return { filter, isFilterActive, addUnit, removeUnit, addBunk, removeBunk, setEdgeMode, clear }
+  return {
+    filter,
+    isFilterActive,
+    addUnit,
+    removeUnit,
+    addBunk,
+    removeBunk,
+    setBunks,
+    setEdgeMode,
+    clear,
+  }
 }

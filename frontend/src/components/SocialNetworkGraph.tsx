@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
@@ -33,6 +33,12 @@ import { useGraphFilter } from '../hooks/useGraphFilter'
 import { useScopedGraphData } from '../hooks/useScopedGraphData'
 import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
 import { type BunkSummary } from './graph/graphFilter'
+import {
+  filterBunksByGender,
+  hasAGBunks,
+  type GenderTab,
+  type BunkSummaryWithGender,
+} from './graph/genderFilter'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -116,9 +122,55 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     removeUnit,
     addBunk,
     removeBunk,
+    setBunks,
     setEdgeMode,
     clear: clearFilter,
   } = useGraphFilter(allBunks)
+
+  // Gender/AG tab selector state. Defaults to 'All' (no gender filter active).
+  const [activeGenderTab, setActiveGenderTab] = useState<GenderTab>('All')
+
+  // Derive the bunk roster with codes for the gender filter.
+  const allBunksWithGender: BunkSummaryWithGender[] = useMemo(() => {
+    if (!bunksData) return []
+    return Object.entries(bunksData).map(([id, name]) => ({
+      cmId: Number(id),
+      name: String(name),
+      code: String(name).toLowerCase(),
+    }))
+  }, [bunksData])
+
+  const sessionHasAGBunks = useMemo(() => hasAGBunks(allBunksWithGender), [allBunksWithGender])
+
+  // When the gender tab changes, replace the entire bunk selection with the
+  // filtered set. 'All' clears the selection (shows the full graph).
+  const handleGenderTab = useCallback(
+    (tab: GenderTab) => {
+      setActiveGenderTab(tab)
+      if (tab === 'All') {
+        clearFilter()
+      } else {
+        const codes = filterBunksByGender(allBunksWithGender, tab)
+        setBunks(codes)
+      }
+    },
+    [allBunksWithGender, clearFilter, setBunks]
+  )
+
+  // When the user manually adjusts the filter (unit/bunk picker), reset the
+  // gender tab to 'All' so the tab bar doesn't show a stale label.
+  // This is a one-way reset: tab → filter writes go through handleGenderTab,
+  // but filter → tab sync isn't bidirectional (the picker is more expressive).
+  const handleManualFilterChange = useCallback(
+    (action: 'addUnit' | 'removeUnit' | 'addBunk' | 'removeBunk', arg: string) => {
+      setActiveGenderTab('All')
+      if (action === 'addUnit') addUnit(arg)
+      else if (action === 'removeUnit') removeUnit(arg)
+      else if (action === 'addBunk') addBunk(arg)
+      else removeBunk(arg)
+    },
+    [addUnit, removeUnit, addBunk, removeBunk]
+  )
 
   // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
   // same unscoped path as before. When filter is active, server returns a
@@ -648,6 +700,34 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   </label>
                 </div>
 
+                {/* Gender / AG tab selector — desktop only (mobile support removed project-wide) */}
+                {allBunksWithGender.length > 0 && (
+                  <div
+                    role="group"
+                    aria-label="Filter by gender"
+                    className="hidden shrink-0 items-center gap-0.5 xl:flex"
+                  >
+                    {(['All', 'Boys', 'Girls'] as GenderTab[])
+                      .concat(sessionHasAGBunks ? ['AG'] : [])
+                      .map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => handleGenderTab(tab)}
+                          className={clsx(
+                            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                            activeGenderTab === tab
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                          aria-pressed={activeGenderTab === tab}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                  </div>
+                )}
+
                 <GraphControls
                   showLabels={showLabels}
                   onToggleLabels={toggleLabels}
@@ -675,10 +755,10 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                         selectedBunks={filter.bunks}
                         allBunks={allBunks}
                         edgeMode={filter.edgeMode}
-                        onAddUnit={addUnit}
-                        onRemoveUnit={removeUnit}
-                        onAddBunk={addBunk}
-                        onRemoveBunk={removeBunk}
+                        onAddUnit={(u) => handleManualFilterChange('addUnit', u)}
+                        onRemoveUnit={(u) => handleManualFilterChange('removeUnit', u)}
+                        onAddBunk={(b) => handleManualFilterChange('addBunk', b)}
+                        onRemoveBunk={(b) => handleManualFilterChange('removeBunk', b)}
                         onSetEdgeMode={setEdgeMode}
                         onClear={clearFilter}
                       />

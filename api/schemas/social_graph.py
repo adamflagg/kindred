@@ -78,6 +78,11 @@ class BunkGraphResponse(BaseModel):
     edges: list[SocialGraphEdge]
     metrics: BunkGraphMetrics
     health_score: float  # Overall health score 0-1
+    # Cross-scope edges and ghost nodes — populated when ?cross_scope=true.
+    # Mirror the SocialGraphResponse shape so the frontend can reuse the same
+    # createGraphElements plumbing for both the session and bunk graphs.
+    cross_scope_edges: list[CrossScopeEdge] = []
+    cross_scope_nodes: list[SocialGraphNode] = []
 
 
 class CamperPositionUpdate(BaseModel):
