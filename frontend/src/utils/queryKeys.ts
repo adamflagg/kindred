@@ -449,6 +449,8 @@ export const queryKeys = {
   // Solver post-check validation (popout) — see frontend/src/pages/PostCheckPopout
   postCheck: (sessionCmId: number | null, scenarioId: string | undefined) =>
     ['post-check', sessionCmId, scenarioId] as const,
+  /** Root prefix for invalidating every post-check query at once (all sessions/scenarios). */
+  postCheckPrefix: () => ['post-check'] as const,
 
   // Saved scenarios list (year-scoped) — see frontend/src/hooks/useScenarioList.ts
   scenariosList: (year: number) => ['scenarios', 'list', year] as const,
@@ -487,6 +489,8 @@ export function invalidateRequestQueries(
   void queryClient.invalidateQueries({ queryKey: queryKeys.bunkSocialGraphPrefix() })
   // #1041 — satisfaction endpoint is authoritative; request mutations must refresh it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.satisfactionPrefix() })
+  // #1607 / #1608 — post-check report must refresh after any request disposition change.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.postCheckPrefix() })
   if (options.includeSourceLinks) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.sourceLinksPrefix() })
     void queryClient.invalidateQueries({ queryKey: queryKeys.expandedSourceLinksPrefix() })
