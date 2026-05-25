@@ -35,7 +35,7 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
-import { getBoardWrapperClass } from '../utils/bunkBoardLayout'
+import { getBoardWrapperClass, getBoardBottomPaddingClass } from '../utils/bunkBoardLayout'
 import { autoPanToBunk } from '../utils/bunkAutoPan'
 
 interface BunkingBoardByAreaProps {
@@ -581,11 +581,20 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* Main bunks area — shrinks right when the camper-detail panel is open */}
+        {/* Main bunks area — shrinks right when the camper-detail panel is open;
+            gets bottom padding to clear the friend-groups hub / action bar (#1630). */}
         <div
           data-board-wrapper
           ref={boardScrollRef}
-          className={getBoardWrapperClass(!!selectedCamperId)}
+          className={[
+            getBoardWrapperClass(!!selectedCamperId),
+            getBoardBottomPaddingClass(
+              !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId),
+              pendingCampers.length > 0
+            ),
+          ]
+            .filter(Boolean)
+            .join(' ')}
         >
           {/* Bunks Grid - 4 columns, full width */}
           {displayedBunks.length === 0 ? (
