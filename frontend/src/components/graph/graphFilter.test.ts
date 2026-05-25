@@ -8,6 +8,38 @@ import {
 } from './graphFilter'
 import type { FilterState } from './graphFilter'
 
+describe('gender dimension in URL', () => {
+  it('defaults to "all" when no gender param present', () => {
+    const f = parseFilterFromSearchParams(new URLSearchParams('units=galil'))
+    expect(f.gender).toBe('all')
+  })
+
+  it('parses a valid gender value', () => {
+    expect(parseFilterFromSearchParams(new URLSearchParams('gender=girls')).gender).toBe('girls')
+    expect(parseFilterFromSearchParams(new URLSearchParams('gender=ag')).gender).toBe('ag')
+  })
+
+  it('falls back to "all" for an unknown gender value', () => {
+    expect(parseFilterFromSearchParams(new URLSearchParams('gender=banana')).gender).toBe('all')
+  })
+
+  it('serializes a non-all gender, omits gender=all', () => {
+    const base = new URLSearchParams()
+    expect(
+      serializeFilterToSearchParams(
+        { units: [], bunks: [], gender: 'boys', edgeMode: 'strict' },
+        base
+      ).get('gender')
+    ).toBe('boys')
+    expect(
+      serializeFilterToSearchParams(
+        { units: [], bunks: [], gender: 'all', edgeMode: 'strict' },
+        base
+      ).has('gender')
+    ).toBe(false)
+  })
+})
+
 describe('bunkToCode', () => {
   it('lowercases the bunk name', () => {
     expect(bunkToCode('B-9')).toBe('b-9')
@@ -26,6 +58,7 @@ describe('parseFilterFromSearchParams', () => {
     expect(parseFilterFromSearchParams(params)).toEqual({
       units: [],
       bunks: [],
+      gender: 'all',
       edgeMode: 'strict',
     })
   })
@@ -72,13 +105,16 @@ describe('parseFilterFromSearchParams', () => {
 describe('serializeFilterToSearchParams', () => {
   it('omits all keys when filter is empty', () => {
     const base = new URLSearchParams('year=2026')
-    const out = serializeFilterToSearchParams({ units: [], bunks: [], edgeMode: 'strict' }, base)
+    const out = serializeFilterToSearchParams(
+      { units: [], bunks: [], gender: 'all', edgeMode: 'strict' },
+      base
+    )
     expect(out.toString()).toBe('year=2026')
   })
 
   it('encodes units as lowercased slugs', () => {
     const out = serializeFilterToSearchParams(
-      { units: ['Galil', 'Chalutzim 1'], bunks: [], edgeMode: 'strict' },
+      { units: ['Galil', 'Chalutzim 1'], bunks: [], gender: 'all', edgeMode: 'strict' },
       new URLSearchParams()
     )
     expect(out.get('units')).toBe('galil,chalutzim-1')
@@ -86,7 +122,7 @@ describe('serializeFilterToSearchParams', () => {
 
   it('encodes bunks as comma-separated codes', () => {
     const out = serializeFilterToSearchParams(
-      { units: [], bunks: ['b-9', 'g-10'], edgeMode: 'strict' },
+      { units: [], bunks: ['b-9', 'g-10'], gender: 'all', edgeMode: 'strict' },
       new URLSearchParams()
     )
     expect(out.get('bunks')).toBe('b-9,g-10')
@@ -94,12 +130,12 @@ describe('serializeFilterToSearchParams', () => {
 
   it('emits edges=cross only for cross-scope mode', () => {
     const a = serializeFilterToSearchParams(
-      { units: ['Galil'], bunks: [], edgeMode: 'cross-scope' },
+      { units: ['Galil'], bunks: [], gender: 'all', edgeMode: 'cross-scope' },
       new URLSearchParams()
     )
     expect(a.get('edges')).toBe('cross')
     const b = serializeFilterToSearchParams(
-      { units: ['Galil'], bunks: [], edgeMode: 'strict' },
+      { units: ['Galil'], bunks: [], gender: 'all', edgeMode: 'strict' },
       new URLSearchParams()
     )
     expect(b.get('edges')).toBeNull()
@@ -108,7 +144,7 @@ describe('serializeFilterToSearchParams', () => {
   it('preserves unrelated query params', () => {
     const base = new URLSearchParams('year=2026&scenario=abc')
     const out = serializeFilterToSearchParams(
-      { units: ['Galil'], bunks: ['b-9'], edgeMode: 'cross-scope' },
+      { units: ['Galil'], bunks: ['b-9'], gender: 'all', edgeMode: 'cross-scope' },
       base
     )
     expect(out.get('year')).toBe('2026')
@@ -119,6 +155,7 @@ describe('serializeFilterToSearchParams', () => {
     const original: FilterState = {
       units: ['Galil', 'Eilat'],
       bunks: ['b-9'],
+      gender: 'girls',
       edgeMode: 'cross-scope',
     }
     const serialized = serializeFilterToSearchParams(original, new URLSearchParams())
