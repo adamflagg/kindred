@@ -358,6 +358,11 @@ async def get_solver_run(
         "status": run["status"],
         "results": run.get("results"),
         "error_message": run.get("error_message"),
+        # Stream B (#1638): structured infeasibility diagnostics (in-memory only;
+        # the PB-fetch fallback above returns these as absent → null client-side).
+        "infeasibility_cause": run.get("infeasibility_cause"),
+        "localization": run.get("localization"),
+        "impossibility_report": run.get("impossibility_report"),
     }
 
 
