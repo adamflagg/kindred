@@ -1,5 +1,6 @@
 """GET /solver/run/{id} surfaces Stream B diagnostics from the in-memory run dict (#1638)."""
 
+from typing import Any
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -29,7 +30,7 @@ def _client() -> TestClient:
 
 def test_get_solver_run_includes_diagnostics_when_present() -> None:
     run_id = "run-x1"
-    run = {
+    run: dict[str, Any] = {
         "id": run_id,
         "status": "failed",
         "results": None,
@@ -54,7 +55,7 @@ def test_get_solver_run_includes_diagnostics_when_present() -> None:
 
 def test_get_solver_run_diagnostics_default_none() -> None:
     run_id = "run-x2"
-    run = {"id": run_id, "status": "completed", "results": {"stats": {}}, "error_message": None}
+    run: dict[str, Any] = {"id": run_id, "status": "completed", "results": {"stats": {}}, "error_message": None}
     with patch.dict("api.routers.solver.solver_runs", {run_id: run}, clear=False):
         resp = _client().get(f"/api/solver/run/{run_id}")
     body = resp.json()

@@ -1,6 +1,7 @@
 """run_solver_task_v2 surfaces diagnostics on the result-is-None failure path (#1638)."""
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import api.services.solver_runner as sr_module
@@ -9,7 +10,7 @@ from bunking.solver.impossibility import ImpossibilityReport
 
 def test_failure_branch_stores_localization_and_impossibility_report() -> None:
     run_id = "run-diag-1"
-    mock_runs = {run_id: {"id": run_id, "status": "pending", "config": {}}}
+    mock_runs: dict[str, dict[str, Any]] = {run_id: {"id": run_id, "status": "pending", "config": {}}}
 
     mock_solver = MagicMock()
     mock_solver.solve.return_value = None  # force the result-is-None failure branch
