@@ -17,8 +17,6 @@ export interface UseGraphFilterResult {
   removeUnit: (unitName: string) => void
   addBunk: (bunkCode: string) => void
   removeBunk: (bunkCode: string) => void
-  /** Replace the entire bunk selection atomically (used by gender/AG tab selector). */
-  setBunks: (bunkCodes: string[]) => void
   setEdgeMode: (mode: FilterEdgeMode) => void
   /** Set the active gender scope. Non-'all' clears manual unit/bunk selection. */
   setGender: (scope: GenderScope) => void
@@ -78,18 +76,6 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     [filter, writeFilter]
   )
 
-  const setBunks = useCallback(
-    (bunkCodes: string[]) => {
-      writeFilter({
-        ...filter,
-        units: [],
-        gender: 'all',
-        bunks: bunkCodes.map((c) => c.toLowerCase()),
-      })
-    },
-    [filter, writeFilter]
-  )
-
   const setGender = useCallback(
     (scope: GenderScope) => {
       // Gender scope is exclusive of manual unit/bunk selection.
@@ -123,7 +109,6 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     removeUnit,
     addBunk,
     removeBunk,
-    setBunks,
     setEdgeMode,
     setGender,
     clear,

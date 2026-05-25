@@ -6,12 +6,10 @@
  *   - "Boys" returns only B-* bunks
  *   - "Girls" returns only G-* bunks
  *   - "AG" returns only AG-* bunks
- *   - `hasAGBunks` is true iff the session roster contains ≥1 AG bunk
  */
 import { describe, it, expect } from 'vitest'
 import {
   filterBunksByGender,
-  hasAGBunks,
   scopeToTab,
   tabToScope,
   type GenderTab,
@@ -26,11 +24,6 @@ const ROSTER: BunkSummaryWithGender[] = [
   { cmId: 4, name: 'G-4', code: 'g-4' },
   { cmId: 5, name: 'AG-1', code: 'ag-1' },
   { cmId: 6, name: 'AG-2', code: 'ag-2' },
-]
-
-const NO_AG_ROSTER: BunkSummaryWithGender[] = [
-  { cmId: 1, name: 'B-3', code: 'b-3' },
-  { cmId: 2, name: 'G-3', code: 'g-3' },
 ]
 
 describe('filterBunksByGender', () => {
@@ -81,28 +74,6 @@ describe('filterBunksByGender', () => {
     // Confirms the function doesn't sort or shuffle — consumers rely on stable ordering.
     const codes = filterBunksByGender(ROSTER, 'Boys')
     expect(codes).toEqual(['b-3', 'b-4'])
-  })
-})
-
-describe('hasAGBunks', () => {
-  it('returns true when the roster contains at least one AG bunk', () => {
-    expect(hasAGBunks(ROSTER)).toBe(true)
-  })
-
-  it('returns false when the roster has no AG bunks', () => {
-    expect(hasAGBunks(NO_AG_ROSTER)).toBe(false)
-  })
-
-  it('returns false for an empty roster', () => {
-    expect(hasAGBunks([])).toBe(false)
-  })
-
-  it('recognises AG names with a space (e.g. "AG 1")', () => {
-    const mixed: BunkSummaryWithGender[] = [
-      { cmId: 1, name: 'AG 1', code: 'ag-1' },
-      { cmId: 2, name: 'B-3', code: 'b-3' },
-    ]
-    expect(hasAGBunks(mixed)).toBe(true)
   })
 })
 

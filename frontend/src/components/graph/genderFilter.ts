@@ -41,14 +41,6 @@ export function filterBunksByGender(bunks: BunkSummaryWithGender[], tab: GenderT
   return bunks.filter((b) => getBunkType(b.name) === typeTarget).map((b) => b.code)
 }
 
-/**
- * True iff the roster contains at least one AG bunk.
- * Used to decide whether to render the AG tab.
- */
-export function hasAGBunks(bunks: BunkSummaryWithGender[]): boolean {
-  return bunks.some((b) => getBunkType(b.name) === 'AG')
-}
-
 /** URL-facing gender scope value (lowercase). 'all' is the default/absent state. */
 export type GenderScope = 'all' | 'boys' | 'girls' | 'ag'
 

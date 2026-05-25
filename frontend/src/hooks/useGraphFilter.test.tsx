@@ -134,27 +134,6 @@ describe('useGraphFilter', () => {
     expect(lastSearch).toContain('year=2026')
   })
 
-  it('setBunks([]) clears the gender/bunk selection but PRESERVES edgeMode (Finding 2)', () => {
-    // The "All" gender tab must drop the bunk filter WITHOUT resetting the
-    // user's cross-scope edge choice. Gender scope and edge mode are independent
-    // controls — the tab handler routes through setBunks([]) (not clear()), so
-    // edges=cross survives. Previously the "All" branch called clear(), which
-    // reset edgeMode back to 'strict' and silently lost the cross-scope view.
-    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
-      wrapper: makeWrapper('/?bunks=b-9&edges=cross'),
-    })
-    expect(result.current.filter.edgeMode).toBe('cross-scope')
-
-    act(() => result.current.setBunks([]))
-
-    // Bunk selection cleared...
-    expect(lastSearch).not.toContain('bunks=')
-    expect(lastSearch).not.toContain('units=')
-    // ...but the cross-scope edge mode is preserved.
-    expect(lastSearch).toContain('edges=cross')
-    expect(result.current.filter.edgeMode).toBe('cross-scope')
-  })
-
   it('parses gender from the URL', () => {
     const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
       wrapper: makeWrapper('/?gender=girls'),
@@ -178,15 +157,6 @@ describe('useGraphFilter', () => {
     })
     act(() => result.current.setGender('all'))
     expect(lastSearch).not.toContain('gender=')
-  })
-
-  it('setBunks forces gender back to all (manual mode)', () => {
-    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
-      wrapper: makeWrapper('/?gender=girls'),
-    })
-    act(() => result.current.setBunks(['b-9']))
-    expect(lastSearch).not.toContain('gender=')
-    expect(lastSearch).toContain('bunks=b-9')
   })
 
   it('setEdgeMode preserves an active gender', () => {
