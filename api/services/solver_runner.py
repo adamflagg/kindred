@@ -8,6 +8,7 @@ Main + AG sessions are automatically fetched together via get_related_session_id
 import asyncio
 import json
 import traceback
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,7 +17,9 @@ from pocketbase.errors import ClientResponseError
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
 from bunking.logging_config import get_logger
+from bunking.solver.diagnostics import resolve_localization
 from bunking.solver.feasibility import localize_hard_mso_infeasibility
+from bunking.solver.impossibility import filter_immaterial_requests
 from pocketbase import PocketBase
 
 from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
@@ -219,6 +222,16 @@ async def run_solver_task_v2(
         if result is None:
             # Try to identify the cause of infeasibility
             logger.warning("Solver failed - running infeasibility analysis...")
+
+            # Surface the already-computed impossibility report (#1638). The solver
+            # holds it; immaterial-filter it to match the pre-validate surface.
+            try:
+                solver_runs[run_id]["impossibility_report"] = asdict(
+                    filter_immaterial_requests(solver.impossibility_report)
+                )
+            except Exception as e:
+                logger.error(f"Failed to capture impossibility report: {e}", exc_info=True)
+
             try:
                 cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
                 logger.error(f"Infeasibility analysis result: {cause}")
@@ -235,6 +248,8 @@ async def run_solver_task_v2(
                     )
                     logger.error(f"Hard-MSO IIS localization: {iis}")
                     solver_runs[run_id]["parent_paramount_iis"] = iis
+                    # Name-resolve for the frontend (#1638).
+                    solver_runs[run_id]["localization"] = resolve_localization(iis, solver_input.person_by_cm_id)
             except Exception as e:
                 logger.error(f"Failed to run infeasibility analysis: {e}", exc_info=True)
 
