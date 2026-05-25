@@ -35,7 +35,11 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
-import { getBoardWrapperClass, getBoardBottomPaddingClass } from '../utils/bunkBoardLayout'
+import {
+  getBoardWrapperClass,
+  getBoardBottomPaddingClass,
+  getBunkGridClass,
+} from '../utils/bunkBoardLayout'
 import { autoPanToBunk } from '../utils/bunkAutoPan'
 
 interface BunkingBoardByAreaProps {
@@ -534,6 +538,11 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Check if any panel is open
   const isAnyPanelOpen = !!selectedCamperId || isLockPanelOpen
 
+  // Lock-group UI (hub + panel + action bar) is gated on draft-mode + manage.
+  // Hoisted so the board's bottom-padding clearance matches the actual render
+  // gates instead of drifting from them.
+  const isLockGroupUiActive = !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId)
+
   // Close panels when clicking on dead space (nav, page sides, board gaps).
   // Predicate is shared with the unit test in clickoutsidePredicate.ts so the
   // two cannot drift.
@@ -589,8 +598,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           className={[
             getBoardWrapperClass(!!selectedCamperId),
             getBoardBottomPaddingClass(
-              !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId),
-              pendingCampers.length > 0
+              isLockGroupUiActive,
+              isLockGroupUiActive && pendingCampers.length > 0
             ),
           ]
             .filter(Boolean)
@@ -604,7 +613,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             </div>
           ) : (
             <div
-              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              data-bunk-grid
+              className={getBunkGridClass(!!selectedCamperId)}
               style={{ contain: 'layout style' }}
               onClick={handleBoardClick}
             >

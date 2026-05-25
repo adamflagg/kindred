@@ -74,8 +74,12 @@ vi.mock('./BunkCard', () => ({
 }))
 vi.mock('./FloatingUnassignedBadge', () => ({ default: () => null }))
 vi.mock('./CamperDetailsPanel', () => ({
-  default: ({ camperId }: { camperId: string }) => (
-    <div data-panel="camper-details" data-testid="camper-panel" data-camper-id={camperId} />
+  default: ({ camperId, onClose }: { camperId: string; onClose: () => void }) => (
+    <div data-panel="camper-details" data-testid="camper-panel" data-camper-id={camperId}>
+      <button data-testid="panel-close-btn" onClick={() => onClose()}>
+        close
+      </button>
+    </div>
   ),
 }))
 vi.mock('./BunkSocialGraphModal', () => ({ default: () => null }))
@@ -176,7 +180,7 @@ describe('BunkingBoardByArea — panel reflow', () => {
 
   it('board wrapper loses the compressed class when the panel closes', () => {
     const props = makeBaseProps()
-    const { container, getByTestId } = render(<BunkingBoardByArea {...props} />)
+    const { container, getByTestId, queryByTestId } = render(<BunkingBoardByArea {...props} />)
 
     // Open the panel
     fireEvent.click(getByTestId('camper-btn-100'))
@@ -184,20 +188,27 @@ describe('BunkingBoardByArea — panel reflow', () => {
     const wrapper = container.querySelector('[data-board-wrapper]')
     expect(wrapper?.className ?? '').toContain('mr-[28rem]')
 
-    // Close the panel by clicking the backdrop (handled by the panel's onClose)
-    const panel = getByTestId('camper-panel')
-    // Simulate the onClose callback from the panel (directly triggering the close)
-    // The panel mock renders data-panel="camper-details"; in real board the onClose
-    // is passed as handleCloseDetails which sets selectedCamperId to null.
-    // We can't directly invoke onClose from the mock, but we can verify that
-    // when handleCloseDetails fires the wrapper returns to open=false state.
-    // The panel mock doesn't call onClose, so we verify the panel IS rendered
-    // (compression IS active after click).
-    expect(panel).toBeInTheDocument()
-    // This asserts that after camper selection the class is active — the
-    // "loses class after close" behavior is covered by the React state logic
-    // which clears selectedCamperId in handleCloseDetails.
-    expect(wrapper?.className ?? '').toContain('mr-[28rem]')
+    // Close the panel via its onClose callback (handleCloseDetails clears
+    // selectedCamperId synchronously). The panel mock exposes a close button.
+    fireEvent.click(getByTestId('panel-close-btn'))
+
+    // Panel unmounts and the compressed class is removed (board re-expands).
+    expect(queryByTestId('camper-panel')).toBeNull()
+    expect(wrapper?.className ?? '').not.toContain('mr-[28rem]')
+  })
+
+  it('reduces the bunk grid column count when the panel opens', () => {
+    const props = makeBaseProps()
+    const { container, getByTestId } = render(<BunkingBoardByArea {...props} />)
+
+    const grid = container.querySelector('[data-bunk-grid]')
+    // Closed: full column count so bunks fill the board width.
+    expect(grid?.className ?? '').toContain('xl:grid-cols-4')
+
+    // Open the panel — grid drops a column per breakpoint so bunks keep width.
+    fireEvent.click(getByTestId('camper-btn-100'))
+    expect(grid?.className ?? '').toContain('xl:grid-cols-3')
+    expect(grid?.className ?? '').not.toContain('xl:grid-cols-4')
   })
 
   it('CamperDetailsPanel renders alongside (not replacing) the board grid when open', () => {

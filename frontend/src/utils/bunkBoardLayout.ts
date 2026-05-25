@@ -56,3 +56,20 @@ export function getBoardBottomPaddingClass(
   }
   return ''
 }
+
+/**
+ * Returns the responsive grid-column classes for the bunk board.
+ *
+ * When the camper detail panel is open the board loses ~28rem of width to the
+ * fixed panel (see {@link getBoardWrapperClass}). Rather than squish the same
+ * column count into the narrower space — which makes the bunk cards too thin —
+ * we drop one column per breakpoint so each card keeps roughly its closed-state
+ * width and the board simply reflows to one more row.
+ *
+ * @param isPanelOpen - true when the camper detail panel is open
+ */
+export function getBunkGridClass(isPanelOpen: boolean): string {
+  return isPanelOpen
+    ? 'grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'
+    : 'grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+}

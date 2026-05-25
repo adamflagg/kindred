@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   getBoardWrapperClass,
   getBoardBottomPaddingClass,
+  getBunkGridClass,
   PANEL_WIDTH_CLASS,
 } from './bunkBoardLayout'
 
@@ -75,5 +76,41 @@ describe('getBoardBottomPaddingClass (#1630 — friend-groups hub clearance)', (
     const barOnly = getBoardBottomPaddingClass(false, true)
     expect(barOnly).not.toBe('')
     expect(barOnly).toContain('pb-')
+  })
+})
+
+describe('getBunkGridClass (panel-open column reflow)', () => {
+  // Closed: full column count — bunks fill the whole board width.
+  it('uses up to 4 columns when the panel is closed', () => {
+    const cls = getBunkGridClass(false)
+    expect(cls).toContain('grid')
+    expect(cls).toContain('grid-cols-1')
+    expect(cls).toContain('sm:grid-cols-2')
+    expect(cls).toContain('lg:grid-cols-3')
+    expect(cls).toContain('xl:grid-cols-4')
+  })
+
+  // Open: drop one column per breakpoint so each bunk keeps ~its closed-state
+  // width (the board reflows to one more row instead of squishing the columns).
+  it('drops one column per breakpoint when the panel is open', () => {
+    const cls = getBunkGridClass(true)
+    expect(cls).toContain('grid')
+    expect(cls).toContain('grid-cols-1')
+    expect(cls).toContain('lg:grid-cols-2')
+    expect(cls).toContain('xl:grid-cols-3')
+  })
+
+  // The open state must NOT keep the wider closed-state column counts, or the
+  // bunks would squish into the narrower (panel-occupied) space.
+  it('does not keep the closed-state wider column counts when open', () => {
+    const cls = getBunkGridClass(true)
+    expect(cls).not.toContain('grid-cols-4')
+    expect(cls).not.toContain('lg:grid-cols-3')
+  })
+
+  // Both states keep the gap so the visual rhythm is unchanged.
+  it('keeps the same inter-card gap in both states', () => {
+    expect(getBunkGridClass(false)).toContain('gap-3')
+    expect(getBunkGridClass(true)).toContain('gap-3')
   })
 })
