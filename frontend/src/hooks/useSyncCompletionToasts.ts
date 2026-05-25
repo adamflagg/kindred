@@ -66,7 +66,7 @@ type PreviousStatuses = Record<string, string>
  * Hook that monitors sync status polling and fires toasts when syncs complete.
  * Detects transitions from 'running' -> 'success' or 'running' -> 'failed'.
  */
-export function useSyncCompletionToasts() {
+export function useSyncCompletionToasts(): SyncStatusResponse | null | undefined {
   const { data: syncStatus } = useSyncStatusAPI()
   const previousStatuses = useRef<PreviousStatuses>({})
 
