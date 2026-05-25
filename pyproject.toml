@@ -38,7 +38,7 @@ dependencies = [
     # Data processing
     "pandas>=3.0.3",
     "tzdata>=2026.2",
-    "numpy>=1.26.0",
+    "numpy>=2.4.6",
     "networkx>=3.6.1",
     # Configuration & validation
     "pydantic>=2.7.0",
