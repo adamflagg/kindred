@@ -189,6 +189,14 @@ export type BunkGraphResponse = {
    * Health Score
    */
   health_score: number
+  /**
+   * Cross Scope Edges
+   */
+  cross_scope_edges?: Array<CrossScopeEdge>
+  /**
+   * Cross Scope Nodes
+   */
+  cross_scope_nodes?: Array<SocialGraphNode>
 }
 
 /**
@@ -7140,6 +7148,12 @@ export type GetBunkSocialGraphApiBunksBunkCmIdSocialGraphGetData = {
      * Scenario ID — when set, source bunk membership from bunk_assignments_draft
      */
     scenario_id?: string | null
+    /**
+     * Cross Scope
+     *
+     * When true, include edges that cross outside the bunk as ghosted context edges
+     */
+    cross_scope?: boolean
   }
   url: '/api/bunks/{bunk_cm_id}/social-graph'
 }
