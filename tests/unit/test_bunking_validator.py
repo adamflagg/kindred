@@ -2944,3 +2944,107 @@ def test_priority_unsuccessful_has_session_cm_id_and_requester_grade():
     assert row["session_cm_id"] == "10000098"
     assert "requester_grade" in row
     assert row["requester_grade"] == 7  # Olivia's grade
+
+
+def _age_pref_request(requester: str, target: str, id: str) -> MockBunkRequest:
+    """A MATERIAL-parent age_preference request (source_field=bunk_request_form)."""
+    return MockBunkRequest(
+        requester_person_cm_id=requester,
+        requested_person_cm_id=None,
+        request_type="age_preference",
+        source_field=SourceField.BUNK_REQUEST_FORM,
+        source="family",
+        age_preference_target=target,
+        id=id,
+    )
+
+
+def test_cohort_honored_in_plan_true_when_clean_cabin():
+    """An oldest-grade 'older' MP camper flagged impossible is honored_in_plan=True
+    when the final cabin has no younger grades (all same grade)."""
+    session = _mock_session(cm_id="10000001", name="HonoredFixture")
+    # Two grade-10 campers share one bunk -> no younger grade present -> 'older' satisfied.
+    persons = [
+        MockPerson(campminder_id="20001", name="Oldest", grade=10, gender="M"),
+        MockPerson(campminder_id="20002", name="Peer", grade=10, gender="M"),
+    ]
+    bunks = [_mock_bunk("30001")]
+    assignments = [_mock_assignment("20001", "30001"), _mock_assignment("20002", "30001")]
+    requests = [_age_pref_request("20001", "older", id="ap1")]
+    cohort = [
+        {
+            "cm_id": 20001,
+            "name": "Oldest",
+            "grade": 10,
+            "gender": "M",
+            "session_cm_id": 10000001,
+            "reason_codes": ["age_pref_no_eligible_grade"],
+        }
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"ap1"},
+        impossible_mp_cohort=cohort,
+    )
+    out = result.statistics.mp_campers_entirely_impossible
+    assert len(out) == 1
+    assert out[0]["cm_id"] == 20001
+    assert out[0]["honored_in_plan"] is True
+    assert out[0]["reason_codes"] == ["age_pref_no_eligible_grade"]
+
+
+def test_cohort_honored_in_plan_false_when_mixed_cabin():
+    """Same camper, but the cabin also has a grade-9 -> 'older' violated -> honored_in_plan=False."""
+    session = _mock_session(cm_id="10000001", name="NotHonoredFixture")
+    persons = [
+        MockPerson(campminder_id="20001", name="Oldest", grade=10, gender="M"),
+        MockPerson(campminder_id="20002", name="Younger", grade=9, gender="M"),
+    ]
+    bunks = [_mock_bunk("30001")]
+    assignments = [_mock_assignment("20001", "30001"), _mock_assignment("20002", "30001")]
+    requests = [_age_pref_request("20001", "older", id="ap1")]
+    cohort = [
+        {
+            "cm_id": 20001,
+            "name": "Oldest",
+            "grade": 10,
+            "gender": "M",
+            "session_cm_id": 10000001,
+            "reason_codes": ["age_pref_no_eligible_grade"],
+        }
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"ap1"},
+        impossible_mp_cohort=cohort,
+    )
+    out = result.statistics.mp_campers_entirely_impossible
+    assert len(out) == 1
+    assert out[0]["cm_id"] == 20001
+    assert out[0]["honored_in_plan"] is False
+
+
+def test_cohort_absent_leaves_field_empty():
+    """Omitting impossible_mp_cohort leaves mp_campers_entirely_impossible empty (legacy callers)."""
+    session = _mock_session(cm_id="10000001", name="NoCohortFixture")
+    persons = [_mock_person("20001", grade=5)]
+    bunks = [_mock_bunk("30001")]
+    assignments = [_mock_assignment("20001", "30001")]
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=[],
+    )
+    assert result.statistics.mp_campers_entirely_impossible == []
