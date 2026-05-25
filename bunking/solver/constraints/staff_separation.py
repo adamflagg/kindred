@@ -84,7 +84,7 @@ def add_staff_separation_constraints(ctx: SolverContext) -> None:
 
     enforced = 0
     yielded = 0
-    for _cm_id, requests in ctx.possible_requests.items():
+    for requests in ctx.possible_requests.values():
         for r in requests:
             if not _is_hard_mnt(r):
                 continue
