@@ -84,6 +84,38 @@ export interface ImpossibilityReport {
   by_bucket_count?: Record<string, number>
 }
 
+export interface SolverLocalizationCamper {
+  cm_id: number
+  name: string
+  grade: number | null
+  gender: string | null
+}
+
+export interface SolverLocalization {
+  approach: string
+  candidate_count: number
+  campers: SolverLocalizationCamper[]
+  notes: string
+}
+
+export interface SolverDiagnostics {
+  infeasibilityCause: string | null
+  localization: SolverLocalization | null
+  impossibilityReport: ImpossibilityReport | null
+}
+
+/** Raw staff-separation yield as it rides in stats.request_validation (Stream A, #1541). cm_ids only. */
+export interface StaffNbwYieldRaw {
+  nbw_request_id: string
+  subject_cm: number
+  target_cm: number
+  protected_parent_request_id: string
+  protected_camper_cm: number
+}
+
+/** A SolverRun plus the optional failure diagnostics (#1638). */
+export type SolverRunWithDiagnostics = SolverRun & { diagnostics?: SolverDiagnostics }
+
 interface ValidationResult {
   valid: boolean
   errors: string[]
@@ -267,7 +299,7 @@ export const solverService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     timeLimit: number = 60,
     respectLocks: boolean = true
-  ): Promise<SolverRun> {
+  ): Promise<SolverRunWithDiagnostics> {
     try {
       // Call solver API directly
       const response = await fetchWithAuth(`${SOLVER_API_URL}/solver/run`, {
@@ -308,7 +340,7 @@ export const solverService = {
     solverRunId: string,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     timeLimitSeconds = 60
-  ): Promise<SolverRun> {
+  ): Promise<SolverRunWithDiagnostics> {
     const effectiveLimit = Math.max(1, Math.floor(timeLimitSeconds))
     const maxAttempts = effectiveLimit + POLL_BUFFER_SECONDS
     for (let i = 0; i < maxAttempts; i++) {
@@ -339,8 +371,21 @@ export const solverService = {
 
       if (runStatus.status === 'failed') {
         const errorMsg = runStatus.error_message ?? 'Solver failed'
-        console.error('Solver failed with error:', errorMsg)
-        throw new Error(errorMsg)
+        // #1638: return the failed run carrying structured diagnostics instead of
+        // throwing — the caller (useSolverOperations) handles non-completed status.
+        return {
+          id: solverRunId,
+          session: runStatus.session_id ?? '',
+          status: 'failed',
+          error_message: errorMsg,
+          diagnostics: {
+            infeasibilityCause: runStatus.infeasibility_cause ?? null,
+            localization: runStatus.localization ?? null,
+            impossibilityReport: runStatus.impossibility_report ?? null,
+          },
+          created: runStatus.created_at ?? new Date().toISOString(),
+          updated: runStatus.updated_at ?? new Date().toISOString(),
+        }
       }
 
       // Wait 1 second before next poll
