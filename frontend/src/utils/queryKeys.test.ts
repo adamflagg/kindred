@@ -93,3 +93,30 @@ describe('queryKeys.allSessionsList', () => {
     expect(a).not.toEqual(b)
   })
 })
+
+describe('queryKeys.postCheck', () => {
+  // CampMinder reuses session ids across years (year-data-integrity invariant),
+  // so a key of [post-check, sessionCmId, scenarioId] collides across seasons
+  // and can serve stale prior-year validator data. Mirror the year-scoped
+  // satisfaction key: [post-check, sessionCmId, year, scenarioId].
+  it('includes year so a season switch does not reuse a prior-year cache slot', () => {
+    const a = queryKeys.postCheck(1001, 2025, undefined)
+    const b = queryKeys.postCheck(1001, 2026, undefined)
+    expect(a).not.toEqual(b)
+  })
+
+  it('pins the full key shape: [post-check, sessionCmId, year, scenarioId]', () => {
+    expect(queryKeys.postCheck(1001, 2025, 'scenario-abc')).toEqual([
+      'post-check',
+      1001,
+      2025,
+      'scenario-abc',
+    ])
+  })
+
+  it('postCheckPrefix is the head of the full key so prefix invalidation still matches', () => {
+    const prefix = queryKeys.postCheckPrefix()
+    const full = queryKeys.postCheck(1001, 2025, 'scenario-abc')
+    expect(full.slice(0, prefix.length)).toEqual([...prefix])
+  })
+})

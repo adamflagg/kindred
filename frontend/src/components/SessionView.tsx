@@ -340,8 +340,8 @@ export default function SessionView() {
                 campers={campers}
                 selectedArea={selectedBunkArea}
                 onAreaChange={setSelectedBunkArea}
-                onCamperMove={async (camperId, bunkId) => {
-                  await moveCamper(camperId, bunkId)
+                onCamperMove={async (camperId, bunkId, options) => {
+                  await moveCamper(camperId, bunkId, options)
                 }}
                 isProductionMode={isProductionMode}
                 defaultCapacity={defaultBunkCapacity}

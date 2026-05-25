@@ -1683,6 +1683,34 @@ describe('PostValidationResultsModal — violated sub-rows show distinct targets
 // Task: handleCamperClick — popout mode vs normal modal mode
 // ---------------------------------------------------------------------------
 
+describe('PostValidationResultsModal — background refresh indicator (#1635 scan #4)', () => {
+  it('shows a refreshing indicator while a background refetch is in flight', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        isRefreshing={true}
+      />
+    )
+    expect(screen.getByTestId('postcheck-refreshing')).toBeInTheDocument()
+  })
+
+  it('does not show the refreshing indicator when not refetching', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        isRefreshing={false}
+      />
+    )
+    expect(screen.queryByTestId('postcheck-refreshing')).not.toBeInTheDocument()
+  })
+})
+
 describe('PostValidationResultsModal — handleCamperClick behavior', () => {
   // Reset pathname after each test so subsequent describe blocks always start
   // in normal-modal (non-popout) mode.
