@@ -197,4 +197,18 @@ describe('useGraphFilter', () => {
     expect(lastSearch).toContain('gender=girls')
     expect(lastSearch).toContain('edges=cross')
   })
+
+  it('setGender("all") preserves an active cross-scope edge mode (Finding 2)', () => {
+    // Switching to the "All" gender tab clears the gender/bunk scope but must NOT
+    // reset the user's cross-scope edge choice — gender scope and edge mode are
+    // independent controls.
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls&edges=cross'),
+    })
+    expect(result.current.filter.edgeMode).toBe('cross-scope')
+    act(() => result.current.setGender('all'))
+    expect(lastSearch).not.toContain('gender=')
+    expect(lastSearch).toContain('edges=cross')
+    expect(result.current.filter.edgeMode).toBe('cross-scope')
+  })
 })

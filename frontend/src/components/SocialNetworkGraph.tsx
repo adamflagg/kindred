@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
@@ -32,13 +32,20 @@ import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
 import { useGraphFilter } from '../hooks/useGraphFilter'
 import { useScopedGraphData } from '../hooks/useScopedGraphData'
 import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
-import { type BunkSummary } from './graph/graphFilter'
 import {
-  filterBunksByGender,
-  hasAGBunks,
+  parseFilterFromSearchParams,
+  type BunkSummary,
+  type FilterState,
+} from './graph/graphFilter'
+import {
+  scopeToTab,
+  tabToScope,
   type GenderTab,
   type BunkSummaryWithGender,
 } from './graph/genderFilter'
+import { useSearchParams } from 'react-router'
+import { useLinkedAgSession } from '../hooks/useLinkedAgSession'
+import { resolveEffectiveScope, shouldDegrade, genderBannerText } from './graph/graphScope'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -103,34 +110,28 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
 
-  // Bunk roster (used by the filter picker and as a label fallback). Fetched
-  // independently of the scoped graph so the picker stays populated even when
-  // the graph is mid-fetch.
-  const { data: bunksData } = useBunkNames(sessionCmId, true)
+  // Read gender straight from the URL so dataSessionCmId can be computed before
+  // useBunkNames (which needs it). useGraphFilter (below) is the write authority;
+  // this is a read-only peek to break the hook-ordering cycle.
+  const [rawSearchParams] = useSearchParams()
+  const urlGender = parseFilterFromSearchParams(rawSearchParams).gender
+
+  // Linked AG session (by parent_id). Gates the AG tab + provides its cm_id.
+  const { agSessionCmId } = useLinkedAgSession(sessionCmId)
+  const agAvailable = agSessionCmId != null
+
+  // The session whose roster + graph we actually fetch: the AG session when the
+  // AG tab is active, otherwise the current main session. (The `&& agSessionCmId`
+  // guard means an 'ag' URL with no linked AG harmlessly stays on the main session.)
+  const dataSessionCmId = urlGender === 'ag' && agSessionCmId ? agSessionCmId : sessionCmId
+
+  // Bunk roster for the DATA session (used by the picker + as a label fallback).
+  const { data: bunksData } = useBunkNames(dataSessionCmId, true)
   const allBunks: BunkSummary[] = useMemo(() => {
     if (!bunksData) return []
-    return Object.entries(bunksData).map(([id, name]) => ({
-      cmId: Number(id),
-      name: String(name),
-    }))
+    return Object.entries(bunksData).map(([id, name]) => ({ cmId: Number(id), name: String(name) }))
   }, [bunksData])
 
-  // Filter state from URL.
-  const {
-    filter,
-    addUnit,
-    removeUnit,
-    addBunk,
-    removeBunk,
-    setBunks,
-    setEdgeMode,
-    clear: clearFilter,
-  } = useGraphFilter(allBunks)
-
-  // Gender/AG tab selector state. Defaults to 'All' (no gender filter active).
-  const [activeGenderTab, setActiveGenderTab] = useState<GenderTab>('All')
-
-  // Derive the bunk roster with codes for the gender filter.
   const allBunksWithGender: BunkSummaryWithGender[] = useMemo(() => {
     if (!bunksData) return []
     return Object.entries(bunksData).map(([id, name]) => ({
@@ -140,53 +141,90 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     }))
   }, [bunksData])
 
-  const sessionHasAGBunks = useMemo(() => hasAGBunks(allBunksWithGender), [allBunksWithGender])
+  // Filter state from URL (write authority).
+  const {
+    filter,
+    addUnit,
+    removeUnit,
+    addBunk,
+    removeBunk,
+    setGender,
+    setEdgeMode,
+    clear: clearFilter,
+  } = useGraphFilter(allBunks)
 
-  // When the gender tab changes, replace the entire bunk selection with the
-  // filtered set. 'All' clears the bunk/gender selection (shows the full graph)
-  // via setBunks([]) — NOT clearFilter(), which would also reset edgeMode back
-  // to 'strict' and silently discard the user's cross-scope choice. Gender
-  // scope and edge mode are independent controls.
-  const handleGenderTab = useCallback(
-    (tab: GenderTab) => {
-      setActiveGenderTab(tab)
-      if (tab === 'All') {
-        setBunks([])
-      } else {
-        const codes = filterBunksByGender(allBunksWithGender, tab)
-        setBunks(codes)
-      }
-    },
-    [allBunksWithGender, setBunks]
+  // Effective gender: if 'ag' is active without a linked AG session, fall back to 'all'.
+  const gender = filter.gender === 'ag' && !agAvailable ? 'all' : filter.gender
+
+  // Cabins dropped from the gender-derived set (ephemeral; reset on session/gender change).
+  const [dropped, setDropped] = useState<Set<string>>(() => new Set())
+  // True when an active scope yielded zero nodes and we fell back to the full graph.
+  const [degraded, setDegraded] = useState(false)
+
+  useEffect(() => {
+    setDropped(new Set())
+    setDegraded(false)
+  }, [dataSessionCmId, gender])
+
+  const resolved = useMemo(
+    () =>
+      resolveEffectiveScope({
+        gender,
+        manualUnits: filter.units,
+        manualBunks: filter.bunks,
+        dropped,
+        roster: allBunksWithGender,
+      }),
+    [gender, filter.units, filter.bunks, dropped, allBunksWithGender]
   )
 
-  // When the user manually adjusts the filter (unit/bunk picker), reset the
-  // gender tab to 'All' so the tab bar doesn't show a stale label.
-  // This is a one-way reset: tab → filter writes go through handleGenderTab,
-  // but filter → tab sync isn't bidirectional (the picker is more expressive).
-  const handleManualFilterChange = useCallback(
-    (action: 'addUnit' | 'removeUnit' | 'addBunk' | 'removeBunk', arg: string) => {
-      setActiveGenderTab('All')
-      if (action === 'addUnit') addUnit(arg)
-      else if (action === 'removeUnit') removeUnit(arg)
-      else if (action === 'addBunk') addBunk(arg)
-      else removeBunk(arg)
-    },
-    [addUnit, removeUnit, addBunk, removeBunk]
+  // What we actually fetch: the resolved scope, or unscoped when degraded.
+  const fetchFilter: FilterState = useMemo(
+    () => ({
+      units: degraded ? [] : resolved.units,
+      bunks: degraded ? [] : resolved.bunks,
+      gender: 'all',
+      edgeMode: filter.edgeMode,
+    }),
+    [degraded, resolved, filter.edgeMode]
   )
 
-  // The popover "Clear" wipes the filter — it must also reset the gender tab
-  // back to 'All', otherwise a previously-selected gender tab keeps its active
-  // highlight while the filter is actually empty (stale UI state, Finding 6).
-  const handleClearFilter = useCallback(() => {
-    setActiveGenderTab('All')
-    clearFilter()
-  }, [clearFilter])
+  const {
+    data: graphData,
+    isLoading,
+    error,
+    isFetching,
+  } = useScopedGraphData(dataSessionCmId, fetchFilter)
 
-  // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
-  // same unscoped path as before. When filter is active, server returns a
-  // subgraph and runs fresh fcose layout on just the in-scope nodes.
-  const { data: graphData, isLoading, error } = useScopedGraphData(sessionCmId, filter)
+  // Graceful degradation: an active scope that resolves to zero nodes falls back
+  // to the full graph for this data-session. URL keeps ?gender so the scoped view
+  // self-restores on a session where that gender IS bunked.
+  useEffect(() => {
+    if (
+      !degraded &&
+      shouldDegrade({
+        scopeActive: resolved.active,
+        isLoading,
+        hasError: error != null,
+        nodeCount: graphData?.nodes.length ?? 0,
+      })
+    ) {
+      setDegraded(true)
+    }
+  }, [degraded, resolved.active, isLoading, error, graphData])
+
+  const degradeBanner = degraded ? genderBannerText(gender) : ''
+
+  // Suppress the "no data" empty state while a non-empty graph is still coming:
+  // (a) an active scope resolved to zero nodes and we're about to degrade, or
+  // (b) we've degraded and the unscoped full-graph fetch is still in flight.
+  // Without this, the degrade path briefly flashes the very "No social network
+  // data available" message this feature exists to avoid. A genuinely empty
+  // session (degraded, fetch settled, still zero nodes) correctly shows empty.
+  const fallbackPending =
+    error == null &&
+    (graphData?.nodes.length ?? 0) === 0 &&
+    ((resolved.active && !degraded) || (degraded && isFetching))
 
   // Compute the set of grades present in the current data for the legend
   const existingGrades = useMemo(() => {
@@ -653,7 +691,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   return (
     <QueryGuard
-      isLoading={isLoading}
+      isLoading={isLoading || fallbackPending}
       error={error}
       data={graphData?.nodes.length ? graphData : undefined}
       label="social network"
@@ -719,19 +757,22 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                     className="hidden shrink-0 items-center gap-0.5 xl:flex"
                   >
                     {(['All', 'Boys', 'Girls'] as GenderTab[])
-                      .concat(sessionHasAGBunks ? ['AG'] : [])
+                      .concat(agAvailable ? ['AG'] : [])
                       .map((tab) => (
                         <button
                           key={tab}
                           type="button"
-                          onClick={() => handleGenderTab(tab)}
+                          onClick={() => {
+                            setDropped(new Set())
+                            setGender(tabToScope(tab))
+                          }}
                           className={clsx(
                             'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                            activeGenderTab === tab
+                            scopeToTab(gender) === tab
                               ? 'bg-primary text-primary-foreground'
                               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                           )}
-                          aria-pressed={activeGenderTab === tab}
+                          aria-pressed={scopeToTab(gender) === tab}
                         >
                           {tab}
                         </button>
@@ -766,18 +807,28 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                         selectedBunks={filter.bunks}
                         allBunks={allBunks}
                         edgeMode={filter.edgeMode}
-                        onAddUnit={(u) => handleManualFilterChange('addUnit', u)}
-                        onRemoveUnit={(u) => handleManualFilterChange('removeUnit', u)}
-                        onAddBunk={(b) => handleManualFilterChange('addBunk', b)}
-                        onRemoveBunk={(b) => handleManualFilterChange('removeBunk', b)}
+                        onAddUnit={addUnit}
+                        onRemoveUnit={removeUnit}
+                        onAddBunk={addBunk}
+                        onRemoveBunk={removeBunk}
                         onSetEdgeMode={setEdgeMode}
-                        onClear={handleClearFilter}
+                        onClear={clearFilter}
                       />
                     </div>
                   }
                 />
               </div>
             </div>
+
+            {degradeBanner && (
+              <div
+                role="status"
+                className="border-border flex items-center gap-2 border-b bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                <span aria-hidden>⚠</span>
+                {degradeBanner}
+              </div>
+            )}
 
             {/* Graph container - ALWAYS in same tree position */}
             {/* Mobile-responsive: min-h-[50vh] on mobile, h-[600px] on desktop */}

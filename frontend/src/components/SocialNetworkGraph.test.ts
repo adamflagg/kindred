@@ -95,34 +95,3 @@ describe('SocialNetworkGraph header layout — slim single row', () => {
     expect(source).not.toMatch(/\bEdgeFilters\b/)
   })
 })
-
-describe('SocialNetworkGraph gender tab / clear — edge-mode & tab-state preservation', () => {
-  const source = readFileSync(resolve(__dirname, './SocialNetworkGraph.tsx'), 'utf-8')
-
-  it("the 'All' gender tab uses setBunks([]) so the cross-scope edge mode survives (Finding 2)", () => {
-    // Gender scope and edge mode are independent controls. Selecting "All" must
-    // clear only the bunk/gender filter — NOT reset the user's cross-scope
-    // choice. Routing the 'All' branch through clearFilter() reset edgeMode back
-    // to 'strict' (see useGraphFilter.clear), silently discarding 'cross-scope'.
-    // Capture the handleGenderTab useCallback body up to its closing `  )`.
-    const handler = source.match(/const handleGenderTab = useCallback\(([\s\S]*?)\n {2}\)/)
-    expect(handler).not.toBeNull()
-    const block = handler?.[1] ?? ''
-    // The 'All' branch must call setBunks([]), not clearFilter().
-    expect(block).toMatch(/setBunks\(\[\]\)/)
-    expect(block).not.toMatch(/clearFilter\(\)/)
-  })
-
-  it("the filter popover's Clear resets activeGenderTab so no stale tab stays highlighted (Finding 6)", () => {
-    // onClear must reset the gender tab to its default ('All') in addition to
-    // clearing the filter — otherwise a previously-selected gender tab keeps its
-    // active highlight while the filter is actually empty.
-    const onClearMatch = source.match(/onClear=\{([^}]*)\}/)
-    expect(onClearMatch).not.toBeNull()
-    const onClearExpr = onClearMatch?.[1] ?? ''
-    // It must NOT be the bare clearFilter (which leaves activeGenderTab stale).
-    expect(onClearExpr.trim()).not.toBe('clearFilter')
-    // A dedicated handler must reset the gender tab when clearing.
-    expect(source).toMatch(/setActiveGenderTab\(['"]All['"]\)[\s\S]*?clearFilter\(\)/)
-  })
-})
