@@ -36,6 +36,15 @@ import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 
+/** Options forwarded to the individual moveCamper call. */
+interface CamperMoveOptions {
+  /**
+   * Suppress the per-move success toast. Pass true when the caller will emit
+   * its own summary toast for the whole batch (e.g. swap, lock-group move).
+   */
+  silent?: boolean
+}
+
 interface BunkingBoardByAreaProps {
   sessionId: string
   sessionCmId: number
@@ -43,7 +52,11 @@ interface BunkingBoardByAreaProps {
   campers: Camper[]
   selectedArea: 'all' | 'boys' | 'girls' | 'all-gender'
   onAreaChange: (area: 'all' | 'boys' | 'girls' | 'all-gender') => void
-  onCamperMove: (camperId: string, toBunkId: string | null) => Promise<void>
+  onCamperMove: (
+    camperId: string,
+    toBunkId: string | null,
+    options?: CamperMoveOptions
+  ) => Promise<void>
   onCamperLockToggle?: (camperId: string, locked: boolean, reason?: string) => Promise<void>
   isProductionMode?: boolean
   defaultCapacity?: number
@@ -470,12 +483,17 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       }
     }
 
+    const isMultiMove = campersToMove.length > 1
     try {
-      // Move all campers in the group
+      // For multi-camper moves (lock group), suppress per-move toasts (#1632)
+      // and emit a single count toast after the whole group resolves.
+      // Single-camper moves keep their normal individual toast.
       for (const camper of campersToMove) {
-        await onCamperMove(camper.id, targetBunkId)
+        await onCamperMove(camper.id, targetBunkId, isMultiMove ? { silent: true } : undefined)
       }
-      // Success toast moved to parent component after actual move completes
+      if (isMultiMove) {
+        toast.success(`${campersToMove.length} campers moved`)
+      }
     } catch (error) {
       toast.error('Failed to move camper(s)')
       console.error('Error moving camper(s):', error)
@@ -713,10 +731,15 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             // Close immediately so the user sees the board update as the
             // per-camper moves stream in.
             setSelectedBunkForSwap(null)
+            const totalCampers = source.campers.length + target.campers.length
             try {
+              // Suppress per-move toasts (#1632): the orchestrator emits one
+              // count toast below after the whole batch resolves.
               await swapBunks(source, target, async (camperId, bunkId) => {
-                await onCamperMove(camperId, bunkId)
+                await onCamperMove(camperId, bunkId, { silent: true })
               })
+              // One summary toast for the whole swap action.
+              toast.success(`${totalCampers} camper${totalCampers === 1 ? '' : 's'} moved`)
             } catch (error) {
               console.error('Bunk swap failed:', error)
               toast.error('Bunk swap failed — some campers may not have moved')
