@@ -13,6 +13,7 @@ export type FamilySubRow = {
   bunkName?: string
   rawText?: string
   reasonCodes?: string[]
+  honoredInPlan?: boolean
 }
 
 export type FamilyRowData = {
@@ -44,20 +45,43 @@ export function buildFamilyRows(
     bunkName?: string
     rawText?: string
     reasonCodes?: string[]
+    honoredInPlan?: boolean
   }
   const raw: RawRow[] = []
 
-  for (const c of impossibilityReport.mp_campers_entirely_impossible ?? []) {
-    raw.push({
-      cm_id: String(c.cm_id),
-      name: c.name,
-      grade: c.grade ?? 0,
-      gender: c.gender ?? '',
-      cohort: 'got_nothing',
-      session: String(c.session_cm_id), // normalize number → string
-      detail: `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
-      reasonCodes: c.reason_codes,
-    })
+  // Prefer the post-response cohort (carries honored_in_plan, reconciled against
+  // the final plan); fall back to the pre-check report for callers without it
+  // (e.g. PDF export from a pre-check, or post-check before this field shipped).
+  const statsCohort = statistics.mp_campers_entirely_impossible
+  if (statsCohort && statsCohort.length > 0) {
+    for (const c of statsCohort) {
+      raw.push({
+        cm_id: String(c.cm_id),
+        name: c.name,
+        grade: c.grade ?? 0,
+        gender: c.gender ?? '',
+        cohort: 'got_nothing',
+        session: String(c.session_cm_id),
+        detail: c.honored_in_plan
+          ? 'Flagged impossible · met by the final cabin anyway'
+          : `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
+        reasonCodes: c.reason_codes,
+        honoredInPlan: c.honored_in_plan,
+      })
+    }
+  } else {
+    for (const c of impossibilityReport.mp_campers_entirely_impossible ?? []) {
+      raw.push({
+        cm_id: String(c.cm_id),
+        name: c.name,
+        grade: c.grade ?? 0,
+        gender: c.gender ?? '',
+        cohort: 'got_nothing',
+        session: String(c.session_cm_id), // normalize number → string
+        detail: `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
+        reasonCodes: c.reason_codes,
+      })
+    }
   }
   for (const v of statistics.negative_request_violations_detail ?? []) {
     raw.push({
@@ -97,6 +121,7 @@ export function buildFamilyRows(
       ...(r.bunkName !== undefined && { bunkName: r.bunkName }),
       ...(r.rawText !== undefined && { rawText: r.rawText }),
       ...(r.reasonCodes !== undefined && { reasonCodes: r.reasonCodes }),
+      ...(r.honoredInPlan !== undefined && { honoredInPlan: r.honoredInPlan }),
     }
     const existing = grouped.get(key)
     if (existing) {

@@ -163,6 +163,16 @@ export interface ValidationStatistics {
   mp_campers_total?: number
   mp_campers_with_at_least_one_satisfied?: number
   mp_campers_with_all_satisfied?: number
+  /** Entirely-impossible MP cohort (families to contact), reconciled vs the final plan. */
+  mp_campers_entirely_impossible?: Array<{
+    cm_id: number
+    name: string
+    grade: number
+    gender: string
+    session_cm_id: number
+    reason_codes: string[]
+    honored_in_plan: boolean
+  }>
   /** TG-polish: one entry per unsatisfied MP request, with names + bunk placement. */
   unsatisfied_material_parent_detail?: Array<{
     requester_cm_id: string
