@@ -1,4 +1,4 @@
-import { useState, useTransition, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useTransition, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import {
   DndContext,
@@ -35,6 +35,8 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
+import { getBoardWrapperClass } from '../utils/bunkBoardLayout'
+import { autoPanToBunk } from '../utils/bunkAutoPan'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -78,6 +80,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const [, startTransition] = useTransition()
   const currentYear = useYear()
   const { hasPermission } = usePermissions()
+
+  // Ref for the board scroll container — used by autoPanToBunk to scroll the
+  // selected camper's bunk card into view when the detail panel opens.
+  const boardScrollRef = useRef<HTMLDivElement>(null)
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Get lock group context for action bar and pending camper management
@@ -556,6 +562,16 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     }
   }, [isAnyPanelOpen, handleGlobalClick])
 
+  // Auto-pan: when a camper is selected, scroll their bunk into the visible
+  // region of the board so the staffer keeps eyes on the relevant bunk.
+  // Fires after every selectedCamperId change (selection and de-selection).
+  // autoPanToBunk gracefully no-ops when bunkCmId is null/undefined.
+  useEffect(() => {
+    if (!selectedCamperId) return
+    const selected = campers.find((c) => String(c.person_cm_id) === selectedCamperId)
+    autoPanToBunk(selected?.assigned_bunk_cm_id ?? null, boardScrollRef.current)
+  }, [selectedCamperId, campers])
+
   return (
     <>
       <DndContext
@@ -565,8 +581,12 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* Main bunks area */}
-        <div>
+        {/* Main bunks area — shrinks right when the camper-detail panel is open */}
+        <div
+          data-board-wrapper
+          ref={boardScrollRef}
+          className={getBoardWrapperClass(!!selectedCamperId)}
+        >
           {/* Bunks Grid - 4 columns, full width */}
           {displayedBunks.length === 0 ? (
             <div className="bg-card border-border rounded-xl border p-8 text-center">

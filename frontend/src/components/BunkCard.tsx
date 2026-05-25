@@ -291,6 +291,7 @@ function BunkCard({
   return (
     <div
       data-bunk-card
+      data-bunk-cm-id={bunk.cm_id}
       ref={setNodeRef}
       className={clsx(
         'card-lodge relative p-4 transition-all',
