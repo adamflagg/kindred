@@ -82,6 +82,18 @@ class SolverContext:
     # `localize_hard_mso_infeasibility` in feasibility.py.
     mp_skip_cms: set[int] = field(default_factory=set)
 
+    # Hard staff/manual not_bunk_with (#1541): records where the hard separation
+    # was relaxed to protect a parent-paramount must-satisfy-one. Each entry:
+    # {nbw_request_id, subject_cm, target_cm, protected_parent_request_id,
+    # protected_camper_cm}. Populated by add_staff_separation_constraints; surfaced
+    # post-solve into request_validation_summary["staff_nbw_yielded"].
+    staff_nbw_yields: list[dict[str, Any]] = field(default_factory=list)
+
+    # IIS-localization probe: hard-NBW (subject, target) pairs whose separation
+    # should be skipped to localize a staff-separation infeasibility. Empty in
+    # production runs. Analogue of mp_skip_cms.
+    staff_nbw_skip_pairs: set[tuple[int, int]] = field(default_factory=set)
+
     # Canonical per-request satisfaction vars for bunk_with / not_bunk_with
     # requests, keyed by request.id. Built + memoized by
     # get_or_create_request_sat_var (bunk_requests.py); shared so add_objective
