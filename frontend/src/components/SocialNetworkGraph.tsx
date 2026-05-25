@@ -143,18 +143,21 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const sessionHasAGBunks = useMemo(() => hasAGBunks(allBunksWithGender), [allBunksWithGender])
 
   // When the gender tab changes, replace the entire bunk selection with the
-  // filtered set. 'All' clears the selection (shows the full graph).
+  // filtered set. 'All' clears the bunk/gender selection (shows the full graph)
+  // via setBunks([]) — NOT clearFilter(), which would also reset edgeMode back
+  // to 'strict' and silently discard the user's cross-scope choice. Gender
+  // scope and edge mode are independent controls.
   const handleGenderTab = useCallback(
     (tab: GenderTab) => {
       setActiveGenderTab(tab)
       if (tab === 'All') {
-        clearFilter()
+        setBunks([])
       } else {
         const codes = filterBunksByGender(allBunksWithGender, tab)
         setBunks(codes)
       }
     },
-    [allBunksWithGender, clearFilter, setBunks]
+    [allBunksWithGender, setBunks]
   )
 
   // When the user manually adjusts the filter (unit/bunk picker), reset the
@@ -171,6 +174,14 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
     },
     [addUnit, removeUnit, addBunk, removeBunk]
   )
+
+  // The popover "Clear" wipes the filter — it must also reset the gender tab
+  // back to 'All', otherwise a previously-selected gender tab keeps its active
+  // highlight while the filter is actually empty (stale UI state, Finding 6).
+  const handleClearFilter = useCallback(() => {
+    setActiveGenderTab('All')
+    clearFilter()
+  }, [clearFilter])
 
   // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
   // same unscoped path as before. When filter is active, server returns a
@@ -760,7 +771,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                         onAddBunk={(b) => handleManualFilterChange('addBunk', b)}
                         onRemoveBunk={(b) => handleManualFilterChange('removeBunk', b)}
                         onSetEdgeMode={setEdgeMode}
-                        onClear={clearFilter}
+                        onClear={handleClearFilter}
                       />
                     </div>
                   }

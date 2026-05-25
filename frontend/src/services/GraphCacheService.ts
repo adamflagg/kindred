@@ -14,11 +14,13 @@ interface CacheMetrics {
   entryCount: number
 }
 
+type CrossScopeSlug = 'plain' | 'cross'
+
 type GraphCacheKey =
   | `session-${number}-${number}-prod`
   | `session-${number}-${number}-scenario-${string}`
-  | `bunk-${number}-${number}-${number}-prod`
-  | `bunk-${number}-${number}-${number}-scenario-${string}`
+  | `bunk-${number}-${number}-${number}-prod-${CrossScopeSlug}`
+  | `bunk-${number}-${number}-${number}-scenario-${string}-${CrossScopeSlug}`
 
 /**
  * Service for caching social graph data with automatic expiration and memory management
@@ -78,15 +80,23 @@ export class GraphCacheService {
    * never collides with the production (CampMinder) bunk graph for the same
    * bunk+session+year. When `scenarioId` is null/undefined the prod slot is
    * used.
+   *
+   * `showCrossScopeEdges` is also part of the key: the cross-scope response
+   * carries extra ghost nodes/edges that the plain response lacks, so the two
+   * must occupy distinct cache slots. Omitting it from the key collided the
+   * open-then-toggle path — the React Query key flipped but this inner LRU hit
+   * the stale plain entry and cross-scope edges never rendered (#1606/#1610).
    */
   async getBunkGraph(
     bunkCmId: number,
     sessionCmId: number,
     fetcher: () => Promise<GraphData>,
     year: number,
-    scenarioId?: string | null
+    scenarioId?: string | null,
+    showCrossScopeEdges = false
   ): Promise<GraphData> {
-    const key: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}`
+    const crossSlug: CrossScopeSlug = showCrossScopeEdges ? 'cross' : 'plain'
+    const key: GraphCacheKey = `bunk-${bunkCmId}-${sessionCmId}-${year}-${this.scenarioSlug(scenarioId)}-${crossSlug}`
     return this.getOrFetch(key, fetcher)
   }
 
@@ -96,16 +106,16 @@ export class GraphCacheService {
   invalidate(sessionCmId: number): void {
     // Remove all session and bunk graphs for this session.
     // Session entries: `session-{id}-{year}-prod` or `session-{id}-{year}-scenario-{id}`.
-    // Bunk entries: `bunk-{bunkId}-{sessionCmId}-{year}-{slug}`.
+    // Bunk entries: `bunk-{bunkId}-{sessionCmId}-{year}-{slug}-{crossSlug}`.
     const sessionPrefix = `session-${sessionCmId}-`
 
     for (const key of this.cache.keys()) {
       if (key.startsWith(sessionPrefix)) {
         this.removeEntry(key)
       } else if (key.startsWith('bunk-')) {
-        // bunk-{bunkId}-{sessionCmId}-{year}-{slug}: match sessionCmId by position
+        // bunk-{bunkId}-{sessionCmId}-{year}-{slug}-{crossSlug}: match sessionCmId by position
         const segments = key.split('-')
-        // segments = ['bunk', bunkId, sessionCmId, year, ...slug]
+        // segments = ['bunk', bunkId, sessionCmId, year, ...slug, crossSlug]
         if (segments.length >= 5 && segments[2] === String(sessionCmId)) {
           this.removeEntry(key)
         }

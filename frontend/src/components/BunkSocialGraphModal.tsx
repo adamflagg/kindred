@@ -23,10 +23,10 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
-import { getSessionShorthand } from '../utils/sessionDisplay'
 import {
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
+  buildBunkGraphElements,
   getBunkCytoscapeStyles,
   getBunkGradeColors,
 } from './bunkGraphStyles'
@@ -178,10 +178,12 @@ export default function BunkSocialGraphModal({
   const [showLegend, setShowLegend] = useState<boolean>(false)
   const [showCrossScopeEdges, setShowCrossScopeEdges] = useState<boolean>(false)
 
-  // Fetch bunk graph data. The query key and in-memory graph cache both
-  // include scenarioId so scenario-sourced and production graphs never collide.
-  // showCrossScopeEdges is keyed separately so toggling the checkbox triggers a
-  // fresh fetch (cross-scope data is not present in the cached non-cross response).
+  // Fetch bunk graph data. The query key and the in-memory graph cache both
+  // include scenarioId AND showCrossScopeEdges so scenario-sourced graphs and
+  // cross-scope graphs never collide with their plain/production counterparts.
+  // The cross-scope flag must reach getBunkGraph's cache key — keying it only on
+  // the React Query side let this inner LRU serve the stale plain graph on the
+  // open-then-toggle path, so cross-scope edges never rendered (#1606/#1610).
   const { data: graphData, isLoading } = useQuery<BunkGraphData>({
     queryKey: [
       ...queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
@@ -202,7 +204,8 @@ export default function BunkSocialGraphModal({
           )
         },
         year,
-        scenarioId
+        scenarioId,
+        showCrossScopeEdges
       )
       return data as unknown as BunkGraphData
     },
@@ -319,127 +322,13 @@ export default function BunkSocialGraphModal({
 
     cyRef.current = cy
 
-    // Build Cytoscape element definitions. Sibling edges are filtered at the
-    // API response boundary (#1094) and will never appear here.
-    const elements: cytoscape.ElementDefinition[] = []
-    const nodeDegrees: Record<string, number> = {}
-
-    // Calculate node degrees first
-    graphData.edges.forEach((edge) => {
-      const sourceId = `node-${edge.source}`
-      const targetId = `node-${edge.target}`
-      nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
-      nodeDegrees[targetId] = (nodeDegrees[targetId] ?? 0) + 1
-    })
-
-    // Light → mid → dark grade ramp (younger to older). Logic lives in
-    // bunkGraphStyles so the mapping is unit-tested.
-    const grades = [
-      ...new Set(graphData.nodes.map((n) => n.grade).filter((g) => g !== null)),
-    ] as number[]
-    const gradeColors = getBunkGradeColors(grades)
-
-    // Add nodes with vertical randomization
-    graphData.nodes.forEach((node, index) => {
-      const nodeId = `node-${node.id}`
-      const degree = nodeDegrees[nodeId] ?? 0
-
-      // Add significant vertical randomization to reduce text overlap
-      const verticalOffset = (Math.random() - 0.5) * 300 // -150 to +150 range
-
-      const nodeClasses = []
-      if (degree === 0) nodeClasses.push('isolated')
-      if (node.first_year) nodeClasses.push('first-year')
-
-      elements.push({
-        group: 'nodes',
-        data: {
-          ...node,
-          id: nodeId, // Override node.id with string version
-          // Display full name with grade and historical info. The first-year
-          // marker is rendered as a centered badge inside the node (see the
-          // 'node.first-year' style) — appending "①" to the label was pushing
-          // longer names onto a third line.
-          label: `${node.name} (${formatGradeOrdinal(node.grade)})${
-            node.last_year_bunk && node.last_year_session
-              ? `\n${getSessionShorthand(node.last_year_session)}: ${node.last_year_bunk}`
-              : ''
-          }`,
-          fullName: node.name,
-          degree: degree,
-          gradeColor: node.grade ? gradeColors[node.grade] : '#666666',
-          firstYear: node.first_year ?? false,
-        },
-        position: { x: index * 100, y: verticalOffset }, // Even horizontal spacing, random vertical
-        classes: nodeClasses.join(' '),
-      })
-    })
-
-    // Backend already collapses mutual same-type pairs into a single edge
-    // tagged reciprocal=true; the edge[?reciprocal] cytoscape selector picks
-    // those up for the bold solid double-headed render (#1309).
-    let edgeIndex = 0
-    graphData.edges.forEach((edge) => {
-      elements.push({
-        group: 'edges',
-        data: {
-          ...edge,
-          id: `edge-${edgeIndex++}`,
-          source: `node-${edge.source}`,
-          target: `node-${edge.target}`,
-          edge_type: edge.edge_type,
-        },
-      })
-    })
-
-    // Cross-scope ghost elements (#1606, #1610). Reuses the same `cross_scope: true`
-    // data attribute approach as the session graph (cytoscapeStyles.ts) so the
-    // `edge[?cross_scope]` and `node[?cross_scope]` selectors in
-    // getBunkCytoscapeStyles() ghost them consistently.
-    if (showCrossScopeEdges && graphData.cross_scope_nodes && graphData.cross_scope_edges) {
-      // Ghost nodes — out-of-scope campers on the far end of cross-scope edges.
-      // Rendered at reduced opacity but still clickable so users can open the
-      // detail panel for potential connections.
-      graphData.cross_scope_nodes.forEach((node) => {
-        const nodeId = `node-${node.id}`
-        // Skip if the ghost node is already present (defensive — shouldn't happen
-        // since a bunk's campers are strictly in-scope).
-        if (cy.getElementById(nodeId).length > 0) return
-
-        elements.push({
-          group: 'nodes',
-          data: {
-            id: nodeId,
-            label: `${node.name} (${formatGradeOrdinal(node.grade)})`,
-            fullName: node.name,
-            degree: 0,
-            gradeColor: '#666666',
-            firstYear: false,
-            cross_scope: true,
-          },
-          position: { x: Math.random() * 400, y: Math.random() * 300 },
-          classes: '',
-        })
-      })
-
-      // Cross-scope edges — one endpoint in-bunk, one out-of-bunk. Tagged
-      // cross_scope: true so the ghost style applies.
-      graphData.cross_scope_edges.forEach((edge) => {
-        elements.push({
-          group: 'edges',
-          data: {
-            id: `cross-edge-${edgeIndex++}`,
-            source: `node-${edge.source}`,
-            target: `node-${edge.target}`,
-            edge_type: edge.edge_type,
-            request_type: edge.request_type,
-            confidence: edge.confidence,
-            reciprocal: edge.reciprocal,
-            cross_scope: true,
-          },
-        })
-      })
-    }
+    // Build Cytoscape element definitions via the shared, unit-tested helper.
+    // Sibling edges are filtered at the API response boundary (#1094) and will
+    // never appear here. Cross-scope ghost nodes/edges (#1606, #1610) are
+    // appended by the helper when the toggle is on and the response carries
+    // cross_scope_nodes/edges — extracting this out of the effect keeps the
+    // shipped element-building logic covered by tests (Finding 5 follow-up).
+    const elements = buildBunkGraphElements(graphData, showCrossScopeEdges)
 
     cy.add(elements)
 

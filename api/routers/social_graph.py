@@ -595,7 +595,12 @@ async def get_bunk_social_graph(
                 # in normal usage the session graph is already cached when a user
                 # navigates from the session view to the bunk modal.
                 builder_full = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
-                session_graph = builder_full.build_social_network(year, session_cm_id, scenario_id=scenario_id)
+                # Offload the synchronous build to a worker thread so it doesn't
+                # block the event loop — matches every other build/IO call in
+                # this router (e.g. the bunks/persons fetches above).
+                session_graph = await asyncio.to_thread(
+                    builder_full.build_social_network, year, session_cm_id, scenario_id=scenario_id
+                )
                 graph_cache.cache_session_graph(session_cm_id, year, session_graph, scenario_id=scenario_id)
 
             if session_graph is not None:
