@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
@@ -38,6 +38,7 @@ import {
   type FilterState,
 } from './graph/graphFilter'
 import {
+  filterBunksByGender,
   scopeToTab,
   tabToScope,
   type GenderTab,
@@ -187,6 +188,36 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       edgeMode: filter.edgeMode,
     }),
     [degraded, resolved, filter.edgeMode]
+  )
+
+  const genderActive = gender !== 'all'
+
+  // Cabins shown in the Cabins popover: the gender's cabins in gender mode, the
+  // full roster otherwise. (allBunks keeps the original BunkSummary[] shape.)
+  const popoverBunks: BunkSummary[] = useMemo(() => {
+    if (!genderActive) return allBunks
+    const derived = new Set(filterBunksByGender(allBunksWithGender, scopeToTab(gender)))
+    return allBunks.filter((b) => derived.has(b.name.toLowerCase()))
+  }, [genderActive, allBunks, allBunksWithGender, gender])
+
+  // Unchecking a cabin in gender mode drops it (ephemeral); re-checking restores
+  // it. In manual mode the picker writes the URL bunk list directly.
+  const handleDropOrAddBunk = useCallback(
+    (code: string, drop: boolean) => {
+      if (genderActive) {
+        setDropped((prev) => {
+          const next = new Set(prev)
+          if (drop) next.add(code)
+          else next.delete(code)
+          return next
+        })
+      } else if (drop) {
+        removeBunk(code)
+      } else {
+        addBunk(code)
+      }
+    },
+    [genderActive, removeBunk, addBunk]
   )
 
   const {
@@ -795,7 +826,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                     <div className="relative">
                       <GraphFilterButton
                         ref={filterButtonRef}
-                        count={filter.units.length + filter.bunks.length}
+                        count={resolved.bunks.length + resolved.units.length}
                         open={filterOpen}
                         onToggle={() => setFilterOpen((v) => !v)}
                       />
@@ -803,16 +834,20 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                         open={filterOpen}
                         onClose={() => setFilterOpen(false)}
                         triggerRef={filterButtonRef}
-                        selectedUnits={filter.units}
-                        selectedBunks={filter.bunks}
-                        allBunks={allBunks}
+                        selectedUnits={genderActive ? [] : filter.units}
+                        selectedBunks={resolved.bunks}
+                        allBunks={popoverBunks}
                         edgeMode={filter.edgeMode}
+                        disableUnitSelect={genderActive}
                         onAddUnit={addUnit}
                         onRemoveUnit={removeUnit}
-                        onAddBunk={addBunk}
-                        onRemoveBunk={removeBunk}
+                        onAddBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), false)}
+                        onRemoveBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), true)}
                         onSetEdgeMode={setEdgeMode}
-                        onClear={clearFilter}
+                        onClear={() => {
+                          setDropped(new Set())
+                          clearFilter()
+                        }}
                       />
                     </div>
                   }
@@ -856,8 +891,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
               )}
 
               <GraphFilterStatus
-                unitCount={filter.units.length}
-                bunkCount={filter.bunks.length}
+                unitCount={resolved.units.length}
+                bunkCount={resolved.bunks.length}
                 onClick={() => setFilterOpen(true)}
               />
 

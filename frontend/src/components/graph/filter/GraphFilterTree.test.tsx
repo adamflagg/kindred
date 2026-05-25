@@ -189,6 +189,59 @@ describe('GraphFilterTree', () => {
     })
   })
 
+  describe('disableUnitSelect (gender mode)', () => {
+    const GIRL_BUNKS: BunkSummary[] = [
+      { cmId: 3, name: 'G-3' },
+      { cmId: 4, name: 'G-4' },
+    ]
+
+    function genderProps(overrides = {}) {
+      return {
+        selectedUnits: [] as string[],
+        selectedBunks: ['g-3', 'g-4'],
+        allBunks: GIRL_BUNKS,
+        edgeMode: 'strict' as const,
+        onAddUnit: vi.fn(),
+        onRemoveUnit: vi.fn(),
+        onAddBunk: vi.fn(),
+        onRemoveBunk: vi.fn(),
+        onSetEdgeMode: vi.fn(),
+        onClear: vi.fn(),
+        ...overrides,
+      }
+    }
+
+    it('does not render a unit-select checkbox when disableUnitSelect is true', () => {
+      render(<GraphFilterTree {...genderProps({ disableUnitSelect: true })} />)
+      // Unit rows should have no "Select <unit>" checkboxes — only the
+      // cross-scope edges checkbox and bunk-level checkboxes (if expanded).
+      // Unit select checkboxes have aria-label "Select Galil" (not "Select G-3").
+      expect(screen.queryByRole('checkbox', { name: /^select galil/i })).toBeNull()
+    })
+
+    it('renders selected-bunk chips with remove buttons and fires onRemoveBunk with the code', async () => {
+      const onRemoveBunk = vi.fn()
+      render(<GraphFilterTree {...genderProps({ disableUnitSelect: true, onRemoveBunk })} />)
+      // Chip rail is always visible when selectedBunks is non-empty.
+      // display = bunk.name = 'G-3'; aria-label = 'Remove G-3'
+      const removeBtn = screen.getByRole('button', { name: /remove g-3/i })
+      fireEvent.click(removeBtn)
+      expect(onRemoveBunk).toHaveBeenCalledWith('g-3')
+    })
+
+    it('still renders unit-select checkboxes in normal (manual) mode', () => {
+      render(<GraphFilterTree {...genderProps({ disableUnitSelect: false })} />)
+      // In manual mode the "Select Galil" checkbox must appear (G-3/G-4 → Galil)
+      expect(screen.getByRole('checkbox', { name: /^select galil/i })).toBeInTheDocument()
+    })
+
+    it('shows bunk chip for each selected bunk in gender mode', () => {
+      render(<GraphFilterTree {...genderProps({ disableUnitSelect: true })} />)
+      expect(screen.getByRole('button', { name: /remove g-3/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /remove g-4/i })).toBeInTheDocument()
+    })
+  })
+
   describe('footer', () => {
     it('shows Clear filter link when filter is active', () => {
       const props = { ...defaultProps(), selectedUnits: ['Galil'] }

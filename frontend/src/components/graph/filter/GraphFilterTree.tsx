@@ -31,6 +31,10 @@ export interface GraphFilterTreeProps {
   onRemoveBunk: (code: string) => void
   onSetEdgeMode: (mode: FilterEdgeMode) => void
   onClear: () => void
+  /** When true (gender mode), unit rows become non-selectable headers — no
+   *  unit checkbox or selection pill is rendered. Only bunk-level and chip-rail
+   *  interactions remain active. */
+  disableUnitSelect?: boolean
 }
 
 interface UnitGroup {
@@ -69,6 +73,7 @@ export default function GraphFilterTree({
   onRemoveBunk,
   onSetEdgeMode,
   onClear,
+  disableUnitSelect = false,
 }: GraphFilterTreeProps) {
   const groups = useMemo(() => groupBunksByUnit(allBunks), [allBunks])
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -211,25 +216,31 @@ export default function GraphFilterTree({
                     className={clsx('h-3 w-3 transition-transform', isExpanded && 'rotate-90')}
                   />
                 </button>
-                <label className="-mx-1 -my-0.5 flex flex-1 cursor-pointer items-center gap-2 rounded px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${group.name}`}
-                    checked={isUnitSelected}
-                    onChange={() => onUnitToggle(group.name)}
-                    className="text-primary focus:ring-ring h-4 w-4 rounded"
-                  />
-                  <span className="text-foreground flex-1 font-medium">{group.name}</span>
-                  {isUnitSelected ? (
-                    <span className="bg-primary/20 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
-                      Selected
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground text-xs font-normal">
-                      {group.bunks.length} {group.bunks.length === 1 ? 'bunk' : 'bunks'}
-                    </span>
-                  )}
-                </label>
+                {disableUnitSelect ? (
+                  <span className="flex flex-1 items-center px-1.5 py-0.5">
+                    <span className="text-foreground flex-1 font-medium">{group.name}</span>
+                  </span>
+                ) : (
+                  <label className="-mx-1 -my-0.5 flex flex-1 cursor-pointer items-center gap-2 rounded px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${group.name}`}
+                      checked={isUnitSelected}
+                      onChange={() => onUnitToggle(group.name)}
+                      className="text-primary focus:ring-ring h-4 w-4 rounded"
+                    />
+                    <span className="text-foreground flex-1 font-medium">{group.name}</span>
+                    {isUnitSelected ? (
+                      <span className="bg-primary/20 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
+                        Selected
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {group.bunks.length} {group.bunks.length === 1 ? 'bunk' : 'bunks'}
+                      </span>
+                    )}
+                  </label>
+                )}
               </div>
               {isExpanded && (
                 <ul className="ml-9">
