@@ -18,6 +18,9 @@ import {
   useBunkRequestsCount,
 } from '../hooks/session'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
+import SolverDiagnosticsModal from './SolverDiagnosticsModal'
+import type { SolverDiagnostics } from '../services/solver'
+import { resolveYields, hasReviewableDiagnostics } from '../utils/solverDiagnostics'
 import { isValidTab, type ValidTab, sessionNameToUrl } from '../utils/sessionUtils'
 import BunkingBoardByArea from './BunkingBoardByArea'
 import RequestReviewPanel from './RequestReviewPanel'
@@ -88,6 +91,10 @@ export default function SessionView() {
   // `constraint.cabin_capacity.standard` from the config table.
   const defaultBunkCapacity = DEFAULT_BUNK_CAPACITY
 
+  // #1638 — diagnostics modal state
+  const [diagnostics, setDiagnostics] = useState<SolverDiagnostics | null>(null)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
+
   // Solver progress modal
   const solverProgress = useSolverProgress()
 
@@ -120,6 +127,31 @@ export default function SessionView() {
     respectLocks,
   })
 
+  // Data fetching hooks — campers must be available before handleRunSolver
+  // so camperNameById (which depends on campers) can be used in the callback.
+  const { data: bunks = [] } = useSessionBunks({
+    selectedSession,
+    sessionCmId: session?.cm_id,
+    agSessions,
+    currentYear,
+  })
+
+  const { data: campers = [] } = useSessionCampers({
+    selectedSession,
+    agSessions,
+    currentYear,
+    scenarioId: currentScenario?.id,
+  })
+
+  // #1638 — name map for resolving staff-NBW yield cm_ids to display names.
+  const camperNameById = useMemo(
+    () =>
+      new Map<number, string>(
+        campers.map((c) => [c.person_cm_id, `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()])
+      ),
+    [campers]
+  )
+
   // Wrapped handleRunSolver that coordinates with progress modal
   // respectLocks is already wired through useSolverOperations state, so
   // we accept (but don't use) it from the button to satisfy the type signature
@@ -141,13 +173,24 @@ export default function SessionView() {
           assignments_changed: result.stats?.assignments_changed,
           new_assignments: result.stats?.new_assignments,
           request_validation: result.stats?.request_validation,
+          // #1638 — resolve staff-separation yields to names for the advisory.
+          staff_separation_yields: resolveYields(
+            result.stats?.request_validation?.staff_nbw_yielded,
+            camperNameById
+          ),
         })
+      } else if (hasReviewableDiagnostics(result.diagnostics)) {
+        // #1638 — persistent review surface replaces the transient red box.
+        solverProgress.close()
+        setDiagnostics(result.diagnostics ?? null)
+        setShowDiagnostics(true)
       } else {
-        // Show error in modal
+        // Generic failure (no diagnostics, e.g. transport/PB error) — keep the
+        // existing inline error box.
         solverProgress.fail(result.errorMessage ?? 'Optimization failed')
       }
     },
-    [solverProgress, runSolverInternal, currentScenario?.name]
+    [solverProgress, runSolverInternal, currentScenario?.name, camperNameById]
   )
 
   // Reset selected area if All-Gender is selected but no longer available (render-time check)
@@ -168,21 +211,6 @@ export default function SessionView() {
       setLockGroupSessionPbId(session.id)
     }
   }, [session?.id, setLockGroupSessionPbId])
-
-  // Data fetching hooks (extracted from SessionView)
-  const { data: bunks = [] } = useSessionBunks({
-    selectedSession,
-    sessionCmId: session?.cm_id,
-    agSessions,
-    currentYear,
-  })
-
-  const { data: campers = [] } = useSessionCampers({
-    selectedSession,
-    agSessions,
-    currentYear,
-    scenarioId: currentScenario?.id,
-  })
 
   // #1310 — feed in-session campers into RequestReviewPanel as the seed for
   // its personMap. The panel only needs cm_id + first/last name + grade for
@@ -441,6 +469,17 @@ export default function SessionView() {
 
       {/* Solver Progress Modal */}
       <SolverProgressModal state={solverProgress.state} onClose={solverProgress.close} />
+
+      {/* #1638 — Solver Diagnostics Modal (infeasibility review) */}
+      {diagnostics && (
+        <SolverDiagnosticsModal
+          isOpen={showDiagnostics}
+          onClose={() => setShowDiagnostics(false)}
+          diagnostics={diagnostics}
+          sessionCmId={session?.cm_id ?? null}
+          year={currentYear}
+        />
+      )}
     </div>
   )
 }
