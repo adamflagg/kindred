@@ -12,7 +12,10 @@ import { describe, it, expect } from 'vitest'
 import {
   filterBunksByGender,
   hasAGBunks,
+  scopeToTab,
+  tabToScope,
   type GenderTab,
+  type GenderScope,
   type BunkSummaryWithGender,
 } from './genderFilter'
 
@@ -107,5 +110,26 @@ describe('GenderTab type', () => {
   it('accepts the four valid tab values', () => {
     const tabs: GenderTab[] = ['All', 'Boys', 'Girls', 'AG']
     expect(tabs).toHaveLength(4)
+  })
+})
+
+describe('scopeToTab / tabToScope', () => {
+  it('maps every scope to its display tab', () => {
+    expect(scopeToTab('all')).toBe('All')
+    expect(scopeToTab('boys')).toBe('Boys')
+    expect(scopeToTab('girls')).toBe('Girls')
+    expect(scopeToTab('ag')).toBe('AG')
+  })
+
+  it('maps every tab back to its url scope', () => {
+    expect(tabToScope('All')).toBe('all')
+    expect(tabToScope('Boys')).toBe('boys')
+    expect(tabToScope('Girls')).toBe('girls')
+    expect(tabToScope('AG')).toBe('ag')
+  })
+
+  it('round-trips scope → tab → scope', () => {
+    const scopes: GenderScope[] = ['all', 'boys', 'girls', 'ag']
+    for (const s of scopes) expect(tabToScope(scopeToTab(s))).toBe(s)
   })
 })

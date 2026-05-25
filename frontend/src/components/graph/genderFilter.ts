@@ -48,3 +48,34 @@ export function filterBunksByGender(bunks: BunkSummaryWithGender[], tab: GenderT
 export function hasAGBunks(bunks: BunkSummaryWithGender[]): boolean {
   return bunks.some((b) => getBunkType(b.name) === 'AG')
 }
+
+/** URL-facing gender scope value (lowercase). 'all' is the default/absent state. */
+export type GenderScope = 'all' | 'boys' | 'girls' | 'ag'
+
+/** Map a URL scope to its display tab label. */
+export function scopeToTab(scope: GenderScope): GenderTab {
+  switch (scope) {
+    case 'all':
+      return 'All'
+    case 'boys':
+      return 'Boys'
+    case 'girls':
+      return 'Girls'
+    case 'ag':
+      return 'AG'
+  }
+}
+
+/** Map a display tab label to its URL scope. */
+export function tabToScope(tab: GenderTab): GenderScope {
+  switch (tab) {
+    case 'All':
+      return 'all'
+    case 'Boys':
+      return 'boys'
+    case 'Girls':
+      return 'girls'
+    case 'AG':
+      return 'ag'
+  }
+}
