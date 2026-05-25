@@ -8,6 +8,7 @@ import {
   type FilterEdgeMode,
   type BunkSummary,
 } from '../components/graph/graphFilter'
+import type { GenderScope } from '../components/graph/genderFilter'
 
 export interface UseGraphFilterResult {
   filter: FilterState
@@ -19,6 +20,8 @@ export interface UseGraphFilterResult {
   /** Replace the entire bunk selection atomically (used by gender/AG tab selector). */
   setBunks: (bunkCodes: string[]) => void
   setEdgeMode: (mode: FilterEdgeMode) => void
+  /** Set the active gender scope. Non-'all' clears manual unit/bunk selection. */
+  setGender: (scope: GenderScope) => void
   clear: () => void
 }
 
@@ -31,7 +34,7 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
   const writeFilter = useCallback(
     (next: FilterState) => {
       const normalized = normalizeFilter({ units: next.units, bunks: next.bunks }, allBunks)
-      const final: FilterState = { ...normalized, edgeMode: next.edgeMode }
+      const final: FilterState = { ...normalized, gender: next.gender, edgeMode: next.edgeMode }
       setSearchParams((prev) => serializeFilterToSearchParams(final, prev), { replace: false })
     },
     [allBunks, setSearchParams]
@@ -80,10 +83,19 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
       writeFilter({
         ...filter,
         units: [],
+        gender: 'all',
         bunks: bunkCodes.map((c) => c.toLowerCase()),
       })
     },
     [filter, writeFilter]
+  )
+
+  const setGender = useCallback(
+    (scope: GenderScope) => {
+      // Gender scope is exclusive of manual unit/bunk selection.
+      writeFilter({ units: [], bunks: [], gender: scope, edgeMode: filter.edgeMode })
+    },
+    [filter.edgeMode, writeFilter]
   )
 
   const setEdgeMode = useCallback(
@@ -95,7 +107,11 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
 
   const clear = useCallback(() => {
     setSearchParams(
-      (prev) => serializeFilterToSearchParams({ units: [], bunks: [], edgeMode: 'strict' }, prev),
+      (prev) =>
+        serializeFilterToSearchParams(
+          { units: [], bunks: [], gender: 'all', edgeMode: 'strict' },
+          prev
+        ),
       { replace: false }
     )
   }, [setSearchParams])
@@ -109,6 +125,7 @@ export function useGraphFilter(allBunks: BunkSummary[]): UseGraphFilterResult {
     removeBunk,
     setBunks,
     setEdgeMode,
+    setGender,
     clear,
   }
 }

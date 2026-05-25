@@ -154,4 +154,47 @@ describe('useGraphFilter', () => {
     expect(lastSearch).toContain('edges=cross')
     expect(result.current.filter.edgeMode).toBe('cross-scope')
   })
+
+  it('parses gender from the URL', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls'),
+    })
+    expect(result.current.filter.gender).toBe('girls')
+  })
+
+  it('setGender writes gender and clears manual units/bunks', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?units=galil&bunks=b-9'),
+    })
+    act(() => result.current.setGender('boys'))
+    expect(lastSearch).toContain('gender=boys')
+    expect(lastSearch).not.toContain('units=')
+    expect(lastSearch).not.toContain('bunks=')
+  })
+
+  it('setGender("all") removes the gender param', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=ag'),
+    })
+    act(() => result.current.setGender('all'))
+    expect(lastSearch).not.toContain('gender=')
+  })
+
+  it('setBunks forces gender back to all (manual mode)', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls'),
+    })
+    act(() => result.current.setBunks(['b-9']))
+    expect(lastSearch).not.toContain('gender=')
+    expect(lastSearch).toContain('bunks=b-9')
+  })
+
+  it('setEdgeMode preserves an active gender', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls'),
+    })
+    act(() => result.current.setEdgeMode('cross-scope'))
+    expect(lastSearch).toContain('gender=girls')
+    expect(lastSearch).toContain('edges=cross')
+  })
 })
