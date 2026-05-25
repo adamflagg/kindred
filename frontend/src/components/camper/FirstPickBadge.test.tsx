@@ -9,10 +9,10 @@ describe('FirstPickBadge', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('renders a "1" badge with the First pick accessible label when true', () => {
+  it('renders an "important" emoji badge with the First pick accessible label when true', () => {
     render(<FirstPickBadge isFirstRequested={true} />)
     const badge = screen.getByLabelText('First pick')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveTextContent('1')
+    expect(badge).toHaveTextContent('❗')
   })
 })
