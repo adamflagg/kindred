@@ -23,12 +23,10 @@ function defaultProps() {
     selectedUnits: [] as string[],
     selectedBunks: [] as string[],
     allBunks: ALL_BUNKS,
-    edgeMode: 'strict' as const,
     onAddUnit: vi.fn(),
     onRemoveUnit: vi.fn(),
     onAddBunk: vi.fn(),
     onRemoveBunk: vi.fn(),
-    onSetEdgeMode: vi.fn(),
     onClear: vi.fn(),
   }
 }
@@ -200,12 +198,10 @@ describe('GraphFilterTree', () => {
         selectedUnits: [] as string[],
         selectedBunks: ['g-3', 'g-4'],
         allBunks: GIRL_BUNKS,
-        edgeMode: 'strict' as const,
         onAddUnit: vi.fn(),
         onRemoveUnit: vi.fn(),
         onAddBunk: vi.fn(),
         onRemoveBunk: vi.fn(),
-        onSetEdgeMode: vi.fn(),
         onClear: vi.fn(),
         ...overrides,
       }
@@ -213,8 +209,8 @@ describe('GraphFilterTree', () => {
 
     it('does not render a unit-select checkbox when disableUnitSelect is true', () => {
       render(<GraphFilterTree {...genderProps({ disableUnitSelect: true })} />)
-      // Unit rows should have no "Select <unit>" checkboxes — only the
-      // cross-scope edges checkbox and bunk-level checkboxes (if expanded).
+      // Unit rows should have no "Select <unit>" checkboxes — only bunk-level
+      // checkboxes (if expanded).
       // Unit select checkboxes have aria-label "Select Galil" (not "Select G-3").
       expect(screen.queryByRole('checkbox', { name: /^select galil/i })).toBeNull()
     })
@@ -259,21 +255,6 @@ describe('GraphFilterTree', () => {
       render(<GraphFilterTree {...props} />)
       fireEvent.click(screen.getByRole('button', { name: /clear filter/i }))
       expect(props.onClear).toHaveBeenCalled()
-    })
-
-    it('cross-scope toggle reflects edgeMode', () => {
-      const props = { ...defaultProps(), edgeMode: 'cross-scope' as const }
-      render(<GraphFilterTree {...props} />)
-      const toggle = screen.getByRole('checkbox', { name: /show cross-scope edges/i })
-      expect(toggle).toBeChecked()
-    })
-
-    it('clicking cross-scope toggle calls onSetEdgeMode', () => {
-      const props = defaultProps()
-      render(<GraphFilterTree {...props} />)
-      const toggle = screen.getByRole('checkbox', { name: /show cross-scope edges/i })
-      fireEvent.click(toggle)
-      expect(props.onSetEdgeMode).toHaveBeenCalledWith('cross-scope')
     })
   })
 })

@@ -18,18 +18,16 @@ import { useMemo, useState } from 'react'
 import { ChevronRight, X } from 'lucide-react'
 import clsx from 'clsx'
 import { UNIT_NAMES, getUnitForBunk } from '../../../utils/unitMapping'
-import { bunkToCode, type BunkSummary, type FilterEdgeMode } from '../graphFilter'
+import { bunkToCode, type BunkSummary } from '../graphFilter'
 
 export interface GraphFilterTreeProps {
   selectedUnits: string[]
   selectedBunks: string[]
   allBunks: BunkSummary[]
-  edgeMode: FilterEdgeMode
   onAddUnit: (unit: string) => void
   onRemoveUnit: (unit: string) => void
   onAddBunk: (code: string) => void
   onRemoveBunk: (code: string) => void
-  onSetEdgeMode: (mode: FilterEdgeMode) => void
   onClear: () => void
   /** When true (gender mode), unit rows become non-selectable headers — no
    *  unit checkbox or selection pill is rendered. Only bunk-level and chip-rail
@@ -66,12 +64,10 @@ export default function GraphFilterTree({
   selectedUnits,
   selectedBunks,
   allBunks,
-  edgeMode,
   onAddUnit,
   onRemoveUnit,
   onAddBunk,
   onRemoveBunk,
-  onSetEdgeMode,
   onClear,
   disableUnitSelect = false,
 }: GraphFilterTreeProps) {
@@ -316,18 +312,8 @@ export default function GraphFilterTree({
       </ul>
 
       {/* Footer */}
-      <div className="border-border flex items-center justify-between border-t p-3">
-        <label className="text-foreground flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            aria-label="Show cross-scope edges"
-            checked={edgeMode === 'cross-scope'}
-            onChange={(e) => onSetEdgeMode(e.target.checked ? 'cross-scope' : 'strict')}
-            className="rounded"
-          />
-          Show cross-scope edges
-        </label>
-        {isFilterActive && (
+      {isFilterActive && (
+        <div className="border-border flex items-center justify-end border-t p-3">
           <button
             type="button"
             onClick={onClear}
@@ -336,8 +322,8 @@ export default function GraphFilterTree({
             <X className="h-3 w-3" />
             Clear filter
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

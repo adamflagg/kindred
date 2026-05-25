@@ -32,18 +32,14 @@ import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
 import { useGraphFilter } from '../hooks/useGraphFilter'
 import { useScopedGraphData } from '../hooks/useScopedGraphData'
 import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
+import GenderTabBar from './graph/GenderTabBar'
+import GraphDisplayMenu from './graph/GraphDisplayMenu'
 import {
   parseFilterFromSearchParams,
   type BunkSummary,
   type FilterState,
 } from './graph/graphFilter'
-import {
-  filterBunksByGender,
-  scopeToTab,
-  tabToScope,
-  type GenderTab,
-  type BunkSummaryWithGender,
-} from './graph/genderFilter'
+import { filterBunksByGender, scopeToTab, type BunkSummaryWithGender } from './graph/genderFilter'
 import { useSearchParams } from 'react-router'
 import { useLinkedAgSession } from '../hooks/useLinkedAgSession'
 import { resolveEffectiveScope, shouldDegrade, genderBannerText } from './graph/graphScope'
@@ -753,105 +749,69 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   </span>
                 </h3>
 
-                {/* Bunks / Units toggles — inline in header top row */}
-                <div
-                  role="group"
-                  aria-label="Show / Hide"
-                  className="flex shrink-0 items-center justify-center gap-3 text-sm"
-                >
-                  <span className="text-muted-foreground font-bold">Show / Hide</span>
-                  <label className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={showBubbles}
-                      onChange={(e) => setShowBubbles(e.target.checked)}
-                      className="rounded"
+                {/* Right control cluster: gender + display + canvas controls */}
+                <div className="flex flex-1 items-center justify-end gap-2">
+                  {allBunksWithGender.length > 0 && (
+                    <GenderTabBar
+                      gender={gender}
+                      agAvailable={agAvailable}
+                      onSelect={(scope) => {
+                        setDropped(new Set())
+                        setGender(scope)
+                      }}
                     />
-                    <span className="text-muted-foreground">Bunks</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={showUnits}
-                      onChange={(e) => setShowUnits(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span className="text-muted-foreground">Units</span>
-                  </label>
-                </div>
+                  )}
 
-                {/* Gender / AG tab selector — desktop only (mobile support removed project-wide) */}
-                {allBunksWithGender.length > 0 && (
-                  <div
-                    role="group"
-                    aria-label="Filter by gender"
-                    className="hidden shrink-0 items-center gap-0.5 xl:flex"
-                  >
-                    {(['All', 'Boys', 'Girls'] as GenderTab[])
-                      .concat(agAvailable ? ['AG'] : [])
-                      .map((tab) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => {
+                  <GraphDisplayMenu
+                    showBubbles={showBubbles}
+                    onToggleBubbles={setShowBubbles}
+                    showUnits={showUnits}
+                    onToggleUnits={setShowUnits}
+                    crossScope={filter.edgeMode === 'cross-scope'}
+                    onToggleCrossScope={(next) => setEdgeMode(next ? 'cross-scope' : 'strict')}
+                  />
+
+                  <GraphControls
+                    showLabels={showLabels}
+                    onToggleLabels={toggleLabels}
+                    showHelp={showHelp}
+                    onToggleHelp={() => setShowHelp(!showHelp)}
+                    isExpanded={isExpanded}
+                    onToggleExpand={handleExpandToggle}
+                    onZoomIn={handleZoomIn}
+                    onZoomOut={handleZoomOut}
+                    onFit={handleFit}
+                    onDownload={handleDownload}
+                    filterButton={
+                      <div className="relative">
+                        <GraphFilterButton
+                          ref={filterButtonRef}
+                          count={resolved.bunks.length + resolved.units.length}
+                          open={filterOpen}
+                          onToggle={() => setFilterOpen((v) => !v)}
+                          label="Cabins"
+                        />
+                        <GraphFilterPopover
+                          open={filterOpen}
+                          onClose={() => setFilterOpen(false)}
+                          triggerRef={filterButtonRef}
+                          selectedUnits={genderActive ? [] : filter.units}
+                          selectedBunks={resolved.bunks}
+                          allBunks={popoverBunks}
+                          disableUnitSelect={genderActive}
+                          onAddUnit={addUnit}
+                          onRemoveUnit={removeUnit}
+                          onAddBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), false)}
+                          onRemoveBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), true)}
+                          onClear={() => {
                             setDropped(new Set())
-                            setGender(tabToScope(tab))
+                            clearFilter()
                           }}
-                          className={clsx(
-                            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                            scopeToTab(gender) === tab
-                              ? 'bg-primary text-primary-foreground'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          )}
-                          aria-pressed={scopeToTab(gender) === tab}
-                        >
-                          {tab}
-                        </button>
-                      ))}
-                  </div>
-                )}
-
-                <GraphControls
-                  showLabels={showLabels}
-                  onToggleLabels={toggleLabels}
-                  showHelp={showHelp}
-                  onToggleHelp={() => setShowHelp(!showHelp)}
-                  isExpanded={isExpanded}
-                  onToggleExpand={handleExpandToggle}
-                  onZoomIn={handleZoomIn}
-                  onZoomOut={handleZoomOut}
-                  onFit={handleFit}
-                  onDownload={handleDownload}
-                  filterButton={
-                    <div className="relative">
-                      <GraphFilterButton
-                        ref={filterButtonRef}
-                        count={resolved.bunks.length + resolved.units.length}
-                        open={filterOpen}
-                        onToggle={() => setFilterOpen((v) => !v)}
-                      />
-                      <GraphFilterPopover
-                        open={filterOpen}
-                        onClose={() => setFilterOpen(false)}
-                        triggerRef={filterButtonRef}
-                        selectedUnits={genderActive ? [] : filter.units}
-                        selectedBunks={resolved.bunks}
-                        allBunks={popoverBunks}
-                        edgeMode={filter.edgeMode}
-                        disableUnitSelect={genderActive}
-                        onAddUnit={addUnit}
-                        onRemoveUnit={removeUnit}
-                        onAddBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), false)}
-                        onRemoveBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), true)}
-                        onSetEdgeMode={setEdgeMode}
-                        onClear={() => {
-                          setDropped(new Set())
-                          clearFilter()
-                        }}
-                      />
-                    </div>
-                  }
-                />
+                        />
+                      </div>
+                    }
+                  />
+                </div>
               </div>
             </div>
 
