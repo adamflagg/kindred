@@ -1,20 +1,37 @@
 /**
  * Tests for BunkingBoardByArea panel-reflow and auto-pan behavior.
  *
- * Reflow: when the camper detail panel is open, the board outer wrapper gets
- * the compressed-width class from getBoardWrapperClass(true). When closed
- * (no selected camper), it gets getBoardWrapperClass(false).
+ * Reflow: when the camper detail panel opens, computeBoardReflow decides how
+ * much (if at all) to trim the board. On wide screens the board is untouched
+ * (no inline marginRight, full column count); on narrow screens it gets an
+ * inline marginRight trim and drops a grid column. computeBoardReflow is mocked
+ * to drive each path since jsdom has no real layout geometry.
  *
- * Auto-pan: autoPanToBunk is called when selectedCamperId changes (a camper
- * is selected on the board).
+ * Auto-pan: autoPanToBunk fires ONLY when the board actually reflowed
+ * (reflow.didReflow) — never on a wide screen where the board didn't move.
  *
  * Both behaviors are tested at the logic-seam level (rendered state / spy
  * calls), not pixels.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { getBoardWrapperClass } from '../utils/bunkBoardLayout'
+import { computeBoardReflow } from '../utils/bunkBoardLayout'
 import * as autoPanModule from '../utils/bunkAutoPan'
+
+// computeBoardReflow does real DOM measurement (getBoundingClientRect +
+// window.innerWidth), which jsdom can't provide meaningfully. Mock it so each
+// test can drive the wide-screen (no reflow) vs narrow-screen (reflow) path
+// deterministically; keep the rest of the module real (getBunkGridClass etc.).
+vi.mock('../utils/bunkBoardLayout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils/bunkBoardLayout')>()
+  return { ...actual, computeBoardReflow: vi.fn() }
+})
+const mockComputeBoardReflow = vi.mocked(computeBoardReflow)
+
+/** Wide screen: panel floats over the gutter — board untouched, no pan. */
+const WIDE_NO_REFLOW = { marginRightPx: 0, dropColumn: false, didReflow: false }
+/** Narrow screen: board trimmed + a column dropped → reflow + pan. */
+const NARROW_REFLOW = { marginRightPx: 300, dropColumn: true, didReflow: true }
 
 // ---------------------------------------------------------------------------
 // Minimal mocks — keep them lean so the board's internal logic can run
@@ -143,72 +160,65 @@ const makeBaseProps = () => ({
 describe('BunkingBoardByArea — panel reflow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default to the wide-screen path (no reflow) unless a test overrides it.
+    mockComputeBoardReflow.mockReturnValue(WIDE_NO_REFLOW)
   })
 
-  it('board wrapper does NOT have the compressed class when no camper is selected', () => {
+  it('board wrapper has no right-margin trim when no camper is selected', () => {
     const { container } = render(<BunkingBoardByArea {...makeBaseProps()} />)
 
-    // The compressed class should NOT be present when panel is closed
-    // Find the board wrapper by data-testid
-    const wrapper = container.querySelector('[data-board-wrapper]')
+    const wrapper = container.querySelector('[data-board-wrapper]') as HTMLElement | null
     expect(wrapper).not.toBeNull()
-    // None of the compressed-panel classes should be applied when closed
-    const closedClass = getBoardWrapperClass(false)
-    if (closedClass === '') {
-      // Board wrapper should not have the open class
-      expect(wrapper?.className ?? '').not.toContain('mr-[28rem]')
-    } else {
-      expect(wrapper?.className ?? '').toContain(closedClass)
-    }
+    // Closed: no inline marginRight applied.
+    expect(wrapper?.style.marginRight ?? '').toBe('')
   })
 
-  it('board wrapper gets the compressed class when a camper is selected', () => {
+  it('WIDE screen: selecting a camper does NOT trim the board or drop a column', () => {
+    mockComputeBoardReflow.mockReturnValue(WIDE_NO_REFLOW)
     const props = makeBaseProps()
     const { container, getByTestId } = render(<BunkingBoardByArea {...props} />)
 
-    // Click Emma Johnson to open the panel
     fireEvent.click(getByTestId('camper-btn-100'))
 
-    const wrapper = container.querySelector('[data-board-wrapper]')
-    expect(wrapper).not.toBeNull()
-
-    const openClass = getBoardWrapperClass(true)
-    // The open class must include the right-margin compression
-    expect(openClass).toContain('mr-[28rem]')
-    expect(wrapper?.className ?? '').toContain('mr-[28rem]')
+    const wrapper = container.querySelector('[data-board-wrapper]') as HTMLElement | null
+    const grid = container.querySelector('[data-bunk-grid]')
+    // No trim (panel floats over the background gutter), full column count kept.
+    expect(wrapper?.style.marginRight ?? '').toBe('')
+    expect(grid?.className ?? '').toContain('xl:grid-cols-4')
   })
 
-  it('board wrapper loses the compressed class when the panel closes', () => {
+  it('NARROW screen: selecting a camper trims the board and drops a column', () => {
+    mockComputeBoardReflow.mockReturnValue(NARROW_REFLOW)
+    const props = makeBaseProps()
+    const { container, getByTestId } = render(<BunkingBoardByArea {...props} />)
+
+    fireEvent.click(getByTestId('camper-btn-100'))
+
+    const wrapper = container.querySelector('[data-board-wrapper]') as HTMLElement | null
+    const grid = container.querySelector('[data-bunk-grid]')
+    // Trim equals the measured overlap (px), and the grid drops a column.
+    expect(wrapper?.style.marginRight).toBe('300px')
+    expect(grid?.className ?? '').toContain('xl:grid-cols-3')
+    expect(grid?.className ?? '').not.toContain('xl:grid-cols-4')
+  })
+
+  it('board loses the trim + restores full columns when the panel closes', () => {
+    mockComputeBoardReflow.mockReturnValue(NARROW_REFLOW)
     const props = makeBaseProps()
     const { container, getByTestId, queryByTestId } = render(<BunkingBoardByArea {...props} />)
 
-    // Open the panel
     fireEvent.click(getByTestId('camper-btn-100'))
+    const wrapper = container.querySelector('[data-board-wrapper]') as HTMLElement | null
+    expect(wrapper?.style.marginRight).toBe('300px')
 
-    const wrapper = container.querySelector('[data-board-wrapper]')
-    expect(wrapper?.className ?? '').toContain('mr-[28rem]')
-
-    // Close the panel via its onClose callback (handleCloseDetails clears
-    // selectedCamperId synchronously). The panel mock exposes a close button.
+    // Close the panel — measureReflow resets to the no-reflow state regardless
+    // of the mock (the early-return path fires when there's no selection).
     fireEvent.click(getByTestId('panel-close-btn'))
 
-    // Panel unmounts and the compressed class is removed (board re-expands).
     expect(queryByTestId('camper-panel')).toBeNull()
-    expect(wrapper?.className ?? '').not.toContain('mr-[28rem]')
-  })
-
-  it('reduces the bunk grid column count when the panel opens', () => {
-    const props = makeBaseProps()
-    const { container, getByTestId } = render(<BunkingBoardByArea {...props} />)
-
+    expect(wrapper?.style.marginRight ?? '').toBe('')
     const grid = container.querySelector('[data-bunk-grid]')
-    // Closed: full column count so bunks fill the board width.
     expect(grid?.className ?? '').toContain('xl:grid-cols-4')
-
-    // Open the panel — grid drops a column per breakpoint so bunks keep width.
-    fireEvent.click(getByTestId('camper-btn-100'))
-    expect(grid?.className ?? '').toContain('xl:grid-cols-3')
-    expect(grid?.className ?? '').not.toContain('xl:grid-cols-4')
   })
 
   it('CamperDetailsPanel renders alongside (not replacing) the board grid when open', () => {
@@ -229,12 +239,14 @@ describe('BunkingBoardByArea — panel reflow', () => {
 // Auto-pan tests
 // ---------------------------------------------------------------------------
 
-describe('BunkingBoardByArea — auto-pan', () => {
+describe('BunkingBoardByArea — auto-pan (coupled to reflow)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockComputeBoardReflow.mockReturnValue(WIDE_NO_REFLOW)
   })
 
-  it('calls autoPanToBunk when a camper is selected', () => {
+  it('calls autoPanToBunk when a camper is selected AND the board reflowed (narrow)', () => {
+    mockComputeBoardReflow.mockReturnValue(NARROW_REFLOW)
     const autoPanSpy = vi.spyOn(autoPanModule, 'autoPanToBunk')
 
     const props = makeBaseProps()
@@ -243,14 +255,28 @@ describe('BunkingBoardByArea — auto-pan', () => {
     // Select Emma Johnson (person_cm_id=100, assigned_bunk_cm_id=9001)
     fireEvent.click(getByTestId('camper-btn-100'))
 
-    // autoPanToBunk should have been called with the camper's bunk CM ID
+    // Board reflowed → pan to the selected camper's bunk so it stays visible.
     expect(autoPanSpy).toHaveBeenCalledWith(
       9001, // assigned_bunk_cm_id for Emma Johnson
       expect.anything() // scroll container (HTMLElement or null)
     )
   })
 
+  it('does NOT call autoPanToBunk on a wide screen where the board did not reflow', () => {
+    mockComputeBoardReflow.mockReturnValue(WIDE_NO_REFLOW)
+    const autoPanSpy = vi.spyOn(autoPanModule, 'autoPanToBunk')
+
+    const props = makeBaseProps()
+    const { getByTestId } = render(<BunkingBoardByArea {...props} />)
+
+    // Selecting a camper when the board doesn't move must not jump the scroll.
+    fireEvent.click(getByTestId('camper-btn-100'))
+
+    expect(autoPanSpy).not.toHaveBeenCalled()
+  })
+
   it('does not call autoPanToBunk when no camper is selected (initial render)', () => {
+    mockComputeBoardReflow.mockReturnValue(NARROW_REFLOW)
     const autoPanSpy = vi.spyOn(autoPanModule, 'autoPanToBunk')
 
     render(<BunkingBoardByArea {...makeBaseProps()} />)
@@ -260,7 +286,8 @@ describe('BunkingBoardByArea — auto-pan', () => {
     expect(autoPanSpy).not.toHaveBeenCalled()
   })
 
-  it('calls autoPanToBunk with null bunkCmId for unassigned camper (graceful no-op)', () => {
+  it('passes null bunkCmId for an unassigned camper when reflowed (graceful no-op)', () => {
+    mockComputeBoardReflow.mockReturnValue(NARROW_REFLOW)
     const autoPanSpy = vi.spyOn(autoPanModule, 'autoPanToBunk')
 
     // An unassigned camper: no assigned_bunk_cm_id. Place them in a bunk card

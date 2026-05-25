@@ -36,9 +36,10 @@ import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
 import {
-  getBoardWrapperClass,
+  computeBoardReflow,
   getBoardBottomPaddingClass,
   getBunkGridClass,
+  type BoardReflowResult,
 } from '../utils/bunkBoardLayout'
 import { autoPanToBunk } from '../utils/bunkAutoPan'
 
@@ -88,6 +89,17 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Ref for the board scroll container — used by autoPanToBunk to scroll the
   // selected camper's bunk card into view when the detail panel opens.
   const boardScrollRef = useRef<HTMLDivElement>(null)
+  // Measured reflow state for the camper-detail panel (see computeBoardReflow).
+  // marginRightPx trims the board by the panel's actual overlap; dropColumn /
+  // didReflow drive the grid column count and whether auto-pan should fire.
+  const [reflow, setReflow] = useState<BoardReflowResult>({
+    marginRightPx: 0,
+    dropColumn: false,
+    didReflow: false,
+  })
+  // Right margin currently applied to the board wrapper, so a re-measure can
+  // recover the board's *natural* right edge (rect.right + appliedMargin).
+  const appliedMarginRef = useRef(0)
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Get lock group context for action bar and pending camper management
@@ -571,15 +583,46 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     }
   }, [isAnyPanelOpen, handleGlobalClick])
 
-  // Auto-pan: when a camper is selected, scroll their bunk into the visible
-  // region of the board so the staffer keeps eyes on the relevant bunk.
-  // Fires after every selectedCamperId change (selection and de-selection).
-  // autoPanToBunk gracefully no-ops when bunkCmId is null/undefined.
+  // Measure how the camper-detail panel should reflow the board. The board sits
+  // in a centered max-w-7xl container, so on wide screens the fixed panel floats
+  // over the background gutter and nothing needs to move; on narrower screens the
+  // board is trimmed from the right by the panel's actual overlap only. We recover
+  // the board's natural right edge by adding back the margin we already applied.
+  const measureReflow = useCallback(() => {
+    const el = boardScrollRef.current
+    if (!el || !selectedCamperId) {
+      appliedMarginRef.current = 0
+      setReflow({ marginRightPx: 0, dropColumn: false, didReflow: false })
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    const result = computeBoardReflow({
+      boardNaturalLeft: rect.left,
+      boardNaturalRight: rect.right + appliedMarginRef.current,
+      viewportWidth: window.innerWidth,
+    })
+    appliedMarginRef.current = result.marginRightPx
+    setReflow(result)
+  }, [selectedCamperId])
+
+  // Re-measure on selection change, and while the panel is open on window resize.
+  // Resize re-measures the margin/columns but never pans (handled separately).
   useEffect(() => {
+    measureReflow()
     if (!selectedCamperId) return
+    window.addEventListener('resize', measureReflow)
+    return () => window.removeEventListener('resize', measureReflow)
+  }, [selectedCamperId, measureReflow])
+
+  // Auto-pan: scroll the selected camper's bunk into view — but ONLY when the
+  // board actually reflowed (a column dropped). On wide screens the board does
+  // not move, so an auto-pan would be an unwanted jump. autoPanToBunk also
+  // no-ops when the bunk is already visible or the camper is unassigned.
+  useEffect(() => {
+    if (!selectedCamperId || !reflow.didReflow) return
     const selected = campers.find((c) => String(c.person_cm_id) === selectedCamperId)
     autoPanToBunk(selected?.assigned_bunk_cm_id ?? null, boardScrollRef.current)
-  }, [selectedCamperId, campers])
+  }, [selectedCamperId, reflow.didReflow, campers])
 
   return (
     <>
@@ -590,13 +633,14 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* Main bunks area — shrinks right when the camper-detail panel is open;
-            gets bottom padding to clear the friend-groups hub / action bar (#1630). */}
+        {/* Main bunks area — trimmed from the right by the panel's actual overlap
+            when the camper-detail panel is open (see computeBoardReflow); gets
+            bottom padding to clear the friend-groups hub / action bar (#1630). */}
         <div
           data-board-wrapper
           ref={boardScrollRef}
           className={[
-            getBoardWrapperClass(!!selectedCamperId),
+            'transition-[margin] duration-200 ease-out',
             getBoardBottomPaddingClass(
               isLockGroupUiActive,
               isLockGroupUiActive && pendingCampers.length > 0
@@ -604,6 +648,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           ]
             .filter(Boolean)
             .join(' ')}
+          style={reflow.marginRightPx ? { marginRight: `${reflow.marginRightPx}px` } : undefined}
         >
           {/* Bunks Grid - 4 columns, full width */}
           {displayedBunks.length === 0 ? (
@@ -614,7 +659,7 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
           ) : (
             <div
               data-bunk-grid
-              className={getBunkGridClass(!!selectedCamperId)}
+              className={getBunkGridClass(reflow.dropColumn)}
               style={{ contain: 'layout style' }}
               onClick={handleBoardClick}
             >

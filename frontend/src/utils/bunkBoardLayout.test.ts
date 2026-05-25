@@ -7,36 +7,95 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
-  getBoardWrapperClass,
+  computeBoardReflow,
   getBoardBottomPaddingClass,
   getBunkGridClass,
-  PANEL_WIDTH_CLASS,
+  PANEL_WIDTH_PX,
 } from './bunkBoardLayout'
 
-describe('getBoardWrapperClass', () => {
-  it('returns empty string when the panel is closed', () => {
-    expect(getBoardWrapperClass(false)).toBe('')
+describe('computeBoardReflow (measured, conditional reflow)', () => {
+  // The board is the centered max-w-7xl (1280px) container minus its sm:p-6
+  // padding (24px each side) → 1232px of content, centered in the viewport.
+  // The fixed camper panel is PANEL_WIDTH_PX wide, pinned to the right edge.
+  const CONTAINER = 1280
+  const PADDING = 24
+  const boardEdges = (viewportWidth: number) => {
+    const containerWidth = Math.min(viewportWidth, CONTAINER)
+    const containerLeft = Math.max(0, (viewportWidth - containerWidth) / 2)
+    const boardNaturalLeft = containerLeft + PADDING
+    return {
+      boardNaturalLeft,
+      boardNaturalRight: boardNaturalLeft + (containerWidth - 2 * PADDING),
+      viewportWidth,
+    }
+  }
+
+  it('PANEL_WIDTH_PX matches the panel width token (w-[28rem] = 448px)', () => {
+    expect(PANEL_WIDTH_PX).toBe(448)
   })
 
-  it('returns a non-empty class when the panel is open', () => {
-    const cls = getBoardWrapperClass(true)
-    expect(cls).not.toBe('')
+  it('1440p / 2560-wide: panel floats over the right gutter — board is untouched', () => {
+    const r = computeBoardReflow(boardEdges(2560))
+    expect(r.marginRightPx).toBe(0)
+    expect(r.dropColumn).toBe(false)
+    expect(r.didReflow).toBe(false)
   })
 
-  it('includes the panel width in the open-state class so the board is compressed by the same amount', () => {
-    const cls = getBoardWrapperClass(true)
-    // The margin must match the panel width so the board content doesn't slip behind it.
-    // PANEL_WIDTH_CLASS is "w-[28rem]" → margin should be "mr-[28rem]"
-    expect(cls).toContain('mr-[28rem]')
+  it('clamps a negative overlap to a zero trim (never grows the board)', () => {
+    // Board ends well left of the panel → overlap negative → no trim.
+    const r = computeBoardReflow({
+      boardNaturalLeft: 400,
+      boardNaturalRight: 1500,
+      viewportWidth: 2560, // panelLeft = 2112, far right of the board's 1500 edge
+    })
+    expect(r.marginRightPx).toBe(0)
+    expect(r.didReflow).toBe(false)
   })
 
-  it('the open-state class contains a CSS transition so the reflow is animated', () => {
-    const cls = getBoardWrapperClass(true)
-    expect(cls).toContain('transition')
+  it('1920-wide: small right trim only — keeps 4 columns, no reflow/pan', () => {
+    const r = computeBoardReflow(boardEdges(1920))
+    // panelLeft = 1472, board right ≈ 1576 → ~104px overlap, trimmed away.
+    expect(r.marginRightPx).toBeGreaterThan(0)
+    expect(r.marginRightPx).toBeLessThan(160)
+    expect(r.dropColumn).toBe(false)
+    expect(r.didReflow).toBe(false)
   })
 
-  it('PANEL_WIDTH_CLASS is defined and matches the panel width token', () => {
-    expect(PANEL_WIDTH_CLASS).toBe('w-[28rem]')
+  it('1500-wide: larger trim drops a column and signals a reflow (→ pan)', () => {
+    const r = computeBoardReflow(boardEdges(1500))
+    // panelLeft = 1052, board right ≈ 1366 → ~314px overlap → board too tight for 4 cols.
+    expect(r.marginRightPx).toBeGreaterThan(250)
+    expect(r.dropColumn).toBe(true)
+    expect(r.didReflow).toBe(true)
+  })
+
+  it('the trim equals the overlap of the panel onto the board (right-edge only)', () => {
+    const r = computeBoardReflow({
+      boardNaturalLeft: 100,
+      boardNaturalRight: 1300,
+      viewportWidth: 1600, // panelLeft = 1600 - 448 = 1152 → overlap = 1300 - 1152 = 148
+    })
+    expect(r.marginRightPx).toBe(148)
+  })
+
+  it('drops a column only once the trimmed width is too narrow for the base column count', () => {
+    // Same viewport (1280 → base 4 cols); vary the board width via minCardWidth so the
+    // boundary is exercised. Wide trimmed board keeps 4; narrow one drops.
+    const wide = computeBoardReflow({
+      boardNaturalLeft: 0,
+      boardNaturalRight: 1280,
+      viewportWidth: 1280, // panelLeft = 832 → overlap 448 → trimmed 832
+      minCardWidth: 180, // 832 fits 4 cols at 180 → keep
+    })
+    expect(wide.dropColumn).toBe(false)
+
+    const narrow = computeBoardReflow({
+      boardNaturalLeft: 0,
+      boardNaturalRight: 1280,
+      viewportWidth: 1280,
+      minCardWidth: 256, // 832 cannot fit 4 cols at 256 → drop
+    })
+    expect(narrow.dropColumn).toBe(true)
   })
 })
 
