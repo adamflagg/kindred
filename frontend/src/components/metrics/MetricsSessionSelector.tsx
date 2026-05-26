@@ -15,6 +15,7 @@
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
 import { ChevronDown, CalendarDays } from 'lucide-react'
 import { useMetricsSession } from '../../hooks/useMetricsSession'
+import type { MetricsViewMode } from '../../utils/sessionTypePredicates'
 import type { DurationCategory } from '../../utils/sessionUtils'
 
 const ALL_SESSIONS_VALUE = 'all-sessions'
@@ -30,6 +31,28 @@ const DURATION_LABELS: Record<DurationCategory, string> = {
   '2-week': '2 Week',
   '3-week': '3 Week',
   '4-week+': '4 Week+',
+}
+
+/** Display labels for teen sub-types */
+const TEEN_TYPE_LABELS: Record<'scit' | 'tli', string> = {
+  scit: 'SCIT',
+  tli: 'TLI',
+}
+
+/** Display labels for view-mode groupings (fallback when no session/teen/duration selected) */
+const VIEW_MODE_LABELS: Record<MetricsViewMode, string> = {
+  all: 'All Summer',
+  quests: 'Quests',
+  teens: 'Teens',
+  sessions: 'At Camp',
+}
+
+/** Listbox values for view-mode groupings (fallback when no session/teen/duration selected) */
+const VIEW_MODE_VALUES: Record<MetricsViewMode, string> = {
+  all: ALL_SUMMER_VALUE,
+  quests: ALL_QUESTS_VALUE,
+  teens: ALL_TEENS_VALUE,
+  sessions: ALL_SESSIONS_VALUE,
 }
 
 export function MetricsSessionSelector() {
@@ -51,37 +74,23 @@ export function MetricsSessionSelector() {
     setSelectedTeenType,
   } = useMetricsSession()
 
-  // Display name for current selection
-  const displayName = selectedSession
-    ? selectedSession.name
-    : selectedTeenType
-      ? selectedTeenType === 'scit'
-        ? 'SCIT'
-        : 'TLI'
-      : selectedDuration
-        ? DURATION_LABELS[selectedDuration]
-        : viewMode === 'all'
-          ? 'All Summer'
-          : viewMode === 'quests'
-            ? 'Quests'
-            : viewMode === 'teens'
-              ? 'Teens'
-              : 'At Camp'
+  // Display name for current selection (session → teen type → duration → view-mode grouping)
+  function getDisplayName(): string {
+    if (selectedSession) return selectedSession.name
+    if (selectedTeenType) return TEEN_TYPE_LABELS[selectedTeenType]
+    if (selectedDuration) return DURATION_LABELS[selectedDuration]
+    return VIEW_MODE_LABELS[viewMode]
+  }
+  const displayName = getDisplayName()
 
-  // Determine current listbox value
-  const currentValue = selectedSessionCmId
-    ? selectedSessionCmId.toString()
-    : selectedTeenType
-      ? `${TEEN_PREFIX}${selectedTeenType}`
-      : selectedDuration
-        ? `${DURATION_PREFIX}${selectedDuration}`
-        : viewMode === 'all'
-          ? ALL_SUMMER_VALUE
-          : viewMode === 'quests'
-            ? ALL_QUESTS_VALUE
-            : viewMode === 'teens'
-              ? ALL_TEENS_VALUE
-              : ALL_SESSIONS_VALUE
+  // Determine current listbox value (session → teen type → duration → view-mode grouping)
+  function getCurrentValue(): string {
+    if (selectedSessionCmId) return selectedSessionCmId.toString()
+    if (selectedTeenType) return `${TEEN_PREFIX}${selectedTeenType}`
+    if (selectedDuration) return `${DURATION_PREFIX}${selectedDuration}`
+    return VIEW_MODE_VALUES[viewMode]
+  }
+  const currentValue = getCurrentValue()
 
   const handleChange = (value: string) => {
     if (value === ALL_SESSIONS_VALUE) {

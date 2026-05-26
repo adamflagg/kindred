@@ -427,3 +427,150 @@ def test_detect_first_request_own_keyword_wins_over_sibling_keyword() -> None:
     result = detect_first_request(parsed, family_siblings=[sibling])
     assert result.is_first_requested is True
     assert result.priority_keyword_detected is True
+
+
+# ---------------------------------------------------------------------------
+# Bug #1612: shared raw_text causes keyword-bleed across sibling requests
+# ---------------------------------------------------------------------------
+# When all ParsedRequests in a line-group share the same raw_text (the whole
+# comma-joined field value), a priority keyword for one name fires for ALL of
+# them. The fix: attribute the keyword to the per-name fragment, aligned by
+# csv_position within the line-group.
+
+
+def _shared_line_bunk_with(
+    raw_text: str,
+    target_name: str,
+    csv_position: int,
+) -> ParsedRequest:
+    """Family BUNK_WITH factory for shared-raw_text (line-group) scenarios."""
+    return ParsedRequest(
+        raw_text=raw_text,
+        request_type=RequestType.BUNK_WITH,
+        target_name=target_name,
+        age_preference=None,
+        source_field=SourceField.BUNK_REQUEST_FORM,
+        confidence=1.0,
+        csv_position=csv_position,
+        metadata={},
+    )
+
+
+class TestSharedRawTextKeywordBleed:
+    """Reproduces bug #1612: priority keyword on one name must NOT bleed to siblings
+    when all sibling ParsedRequests share the same raw_text (the full field value).
+
+    The fix uses positional alignment within the line-group: each request's
+    keyword check is scoped to the comma/semicolon fragment at its csv_position.
+    """
+
+    LINE = "Olivia Chen (priority), Liam Garcia, Emma Johnson"
+
+    def _make_line_group(self) -> tuple[ParsedRequest, ParsedRequest, ParsedRequest]:
+        olivia = _shared_line_bunk_with(self.LINE, "Olivia Chen", csv_position=1)
+        liam = _shared_line_bunk_with(self.LINE, "Liam Garcia", csv_position=2)
+        emma = _shared_line_bunk_with(self.LINE, "Emma Johnson", csv_position=3)
+        return olivia, liam, emma
+
+    def test_only_position1_is_first_requested(self) -> None:
+        """Only Olivia (position 1, the keyword fragment) gets is_first_requested=True."""
+        olivia, liam, emma = self._make_line_group()
+        all_reqs = [olivia, liam, emma]
+        assert is_first_requested(olivia, all_reqs) is True
+        assert is_first_requested(liam, all_reqs) is False
+        assert is_first_requested(emma, all_reqs) is False
+
+    def test_only_position1_has_priority_keyword_detected(self) -> None:
+        """priority_keyword_detected is True only for the fragment that contains it."""
+        olivia, liam, emma = self._make_line_group()
+        siblings_of_olivia = [liam, emma]
+        siblings_of_liam = [olivia, emma]
+        siblings_of_emma = [olivia, liam]
+
+        result_olivia = detect_first_request(olivia, family_siblings=siblings_of_olivia)
+        result_liam = detect_first_request(liam, family_siblings=siblings_of_liam)
+        result_emma = detect_first_request(emma, family_siblings=siblings_of_emma)
+
+        assert result_olivia.is_first_requested is True
+        assert result_olivia.priority_keyword_detected is True
+
+        assert result_liam.is_first_requested is False
+        assert result_liam.priority_keyword_detected is False
+
+        assert result_emma.is_first_requested is False
+        assert result_emma.priority_keyword_detected is False
+
+    def test_keyword_at_middle_position_wins_over_position1(self) -> None:
+        """Keyword in the second fragment (middle name) promotes that request."""
+        line = "Emma Johnson, Liam Garcia (priority), Olivia Chen"
+        emma = _shared_line_bunk_with(line, "Emma Johnson", csv_position=1)
+        liam = _shared_line_bunk_with(line, "Liam Garcia", csv_position=2)
+        olivia = _shared_line_bunk_with(line, "Olivia Chen", csv_position=3)
+        all_reqs = [emma, liam, olivia]
+
+        assert is_first_requested(emma, all_reqs) is False
+        assert is_first_requested(liam, all_reqs) is True
+        assert is_first_requested(olivia, all_reqs) is False
+
+    def test_count_mismatch_fallback_preserves_multi_pick(self) -> None:
+        """When fragment count != line-group size, fall back to whole-line scan.
+
+        This preserves existing intentional multi-pick behavior: a single prose
+        fragment like 'must have Emma and Liam' produces two requests that each
+        see the keyword, so both are flagged first-pick.
+
+        This mirrors the existing test_multiple_keyword_requests_all_first
+        scenario but with DISTINCT raw_text values (single-element line-groups
+        each) — the fallback path is exercised when lines don't split neatly.
+        """
+        # Each request has a distinct raw_text → single-element line-groups →
+        # no shared-line alignment applies; whole-line keyword scan fires.
+        req_emma = ParsedRequest(
+            raw_text="Emma Johnson must have",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Emma Johnson",
+            age_preference=None,
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            confidence=1.0,
+            csv_position=1,
+            metadata={},
+        )
+        req_liam = ParsedRequest(
+            raw_text="Liam Garcia very important",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Liam Garcia",
+            age_preference=None,
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            confidence=1.0,
+            csv_position=2,
+            metadata={},
+        )
+        req_olivia = ParsedRequest(
+            raw_text="Olivia Chen",
+            request_type=RequestType.BUNK_WITH,
+            target_name="Olivia Chen",
+            age_preference=None,
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            confidence=1.0,
+            csv_position=3,
+            metadata={},
+        )
+        all_reqs = [req_emma, req_liam, req_olivia]
+        # Both keyworded requests remain True (intentional multi-pick)
+        assert is_first_requested(req_emma, all_reqs) is True
+        assert is_first_requested(req_liam, all_reqs) is True
+        assert is_first_requested(req_olivia, all_reqs) is False
+
+    def test_shared_raw_text_count_mismatch_falls_back_to_whole_line(self) -> None:
+        """When all share raw_text but fragment count != group size, whole-line scan fires.
+
+        Example: 'must have Emma and Liam' is one comma-free fragment → 1 fragment,
+        2 group members → mismatch → fallback to whole-line → both see the keyword.
+        """
+        line = "must have Emma and Liam"
+        req_emma = _shared_line_bunk_with(line, "Emma Johnson", csv_position=1)
+        req_liam = _shared_line_bunk_with(line, "Liam Garcia", csv_position=2)
+        all_reqs = [req_emma, req_liam]
+        # Mismatch: 1 fragment, 2 group members → fallback → whole line has keyword
+        assert is_first_requested(req_emma, all_reqs) is True
+        assert is_first_requested(req_liam, all_reqs) is True

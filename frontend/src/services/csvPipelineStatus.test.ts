@@ -233,16 +233,20 @@ describe('derivePhase', () => {
     })
 
     it('treats exactly 30-min delta as done (inclusive boundary)', () => {
+      // Anchor both timestamps to a single `now`: two separate ago() calls each
+      // read Date.now(), so the delta is 30min + sub-ms jitter and tips the
+      // inclusive boundary to 'error' on a slow runner (flaky in CI).
+      const now = Date.now()
       const sync: SyncJobStatus = {
         name: 'bunk_requests',
         status: 'failed',
         startedAt: ago(90),
-        finishedAt: ago(60),
+        finishedAt: new Date(now - 60 * 60_000).toISOString(),
         error: 'context deadline exceeded',
       }
       const debug: DebugPipelineRun = {
         run_id: 'r-boundary',
-        created: ago(30),
+        created: new Date(now - 30 * 60_000).toISOString(),
         status_breakdown: { resolved: 1, pending: 0, declined: 0 },
       }
       const csvUploadStartedAt = ago(91)

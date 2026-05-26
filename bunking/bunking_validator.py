@@ -221,6 +221,15 @@ class ValidationStatistics(BaseModel):
     mp_campers_with_at_least_one_satisfied: int = 0
     mp_campers_with_all_satisfied: int = 0
 
+    # Entirely-impossible MP cohort (the families-to-contact list), reconciled
+    # against the final plan. Each entry mirrors impossibility_report's
+    # mp_campers_entirely_impossible {cm_id, name, grade, gender, session_cm_id,
+    # reason_codes} PLUS honored_in_plan: did the final assignment satisfy any of
+    # their (flagged) MP requests anyway? Empty unless impossible_mp_cohort is
+    # passed in. These campers are excluded from mp_campers_total (gated), so the
+    # post-check renders the full MP camper count as mp_campers_total + len(this list).
+    mp_campers_entirely_impossible: list[dict[str, Any]] = Field(default_factory=list)
+
     # Per-gender bunk capacity and assigned-camper counts.
     # Splits bunks and assignments by bunk.gender (F/M) so the post-check
     # modal and PDF can render capacity-vs-assigned per gender.
@@ -264,6 +273,7 @@ class BunkingValidator:
         attendees: list[Any] | None = None,
         historical_bunking: list[HistoricalBunkingRecord] | None = None,
         impossible_request_ids: set[str] | None = None,
+        impossible_mp_cohort: list[dict[str, Any]] | None = None,
     ) -> ValidationResult:
         """
         Perform comprehensive validation of bunking assignments.
@@ -324,6 +334,7 @@ class BunkingValidator:
             issues,
             bunk_by_id=bunk_by_id,
             impossible_request_ids=impossible_request_ids,
+            impossible_mp_cohort=impossible_mp_cohort,
         )
 
         # Validate age/grade spreads
@@ -451,6 +462,7 @@ class BunkingValidator:
         issues: list[ValidationIssue],
         bunk_by_id: dict[str, Bunk] | None = None,
         impossible_request_ids: set[str] | None = None,
+        impossible_mp_cohort: list[dict[str, Any]] | None = None,
     ) -> None:
         """Validate request satisfaction - tracking by source field.
 
@@ -923,6 +935,37 @@ class BunkingValidator:
             for pid, reqs in material_parent_by_person.items()
             if _gated(reqs) and len(_gated(satisfied_material_parent_by_person.get(pid, []))) == len(_gated(reqs))
         )
+
+        # Reconcile the entirely-impossible MP cohort (the families-to-contact
+        # list) against the final plan. An age preference at the extreme grade
+        # (oldest "older" / youngest "younger") is flagged impossible — kept out
+        # of MSO so it never distorts cabin shape — yet the final assignment may
+        # satisfy it anyway when the camper lands in a single-grade cabin.
+        # honored_in_plan lets the post-check show "flagged but met anyway"
+        # instead of the contradiction. A camper is honored iff ANY of their MP
+        # requests is satisfied in the final plan (satisfied_material_parent_by_person
+        # is populated ungated above), so cross-gender / cross-session rows stay False.
+        # cohort cm_id is an int; satisfied_material_parent_by_person keys are the
+        # raw requester ids (str), so normalize to int before membership-testing.
+        satisfied_mp_requesters: set[int] = set()
+        for pid in satisfied_material_parent_by_person:
+            try:
+                satisfied_mp_requesters.add(int(pid))
+            except TypeError, ValueError:
+                continue
+        bunks_map = bunk_by_id or {}
+        for entry in impossible_mp_cohort or []:
+            entry_cm_id = entry.get("cm_id")
+            honored = entry_cm_id in satisfied_mp_requesters
+            # When honored, name the cabin that met the preference. assignments_by_person
+            # is keyed by str person_cm_id; the cohort cm_id is an int — normalize.
+            # Mirrors the not-bunk-with violation detail's bunk_name so the post-check reads alike.
+            bunk_name: str | None = None
+            if honored:
+                honored_asgn = assignments_by_person.get(str(entry_cm_id))
+                honored_bunk = bunks_map.get(honored_asgn.bunk_cm_id) if honored_asgn else None
+                bunk_name = honored_bunk.name if honored_bunk else None
+            stats.mp_campers_entirely_impossible.append({**entry, "honored_in_plan": honored, "bunk_name": bunk_name})
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())

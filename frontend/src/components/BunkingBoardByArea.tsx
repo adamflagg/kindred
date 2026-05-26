@@ -1,4 +1,4 @@
-import { useState, useTransition, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useTransition, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import {
   DndContext,
@@ -28,6 +28,7 @@ const LockGroupsHub = lazy(() => import('./LockGroupsHub'))
 import { useLockGroupContext } from '../contexts/LockGroupContext'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
 import { useYear } from '../hooks/useCurrentYear'
+import type { MoveCamperOptions } from '../hooks/session/useCamperMovement'
 import { DEFAULT_BUNK_CAPACITY, MAX_BUNK_CAPACITY } from '../utils/capacityConstants'
 import { usePermissions } from '../hooks/usePermissions'
 import { Permission } from '../constants/permissions'
@@ -35,6 +36,13 @@ import { Home } from 'lucide-react'
 import { isAgSession } from '../utils/sessionTypePredicates'
 import { getEffectivelyUnassignedCampers } from './bunkingBoardHelpers'
 import { shouldKeepPanelsOpen } from '../utils/clickoutsidePredicate'
+import {
+  computeBoardReflow,
+  getBoardBottomPaddingClass,
+  getBunkGridClass,
+  type BoardReflowResult,
+} from '../utils/bunkBoardLayout'
+import { autoPanToBunk } from '../utils/bunkAutoPan'
 
 interface BunkingBoardByAreaProps {
   sessionId: string
@@ -43,7 +51,11 @@ interface BunkingBoardByAreaProps {
   campers: Camper[]
   selectedArea: 'all' | 'boys' | 'girls' | 'all-gender'
   onAreaChange: (area: 'all' | 'boys' | 'girls' | 'all-gender') => void
-  onCamperMove: (camperId: string, toBunkId: string | null) => Promise<void>
+  onCamperMove: (
+    camperId: string,
+    toBunkId: string | null,
+    options?: MoveCamperOptions
+  ) => Promise<void>
   onCamperLockToggle?: (camperId: string, locked: boolean, reason?: string) => Promise<void>
   isProductionMode?: boolean
   defaultCapacity?: number
@@ -78,6 +90,21 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   const [, startTransition] = useTransition()
   const currentYear = useYear()
   const { hasPermission } = usePermissions()
+
+  // Ref for the board scroll container — used by autoPanToBunk to scroll the
+  // selected camper's bunk card into view when the detail panel opens.
+  const boardScrollRef = useRef<HTMLDivElement>(null)
+  // Measured reflow state for the camper-detail panel (see computeBoardReflow).
+  // marginRightPx trims the board by the panel's actual overlap; dropColumn /
+  // didReflow drive the grid column count and whether auto-pan should fire.
+  const [reflow, setReflow] = useState<BoardReflowResult>({
+    marginRightPx: 0,
+    dropColumn: false,
+    didReflow: false,
+  })
+  // Right margin currently applied to the board wrapper, so a re-measure can
+  // recover the board's *natural* right edge (rect.right + appliedMargin).
+  const appliedMarginRef = useRef(0)
   const canManage = hasPermission(Permission.BUNKING_MANAGE)
 
   // Get lock group context for action bar and pending camper management
@@ -470,12 +497,17 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
       }
     }
 
+    const isMultiMove = campersToMove.length > 1
     try {
-      // Move all campers in the group
+      // For multi-camper moves (lock group), suppress per-move toasts (#1632)
+      // and emit a single count toast after the whole group resolves.
+      // Single-camper moves keep their normal individual toast.
       for (const camper of campersToMove) {
-        await onCamperMove(camper.id, targetBunkId)
+        await onCamperMove(camper.id, targetBunkId, isMultiMove ? { silent: true } : undefined)
       }
-      // Success toast moved to parent component after actual move completes
+      if (isMultiMove) {
+        toast.success(`${campersToMove.length} campers moved`)
+      }
     } catch (error) {
       toast.error('Failed to move camper(s)')
       console.error('Error moving camper(s):', error)
@@ -528,6 +560,11 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
   // Check if any panel is open
   const isAnyPanelOpen = !!selectedCamperId || isLockPanelOpen
 
+  // Lock-group UI (hub + panel + action bar) is gated on draft-mode + manage.
+  // Hoisted so the board's bottom-padding clearance matches the actual render
+  // gates instead of drifting from them.
+  const isLockGroupUiActive = !!(canManage && isDraftMode && scenarioId && lockGroupSessionPbId)
+
   // Close panels when clicking on dead space (nav, page sides, board gaps).
   // Predicate is shared with the unit test in clickoutsidePredicate.ts so the
   // two cannot drift.
@@ -556,6 +593,47 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     }
   }, [isAnyPanelOpen, handleGlobalClick])
 
+  // Measure how the camper-detail panel should reflow the board. The board sits
+  // in a centered max-w-7xl container, so on wide screens the fixed panel floats
+  // over the background gutter and nothing needs to move; on narrower screens the
+  // board is trimmed from the right by the panel's actual overlap only. We recover
+  // the board's natural right edge by adding back the margin we already applied.
+  const measureReflow = useCallback(() => {
+    const el = boardScrollRef.current
+    if (!el || !selectedCamperId) {
+      appliedMarginRef.current = 0
+      setReflow({ marginRightPx: 0, dropColumn: false, didReflow: false })
+      return
+    }
+    const rect = el.getBoundingClientRect()
+    const result = computeBoardReflow({
+      boardNaturalLeft: rect.left,
+      boardNaturalRight: rect.right + appliedMarginRef.current,
+      viewportWidth: window.innerWidth,
+    })
+    appliedMarginRef.current = result.marginRightPx
+    setReflow(result)
+  }, [selectedCamperId])
+
+  // Re-measure on selection change, and while the panel is open on window resize.
+  // Resize re-measures the margin/columns but never pans (handled separately).
+  useEffect(() => {
+    measureReflow()
+    if (!selectedCamperId) return
+    window.addEventListener('resize', measureReflow)
+    return () => window.removeEventListener('resize', measureReflow)
+  }, [selectedCamperId, measureReflow])
+
+  // Auto-pan: scroll the selected camper's bunk into view — but ONLY when the
+  // board actually reflowed (a column dropped). On wide screens the board does
+  // not move, so an auto-pan would be an unwanted jump. autoPanToBunk also
+  // no-ops when the bunk is already visible or the camper is unassigned.
+  useEffect(() => {
+    if (!selectedCamperId || !reflow.didReflow) return
+    const selected = campers.find((c) => String(c.person_cm_id) === selectedCamperId)
+    autoPanToBunk(selected?.assigned_bunk_cm_id ?? null, boardScrollRef.current)
+  }, [selectedCamperId, reflow.didReflow, campers])
+
   return (
     <>
       <DndContext
@@ -565,8 +643,23 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        {/* Main bunks area */}
-        <div>
+        {/* Main bunks area — trimmed from the right by the panel's actual overlap
+            when the camper-detail panel is open (see computeBoardReflow); gets
+            bottom padding to clear the friend-groups hub / action bar (#1630). */}
+        <div
+          data-board-wrapper
+          ref={boardScrollRef}
+          className={[
+            'transition-[margin] duration-200 ease-out',
+            getBoardBottomPaddingClass(
+              isLockGroupUiActive,
+              isLockGroupUiActive && pendingCampers.length > 0
+            ),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          style={reflow.marginRightPx ? { marginRight: `${reflow.marginRightPx}px` } : undefined}
+        >
           {/* Bunks Grid - 4 columns, full width */}
           {displayedBunks.length === 0 ? (
             <div className="bg-card border-border rounded-xl border p-8 text-center">
@@ -575,7 +668,8 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             </div>
           ) : (
             <div
-              className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+              data-bunk-grid
+              className={getBunkGridClass(reflow.dropColumn)}
               style={{ contain: 'layout style' }}
               onClick={handleBoardClick}
             >
@@ -713,10 +807,15 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             // Close immediately so the user sees the board update as the
             // per-camper moves stream in.
             setSelectedBunkForSwap(null)
+            const totalCampers = source.campers.length + target.campers.length
             try {
+              // Suppress per-move toasts (#1632): the orchestrator emits one
+              // count toast below after the whole batch resolves.
               await swapBunks(source, target, async (camperId, bunkId) => {
-                await onCamperMove(camperId, bunkId)
+                await onCamperMove(camperId, bunkId, { silent: true })
               })
+              // One summary toast for the whole swap action.
+              toast.success(`${totalCampers} camper${totalCampers === 1 ? '' : 's'} moved`)
             } catch (error) {
               console.error('Bunk swap failed:', error)
               toast.error('Bunk swap failed — some campers may not have moved')

@@ -75,9 +75,23 @@ export interface UseCamperMovementOptions {
   onPendingMoveCleared?: () => void
 }
 
+/** Options for a single camper move */
+export interface MoveCamperOptions {
+  /**
+   * When true, suppress the per-move success toast. Use this when the caller
+   * (e.g. swapBunks orchestrator) will emit its own summary toast after the
+   * whole batch resolves. Error toasts are always shown regardless.
+   */
+  silent?: boolean
+}
+
 export interface UseCamperMovementReturn {
   /** Move a camper to a bunk (or unassigned if bunkId is null) */
-  moveCamper: (camperId: string, bunkId: string | null) => Promise<void>
+  moveCamper: (
+    camperId: string,
+    bunkId: string | null,
+    options?: MoveCamperOptions
+  ) => Promise<void>
   /** Whether a move is in progress */
   isMoving: boolean
 }
@@ -282,7 +296,14 @@ export function useCamperMovement({
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
-    mutationFn: async ({ camperId, bunkId }: { camperId: string; bunkId: string | null }) => {
+    mutationFn: async ({
+      camperId,
+      bunkId,
+    }: {
+      camperId: string
+      bunkId: string | null
+      silent?: boolean
+    }) => {
       // Resolve camper IDs
       const { personCmId, sessionCmId } = await resolveCamperIds(camperId)
 
@@ -337,7 +358,9 @@ export function useCamperMovement({
         selectedSession
       )
     },
-    onSuccess: (response) => {
+    onSuccess: (response, variables) => {
+      const { silent } = variables
+
       // Handle null response (e.g., production move to unassigned)
       if (!response) {
         void queryClient.invalidateQueries({
@@ -348,7 +371,9 @@ export function useCamperMovement({
         // Issue #1040 / #1041 — graph borders + satisfaction must refresh after move.
         invalidateAssignmentDerivedQueries(queryClient)
         onPendingMoveCleared?.()
-        toast.success('Camper moved successfully')
+        if (!silent) {
+          toast.success('Camper moved successfully')
+        }
         return
       }
 
@@ -369,8 +394,10 @@ export function useCamperMovement({
         graphCacheService.invalidate(sessionCmId)
       }
 
-      // Only show success message if something actually changed
-      if (wasChanged) {
+      // Only show success message if something actually changed and not silenced.
+      // Callers that orchestrate multi-camper batches (swap, lock-group move)
+      // pass silent:true and emit their own single count toast.
+      if (wasChanged && !silent) {
         toast.success('Camper moved successfully')
       }
     },
@@ -380,8 +407,16 @@ export function useCamperMovement({
     },
   })
 
-  const moveCamper = async (camperId: string, bunkId: string | null) => {
-    await mutation.mutateAsync({ camperId, bunkId })
+  const moveCamper = async (
+    camperId: string,
+    bunkId: string | null,
+    options?: MoveCamperOptions
+  ) => {
+    await mutation.mutateAsync({
+      camperId,
+      bunkId,
+      ...(options?.silent ? { silent: true } : {}),
+    })
   }
 
   return {

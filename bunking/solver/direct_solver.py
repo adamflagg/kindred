@@ -43,6 +43,7 @@ from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
+from .constraints.staff_separation import add_staff_separation_constraints
 from .feasibility import RequestValidationSummary
 from .feasibility import check_feasibility as _check_feasibility
 from .feasibility import find_infeasibility_cause as _find_infeasibility_cause
@@ -169,6 +170,10 @@ class DirectBunkingSolver:
         # Track campers whose entire MP request set was impossible — populated by
         # parent_paramount's hard constraint pass; surfaced post-solve into stats.
         self.mp_set_entirely_impossible: list[int] = []
+        # Hard staff/manual not_bunk_with yields (#1541) — separations relaxed to
+        # protect a parent-paramount MSO. Populated by add_staff_separation_constraints;
+        # surfaced post-solve into request_validation_summary["staff_nbw_yielded"].
+        self.staff_nbw_yields: list[dict[str, Any]] = []
 
         # Canonical per-request satisfaction vars (bunk_with / not_bunk_with),
         # keyed by request.id. Populated by get_or_create_request_sat_var via
@@ -220,6 +225,7 @@ class DirectBunkingSolver:
             soft_constraint_violations=self.soft_constraint_violations,
             soft_constraint_bonuses=self.soft_constraint_bonuses,
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
+            staff_nbw_yields=self.staff_nbw_yields,
             mp_skip_cms=self.mp_skip_cms,
             request_satisfied_vars=self.request_satisfied_vars,
         )
@@ -475,6 +481,11 @@ class DirectBunkingSolver:
         # 10. Must satisfy one request constraints
         # Uses extracted constraint module - debug check is internal
         add_must_satisfy_one_request_constraints(self._build_solver_context())
+
+        # 10b. Hard staff/manual not_bunk_with separation (#1541), with the
+        # parent-paramount MSO carve-out. Runs after parent_paramount so the
+        # must-satisfy-one set is conceptually settled.
+        add_staff_separation_constraints(self._build_solver_context())
 
         # 11. Level progression constraints
         # Uses extracted constraint module - debug check is internal
@@ -1218,6 +1229,11 @@ class DirectBunkingSolver:
         # no longer re-derives it. Surfaced here for dashboard visibility.
         self.request_validation_summary["mp_set_entirely_impossible_count"] = len(self.mp_set_entirely_impossible)
         self.request_validation_summary["mp_set_entirely_impossible_cm_ids"] = list(self.mp_set_entirely_impossible)
+
+        # Hard staff/manual not_bunk_with separations that yielded to a parent-paramount
+        # MSO (#1541) — populated at add_constraints time; surfaced for Stream B (#1638).
+        self.request_validation_summary["staff_nbw_yielded_count"] = len(self.staff_nbw_yields)
+        self.request_validation_summary["staff_nbw_yielded"] = list(self.staff_nbw_yields)
 
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet

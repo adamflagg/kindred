@@ -69,7 +69,7 @@ jobs:
       should_build: ${{ steps.decide-builds.outputs.should_build }}
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
@@ -261,7 +261,7 @@ jobs:
       checks: read
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
@@ -394,7 +394,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
@@ -419,7 +419,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
-        node-version: '22'
+        node-version: '26'
         cache: 'npm'
         cache-dependency-path: frontend/package-lock.json
 
@@ -477,13 +477,13 @@ jobs:
             should_build: ${{ needs.detect-changes.outputs.build_init }}
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
     # Always needed: GHCR login for both build-push and imagetools-create.
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -538,7 +538,7 @@ jobs:
 
     - name: Log in to Docker Hardened Images registry
       if: matrix.should_build == 'true'
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
       with:
         registry: dhi.io
         username: ${{ secrets.DHI_USERNAME }}
@@ -555,7 +555,7 @@ jobs:
 
     - name: Set up Docker Buildx
       if: matrix.should_build == 'true'
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
     - name: Build and push ${{ matrix.image }} to staging tag
       if: matrix.should_build == 'true'
@@ -638,7 +638,7 @@ jobs:
     - name: Upload Trivy SARIF
       if: always() && steps.trivy-scan.outcome != 'skipped'
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4
+      uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4
       with:
         sarif_file: 'trivy-results-${{ matrix.image }}.sarif'
         category: 'trivy-${{ matrix.image }}'
@@ -659,7 +659,7 @@ jobs:
       packages: read
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
@@ -677,7 +677,7 @@ jobs:
       uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
@@ -826,19 +826,19 @@ jobs:
       packages: write
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
     - name: Log in to GitHub Container Registry
-      uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+      uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
+      uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
     - name: Retag staging -> release tags
       env:
@@ -872,7 +872,7 @@ jobs:
     if: always()
     steps:
     - name: Harden runner
-      uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+      uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
         egress-policy: audit
 
