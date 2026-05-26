@@ -303,7 +303,13 @@ describe('PostValidationResultsModal — donut ring rate (Stage 3b.2)', () => {
 })
 
 describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => {
-  it('renders parent-only fraction in the second stats tile', () => {
+  // NOTE (#1631): The "parent requests met" and "bunks used" tiles have been
+  // removed from the quick-stats grid. These tests now verify the new
+  // camper-coverage tiles ("got ≥1 request" and "got all requests") that
+  // replaced them. The request-level fraction (18/30) is no longer displayed
+  // in the grid; the satisfaction ring still shows the parent satisfaction %.
+
+  it('does not render the request-level fraction in the stats grid (replaced by camper-coverage tiles)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -317,63 +323,37 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
           request_satisfaction_rate: 0.9,
           satisfied_requests: 27,
           total_requests: 30,
+          mp_campers_total: 25,
+          mp_campers_with_at_least_one_satisfied: 20,
+          mp_campers_with_all_satisfied: 15,
         })}
       />
     )
 
-    expect(screen.getByText('18/30')).toBeInTheDocument()
-    expect(screen.getByText(/parent requests met/i)).toBeInTheDocument()
-    // Should NOT show the all-up "27/30" anywhere
-    expect(screen.queryByText('27/30')).not.toBeInTheDocument()
+    // "parent requests met" tile is gone
+    expect(screen.queryByText(/parent requests met/i)).not.toBeInTheDocument()
+    // The camper-coverage tiles render instead
+    expect(screen.getByText(/got ≥1 request/i)).toBeInTheDocument()
+    expect(screen.getByText(/got all requests/i)).toBeInTheDocument()
   })
 
-  it('uses amber styling on the parent tile when rate < 0.85', () => {
+  it('does not render the "bunks used" tile (removed in #1631)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
         isOpen={true}
         onClose={() => {}}
         results={makeResults({
-          material_parent_requests: 30,
-          satisfied_material_parent_requests: 18,
-          material_parent_request_satisfaction_rate: 0.6,
-          campers_with_unsatisfied_material_parent_requests: 6,
+          bunks_at_capacity: 4,
+          bunks_under_capacity: 0,
+          bunks_over_capacity: 0,
         })}
       />
     )
-
-    // Find the parent tile by its caption, walk up to the tile container,
-    // and assert it has amber-toned classes.
-    const caption = screen.getByText(/parent requests met/i)
-    const tile = caption.closest('.flex.items-center')
-    expect(tile).not.toBeNull()
-    // Amber icon-background class should be present in the tile
-    expect(tile!.querySelector('.bg-amber-500\\/10')).not.toBeNull()
+    expect(screen.queryByText(/bunks used/i)).not.toBeInTheDocument()
   })
 
-  it('uses green styling on the parent tile when rate >= 0.85', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          material_parent_requests: 20,
-          satisfied_material_parent_requests: 18,
-          material_parent_request_satisfaction_rate: 0.9,
-          campers_with_unsatisfied_material_parent_requests: 0,
-        })}
-      />
-    )
-
-    const caption = screen.getByText(/parent requests met/i)
-    const tile = caption.closest('.flex.items-center')
-    expect(tile).not.toBeNull()
-    expect(tile!.querySelector('.bg-forest-500\\/10')).not.toBeNull()
-    expect(tile!.querySelector('.bg-amber-500\\/10')).toBeNull()
-  })
-
-  it('falls back to all-up fraction when zero material parent requests', () => {
+  it('does not render the all-up "requests met" caption (removed in #1631)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -391,10 +371,9 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
       />
     )
 
-    // No parent requests this session — show "18/20" with the original
-    // "requests met" caption (graceful degradation).
-    expect(screen.getByText('18/20')).toBeInTheDocument()
-    expect(screen.getByText(/^requests met$/i)).toBeInTheDocument()
+    // The old "requests met" fallback caption is gone; new tiles render instead
+    expect(screen.queryByText(/^requests met$/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/got ≥1 request/i)).toBeInTheDocument()
   })
 })
 
@@ -1683,6 +1662,34 @@ describe('PostValidationResultsModal — violated sub-rows show distinct targets
 // Task: handleCamperClick — popout mode vs normal modal mode
 // ---------------------------------------------------------------------------
 
+describe('PostValidationResultsModal — background refresh indicator (#1635 scan #4)', () => {
+  it('shows a refreshing indicator while a background refetch is in flight', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        isRefreshing={true}
+      />
+    )
+    expect(screen.getByTestId('postcheck-refreshing')).toBeInTheDocument()
+  })
+
+  it('does not show the refreshing indicator when not refetching', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        isRefreshing={false}
+      />
+    )
+    expect(screen.queryByTestId('postcheck-refreshing')).not.toBeInTheDocument()
+  })
+})
+
 describe('PostValidationResultsModal — handleCamperClick behavior', () => {
   // Reset pathname after each test so subsequent describe blocks always start
   // in normal-modal (non-popout) mode.
@@ -1775,5 +1782,147 @@ describe('PostValidationResultsModal — handleCamperClick behavior', () => {
     expect(openSpy).not.toHaveBeenCalled()
 
     openSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #1631 — Camper-level coverage tiles
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — camper coverage tiles (#1631)', () => {
+  it('renders "got ≥1 request" tile with mp_campers_with_at_least_one_satisfied / mp_campers_total', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_total: 40,
+          mp_campers_with_at_least_one_satisfied: 35,
+          mp_campers_with_all_satisfied: 28,
+        })}
+      />
+    )
+    // Label
+    expect(screen.getByText(/got ≥1 request/i)).toBeInTheDocument()
+    // Value fraction
+    expect(screen.getByText('35/40')).toBeInTheDocument()
+  })
+
+  it('renders "got all requests" tile with mp_campers_with_all_satisfied / mp_campers_total', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_total: 40,
+          mp_campers_with_at_least_one_satisfied: 35,
+          mp_campers_with_all_satisfied: 28,
+        })}
+      />
+    )
+    // Label
+    expect(screen.getByText(/got all requests/i)).toBeInTheDocument()
+    // Value fraction
+    expect(screen.getByText('28/40')).toBeInTheDocument()
+  })
+
+  it('does NOT render the removed "parent requests met" tile', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          material_parent_requests: 30,
+          satisfied_material_parent_requests: 18,
+          material_parent_request_satisfaction_rate: 0.6,
+          mp_campers_total: 40,
+          mp_campers_with_at_least_one_satisfied: 35,
+          mp_campers_with_all_satisfied: 28,
+        })}
+      />
+    )
+    expect(screen.queryByText(/parent requests met/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^requests met$/i)).not.toBeInTheDocument()
+  })
+
+  it('does NOT render the removed "bunks used" tile', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          bunks_at_capacity: 3,
+          bunks_under_capacity: 1,
+          bunks_over_capacity: 0,
+          mp_campers_total: 40,
+          mp_campers_with_at_least_one_satisfied: 35,
+          mp_campers_with_all_satisfied: 28,
+        })}
+      />
+    )
+    expect(screen.queryByText(/bunks used/i)).not.toBeInTheDocument()
+  })
+
+  it('tile row-major order: got≥1 · got-all (row 1), assigned · issues (row 2)', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_total: 40,
+          mp_campers_with_at_least_one_satisfied: 35,
+          mp_campers_with_all_satisfied: 28,
+        })}
+      />
+    )
+    const allText = document.body.textContent ?? ''
+    const pos = (s: string) => allText.indexOf(s)
+
+    // Row 1: got≥1 before got-all
+    expect(pos('got ≥1 request')).toBeLessThan(pos('got all requests'))
+    // Row 1 before row 2
+    expect(pos('got ≥1 request')).toBeLessThan(pos('assigned'))
+    expect(pos('got all requests')).toBeLessThan(pos('assigned'))
+    // assigned before issues
+    expect(pos('assigned')).toBeLessThan(pos('issues'))
+  })
+
+  it('renders 0/0 without crashing when mp_campers_total is 0', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_total: 0,
+          mp_campers_with_at_least_one_satisfied: 0,
+          mp_campers_with_all_satisfied: 0,
+        })}
+      />
+    )
+    // Both tiles should render 0/0 without crashing or showing NaN/%
+    const zeroDivZero = screen.getAllByText('0/0')
+    expect(zeroDivZero.length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument()
+  })
+
+  it('renders 0/0 when mp_campers fields are absent from statistics (backward compat)', () => {
+    // Old validator responses may not include these fields — must degrade gracefully.
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({})}
+      />
+    )
+    // Fields are undefined → treat as 0/0
+    const zeroDivZero = screen.getAllByText('0/0')
+    expect(zeroDivZero.length).toBeGreaterThanOrEqual(2)
   })
 })
