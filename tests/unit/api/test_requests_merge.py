@@ -331,6 +331,142 @@ class TestMergeEndpointSuccess:
         assert response.status_code == 200
         assert response.json()["merged_request_id"] == "req_1"
 
+    def test_merge_promotes_winning_source_field_by_priority(
+        self, client_with_mocks: tuple[TestClient, Mock, Mock]
+    ) -> None:
+        """Kept record's source_field is upgraded to the highest-priority source.
+
+        Mirrors the sync-merge fix (#1666): the surviving row must reflect the
+        most-authoritative origin even when staff kept the lower-priority request.
+        """
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        # Kept request is a low-priority staff note (bunking_notes = priority 2)
+        request_1 = Mock()
+        request_1.id = "req_1"
+        request_1.requester_cm_id = 12345
+        request_1.requested_cm_id = 67890
+        request_1.session_cm_id = 1000002
+        request_1.request_type = Mock(value="bunk_with")
+        request_1.source_fields = ["bunking_notes"]
+        request_1.source_field = "bunking_notes"
+        request_1.confidence_score = 0.95
+        request_1.metadata = {}
+
+        # Deleted request is the high-priority parent form (bunk_request_form = priority 4)
+        request_2 = Mock()
+        request_2.id = "req_2"
+        request_2.requester_cm_id = 12345
+        request_2.requested_cm_id = 67890
+        request_2.session_cm_id = 1000002
+        request_2.request_type = Mock(value="bunk_with")
+        request_2.source_fields = ["bunk_request_form"]
+        request_2.source_field = "bunk_request_form"
+        request_2.confidence_score = 0.85
+        request_2.metadata = {}
+
+        mock_request_repo.get_by_id.side_effect = lambda id: {"req_1": request_1, "req_2": request_2}.get(id)
+
+        response = client.post(
+            "/api/requests/merge",
+            json={
+                "request_ids": ["req_1", "req_2"],
+                "keep_target_from": "req_1",
+                "final_type": "bunk_with",
+            },
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
+        assert call_kwargs.get("source_field") == "bunk_request_form"
+
+    def test_merge_keeps_source_field_when_kept_is_highest_priority(
+        self, client_with_mocks: tuple[TestClient, Mock, Mock]
+    ) -> None:
+        """A high-priority kept request retains its own source_field after merge."""
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        # Kept request is admin-UI manual entry (manual = priority 4)
+        request_1 = Mock()
+        request_1.id = "req_1"
+        request_1.requester_cm_id = 12345
+        request_1.requested_cm_id = 67890
+        request_1.session_cm_id = 1000002
+        request_1.request_type = Mock(value="bunk_with")
+        request_1.source_fields = ["manual"]
+        request_1.source_field = "manual"
+        request_1.confidence_score = 0.95
+        request_1.metadata = {}
+
+        # Deleted request is a low-priority staff note (bunking_notes = priority 2)
+        request_2 = Mock()
+        request_2.id = "req_2"
+        request_2.requester_cm_id = 12345
+        request_2.requested_cm_id = 67890
+        request_2.session_cm_id = 1000002
+        request_2.request_type = Mock(value="bunk_with")
+        request_2.source_fields = ["bunking_notes"]
+        request_2.source_field = "bunking_notes"
+        request_2.confidence_score = 0.85
+        request_2.metadata = {}
+
+        mock_request_repo.get_by_id.side_effect = lambda id: {"req_1": request_1, "req_2": request_2}.get(id)
+
+        response = client.post(
+            "/api/requests/merge",
+            json={
+                "request_ids": ["req_1", "req_2"],
+                "keep_target_from": "req_1",
+                "final_type": "bunk_with",
+            },
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
+        assert call_kwargs.get("source_field") == "manual"
+
+    def test_merge_source_field_tie_favors_kept_request(self, client_with_mocks: tuple[TestClient, Mock, Mock]) -> None:
+        """On a priority tie, the staff-kept request's source_field wins."""
+        client, mock_request_repo, mock_source_link_repo = client_with_mocks
+
+        # Both sources are priority 4; kept request is the parent form
+        request_1 = Mock()
+        request_1.id = "req_1"
+        request_1.requester_cm_id = 12345
+        request_1.requested_cm_id = 67890
+        request_1.session_cm_id = 1000002
+        request_1.request_type = Mock(value="bunk_with")
+        request_1.source_fields = ["bunk_request_form"]
+        request_1.source_field = "bunk_request_form"
+        request_1.confidence_score = 0.95
+        request_1.metadata = {}
+
+        request_2 = Mock()
+        request_2.id = "req_2"
+        request_2.requester_cm_id = 12345
+        request_2.requested_cm_id = 67890
+        request_2.session_cm_id = 1000002
+        request_2.request_type = Mock(value="bunk_with")
+        request_2.source_fields = ["manual"]
+        request_2.source_field = "manual"
+        request_2.confidence_score = 0.99
+        request_2.metadata = {}
+
+        mock_request_repo.get_by_id.side_effect = lambda id: {"req_1": request_1, "req_2": request_2}.get(id)
+
+        response = client.post(
+            "/api/requests/merge",
+            json={
+                "request_ids": ["req_1", "req_2"],
+                "keep_target_from": "req_1",
+                "final_type": "bunk_with",
+            },
+        )
+
+        assert response.status_code == 200
+        call_kwargs = mock_request_repo.update_for_merge.call_args.kwargs
+        assert call_kwargs.get("source_field") == "bunk_request_form"
+
 
 class TestMergeEndpointErrors:
     """Test error handling for merge endpoint."""

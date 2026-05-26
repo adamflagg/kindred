@@ -7,6 +7,7 @@ Following TDD: These tests are written FIRST to define expected behavior.
 """
 
 import sys
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -95,7 +96,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             # Call the save method
             orchestrator._save_bunk_requests([request])
@@ -142,7 +143,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             orchestrator._save_bunk_requests([request])
 
@@ -189,7 +190,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             orchestrator._save_bunk_requests([request])
 
@@ -225,7 +226,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             orchestrator._save_bunk_requests([request])
 
@@ -254,7 +255,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             # Set a PB ID on the request (simulating what create does)
             def set_id_on_create(req):
@@ -306,7 +307,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             orchestrator._save_bunk_requests([request])
 
@@ -347,7 +348,7 @@ class TestOrchestratorMergeOnSave:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
 
             orchestrator._save_bunk_requests([request])
 
@@ -400,7 +401,7 @@ class TestMergeIntoExistingSourcePrecedence:
             orchestrator = RequestOrchestrator()
             orchestrator.request_repository = mock_request_repo
             orchestrator.source_link_repository = mock_source_link_repo
-            orchestrator._stats = {}
+            orchestrator._stats = defaultdict(int)
         return orchestrator
 
     def test_merge_low_priority_existing_into_high_priority_incoming_upgrades_source_field(self) -> None:
@@ -495,6 +496,51 @@ class TestMergeIntoExistingSourcePrecedence:
             f"Expected source_field='bunk_request_form' (priority 4) to be retained, "
             f"got {call_kwargs.get('source_field')!r}"
         )
+
+    def test_merge_save_runs_stat_tracking_without_swallowed_keyerror(self) -> None:
+        """The shared harness must seed _stats so _track_request_stats can run.
+
+        _save_bunk_requests wraps each request in a try/except that swallows
+        exceptions. If the harness seeds _stats as a bare {}, the per-request
+        counter increments in _track_request_stats raise KeyError and are
+        silently swallowed, so the test passes through an internal error path.
+        With a defaultdict-seeded harness the counters populate, proving the
+        stat-tracking path actually executed for the saved request.
+        """
+        existing_record = self._create_request(
+            requester_cm_id=55555,
+            requested_cm_id=66666,
+            source_field="bunk_request_form",
+            confidence_score=0.95,  # RESOLVED + BUNK_WITH defaults
+        )
+        existing_record.id = "pb_existing_003"
+        existing_record.source_fields = ["bunk_request_form"]
+
+        incoming = self._create_request(
+            requester_cm_id=55555,
+            requested_cm_id=66666,
+            source_field="bunk_request_form",
+            confidence_score=0.95,
+            metadata={
+                "has_database_duplicate": True,
+                "database_duplicate_id": "pb_existing_003",
+                "database_match_action": "merge",
+            },
+        )
+
+        mock_request_repo = Mock()
+        mock_source_link_repo = Mock()
+        mock_request_repo.get_by_id.return_value = existing_record
+        mock_request_repo.update_for_merge.return_value = True
+
+        orchestrator = self._make_orchestrator_with_mocks(mock_request_repo, mock_source_link_repo)
+        orchestrator._save_bunk_requests([incoming])
+
+        # _track_request_stats must have run for the saved request (RESOLVED + BUNK_WITH)
+        assert orchestrator._stats.get("status_resolved", 0) == 1, (
+            "status_resolved counter was not incremented — _track_request_stats KeyError'd and was swallowed"
+        )
+        assert orchestrator._stats.get("type_bunk_with", 0) == 1
 
 
 class TestOrchestratorSourceLinkInitialization:
