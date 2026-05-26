@@ -6,6 +6,7 @@ the unlocked campers across the unlocked cabins.
 """
 
 from bunking.logging_config import get_logger
+from bunking.models_v2 import DirectSolverInput
 
 from .base import SolverContext
 
@@ -33,3 +34,23 @@ def add_locked_bunk_constraints(ctx: SolverContext) -> None:
         for person_idx in range(len(ctx.person_ids)):
             must_be = 1 if person_idx in occupant_idxs else 0
             ctx.model.Add(ctx.assignments[(person_idx, bunk_idx)] == must_be)
+
+
+def cross_boundary_request_ids(inp: DirectSolverInput) -> list[str]:
+    """IDs of positive (``bunk_with``) requests unmeetable this pass because the target
+    sits in a locked cabin (frozen; won't move to the requester). Movable requester only.
+
+    Pure pre-pass over the input; feeds the partial-resolve completion summary (#1609).
+    """
+    locked_person_cms = {c for occupants in inp.locked_bunks.values() for c in occupants}
+    if not locked_person_cms:
+        return []
+    return [
+        r.id
+        for r in inp.requests
+        if (
+            r.request_type == "bunk_with"
+            and r.requested_person_cm_id in locked_person_cms
+            and r.requester_person_cm_id not in locked_person_cms
+        )
+    ]
