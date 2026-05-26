@@ -24,6 +24,7 @@ from bunking.sync.bunk_request_processor.data.repositories.request_repository im
 from bunking.sync.bunk_request_processor.data.repositories.source_link_repository import (
     SourceLinkRepository,
 )
+from bunking.sync.bunk_request_processor.processing.deduplicator import SOURCE_FIELD_PRIORITY
 
 from ..constants.collections import ORIGINAL_BUNK_REQUESTS, PERSONS
 from ..dependencies import pb
@@ -344,12 +345,24 @@ async def merge_requests(
             to_request_id=kept_id,
         )
 
+    # Pick the winning source_field by SOURCE_FIELD_PRIORITY (mirrors the sync
+    # merge / #1666): the surviving row reflects the most-authoritative origin
+    # even when staff kept a lower-priority request. Ties favor the kept request.
+    winning_source_field = keep_request.source_field
+    winning_priority = SOURCE_FIELD_PRIORITY.get(keep_request.source_field, 0)
+    for req in requests_to_delete:
+        req_priority = SOURCE_FIELD_PRIORITY.get(req.source_field, 0)
+        if req_priority > winning_priority:
+            winning_source_field = req.source_field
+            winning_priority = req_priority
+
     # Update the kept request
     request_repo.update_for_merge(
         record_id=kept_id,
         source_fields=combined_source_fields,
         confidence_score=max_confidence,
         metadata=combined_metadata,
+        source_field=winning_source_field,
     )
 
     # Soft-delete the merged requests (set merged_into instead of deleting)

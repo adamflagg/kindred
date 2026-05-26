@@ -505,27 +505,35 @@ class RequestRepository:
         source_fields: list[str],
         confidence_score: float,
         metadata: dict[str, Any],
+        source_field: str | None = None,
     ) -> bool:
         """Update an existing request during merge operation.
 
-        Updates the source_fields array, confidence score, and metadata
-        when merging a new source into an existing request.
+        Updates the source_fields array, confidence score, metadata, and
+        (optionally) the winning source_field when merging a new source into
+        an existing request.
 
         Args:
             record_id: PocketBase record ID of the request to update
             source_fields: Combined list of all contributing source fields
             confidence_score: New confidence score (should be max of old and new)
             metadata: Merged metadata dict
+            source_field: Winning source field (highest-priority source wins).
+                          When supplied the stored source_field column is updated
+                          so the surviving row always reflects the most-authoritative
+                          origin regardless of save order.
 
         Returns:
             True if update succeeded, False otherwise
         """
         try:
-            data = {
+            data: dict[str, Any] = {
                 "source_fields": json.dumps(source_fields),
                 "confidence_score": confidence_score,
                 "metadata": json.dumps(metadata),
             }
+            if source_field is not None:
+                data["source_field"] = source_field
             self.pb.collection("bunk_requests").update(record_id, data)
             return True
         except Exception as e:
