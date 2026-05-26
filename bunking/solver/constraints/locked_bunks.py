@@ -6,7 +6,7 @@ the unlocked campers across the unlocked cabins.
 """
 
 from bunking.logging_config import get_logger
-from bunking.models_v2 import DirectSolverInput
+from bunking.models_v2 import DirectBunkAssignment, DirectSolverInput
 
 from .base import SolverContext
 
@@ -54,3 +54,20 @@ def cross_boundary_request_ids(inp: DirectSolverInput) -> list[str]:
             and r.requester_person_cm_id not in locked_person_cms
         )
     ]
+
+
+def partial_resolve_summary(inp: DirectSolverInput, assignments: list[DirectBunkAssignment]) -> dict[str, int]:
+    """Completion-summary counts for a partial cabin re-solve (#1609).
+
+    ``unassigned_count`` — campers the solver could not place (no room in the unlocked
+    cabins): total persons minus those that landed in a bunk. ``cross_boundary_request_count``
+    — positive requests unmeetable because the target sits in a locked cabin. Both surface
+    in the post-run completion toast.
+
+    Call only on a FEASIBLE solution's assignments (solve() returns None on infeasible,
+    so the count is exact).
+    """
+    return {
+        "unassigned_count": len(inp.persons) - len(assignments),
+        "cross_boundary_request_count": len(cross_boundary_request_ids(inp)),
+    }

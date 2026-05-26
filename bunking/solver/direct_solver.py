@@ -44,7 +44,7 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
-from .constraints.locked_bunks import add_locked_bunk_constraints
+from .constraints.locked_bunks import add_locked_bunk_constraints, partial_resolve_summary
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .constraints.staff_separation import add_staff_separation_constraints
 from .feasibility import RequestValidationSummary
@@ -1006,6 +1006,10 @@ class DirectBunkingSolver:
             objective_trajectory_truncated=callback.truncated,
         )
         stats["request_validation"] = self.request_validation_summary
+
+        # Partial cabin re-solve (#1609): completion-summary counts for the toast.
+        if self.input.locked_bunks:
+            stats["partial_resolve"] = partial_resolve_summary(self.input, assignments)
 
         return DirectSolverOutput(
             assignments=assignments,
