@@ -47,10 +47,8 @@ def _is_hard_mnt(request: DirectBunkRequest) -> bool:
 
 
 def _possible_mp_count(ctx: SolverContext, cm_id: int) -> int:
-    """Number of possible Material-Parent requests for a camper."""
-    from bunking.satisfaction.bucket import is_material_parent_request  # noqa: PLC0415
-
-    return sum(1 for r in ctx.possible_requests.get(cm_id, []) if is_material_parent_request(r))
+    """Number of possible Material-Parent requests for a camper (#1664-aware)."""
+    return sum(1 for r in ctx.possible_requests.get(cm_id, []) if r.id in ctx.material_request_ids)
 
 
 def _mso_protection_applies(ctx: SolverContext, subject_cm: int, target_cm: int) -> dict[str, Any] | None:
@@ -60,14 +58,12 @@ def _mso_protection_applies(ctx: SolverContext, subject_cm: int, target_cm: int)
     has exactly one possible MP request (this one). Either direction qualifies.
     Returns the yield detail (protected_*) for ctx.staff_nbw_yields, or None.
     """
-    from bunking.satisfaction.bucket import is_material_parent_request  # noqa: PLC0415
-
     pair = {subject_cm, target_cm}
     for requester_cm in (subject_cm, target_cm):
         for r in ctx.possible_requests.get(requester_cm, []):
             if r.request_type != RequestType.BUNK_WITH.value:
                 continue
-            if not is_material_parent_request(r):
+            if r.id not in ctx.material_request_ids:  # was: if not is_material_parent_request(r)
                 continue
             if {r.requester_person_cm_id, r.requested_person_cm_id} != pair:
                 continue

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, TypedDict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
-from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
 from bunking.solver.constraints.age_spread import _age_to_months
 
@@ -517,7 +516,7 @@ def localize_hard_mso_infeasibility(
     candidate_cms = sorted(
         cm
         for cm, possible in probe.possible_requests.items()
-        if cm not in excluded and any(is_material_parent_request(r) for r in possible)
+        if cm not in excluded and any(r.id in probe.material_request_ids for r in possible)
     )
 
     logger.info(f"  Candidate MP-hard-constrained cms: {len(candidate_cms)}")

@@ -23,7 +23,7 @@ from bunking.models_v2 import (
 )
 from bunking.satisfaction import weight_for
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
-from bunking.satisfaction.bucket import RequestBucket, is_counted_request, is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, is_counted_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from campminder.client import get_current_season
 
@@ -1190,7 +1190,9 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            resolved_mp = [r for r in resolved_requests if is_material_parent_request(r)]
+            resolved_mp = [
+                r for r in resolved_requests if r.id in self.material_request_ids
+            ]  # was: if is_material_parent_request(r)
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
             resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
 
@@ -1225,7 +1227,9 @@ class DirectBunkingSolver:
 
             resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            if any(is_material_parent_request(r) for r in resolved_possible):
+            if any(
+                r.id in self.material_request_ids for r in resolved_possible
+            ):  # was: if any(is_material_parent_request(r) for r in resolved_possible)
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)
