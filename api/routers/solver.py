@@ -28,6 +28,7 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
+from bunking.satisfaction.bucket import is_counted_request
 from bunking.solver.impossibility import filter_immaterial_requests, validate_impossibility
 
 from ..constants.collections import (
@@ -415,7 +416,7 @@ async def pre_validate_solver(
 
         # --- Statistics ---
         total_capacity = sum(b.capacity for b in solver_input.bunks)
-        total_requests = len(solver_input.requests)
+        total_requests = sum(1 for r in solver_input.requests if is_counted_request(r))
         requests_by_person: dict[int, list[Any]] = {}
         for req in solver_input.requests:
             pid = req.requester_person_cm_id
