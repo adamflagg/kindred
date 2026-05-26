@@ -56,7 +56,7 @@ from ..integration.provider_factory import ProviderFactory
 from ..name_resolution.filters.spread_filter import SpreadFilter
 from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
 from ..processing.batch_signals import detect_batch_signals
-from ..processing.deduplicator import Deduplicator
+from ..processing.deduplicator import SOURCE_FIELD_PRIORITY, Deduplicator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..resolution.strategies.exact_match import ExactMatchStrategy
@@ -2276,12 +2276,19 @@ class RequestOrchestrator:
         merged_metadata["is_merged_duplicate"] = True
         merged_metadata["merge_source_field"] = request.source_field
 
+        # Pick winning source_field by SOURCE_FIELD_PRIORITY (mirrors deduplicate_batch
+        # tiebreak logic — higher-priority source wins regardless of save order).
+        existing_priority = SOURCE_FIELD_PRIORITY.get(existing.source_field, 0)
+        incoming_priority = SOURCE_FIELD_PRIORITY.get(request.source_field, 0)
+        winning_source_field = request.source_field if incoming_priority > existing_priority else existing.source_field
+
         # Update existing record
         if not self.request_repository.update_for_merge(
             record_id=existing_id,
             source_fields=new_source_fields,
             confidence_score=final_confidence,
             metadata=merged_metadata,
+            source_field=winning_source_field,
         ):
             return False
 
