@@ -32,6 +32,7 @@ from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
 from .constraints.bunk_requests import get_or_create_request_sat_var
+from .constraints.cabin_capacity import add_cabin_capacity_constraints
 from .constraints.cabin_occupancy import (
     add_cabin_minimum_occupancy_constraints,
     add_cabin_minimum_occupancy_soft_penalty,
@@ -464,16 +465,8 @@ class DirectBunkingSolver:
         else:
             logger.warning("DEBUG: Session boundary constraints DISABLED")
 
-        # 3. Bunk capacity constraints — hard cap at bunk.capacity (always 12
-        # via DEFAULT_BUNK_CAPACITY today; future per-bunk variance lives here).
-        self.constraint_logger.log_constraint(
-            "hard", "cabin_capacity", f"Cabin capacity constraints for {len(self.bunks)} bunks"
-        )
-        for bunk_idx, bunk in enumerate(self.bunks):
-            self.model.Add(
-                sum(self.assignments[(person_idx, bunk_idx)] for person_idx in range(len(self.person_ids)))
-                <= bunk.capacity
-            )
+        # 3. Bunk capacity — delegated to the module so overflow/locked logic lives in one place.
+        add_cabin_capacity_constraints(self._build_solver_context())
 
         # 3.5. Minimum occupancy constraint for non-AG bunks
         # Staff never put fewer than ~8 campers in a cabin
