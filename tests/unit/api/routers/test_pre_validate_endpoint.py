@@ -445,3 +445,105 @@ def test_response_propagates_self_conflict_bucket(client: TestClient) -> None:
     assert bucket[0]["reason_code"] == "self_conflict"
     assert bucket[0]["request_id"] == "r_bw"
     assert bucket[0]["detail"]["conflicting_request_id"] == "r_nbw"
+
+
+def test_total_requests_excludes_immaterial_rows(client: TestClient) -> None:
+    """statistics.total_requests must count only COUNTED-bucket requests.
+
+    Regression guard for GitHub #1665: the pre-validate endpoint was using
+    ``len(solver_input.requests)`` which includes socialize_with rows that
+    classify as IMMATERIAL_PARENT. The solver's own finish-stats use
+    ``is_counted_request()`` as the filter, so the two counts diverged by
+    the number of socialize_with / immaterial rows (~5 in session 2a).
+
+    Fixture: 3 counted requests (2 × bunk_request_form bunk_with, 1 × manual
+    not_bunk_with) + 2 immaterial requests (socialize_with source field).
+    The endpoint must report total_requests = 3, not 5.
+    """
+    from bunking.models_v2 import DirectBunkRequest, DirectSolverInput
+
+    counted_requests = [
+        # Emma Johnson → Liam Garcia (bunk_with, counted form field)
+        DirectBunkRequest(
+            id="r1",
+            requester_person_cm_id=10,
+            requested_person_cm_id=20,
+            request_type="bunk_with",
+            session_cm_id=1000001,
+            year=2026,
+            source_field="bunk_request_form",
+            status="resolved",
+        ),
+        # Olivia Chen → Riley Sam (bunk_with, counted form field)
+        DirectBunkRequest(
+            id="r2",
+            requester_person_cm_id=30,
+            requested_person_cm_id=40,
+            request_type="bunk_with",
+            session_cm_id=1000001,
+            year=2026,
+            source_field="bunk_request_form",
+            status="resolved",
+        ),
+        # Samuel Johnson: staff manual not_bunk_with (counted staff bucket)
+        DirectBunkRequest(
+            id="r3",
+            requester_person_cm_id=50,
+            requested_person_cm_id=60,
+            request_type="not_bunk_with",
+            session_cm_id=1000001,
+            year=2026,
+            source_field="manual",
+            status="resolved",
+        ),
+    ]
+    immaterial_requests = [
+        # socialize_with rows — IMMATERIAL_PARENT bucket, excluded from counts
+        DirectBunkRequest(
+            id="r4",
+            requester_person_cm_id=10,
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            session_cm_id=1000001,
+            year=2026,
+            source_field="socialize_with",
+            status="resolved",
+        ),
+        DirectBunkRequest(
+            id="r5",
+            requester_person_cm_id=30,
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            session_cm_id=1000001,
+            year=2026,
+            source_field="socialize_with",
+            status="resolved",
+        ),
+    ]
+    solver_input = DirectSolverInput(
+        persons=[],
+        requests=counted_requests + immaterial_requests,
+        bunks=[],
+    )
+
+    with (
+        patch("api.routers.solver.pb", _mock_pb()),
+        patch("api.routers.solver.build_session_context", new_callable=AsyncMock) as mock_build_ctx,
+        patch("api.routers.solver.fetch_session_data_v2", new_callable=AsyncMock) as mock_fetch,
+        patch("api.routers.solver.prepare_direct_solver_input") as mock_prepare,
+        patch("api.routers.solver.validate_impossibility") as mock_validate,
+        patch("api.routers.solver.ConfigLoader") as mock_config,
+    ):
+        mock_build_ctx.return_value = _make_session_ctx()
+        mock_fetch.return_value = ([], [], [], [], [])
+        mock_prepare.return_value = solver_input
+        mock_validate.return_value = _FakeReport()
+        mock_config.get_instance.return_value = MagicMock()
+        resp = client.post("/api/solver/pre-validate", json=_PAYLOAD)
+
+    assert resp.status_code == 200, resp.text
+    stats = resp.json()["statistics"]
+    assert stats["total_requests"] == 3, (
+        f"Expected 3 (counted only), got {stats['total_requests']}; "
+        f"socialize_with rows must not be counted (GitHub #1665)"
+    )
