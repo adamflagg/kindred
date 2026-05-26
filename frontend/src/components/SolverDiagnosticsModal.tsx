@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Modal } from './ui/Modal'
 import type { ImpossibilityReportItem, SolverDiagnostics } from '../services/solver'
 import { CamperNameButton } from './impossibility/CamperNameButton'
@@ -29,6 +29,11 @@ export default function SolverDiagnosticsModal({
   year,
 }: Props) {
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
+  // Reset the drill-through selection when the modal closes, so reopening it
+  // doesn't immediately pop the previously-selected camper's details panel.
+  useEffect(() => {
+    if (!isOpen) setSelectedCamperId(null)
+  }, [isOpen])
   const { infeasibilityCause, localization, impossibilityReport } = diagnostics
   const hasAny =
     Boolean(infeasibilityCause) ||
@@ -63,12 +68,14 @@ export default function SolverDiagnosticsModal({
         )}
 
         {/* Why the solve failed */}
-        {infeasibilityCause && (
+        {(infeasibilityCause || (localization?.campers.length ?? 0) > 0) && (
           <section>
             <h3 className="mb-1 text-sm font-bold text-red-800">Why the solve failed</h3>
-            <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-              {infeasibilityCause}
-            </p>
+            {infeasibilityCause && (
+              <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                {infeasibilityCause}
+              </p>
+            )}
             {localization && localization.campers.length > 0 && (
               <div className="mt-2 rounded-md border border-red-200 bg-white p-3">
                 <p className="text-xs text-stone-600">{localization.notes}</p>

@@ -1,7 +1,19 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import type { ReactNode } from 'react'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
+
+// Light stand-ins so selecting a camper doesn't pull in the real lazy panel /
+// BunkRequestProvider (which need a query client + network).
+vi.mock('../providers/BunkRequestProvider', () => ({
+  BunkRequestProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+}))
+vi.mock('./impossibility/LazyCamperDetailsPanel', () => ({
+  LazyCamperDetailsPanel: ({ camperId }: { camperId: string }) => (
+    <div data-testid="camper-details-panel">camper:{camperId}</div>
+  ),
+}))
 
 const diagnostics: SolverDiagnostics = {
   infeasibilityCause: 'The parent_paramount constraint is causing infeasibility',
@@ -62,6 +74,66 @@ describe('SolverDiagnosticsModal (#1638)', () => {
       />
     )
     expect(screen.queryByText(/Solver could not find/i)).toBeNull()
+  })
+
+  it('renders localized campers even when there is no infeasibility cause', () => {
+    // #1638 review fix: hasAny counts localization, so the campers must render
+    // independently of infeasibilityCause — otherwise the body is blank
+    // (localization present, but the "no detail" notice suppressed).
+    render(
+      <SolverDiagnosticsModal
+        isOpen
+        onClose={() => {}}
+        diagnostics={{
+          infeasibilityCause: null,
+          localization: diagnostics.localization,
+          impossibilityReport: null,
+        }}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    expect(screen.getByText('Emma Johnson')).toBeInTheDocument()
+    expect(screen.getByText('Liam Garcia')).toBeInTheDocument()
+    expect(screen.queryByText(/no diagnostic detail/i)).toBeNull()
+  })
+
+  it('clears the selected camper when closed (no stale details panel on reopen)', () => {
+    // #1638 review fix: selectedCamperId must reset when the modal closes, or
+    // reopening immediately pops the previously-selected camper's panel.
+    const { rerender } = render(
+      <SolverDiagnosticsModal
+        isOpen
+        onClose={() => {}}
+        diagnostics={diagnostics}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Open details for Emma Johnson/i }))
+    expect(screen.getByTestId('camper-details-panel')).toHaveTextContent('camper:1000001')
+
+    // Close...
+    rerender(
+      <SolverDiagnosticsModal
+        isOpen={false}
+        onClose={() => {}}
+        diagnostics={diagnostics}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    // ...then reopen: the previously-selected camper must NOT auto-reopen.
+    rerender(
+      <SolverDiagnosticsModal
+        isOpen
+        onClose={() => {}}
+        diagnostics={diagnostics}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    expect(screen.queryByTestId('camper-details-panel')).toBeNull()
   })
 
   it('handles empty diagnostics gracefully', () => {

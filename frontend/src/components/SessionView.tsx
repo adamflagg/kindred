@@ -474,7 +474,10 @@ export default function SessionView() {
       {diagnostics && (
         <SolverDiagnosticsModal
           isOpen={showDiagnostics}
-          onClose={() => setShowDiagnostics(false)}
+          onClose={() => {
+            setShowDiagnostics(false)
+            setDiagnostics(null)
+          }}
           diagnostics={diagnostics}
           sessionCmId={session.cm_id}
           year={currentYear}
