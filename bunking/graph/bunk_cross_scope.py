@@ -11,7 +11,6 @@ FastAPI router so the router stays transport-only glue (see api/CLAUDE.md).
 import asyncio
 from typing import Any
 
-from pocketbase import PocketBase
 from pydantic import BaseModel
 
 from api.constants.collections import BUNKS
@@ -19,6 +18,7 @@ from bunking.graph.graph_cache_manager import GraphCacheManager
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.scope_filter import CrossScopeEdge, apply_scope
 from bunking.logging_config import get_logger
+from pocketbase import PocketBase
 
 logger = get_logger(__name__)
 
