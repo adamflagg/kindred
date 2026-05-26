@@ -113,6 +113,9 @@ export interface StaffNbwYieldRaw {
   protected_camper_cm: number
 }
 
+/** Raw parent-NBW yield — identical shape to StaffNbwYieldRaw, distinct source (#1638 Stream C). */
+export type ParentNbwYieldRaw = StaffNbwYieldRaw
+
 /** A SolverRun plus the optional failure diagnostics (#1638). */
 export type SolverRunWithDiagnostics = SolverRun & { diagnostics?: SolverDiagnostics }
 

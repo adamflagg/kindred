@@ -178,6 +178,11 @@ export default function SessionView() {
             result.stats?.request_validation?.staff_nbw_yielded,
             camperNameById
           ),
+          // #1638 Stream C — resolve parent-NBW yields to names for the rose advisory.
+          parent_separation_yields: resolveYields(
+            result.stats?.request_validation?.parent_nbw_yielded,
+            camperNameById
+          ),
         })
       } else if (hasReviewableDiagnostics(result.diagnostics)) {
         // #1638 — persistent review surface replaces the transient red box.

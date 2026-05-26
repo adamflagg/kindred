@@ -55,6 +55,11 @@ class RequestValidationSummary(_RequestValidationSummaryBase, total=False):
     # protected_parent_request_id, protected_camper_cm}. Consumed by Stream B (#1638).
     staff_nbw_yielded_count: int
     staff_nbw_yielded: list[dict[str, Any]]
+    # Parent not_bunk_with separations that yielded to a sole-MP parent bunk_with
+    # (#1638 Stream C). Same entry shape as staff_nbw_yielded. Consumed by the
+    # rose advisory card in the solver-success modal.
+    parent_nbw_yielded_count: int
+    parent_nbw_yielded: list[dict[str, Any]]
 
 
 def check_feasibility(

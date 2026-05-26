@@ -174,6 +174,11 @@ class DirectBunkingSolver:
         # protect a parent-paramount MSO. Populated by add_staff_separation_constraints;
         # surfaced post-solve into request_validation_summary["staff_nbw_yielded"].
         self.staff_nbw_yields: list[dict[str, Any]] = []
+        # Parent not_bunk_with yields (#1638 Stream C) — a sole-MP parent NBW
+        # relaxed because the opposing sole-MP parent bunk_with wins. Populated by
+        # add_must_satisfy_one_request_constraints; surfaced post-solve into
+        # request_validation_summary["parent_nbw_yielded"].
+        self.parent_nbw_yields: list[dict[str, Any]] = []
 
         # Canonical per-request satisfaction vars (bunk_with / not_bunk_with),
         # keyed by request.id. Populated by get_or_create_request_sat_var via
@@ -226,6 +231,7 @@ class DirectBunkingSolver:
             soft_constraint_bonuses=self.soft_constraint_bonuses,
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
             staff_nbw_yields=self.staff_nbw_yields,
+            parent_nbw_yields=self.parent_nbw_yields,
             mp_skip_cms=self.mp_skip_cms,
             request_satisfied_vars=self.request_satisfied_vars,
         )
@@ -1234,6 +1240,11 @@ class DirectBunkingSolver:
         # MSO (#1541) — populated at add_constraints time; surfaced for Stream B (#1638).
         self.request_validation_summary["staff_nbw_yielded_count"] = len(self.staff_nbw_yields)
         self.request_validation_summary["staff_nbw_yielded"] = list(self.staff_nbw_yields)
+
+        # Parent NBW yields (#1638 Stream C) — sole-MP parent separations that
+        # yielded to a sole-MP parent bunk_with. Populated at add_constraints time.
+        self.request_validation_summary["parent_nbw_yielded_count"] = len(self.parent_nbw_yields)
+        self.request_validation_summary["parent_nbw_yielded"] = list(self.parent_nbw_yields)
 
         # PR1 symmetric met/total counts -- mirror the bucket-aware unmet keys
         # above with positive-side counts. Consumers (debug page) derive unmet

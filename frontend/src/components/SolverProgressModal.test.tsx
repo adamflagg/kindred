@@ -89,3 +89,48 @@ describe('SolverProgressModal staff-separation yields (#1638)', () => {
     expect(screen.queryByText(/staff separation/i)).toBeNull()
   })
 })
+
+const completedWithParentYields: SolverProgressState = {
+  isOpen: true,
+  phase: 'completed',
+  elapsedSeconds: 60,
+  timeLimit: 60,
+  stats: {
+    satisfied_request_count: 200,
+    total_requests: 220,
+    duration_seconds: 60,
+    new_assignments: 100,
+    // protectedCamperName is deliberately distinct from targetName here so the
+    // test verifies the protected-camper slot is wired independently. (In real
+    // parent yields protected_camper_cm == target_cm, but the modal is purely
+    // presentational and must render whatever it's handed into the right slot.)
+    parent_separation_yields: [
+      {
+        subjectName: 'Liam Garcia',
+        targetName: 'Emma Johnson',
+        protectedCamperName: 'Olivia Chen',
+      },
+    ],
+  },
+}
+
+describe('SolverProgressModal parent-NBW override (#1638 Stream C)', () => {
+  it('renders the parent-NBW override card when parent_separation_yields present', () => {
+    render(<SolverProgressModal state={completedWithParentYields} onClose={() => {}} />)
+    expect(screen.getByText(/parent .*do-not-bunk.* overridden/i)).toBeInTheDocument()
+    expect(screen.getByText(/Liam Garcia/)).toBeInTheDocument()
+    expect(screen.getByText(/Emma Johnson/)).toBeInTheDocument()
+    // The protected-camper name fills its own clause ("...to honor X's only
+    // parent request"), distinct from the target name above it.
+    expect(screen.getByText(/Olivia Chen.*only parent request/i)).toBeInTheDocument()
+  })
+
+  it('omits the parent-NBW card when there are no parent yields', () => {
+    const noYields: SolverProgressState = {
+      ...completedWithParentYields,
+      stats: { ...completedWithParentYields.stats, parent_separation_yields: [] },
+    }
+    render(<SolverProgressModal state={noYields} onClose={() => {}} />)
+    expect(screen.queryByText(/parent .*do-not-bunk.* overridden/i)).toBeNull()
+  })
+})

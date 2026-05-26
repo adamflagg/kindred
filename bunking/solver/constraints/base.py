@@ -94,6 +94,15 @@ class SolverContext:
     # production runs. Analogue of mp_skip_cms.
     staff_nbw_skip_pairs: set[tuple[int, int]] = field(default_factory=set)
 
+    # Parent-paramount carve-out (#1638 Stream C): records where a parent
+    # not_bunk_with that is the requester's SOLE Material-Parent request yielded
+    # to a conflicting sole-MP parent bunk_with (the "with" wins). Each entry has
+    # the same shape as staff_nbw_yields:
+    # {nbw_request_id, subject_cm, target_cm, protected_parent_request_id, protected_camper_cm}.
+    # Populated by add_must_satisfy_one_request_constraints; surfaced post-solve
+    # into request_validation_summary["parent_nbw_yielded"].
+    parent_nbw_yields: list[dict[str, Any]] = field(default_factory=list)
+
     # Canonical per-request satisfaction vars for bunk_with / not_bunk_with
     # requests, keyed by request.id. Built + memoized by
     # get_or_create_request_sat_var (bunk_requests.py); shared so add_objective

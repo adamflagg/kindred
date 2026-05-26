@@ -18,6 +18,7 @@ import {
   Clock,
   Target,
   AlertTriangle,
+  ShieldAlert,
   X,
   Minimize2,
 } from 'lucide-react'
@@ -56,6 +57,7 @@ export interface SolverResultStats {
       }
     | undefined
   staff_separation_yields?: ResolvedStaffSeparationYield[] | undefined
+  parent_separation_yields?: ResolvedStaffSeparationYield[] | undefined
 }
 
 export interface SolverProgressState {
@@ -468,6 +470,30 @@ export default function SolverProgressModal({
                           <li key={i}>
                             {y.subjectName} ↔ {y.targetName} — placed together to protect{' '}
                             {y.protectedCamperName}&apos;s only honorable parent request
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* #1638 Stream C — parent "keep-apart" overridden by a parent "bunk-with". */}
+              {stats.parent_separation_yields && stats.parent_separation_yields.length > 0 && (
+                <div className="rounded-xl bg-rose-50 p-3 ring-1 ring-rose-200 dark:bg-rose-950/30 dark:ring-rose-800">
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-600 dark:text-rose-400" />
+                    <div>
+                      <p className="text-sm font-medium text-rose-700 dark:text-rose-300">
+                        {stats.parent_separation_yields.length} parent &ldquo;do-not-bunk&rdquo;
+                        {stats.parent_separation_yields.length === 1 ? '' : 's'} overridden
+                      </p>
+                      <ul className="mt-1 space-y-1 text-xs text-rose-600 dark:text-rose-400">
+                        {stats.parent_separation_yields.map((y, i) => (
+                          <li key={i}>
+                            {y.subjectName} ↔ {y.targetName} — placed together to honor{' '}
+                            {y.protectedCamperName}&apos;s only parent request; {y.subjectName}
+                            &apos;s parent asked to keep them apart
                           </li>
                         ))}
                       </ul>
