@@ -27,12 +27,31 @@ def add_group_lock_constraints(ctx: SolverContext) -> None:
             "hard", "group_locks", f"{len(ctx.input.group_locks)} group locks to keep campers together"
         )
 
+    # Partial cabin re-solve (#1609): members pinned inside a locked cabin can't move,
+    # so a friend-lock group that straddles the lock boundary would be infeasible. The
+    # cabin lock wins — such groups are relaxed below.
+    locked_occupant_idxs = {
+        ctx.person_idx_map[c]
+        for occupants in ctx.input.locked_bunks.values()
+        for c in occupants
+        if c in ctx.person_idx_map
+    }
+
     for group_lock_id, person_cm_ids in ctx.input.group_locks.items():
         # Convert to person indices
         group_indices = [ctx.person_idx_map[cm_id] for cm_id in person_cm_ids if cm_id in ctx.person_idx_map]
 
         if len(group_indices) < 2:
             continue  # No constraint needed for single person
+
+        # Relax only a TRUE straddle: some members pinned in a locked cabin, some free.
+        if (
+            locked_occupant_idxs
+            and any(i in locked_occupant_idxs for i in group_indices)
+            and not all(i in locked_occupant_idxs for i in group_indices)
+        ):
+            logger.info(f"group_lock {group_lock_id} straddles a locked cabin; relaxing (cabin lock wins)")
+            continue
 
         logger.info(f"Adding group lock constraint for {len(group_indices)} campers in group {group_lock_id}")
 
