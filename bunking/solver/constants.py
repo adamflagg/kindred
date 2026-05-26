@@ -45,10 +45,12 @@ DEFAULT_BUNK_CAPACITY = 12
 math and post-solve evaluator displays."""
 
 MAX_BUNK_CAPACITY = 14
-"""Absolute ceiling enforced by the staff drag-and-drop UI. Solver does not
-read this — it caps at ``DEFAULT_BUNK_CAPACITY``. Staff judgment calls to put
-a 13th or 14th camper in a cabin happen post-solve in the assignments
-editor."""
+"""Absolute ceiling enforced by the staff drag-and-drop UI. The solver normally
+caps at ``DEFAULT_BUNK_CAPACITY`` (12). Two paths can legitimately reach 13:
+(1) **partial re-solve with allow_overflow=True** (PR #1609) — the solver fills
+unlocked bunks to ``DEFAULT_BUNK_CAPACITY + 1`` to absorb displaced campers;
+(2) **staff drag-and-drop** — post-solve manual edits in the assignments editor.
+A 14th camper can only be added via staff drag-and-drop."""
 
 MIN_BUNK_OCCUPANCY = 8
 """Hard floor: a used (non-AG) bunk must have at least this many campers.

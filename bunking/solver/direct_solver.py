@@ -28,7 +28,7 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 from campminder.client import get_current_season
 
 from .callbacks import BestBoundCallback, SolverProgressCallback
-from .constants import PARTIAL_PLACEMENT_BONUS
+from .constants import DEFAULT_BUNK_CAPACITY, PARTIAL_PLACEMENT_BONUS
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
@@ -1048,17 +1048,25 @@ class DirectBunkingSolver:
             bunk_to_persons[bunk_cm_id].append(person_cm_id)
 
         # 1. Check cabin capacity violations
+        # Mirror cabin_capacity.py: skip locked bunks (their occupancy is frozen, not
+        # the solver's doing) and use the effective cap for unlocked bunks — one extra
+        # slot is allowed during a partial re-solve with allow_overflow=True.
+        locked_cms = set(self.input.locked_bunks)
+        overflow = bool(self.input.locked_bunks) and self.input.allow_overflow
         capacity_violations = 0
         for bunk_cm_id, person_cm_ids in bunk_to_persons.items():
+            if bunk_cm_id in locked_cms:
+                continue  # frozen roster — not the solver's responsibility
             bunk_idx = self.bunk_idx_map[bunk_cm_id]
             bunk = self.bunks[bunk_idx]
             occupancy = len(person_cm_ids)
+            effective_cap = DEFAULT_BUNK_CAPACITY + 1 if overflow else bunk.capacity
 
-            if occupancy > bunk.capacity:
+            if occupancy > effective_cap:
                 capacity_violations += 1
                 self.constraint_logger.log_violation(
                     "cabin_capacity",
-                    f"Cabin {bunk.name} is OVER capacity: {occupancy}/{bunk.capacity} (+{occupancy - bunk.capacity})",
+                    f"Cabin {bunk.name} is OVER capacity: {occupancy}/{effective_cap} (+{occupancy - effective_cap})",
                     severity="error",
                 )
 

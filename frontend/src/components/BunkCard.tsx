@@ -304,6 +304,7 @@ function BunkCard({
         isOver && 'ring-primary bg-primary/5 ring-2',
         'hover:shadow-lodge-lg',
         (ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) &&
+          !isLocked &&
           'border-destructive/50 border-2',
         // Locked cabin — amber ring + subtle tint
         isLocked &&

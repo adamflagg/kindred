@@ -18,6 +18,7 @@ import {
   useBunkRequestsCount,
   useLockedBunks,
 } from '../hooks/session'
+import { scopeLockedToBunks } from '../hooks/session/scopeLockedToBunks'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
@@ -125,12 +126,29 @@ export default function SessionView() {
     currentYear,
   })
 
+  // Filtered locked set — only ids that exist in the current session's bunk
+  // list. Stale ids from a previously-viewed session (no remount → raw set
+  // survives) are silently dropped here so the solver always runs in full mode
+  // when switching sessions (#1609 fix #2). Also ensures lock/unlock counts
+  // match the visible bunk set under area filtering (#1609 fix #6).
+  // NOTE: per-card lock UI (isLocked, badges) still reads the raw set so
+  // individual card states are unaffected.
+  const filteredLockedBunkCmIds = useMemo(
+    () => scopeLockedToBunks(lockedBunkCmIds, bunks),
+    [lockedBunkCmIds, bunks]
+  )
+
   // Derived locked/unlocked counts + array for solver and header display.
-  const lockedBunkCmIdsArray = useMemo(() => Array.from(lockedBunkCmIds), [lockedBunkCmIds])
-  const lockedCount = lockedBunkCmIds.size
+  // All three are based on the filtered set so they stay consistent with each
+  // other and with what the solver actually receives.
+  const lockedBunkCmIdsArray = useMemo(
+    () => Array.from(filteredLockedBunkCmIds),
+    [filteredLockedBunkCmIds]
+  )
+  const lockedCount = filteredLockedBunkCmIds.size
   const unlockedCount = useMemo(
-    () => bunks.filter((b) => !lockedBunkCmIds.has(b.cm_id)).length,
-    [bunks, lockedBunkCmIds]
+    () => bunks.filter((b) => !filteredLockedBunkCmIds.has(b.cm_id)).length,
+    [bunks, filteredLockedBunkCmIds]
   )
 
   // Solver operations hook
@@ -150,7 +168,9 @@ export default function SessionView() {
     fetchWithAuth,
     respectLocks,
     lockedBunkCmIds: lockedBunkCmIdsArray,
-    allowOverflow,
+    // Suppress overflow when nothing is locked in scope: stale-session locks
+    // would otherwise keep allowOverflow=true for a full (not partial) solve.
+    allowOverflow: lockedCount > 0 ? allowOverflow : false,
   })
 
   const { data: campers = [] } = useSessionCampers({

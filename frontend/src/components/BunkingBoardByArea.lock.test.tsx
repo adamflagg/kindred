@@ -86,7 +86,7 @@ import BunkingBoardByArea from './BunkingBoardByArea'
 function makeBunk(overrides: Partial<Bunk> = {}): Bunk {
   return {
     id: 'bunk-1',
-    cm_id: 1001,
+    cm_id: 1000001,
     name: 'G-9',
     gender: 'F',
     is_active: true,
@@ -101,8 +101,8 @@ function makeBunk(overrides: Partial<Bunk> = {}): Bunk {
 }
 
 // Two visible bunks — fictional names for test fixture
-const bunkA = makeBunk({ id: 'g9', cm_id: 1001, name: 'G-9', gender: 'F' })
-const bunkB = makeBunk({ id: 'g10', cm_id: 1002, name: 'G-10', gender: 'F' })
+const bunkA = makeBunk({ id: 'g9', cm_id: 1000001, name: 'G-9', gender: 'F' })
+const bunkB = makeBunk({ id: 'g10', cm_id: 1000002, name: 'G-10', gender: 'F' })
 const bunks = [bunkA, bunkB]
 
 describe('BunkingBoardByArea — cabin lock wiring', () => {
@@ -184,7 +184,7 @@ describe('BunkingBoardByArea — cabin lock wiring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lock all' }))
     expect(onLockAll).toHaveBeenCalledTimes(1)
     const firstCallArgs = onLockAll.mock.calls[0] as [number[]]
-    expect(onLockAll).toHaveBeenCalledWith(expect.arrayContaining([1001, 1002]))
+    expect(onLockAll).toHaveBeenCalledWith(expect.arrayContaining([1000001, 1000002]))
     expect(firstCallArgs[0]).toHaveLength(2)
   })
 
@@ -203,7 +203,7 @@ describe('BunkingBoardByArea — cabin lock wiring', () => {
   })
 
   it('shows the locked visual on a bunk whose cm_id is in lockedBunkCmIds', () => {
-    const locked = new Set([1001]) as ReadonlySet<number>
+    const locked = new Set([1000001]) as ReadonlySet<number>
     render(
       <BunkingBoardByArea
         {...baseProps}
@@ -233,7 +233,7 @@ describe('BunkingBoardByArea — cabin lock wiring', () => {
     )
     // Click the lock toggle on bunk G-9 (cm_id 1001)
     fireEvent.click(screen.getByRole('button', { name: /lock cabin G-9/i }))
-    expect(onToggleBunkLock).toHaveBeenCalledWith(1001)
+    expect(onToggleBunkLock).toHaveBeenCalledWith(1000001)
     expect(onToggleBunkLock).toHaveBeenCalledTimes(1)
   })
 })

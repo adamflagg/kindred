@@ -70,10 +70,10 @@ vi.mock('../hooks/useCurrentYear', () => ({ useYear: () => 2026 }))
 
 import BunkCard from './BunkCard'
 
-// Minimal BunkWithCampers fixture — fictional bunk B-1, cm_id 2001
+// Minimal BunkWithCampers fixture — fictional bunk B-1, cm_id 1000001
 const fakeBunk = {
-  id: 'bunk-pb-2001',
-  cm_id: 2001,
+  id: 'bunk-pb-1000001',
+  cm_id: 1000001,
   name: 'B-1',
   gender: 'M',
   area_id: 0,
@@ -165,5 +165,48 @@ describe('BunkCard cabin lock toggle', () => {
     )
     expect(screen.queryByRole('button', { name: /lock cabin/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /unlock cabin/i })).toBeNull()
+  })
+})
+
+// --- FIX #5: locked cabin suppresses destructive border ---
+
+const overCapacityBunk = {
+  ...fakeBunk,
+  occupancy: 13, // > defaultCapacity (12) → triggers isOverCapacity
+  utilization: 108,
+} as unknown as BunkWithCampers
+
+describe('BunkCard border styling — FIX #5', () => {
+  it('a LOCKED over-capacity cabin does NOT have the border-destructive class', () => {
+    const { container } = render(
+      <BunkCard
+        bunk={overCapacityBunk}
+        onToggleLock={vi.fn()}
+        isLocked={true}
+        isProductionMode={false}
+        defaultCapacity={12}
+        activeDragCamper={null}
+      />
+    )
+    // The top-level card div carries the border classes
+    const card = container.querySelector('[data-bunk-card]')
+    expect(card).toBeInTheDocument()
+    expect(card?.className).not.toContain('border-destructive')
+  })
+
+  it('a NON-locked over-capacity cabin DOES have the border-destructive class', () => {
+    const { container } = render(
+      <BunkCard
+        bunk={overCapacityBunk}
+        onToggleLock={vi.fn()}
+        isLocked={false}
+        isProductionMode={false}
+        defaultCapacity={12}
+        activeDragCamper={null}
+      />
+    )
+    const card = container.querySelector('[data-bunk-card]')
+    expect(card).toBeInTheDocument()
+    expect(card?.className).toContain('border-destructive')
   })
 })

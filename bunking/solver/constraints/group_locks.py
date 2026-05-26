@@ -30,9 +30,15 @@ def add_group_lock_constraints(ctx: SolverContext) -> None:
     # Partial cabin re-solve (#1609): members pinned inside a locked cabin can't move,
     # so a friend-lock group that straddles the lock boundary would be infeasible. The
     # cabin lock wins — such groups are relaxed below.
-    locked_occupant_idxs = {
-        ctx.person_idx_map[c]
-        for occupants in ctx.input.locked_bunks.values()
+    #
+    # Two cases to relax:
+    #   (a) TRUE straddle: some members locked, some free → cabin lock wins.
+    #   (b) ALL members locked but in DIFFERENT locked cabins → "stay together"
+    #       constraint fights the per-cabin pins → infeasible.
+    # Build a map from person_idx → which locked bunk they're pinned in.
+    locked_bunk_by_person_idx: dict[int, int] = {
+        ctx.person_idx_map[c]: bunk_cm_id
+        for bunk_cm_id, occupants in ctx.input.locked_bunks.items()
         for c in occupants
         if c in ctx.person_idx_map
     }
@@ -44,14 +50,16 @@ def add_group_lock_constraints(ctx: SolverContext) -> None:
         if len(group_indices) < 2:
             continue  # No constraint needed for single person
 
-        # Relax only a TRUE straddle: some members pinned in a locked cabin, some free.
-        if (
-            locked_occupant_idxs
-            and any(i in locked_occupant_idxs for i in group_indices)
-            and not all(i in locked_occupant_idxs for i in group_indices)
-        ):
-            logger.info(f"group_lock {group_lock_id} straddles a locked cabin; relaxing (cabin lock wins)")
-            continue
+        locked_member_idxs = [i for i in group_indices if i in locked_bunk_by_person_idx]
+
+        if locked_member_idxs:
+            # Case (a): some locked, some free → straddle, relax.
+            # Case (b): all locked but spread across ≥2 different locked bunks → relax.
+            is_partial_straddle = len(locked_member_idxs) != len(group_indices)
+            is_split_across_bunks = len({locked_bunk_by_person_idx[i] for i in locked_member_idxs}) > 1
+            if is_partial_straddle or is_split_across_bunks:
+                logger.info(f"group_lock {group_lock_id} straddles a locked cabin; relaxing (cabin lock wins)")
+                continue
 
         logger.info(f"Adding group lock constraint for {len(group_indices)} campers in group {group_lock_id}")
 

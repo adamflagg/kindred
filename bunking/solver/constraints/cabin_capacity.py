@@ -1,12 +1,18 @@
 """
 Cabin Capacity Constraint — enforce per-bunk hard capacity.
 
-Hard-only: the solver caps each bunk at ``DEFAULT_BUNK_CAPACITY``. The previous
-soft-mode path (graduated overflow penalties with an unavoidable-overflow
-exception) was deleted in Phase 2 — the user's policy is "solver never exceeds
-the standard; staff can manually drag up to ``MAX_BUNK_CAPACITY`` after the
-solver runs". The soft penalty path was never used in practice and was the
-"too flexible" failure mode that prompted the cleanup.
+Hard-only: the solver caps each unlocked bunk at ``DEFAULT_BUNK_CAPACITY`` (12)
+by default. Two exceptions to the "solver never exceeds the standard" rule:
+
+1. **Partial re-solve overflow** (PR #1609): when ``locked_bunks`` is non-empty
+   AND ``allow_overflow=True``, unlocked bunks may be filled to
+   ``DEFAULT_BUNK_CAPACITY + 1`` (13). This lets the re-solver absorb a camper
+   displaced from a locked under-filled cabin without leaving them unassigned.
+2. **Staff drag-and-drop**: staff can manually move a camper to any bunk up to
+   ``MAX_BUNK_CAPACITY`` (14) in the assignments editor after a solve completes.
+
+Locked cabins (#1609) are skipped entirely: their exact occupancy is already
+pinned by ``add_locked_bunk_constraints`` and must not be re-capped.
 
 If per-bunk variance is ever needed, ``DirectBunk.capacity`` is still the
 right per-bunk attribute — wire it up to a real PB column at that point.
