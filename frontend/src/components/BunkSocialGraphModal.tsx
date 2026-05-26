@@ -336,12 +336,21 @@ export default function BunkSocialGraphModal({
     cy.add(elements)
 
     // Run layout after adding elements
-    // Use cola for better layout control
+    // Use cola for better layout control. Explicit spacing so disconnected
+    // sub-clusters don't pack adjacently and look falsely linked (#1640).
+    // Cast required: cytoscape's BaseLayoutOptions doesn't include cola's
+    // plugin-specific options (nodeSpacing, handleDisconnected).
     const layout = cy.layout({
       name: 'cola',
-    })
+      nodeSpacing: 30,
+      padding: 30,
+      handleDisconnected: true,
+    } as Parameters<(typeof cy)['layout']>[0])
 
     layoutRef.current = layout
+    layout.on('layoutstop', () => {
+      cy.fit(undefined, 30)
+    })
     layout.run()
 
     // Add click handler for nodes
