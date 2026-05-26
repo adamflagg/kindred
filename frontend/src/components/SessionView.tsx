@@ -110,6 +110,29 @@ export default function SessionView() {
     localStorage.setItem('solver-respect-locks', String(value))
   }
 
+  // Ephemeral cabin-lock state for partial re-solve (#1609).
+  const { lockedBunkCmIds, toggleBunkLock, lockAll, unlockAll } = useLockedBunks()
+
+  // Ephemeral overflow opt-in — per-partial-resolve, not persisted.
+  const [allowOverflow, setAllowOverflow] = useState(false)
+
+  // Data fetching hooks — campers must be available before handleRunSolver
+  // so camperNameById (which depends on campers) can be used in the callback.
+  const { data: bunks = [] } = useSessionBunks({
+    selectedSession,
+    sessionCmId: session?.cm_id,
+    agSessions,
+    currentYear,
+  })
+
+  // Derived locked/unlocked counts + array for solver and header display.
+  const lockedBunkCmIdsArray = useMemo(() => Array.from(lockedBunkCmIds), [lockedBunkCmIds])
+  const lockedCount = lockedBunkCmIds.size
+  const unlockedCount = useMemo(
+    () => bunks.filter((b) => !lockedBunkCmIds.has(b.cm_id)).length,
+    [bunks, lockedBunkCmIds]
+  )
+
   // Solver operations hook
   const {
     isSolving,
@@ -126,18 +149,8 @@ export default function SessionView() {
     autoApplyTimeout,
     fetchWithAuth,
     respectLocks,
-  })
-
-  // Ephemeral cabin-lock state for partial re-solve (#1609).
-  const { lockedBunkCmIds, toggleBunkLock, lockAll, unlockAll } = useLockedBunks()
-
-  // Data fetching hooks — campers must be available before handleRunSolver
-  // so camperNameById (which depends on campers) can be used in the callback.
-  const { data: bunks = [] } = useSessionBunks({
-    selectedSession,
-    sessionCmId: session?.cm_id,
-    agSessions,
-    currentYear,
+    lockedBunkCmIds: lockedBunkCmIdsArray,
+    allowOverflow,
   })
 
   const { data: campers = [] } = useSessionCampers({
@@ -330,6 +343,10 @@ export default function SessionView() {
         onRunSolver={handleRunSolver}
         respectLocks={respectLocks}
         onRespectLocksChange={handleRespectLocksChange}
+        lockedCount={lockedCount}
+        unlockedCount={unlockedCount}
+        allowOverflow={allowOverflow}
+        onAllowOverflowChange={setAllowOverflow}
         onShowClearDialog={() => setShowClearDialog(true)}
         onShowNewScenarioModal={() => setShowNewScenarioModal(true)}
         onShowScenarioManagement={() => setShowScenarioManagementModal(true)}

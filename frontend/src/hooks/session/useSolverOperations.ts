@@ -67,6 +67,8 @@ export interface UseSolverOperationsOptions {
   autoApplyTimeout: number
   fetchWithAuth: FetchWithAuthFn
   respectLocks: boolean
+  lockedBunkCmIds: number[]
+  allowOverflow: boolean
 }
 
 export interface SolverRunResultWithStats {
@@ -100,6 +102,8 @@ export function useSolverOperations({
   autoApplyTimeout,
   fetchWithAuth,
   respectLocks,
+  lockedBunkCmIds,
+  allowOverflow,
 }: UseSolverOperationsOptions): UseSolverOperationsReturn {
   const queryClient = useQueryClient()
   const [isSolving, setIsSolving] = useState(false)
@@ -123,7 +127,9 @@ export function useSolverOperations({
           solverScenarioId,
           fetchWithAuth,
           timeLimit,
-          respectLocks
+          respectLocks,
+          lockedBunkCmIds,
+          allowOverflow
         )
 
         if (solverRun.status === 'completed') {
@@ -232,6 +238,8 @@ export function useSolverOperations({
       fetchWithAuth,
       queryClient,
       respectLocks,
+      lockedBunkCmIds,
+      allowOverflow,
     ]
   )
 
