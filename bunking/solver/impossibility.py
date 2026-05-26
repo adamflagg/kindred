@@ -25,7 +25,7 @@ from typing import Any, NamedTuple
 from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.models_v2 import DirectBunk, DirectBunkRequest, DirectPerson, DirectSolverInput
-from bunking.satisfaction.bucket import RequestBucket, classify_request, is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, classify_request
 
 logger = get_logger(__name__)
 
@@ -177,7 +177,7 @@ def _record_item(
     requester = ctx.person_by_cm_id.get(req.requester_person_cm_id)
     requestee = ctx.person_by_cm_id.get(req.requested_person_cm_id) if req.requested_person_cm_id else None
 
-    # Bucket classification with safe fallback (mirrors is_material_parent_request precedent).
+    # Bucket classification with safe fallback (mirrors the precedent in classify_request callers).
     # An unknown source_field surfaces as bucket=None — the modal renders these in an
     # "Unbucketed" section so they're still visible but flagged as a data-hygiene gap.
     bucket: str | None = None
@@ -284,6 +284,11 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
     # constraint. Pure derived property of `flat` — single source of truth for
     # both parent_paramount and the pre-validate endpoint.
     impossible_ids = {item.request_id for item in report.flat}
+
+    from bunking.satisfaction.bucket import compute_material_request_ids  # noqa: PLC0415
+
+    material_ids = compute_material_request_ids(input_data.requests_by_person, impossible_ids)
+
     reasons_by_request: dict[str, set[str]] = defaultdict(set)
     for item in report.flat:
         reasons_by_request[item.request_id].add(item.reason_code)
@@ -292,7 +297,7 @@ def validate_impossibility(input_data: DirectSolverInput, config: ConfigLoader) 
         person = ctx.person_by_cm_id.get(cm_id)
         if person is None:
             continue  # requester not in the roster — out of scope
-        mp_requests = [r for r in requests if is_material_parent_request(r)]
+        mp_requests = [r for r in requests if r.id in material_ids]
         if not mp_requests:
             continue
         if not all(r.id in impossible_ids for r in mp_requests):

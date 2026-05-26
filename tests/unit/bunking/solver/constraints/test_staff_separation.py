@@ -197,3 +197,54 @@ def test_carveout_requires_material_parent_positive():
     _force_together(ctx, 100, 200)
     assert is_infeasible(cp_model.CpSolver().Solve(ctx.model))
     assert ctx.staff_nbw_yields == []
+
+
+def _age_pref(request_id: str, requester: int, source_field: str = "bunk_request_form") -> DirectBunkRequest:
+    """Create an age_preference request (no requestee)."""
+    return DirectBunkRequest(
+        id=request_id,
+        requester_person_cm_id=requester,
+        requested_person_cm_id=None,
+        request_type="age_preference",
+        session_cm_id=1000,
+        year=2025,
+        source_field=source_field,
+        confidence_score=1.0,
+        status="resolved",
+    )
+
+
+def test_carveout_fires_when_sole_real_mp_is_bunk_with_and_age_pref_suppressed():
+    """#1664: suppressed form age_preference does NOT inflate _possible_mp_count.
+
+    Liam (200) has:
+      - a bunk_request_form bunk_with toward Emma (100)  → material, mp_count = 1
+      - a bunk_request_form age_preference               → suppressed by #1664 (real form BW present)
+
+    After migration, _possible_mp_count(ctx, 200) == 1, so the MSO-protection
+    carve-out fires and the staff not_bunk_with yields.
+
+    Before migration (using is_material_parent_request directly), the age_pref
+    would also be counted → mp_count == 2 → no yield.
+    """
+    from bunking.solver.constraints.staff_separation import add_staff_separation_constraints
+
+    ctx = _two_girls_two_bunks(
+        [
+            _nbw("n1", 100, 200, "staff_not_bunk_with"),
+            _bunk_with("p1", 200, 100, "bunk_request_form"),
+            _age_pref("a1", 200),  # suppressed by #1664 → not in material_request_ids
+        ]
+    )
+    # Verify suppression: age_pref not in material set, bunk_with is.
+    assert "p1" in ctx.material_request_ids
+    assert "a1" not in ctx.material_request_ids
+
+    add_staff_separation_constraints(ctx)
+    _force_together(ctx, 100, 200)
+    assert is_optimal_or_feasible(cp_model.CpSolver().Solve(ctx.model))
+    assert len(ctx.staff_nbw_yields) == 1
+    y = ctx.staff_nbw_yields[0]
+    assert y["nbw_request_id"] == "n1"
+    assert y["protected_parent_request_id"] == "p1"
+    assert y["protected_camper_cm"] == 200

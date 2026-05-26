@@ -120,3 +120,108 @@ def test_classify_request_handles_renamed_source_fields() -> None:
 
     assert classify_request("bunk_request_form") == RequestBucket.MATERIAL_PARENT
     assert classify_request("staff_not_bunk_with") == RequestBucket.STAFF
+
+
+from bunking.models_v2 import DirectBunkRequest
+from bunking.satisfaction.bucket import compute_material_request_ids
+
+
+def _req(
+    rid: str,
+    rtype: str,
+    source: str,
+    *,
+    requester: int = 1,
+    requested: int | None = 2,
+    status: str = "resolved",
+) -> DirectBunkRequest:
+    return DirectBunkRequest(
+        id=rid,
+        requester_person_cm_id=requester,
+        requested_person_cm_id=requested,
+        request_type=rtype,
+        source_field=source,
+        session_cm_id=100,
+        year=2026,
+        status=status,
+    )
+
+
+class TestComputeMaterialRequestIds:
+    def test_form_age_pref_alone_is_material(self) -> None:
+        reqs = {1: [_req("a", "age_preference", "bunk_request_form", requested=None)]}
+        assert compute_material_request_ids(reqs, set()) == {"a"}
+
+    def test_form_age_pref_suppressed_by_possible_real_form_request(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "bunk_with", "bunk_request_form"),
+            ]
+        }
+        assert compute_material_request_ids(reqs, set()) == {"b"}
+
+    def test_form_age_pref_revives_when_real_request_impossible(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "bunk_with", "bunk_request_form"),
+            ]
+        }
+        # "b" is impossible but still a material-parent request → stays in the set.
+        # "a" revives because no possible real request exists to suppress it.
+        assert compute_material_request_ids(reqs, {"b"}) == {"a", "b"}
+
+    def test_not_bunk_with_also_suppresses(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "not_bunk_with", "bunk_request_form"),
+            ]
+        }
+        assert compute_material_request_ids(reqs, set()) == {"b"}
+
+    def test_staff_request_does_not_suppress(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "not_bunk_with", "bunking_notes"),
+            ]
+        }
+        assert compute_material_request_ids(reqs, set()) == {"a"}
+
+    def test_manual_request_does_not_suppress(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "bunk_with", "manual"),
+            ]
+        }
+        # manual is STAFF bucket → not material-parent, so "b" is excluded.
+        # "a" stays material because manual never suppresses.
+        assert compute_material_request_ids(reqs, set()) == {"a"}
+
+    def test_socialize_with_age_pref_immaterial_regardless(self) -> None:
+        reqs = {1: [_req("a", "age_preference", "socialize_with", requested=None)]}
+        assert compute_material_request_ids(reqs, set()) == set()
+
+    def test_unresolved_real_request_does_not_suppress(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requested=None),
+                _req("b", "bunk_with", "bunk_request_form", status="pending"),
+            ]
+        }
+        # "b" is a material-parent request by source so it stays in the set.
+        # It does NOT suppress "a" because suppression requires resolved+possible.
+        assert compute_material_request_ids(reqs, set()) == {"a", "b"}
+
+    def test_per_requester_independent(self) -> None:
+        reqs = {
+            1: [
+                _req("a", "age_preference", "bunk_request_form", requester=1, requested=None),
+                _req("b", "bunk_with", "bunk_request_form", requester=1),
+            ],
+            2: [_req("c", "age_preference", "bunk_request_form", requester=2, requested=None)],
+        }
+        assert compute_material_request_ids(reqs, set()) == {"b", "c"}

@@ -350,3 +350,90 @@ class TestParentParamountSharesSatVarMap:
             "parent_paramount must build MP bunk-request sat vars through the "
             "shared get_or_create_request_sat_var builder"
         )
+
+
+def _mp_age_pref_request(
+    request_id: str,
+    requester_cm_id: int,
+    session_cm_id: int = 1000,
+    age_preference_target: str = "older",
+) -> DirectBunkRequest:
+    """Material-Parent age_preference request (source_field=bunk_request_form).
+
+    Used to simulate the #1664 suppression scenario: a form age_preference that
+    coexists with a form bunk_with and should be excluded from the MSO forcing set.
+    """
+    return DirectBunkRequest(
+        id=request_id,
+        requester_person_cm_id=requester_cm_id,
+        requested_person_cm_id=None,
+        request_type="age_preference",
+        session_cm_id=session_cm_id,
+        year=2025,
+        source_field="bunk_request_form",  # MATERIAL_PARENT bucket
+        confidence_score=1.0,
+        status="resolved",
+        age_preference_target=age_preference_target,
+    )
+
+
+class TestParentParamountAgePreferenceSuppression:
+    def test_suppressed_age_pref_does_not_escape_mso_forcing(self):
+        """#1664: when a form bunk_with and a form age_preference coexist,
+        the age_preference is dropped from ctx.material_request_ids.  The MSO
+        forcing set therefore contains ONLY the bunk_with sat var.
+
+        Setup: all campers are the same grade (5), so the "older" age_preference
+        is trivially satisfied (no younger peers → always-1 forcing indicator).
+        Under the OLD code (is_material_parent_request gate), the always-1
+        indicator would allow MSO to be satisfied even when the bunk_with is
+        violated → model FEASIBLE despite forcing the pair apart.
+        Under the NEW code (r.id in ctx.material_request_ids gate, with
+        material_request_ids containing ONLY the bunk_with), the age_pref is
+        skipped entirely → the only forcing var is the bunk_with sat var →
+        model INFEASIBLE when the pair is forced apart.
+
+        The test sets ctx.material_request_ids explicitly (only "r1"), mirroring
+        what compute_material_request_ids returns when a possible form bunk_with
+        exists alongside the form age_preference.
+        """
+        camper1 = create_person(cm_id=100, first_name="Emma", last_name="Johnson", gender="F", grade=5)
+        camper2 = create_person(cm_id=200, first_name="Liam", last_name="Garcia", gender="F", grade=5)
+        bunk1 = create_bunk(cm_id=2001, name="G-1", gender="F", capacity=12)
+        bunk2 = create_bunk(cm_id=2002, name="G-2", gender="F", capacity=12)
+
+        # r1: form bunk_with (material, kept in material_request_ids)
+        req_bw = _mp_request("r1", requester_cm_id=100, requested_cm_id=200)
+        # r2: form age_preference (suppressed by #1664 → NOT in material_request_ids)
+        req_ap = _mp_age_pref_request("r2", requester_cm_id=100, age_preference_target="older")
+
+        ctx = build_solver_context(
+            persons=[camper1, camper2],
+            bunks=[bunk1, bunk2],
+            requests=[req_bw, req_ap],
+        )
+
+        # Simulate #1664 suppression: only the bunk_with is material.
+        # (compute_material_request_ids suppresses the age_pref because a
+        # resolved, possible form bunk_with exists for the same requester.)
+        ctx.material_request_ids = {"r1"}
+
+        from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
+
+        add_must_satisfy_one_request_constraints(ctx)
+
+        # Force the pair into DIFFERENT bunks — bunk_with is unsatisfied.
+        # Age_pref is trivially satisfied (all campers same grade → no younger
+        # peers → always-1 forcing indicator), so under OLD code this would
+        # allow MSO to be satisfied via the age_pref, keeping the model FEASIBLE.
+        # Under NEW code the age_pref is excluded, so the model must be INFEASIBLE.
+        _force_apart(ctx, 100, 200)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_infeasible(status), (
+            "With age_pref suppressed from material_request_ids, the MSO forcing set "
+            "contains only the bunk_with sat var. Forcing the pair apart must make the "
+            "model INFEASIBLE — the trivially-satisfied age_pref must NOT provide an escape hatch."
+        )

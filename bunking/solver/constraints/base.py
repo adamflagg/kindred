@@ -103,6 +103,13 @@ class SolverContext:
     # into request_validation_summary["parent_nbw_yielded"].
     parent_nbw_yields: list[dict[str, Any]] = field(default_factory=list)
 
+    # Material-parent request IDs after the #1664 age-preference suppression
+    # (compute_material_request_ids). Single source of truth for "is this
+    # request MSO-material in context" — read by parent_paramount, the
+    # impossibility rollup, the post-solve diagnostic, the staff-separation
+    # carve-out, and the IIS localizer instead of per-request is_material_parent_request.
+    material_request_ids: set[str] = field(default_factory=set)
+
     # Canonical per-request satisfaction vars for bunk_with / not_bunk_with
     # requests, keyed by request.id. Built + memoized by
     # get_or_create_request_sat_var (bunk_requests.py); shared so add_objective

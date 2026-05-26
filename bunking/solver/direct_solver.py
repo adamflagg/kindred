@@ -23,7 +23,7 @@ from bunking.models_v2 import (
 )
 from bunking.satisfaction import weight_for
 from bunking.satisfaction.batch import satisfied_request_ids_by_person
-from bunking.satisfaction.bucket import RequestBucket, is_counted_request, is_material_parent_request
+from bunking.satisfaction.bucket import RequestBucket, is_counted_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from campminder.client import get_current_season
 
@@ -180,6 +180,10 @@ class DirectBunkingSolver:
         # request_validation_summary["parent_nbw_yielded"].
         self.parent_nbw_yields: list[dict[str, Any]] = []
 
+        # Material-parent request IDs after the #1664 age-preference suppression.
+        # Populated by _validate_requests via compute_material_request_ids.
+        self.material_request_ids: set[str] = set()
+
         # Canonical per-request satisfaction vars (bunk_with / not_bunk_with),
         # keyed by request.id. Populated by get_or_create_request_sat_var via
         # parent_paramount and add_objective; one shared var per request.
@@ -232,6 +236,7 @@ class DirectBunkingSolver:
             mp_set_entirely_impossible=self.mp_set_entirely_impossible,
             staff_nbw_yields=self.staff_nbw_yields,
             parent_nbw_yields=self.parent_nbw_yields,
+            material_request_ids=self.material_request_ids,
             mp_skip_cms=self.mp_skip_cms,
             request_satisfied_vars=self.request_satisfied_vars,
         )
@@ -316,6 +321,10 @@ class DirectBunkingSolver:
         )
         self.impossibility_report = report
         impossible_request_ids: set[str] = {item.request_id for item in report.flat}
+
+        from bunking.satisfaction.bucket import compute_material_request_ids  # noqa: PLC0415
+
+        self.material_request_ids = compute_material_request_ids(self.input.requests_by_person, impossible_request_ids)
 
         # Camper-level rollup of entirely-impossible MP sets — single source of
         # truth (computed in validate_impossibility). parent_paramount no longer
@@ -1181,7 +1190,7 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            resolved_mp = [r for r in resolved_requests if is_material_parent_request(r)]
+            resolved_mp = [r for r in resolved_requests if r.id in self.material_request_ids]
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
             resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
 
@@ -1216,7 +1225,7 @@ class DirectBunkingSolver:
 
             resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            if any(is_material_parent_request(r) for r in resolved_possible):
+            if any(r.id in self.material_request_ids for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)

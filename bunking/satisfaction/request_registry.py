@@ -17,8 +17,8 @@ import (raises if a source's rows disagree).
     (a strict source paired with a request_type it doesn't admit) is a
     pipeline-hygiene bug and we want it to fail loudly.
   * `rule == HARD_MNT` is a DECLARED placeholder for deferred staff-hardening
-    (#1543 / #1541); it is not enforced. `parent_paramount` still detects MP via
-    `is_material_parent_request` (report_group == MATERIAL_PARENT).
+    (#1543 / #1541); it is not enforced. `parent_paramount` detects MP via
+    the contextual material set (`compute_material_request_ids`).
 """
 
 from __future__ import annotations
