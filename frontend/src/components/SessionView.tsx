@@ -16,6 +16,7 @@ import {
   useSessionBunks,
   useSessionCampers,
   useBunkRequestsCount,
+  useLockedBunks,
 } from '../hooks/session'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
@@ -126,6 +127,9 @@ export default function SessionView() {
     fetchWithAuth,
     respectLocks,
   })
+
+  // Ephemeral cabin-lock state for partial re-solve (#1609).
+  const { lockedBunkCmIds, toggleBunkLock, lockAll, unlockAll } = useLockedBunks()
 
   // Data fetching hooks — campers must be available before handleRunSolver
   // so camperNameById (which depends on campers) can be used in the callback.
@@ -378,6 +382,10 @@ export default function SessionView() {
                 }}
                 isProductionMode={isProductionMode}
                 defaultCapacity={defaultBunkCapacity}
+                lockedBunkCmIds={lockedBunkCmIds}
+                onToggleBunkLock={toggleBunkLock}
+                onLockAll={lockAll}
+                onUnlockAll={unlockAll}
               />
             </CamperHistoryProvider>
           </BunkRequestProvider>
