@@ -752,6 +752,128 @@ def test_build_bunk_graph_reciprocal_pair_both_campers_satisfied() -> None:
 
 
 # ---------------------------------------------------------------------------
+# #1675 follow-up: sibling edges are deprecated and must NOT appear on the bunk
+# graph. The session builder (optimized_graph_builder) never adds them; the
+# bunk builder used to add sibling edges and tag request edges with a secondary
+# "sibling" type, which the router serialized as a second edge per pair —
+# rendering a spurious extra line (and, after the #1640 multi change, a spurious
+# bezier) between siblings. build_bunk_graph must now be request-only.
+# ---------------------------------------------------------------------------
+
+
+def _make_sibling_person(cm_id: int, first_name: str, last_name: str, household_id: int) -> object:
+    """Person stub that shares a household_id so the (removed) sibling path would fire."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        cm_id=cm_id,
+        first_name=first_name,
+        last_name=last_name,
+        grade=7,
+        gender="M",
+        age=12,
+        family_id=None,
+        household_id=household_id,
+    )
+
+
+def test_build_bunk_graph_omits_sibling_edges() -> None:
+    """Two siblings in the same bunk with NO requests between them must yield
+    zero edges — no edge_type='sibling' is ever added."""
+    pb = MagicMock()
+    person_a_id, person_b_id = 3001, 3002
+    bunk_cm_id, session_cm_id, year = 888, 999, 2026
+    household = 4242
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+    person_a = _make_sibling_person(person_a_id, "Mateo", "Garcia", household)
+    person_b = _make_sibling_person(person_b_id, "Liam", "Garcia", household)
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = []
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    sibling_edges = [(u, v) for u, v, d in bunk_graph.edges(data=True) if d.get("edge_type") == "sibling"]
+    assert not sibling_edges, f"expected no sibling edges, got {sibling_edges}"
+    assert bunk_graph.number_of_edges() == 0, (
+        f"siblings with no requests must yield zero edges, got {bunk_graph.number_of_edges()}"
+    )
+
+
+def test_build_bunk_graph_sibling_request_carries_no_sibling_secondary() -> None:
+    """Two siblings WITH a reciprocal bunk_with request must produce exactly the
+    request edge — no secondary_type='sibling' that the router would serialize as
+    a second (spurious) edge between them."""
+    pb = MagicMock()
+    person_a_id, person_b_id = 3101, 3102
+    bunk_cm_id, session_cm_id, year = 889, 999, 2026
+    household = 5252
+
+    assign_a = _make_assignment_with_expand(person_a_id)
+    assign_b = _make_assignment_with_expand(person_b_id)
+    person_a = _make_sibling_person(person_a_id, "Mateo", "Garcia", household)
+    person_b = _make_sibling_person(person_b_id, "Liam", "Garcia", household)
+    request_ab = _make_request_record(person_a_id, person_b_id, source="family")
+    request_ba = _make_request_record(person_b_id, person_a_id, source="family")
+
+    def _collection_side_effect(name: str) -> MagicMock:
+        col = MagicMock()
+        if name == "bunk_assignments":
+            col.get_full_list.return_value = [assign_a, assign_b]
+        elif name == "bunk_requests":
+            col.get_full_list.return_value = [request_ab, request_ba]
+        elif name == "persons":
+
+            def _get_first(flt: str, *_a: object, **_kw: object) -> object:
+                if str(person_a_id) in flt:
+                    return person_a
+                if str(person_b_id) in flt:
+                    return person_b
+                raise RuntimeError(f"no person for filter {flt!r}")
+
+            col.get_first_list_item.side_effect = _get_first
+        else:
+            col.get_full_list.return_value = []
+            col.get_first_list_item.side_effect = RuntimeError("no record")
+        return col
+
+    pb.collection.side_effect = _collection_side_effect
+
+    builder = SocialGraphBuilder(pb=pb)
+    bunk_graph = builder.build_bunk_graph(year=year, bunk_cm_id=bunk_cm_id, session_cm_id=session_cm_id)
+
+    for u, v, d in bunk_graph.edges(data=True):
+        assert d.get("edge_type") != "sibling", f"sibling edge {u}->{v} must not exist"
+        assert d.get("secondary_type") != "sibling", (
+            f"edge {u}->{v} must not carry a sibling secondary_type (got {d.get('secondary_type')!r})"
+        )
+        assert not d.get("has_sibling"), f"edge {u}->{v} must not be flagged has_sibling"
+
+
+# ---------------------------------------------------------------------------
 # Audit 2026-04-29 finding: build_bunk_graph fetched all request types.
 # A not_bunk_with row between two campers placed in the same bunk produced an
 # edge that the satisfaction bucketer treated as "satisfied" (bunk == bunk),

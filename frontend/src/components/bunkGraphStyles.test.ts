@@ -190,6 +190,40 @@ describe('buildBunkGraphElements multi (mixed-type conflict pairs)', () => {
     expect(edge?.data?.['multi']).toBeUndefined()
   })
 
+  it('does not flag a same-type pair as multi (curving is only for bunk_with vs not_bunk_with)', () => {
+    // multi must be type-aware: two edges between a pair only splay onto beziers
+    // when they're a genuine bunk_with-vs-not_bunk_with conflict. Two same-type
+    // edges (or a request edge sitting next to a non-request edge) must NOT
+    // curve — that's what produced the spurious bezier on sibling pairs.
+    const elements = buildBunkGraphElements(
+      {
+        nodes,
+        edges: [
+          {
+            source: 1,
+            target: 2,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+          {
+            source: 2,
+            target: 1,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+        ],
+      },
+      false,
+      () => 0.5
+    )
+    const edges = elements.filter((e) => e.group === 'edges')
+    expect(edges.every((e) => e.data?.['multi'] === undefined)).toBe(true)
+  })
+
   it('flags mixed-type cross-scope pairs as multi too', () => {
     const elements = buildBunkGraphElements(
       {

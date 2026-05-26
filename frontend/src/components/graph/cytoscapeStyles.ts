@@ -517,9 +517,17 @@ export function createGraphElements(
 
     // Otherwise, emit each edge separately. Pairs with 2+ edges get the
     // multi flag so the stylesheet curves them (true conflicts).
+    //
+    // Every edge reaching this branch is one-directional by construction —
+    // same-type mutuals already collapsed above. So is_reciprocal MUST be
+    // false here, regardless of the backend's edge.reciprocal: that flag is
+    // graph.has_edge(target, source), which is type-blind and reads true for a
+    // mixed-type conflict (A wants B, B refuses A). Forwarding it would render
+    // each one-way conflict edge as a bold solid double-headed line instead of
+    // a dashed single-arrow one.
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
-      edges.push(buildEdge(edge, { is_reciprocal: edge.reciprocal ?? false, multi: isMulti }))
+      edges.push(buildEdge(edge, { is_reciprocal: false, multi: isMulti }))
     })
   })
 
@@ -551,9 +559,12 @@ export function createGraphElements(
         return
       }
     }
+    // is_reciprocal false for the same reason as the in-scope splay branch:
+    // these are one-way edges, and the backend's type-blind reciprocal flag
+    // must not promote a conflict pair to the double-headed reciprocal style.
     const isMulti = bucket.length >= 2
     bucket.forEach((edge) => {
-      edges.push(buildCrossEdge(edge, { is_reciprocal: edge.reciprocal ?? false, multi: isMulti }))
+      edges.push(buildCrossEdge(edge, { is_reciprocal: false, multi: isMulti }))
     })
   })
 

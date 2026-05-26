@@ -50,6 +50,31 @@ export function getNodeColor(degree: number): string {
 const pairKey = (a: number, b: number): string => (a < b ? `${a}-${b}` : `${b}-${a}`)
 
 /**
+ * Pair keys that carry a genuine bunk_with-vs-not_bunk_with conflict — the ONLY
+ * case that should splay onto opposing beziers. Type-aware on purpose: a pair
+ * with two same-type edges (or a request edge next to a non-request edge) is not
+ * a conflict and must stay straight. A count-based check curved sibling pairs by
+ * mistake.
+ */
+const conflictedPairs = (
+  edges: ReadonlyArray<{ source: number; target: number; request_type?: string | null }>
+): Set<string> => {
+  const typesByPair = new Map<string, Set<string>>()
+  edges.forEach((e) => {
+    if (!e.request_type) return
+    const k = pairKey(e.source, e.target)
+    const set = typesByPair.get(k) ?? new Set<string>()
+    set.add(e.request_type)
+    typesByPair.set(k, set)
+  })
+  const conflicted = new Set<string>()
+  typesByPair.forEach((types, k) => {
+    if (types.has('bunk_with') && types.has('not_bunk_with')) conflicted.add(k)
+  })
+  return conflicted
+}
+
+/**
  * Cola layout options for the per-bunk graph. The bounding box is derived from
  * the live container dimensions so cola spreads nodes across the canvas's
  * (wide) aspect instead of settling into a square that leaves big left/right
@@ -214,20 +239,17 @@ export function buildBunkGraphElements(
 
   // Backend already collapses mutual same-type pairs into a single edge tagged
   // reciprocal=true; the edge[?reciprocal] selector renders those bold/solid.
-  // A pair that STILL has 2+ edges here is a mixed-type conflict (e.g. A→B
-  // bunk_with + B→A not_bunk_with — backend buckets by (pair, request_type) so
-  // those don't collapse). As straight edges they'd overlap on one line; we tag
-  // them `multi` so the edge[?multi] selector splays them onto opposing beziers.
-  // Mirrors the session graph's treatment in graph/cytoscapeStyles.ts.
-  const inScopePairCounts = new Map<string, number>()
-  data.edges.forEach((edge) => {
-    const k = pairKey(edge.source, edge.target)
-    inScopePairCounts.set(k, (inScopePairCounts.get(k) ?? 0) + 1)
-  })
+  // A pair carrying BOTH a bunk_with and a not_bunk_with (e.g. A→B bunk_with +
+  // B→A not_bunk_with — backend buckets by (pair, request_type) so those don't
+  // collapse) is a true conflict: as straight edges they'd overlap on one line,
+  // so we tag them `multi` and the edge[?multi] selector splays them onto
+  // opposing beziers. Mirrors the session graph's treatment in
+  // graph/cytoscapeStyles.ts.
+  const inScopeConflicts = conflictedPairs(data.edges)
 
   let edgeIndex = 0
   data.edges.forEach((edge) => {
-    const isMulti = (inScopePairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2
+    const isMulti = inScopeConflicts.has(pairKey(edge.source, edge.target))
     elements.push({
       group: 'edges',
       data: {
@@ -269,14 +291,10 @@ export function buildBunkGraphElements(
       })
     })
 
-    const crossPairCounts = new Map<string, number>()
-    data.cross_scope_edges.forEach((edge) => {
-      const k = pairKey(edge.source, edge.target)
-      crossPairCounts.set(k, (crossPairCounts.get(k) ?? 0) + 1)
-    })
+    const crossConflicts = conflictedPairs(data.cross_scope_edges)
 
     data.cross_scope_edges.forEach((edge) => {
-      const isMulti = (crossPairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2
+      const isMulti = crossConflicts.has(pairKey(edge.source, edge.target))
       elements.push({
         group: 'edges',
         data: {
