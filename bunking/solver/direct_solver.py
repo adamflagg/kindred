@@ -42,6 +42,7 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
+from .constraints.locked_bunks import add_locked_bunk_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .constraints.staff_separation import add_staff_separation_constraints
 from .feasibility import RequestValidationSummary
@@ -431,13 +432,19 @@ class DirectBunkingSolver:
         """Add all constraints to the model."""
         # 1. Each person assigned to exactly one bunk
         if not self.debug_constraints.get("assignment", False):
+            partial = bool(self.input.locked_bunks)
             self.constraint_logger.log_constraint(
-                "hard", "assignment", f"Each of {len(self.person_ids)} campers must be assigned to exactly one bunk"
+                "hard",
+                "assignment",
+                f"Each of {len(self.person_ids)} campers must be assigned to "
+                + ("at most one bunk (partial re-solve)" if partial else "exactly one bunk"),
             )
             for person_idx in range(len(self.person_ids)):
-                self.model.Add(
-                    sum(self.assignments[(person_idx, bunk_idx)] for bunk_idx in range(len(self.bunks))) == 1
-                )
+                total = sum(self.assignments[(person_idx, bunk_idx)] for bunk_idx in range(len(self.bunks)))
+                if partial:
+                    self.model.Add(total <= 1)  # partial re-solve: a camper may stay unassigned
+                else:
+                    self.model.Add(total == 1)
         else:
             logger.warning("DEBUG: Assignment constraints DISABLED")
 
@@ -476,6 +483,10 @@ class DirectBunkingSolver:
         # 4. Group locks
         # Uses extracted constraint module - debug check is internal
         add_group_lock_constraints(self._build_solver_context())
+
+        # 4b. Locked bunks (#1609) — freeze selected cabins' exact rosters in place.
+        # Uses extracted constraint module - debug check is internal.
+        add_locked_bunk_constraints(self._build_solver_context())
 
         # 6. Grade spread (hard) - max MAX_UNIQUE_GRADES_PER_BUNK distinct grades per bunk
         # Uses extracted constraint module - debug check is internal
