@@ -191,12 +191,13 @@ describe('buildFamilyRows — honored reconciliation', () => {
       mp_campers_entirely_impossible: [
         {
           cm_id: 21012687,
-          name: 'Nathan Vaisman',
+          name: 'Samuel Johnson',
           grade: 10,
           gender: 'M',
           session_cm_id: 1235404,
           reason_codes: ['age_pref_no_eligible_grade'],
           honored_in_plan: true,
+          bunk_name: 'Redwood 4',
         },
       ],
     })
@@ -205,7 +206,8 @@ describe('buildFamilyRows — honored reconciliation', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0]!.cohort).toBe('got_nothing')
     expect(rows[0]!.subRows[0]!.honoredInPlan).toBe(true)
-    expect(rows[0]!.subRows[0]!.detail).toBe('Flagged impossible · met by the final cabin anyway')
+    expect(rows[0]!.subRows[0]!.bunkName).toBe('Redwood 4')
+    expect(rows[0]!.subRows[0]!.detail).toBe('Met by same age cabin Redwood 4')
   })
 
   it('keeps the impossible detail when honored_in_plan is false', () => {
@@ -213,7 +215,7 @@ describe('buildFamilyRows — honored reconciliation', () => {
       mp_campers_entirely_impossible: [
         {
           cm_id: 17411971,
-          name: 'Madelyn Kellner',
+          name: 'Olivia Chen',
           grade: 5,
           gender: 'F',
           session_cm_id: 1235404,
@@ -233,7 +235,7 @@ describe('buildFamilyRows — honored reconciliation', () => {
       mp_campers_entirely_impossible: [
         {
           cm_id: 19354792,
-          name: 'Asher King',
+          name: 'Liam Garcia',
           grade: 5,
           gender: 'M',
           session_cm_id: 1235404,
@@ -243,7 +245,7 @@ describe('buildFamilyRows — honored reconciliation', () => {
     })
     const rows = buildFamilyRows(stats, report)
     expect(rows).toHaveLength(1)
-    expect(rows[0]!.name).toBe('Asher King')
+    expect(rows[0]!.name).toBe('Liam Garcia')
     expect(rows[0]!.subRows[0]!.honoredInPlan).toBeUndefined()
   })
 })

@@ -2996,6 +2996,9 @@ def test_cohort_honored_in_plan_true_when_clean_cabin():
     assert out[0]["cm_id"] == 20001
     assert out[0]["honored_in_plan"] is True
     assert out[0]["reason_codes"] == ["age_pref_no_eligible_grade"]
+    # Honored campers carry the cabin that met the preference (like the
+    # not-bunk-with violation detail) so the post-check can name it.
+    assert out[0]["bunk_name"] == "Bunk-30001"
 
 
 def test_cohort_honored_in_plan_false_when_mixed_cabin():
@@ -3032,6 +3035,8 @@ def test_cohort_honored_in_plan_false_when_mixed_cabin():
     assert len(out) == 1
     assert out[0]["cm_id"] == 20001
     assert out[0]["honored_in_plan"] is False
+    # Not honored → no cabin to name.
+    assert out[0]["bunk_name"] is None
 
 
 def test_cohort_absent_leaves_field_empty():

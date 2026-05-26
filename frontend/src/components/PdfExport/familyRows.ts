@@ -63,10 +63,11 @@ export function buildFamilyRows(
         cohort: 'got_nothing',
         session: String(c.session_cm_id),
         detail: c.honored_in_plan
-          ? 'Flagged impossible · met by the final cabin anyway'
+          ? `Met by same age cabin${c.bunk_name ? ` ${c.bunk_name}` : ''}`
           : `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
         reasonCodes: c.reason_codes,
         honoredInPlan: c.honored_in_plan,
+        ...(c.bunk_name ? { bunkName: c.bunk_name } : {}),
       })
     }
   } else {

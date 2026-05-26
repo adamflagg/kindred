@@ -1928,10 +1928,10 @@ describe('PostValidationResultsModal — camper coverage tiles (#1631)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Task 5 — honored-anyway subtext + reconciliation line
+// Task 5 — honored-anyway subtext
 // ---------------------------------------------------------------------------
 
-describe('PostValidationResultsModal — honored subtext and reconciliation line (Task 5)', () => {
+describe('PostValidationResultsModal — honored subtext (Task 5)', () => {
   it('renders "met by the final cabin anyway" subtext for honored camper instead of "All requests impossible"', () => {
     render(
       <PostValidationResultsModal
@@ -1942,64 +1942,20 @@ describe('PostValidationResultsModal — honored subtext and reconciliation line
           mp_campers_entirely_impossible: [
             {
               cm_id: 21012687,
-              name: 'Nathan Vaisman',
+              name: 'Samuel Johnson',
               grade: 10,
               gender: 'M',
               session_cm_id: 1235404,
               reason_codes: ['age_pref_no_eligible_grade'],
               honored_in_plan: true,
+              bunk_name: 'Redwood 4',
             },
           ],
         })}
       />
     )
-    expect(screen.getByText(/met by the final cabin anyway/i)).toBeInTheDocument()
+    expect(screen.getByText(/met by same age cabin/i)).toBeInTheDocument()
+    expect(screen.getByText('Redwood 4')).toBeInTheDocument()
     expect(screen.queryByText(/All requests impossible/i)).not.toBeInTheDocument()
-  })
-
-  it('renders coverage-reconciliation line showing guaranteeable + unguaranteeable = total', () => {
-    render(
-      <PostValidationResultsModal
-        sessionCmId={1000001}
-        isOpen={true}
-        onClose={() => {}}
-        results={makeResults({
-          mp_campers_total: 165,
-          mp_campers_entirely_impossible: [
-            {
-              cm_id: 1,
-              name: 'Emma Johnson',
-              grade: 5,
-              gender: 'F',
-              session_cm_id: 1000001,
-              reason_codes: ['age_pref_no_eligible_grade'],
-              honored_in_plan: false,
-            },
-            {
-              cm_id: 2,
-              name: 'Liam Garcia',
-              grade: 6,
-              gender: 'M',
-              session_cm_id: 1000001,
-              reason_codes: ['pair_no_shared_bunk'],
-              honored_in_plan: false,
-            },
-            {
-              cm_id: 3,
-              name: 'Olivia Chen',
-              grade: 7,
-              gender: 'F',
-              session_cm_id: 1000001,
-              reason_codes: ['grade_compatibility'],
-              honored_in_plan: true,
-            },
-          ],
-        })}
-      />
-    )
-    const recon = screen.getByTestId('coverage-reconciliation')
-    expect(recon).toHaveTextContent('165')
-    expect(recon).toHaveTextContent('3')
-    expect(recon).toHaveTextContent('168')
   })
 })

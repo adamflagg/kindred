@@ -953,9 +953,19 @@ class BunkingValidator:
                 satisfied_mp_requesters.add(int(pid))
             except TypeError, ValueError:
                 continue
+        bunks_map = bunk_by_id or {}
         for entry in impossible_mp_cohort or []:
-            honored = entry.get("cm_id") in satisfied_mp_requesters
-            stats.mp_campers_entirely_impossible.append({**entry, "honored_in_plan": honored})
+            entry_cm_id = entry.get("cm_id")
+            honored = entry_cm_id in satisfied_mp_requesters
+            # When honored, name the cabin that met the preference. assignments_by_person
+            # is keyed by str person_cm_id; the cohort cm_id is an int — normalize.
+            # Mirrors the not-bunk-with violation detail's bunk_name so the post-check reads alike.
+            bunk_name: str | None = None
+            if honored:
+                honored_asgn = assignments_by_person.get(str(entry_cm_id))
+                honored_bunk = bunks_map.get(honored_asgn.bunk_cm_id) if honored_asgn else None
+                bunk_name = honored_bunk.name if honored_bunk else None
+            stats.mp_campers_entirely_impossible.append({**entry, "honored_in_plan": honored, "bunk_name": bunk_name})
 
         # Best-effort parent (socialize_with source_field) stats.
         stats.best_effort_parent_requests = sum(len(reqs) for reqs in best_effort_parent_by_person.values())
