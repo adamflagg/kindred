@@ -4,12 +4,12 @@ Parent Paramount Constraints — Hard must-satisfy-one for Material-Parent reque
 This module enforces that every camper with at least one possible Material-Parent
 (MP) request has at least one of those requests satisfied — as a HARD constraint.
 
-"Material-Parent" is determined by the request's source-field bucket (via
-``bunking.satisfaction.bucket.is_material_parent_request``), not the request
-type. A request of any type (bunk_with, not_bunk_with, age_preference) is MP
-iff its source_field classifies as MATERIAL_PARENT. Age preference requests
-that come from socialize-with sources are NOT MP and don't count toward this
-constraint.
+"Material-Parent" is determined by ``ctx.material_request_ids`` (pre-computed
+by ``bunking.satisfaction.bucket.compute_material_request_ids`` in
+``_validate_requests``), not per-request classification at build time.
+``material_request_ids`` applies the #1664 age-preference suppression: a form
+AGE_PREFERENCE is excluded from the material set when its requester already
+has a resolved-and-possible form BUNK_WITH/NOT_BUNK_WITH.
 
 Mechanism:
   * For each MP-having camper, build (or borrow) one forcing indicator per MP
@@ -33,7 +33,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
-from bunking.satisfaction.bucket import is_material_parent_request
 from bunking.sync.bunk_request_processor.core.models import RequestType
 
 from .age_preference import add_age_preference_satisfaction_vars
@@ -123,7 +122,7 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             continue
 
         for r in possible_reqs:
-            if not is_material_parent_request(r):
+            if r.id not in ctx.material_request_ids:
                 continue
             if r.request_type in (RequestType.BUNK_WITH.value, RequestType.NOT_BUNK_WITH.value):
                 mp_bunk_requests_by_person.setdefault(cm_id, []).append(r)

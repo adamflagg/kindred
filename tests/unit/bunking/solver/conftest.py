@@ -17,6 +17,7 @@ from bunking.models_v2 import (
     DirectPerson,
     DirectSolverInput,
 )
+from bunking.satisfaction.bucket import compute_material_request_ids
 from bunking.solver.constraints.base import SolverContext
 from bunking.solver.logging import ConstraintLogger
 
@@ -227,6 +228,11 @@ def build_solver_context(
     for req in requests:
         requests_by_person[req.requester_person_cm_id].append(req)
 
+    # Compute contextual material set (mirrors _validate_requests in the real solver).
+    # Tests that want to exercise suppression can override ctx.material_request_ids
+    # after calling build_solver_context.
+    material_ids = compute_material_request_ids(dict(requests_by_person), impossible_request_ids=set())
+
     # Create solver input
     solver_input = DirectSolverInput(
         persons=persons,
@@ -254,6 +260,7 @@ def build_solver_context(
         constraint_logger=ConstraintLogger(debug_mode=False),
         debug_constraints=debug_constraints or {},
         soft_constraint_violations={},
+        material_request_ids=material_ids,
     )
 
 

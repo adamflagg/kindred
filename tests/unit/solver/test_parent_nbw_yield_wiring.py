@@ -171,3 +171,67 @@ def test_no_yield_when_both_campers_have_sole_mp_nbw(mock_config):
     assert is_optimal_or_feasible(status)
     assert solver.parent_nbw_yields == []
     assert _bunk_idx(solver, cp, 100) != _bunk_idx(solver, cp, 200)  # both NBWs honored
+
+
+def test_form_age_pref_does_not_block_parent_nbw_yield(mock_config):
+    """#1664: a form age_preference coexisting with a form not_bunk_with is
+    suppressed from the material set, so it does NOT count as a second MP
+    request.  Camper A's sole real form request is not_bunk_with→B; their form
+    age_pref is suppressed (possible form not_bunk_with exists).  Camper B's
+    sole MP is bunk_with→A.  The both-sole opposing carve-out must fire: the
+    pair is co-placed and exactly one yield is recorded.
+    """
+    persons, bunks = _roster()
+    reqs = [
+        # A (100): sole real form request = not_bunk_with→B
+        make_request(
+            "n1", requester=100, requestee=200, request_type="not_bunk_with", source_field="bunk_request_form"
+        ),
+        # A (100): form age_preference — suppressed by #1664 (has a possible form NBW)
+        make_request(
+            "ap1",
+            requester=100,
+            requestee=None,
+            request_type="age_preference",
+            source_field="bunk_request_form",
+        ),
+        # B (200): sole MP = bunk_with→A
+        make_request("p1", requester=200, requestee=100, request_type="bunk_with", source_field="bunk_request_form"),
+    ]
+    solver = DirectBunkingSolver(make_input(persons, bunks, reqs), mock_config)
+    cp, status = _solve(solver)
+    assert is_optimal_or_feasible(status)
+    # Suppressed age_pref does NOT block the carve-out — exactly one yield recorded.
+    assert len(solver.parent_nbw_yields) == 1
+    y = solver.parent_nbw_yields[0]
+    assert y["nbw_request_id"] == "n1"
+    assert y["subject_cm"] == 100  # the yielding (NBW) camper
+    assert y["target_cm"] == 200
+    assert y["protected_parent_request_id"] == "p1"
+    assert y["protected_camper_cm"] == 200  # the bunk_with requester
+    # Pair is co-placed: positive wins.
+    assert _bunk_idx(solver, cp, 100) == _bunk_idx(solver, cp, 200)
+
+
+def test_second_material_request_still_blocks_yield(mock_config):
+    """#1664 does not suppress non-age-pref form requests.  When camper A has
+    a form not_bunk_with→B (their NBW) PLUS a second possible form bunk_with→C
+    (a real material request), A is NOT sole-MP — the carve-out must NOT fire
+    and no yield is recorded.
+    """
+    persons, bunks = _roster()
+    reqs = [
+        # A (100): NBW toward B
+        make_request(
+            "n1", requester=100, requestee=200, request_type="not_bunk_with", source_field="bunk_request_form"
+        ),
+        # A (100): second material form request (bunk_with→C = filler 1000)
+        make_request("p2", requester=100, requestee=1000, request_type="bunk_with", source_field="bunk_request_form"),
+        # B (200): sole MP = bunk_with→A
+        make_request("p1", requester=200, requestee=100, request_type="bunk_with", source_field="bunk_request_form"),
+    ]
+    solver = DirectBunkingSolver(make_input(persons, bunks, reqs), mock_config)
+    cp, status = _solve(solver)
+    assert is_optimal_or_feasible(status)
+    # A has two real MP requests (NBW + BW) → not sole → no carve-out, no yield.
+    assert solver.parent_nbw_yields == []
