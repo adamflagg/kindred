@@ -27,6 +27,7 @@ import {
   BUNK_NODE_COLORS,
   CROSS_SCOPE_NODE_COLOR,
   FIRST_YEAR_RING_COLOR,
+  buildBunkColaLayoutOptions,
   buildBunkGraphElements,
   getBunkCytoscapeStyles,
   getBunkGradeColors,
@@ -335,17 +336,20 @@ export default function BunkSocialGraphModal({
 
     cy.add(elements)
 
-    // Run layout after adding elements
+    // Run layout after adding elements.
     // Use cola for better layout control. Explicit spacing so disconnected
-    // sub-clusters don't pack adjacently and look falsely linked (#1640).
+    // sub-clusters don't pack adjacently and look falsely linked (#1640). The
+    // bounding box is derived from the live container so cola spreads nodes to
+    // fill the canvas's wide aspect rather than leaving big left/right margins.
     // Cast required: cytoscape's BaseLayoutOptions doesn't include cola's
-    // plugin-specific options (nodeSpacing, handleDisconnected).
-    const layout = cy.layout({
-      name: 'cola',
-      nodeSpacing: 30,
-      padding: 30,
-      handleDisconnected: true,
-    } as Parameters<(typeof cy)['layout']>[0])
+    // plugin-specific options (nodeSpacing, handleDisconnected, boundingBox).
+    const container = containerRef.current
+    const layout = cy.layout(
+      buildBunkColaLayoutOptions(
+        container.clientWidth,
+        container.clientHeight
+      ) as unknown as Parameters<(typeof cy)['layout']>[0]
+    )
 
     layoutRef.current = layout
     layout.on('layoutstop', () => {

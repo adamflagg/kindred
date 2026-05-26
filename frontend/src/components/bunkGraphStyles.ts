@@ -45,6 +45,39 @@ export function getNodeColor(degree: number): string {
   return degree === 0 ? BUNK_NODE_COLORS.noConnections : BUNK_NODE_COLORS.hasConnections
 }
 
+/** Unordered pair key so A→B and B→A bucket together. Used to detect
+ *  mixed-type conflict pairs that must splay onto opposing beziers. */
+const pairKey = (a: number, b: number): string => (a < b ? `${a}-${b}` : `${b}-${a}`)
+
+/**
+ * Cola layout options for the per-bunk graph. The bounding box is derived from
+ * the live container dimensions so cola spreads nodes across the canvas's
+ * (wide) aspect instead of settling into a square that leaves big left/right
+ * margins after `cy.fit()`. nodeSpacing/padding/handleDisconnected preserve the
+ * #1640 disconnected-cluster separation.
+ *
+ * Returned as a plain object (not typed against cytoscape's LayoutOptions)
+ * because cola's plugin-specific keys aren't in BaseLayoutOptions — the caller
+ * casts at the `cy.layout()` boundary, matching the existing pattern.
+ */
+export function buildBunkColaLayoutOptions(
+  containerWidth: number,
+  containerHeight: number
+): Record<string, unknown> {
+  const options: Record<string, unknown> = {
+    name: 'cola',
+    nodeSpacing: 30,
+    padding: 30,
+    handleDisconnected: true,
+  }
+  // Only constrain to a bounding box once the container has real dimensions —
+  // a zero-area box on the first paint would collapse the layout.
+  if (containerWidth > 0 && containerHeight > 0) {
+    options['boundingBox'] = { x1: 0, y1: 0, w: containerWidth, h: containerHeight }
+  }
+  return options
+}
+
 /** Map each grade present in a bunk to a color from the light/dark ramp.
  *  Younger grades get the lighter end of the scale. */
 export function getBunkGradeColors(grades: readonly number[]): Record<number, string> {
@@ -181,8 +214,20 @@ export function buildBunkGraphElements(
 
   // Backend already collapses mutual same-type pairs into a single edge tagged
   // reciprocal=true; the edge[?reciprocal] selector renders those bold/solid.
+  // A pair that STILL has 2+ edges here is a mixed-type conflict (e.g. A→B
+  // bunk_with + B→A not_bunk_with — backend buckets by (pair, request_type) so
+  // those don't collapse). As straight edges they'd overlap on one line; we tag
+  // them `multi` so the edge[?multi] selector splays them onto opposing beziers.
+  // Mirrors the session graph's treatment in graph/cytoscapeStyles.ts.
+  const inScopePairCounts = new Map<string, number>()
+  data.edges.forEach((edge) => {
+    const k = pairKey(edge.source, edge.target)
+    inScopePairCounts.set(k, (inScopePairCounts.get(k) ?? 0) + 1)
+  })
+
   let edgeIndex = 0
   data.edges.forEach((edge) => {
+    const isMulti = (inScopePairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2
     elements.push({
       group: 'edges',
       data: {
@@ -191,6 +236,7 @@ export function buildBunkGraphElements(
         source: `node-${edge.source}`,
         target: `node-${edge.target}`,
         edge_type: edge.edge_type,
+        ...(isMulti ? { multi: true } : {}),
       },
     })
   })
@@ -223,7 +269,14 @@ export function buildBunkGraphElements(
       })
     })
 
+    const crossPairCounts = new Map<string, number>()
     data.cross_scope_edges.forEach((edge) => {
+      const k = pairKey(edge.source, edge.target)
+      crossPairCounts.set(k, (crossPairCounts.get(k) ?? 0) + 1)
+    })
+
+    data.cross_scope_edges.forEach((edge) => {
+      const isMulti = (crossPairCounts.get(pairKey(edge.source, edge.target)) ?? 0) >= 2
       elements.push({
         group: 'edges',
         data: {
@@ -235,6 +288,7 @@ export function buildBunkGraphElements(
           confidence: edge.confidence,
           reciprocal: edge.reciprocal,
           cross_scope: true,
+          ...(isMulti ? { multi: true } : {}),
         },
       })
     })
@@ -328,6 +382,20 @@ export function getBunkCytoscapeStyles(): StylesheetStyle[] {
         'line-style': 'solid',
         'source-arrow-shape': 'triangle',
         'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+    {
+      selector: 'edge[?multi]',
+      style: {
+        // Mixed-type conflict pairs (bunk_with one way, not_bunk_with the
+        // other) arrive as two opposing straight edges that would overlap on a
+        // single line — hiding one color. Splay each onto its own bezier so
+        // both the blue and the red read. Width/line-style inherit from the
+        // base rule (these are still one-way requests). Mirrors the session
+        // graph's edge[?multi] rule in graph/cytoscapeStyles.ts.
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': [40],
+        'control-point-weights': [0.5],
       },
     },
     // Cross-scope ghost rendering — mirrors the session-graph stylesheet in
