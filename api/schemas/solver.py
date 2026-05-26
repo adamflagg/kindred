@@ -19,6 +19,14 @@ class SolverRequest(BaseModel):
     debug_mode: bool = False
     config: dict[str, Any] | None = None
     respect_locks: bool = Field(default=True, description="Whether to respect locked bunk assignments")
+    locked_bunk_cm_ids: list[int] = Field(
+        default_factory=list,
+        description="Bunk CM IDs to freeze in place during a partial re-solve (#1609)",
+    )
+    allow_overflow: bool = Field(
+        default=False,
+        description="Allow up to 13 per unlocked cabin during a partial re-solve (#1609)",
+    )
 
 
 class MultiSessionSolverRequest(BaseModel):
