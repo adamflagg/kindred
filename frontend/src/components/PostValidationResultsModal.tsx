@@ -718,7 +718,12 @@ export function PostCheckContents({
       const decoratedSubRows = r.subRows.map((sub) => {
         let detail: React.ReactNode
         if (r.cohort === 'got_nothing') {
-          detail = (
+          detail = sub.honoredInPlan ? (
+            <span>
+              Met by same age cabin{' '}
+              {sub.bunkName && <span className="font-mono text-xs">{sub.bunkName}</span>}
+            </span>
+          ) : (
             <span>
               All requests impossible ·{' '}
               {(sub.reasonCodes ?? []).map(friendlyReasonLabel).join(', ')}

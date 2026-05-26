@@ -1926,3 +1926,36 @@ describe('PostValidationResultsModal — camper coverage tiles (#1631)', () => {
     expect(zeroDivZero.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Task 5 — honored-anyway subtext
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — honored subtext (Task 5)', () => {
+  it('renders "met by the final cabin anyway" subtext for honored camper instead of "All requests impossible"', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 1000001,
+              name: 'Samuel Johnson',
+              grade: 10,
+              gender: 'M',
+              session_cm_id: 1000001,
+              reason_codes: ['age_pref_no_eligible_grade'],
+              honored_in_plan: true,
+              bunk_name: 'Redwood 4',
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText(/met by same age cabin/i)).toBeInTheDocument()
+    expect(screen.getByText('Redwood 4')).toBeInTheDocument()
+    expect(screen.queryByText(/All requests impossible/i)).not.toBeInTheDocument()
+  })
+})

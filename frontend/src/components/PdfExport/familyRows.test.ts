@@ -184,3 +184,88 @@ describe('buildFamilyRows — Group 65 #1540', () => {
     expect(rows[1]!.name).toBe('Has Grade')
   })
 })
+
+describe('buildFamilyRows — honored reconciliation', () => {
+  it('sources got_nothing from statistics cohort and marks honored sub-rows', () => {
+    const stats = _statistics({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000001,
+          name: 'Samuel Johnson',
+          grade: 10,
+          gender: 'M',
+          session_cm_id: 1000001,
+          reason_codes: ['age_pref_no_eligible_grade'],
+          honored_in_plan: true,
+          bunk_name: 'Redwood 4',
+        },
+      ],
+    })
+    // Pre-check report intentionally empty: statistics is authoritative.
+    const rows = buildFamilyRows(stats, _report())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.cohort).toBe('got_nothing')
+    expect(rows[0]!.subRows[0]!.honoredInPlan).toBe(true)
+    expect(rows[0]!.subRows[0]!.bunkName).toBe('Redwood 4')
+    expect(rows[0]!.subRows[0]!.detail).toBe('Met by same age cabin Redwood 4')
+  })
+
+  it('keeps the impossible detail when honored_in_plan is false', () => {
+    const stats = _statistics({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000002,
+          name: 'Olivia Chen',
+          grade: 5,
+          gender: 'F',
+          session_cm_id: 1000001,
+          reason_codes: ['age_pref_no_eligible_grade'],
+          honored_in_plan: false,
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    expect(rows[0]!.subRows[0]!.honoredInPlan).toBe(false)
+    expect(rows[0]!.subRows[0]!.detail).toContain('All requests impossible')
+  })
+
+  it('falls back to the pre-check report when statistics cohort is absent', () => {
+    const stats = _statistics() // no mp_campers_entirely_impossible
+    const report = _report({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000003,
+          name: 'Liam Garcia',
+          grade: 5,
+          gender: 'M',
+          session_cm_id: 1000001,
+          reason_codes: ['age_pref_no_eligible_grade'],
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.name).toBe('Liam Garcia')
+    expect(rows[0]!.subRows[0]!.honoredInPlan).toBeUndefined()
+  })
+
+  it('treats an explicit empty stats cohort as authoritative (no fallback to pre-check)', () => {
+    // Post-check ran and found zero entirely-impossible campers; a stale
+    // pre-check report must NOT resurface got_nothing rows.
+    const stats = _statistics({ mp_campers_entirely_impossible: [] })
+    const report = _report({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000001,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          session_cm_id: 1000001,
+          reason_codes: ['age_pref_no_eligible_grade'],
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    expect(rows.filter((r) => r.cohort === 'got_nothing')).toHaveLength(0)
+  })
+})

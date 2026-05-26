@@ -396,6 +396,7 @@ async def validate_bunking(
         # (V1 above + V2 here) is acceptable overhead for now; a longer-term
         # consolidation would route validation through the same V2 data path.
         impossible_request_ids: set[str] = set()
+        impossible_mp_cohort: list[dict[str, Any]] = []
         try:
             v2_attendees, v2_bunks, v2_requests, v2_assignments, v2_bunk_plans = await fetch_session_data_v2(
                 request.session_cm_id, ctx.year, pb, scenario=request.scenario
@@ -405,6 +406,7 @@ async def validate_bunking(
             )
             impossibility_report = validate_impossibility(solver_input, ConfigLoader.get_instance())
             impossible_request_ids = {item.request_id for item in impossibility_report.flat}
+            impossible_mp_cohort = impossibility_report.mp_campers_entirely_impossible
         except Exception as e:
             # Impossibility computation is metric-gating only — if it fails, log
             # and fall through with ungated metrics so the validator still returns
@@ -427,6 +429,7 @@ async def validate_bunking(
             attendees=attendees_for_validator,
             historical_bunking=historical_bunking or None,
             impossible_request_ids=impossible_request_ids or None,
+            impossible_mp_cohort=impossible_mp_cohort or None,
         )
 
         return validation_result.model_dump()
