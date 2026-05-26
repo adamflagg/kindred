@@ -63,7 +63,7 @@ def _mso_protection_applies(ctx: SolverContext, subject_cm: int, target_cm: int)
         for r in ctx.possible_requests.get(requester_cm, []):
             if r.request_type != RequestType.BUNK_WITH.value:
                 continue
-            if r.id not in ctx.material_request_ids:  # was: if not is_material_parent_request(r)
+            if r.id not in ctx.material_request_ids:
                 continue
             if {r.requester_person_cm_id, r.requested_person_cm_id} != pair:
                 continue
