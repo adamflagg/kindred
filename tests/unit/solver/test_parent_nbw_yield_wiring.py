@@ -150,3 +150,24 @@ def test_no_yield_when_positive_camper_has_a_second_mp(mock_config):
     assert is_optimal_or_feasible(status)
     assert solver.parent_nbw_yields == []
     assert _bunk_idx(solver, cp, 100) != _bunk_idx(solver, cp, 200)  # NBW honored
+
+
+def test_no_yield_when_both_campers_have_sole_mp_nbw(mock_config):
+    # Mutual avoidance: Emma's parent NOT bunk_with Liam (Emma's only MP) AND
+    # Liam's parent NOT bunk_with Emma (Liam's only MP). Neither side's sole MP
+    # is a bunk_with, so the carve-out must NOT fire (it requires the target's
+    # sole MP to be a bunk_with). Both NBWs hold: no yield, pair kept apart.
+    persons, bunks = _roster()
+    reqs = [
+        make_request(
+            "n1", requester=100, requestee=200, request_type="not_bunk_with", source_field="bunk_request_form"
+        ),
+        make_request(
+            "n2", requester=200, requestee=100, request_type="not_bunk_with", source_field="bunk_request_form"
+        ),
+    ]
+    solver = DirectBunkingSolver(make_input(persons, bunks, reqs), mock_config)
+    cp, status = _solve(solver)
+    assert is_optimal_or_feasible(status)
+    assert solver.parent_nbw_yields == []
+    assert _bunk_idx(solver, cp, 100) != _bunk_idx(solver, cp, 200)  # both NBWs honored
