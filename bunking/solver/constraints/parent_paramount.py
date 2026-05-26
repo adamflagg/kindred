@@ -30,7 +30,7 @@ Campers whose every MP request is impossible (filtered out of
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
 from bunking.satisfaction.bucket import is_material_parent_request
@@ -46,6 +46,46 @@ if TYPE_CHECKING:
     from bunking.models_v2 import DirectBunkRequest
 
 logger = get_logger(__name__)
+
+
+def _parent_nbw_yield_record(
+    person_cm_id: int,
+    mp_bunk_requests_by_person: dict[int, list[DirectBunkRequest]],
+    mp_age_requests_by_person: dict[int, list[DirectBunkRequest]],
+) -> dict[str, Any] | None:
+    """Yield record if this camper's SOLE Material-Parent request is a
+    not_bunk_with whose target's SOLE MP request is a bunk_with toward this pair.
+
+    In that both-sole, directly-opposing case the positive request wins: the
+    caller skips this camper's must-satisfy-one (dropping the NBW) so the
+    target's bunk_with MSO can co-place the pair. Returns the yield detail for
+    ctx.parent_nbw_yields (same shape as staff_nbw_yields), or None.
+    """
+    own = mp_bunk_requests_by_person.get(person_cm_id, [])
+    if len(own) != 1 or mp_age_requests_by_person.get(person_cm_id):
+        return None  # not a sole MP request
+    nbw = own[0]
+    if nbw.request_type != RequestType.NOT_BUNK_WITH.value:
+        return None
+    target_cm = nbw.requested_person_cm_id
+    if target_cm is None:
+        return None
+    pair = {person_cm_id, target_cm}
+    target_own = mp_bunk_requests_by_person.get(target_cm, [])
+    if len(target_own) != 1 or mp_age_requests_by_person.get(target_cm):
+        return None  # target's positive wish must also be sole-MP
+    bw = target_own[0]
+    if bw.request_type != RequestType.BUNK_WITH.value:
+        return None
+    if {bw.requester_person_cm_id, bw.requested_person_cm_id} != pair:
+        return None
+    return {
+        "nbw_request_id": nbw.id,
+        "subject_cm": person_cm_id,
+        "target_cm": target_cm,
+        "protected_parent_request_id": bw.id,
+        "protected_camper_cm": target_cm,
+    }
 
 
 def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
@@ -116,6 +156,14 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
         # minimal infeasible subset. The constraint is otherwise unchanged.
         if person_cm_id in ctx.mp_skip_cms:
             skipped_for_iis_probe += 1
+            continue
+
+        # Parent-paramount carve-out (#1638 Stream C): if this camper's sole MP
+        # wish is a not_bunk_with that directly opposes a sole-MP parent bunk_with,
+        # the positive wins — skip this camper's MSO (drop the NBW) and record it.
+        parent_yield = _parent_nbw_yield_record(person_cm_id, mp_bunk_requests_by_person, mp_age_requests_by_person)
+        if parent_yield is not None:
+            ctx.parent_nbw_yields.append(parent_yield)
             continue
 
         forcing_vars: list[cp_model.IntVar] = []
