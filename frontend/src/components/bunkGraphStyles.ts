@@ -75,11 +75,22 @@ const conflictedPairs = (
 }
 
 /**
+ * Minimum width:height ratio for the cola bounding box. Matching the container
+ * aspect alone left sparse graphs (many small disconnected groups) too tall —
+ * cola's handleDisconnected packing stacked them into a centered column
+ * (#1675 visual review of G8A). Forcing a landscape box gives that packing
+ * horizontal room to spread. cy.fit() then scales the result to the container,
+ * so a wider-than-container box fills the width (with modest top/bottom margin)
+ * rather than leaving left/right gaps.
+ */
+const MIN_LAYOUT_ASPECT = 2.2
+
+/**
  * Cola layout options for the per-bunk graph. The bounding box is derived from
- * the live container dimensions so cola spreads nodes across the canvas's
- * (wide) aspect instead of settling into a square that leaves big left/right
- * margins after `cy.fit()`. nodeSpacing/padding/handleDisconnected preserve the
- * #1640 disconnected-cluster separation.
+ * the live container, then widened (height preserved) to at least
+ * {@link MIN_LAYOUT_ASPECT} so cola packs disconnected components across the
+ * width instead of stacking them. nodeSpacing/padding/handleDisconnected
+ * preserve the #1640 disconnected-cluster separation.
  *
  * Returned as a plain object (not typed against cytoscape's LayoutOptions)
  * because cola's plugin-specific keys aren't in BaseLayoutOptions — the caller
@@ -98,7 +109,10 @@ export function buildBunkColaLayoutOptions(
   // Only constrain to a bounding box once the container has real dimensions —
   // a zero-area box on the first paint would collapse the layout.
   if (containerWidth > 0 && containerHeight > 0) {
-    options['boundingBox'] = { x1: 0, y1: 0, w: containerWidth, h: containerHeight }
+    // Widen (never shrink the height) so the box is at least MIN_LAYOUT_ASPECT
+    // wide. An already-landscape container is left as-is.
+    const w = Math.max(containerWidth, containerHeight * MIN_LAYOUT_ASPECT)
+    options['boundingBox'] = { x1: 0, y1: 0, w, h: containerHeight }
   }
   return options
 }

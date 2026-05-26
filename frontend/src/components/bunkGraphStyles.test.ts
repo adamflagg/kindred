@@ -275,11 +275,23 @@ describe('getBunkCytoscapeStyles edge[?multi]', () => {
 })
 
 describe('buildBunkColaLayoutOptions', () => {
-  it('derives a bounding box matching the container aspect so cola fills the canvas width', () => {
+  it('widens the bounding box to a forced landscape aspect so cola packs components across the width', () => {
+    // Matching the container aspect (~1.78:1 here) left sparse graphs too tall —
+    // cola stacked small disconnected groups into a centered column (#1675
+    // visual review of G8A). The box is widened (height preserved) to a forced
+    // landscape aspect so component packing spreads horizontally.
     const opts = buildBunkColaLayoutOptions(1600, 900)
     const bb = opts['boundingBox'] as { x1: number; y1: number; w: number; h: number }
-    expect(bb).toEqual({ x1: 0, y1: 0, w: 1600, h: 900 })
-    expect(bb.w / bb.h).toBeCloseTo(1600 / 900)
+    expect(bb.h).toBe(900) // never shrink the available height
+    expect(bb.w).toBeGreaterThan(1600) // a too-square container gets widened
+    expect(bb.w / bb.h).toBeGreaterThanOrEqual(2.2 - 1e-9)
+  })
+
+  it('leaves an already-landscape container unchanged', () => {
+    // 2400x900 is 2.67:1, already wider than the target — no widening needed.
+    const opts = buildBunkColaLayoutOptions(2400, 900)
+    const bb = opts['boundingBox'] as { x1: number; y1: number; w: number; h: number }
+    expect(bb).toEqual({ x1: 0, y1: 0, w: 2400, h: 900 })
   })
 
   it('preserves the #1640 disconnected-cluster spacing options', () => {
