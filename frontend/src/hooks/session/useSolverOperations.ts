@@ -200,6 +200,10 @@ export function useSolverOperations({
           return { success: true, stats: resultStats }
         } else {
           const errorMessage = solverRun.error_message ?? 'Optimization failed'
+          // #1656 — a failed run is returned (not thrown) now that diagnostics
+          // ride the result; log a breadcrumb so an infeasible solve still leaves
+          // a trace in the console for debugging.
+          console.warn('Solver run did not complete:', solverRun.status, errorMessage)
           return { success: false, errorMessage, diagnostics: solverRun.diagnostics }
         }
       } catch (error) {

@@ -62,3 +62,28 @@ def test_get_solver_run_diagnostics_default_none() -> None:
     assert body["infeasibility_cause"] is None
     assert body["localization"] is None
     assert body["impossibility_report"] is None
+
+
+def test_get_solver_run_pb_fallback_includes_diagnostics_keys() -> None:
+    """The PocketBase-fetch fallback returns the same diagnostics keys (as None)
+    as the in-memory path, so the response shape is uniform across storage paths (#1656)."""
+    run_id = "run-pb-1"
+
+    class _PbRun:
+        id = run_id
+        status = "completed"
+        results = '{"stats": {}}'
+        error_message = None
+
+    # Empty solver_runs forces the run_id-not-found PocketBase fallback branch.
+    with (
+        patch.dict("api.routers.solver.solver_runs", {}, clear=True),
+        patch("api.routers.solver.pb") as mock_pb,
+    ):
+        mock_pb.collection.return_value.get_one.return_value = _PbRun()
+        resp = _client().get(f"/api/solver/run/{run_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["infeasibility_cause"] is None
+    assert body["localization"] is None
+    assert body["impossibility_report"] is None

@@ -149,6 +149,21 @@ describe('SolverDiagnosticsModal (#1638)', () => {
     expect(screen.getByText(/no diagnostic detail/i)).toBeInTheDocument()
   })
 
+  it('empty-state hints that a page refresh may have cleared diagnostics', () => {
+    // #1656 — diagnostics live in the in-memory run dict only; a reload drops
+    // them. The empty state should tell the user that, not imply none existed.
+    render(
+      <SolverDiagnosticsModal
+        isOpen
+        onClose={() => {}}
+        diagnostics={{ infeasibilityCause: null, localization: null, impossibilityReport: null }}
+        sessionCmId={1000001}
+        year={2026}
+      />
+    )
+    expect(screen.getByText(/refresh|reload/i)).toBeInTheDocument()
+  })
+
   it('does not auto-dismiss on a timer (persists until explicit close)', () => {
     // Spec §6.6: the review surface must stay up for review — never close on a
     // timeout the way the old transient red box did. Advancing timers must not

@@ -63,7 +63,8 @@ export default function SolverDiagnosticsModal({
       <div className="space-y-5 px-5 py-4">
         {!hasAny && (
           <div className="rounded-md bg-stone-50 p-3 text-sm text-stone-600">
-            No diagnostic detail was captured for this run.
+            No diagnostic detail is available for this run — it may have been cleared by a page
+            refresh. Re-run the solver to regenerate it.
           </div>
         )}
 

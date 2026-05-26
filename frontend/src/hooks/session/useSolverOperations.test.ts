@@ -236,4 +236,44 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
     expect(outcome?.success).toBe(false)
     expect(outcome?.diagnostics?.infeasibilityCause).toContain('parent_paramount')
   })
+
+  it('logs a console.warn breadcrumb on a failed run', async () => {
+    // #1656 — failed runs no longer throw (diagnostics ride the return value), so
+    // without an explicit log an infeasible solve produces zero console output.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
+      id: 'run-1',
+      session: '1000001',
+      status: 'failed',
+      error_message: 'Solver failed to find a solution',
+      diagnostics: { infeasibilityCause: null, localization: null, impossibilityReport: null },
+      created: '',
+      updated: '',
+    } as never)
+
+    const { result } = renderHook(
+      () =>
+        useSolverOperations({
+          selectedSession: '1000001',
+          currentYear: 2026,
+          currentScenario: null,
+          scenarios: [],
+          autoApplyEnabled: false,
+          autoApplyTimeout: 0,
+          fetchWithAuth: vi.fn(),
+          respectLocks: true,
+        }),
+      { wrapper }
+    )
+
+    await act(async () => {
+      await result.current.handleRunSolver(60)
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Solver run did not complete:',
+      'failed',
+      'Solver failed to find a solution'
+    )
+    warnSpy.mockRestore()
+  })
 })
