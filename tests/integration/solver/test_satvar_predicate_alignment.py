@@ -207,7 +207,12 @@ def test_age_preference_satvar_predicate_alignment(mock_config: Any) -> None:
     # #1664 suppression: a form age_preference whose requester also has a
     # satisfiable form bunk_with is immaterial and gets NO sat var, even though
     # that requester's bunk_with does. This is the rule this PR adds.
+    request_ids = {r.id for r in solver.input.requests}
     for req_id in AGE_PREF_SUPPRESSED_IDS:
+        assert req_id in request_ids, (
+            f"{req_id} missing from fixture requests — the suppression assertion "
+            f"would pass vacuously (fixture-ID drift)"
+        )
         assert req_id not in sat_vars, (
             f"{req_id} unexpectedly has a sat var — #1664 should suppress a form "
             f"age_preference when its requester has a satisfiable form bunk_with"
@@ -271,7 +276,12 @@ def test_age_preference_alignment_fixture_outcomes_are_deterministic(mock_config
         )
 
     # Suppressed (#1664) age-prefs must be absent; their requester's bunk_with present.
+    request_ids = {r.id for r in solver.input.requests}
     for req_id in AGE_PREF_SUPPRESSED_IDS:
+        assert req_id in request_ids, (
+            f"{req_id} missing from fixture requests — the suppression assertion "
+            f"would pass vacuously (fixture-ID drift)"
+        )
         assert req_id not in sat_vars, f"{req_id} should be suppressed by #1664 but appears in request_satisfied_vars"
     assert AGE_PREF_SUPPRESSED_REQUESTER_BW_ID in sat_vars, (
         f"{AGE_PREF_SUPPRESSED_REQUESTER_BW_ID} missing — suppression must keep the coexisting bunk_with"

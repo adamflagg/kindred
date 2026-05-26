@@ -50,7 +50,9 @@ def is_material_parent_request(request: DirectBunkRequest) -> bool:
     """True iff the request's source_field classifies as MATERIAL_PARENT.
 
     Defensive: missing or unknown source_field returns False with a debug log.
-    Used by the solver hard constraint and the post-solve diagnostic.
+    Called by ``compute_material_request_ids``; solver constraints and the
+    post-solve diagnostic read the resulting ``material_request_ids`` set rather
+    than calling this directly, so the #1664 age-preference suppression applies.
     """
     sf = request.source_field
     if not sf:
