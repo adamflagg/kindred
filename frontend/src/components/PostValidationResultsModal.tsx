@@ -13,8 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   Users,
-  Home,
-  Heart,
+  Check,
+  Star,
   Sparkles,
   TrendingUp,
   Target,
@@ -681,7 +681,6 @@ export function PostCheckContents({
       ? (statistics.material_parent_request_satisfaction_rate ?? 0)
       : statistics.request_satisfaction_rate
   const PARENT_SATISFACTION_TARGET = 0.85
-  const parentUnderTarget = parentTotal > 0 && satisfactionRate < PARENT_SATISFACTION_TARGET
 
   // Residual issues: neither bunk-level nor suppressed (surfaced in dedicated sections).
   const otherIssues = useMemo(
@@ -887,8 +886,37 @@ export function PostCheckContents({
             {/* Ring */}
             <SatisfactionRing rate={satisfactionRate} size={100} />
 
-            {/* Stats grid */}
+            {/* Stats grid — row 1: camper coverage; row 2: assigned + issues */}
             <div className="grid flex-1 grid-cols-2 gap-3">
+              {/* Tile 1: got ≥1 request */}
+              <div className="flex items-center gap-2">
+                <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Check className="text-forest-600 h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {statistics.mp_campers_with_at_least_one_satisfied ?? 0}/
+                    {statistics.mp_campers_total ?? 0}
+                  </p>
+                  <p className="text-muted-foreground text-xs">got ≥1 request</p>
+                </div>
+              </div>
+
+              {/* Tile 2: got all requests */}
+              <div className="flex items-center gap-2">
+                <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Star className="text-forest-600 h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-foreground text-lg leading-tight font-semibold">
+                    {statistics.mp_campers_with_all_satisfied ?? 0}/
+                    {statistics.mp_campers_total ?? 0}
+                  </p>
+                  <p className="text-muted-foreground text-xs">got all requests</p>
+                </div>
+              </div>
+
+              {/* Tile 3: assigned */}
               <div className="flex items-center gap-2">
                 <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
                   <Users className="text-forest-600 h-4 w-4" />
@@ -901,42 +929,7 @@ export function PostCheckContents({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                    parentUnderTarget ? 'bg-amber-500/10' : 'bg-forest-500/10'
-                  }`}
-                >
-                  <Heart
-                    className={`h-4 w-4 ${parentUnderTarget ? 'text-amber-600' : 'text-forest-600'}`}
-                  />
-                </div>
-                <div>
-                  <p className="text-foreground text-lg leading-tight font-semibold">
-                    {parentTotal > 0
-                      ? `${statistics.satisfied_material_parent_requests ?? 0}/${parentTotal}`
-                      : `${statistics.satisfied_requests}/${statistics.total_requests}`}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {parentTotal > 0 ? 'parent requests met' : 'requests met'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="bg-forest-500/10 flex h-8 w-8 items-center justify-center rounded-lg">
-                  <Home className="text-forest-600 h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-foreground text-lg leading-tight font-semibold">
-                    {statistics.bunks_at_capacity +
-                      statistics.bunks_under_capacity +
-                      statistics.bunks_over_capacity}
-                  </p>
-                  <p className="text-muted-foreground text-xs">bunks used</p>
-                </div>
-              </div>
-
+              {/* Tile 4: issues */}
               <div className="flex items-center gap-2">
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-lg ${
