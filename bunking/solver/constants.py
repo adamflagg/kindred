@@ -109,3 +109,12 @@ exceeds MAX_AGE_SPREAD_MONTHS. Not exposed as a config knob — fires only when 
 constraint (MSO, locked group) leaves no other option. Set above the typical soft-objective
 gains the solver would otherwise chase (bunk-with weights are in the hundreds to low
 thousands), so overflow never happens for non-structural reasons."""
+
+# Partial cabin re-solve (#1609): per-assigned-camper bonus applied ONLY in partial
+# mode so the relaxed `<= 1` cardinality places everyone there's room for instead of
+# leaving request-less campers unassigned. Applied uniformly to every camper, so it
+# biases toward placement without changing which bunk a camper prefers relative to
+# their own requests. Kept below the cabin under-fill penalty (~2000/spot, seeded in
+# constraint.cabin_minimum_occupancy.penalty) so placement never forces a bunk past
+# its soft floor, while still dominating the small per-camper soft penalties.
+PARTIAL_PLACEMENT_BONUS = 1000

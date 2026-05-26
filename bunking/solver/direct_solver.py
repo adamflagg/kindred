@@ -28,6 +28,7 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 from campminder.client import get_current_season
 
 from .callbacks import BestBoundCallback, SolverProgressCallback
+from .constants import PARTIAL_PLACEMENT_BONUS
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
@@ -691,6 +692,13 @@ class DirectBunkingSolver:
         # Add bonuses for soft constraint rewards (e.g., preferred age spread)
         for bonus_var, bonus in self.soft_constraint_bonuses.values():
             objective_terms.append(bonus * bonus_var)
+
+        # Partial cabin re-solve (#1609): reward placing each camper so the relaxed
+        # `<= 1` cardinality doesn't leave request-less campers unassigned when there's room.
+        if self.input.locked_bunks:
+            for person_idx in range(len(self.person_ids)):
+                is_assigned = sum(self.assignments[(person_idx, b)] for b in range(len(self.bunks)))
+                objective_terms.append(PARTIAL_PLACEMENT_BONUS * is_assigned)
 
         # Maximize objective
         self.model.Maximize(sum(objective_terms))
