@@ -679,3 +679,54 @@ class TestMaterialRequestIds:
 
         assert "bw1" in solver.material_request_ids
         assert "ap1" not in solver.material_request_ids
+
+
+class TestMaterialRequestIdsConsistency:
+    """solver.material_request_ids must equal compute_material_request_ids applied
+    to the same input — single source of truth, no drift between solver and
+    validate_impossibility.
+
+    Guards the Task 4 migration: if validate_impossibility's MP rollup ever
+    diverges from the solver's material set, this test catches it.
+    """
+
+    def test_material_ids_equal_helper_output(self, mock_config):
+        """After _validate_requests, solver.material_request_ids == compute_material_request_ids.
+
+        Scenario: one bunk_request_form bunk_with (possible) + one bunk_request_form
+        age_preference (suppressed by #1664).  The helper and the solver must agree
+        on the final material set.
+        """
+        from bunking.satisfaction.bucket import compute_material_request_ids
+
+        solver = DirectBunkingSolver(
+            DirectSolverInput(
+                persons=[_make_person(1001, 1000001, gender="F"), _make_person(1002, 1000001, gender="F")],
+                requests=[
+                    _make_request(
+                        "bw_cons",
+                        1001,
+                        1002,
+                        1000001,
+                        request_type="bunk_with",
+                        source_field="bunk_request_form",
+                    ),
+                    DirectBunkRequest(
+                        id="ap_cons",
+                        requester_person_cm_id=1001,
+                        request_type="age_preference",
+                        age_preference_target="older",
+                        session_cm_id=1000001,
+                        year=2026,
+                        status="resolved",
+                        source_field="bunk_request_form",
+                    ),
+                ],
+                bunks=[_make_bunk(2001, 1000001, gender="F")],
+            ),
+            ConfigLoader.get_instance(),
+        )
+
+        impossible_ids = {item.request_id for item in solver.impossibility_report.flat}
+        expected = compute_material_request_ids(solver.input.requests_by_person, impossible_ids)
+        assert solver.material_request_ids == expected
