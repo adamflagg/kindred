@@ -18,19 +18,21 @@ import { useMemo, useState } from 'react'
 import { ChevronRight, X } from 'lucide-react'
 import clsx from 'clsx'
 import { UNIT_NAMES, getUnitForBunk } from '../../../utils/unitMapping'
-import { bunkToCode, type BunkSummary, type FilterEdgeMode } from '../graphFilter'
+import { bunkToCode, type BunkSummary } from '../graphFilter'
 
 export interface GraphFilterTreeProps {
   selectedUnits: string[]
   selectedBunks: string[]
   allBunks: BunkSummary[]
-  edgeMode: FilterEdgeMode
   onAddUnit: (unit: string) => void
   onRemoveUnit: (unit: string) => void
   onAddBunk: (code: string) => void
   onRemoveBunk: (code: string) => void
-  onSetEdgeMode: (mode: FilterEdgeMode) => void
   onClear: () => void
+  /** When true (gender mode), unit rows become non-selectable headers — no
+   *  unit checkbox or selection pill is rendered. Only bunk-level and chip-rail
+   *  interactions remain active. */
+  disableUnitSelect?: boolean
 }
 
 interface UnitGroup {
@@ -62,13 +64,12 @@ export default function GraphFilterTree({
   selectedUnits,
   selectedBunks,
   allBunks,
-  edgeMode,
   onAddUnit,
   onRemoveUnit,
   onAddBunk,
   onRemoveBunk,
-  onSetEdgeMode,
   onClear,
+  disableUnitSelect = false,
 }: GraphFilterTreeProps) {
   const groups = useMemo(() => groupBunksByUnit(allBunks), [allBunks])
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
@@ -211,25 +212,31 @@ export default function GraphFilterTree({
                     className={clsx('h-3 w-3 transition-transform', isExpanded && 'rotate-90')}
                   />
                 </button>
-                <label className="-mx-1 -my-0.5 flex flex-1 cursor-pointer items-center gap-2 rounded px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30">
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${group.name}`}
-                    checked={isUnitSelected}
-                    onChange={() => onUnitToggle(group.name)}
-                    className="text-primary focus:ring-ring h-4 w-4 rounded"
-                  />
-                  <span className="text-foreground flex-1 font-medium">{group.name}</span>
-                  {isUnitSelected ? (
-                    <span className="bg-primary/20 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
-                      Selected
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground text-xs font-normal">
-                      {group.bunks.length} {group.bunks.length === 1 ? 'bunk' : 'bunks'}
-                    </span>
-                  )}
-                </label>
+                {disableUnitSelect ? (
+                  <span className="flex flex-1 items-center px-1.5 py-0.5">
+                    <span className="text-foreground flex-1 font-medium">{group.name}</span>
+                  </span>
+                ) : (
+                  <label className="-mx-1 -my-0.5 flex flex-1 cursor-pointer items-center gap-2 rounded px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${group.name}`}
+                      checked={isUnitSelected}
+                      onChange={() => onUnitToggle(group.name)}
+                      className="text-primary focus:ring-ring h-4 w-4 rounded"
+                    />
+                    <span className="text-foreground flex-1 font-medium">{group.name}</span>
+                    {isUnitSelected ? (
+                      <span className="bg-primary/20 text-primary rounded px-1.5 py-0.5 text-xs font-medium">
+                        Selected
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs font-normal">
+                        {group.bunks.length} {group.bunks.length === 1 ? 'bunk' : 'bunks'}
+                      </span>
+                    )}
+                  </label>
+                )}
               </div>
               {isExpanded && (
                 <ul className="ml-9">
@@ -305,18 +312,8 @@ export default function GraphFilterTree({
       </ul>
 
       {/* Footer */}
-      <div className="border-border flex items-center justify-between border-t p-3">
-        <label className="text-foreground flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            aria-label="Show cross-scope edges"
-            checked={edgeMode === 'cross-scope'}
-            onChange={(e) => onSetEdgeMode(e.target.checked ? 'cross-scope' : 'strict')}
-            className="rounded"
-          />
-          Show cross-scope edges
-        </label>
-        {isFilterActive && (
+      {isFilterActive && (
+        <div className="border-border flex items-center justify-end border-t p-3">
           <button
             type="button"
             onClick={onClear}
@@ -325,8 +322,8 @@ export default function GraphFilterTree({
             <X className="h-3 w-3" />
             Clear filter
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

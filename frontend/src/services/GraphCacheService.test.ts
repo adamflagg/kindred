@@ -276,4 +276,52 @@ describe('GraphCacheService bunk graph (scenario-aware)', () => {
     expect(prodFetcher).toHaveBeenCalledTimes(1)
     expect(scenarioFetcher).toHaveBeenCalledTimes(1)
   })
+
+  it('does NOT collide cross-scope and non-cross-scope bunk graphs for the same bunk+session+year', async () => {
+    // The cross-scope response carries extra ghost nodes/edges that the plain
+    // response lacks. The in-memory cache key MUST include showCrossScopeEdges
+    // or the open-then-toggle path serves the stale non-cross graph (#1606/#1610
+    // regression): the React Query key changes but this inner LRU collides.
+    const plain = makeGraph('bunk-plain')
+    const crossScope = makeGraph('bunk-cross')
+
+    const plainFetcher = vi.fn().mockResolvedValue(plain)
+    const crossFetcher = vi.fn().mockResolvedValue(crossScope)
+
+    // First open with the toggle OFF — caches the plain graph.
+    const plainResult = await service.getBunkGraph(101, 42, plainFetcher, 2026, null, false)
+    expect(plainResult).toBe(plain)
+
+    // Toggle ON for the same bunk+session+year+scenario must NOT hit the plain
+    // cache — it must call the cross-scope fetcher and return the cross graph.
+    const crossResult = await service.getBunkGraph(101, 42, crossFetcher, 2026, null, true)
+    expect(crossResult).toBe(crossScope)
+    expect(crossFetcher).toHaveBeenCalledTimes(1)
+
+    // And the plain slot is still intact on a subsequent toggle-OFF lookup.
+    const plainAgain = await service.getBunkGraph(101, 42, plainFetcher, 2026, null, false)
+    expect(plainAgain).toBe(plain)
+    expect(plainFetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('each showCrossScopeEdges value hits its own cache on repeat (no cross-collision)', async () => {
+    const plain = makeGraph('bunk-plain')
+    const crossScope = makeGraph('bunk-cross')
+
+    const plainFetcher = vi.fn().mockResolvedValue(plain)
+    const crossFetcher = vi.fn().mockResolvedValue(crossScope)
+
+    const off1 = await service.getBunkGraph(7, 42, plainFetcher, 2026, 'scn_a', false)
+    const on1 = await service.getBunkGraph(7, 42, crossFetcher, 2026, 'scn_a', true)
+    const off2 = await service.getBunkGraph(7, 42, plainFetcher, 2026, 'scn_a', false)
+    const on2 = await service.getBunkGraph(7, 42, crossFetcher, 2026, 'scn_a', true)
+
+    expect(off1).toBe(plain)
+    expect(off2).toBe(plain)
+    expect(on1).toBe(crossScope)
+    expect(on2).toBe(crossScope)
+    // Each distinct cross-scope flag only fetches once.
+    expect(plainFetcher).toHaveBeenCalledTimes(1)
+    expect(crossFetcher).toHaveBeenCalledTimes(1)
+  })
 })

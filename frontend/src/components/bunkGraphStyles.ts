@@ -5,8 +5,10 @@
  * and first-year badge logic can be unit-tested without booting cytoscape.
  */
 
-import type { EdgeSingular, NodeSingular, StylesheetStyle } from 'cytoscape'
+import type { EdgeSingular, ElementDefinition, NodeSingular, StylesheetStyle } from 'cytoscape'
 import { resolveEdgeColor } from './graph/cytoscapeStyles'
+import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { getSessionShorthand } from '../utils/sessionDisplay'
 
 export const BUNK_NODE_COLORS = {
   // Binary connection state — anything > 0 reads as "has connections".
@@ -24,6 +26,11 @@ export const BUNK_NODE_COLORS = {
  *  fill above and against red/green node fills. Amber gives the strongest
  *  contrast across the palette. */
 export const FIRST_YEAR_RING_COLOR = '#fbbf24' // amber-400
+
+/** Fill for cross-scope ghost nodes (campers in a different bunk). Deliberately
+ *  off the green/red connection palette and the grade ramp so "from another
+ *  bunk" reads instantly. Violet has no other meaning on this graph. */
+export const CROSS_SCOPE_NODE_COLOR = '#8b5cf6' // violet-500
 
 /** Border thickness used for the first-year ring. The default border is 0;
  *  bumping this to 6 makes the ring the entire "first-year" signal — no
@@ -53,6 +60,187 @@ export function getBunkGradeColors(grades: readonly number[]): Record<number, st
     }
   })
   return result
+}
+
+/** A single camper node as built by the bunk-graph API (`build_bunk_graph`). */
+export interface BunkGraphNodeInput {
+  id: number
+  name: string
+  grade: number | null
+  centrality?: number
+  clustering?: number
+  community?: number | null
+  first_year?: boolean
+  last_year_session?: string | null
+  last_year_bunk?: string | null
+  /** Current bunk name — populated for cross-scope ghost nodes so the label can
+   *  show which bunk an out-of-bunk camper is actually assigned to. */
+  bunk_name?: string | null
+}
+
+/** A single in-scope edge from the bunk-graph API. */
+export interface BunkGraphEdgeInput {
+  source: number
+  target: number
+  weight: number
+  edge_type: string
+  reciprocal: boolean
+  confidence?: number
+  request_type?: string | null
+}
+
+/** A cross-scope (boundary) edge — one endpoint outside the bunk. */
+export interface BunkGraphCrossScopeEdgeInput {
+  source: number
+  target: number
+  edge_type: 'request'
+  weight: number
+  request_type: string | null
+  confidence: number | null
+  reciprocal: boolean
+  cross_scope: true
+}
+
+/** Input bundle for {@link buildBunkGraphElements}. Mirrors `BunkGraphData`. */
+export interface BunkGraphElementsInput {
+  nodes: readonly BunkGraphNodeInput[]
+  edges: readonly BunkGraphEdgeInput[]
+  cross_scope_nodes?: readonly BunkGraphNodeInput[]
+  cross_scope_edges?: readonly BunkGraphCrossScopeEdgeInput[]
+}
+
+/**
+ * Build the Cytoscape element definitions for the per-bunk social graph
+ * (BunkSocialGraphModal). Extracted from the modal's init effect so the
+ * shipped element-building logic — including cross-scope ghost nodes/edges —
+ * is unit-testable without booting cytoscape (#1606/#1610 follow-up).
+ *
+ * When `showCrossScopeEdges` is true and the input carries `cross_scope_nodes`
+ * / `cross_scope_edges`, ghost nodes (out-of-bunk endpoints) and boundary
+ * edges are appended, tagged `cross_scope: true` so the `node[?cross_scope]`
+ * / `edge[?cross_scope]` selectors ghost them.
+ *
+ * `rng` is injectable so tests get deterministic positions; production uses
+ * `Math.random` to spread nodes vertically and scatter ghost nodes.
+ */
+export function buildBunkGraphElements(
+  data: BunkGraphElementsInput,
+  showCrossScopeEdges: boolean,
+  rng: () => number = Math.random
+): ElementDefinition[] {
+  const elements: ElementDefinition[] = []
+
+  // Calculate node degrees from in-scope edges first.
+  const nodeDegrees: Record<string, number> = {}
+  data.edges.forEach((edge) => {
+    const sourceId = `node-${edge.source}`
+    const targetId = `node-${edge.target}`
+    nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
+    nodeDegrees[targetId] = (nodeDegrees[targetId] ?? 0) + 1
+  })
+
+  // Light → mid → dark grade ramp (younger to older).
+  const grades = [...new Set(data.nodes.map((n) => n.grade).filter((g) => g !== null))] as number[]
+  const gradeColors = getBunkGradeColors(grades)
+
+  // Track ids already added so cross-scope ghosts don't duplicate in-scope nodes.
+  const seenNodeIds = new Set<string>()
+
+  data.nodes.forEach((node, index) => {
+    const nodeId = `node-${node.id}`
+    seenNodeIds.add(nodeId)
+    const degree = nodeDegrees[nodeId] ?? 0
+
+    const verticalOffset = (rng() - 0.5) * 300
+
+    const nodeClasses: string[] = []
+    if (degree === 0) nodeClasses.push('isolated')
+    if (node.first_year) nodeClasses.push('first-year')
+
+    elements.push({
+      group: 'nodes',
+      data: {
+        ...node,
+        id: nodeId,
+        label: `${node.name} (${formatGradeOrdinal(node.grade)})${
+          node.last_year_bunk && node.last_year_session
+            ? `\n${getSessionShorthand(node.last_year_session)}: ${node.last_year_bunk}`
+            : ''
+        }`,
+        fullName: node.name,
+        degree,
+        // `!= null` (not a truthy check) so grade 0 — the youngest grade — is
+        // colored from the ramp instead of falling back to the missing-grade gray.
+        gradeColor: node.grade != null ? (gradeColors[node.grade] ?? '#666666') : '#666666',
+        firstYear: node.first_year ?? false,
+      },
+      position: { x: index * 100, y: verticalOffset },
+      classes: nodeClasses.join(' '),
+    })
+  })
+
+  // Backend already collapses mutual same-type pairs into a single edge tagged
+  // reciprocal=true; the edge[?reciprocal] selector renders those bold/solid.
+  let edgeIndex = 0
+  data.edges.forEach((edge) => {
+    elements.push({
+      group: 'edges',
+      data: {
+        ...edge,
+        id: `edge-${edgeIndex++}`,
+        source: `node-${edge.source}`,
+        target: `node-${edge.target}`,
+        edge_type: edge.edge_type,
+      },
+    })
+  })
+
+  // Cross-scope ghost elements (#1606, #1610).
+  if (showCrossScopeEdges && data.cross_scope_nodes && data.cross_scope_edges) {
+    data.cross_scope_nodes.forEach((node) => {
+      const nodeId = `node-${node.id}`
+      // Skip if already present (defensive — a bunk's campers are in-scope).
+      if (seenNodeIds.has(nodeId)) return
+      seenNodeIds.add(nodeId)
+
+      elements.push({
+        group: 'nodes',
+        data: {
+          id: nodeId,
+          // Ghost label shows the camper's current bunk on a second line so it's
+          // clear they belong to a different bunk (the violet fill reinforces it).
+          label: `${node.name} (${formatGradeOrdinal(node.grade)})${
+            node.bunk_name ? `\n→ ${node.bunk_name}` : ''
+          }`,
+          fullName: node.name,
+          degree: 0,
+          gradeColor: '#666666',
+          firstYear: false,
+          cross_scope: true,
+        },
+        position: { x: rng() * 400, y: rng() * 300 },
+        classes: '',
+      })
+    })
+
+    data.cross_scope_edges.forEach((edge) => {
+      elements.push({
+        group: 'edges',
+        data: {
+          id: `cross-edge-${edgeIndex++}`,
+          source: `node-${edge.source}`,
+          target: `node-${edge.target}`,
+          edge_type: edge.edge_type,
+          request_type: edge.request_type,
+          confidence: edge.confidence,
+          reciprocal: edge.reciprocal,
+          cross_scope: true,
+        },
+      })
+    })
+  }
+
+  return elements
 }
 
 /**
@@ -140,6 +328,31 @@ export function getBunkCytoscapeStyles(): StylesheetStyle[] {
         'line-style': 'solid',
         'source-arrow-shape': 'triangle',
         'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+    // Cross-scope ghost rendering — mirrors the session-graph stylesheet in
+    // graph/cytoscapeStyles.ts so the visual contract is identical on both surfaces.
+    {
+      selector: 'edge[?cross_scope]',
+      style: {
+        opacity: 0.35,
+        events: 'no',
+        'line-style': 'dashed',
+      },
+    },
+    {
+      // Ghost campers (out-of-scope endpoints of cross-scope edges). Given a
+      // distinct violet fill + dashed ring — overriding the degree-based
+      // green/red — so out-of-bunk campers are unmistakable. Slightly faded
+      // and click-through so the detail panel can still open on them.
+      selector: 'node[?cross_scope]',
+      style: {
+        'background-color': CROSS_SCOPE_NODE_COLOR,
+        'background-opacity': 0.7,
+        'border-width': 3,
+        'border-color': CROSS_SCOPE_NODE_COLOR,
+        'border-style': 'dashed',
+        'z-index': 100,
       },
     },
   ]

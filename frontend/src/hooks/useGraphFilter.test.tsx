@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { useGraphFilter } from './useGraphFilter'
@@ -38,6 +38,12 @@ function LocationProbe() {
   lastSearch = loc.search
   return null
 }
+
+// Reset the module-scoped probe between tests so a test that asserts on
+// `lastSearch` can never observe a previous test's navigation.
+beforeEach(() => {
+  lastSearch = ''
+})
 
 describe('useGraphFilter', () => {
   it('parses initial URL into FilterState', () => {
@@ -132,5 +138,53 @@ describe('useGraphFilter', () => {
     expect(lastSearch).not.toContain('bunks=')
     expect(lastSearch).not.toContain('edges=')
     expect(lastSearch).toContain('year=2026')
+  })
+
+  it('parses gender from the URL', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls'),
+    })
+    expect(result.current.filter.gender).toBe('girls')
+  })
+
+  it('setGender writes gender and clears manual units/bunks', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?units=galil&bunks=b-9'),
+    })
+    act(() => result.current.setGender('boys'))
+    expect(lastSearch).toContain('gender=boys')
+    expect(lastSearch).not.toContain('units=')
+    expect(lastSearch).not.toContain('bunks=')
+  })
+
+  it('setGender("all") removes the gender param', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=ag'),
+    })
+    act(() => result.current.setGender('all'))
+    expect(lastSearch).not.toContain('gender=')
+  })
+
+  it('setEdgeMode preserves an active gender', () => {
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls'),
+    })
+    act(() => result.current.setEdgeMode('cross-scope'))
+    expect(lastSearch).toContain('gender=girls')
+    expect(lastSearch).toContain('edges=cross')
+  })
+
+  it('setGender("all") preserves an active cross-scope edge mode (Finding 2)', () => {
+    // Switching to the "All" gender tab clears the gender/bunk scope but must NOT
+    // reset the user's cross-scope edge choice — gender scope and edge mode are
+    // independent controls.
+    const { result } = renderHook(() => useGraphFilter(ALL_BUNKS), {
+      wrapper: makeWrapper('/?gender=girls&edges=cross'),
+    })
+    expect(result.current.filter.edgeMode).toBe('cross-scope')
+    act(() => result.current.setGender('all'))
+    expect(lastSearch).not.toContain('gender=')
+    expect(lastSearch).toContain('edges=cross')
+    expect(result.current.filter.edgeMode).toBe('cross-scope')
   })
 })

@@ -17,6 +17,9 @@ class SocialGraphNode(BaseModel):
     name: str
     grade: int | None = None
     bunk_cm_id: int | None = None
+    # Human-readable bunk name. Populated for cross-scope ghost nodes on the
+    # per-bunk graph so the UI can show which bunk an out-of-bunk camper is in.
+    bunk_name: str | None = None
     centrality: float = 0.0
     clustering: float = 0.0
     community: int | None = None
@@ -78,6 +81,11 @@ class BunkGraphResponse(BaseModel):
     edges: list[SocialGraphEdge]
     metrics: BunkGraphMetrics
     health_score: float  # Overall health score 0-1
+    # Cross-scope edges and ghost nodes — populated when ?cross_scope=true.
+    # Same CrossScopeEdge / SocialGraphNode shapes as SocialGraphResponse so the
+    # frontend's buildBunkGraphElements ghosts them exactly like the session graph.
+    cross_scope_edges: list[CrossScopeEdge] = []
+    cross_scope_nodes: list[SocialGraphNode] = []
 
 
 class CamperPositionUpdate(BaseModel):

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
@@ -32,7 +32,17 @@ import { cleanupPoppers, cleanupCytoscape } from '../hooks/graph'
 import { useGraphFilter } from '../hooks/useGraphFilter'
 import { useScopedGraphData } from '../hooks/useScopedGraphData'
 import { GraphFilterButton, GraphFilterPopover, GraphFilterStatus } from './graph/filter'
-import { type BunkSummary } from './graph/graphFilter'
+import GenderTabBar from './graph/GenderTabBar'
+import GraphDisplayMenu from './graph/GraphDisplayMenu'
+import {
+  parseFilterFromSearchParams,
+  type BunkSummary,
+  type FilterState,
+} from './graph/graphFilter'
+import { filterBunksByGender, scopeToTab, type BunkSummaryWithGender } from './graph/genderFilter'
+import { useSearchParams } from 'react-router'
+import { useLinkedAgSession } from '../hooks/useLinkedAgSession'
+import { resolveEffectiveScope, shouldDegrade, genderBannerText } from './graph/graphScope'
 
 // Register extensions only once (survives HMR reloads)
 // Use a symbol on globalThis to track registration across module reloads
@@ -97,33 +107,151 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
   const [showUnits, setShowUnits] = useState(true)
   const [isComputingLayout, setIsComputingLayout] = useState(false)
 
-  // Bunk roster (used by the filter picker and as a label fallback). Fetched
-  // independently of the scoped graph so the picker stays populated even when
-  // the graph is mid-fetch.
-  const { data: bunksData } = useBunkNames(sessionCmId, true)
+  // Read gender straight from the URL so dataSessionCmId can be computed before
+  // useBunkNames (which needs it). useGraphFilter (below) is the write authority;
+  // this is a read-only peek to break the hook-ordering cycle.
+  const [rawSearchParams] = useSearchParams()
+  const urlGender = parseFilterFromSearchParams(rawSearchParams).gender
+
+  // Linked AG session (by parent_id). Gates the AG tab + provides its cm_id.
+  const { agSessionCmId } = useLinkedAgSession(sessionCmId)
+  const agAvailable = agSessionCmId != null
+
+  // The session whose roster + graph we actually fetch: the AG session when the
+  // AG tab is active, otherwise the current main session. (The `&& agSessionCmId`
+  // guard means an 'ag' URL with no linked AG harmlessly stays on the main session.)
+  const dataSessionCmId = urlGender === 'ag' && agSessionCmId ? agSessionCmId : sessionCmId
+
+  // Bunk roster for the DATA session (used by the picker + as a label fallback).
+  const { data: bunksData } = useBunkNames(dataSessionCmId, true)
   const allBunks: BunkSummary[] = useMemo(() => {
+    if (!bunksData) return []
+    return Object.entries(bunksData).map(([id, name]) => ({ cmId: Number(id), name: String(name) }))
+  }, [bunksData])
+
+  const allBunksWithGender: BunkSummaryWithGender[] = useMemo(() => {
     if (!bunksData) return []
     return Object.entries(bunksData).map(([id, name]) => ({
       cmId: Number(id),
       name: String(name),
+      code: String(name).toLowerCase(),
     }))
   }, [bunksData])
 
-  // Filter state from URL.
+  // Filter state from URL (write authority).
   const {
     filter,
     addUnit,
     removeUnit,
     addBunk,
     removeBunk,
+    setGender,
     setEdgeMode,
     clear: clearFilter,
   } = useGraphFilter(allBunks)
 
-  // Fetch the (possibly-scoped) graph. When filter is empty, this hits the
-  // same unscoped path as before. When filter is active, server returns a
-  // subgraph and runs fresh fcose layout on just the in-scope nodes.
-  const { data: graphData, isLoading, error } = useScopedGraphData(sessionCmId, filter)
+  // Effective gender: if 'ag' is active without a linked AG session, fall back to 'all'.
+  const gender = filter.gender === 'ag' && !agAvailable ? 'all' : filter.gender
+
+  // Cabins dropped from the gender-derived set (ephemeral; reset on session/gender change).
+  const [dropped, setDropped] = useState<Set<string>>(() => new Set())
+  // True when an active scope yielded zero nodes and we fell back to the full graph.
+  const [degraded, setDegraded] = useState(false)
+
+  useEffect(() => {
+    setDropped(new Set())
+    setDegraded(false)
+  }, [dataSessionCmId, gender])
+
+  const resolved = useMemo(
+    () =>
+      resolveEffectiveScope({
+        gender,
+        manualUnits: filter.units,
+        manualBunks: filter.bunks,
+        dropped,
+        roster: allBunksWithGender,
+      }),
+    [gender, filter.units, filter.bunks, dropped, allBunksWithGender]
+  )
+
+  // What we actually fetch: the resolved scope, or unscoped when degraded.
+  const fetchFilter: FilterState = useMemo(
+    () => ({
+      units: degraded ? [] : resolved.units,
+      bunks: degraded ? [] : resolved.bunks,
+      gender: 'all',
+      edgeMode: filter.edgeMode,
+    }),
+    [degraded, resolved, filter.edgeMode]
+  )
+
+  const genderActive = gender !== 'all'
+
+  // Cabins shown in the Cabins popover: the gender's cabins in gender mode, the
+  // full roster otherwise. (allBunks keeps the original BunkSummary[] shape.)
+  const popoverBunks: BunkSummary[] = useMemo(() => {
+    if (!genderActive) return allBunks
+    const derived = new Set(filterBunksByGender(allBunksWithGender, scopeToTab(gender)))
+    return allBunks.filter((b) => derived.has(b.name.toLowerCase()))
+  }, [genderActive, allBunks, allBunksWithGender, gender])
+
+  // Unchecking a cabin in gender mode drops it (ephemeral); re-checking restores
+  // it. In manual mode the picker writes the URL bunk list directly.
+  const handleDropOrAddBunk = useCallback(
+    (code: string, drop: boolean) => {
+      if (genderActive) {
+        setDropped((prev) => {
+          const next = new Set(prev)
+          if (drop) next.add(code)
+          else next.delete(code)
+          return next
+        })
+      } else if (drop) {
+        removeBunk(code)
+      } else {
+        addBunk(code)
+      }
+    },
+    [genderActive, removeBunk, addBunk]
+  )
+
+  const {
+    data: graphData,
+    isLoading,
+    error,
+    isFetching,
+  } = useScopedGraphData(dataSessionCmId, fetchFilter)
+
+  // Graceful degradation: an active scope that resolves to zero nodes falls back
+  // to the full graph for this data-session. URL keeps ?gender so the scoped view
+  // self-restores on a session where that gender IS bunked.
+  useEffect(() => {
+    if (
+      !degraded &&
+      shouldDegrade({
+        scopeActive: resolved.active,
+        isLoading,
+        hasError: error != null,
+        nodeCount: graphData?.nodes.length ?? 0,
+      })
+    ) {
+      setDegraded(true)
+    }
+  }, [degraded, resolved.active, isLoading, error, graphData])
+
+  const degradeBanner = degraded ? genderBannerText(gender) : ''
+
+  // Suppress the "no data" empty state while a non-empty graph is still coming:
+  // (a) an active scope resolved to zero nodes and we're about to degrade, or
+  // (b) we've degraded and the unscoped full-graph fetch is still in flight.
+  // Without this, the degrade path briefly flashes the very "No social network
+  // data available" message this feature exists to avoid. A genuinely empty
+  // session (degraded, fetch settled, still zero nodes) correctly shows empty.
+  const fallbackPending =
+    error == null &&
+    (graphData?.nodes.length ?? 0) === 0 &&
+    ((resolved.active && !degraded) || (degraded && isFetching))
 
   // Compute the set of grades present in the current data for the legend
   const existingGrades = useMemo(() => {
@@ -590,7 +718,7 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
 
   return (
     <QueryGuard
-      isLoading={isLoading}
+      isLoading={isLoading || fallbackPending}
       error={error}
       data={graphData?.nodes.length ? graphData : undefined}
       label="social network"
@@ -621,72 +749,81 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
                   </span>
                 </h3>
 
-                {/* Bunks / Units toggles — inline in header top row */}
-                <div
-                  role="group"
-                  aria-label="Show / Hide"
-                  className="flex shrink-0 items-center justify-center gap-3 text-sm"
-                >
-                  <span className="text-muted-foreground font-bold">Show / Hide</span>
-                  <label className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={showBubbles}
-                      onChange={(e) => setShowBubbles(e.target.checked)}
-                      className="rounded"
+                {/* Right control cluster: gender + display + canvas controls */}
+                <div className="flex flex-1 items-center justify-end gap-2">
+                  {allBunksWithGender.length > 0 && (
+                    <GenderTabBar
+                      gender={gender}
+                      agAvailable={agAvailable}
+                      onSelect={(scope) => {
+                        setDropped(new Set())
+                        setGender(scope)
+                      }}
                     />
-                    <span className="text-muted-foreground">Bunks</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={showUnits}
-                      onChange={(e) => setShowUnits(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span className="text-muted-foreground">Units</span>
-                  </label>
-                </div>
+                  )}
 
-                <GraphControls
-                  showLabels={showLabels}
-                  onToggleLabels={toggleLabels}
-                  showHelp={showHelp}
-                  onToggleHelp={() => setShowHelp(!showHelp)}
-                  isExpanded={isExpanded}
-                  onToggleExpand={handleExpandToggle}
-                  onZoomIn={handleZoomIn}
-                  onZoomOut={handleZoomOut}
-                  onFit={handleFit}
-                  onDownload={handleDownload}
-                  filterButton={
-                    <div className="relative">
-                      <GraphFilterButton
-                        ref={filterButtonRef}
-                        count={filter.units.length + filter.bunks.length}
-                        open={filterOpen}
-                        onToggle={() => setFilterOpen((v) => !v)}
-                      />
-                      <GraphFilterPopover
-                        open={filterOpen}
-                        onClose={() => setFilterOpen(false)}
-                        triggerRef={filterButtonRef}
-                        selectedUnits={filter.units}
-                        selectedBunks={filter.bunks}
-                        allBunks={allBunks}
-                        edgeMode={filter.edgeMode}
-                        onAddUnit={addUnit}
-                        onRemoveUnit={removeUnit}
-                        onAddBunk={addBunk}
-                        onRemoveBunk={removeBunk}
-                        onSetEdgeMode={setEdgeMode}
-                        onClear={clearFilter}
-                      />
-                    </div>
-                  }
-                />
+                  <GraphDisplayMenu
+                    showBubbles={showBubbles}
+                    onToggleBubbles={setShowBubbles}
+                    showUnits={showUnits}
+                    onToggleUnits={setShowUnits}
+                    crossScope={filter.edgeMode === 'cross-scope'}
+                    onToggleCrossScope={(next) => setEdgeMode(next ? 'cross-scope' : 'strict')}
+                  />
+
+                  <GraphControls
+                    showLabels={showLabels}
+                    onToggleLabels={toggleLabels}
+                    showHelp={showHelp}
+                    onToggleHelp={() => setShowHelp(!showHelp)}
+                    isExpanded={isExpanded}
+                    onToggleExpand={handleExpandToggle}
+                    onZoomIn={handleZoomIn}
+                    onZoomOut={handleZoomOut}
+                    onFit={handleFit}
+                    onDownload={handleDownload}
+                    filterButton={
+                      <div className="relative">
+                        <GraphFilterButton
+                          ref={filterButtonRef}
+                          count={resolved.bunks.length + resolved.units.length}
+                          open={filterOpen}
+                          onToggle={() => setFilterOpen((v) => !v)}
+                          label="Cabins"
+                        />
+                        <GraphFilterPopover
+                          open={filterOpen}
+                          onClose={() => setFilterOpen(false)}
+                          triggerRef={filterButtonRef}
+                          selectedUnits={genderActive ? [] : filter.units}
+                          selectedBunks={resolved.bunks}
+                          allBunks={popoverBunks}
+                          disableUnitSelect={genderActive}
+                          onAddUnit={addUnit}
+                          onRemoveUnit={removeUnit}
+                          onAddBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), false)}
+                          onRemoveBunk={(b) => handleDropOrAddBunk(b.toLowerCase(), true)}
+                          onClear={() => {
+                            setDropped(new Set())
+                            clearFilter()
+                          }}
+                        />
+                      </div>
+                    }
+                  />
+                </div>
               </div>
             </div>
+
+            {degradeBanner && (
+              <div
+                role="status"
+                className="border-border flex items-center gap-2 border-b bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                <span aria-hidden>⚠</span>
+                {degradeBanner}
+              </div>
+            )}
 
             {/* Graph container - ALWAYS in same tree position */}
             {/* Mobile-responsive: min-h-[50vh] on mobile, h-[600px] on desktop */}
@@ -714,8 +851,8 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
               )}
 
               <GraphFilterStatus
-                unitCount={filter.units.length}
-                bunkCount={filter.bunks.length}
+                unitCount={resolved.units.length}
+                bunkCount={resolved.bunks.length}
                 onClick={() => setFilterOpen(true)}
               />
 

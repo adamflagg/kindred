@@ -1,4 +1,5 @@
 import { UNIT_NAMES, getUnitForBunk } from '../../utils/unitMapping'
+import type { GenderScope } from './genderFilter'
 
 export type FilterEdgeMode = 'strict' | 'cross-scope'
 
@@ -6,6 +7,8 @@ export interface FilterState {
   units: string[]
   /** Lowercase bunk codes (e.g. 'b-9'). Match server expectation. */
   bunks: string[]
+  /** Active gender scope. 'all' = no gender filter (manual units/bunks apply). */
+  gender: GenderScope
   edgeMode: FilterEdgeMode
 }
 
@@ -46,7 +49,11 @@ export function parseFilterFromSearchParams(params: URLSearchParams): FilterStat
 
   const edgeMode: FilterEdgeMode = edgesRaw === 'cross' ? 'cross-scope' : 'strict'
 
-  return { units, bunks, edgeMode }
+  const genderRaw = params.get('gender') ?? ''
+  const gender: GenderScope =
+    genderRaw === 'boys' || genderRaw === 'girls' || genderRaw === 'ag' ? genderRaw : 'all'
+
+  return { units, bunks, gender, edgeMode }
 }
 
 /**
@@ -62,6 +69,7 @@ export function serializeFilterToSearchParams(
   next.delete('units')
   next.delete('bunks')
   next.delete('edges')
+  next.delete('gender')
 
   if (filter.units.length > 0) {
     next.set('units', filter.units.map(unitToSlug).join(','))
@@ -71,6 +79,9 @@ export function serializeFilterToSearchParams(
   }
   if (filter.edgeMode === 'cross-scope') {
     next.set('edges', 'cross')
+  }
+  if (filter.gender !== 'all') {
+    next.set('gender', filter.gender)
   }
   return next
 }

@@ -16,12 +16,10 @@ function defaultProps() {
     selectedUnits: [] as string[],
     selectedBunks: [] as string[],
     allBunks: ALL_BUNKS,
-    edgeMode: 'strict' as const,
     onAddUnit: vi.fn(),
     onRemoveUnit: vi.fn(),
     onAddBunk: vi.fn(),
     onRemoveBunk: vi.fn(),
-    onSetEdgeMode: vi.fn(),
     onClear: vi.fn(),
   }
 }

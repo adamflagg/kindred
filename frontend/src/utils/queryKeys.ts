@@ -315,6 +315,9 @@ export const queryKeys = {
     cross: boolean
   ) =>
     ['social-graph', 'scoped', sessionCmId, year, scenarioId, unitsKey, bunksKey, cross] as const,
+  // AG session linked to a main session (resolved via parent_id + bunk_plans).
+  linkedAgSession: (mainSessionCmId: number, year: number) =>
+    ['linked-ag-session', mainSessionCmId, year] as const,
 
   // Staff (Tier 1 - sync data)
   bunkStaff: (year: number) => ['bunk-staff', year] as const,

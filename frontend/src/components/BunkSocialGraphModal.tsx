@@ -23,10 +23,11 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
-import { getSessionShorthand } from '../utils/sessionDisplay'
 import {
   BUNK_NODE_COLORS,
+  CROSS_SCOPE_NODE_COLOR,
   FIRST_YEAR_RING_COLOR,
+  buildBunkGraphElements,
   getBunkCytoscapeStyles,
   getBunkGradeColors,
 } from './bunkGraphStyles'
@@ -66,6 +67,8 @@ interface GraphNode {
   first_year?: boolean
   last_year_session?: string | null
   last_year_bunk?: string | null
+  /** Current bunk name — populated for cross-scope ghost nodes. */
+  bunk_name?: string | null
 }
 
 interface GraphEdge {
@@ -100,6 +103,19 @@ interface BunkGraphData {
   readonly edges: readonly GraphEdge[]
   metrics: BunkGraphMetrics
   health_score: number
+  /** Populated when ?cross_scope=true — edges that cross outside this bunk. */
+  readonly cross_scope_edges?: ReadonlyArray<{
+    source: number
+    target: number
+    edge_type: 'request'
+    weight: number
+    request_type: string | null
+    confidence: number | null
+    reciprocal: boolean
+    cross_scope: true
+  }>
+  /** Populated when ?cross_scope=true — ghost nodes (out-of-scope endpoints). */
+  readonly cross_scope_nodes?: readonly GraphNode[]
 }
 
 // Bunk-naming predicates live in `utils/bunkNaming` so utility modules
@@ -163,11 +179,19 @@ export default function BunkSocialGraphModal({
   const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [showLegend, setShowLegend] = useState<boolean>(false)
+  const [showCrossScopeEdges, setShowCrossScopeEdges] = useState<boolean>(false)
 
-  // Fetch bunk graph data. The query key and in-memory graph cache both
-  // include scenarioId so scenario-sourced and production graphs never collide.
+  // Fetch bunk graph data. The query key and the in-memory graph cache both
+  // include scenarioId AND showCrossScopeEdges so scenario-sourced graphs and
+  // cross-scope graphs never collide with their plain/production counterparts.
+  // The cross-scope flag must reach getBunkGraph's cache key — keying it only on
+  // the React Query side let this inner LRU serve the stale plain graph on the
+  // open-then-toggle path, so cross-scope edges never rendered (#1606/#1610).
   const { data: graphData, isLoading } = useQuery<BunkGraphData>({
-    queryKey: queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
+    queryKey: [
+      ...queryKeys.bunkSocialGraph(bunkCmId, sessionCmId, year, scenarioId),
+      showCrossScopeEdges,
+    ],
     queryFn: async () => {
       const data = await graphCacheService.getBunkGraph(
         bunkCmId,
@@ -178,11 +202,13 @@ export default function BunkSocialGraphModal({
             sessionCmId,
             year,
             fetchWithAuth,
-            scenarioId
+            scenarioId,
+            showCrossScopeEdges
           )
         },
         year,
-        scenarioId
+        scenarioId,
+        showCrossScopeEdges
       )
       return data as unknown as BunkGraphData
     },
@@ -299,78 +325,13 @@ export default function BunkSocialGraphModal({
 
     cyRef.current = cy
 
-    // Build Cytoscape element definitions. Sibling edges are filtered at the
-    // API response boundary (#1094) and will never appear here.
-    const elements: cytoscape.ElementDefinition[] = []
-    const nodeDegrees: Record<string, number> = {}
-
-    // Calculate node degrees first
-    graphData.edges.forEach((edge) => {
-      const sourceId = `node-${edge.source}`
-      const targetId = `node-${edge.target}`
-      nodeDegrees[sourceId] = (nodeDegrees[sourceId] ?? 0) + 1
-      nodeDegrees[targetId] = (nodeDegrees[targetId] ?? 0) + 1
-    })
-
-    // Light → mid → dark grade ramp (younger to older). Logic lives in
-    // bunkGraphStyles so the mapping is unit-tested.
-    const grades = [
-      ...new Set(graphData.nodes.map((n) => n.grade).filter((g) => g !== null)),
-    ] as number[]
-    const gradeColors = getBunkGradeColors(grades)
-
-    // Add nodes with vertical randomization
-    graphData.nodes.forEach((node, index) => {
-      const nodeId = `node-${node.id}`
-      const degree = nodeDegrees[nodeId] ?? 0
-
-      // Add significant vertical randomization to reduce text overlap
-      const verticalOffset = (Math.random() - 0.5) * 300 // -150 to +150 range
-
-      const nodeClasses = []
-      if (degree === 0) nodeClasses.push('isolated')
-      if (node.first_year) nodeClasses.push('first-year')
-
-      elements.push({
-        group: 'nodes',
-        data: {
-          ...node,
-          id: nodeId, // Override node.id with string version
-          // Display full name with grade and historical info. The first-year
-          // marker is rendered as a centered badge inside the node (see the
-          // 'node.first-year' style) — appending "①" to the label was pushing
-          // longer names onto a third line.
-          label: `${node.name} (${formatGradeOrdinal(node.grade)})${
-            node.last_year_bunk && node.last_year_session
-              ? `\n${getSessionShorthand(node.last_year_session)}: ${node.last_year_bunk}`
-              : ''
-          }`,
-          fullName: node.name,
-          degree: degree,
-          gradeColor: node.grade ? gradeColors[node.grade] : '#666666',
-          firstYear: node.first_year ?? false,
-        },
-        position: { x: index * 100, y: verticalOffset }, // Even horizontal spacing, random vertical
-        classes: nodeClasses.join(' '),
-      })
-    })
-
-    // Backend already collapses mutual same-type pairs into a single edge
-    // tagged reciprocal=true; the edge[?reciprocal] cytoscape selector picks
-    // those up for the bold solid double-headed render (#1309).
-    let edgeIndex = 0
-    graphData.edges.forEach((edge) => {
-      elements.push({
-        group: 'edges',
-        data: {
-          ...edge,
-          id: `edge-${edgeIndex++}`,
-          source: `node-${edge.source}`,
-          target: `node-${edge.target}`,
-          edge_type: edge.edge_type,
-        },
-      })
-    })
+    // Build Cytoscape element definitions via the shared, unit-tested helper.
+    // Sibling edges are filtered at the API response boundary (#1094) and will
+    // never appear here. Cross-scope ghost nodes/edges (#1606, #1610) are
+    // appended by the helper when the toggle is on and the response carries
+    // cross_scope_nodes/edges — extracting this out of the effect keeps the
+    // shipped element-building logic covered by tests (Finding 5 follow-up).
+    const elements = buildBunkGraphElements(graphData, showCrossScopeEdges)
 
     cy.add(elements)
 
@@ -408,7 +369,7 @@ export default function BunkSocialGraphModal({
       }
       cyRef.current = null
     }
-  }, [graphData, isOpen])
+  }, [graphData, isOpen, showCrossScopeEdges])
 
   // Handle resize when details panel opens/closes
   useEffect(() => {
@@ -578,77 +539,112 @@ export default function BunkSocialGraphModal({
                 </div>
               ) : (
                 <>
-                  {/* Metrics Bar */}
-                  <div className="mb-3 grid grid-cols-3 gap-2 sm:mb-4 sm:gap-4">
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-2 sm:p-3">
-                      <div className="text-muted-foreground flex items-center gap-1 text-xs sm:gap-2 sm:text-sm">
-                        <Users className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="hidden sm:inline">Total Campers</span>
-                        <span className="sm:hidden">Total</span>
-                      </div>
-                      <div className="text-foreground text-lg font-semibold sm:text-2xl">
-                        {graphData.nodes.length}
-                      </div>
-                    </div>
+                  {/* Compact stat + controls strip — replaces the three large
+                      metric cards AND the separate cross-scope checkbox row so
+                      the graph reclaims that vertical space (#1636). Stats sit
+                      inline on the left; the cross-scope toggle rides on the
+                      right. Wraps gracefully on narrow screens. */}
+                  <div className="bg-forest-50/40 dark:bg-forest-950/30 mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl px-3 py-2 sm:mb-4">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm sm:gap-x-4">
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Total campers in this bunk"
+                      >
+                        <Users className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                        <span className="text-foreground font-semibold">
+                          {graphData.nodes.length}
+                        </span>
+                        <span className="text-muted-foreground">campers</span>
+                      </span>
 
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-2 sm:p-3">
-                      <div className="text-muted-foreground flex items-center gap-1 text-xs sm:gap-2 sm:text-sm">
-                        <ActivityIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="hidden sm:inline">Grade Range</span>
-                        <span className="sm:hidden">Grades</span>
-                      </div>
-                      <div className="text-sm font-semibold sm:text-lg">
-                        {(() => {
-                          const grades = graphData.nodes
-                            .map((n) => n.grade)
-                            .filter((g) => g !== null)
-                          if (grades.length === 0) return 'N/A'
+                      <span
+                        className="bg-border hidden h-4 w-px sm:inline-block"
+                        aria-hidden="true"
+                      />
 
-                          // Count campers per grade
-                          const gradeCounts: Record<number, number> = {}
-                          grades.forEach((grade) => {
-                            gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
-                          })
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Grade range (count per grade)"
+                      >
+                        <ActivityIcon className="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                        <span className="text-foreground font-medium">
+                          {(() => {
+                            const grades = graphData.nodes
+                              .map((n) => n.grade)
+                              .filter((g) => g !== null)
+                            if (grades.length === 0) return 'N/A'
 
-                          const uniqueGrades = Object.keys(gradeCounts)
-                            .map(Number)
-                            .sort((a, b) => a - b)
-                          const minGrade = uniqueGrades[0]
-                          if (minGrade === undefined) {
-                            return 'Unknown grade'
-                          }
+                            // Count campers per grade
+                            const gradeCounts: Record<number, number> = {}
+                            grades.forEach((grade) => {
+                              gradeCounts[grade] = (gradeCounts[grade] ?? 0) + 1
+                            })
 
-                          // Format grade range with counts
-                          if (uniqueGrades.length === 1) {
-                            const count = gradeCounts[minGrade]
-                            return `${formatGradeOrdinal(minGrade)} (${count ?? 0})`
-                          } else {
-                            // Format as "3rd (4) - 4th (8)" instead of "3rd - 4th (4, 8)"
-                            const formattedGrades = uniqueGrades
+                            const uniqueGrades = Object.keys(gradeCounts)
+                              .map(Number)
+                              .sort((a, b) => a - b)
+                            const minGrade = uniqueGrades[0]
+                            if (minGrade === undefined) {
+                              return 'Unknown grade'
+                            }
+
+                            // Format grade range with counts, e.g. "3rd (4) - 4th (8)"
+                            if (uniqueGrades.length === 1) {
+                              const count = gradeCounts[minGrade]
+                              return `${formatGradeOrdinal(minGrade)} (${count ?? 0})`
+                            }
+                            return uniqueGrades
                               .map((g) => `${formatGradeOrdinal(g)} (${gradeCounts[g]})`)
                               .join(' - ')
-                            return formattedGrades
-                          }
-                        })()}
-                      </div>
+                          })()}
+                        </span>
+                      </span>
+
+                      <span
+                        className="bg-border hidden h-4 w-px sm:inline-block"
+                        aria-hidden="true"
+                      />
+
+                      <span
+                        className="flex items-center gap-1.5"
+                        title="Campers with no connections"
+                      >
+                        <AlertTriangle
+                          className={clsx(
+                            'h-4 w-4 flex-shrink-0',
+                            graphData.metrics.isolated_count === 0
+                              ? 'text-forest-600'
+                              : 'text-destructive'
+                          )}
+                        />
+                        <span
+                          className={clsx(
+                            'font-semibold',
+                            graphData.metrics.isolated_count === 0
+                              ? 'text-forest-600'
+                              : 'text-destructive'
+                          )}
+                        >
+                          {graphData.metrics.isolated_count}
+                        </span>
+                        <span className="text-muted-foreground">no connections</span>
+                      </span>
                     </div>
 
-                    <div className="bg-forest-50/40 dark:bg-forest-950/30 rounded-xl p-3">
-                      <div className="text-muted-foreground flex items-center gap-2 text-sm">
-                        <AlertTriangle className="h-4 w-4" />
-                        No Connections
-                      </div>
-                      <div
-                        className={clsx(
-                          'text-2xl font-semibold',
-                          graphData.metrics.isolated_count === 0
-                            ? 'text-forest-600'
-                            : 'text-destructive'
-                        )}
-                      >
-                        {graphData.metrics.isolated_count}
-                      </div>
-                    </div>
+                    {/* Cross-scope edges toggle (#1606, #1610) — moved into the
+                        stat strip so it no longer consumes a dedicated row. */}
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={showCrossScopeEdges}
+                        onChange={(e) => setShowCrossScopeEdges(e.target.checked)}
+                        className="rounded"
+                        aria-label="Show requests to campers outside this bunk"
+                      />
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        Show other bunks
+                      </span>
+                    </label>
                   </div>
 
                   {/* Graph Container */}
@@ -720,6 +716,18 @@ export default function BunkSocialGraphModal({
                             ></div>
                             <span>Has connections</span>
                           </div>
+                          {showCrossScopeEdges && (
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full border-2 border-dashed"
+                                style={{
+                                  backgroundColor: CROSS_SCOPE_NODE_COLOR,
+                                  borderColor: CROSS_SCOPE_NODE_COLOR,
+                                }}
+                              ></div>
+                              <span>In another bunk</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

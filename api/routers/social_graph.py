@@ -16,6 +16,7 @@ import networkx as nx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.graph.bunk_cross_scope import collect_bunk_cross_scope
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.scope_filter import apply_scope, parse_scope_query, resolve_scope_bunk_ids
 from bunking.logging_config import get_logger
@@ -367,6 +368,10 @@ async def get_bunk_social_graph(
         str | None,
         Query(description="Scenario ID — when set, source bunk membership from bunk_assignments_draft"),
     ] = None,
+    cross_scope: Annotated[
+        bool,
+        Query(description="When true, include edges that cross outside the bunk as ghosted context edges"),
+    ] = False,
     user: AuthUser = Depends(get_current_user),
 ) -> BunkGraphResponse:
     """Get the social subgraph for a specific bunk.
@@ -579,6 +584,40 @@ async def get_bunk_social_graph(
             suggestions=[],  # No suggestions for bunk view
         )
 
+        # Cross-scope edges/ghost nodes — delegated to the bunking domain layer
+        # so the router stays transport-only glue. collect_bunk_cross_scope gets
+        # (or builds) the session graph, scopes it to this bunk, and resolves
+        # each ghost's current bunk name; here we map its GhostNodes onto the
+        # response SocialGraphNode shape.
+        cross_scope_edges_out: list[CrossScopeEdge] = []
+        cross_scope_nodes_out: list[SocialGraphNode] = []
+        if cross_scope:
+            cross_scope_edges_out, ghosts = await collect_bunk_cross_scope(
+                graph_cache=graph_cache,
+                pb=pb,
+                session_cm_id=session_cm_id,
+                bunk_cm_id=bunk_cm_id,
+                year=year,
+                scenario_id=scenario_id,
+                random_seed=GRAPH_RANDOM_SEED,
+            )
+            cross_scope_nodes_out = [
+                SocialGraphNode(
+                    id=g.id,
+                    name=g.name,
+                    grade=g.grade,
+                    bunk_cm_id=g.bunk_cm_id,
+                    bunk_name=g.bunk_name,
+                    centrality=g.centrality,
+                    clustering=g.clustering,
+                    community=g.community,
+                    satisfaction_status=g.satisfaction_status,
+                    parent_satisfaction_status=g.parent_satisfaction_status,
+                    staff_satisfaction_status=g.staff_satisfaction_status,
+                )
+                for g in ghosts
+            ]
+
         return BunkGraphResponse(
             bunk_cm_id=bunk_cm_id,
             bunk_name=bunk_name,
@@ -586,6 +625,8 @@ async def get_bunk_social_graph(
             edges=edges,
             metrics=metrics,
             health_score=health_score,
+            cross_scope_edges=cross_scope_edges_out,
+            cross_scope_nodes=cross_scope_nodes_out,
         )
 
     except HTTPException:
