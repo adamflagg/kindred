@@ -4,8 +4,6 @@ import type { Core } from 'cytoscape'
 import cytoscape from 'cytoscape'
 // @ts-expect-error - No types available for cytoscape-fcose
 import fcose from 'cytoscape-fcose'
-// @ts-expect-error - No types available for cytoscape-cola
-import cola from 'cytoscape-cola'
 // Tooltips removed - will implement React-based solution
 import {
   Network,
@@ -27,7 +25,7 @@ import {
   BUNK_NODE_COLORS,
   CROSS_SCOPE_NODE_COLOR,
   FIRST_YEAR_RING_COLOR,
-  buildBunkColaLayoutOptions,
+  buildBunkFcoseLayoutOptions,
   buildBunkGraphElements,
   getBunkCytoscapeStyles,
   getBunkGradeColors,
@@ -45,7 +43,6 @@ import type { BunkPlansResponse, BunksResponse } from '../types/pocketbase-types
 
 // Register extensions
 cytoscape.use(fcose)
-cytoscape.use(cola)
 
 interface BunkSocialGraphModalProps {
   bunkCmId: number
@@ -336,19 +333,13 @@ export default function BunkSocialGraphModal({
 
     cy.add(elements)
 
-    // Run layout after adding elements.
-    // Use cola for better layout control. Explicit spacing so disconnected
-    // sub-clusters don't pack adjacently and look falsely linked (#1640). The
-    // bounding box is derived from the live container so cola spreads nodes to
-    // fill the canvas's wide aspect rather than leaving big left/right margins.
-    // Cast required: cytoscape's BaseLayoutOptions doesn't include cola's
-    // plugin-specific options (nodeSpacing, handleDisconnected, boundingBox).
-    const container = containerRef.current
+    // Run layout after adding elements. fcose spreads a single bunk into a
+    // cleaner 2D arrangement than cola (which tended to collapse sparse bunks
+    // toward a line); see buildBunkFcoseLayoutOptions for the rationale.
+    // Cast required: cytoscape's BaseLayoutOptions doesn't include fcose's
+    // plugin-specific options.
     const layout = cy.layout(
-      buildBunkColaLayoutOptions(
-        container.clientWidth,
-        container.clientHeight
-      ) as unknown as Parameters<(typeof cy)['layout']>[0]
+      buildBunkFcoseLayoutOptions() as unknown as Parameters<(typeof cy)['layout']>[0]
     )
 
     layoutRef.current = layout

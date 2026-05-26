@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  buildBunkColaLayoutOptions,
+  buildBunkFcoseLayoutOptions,
   buildBunkGraphElements,
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
@@ -274,38 +274,29 @@ describe('getBunkCytoscapeStyles edge[?multi]', () => {
   })
 })
 
-describe('buildBunkColaLayoutOptions', () => {
-  it('widens the bounding box to a forced landscape aspect so cola packs components across the width', () => {
-    // Matching the container aspect (~1.78:1 here) left sparse graphs too tall —
-    // cola stacked small disconnected groups into a centered column (#1675
-    // visual review of G8A). The box is widened (height preserved) to a forced
-    // landscape aspect so component packing spreads horizontally.
-    const opts = buildBunkColaLayoutOptions(1600, 900)
-    const bb = opts['boundingBox'] as { x1: number; y1: number; w: number; h: number }
-    expect(bb.h).toBe(900) // never shrink the available height
-    expect(bb.w).toBeGreaterThan(1600) // a too-square container gets widened
-    expect(bb.w / bb.h).toBeGreaterThanOrEqual(2.2 - 1e-9)
+describe('buildBunkFcoseLayoutOptions', () => {
+  it('lays out with fcose, animation off and self-fit off so the component frames once', () => {
+    // fcose spreads a single bunk into a cleaner 2D arrangement than cola (which
+    // tended to collapse sparse bunks toward a line). animate:false → the layout
+    // paints once, already settled (no settle animation). fit:false → cy.fit() in
+    // the modal's layoutstop is the sole framing authority.
+    const opts = buildBunkFcoseLayoutOptions()
+    expect(opts['name']).toBe('fcose')
+    expect(opts['animate']).toBe(false)
+    expect(opts['fit']).toBe(false)
   })
 
-  it('leaves an already-landscape container unchanged', () => {
-    // 2400x900 is 2.67:1, already wider than the target — no widening needed.
-    const opts = buildBunkColaLayoutOptions(2400, 900)
-    const bb = opts['boundingBox'] as { x1: number; y1: number; w: number; h: number }
-    expect(bb).toEqual({ x1: 0, y1: 0, w: 2400, h: 900 })
+  it('packs disconnected components so unrelated sub-clusters do not look linked (#1640)', () => {
+    // fcose's packComponents replaces cola's handleDisconnected/landscape-box
+    // approach to keeping disconnected campers visually separate.
+    expect(buildBunkFcoseLayoutOptions()['packComponents']).toBe(true)
   })
 
-  it('preserves the #1640 disconnected-cluster spacing options', () => {
-    const opts = buildBunkColaLayoutOptions(1600, 900)
-    expect(opts['name']).toBe('cola')
-    expect(opts['nodeSpacing']).toBe(30)
-    expect(opts['padding']).toBe(30)
-    expect(opts['handleDisconnected']).toBe(true)
-  })
-
-  it('omits the bounding box when the container has not been measured yet', () => {
-    // Guards against a zero-area box on the first paint before layout settles.
-    expect(buildBunkColaLayoutOptions(0, 0)['boundingBox']).toBeUndefined()
-    expect(buildBunkColaLayoutOptions(1200, 0)['boundingBox']).toBeUndefined()
+  it('defines positive node-separation, edge-length and repulsion knobs', () => {
+    const opts = buildBunkFcoseLayoutOptions()
+    expect(opts['nodeSeparation']).toBeGreaterThan(0)
+    expect(opts['idealEdgeLength']).toBeGreaterThan(0)
+    expect(opts['nodeRepulsion']).toBeGreaterThan(0)
   })
 })
 
