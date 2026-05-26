@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { useGraphFilter } from './useGraphFilter'
@@ -38,6 +38,12 @@ function LocationProbe() {
   lastSearch = loc.search
   return null
 }
+
+// Reset the module-scoped probe between tests so a test that asserts on
+// `lastSearch` can never observe a previous test's navigation.
+beforeEach(() => {
+  lastSearch = ''
+})
 
 describe('useGraphFilter', () => {
   it('parses initial URL into FilterState', () => {

@@ -169,7 +169,9 @@ export function buildBunkGraphElements(
         }`,
         fullName: node.name,
         degree,
-        gradeColor: node.grade ? gradeColors[node.grade] : '#666666',
+        // `!= null` (not a truthy check) so grade 0 — the youngest grade — is
+        // colored from the ramp instead of falling back to the missing-grade gray.
+        gradeColor: node.grade != null ? (gradeColors[node.grade] ?? '#666666') : '#666666',
         firstYear: node.first_year ?? false,
       },
       position: { x: index * 100, y: verticalOffset },

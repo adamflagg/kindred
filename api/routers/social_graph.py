@@ -16,6 +16,7 @@ import networkx as nx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from bunking.auth_middleware import AuthUser, get_current_user
+from bunking.graph.bunk_cross_scope import collect_bunk_cross_scope
 from bunking.graph.optimized_graph_builder import OptimizedSocialGraphBuilder
 from bunking.graph.scope_filter import apply_scope, parse_scope_query, resolve_scope_bunk_ids
 from bunking.logging_config import get_logger
@@ -583,75 +584,39 @@ async def get_bunk_social_graph(
             suggestions=[],  # No suggestions for bunk view
         )
 
-        # Cross-scope edges — fetch the full session graph (from cache if available),
-        # scope it to just this bunk, and collect the boundary edges + ghost nodes.
-        # Reuses the same apply_scope infra as the session-level endpoint.
+        # Cross-scope edges/ghost nodes — delegated to the bunking domain layer
+        # so the router stays transport-only glue. collect_bunk_cross_scope gets
+        # (or builds) the session graph, scopes it to this bunk, and resolves
+        # each ghost's current bunk name; here we map its GhostNodes onto the
+        # response SocialGraphNode shape.
         cross_scope_edges_out: list[CrossScopeEdge] = []
         cross_scope_nodes_out: list[SocialGraphNode] = []
         if cross_scope:
-            session_graph = graph_cache.get_session_graph(session_cm_id, year, scenario_id=scenario_id)
-            if session_graph is None:
-                # Build and cache the session graph on demand. This is a fallback —
-                # in normal usage the session graph is already cached when a user
-                # navigates from the session view to the bunk modal.
-                builder_full = OptimizedSocialGraphBuilder(pb, random_seed=GRAPH_RANDOM_SEED)
-                # Offload the synchronous build to a worker thread so it doesn't
-                # block the event loop — matches every other build/IO call in
-                # this router (e.g. the bunks/persons fetches above).
-                session_graph = await asyncio.to_thread(
-                    builder_full.build_social_network, year, session_cm_id, scenario_id=scenario_id
-                )
-                graph_cache.cache_session_graph(session_cm_id, year, session_graph, scenario_id=scenario_id)
-
-            if session_graph is not None:
-                _, scoped_cross_edges, cross_scope_node_ids = apply_scope(
-                    session_graph,
-                    in_scope_bunk_cm_ids={bunk_cm_id},
-                    include_cross_scope=True,
-                )
-                cross_scope_edges_out = scoped_cross_edges
-
-                # Resolve each ghost's bunk_cm_id → bunk name so the UI can show
-                # which bunk an out-of-bunk camper is currently assigned to.
-                # One lookup over the year's bunks (mirrors the session endpoint),
-                # only when there are ghost nodes to label.
-                bunk_name_by_cm_id: dict[int, str] = {}
-                if cross_scope_node_ids:
-                    session_bunks_resp = await asyncio.to_thread(
-                        pb.collection(BUNKS).get_full_list,
-                        query_params={"filter": f"year = {year}"},
-                    )
-                    bunk_name_by_cm_id = {
-                        b.cm_id: b.name  # type: ignore[attr-defined]
-                        for b in session_bunks_resp
-                    }
-
-                # Fetch person details for ghost nodes (same pattern as session graph endpoint)
-                for node_id in cross_scope_node_ids:
-                    if node_id not in session_graph.nodes:
-                        continue
-                    node_data = session_graph.nodes[node_id]
-                    ghost_bunk_cm_id = node_data.get("bunk_cm_id")
-                    cross_scope_nodes_out.append(
-                        SocialGraphNode(
-                            id=node_id,
-                            name=node_data.get("name", f"Person {node_id}"),
-                            grade=node_data.get("grade"),
-                            bunk_cm_id=ghost_bunk_cm_id,
-                            bunk_name=bunk_name_by_cm_id.get(ghost_bunk_cm_id),
-                            centrality=node_data.get("centrality", 0.0),
-                            clustering=node_data.get("clustering", 0.0),
-                            community=node_data.get("community"),
-                            satisfaction_status=node_data.get("satisfaction_status"),
-                            parent_satisfaction_status=node_data.get("parent_satisfaction_status"),
-                            staff_satisfaction_status=node_data.get("staff_satisfaction_status"),
-                        )
-                    )
-            logger.info(
-                f"Cross-scope for bunk {bunk_cm_id}: "
-                f"{len(cross_scope_edges_out)} cross edges, "
-                f"{len(cross_scope_nodes_out)} ghost nodes"
+            cross_scope_edges_out, ghosts = await collect_bunk_cross_scope(
+                graph_cache=graph_cache,
+                pb=pb,
+                session_cm_id=session_cm_id,
+                bunk_cm_id=bunk_cm_id,
+                year=year,
+                scenario_id=scenario_id,
+                random_seed=GRAPH_RANDOM_SEED,
             )
+            cross_scope_nodes_out = [
+                SocialGraphNode(
+                    id=g.id,
+                    name=g.name,
+                    grade=g.grade,
+                    bunk_cm_id=g.bunk_cm_id,
+                    bunk_name=g.bunk_name,
+                    centrality=g.centrality,
+                    clustering=g.clustering,
+                    community=g.community,
+                    satisfaction_status=g.satisfaction_status,
+                    parent_satisfaction_status=g.parent_satisfaction_status,
+                    staff_satisfaction_status=g.staff_satisfaction_status,
+                )
+                for g in ghosts
+            ]
 
         return BunkGraphResponse(
             bunk_cm_id=bunk_cm_id,

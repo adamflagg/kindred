@@ -151,11 +151,14 @@ def cross_scope_client() -> Generator[tuple[TestClient, dict[str, int]]]:
             recorded["offloaded_build_calls"] += 1
         return await real_to_thread(func, *args, **kwargs)  # type: ignore[arg-type]
 
+    # The cross-scope assembly (build + offload) now lives in
+    # bunking.graph.bunk_cross_scope; pb/graph_cache are still read at the
+    # router level and passed in, so those patches stay router-scoped.
     with (
         patch("api.routers.social_graph.pb", mock_pb),
         patch("api.routers.social_graph.graph_cache", mock_cache),
-        patch("api.routers.social_graph.OptimizedSocialGraphBuilder", return_value=mock_builder),
-        patch("api.routers.social_graph.asyncio.to_thread", _spy_to_thread),
+        patch("bunking.graph.bunk_cross_scope.OptimizedSocialGraphBuilder", return_value=mock_builder),
+        patch("bunking.graph.bunk_cross_scope.asyncio.to_thread", _spy_to_thread),
     ):
         client = TestClient(app)
         yield client, recorded

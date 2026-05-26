@@ -8,6 +8,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { pb } from '../lib/pocketbase'
+import { queryKeys } from '../utils/queryKeys'
 import { useYear } from './useCurrentYear'
 import type { Session } from '../types/app-types'
 import type { BunkPlansResponse } from '../types/pocketbase-types'
@@ -22,7 +23,7 @@ export function useLinkedAgSession(mainSessionCmId: number): LinkedAgSessionResu
   const year = useYear()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['linked-ag-session', mainSessionCmId, year],
+    queryKey: queryKeys.linkedAgSession(mainSessionCmId, year),
     queryFn: async (): Promise<number | null> => {
       const sessions = await pb
         .collection<Session>('camp_sessions')

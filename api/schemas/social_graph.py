@@ -82,8 +82,8 @@ class BunkGraphResponse(BaseModel):
     metrics: BunkGraphMetrics
     health_score: float  # Overall health score 0-1
     # Cross-scope edges and ghost nodes — populated when ?cross_scope=true.
-    # Mirror the SocialGraphResponse shape so the frontend can reuse the same
-    # createGraphElements plumbing for both the session and bunk graphs.
+    # Same CrossScopeEdge / SocialGraphNode shapes as SocialGraphResponse so the
+    # frontend's buildBunkGraphElements ghosts them exactly like the session graph.
     cross_scope_edges: list[CrossScopeEdge] = []
     cross_scope_nodes: list[SocialGraphNode] = []
 

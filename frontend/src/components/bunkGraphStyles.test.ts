@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  buildBunkGraphElements,
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
   FIRST_YEAR_RING_WIDTH,
@@ -84,6 +85,21 @@ describe('getBunkGradeColors', () => {
     const ascending = getBunkGradeColors([3, 5])
     const descending = getBunkGradeColors([5, 3])
     expect(ascending).toEqual(descending)
+  })
+})
+
+describe('buildBunkGraphElements grade coloring', () => {
+  it('colors a grade-0 camper from the grade ramp, not the missing-grade gray', () => {
+    // Grade 0 is a real (youngest) grade. A truthy `node.grade ? …` check would
+    // misclassify it as "no grade" and fall back to gray (#666666).
+    const elements = buildBunkGraphElements(
+      { nodes: [{ id: 101, name: 'Emma Johnson', grade: 0 }], edges: [] },
+      false,
+      () => 0.5
+    )
+    const node = elements.find((e) => e.data?.id === 'node-101')
+    expect(node?.data?.['gradeColor']).toBe(getBunkGradeColors([0])[0])
+    expect(node?.data?.['gradeColor']).not.toBe('#666666')
   })
 })
 
