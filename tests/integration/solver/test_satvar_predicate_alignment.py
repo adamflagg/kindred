@@ -29,6 +29,8 @@ from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.direct_solver import DirectBunkingSolver
 from tests.integration.solver.fixtures import (
     AGE_PREF_EXPECTED_SATISFACTION,
+    AGE_PREF_SUPPRESSED_IDS,
+    AGE_PREF_SUPPRESSED_REQUESTER_BW_ID,
     BUILD_PATH_EXERCISERS,
     EXPECTED_SATISFACTION,
     build_age_preference_alignment_fixture,
@@ -177,11 +179,17 @@ def test_alignment_fixture_outcomes_are_deterministic(mock_config: Any) -> None:
 
 
 def test_age_preference_satvar_predicate_alignment(mock_config: Any) -> None:
-    """Every feasible MP age_preference sat var agrees with the predicate.
+    """Every MATERIAL MP age_preference sat var agrees with the predicate.
 
     #1433 — after the bidirectional refactor, age_preference sat vars are
     registered in ``DirectBunkingSolver.request_satisfied_vars`` and are
     bidirectionally bound to the post-solve satisfaction condition.
+
+    #1664 — a form age_preference is material (gets a sat var) ONLY when its
+    requester has no satisfiable form bunk_with/not_bunk_with. The fixture's
+    AGE_PREF_SUPPRESSED_IDS exercise that suppression: those age-prefs share a
+    requester with a satisfiable cohesion bunk_with and must NOT get a sat var,
+    while that requester's bunk_with still does.
     """
     solver, cp_solver = _build_and_solve(mock_config, build_age_preference_alignment_fixture)
     person_to_bunk = _person_to_bunk(solver, cp_solver)
@@ -189,12 +197,26 @@ def test_age_preference_satvar_predicate_alignment(mock_config: Any) -> None:
 
     sat_vars = solver.request_satisfied_vars
 
-    # Every expected age_preference request must have a sat var registered.
+    # Every expected (material) age_preference request must have a sat var.
     for req_id in AGE_PREF_EXPECTED_SATISFACTION:
         assert req_id in sat_vars, (
-            f"{req_id} (feasible MP age_preference) missing from request_satisfied_vars — "
+            f"{req_id} (material MP age_preference) missing from request_satisfied_vars — "
             f"the bidirectional refactor (#1433) is not wired into the shared map"
         )
+
+    # #1664 suppression: a form age_preference whose requester also has a
+    # satisfiable form bunk_with is immaterial and gets NO sat var, even though
+    # that requester's bunk_with does. This is the rule this PR adds.
+    for req_id in AGE_PREF_SUPPRESSED_IDS:
+        assert req_id not in sat_vars, (
+            f"{req_id} unexpectedly has a sat var — #1664 should suppress a form "
+            f"age_preference when its requester has a satisfiable form bunk_with"
+        )
+    assert AGE_PREF_SUPPRESSED_REQUESTER_BW_ID in sat_vars, (
+        f"{AGE_PREF_SUPPRESSED_REQUESTER_BW_ID} (the suppressed requester's own "
+        f"bunk_with) missing — suppression must drop only the age_preference, not "
+        f"the real form request it coexists with"
+    )
 
     requests_by_id = {r.id: r for r in solver.input.requests}
     grade_by_cm_id = {p.campminder_person_id: p.grade for p in solver.input.persons}
@@ -228,7 +250,13 @@ def test_age_preference_alignment_fixture_outcomes_are_deterministic(mock_config
     """The age_preference fixture's structurally-forced outcomes hold.
 
     Mirrors ``test_alignment_fixture_outcomes_are_deterministic`` but for the
-    age_preference fixture — anti-vacuity guard against fixture drift.
+    age_preference fixture — anti-drift guard.
+
+    Under #1664 every MATERIAL age-pref is satisfied (a material age-pref is its
+    camper's sole MP request, so must-satisfy-one forces it true), so the
+    non-trivial coverage is split: a real non-trivially-SATISFIED material
+    age-pref (apref_realsat_g6_younger, whose outcome turns on bunk membership)
+    plus the #1664 SUPPRESSION of a coexisting-bunk_with age-pref.
     """
     solver, cp_solver = _build_and_solve(mock_config, build_age_preference_alignment_fixture)
     sat_vars = solver.request_satisfied_vars
@@ -242,6 +270,15 @@ def test_age_preference_alignment_fixture_outcomes_are_deterministic(mock_config
             f"build_age_preference_alignment_fixture"
         )
 
-    # Both branches must be exercised.
+    # Suppressed (#1664) age-prefs must be absent; their requester's bunk_with present.
+    for req_id in AGE_PREF_SUPPRESSED_IDS:
+        assert req_id not in sat_vars, f"{req_id} should be suppressed by #1664 but appears in request_satisfied_vars"
+    assert AGE_PREF_SUPPRESSED_REQUESTER_BW_ID in sat_vars, (
+        f"{AGE_PREF_SUPPRESSED_REQUESTER_BW_ID} missing — suppression must keep the coexisting bunk_with"
+    )
+
+    # Anti-vacuity: at least one satisfied material age-pref AND at least one
+    # exercised #1664 suppression. (A deterministically-unsatisfied material
+    # age-pref is structurally impossible under #1664 — see fixtures.py.)
     assert any(AGE_PREF_EXPECTED_SATISFACTION.values()), "fixture has no satisfied case — vacuous"
-    assert not all(AGE_PREF_EXPECTED_SATISFACTION.values()), "fixture has no unsatisfied case — vacuous"
+    assert AGE_PREF_SUPPRESSED_IDS, "fixture exercises no #1664 suppression — vacuous"
