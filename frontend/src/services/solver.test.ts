@@ -121,3 +121,33 @@ describe('solverService.pollSolverStatus', () => {
     expect(fetchWithAuth).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('pollSolverStatus diagnostics (#1638)', () => {
+  it('returns a failed run carrying structured diagnostics instead of throwing', async () => {
+    const failedBody = {
+      status: 'failed',
+      session_id: '1000001',
+      error_message: 'Solver failed to find a solution',
+      infeasibility_cause: 'The parent_paramount constraint is causing infeasibility',
+      localization: {
+        approach: 'singleton',
+        candidate_count: 2,
+        campers: [{ cm_id: 1000001, name: 'Emma Johnson', grade: 5, gender: 'F' }],
+        notes: 'x',
+      },
+      impossibility_report: { total_impossible: 0, affected_campers: 0, flat: [] },
+    }
+    const fetchWithAuth = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => failedBody,
+    })
+
+    const run = await solverService.pollSolverStatus('run-1', fetchWithAuth, 60)
+
+    expect(run.status).toBe('failed')
+    expect(run.error_message).toBe('Solver failed to find a solution')
+    expect(run.diagnostics?.infeasibilityCause).toContain('parent_paramount')
+    expect(run.diagnostics?.localization?.campers[0]?.name).toBe('Emma Johnson')
+    expect(run.diagnostics?.impossibilityReport?.total_impossible).toBe(0)
+  })
+})

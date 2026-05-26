@@ -348,6 +348,12 @@ async def get_solver_run(
                 "status": getattr(pb_run, "status", "unknown"),
                 "results": json.loads(getattr(pb_run, "results", "{}")) if getattr(pb_run, "results", None) else None,
                 "error_message": getattr(pb_run, "error_message", None),
+                # Stream B diagnostics are in-memory only; the PB-fetch path never
+                # has them. Return the keys as None so the response shape matches
+                # the in-memory branch below (#1656).
+                "infeasibility_cause": None,
+                "localization": None,
+                "impossibility_report": None,
             }
         except Exception:
             raise HTTPException(status_code=404, detail="Solver run not found")
@@ -358,6 +364,11 @@ async def get_solver_run(
         "status": run["status"],
         "results": run.get("results"),
         "error_message": run.get("error_message"),
+        # Stream B (#1638): structured infeasibility diagnostics (in-memory only;
+        # the PB-fetch fallback above returns these as absent → null client-side).
+        "infeasibility_cause": run.get("infeasibility_cause"),
+        "localization": run.get("localization"),
+        "impossibility_report": run.get("impossibility_report"),
     }
 
 

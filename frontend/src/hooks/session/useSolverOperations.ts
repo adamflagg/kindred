@@ -12,7 +12,7 @@
 import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
-import { solverService } from '../../services/solver'
+import { solverService, type SolverDiagnostics, type StaffNbwYieldRaw } from '../../services/solver'
 import { graphCacheService } from '../../services/GraphCacheService'
 import { queryKeys } from '../../utils/queryKeys'
 import { invalidateAssignmentDerivedQueries } from '../../utils/queryInvalidation'
@@ -33,6 +33,7 @@ export interface SolverStats {
   request_validation?: {
     impossible_requests: number
     affected_campers: number
+    staff_nbw_yielded?: StaffNbwYieldRaw[]
   }
 }
 
@@ -40,6 +41,7 @@ export interface SolverRunResult {
   id: string
   status: 'completed' | 'failed' | 'pending' | 'running'
   error_message?: string
+  diagnostics?: SolverDiagnostics
   results?: {
     stats?: SolverStats
   }
@@ -65,6 +67,7 @@ export interface SolverRunResultWithStats {
   success: boolean
   stats?: SolverStats | undefined
   errorMessage?: string | undefined
+  diagnostics?: SolverDiagnostics | undefined
 }
 
 export interface UseSolverOperationsReturn {
@@ -197,7 +200,11 @@ export function useSolverOperations({
           return { success: true, stats: resultStats }
         } else {
           const errorMessage = solverRun.error_message ?? 'Optimization failed'
-          return { success: false, errorMessage }
+          // #1656 — a failed run is returned (not thrown) now that diagnostics
+          // ride the result; log a breadcrumb so an infeasible solve still leaves
+          // a trace in the console for debugging.
+          console.warn('Solver run did not complete:', solverRun.status, errorMessage)
+          return { success: false, errorMessage, diagnostics: solverRun.diagnostics }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to run optimizer'
