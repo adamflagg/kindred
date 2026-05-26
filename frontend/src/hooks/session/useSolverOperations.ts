@@ -12,7 +12,12 @@
 import { useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
-import { solverService, type SolverDiagnostics, type StaffNbwYieldRaw } from '../../services/solver'
+import {
+  solverService,
+  type SolverDiagnostics,
+  type StaffNbwYieldRaw,
+  type ParentNbwYieldRaw,
+} from '../../services/solver'
 import { graphCacheService } from '../../services/GraphCacheService'
 import { queryKeys } from '../../utils/queryKeys'
 import { invalidateAssignmentDerivedQueries } from '../../utils/queryInvalidation'
@@ -34,6 +39,7 @@ export interface SolverStats {
     impossible_requests: number
     affected_campers: number
     staff_nbw_yielded?: StaffNbwYieldRaw[]
+    parent_nbw_yielded?: ParentNbwYieldRaw[]
   }
 }
 
