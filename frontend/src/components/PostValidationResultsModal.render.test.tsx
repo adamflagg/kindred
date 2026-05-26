@@ -1941,11 +1941,11 @@ describe('PostValidationResultsModal — honored subtext (Task 5)', () => {
         results={makeResults({
           mp_campers_entirely_impossible: [
             {
-              cm_id: 21012687,
+              cm_id: 1000001,
               name: 'Samuel Johnson',
               grade: 10,
               gender: 'M',
-              session_cm_id: 1235404,
+              session_cm_id: 1000001,
               reason_codes: ['age_pref_no_eligible_grade'],
               honored_in_plan: true,
               bunk_name: 'Redwood 4',

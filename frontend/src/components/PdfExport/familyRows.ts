@@ -50,10 +50,12 @@ export function buildFamilyRows(
   const raw: RawRow[] = []
 
   // Prefer the post-response cohort (carries honored_in_plan, reconciled against
-  // the final plan); fall back to the pre-check report for callers without it
-  // (e.g. PDF export from a pre-check, or post-check before this field shipped).
+  // the final plan); fall back to the pre-check report only when the field is
+  // absent entirely (e.g. PDF export from a pre-check, or post-check before this
+  // field shipped). An explicit empty array is authoritative — "zero impossible
+  // campers" — and must NOT resurface stale pre-check rows.
   const statsCohort = statistics.mp_campers_entirely_impossible
-  if (statsCohort && statsCohort.length > 0) {
+  if (statsCohort !== undefined) {
     for (const c of statsCohort) {
       raw.push({
         cm_id: String(c.cm_id),
