@@ -71,7 +71,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -263,7 +295,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Check CI and docs status for this commit
       env:
@@ -396,7 +460,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Checkout code
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -479,7 +575,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     # Always needed: GHCR login for both build-push and imagetools-create.
     - name: Log in to GitHub Container Registry
@@ -661,7 +789,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Checkout code (for compose files)
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -828,7 +988,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
@@ -874,7 +1066,39 @@ jobs:
     - name: Harden runner
       uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
       with:
-        egress-policy: audit
+        egress-policy: block
+        allowed-endpoints: >
+          *.githubapp.com:443
+          9236a389bd48b984df91adc1bc924620.r2.cloudflarestorage.com:443
+          agent.api.stepsecurity.io:443
+          api.github.com:443
+          apk.cgr.dev:443
+          auth.docker.io:443
+          check.trivy.dev:443
+          customer-transient-data-277233109775.s3.us-west-2.amazonaws.com:443
+          d-gj2h7tnxlh.execute-api.us-west-2.amazonaws.com:443
+          deb.debian.org:443
+          dhi.io:443
+          files.pythonhosted.org:443
+          get.trivy.dev:443
+          ghcr.io:443
+          github.com:22
+          github.com:443
+          mirror.gcr.io:443
+          pkg-containers.githubusercontent.com:443
+          prod.app-api.stepsecurity.io:443
+          production.cloudflare.docker.com:443
+          production.cloudfront.docker.com:443
+          productionresultssa*.blob.core.windows.net:443
+          proxy.golang.org:443
+          pypi.org:443
+          raw.githubusercontent.com:443
+          registry-1.docker.io:443
+          registry.npmjs.org:443
+          release-assets.githubusercontent.com:443
+          releases.astral.sh:443
+          results-receiver.actions.githubusercontent.com:443
+          storage.googleapis.com:443
 
     - name: Check build status
       env:
