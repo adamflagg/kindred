@@ -546,7 +546,7 @@ class TestSimplifiedSourcePriority:
         """Create a Deduplicator without repository (batch-only dedup)"""
         return Deduplicator()
 
-    def test_family_over_staff_tiebreaker(self):
+    def test_parent_nbw_does_not_absorb_staff_nbw(self):
         """NBW hard-separation partition: parent bunk_request_form NBW and
         staff_not_bunk_with NBW for the same pair stay SEPARATE (not merged).
 
@@ -554,7 +554,6 @@ class TestSimplifiedSourcePriority:
         staff HARD_MNT was silently downgraded to parent HARD_MSO). The fix
         partitions dedup by hardness so both rows survive independently.
 
-        Test name preserved for CI stability; original rationale was FAMILY > STAFF (#1088).
         Cross-source merge still applies to other request types (bunk_with, etc.).
         """
         family_request = BunkRequest(

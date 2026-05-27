@@ -118,6 +118,13 @@ class Deduplicator:
         Returns:
             DeduplicationResult with kept requests and statistics
         """
+        # Late import to avoid circular dependency:
+        #   bunking.satisfaction.request_registry
+        #     → bunking.sync.bunk_request_processor.core.models
+        #     → bunking.sync.bunk_request_processor (package __init__)
+        #     → bunking.sync.bunk_request_processor.processing.deduplicator
+        from bunking.satisfaction.request_registry import is_hard_separation  # noqa: PLC0415
+
         # Group requests by duplicate key
         request_groups: dict[tuple[int, int | None, RequestType, str, int, int], list[BunkRequest]] = {}
 
@@ -153,14 +160,6 @@ class Deduplicator:
                 # downgrade the unconditional separation. Partition NBW dedup by hardness so
                 # the hard row survives independently. Hard rows still merge with each other
                 # (same "hard_mnt" slot); everything else merges as before.
-                #
-                # Late import to avoid circular dependency:
-                #   bunking.satisfaction.request_registry
-                #     → bunking.sync.bunk_request_processor.core.models
-                #     → bunking.sync.bunk_request_processor (package __init__)
-                #     → bunking.sync.bunk_request_processor.processing.deduplicator
-                from bunking.satisfaction.request_registry import is_hard_separation  # noqa: PLC0415
-
                 source_slot = ""
                 if request.request_type == RequestType.NOT_BUNK_WITH and is_hard_separation(
                     request.source_field, request.request_type.value
