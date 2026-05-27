@@ -151,7 +151,10 @@ describe('createGraphElements', () => {
       target: 2,
       edge_type: 'request',
       confidence: 0.9,
-      reciprocal: true,
+      // One-way 1→2 with no 2→1 — so reciprocal MUST be false. The backend sets
+      // reciprocal = graph.has_edge(target, source), which can't be true without
+      // a reverse edge. (A genuine mutual pair is covered by the collapse test.)
+      reciprocal: false,
       weight: 1,
       metadata: {},
       cross_scope: false,
@@ -290,7 +293,8 @@ describe('createGraphElements', () => {
     expect(requestEdge.data.source).toBe('1')
     expect(requestEdge.data.target).toBe('2')
     expect(requestEdge.data.confidence).toBe(0.9)
-    expect(requestEdge.data.is_reciprocal).toBe(true)
+    // A lone one-way edge is not reciprocal.
+    expect(requestEdge.data.is_reciprocal).toBe(false)
   })
 
   it('flags multi only on mixed-type pairs (different request_types still counts)', () => {
@@ -300,6 +304,24 @@ describe('createGraphElements', () => {
     const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
     expect(out).toHaveLength(2)
     expect(out.every((e) => e.data.multi === true)).toBe(true)
+  })
+
+  it('renders a mixed-type conflict as one-way edges even when the backend marks them reciprocal', () => {
+    // The session backend sets reciprocal = graph.has_edge(target, source), which
+    // is TRUE for any pair with edges both ways — including a true conflict
+    // (A wants B, B refuses A). Those edges are one-directional and must NOT
+    // render as the bold solid double-headed reciprocal style. The splay branch
+    // forces is_reciprocal=false so they stay dashed single-arrow (just curved
+    // onto separate beziers). Fixtures use reciprocal=true to mirror the live
+    // backend — the prior test masked this by defaulting reciprocal=false.
+    const edges: GraphEdgeData[] = [
+      reqEdge(1, 2, 'bunk_with', true),
+      reqEdge(2, 1, 'not_bunk_with', true),
+    ]
+    const { edges: out } = createGraphElements(mockNodes, edges, mockBunksData, { request: true })
+    expect(out).toHaveLength(2)
+    expect(out.every((e) => e.data.multi === true)).toBe(true)
+    expect(out.every((e) => e.data.is_reciprocal === false)).toBe(true)
   })
 
   it('collapses a same-type reciprocal bunk_with pair into one edge tagged is_reciprocal', () => {

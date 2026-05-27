@@ -45,6 +45,70 @@ export function getNodeColor(degree: number): string {
   return degree === 0 ? BUNK_NODE_COLORS.noConnections : BUNK_NODE_COLORS.hasConnections
 }
 
+/** Unordered pair key so A→B and B→A bucket together. Used to detect
+ *  mixed-type conflict pairs that must splay onto opposing beziers. */
+const pairKey = (a: number, b: number): string => (a < b ? `${a}-${b}` : `${b}-${a}`)
+
+/**
+ * Pair keys that carry a genuine bunk_with-vs-not_bunk_with conflict — the ONLY
+ * case that should splay onto opposing beziers. Type-aware on purpose: a pair
+ * with two same-type edges (or a request edge next to a non-request edge) is not
+ * a conflict and must stay straight. A count-based check curved sibling pairs by
+ * mistake.
+ */
+const conflictedPairs = (
+  edges: ReadonlyArray<{ source: number; target: number; request_type?: string | null }>
+): Set<string> => {
+  const typesByPair = new Map<string, Set<string>>()
+  edges.forEach((e) => {
+    if (!e.request_type) return
+    const k = pairKey(e.source, e.target)
+    const set = typesByPair.get(k) ?? new Set<string>()
+    set.add(e.request_type)
+    typesByPair.set(k, set)
+  })
+  const conflicted = new Set<string>()
+  typesByPair.forEach((types, k) => {
+    if (types.has('bunk_with') && types.has('not_bunk_with')) conflicted.add(k)
+  })
+  return conflicted
+}
+
+/**
+ * fcose layout options for the per-bunk graph.
+ *
+ * fcose replaced cola here (#1675): cola tended to collapse sparse bunks toward
+ * a line, which made an A→C shortcut overlap the A→B→C chain and read as one
+ * tangled connection. fcose's spectral seeding spreads a single bunk into a
+ * cleaner 2D arrangement, so triples land as triangles rather than rows.
+ *
+ * - `animate: false` → the layout computes silently and paints once, settled
+ *   (cola's default settle animation is gone).
+ * - `fit: false` → the modal's `layoutstop` `cy.fit()` is the sole framing
+ *   authority.
+ * - `packComponents: true` → keeps disconnected sub-clusters visually separate
+ *   (replaces cola's `handleDisconnected` for the #1640 concern).
+ *
+ * Returned as a plain object (not typed against cytoscape's LayoutOptions)
+ * because fcose's plugin-specific keys aren't in BaseLayoutOptions — the caller
+ * casts at the `cy.layout()` boundary, matching the existing pattern.
+ */
+export function buildBunkFcoseLayoutOptions(): Record<string, unknown> {
+  return {
+    name: 'fcose',
+    animate: false,
+    fit: false,
+    padding: 30,
+    quality: 'default',
+    randomize: true,
+    packComponents: true,
+    nodeSeparation: 75,
+    idealEdgeLength: 80,
+    nodeRepulsion: 4500,
+    numIter: 2500,
+  }
+}
+
 /** Map each grade present in a bunk to a color from the light/dark ramp.
  *  Younger grades get the lighter end of the scale. */
 export function getBunkGradeColors(grades: readonly number[]): Record<number, string> {
@@ -181,8 +245,17 @@ export function buildBunkGraphElements(
 
   // Backend already collapses mutual same-type pairs into a single edge tagged
   // reciprocal=true; the edge[?reciprocal] selector renders those bold/solid.
+  // A pair carrying BOTH a bunk_with and a not_bunk_with (e.g. A→B bunk_with +
+  // B→A not_bunk_with — backend buckets by (pair, request_type) so those don't
+  // collapse) is a true conflict: as straight edges they'd overlap on one line,
+  // so we tag them `multi` and the edge[?multi] selector splays them onto
+  // opposing beziers. Mirrors the session graph's treatment in
+  // graph/cytoscapeStyles.ts.
+  const inScopeConflicts = conflictedPairs(data.edges)
+
   let edgeIndex = 0
   data.edges.forEach((edge) => {
+    const isMulti = inScopeConflicts.has(pairKey(edge.source, edge.target))
     elements.push({
       group: 'edges',
       data: {
@@ -191,6 +264,7 @@ export function buildBunkGraphElements(
         source: `node-${edge.source}`,
         target: `node-${edge.target}`,
         edge_type: edge.edge_type,
+        ...(isMulti ? { multi: true } : {}),
       },
     })
   })
@@ -223,7 +297,10 @@ export function buildBunkGraphElements(
       })
     })
 
+    const crossConflicts = conflictedPairs(data.cross_scope_edges)
+
     data.cross_scope_edges.forEach((edge) => {
+      const isMulti = crossConflicts.has(pairKey(edge.source, edge.target))
       elements.push({
         group: 'edges',
         data: {
@@ -235,6 +312,7 @@ export function buildBunkGraphElements(
           confidence: edge.confidence,
           reciprocal: edge.reciprocal,
           cross_scope: true,
+          ...(isMulti ? { multi: true } : {}),
         },
       })
     })
@@ -328,6 +406,20 @@ export function getBunkCytoscapeStyles(): StylesheetStyle[] {
         'line-style': 'solid',
         'source-arrow-shape': 'triangle',
         'source-arrow-color': (ele: EdgeSingular) => resolveEdgeColor(ele),
+      },
+    },
+    {
+      selector: 'edge[?multi]',
+      style: {
+        // Mixed-type conflict pairs (bunk_with one way, not_bunk_with the
+        // other) arrive as two opposing straight edges that would overlap on a
+        // single line — hiding one color. Splay each onto its own bezier so
+        // both the blue and the red read. Width/line-style inherit from the
+        // base rule (these are still one-way requests). Mirrors the session
+        // graph's edge[?multi] rule in graph/cytoscapeStyles.ts.
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': [40],
+        'control-point-weights': [0.5],
       },
     },
     // Cross-scope ghost rendering — mirrors the session-graph stylesheet in

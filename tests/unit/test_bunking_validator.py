@@ -572,6 +572,50 @@ class TestBunkingValidator:
         adjacency_issues = [i for i in result.issues if i.type == "grade_adjacency_warning"]
         assert len(adjacency_issues) == 0
 
+    def test_coexisting_form_age_pref_not_counted_as_material(
+        self, validator, basic_session, basic_bunks, basic_persons
+    ):
+        """#1671/#1664: a form age_preference coexisting with a form bunk_with is
+        suppressed from material_parent, so it neither inflates the count nor masks
+        an unsatisfied bunk_with."""
+        assignments = [
+            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="20001"),
+            MockBunkAssignment(person_cm_id="10002", bunk_cm_id="20002"),  # bunk_with UNsatisfied
+            MockBunkAssignment(person_cm_id="10003", bunk_cm_id="20002"),
+        ]
+        requests = [
+            MockBunkRequest(
+                id="r1",
+                requester_person_cm_id="10001",
+                requested_person_cm_id="10002",
+                request_type="bunk_with",
+                status="resolved",
+                source_field=SourceField.BUNK_REQUEST_FORM,
+                source="family",
+            ),
+            MockBunkRequest(
+                id="ap1",
+                requester_person_cm_id="10001",
+                requested_person_cm_id=None,
+                request_type="age_preference",
+                status="resolved",
+                source_field=SourceField.BUNK_REQUEST_FORM,
+                source="family",
+                age_preference_target="older",
+            ),
+        ]
+        result = validator.validate_bunking(
+            session=basic_session,
+            bunks=basic_bunks,
+            assignments=assignments,
+            persons=basic_persons,
+            requests=requests,
+        )
+        # Only the bunk_with is material; the coexisting age-pref is suppressed.
+        assert result.statistics.material_parent_requests == 1
+        # The sole material request (bunk_with) is unsatisfied -> NOT masked.
+        assert result.statistics.satisfied_material_parent_requests == 0
+
 
 class TestLevelProgressionValidation:
     """Tests for level progression validation."""

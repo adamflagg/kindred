@@ -31,7 +31,13 @@ from bunking.satisfaction.api_shape import (
     SatisfactionFlags,
     SatisfactionResponse,
 )
-from bunking.satisfaction.bucket import COUNTED_BUCKETS, RequestBucket, classify_request
+from bunking.satisfaction.bucket import (
+    COUNTED_BUCKETS,
+    MaterialReqRow,
+    RequestBucket,
+    classify_request,
+    compute_material_request_ids,
+)
 from bunking.satisfaction.predicate import evaluate_request
 
 logger = get_logger(__name__)
@@ -119,6 +125,24 @@ def camper_satisfaction(
         CamperSatisfaction with per_request statuses, counted_totals,
         immaterial visible-uncounted bucket, and derived flags.
     """
+    # #1664/#1672: a form age_preference is material only as a sole form request.
+    # Suppress it (count as immaterial) when a coexisting resolved form
+    # bunk_with/not_bunk_with exists. This path has no impossibility data and is
+    # frontend-polled, so we pass an empty impossible set (option (b)): suppression
+    # fires on any resolved coexisting real form request. A coexisting *impossible*
+    # form request would over-suppress vs the solver/validator — an accepted,
+    # documented divergence for this hot read path. Per-request statuses are untouched.
+    material_rows = [
+        MaterialReqRow(
+            id=str(req.get("id", "")),
+            source_field=_coerce_str(req.get("source_field")),
+            request_type=_coerce_str(req.get("request_type")),
+            status="resolved",
+        )
+        for req in person_requests
+    ]
+    material_ids = compute_material_request_ids({person_cm_id: material_rows}, set())
+
     per_request: list[PerRequestStatus] = []
     counted: dict[RequestBucket, list[bool]] = {b: [] for b in COUNTED_BUCKETS}
     immaterial: list[bool] = []
@@ -137,10 +161,12 @@ def camper_satisfaction(
                 req.get("id"),
             )
             satisfied = False
-        per_request.append(
-            PerRequestStatus(request_id=str(req.get("id", "")), bucket=bucket, satisfied=satisfied, detail=detail)
-        )
-        if bucket in COUNTED_BUCKETS:
+        req_id = str(req.get("id", ""))
+        per_request.append(PerRequestStatus(request_id=req_id, bucket=bucket, satisfied=satisfied, detail=detail))
+        if bucket == RequestBucket.MATERIAL_PARENT and req_id not in material_ids:
+            # #1664: suppressed coexisting form age-pref — visible per-request, uncounted.
+            immaterial.append(satisfied)
+        elif bucket in COUNTED_BUCKETS:
             counted[bucket].append(satisfied)
         else:
             immaterial.append(satisfied)

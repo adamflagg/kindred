@@ -204,7 +204,12 @@ jobs:
       run: uv run ruff check .
 
     - name: Python type check (mypy)
-      run: uv run mypy . --explicit-package-bases
+      # --num-workers 4: parallel checking is ~2.8x faster on a cold cache (CI
+      # restores no .mypy_cache). 4 is the sweet spot for this import graph (beats
+      # 8/12 even on >4 cores) and maps to the 4-vCPU ubuntu-latest runner. Output
+      # is byte-identical to single-threaded. Pre-push stays single-threaded — a
+      # warm cache makes worker-spawn overhead a net loss there. See #1660.
+      run: uv run mypy . --explicit-package-bases --num-workers 4
 
     - name: Security audit (pip-audit)
       run: |

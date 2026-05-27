@@ -13,7 +13,8 @@ imports keep working, delegating all classification to the registry.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from bunking.logging_config import get_logger
 from bunking.satisfaction.request_registry import (
@@ -27,8 +28,39 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+
+class MaterialReqLike(Protocol):
+    """Minimal structural shape compute_material_request_ids reads from a request.
+
+    DirectBunkRequest (solver) and BunkRequest (validator) satisfy this
+    directly; dict-row callers (the satisfaction aggregator) wrap rows in
+    MaterialReqRow. Members are read-only properties so NamedTuple adapters and
+    plain-attribute models both match.
+    """
+
+    @property
+    def id(self) -> str: ...
+    @property
+    def source_field(self) -> str | None: ...
+    @property
+    def request_type(self) -> str: ...
+    @property
+    def status(self) -> str: ...
+
+
+class MaterialReqRow(NamedTuple):
+    """MaterialReqLike adapter for dict-based callers (e.g. the aggregator)."""
+
+    id: str
+    source_field: str | None
+    request_type: str
+    status: str
+
+
 __all__ = [
     "COUNTED_BUCKETS",
+    "MaterialReqLike",
+    "MaterialReqRow",
     "RequestBucket",
     "classify_request",
     "compute_material_request_ids",
@@ -46,7 +78,7 @@ def classify_request(source_field: str) -> RequestBucket:
     return report_group_for(source_field)
 
 
-def is_material_parent_request(request: DirectBunkRequest) -> bool:
+def is_material_parent_request(request: MaterialReqLike) -> bool:
     """True iff the request's source_field classifies as MATERIAL_PARENT.
 
     Defensive: missing or unknown source_field returns False with a debug log.
@@ -69,7 +101,7 @@ def is_material_parent_request(request: DirectBunkRequest) -> bool:
 
 
 def compute_material_request_ids(
-    requests_by_person: dict[int, list[DirectBunkRequest]],
+    requests_by_person: Mapping[int, Sequence[MaterialReqLike]],
     impossible_request_ids: set[str],
 ) -> set[str]:
     """Material-parent request IDs, with the #1664 age-preference suppression.

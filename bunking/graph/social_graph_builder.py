@@ -163,7 +163,10 @@ class SocialGraphBuilder:
         session_cm_id: int,
         scenario_id: str | None = None,
     ) -> nx.DiGraph:
-        """Build a graph specifically for a single bunk with only request and sibling edges.
+        """Build a graph specifically for a single bunk with only request edges.
+
+        Sibling edges are intentionally not added (#1675); the bunk graph is
+        request-only, matching the session graph.
 
         Args:
             year: Camp year.
@@ -458,52 +461,14 @@ class SocialGraphBuilder:
         except Exception as e:
             logger.error(f"Error adding request edges: {e}")
 
-        # Add ONLY sibling edges between bunk members
-        sibling_count = 0
-        try:
-            # Get all persons who are bunk members
-            persons_data = {}
-            for person_cm_id in bunk_members:
-                try:
-                    _person_rec = self.pb.collection(PERSONS).get_first_list_item(f"cm_id = {person_cm_id}")
-                    person = cast_person(_person_rec)
-                    if person.get("household_id"):
-                        persons_data[person_cm_id] = person["household_id"]
-                except Exception:  # noqa: S110 — intentional silent handling
-                    pass
-
-            # Find siblings
-            family_groups = defaultdict(list)
-            for person_id, family_id in persons_data.items():
-                family_groups[family_id].append(person_id)
-
-            # Add sibling edges
-            for family_id, members in family_groups.items():
-                if len(members) > 1:
-                    # Add BIDIRECTIONAL edges between all siblings in the same bunk
-                    for i in range(len(members)):
-                        for j in range(i + 1, len(members)):
-                            # For sibling edges, we need to handle them differently
-                            # Check if request edges already exist and add sibling info
-                            for source, target in [(members[i], members[j]), (members[j], members[i])]:
-                                if bunk_graph.has_edge(source, target):
-                                    # Edge exists, add sibling as secondary type
-                                    edge_data = bunk_graph[source][target]
-                                    if "secondary_type" not in edge_data:
-                                        edge_data["secondary_type"] = "sibling"
-                                        edge_data["has_sibling"] = True
-                                        logger.info(f"Added sibling as secondary type: {source} -> {target}")
-                                else:
-                                    # No existing edge, create sibling edge
-                                    bunk_graph.add_edge(source, target, weight=1.5, edge_type="sibling")
-                                    sibling_count += 1
-
-                            logger.info(f"Added separate sibling edges: {members[i]} <-> {members[j]}")
-
-            logger.info(f"Added {sibling_count} sibling edges to bunk graph")
-
-        except Exception as e:
-            logger.error(f"Error adding sibling edges: {e}")
+        # Sibling edges are intentionally NOT added (#1675). Siblings are a
+        # deprecated graph concept — the session graph dropped them under #1094.
+        # On the bunk graph they rendered as a spurious extra line per sibling
+        # pair (and, after the #1640 multi change, a spurious bezier). The bunk
+        # graph is now request-only, matching the session graph. Node
+        # degree/centrality below is therefore request-only too, so a camper
+        # connected only by a sibling relationship reads as isolated — correct,
+        # since they have no bunk requests.
 
         # Calculate basic node metrics for the bunk graph
         for node in bunk_graph.nodes():
@@ -528,8 +493,7 @@ class SocialGraphBuilder:
             f"Bunk graph built with {bunk_graph.number_of_nodes()} nodes and {bunk_graph.number_of_edges()} edges"
         )
         logger.info(
-            f"Edge types: request={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'request'])}, "
-            f"sibling={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'sibling'])}"
+            f"Edge types: request={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'request'])}"
         )
 
         # Populate satisfaction node attrs (parent_satisfaction_status,
