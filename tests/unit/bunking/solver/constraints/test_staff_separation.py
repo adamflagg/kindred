@@ -214,6 +214,22 @@ def _age_pref(request_id: str, requester: int, source_field: str = "bunk_request
     )
 
 
+def test_parent_and_staff_nbw_coexist_separation_still_hard():
+    """Post-fix deduped shape: a parent HARD_MSO NBW and a staff HARD_MNT NBW for
+    the SAME pair both survive. The staff row must still force separation."""
+    from bunking.solver.constraints.staff_separation import add_staff_separation_constraints
+
+    ctx = _two_girls_two_bunks(
+        [
+            _nbw("n_parent", 100, 200, "bunk_request_form"),
+            _nbw("n_staff", 100, 200, "staff_not_bunk_with"),
+        ]
+    )
+    add_staff_separation_constraints(ctx)
+    _force_together(ctx, 100, 200)
+    assert is_infeasible(cp_model.CpSolver().Solve(ctx.model))
+
+
 def test_carveout_fires_when_sole_real_mp_is_bunk_with_and_age_pref_suppressed():
     """#1664: suppressed form age_preference does NOT inflate _possible_mp_count.
 
