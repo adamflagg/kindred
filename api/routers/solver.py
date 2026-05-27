@@ -777,8 +777,15 @@ async def apply_solver_results(
                 stale_id = stale.get("id") if isinstance(stale, dict) else getattr(stale, "id", None)
                 if stale_id:
                     await asyncio.to_thread(pb.collection(del_collection).delete, str(stale_id))
-        except Exception as e:
-            logger.error(f"Failed to un-bunk unassigned person {raw_cm_id}: {e}")
+        except Exception:
+            logger.error(
+                "[api] failed to un-bunk unassigned camper person_cm_id=%s run_id=%s scenario=%s year=%s",
+                raw_cm_id,
+                run_id,
+                scenario,
+                run_year,
+                exc_info=True,
+            )
 
     table_name = "bunk_assignments_draft" if scenario else "bunk_assignments"
     assignments_dict: dict[str, Any] = assignments if isinstance(assignments, dict) else {}

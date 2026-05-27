@@ -206,6 +206,7 @@ async def run_solver_task_v2(
             assignment_pairs = [(a.person_cm_id, a.bunk_cm_id) for a in solver_input.existing_assignments]
             solver_input.locked_bunks = resolve_locked_bunk_occupants(locked_bunk_cm_ids, assignment_pairs)
             solver_input.allow_overflow = allow_overflow
+        solver_input.allow_unassigned = bool(solver_input.locked_bunks)
 
         # If respect_locks is disabled, clear existing assignments and group locks
         # so the solver is free to reassign all campers from scratch
