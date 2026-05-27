@@ -5,6 +5,8 @@ current occupants pinned and admit no one else, so the solver only redistributes
 the unlocked campers across the unlocked cabins.
 """
 
+from typing import Any
+
 from bunking.logging_config import get_logger
 from bunking.models_v2 import DirectBunkAssignment, DirectSolverInput
 
@@ -56,18 +58,25 @@ def cross_boundary_request_ids(inp: DirectSolverInput) -> list[str]:
     ]
 
 
-def partial_resolve_summary(inp: DirectSolverInput, assignments: list[DirectBunkAssignment]) -> dict[str, int]:
-    """Completion-summary counts for a partial cabin re-solve (#1609).
+def partial_resolve_summary(inp: DirectSolverInput, assignments: list[DirectBunkAssignment]) -> dict[str, Any]:
+    """Completion-summary for a partial cabin re-solve (#1609).
 
-    ``unassigned_count`` — campers the solver could not place (no room in the unlocked
-    cabins): total persons minus those that landed in a bunk. ``cross_boundary_request_count``
-    — positive requests unmeetable because the target sits in a locked cabin. Both surface
-    in the post-run completion toast.
+    ``unassigned_count`` / ``unassigned_person_cm_ids`` — campers the solver could not
+    place (no room in the unlocked cabins) under the relaxed ``<= 1`` cardinality.
+    The id list lets the apply step DELETE their stale assignments: a camper the
+    solver bumped out of an unlocked cabin is absent from ``assignments``, so without
+    an explicit un-bunk their old row would persist (board would disagree with the
+    toast, and the vacated seat's cabin could end up over capacity).
+    ``cross_boundary_request_count`` — positive requests unmeetable because the target
+    sits in a locked cabin. Counts surface in the post-run completion toast.
 
     Call only on a FEASIBLE solution's assignments (solve() returns None on infeasible,
-    so the count is exact).
+    so the result is exact).
     """
+    assigned = {a.person_cm_id for a in assignments}
+    unassigned_cm_ids = [p.campminder_person_id for p in inp.persons if p.campminder_person_id not in assigned]
     return {
-        "unassigned_count": len(inp.persons) - len(assignments),
+        "unassigned_count": len(unassigned_cm_ids),
+        "unassigned_person_cm_ids": unassigned_cm_ids,
         "cross_boundary_request_count": len(cross_boundary_request_ids(inp)),
     }

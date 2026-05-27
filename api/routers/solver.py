@@ -749,6 +749,37 @@ async def apply_solver_results(
         except Exception as e:
             logger.error(f"Failed to update person {person_cm_id_str}: {e}")
 
+    # Partial cabin re-solve (#1609): under the relaxed <= 1 cardinality the solver may
+    # leave campers unplaced. They are absent from `assignments` above, so the upsert never
+    # touches them — without this, a camper the solver bumped out of an unlocked cabin keeps
+    # their stale assignment (board disagrees with the "N unassigned" toast, and the cabin
+    # that took their replacement can end up over capacity). Delete exactly the rows the
+    # solver named as unassigned. Empty/absent on a full solve, so this is a no-op there.
+    partial_stats = results.get("stats", {}).get("partial_resolve", {}) if isinstance(results, dict) else {}
+    unassigned_cm_ids = partial_stats.get("unassigned_person_cm_ids", []) if isinstance(partial_stats, dict) else []
+    for raw_cm_id in unassigned_cm_ids:
+        try:
+            person_cm_id = int(raw_cm_id)
+            if scenario:
+                person_pb_id = await cache.get_person_pb_id(person_cm_id)
+                if not person_pb_id:
+                    continue
+                del_collection = "bunk_assignments_draft"
+                del_filter = f'person = "{person_pb_id}" && scenario = "{scenario}" && year = {run_year}'
+            else:
+                del_collection = "bunk_assignments"
+                session_clause = " || ".join(f"session.cm_id = {sid}" for sid in ctx.related_session_ids)
+                del_filter = f"person.cm_id = {person_cm_id} && ({session_clause}) && year = {run_year}"
+            stale_rows = await asyncio.to_thread(
+                pb.collection(del_collection).get_full_list, query_params={"filter": del_filter}
+            )
+            for stale in stale_rows:
+                stale_id = stale.get("id") if isinstance(stale, dict) else getattr(stale, "id", None)
+                if stale_id:
+                    await asyncio.to_thread(pb.collection(del_collection).delete, str(stale_id))
+        except Exception as e:
+            logger.error(f"Failed to un-bunk unassigned person {raw_cm_id}: {e}")
+
     table_name = "bunk_assignments_draft" if scenario else "bunk_assignments"
     assignments_dict: dict[str, Any] = assignments if isinstance(assignments, dict) else {}
 

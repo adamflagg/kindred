@@ -1,6 +1,8 @@
 export interface PartialResolveSummary {
   unassigned_count: number
   cross_boundary_request_count: number
+  /** CM ids the solver left unplaced; the backend apply step un-bunks exactly these (#1609). Not rendered. */
+  unassigned_person_cm_ids?: number[]
 }
 
 /** Build the completion-summary toast lines for a partial cabin re-solve (#1609).

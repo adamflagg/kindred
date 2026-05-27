@@ -26,6 +26,7 @@ def test_summary_reports_unassigned_count():
     assignments = [_assignment(1001, 2002)]  # only 1 of 2 placed
     summary = partial_resolve_summary(inp, assignments)
     assert summary["unassigned_count"] == 1
+    assert summary["unassigned_person_cm_ids"] == [1002]  # the unplaced camper, by cm_id
     assert summary["cross_boundary_request_count"] == 0
 
 
@@ -43,6 +44,7 @@ def test_summary_reports_cross_boundary_count():
     assignments = [_assignment(1001, 2001), _assignment(1002, 2002)]  # all placed
     summary = partial_resolve_summary(inp, assignments)
     assert summary["unassigned_count"] == 0
+    assert summary["unassigned_person_cm_ids"] == []  # everyone placed
     assert summary["cross_boundary_request_count"] == 1  # 1002->1001 (locked) unmeetable
 
 
