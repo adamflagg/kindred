@@ -249,7 +249,7 @@ export default function OptimizeBunksButton({
   const getButtonText = () => {
     if (isSolving) return 'Optimizing...'
     if (isApplyingResults) return 'Applying...'
-    if (lockedCount > 0) return `Re-solve unlocked (${unlockedCount})`
+    if (lockedCount > 0) return 'Solve'
     return 'Optimize'
   }
 

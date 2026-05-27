@@ -38,11 +38,12 @@ describe('OptimizeBunksButton — partial re-solve controls', () => {
     expect(screen.queryByText(/locked \d+ · re-solving \d+/i)).not.toBeInTheDocument()
   })
 
-  // B. lockedCount=3, unlockedCount=5 → main button text is "Re-solve unlocked (5)"
-  it('B: shows "Re-solve unlocked (5)" when lockedCount=3, unlockedCount=5', () => {
+  // B. lockedCount=3, unlockedCount=5 → main button text is "Solve" (short label, no wrap)
+  it('B: shows "Solve" when lockedCount=3, unlockedCount=5 (not solving/applying)', () => {
     render(<OptimizeBunksButton {...makeProps({ lockedCount: 3, unlockedCount: 5 })} />)
 
-    expect(screen.getByText(/re-solve unlocked \(5\)/i)).toBeInTheDocument()
+    expect(screen.getByText('Solve')).toBeInTheDocument()
+    expect(screen.queryByText(/re-solve unlocked/i)).not.toBeInTheDocument()
   })
 
   // C. lockedCount=3, unlockedCount=5 → dropdown shows overflow checkbox AND scope line
