@@ -3277,7 +3277,7 @@ export type ProcessRequestsRequest = {
   /**
    * Trigger
    */
-  trigger?: string
+  trigger?: 'upload' | 'scheduled' | 'manual'
 }
 
 /**

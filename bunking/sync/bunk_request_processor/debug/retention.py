@@ -4,6 +4,9 @@ Dual policy (whichever triggers first):
 - Time-based: delete runs older than MAX_AGE_DAYS
 - Count-based: delete oldest runs when total exceeds MAX_RUNS
 - Pinned runs exempt from both
+- The single newest trigger='upload' run is exempt from both, so the per-session
+  "what's new" summary always has a run to read. Because this exemption is applied
+  without re-trimming, up to MAX_RUNS + 1 unpinned runs may survive a cleanup cycle.
 - Atomic: deleting a run also deletes its traces and summaries
   (summaries cascade-delete via trace relation, but traces need explicit deletion)
 """

@@ -327,7 +327,7 @@ class TraceCollector:
             return "skipped"
         trace_status = "resolved"
         for br in trace_data.disposition.final_bunk_requests:
-            status = br.status.lower()
+            status = (br.status or "").lower()
             if status == "pending":
                 return "pending"  # highest priority — short-circuit
             elif status == "declined" and trace_status != "pending":

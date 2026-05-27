@@ -4,6 +4,7 @@ from bunking.sync.bunk_request_processor.debug.trace_collector import TraceColle
 from bunking.sync.bunk_request_processor.debug.trace_models import (
     DispositionTrace,
     FinalBunkRequestTrace,
+    TraceData,
 )
 
 
@@ -142,6 +143,19 @@ class TestComputeSessionBreakdown:
         breakdown = tc._compute_session_breakdown()
         # Only the str key is present — confirms session_cm_id is stringified, never left as int.
         assert set(breakdown.keys()) == {"9999999"}
+
+    def test_none_status_does_not_crash(self) -> None:
+        """A final bunk request with status=None must not raise in _resolve_trace_status.
+
+        status is a validated Pydantic str field, so None can only arise via a
+        validation bypass / malformed data. model_construct() simulates that. A
+        None status carries no priority signal, so the trace stays 'resolved'.
+        """
+        tc = TraceCollector(run_id="test-none-status")
+        # status=None is intentionally invalid (field is typed str) to exercise the guard.
+        br = FinalBunkRequestTrace.model_construct(status=None, request_type="BUNK_WITH")  # type: ignore[arg-type]
+        trace = TraceData(disposition=DispositionTrace(final_bunk_requests=[br]))
+        assert tc._resolve_trace_status(trace) == "resolved"
 
     def test_missing_metadata_falls_back_to_zero_key(self) -> None:
         """A disposition recorded for a key never seen by record_pre_phase1 has no metadata,

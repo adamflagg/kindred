@@ -53,3 +53,22 @@ def test_trigger_upload_passes_through():
         assert r.status_code == 200
         assert m.await_args is not None
         assert m.await_args.kwargs["trigger"] == "upload"
+
+
+def test_invalid_trigger_rejected():
+    """An out-of-range trigger fails fast at the API boundary (422).
+
+    debug_pipeline_runs.trigger is a PocketBase select (upload|scheduled|manual);
+    a value outside that set must be rejected before the processor runs so it can
+    never reach (and silently break) run-record persistence.
+    """
+    with patch(
+        "api.routers.internal.run_process_requests",
+        new=AsyncMock(return_value=_MOCK_RESULT),
+    ) as m:
+        r = client.post(
+            "/api/internal/process-requests",
+            json={"year": 2026, "session": "all", "trigger": "bogus"},
+        )
+        assert r.status_code == 422
+        assert m.await_count == 0  # rejected before the processor is invoked
