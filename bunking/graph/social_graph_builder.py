@@ -163,7 +163,10 @@ class SocialGraphBuilder:
         session_cm_id: int,
         scenario_id: str | None = None,
     ) -> nx.DiGraph:
-        """Build a graph specifically for a single bunk with only request and sibling edges.
+        """Build a graph specifically for a single bunk with only request edges.
+
+        Sibling edges are intentionally not added (#1675); the bunk graph is
+        request-only, matching the session graph.
 
         Args:
             year: Camp year.
@@ -490,8 +493,7 @@ class SocialGraphBuilder:
             f"Bunk graph built with {bunk_graph.number_of_nodes()} nodes and {bunk_graph.number_of_edges()} edges"
         )
         logger.info(
-            f"Edge types: request={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'request'])}, "
-            f"sibling={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'sibling'])}"
+            f"Edge types: request={len([e for e in bunk_graph.edges(data=True) if e[2].get('edge_type') == 'request'])}"
         )
 
         # Populate satisfaction node attrs (parent_satisfaction_status,
