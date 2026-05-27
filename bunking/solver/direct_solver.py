@@ -44,7 +44,7 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
-from .constraints.locked_bunks import add_locked_bunk_constraints, partial_resolve_summary
+from .constraints.locked_bunks import add_locked_bunk_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .constraints.staff_separation import add_staff_separation_constraints
 from .feasibility import RequestValidationSummary
@@ -750,6 +750,10 @@ class DirectBunkingSolver:
                 )
             )
 
+        # Merge frozen locked rosters back in (#1609): the working set may be a
+        # single bunk even after reduction; frozen occupants must still appear.
+        assignments.extend(self._frozen_assignments)
+
         # Use the shared helper so single-bunk satisfied_requests carry real
         # PocketBase request IDs (matching the multi-bunk path) rather than
         # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
@@ -832,6 +836,19 @@ class DirectBunkingSolver:
         # multi-bunk solve() path that attaches the summary post-solve.
         self._check_must_satisfy_one_violations(assignments)
         stats["request_validation"] = self.request_validation_summary
+
+        # Partial cabin re-solve (#1609): emit completion summary on single-bunk path too.
+        if self.input.allow_unassigned:
+            placed_cms = {a.person_cm_id for a in assignments}
+            unassigned = [
+                p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
+            ]
+            stats["partial_resolve"] = {
+                "unassigned_count": len(unassigned),
+                "unassigned_person_cm_ids": unassigned,
+                "cross_boundary_request_count": len(self._cross_boundary_request_ids),
+                "cross_boundary_request_ids": self._cross_boundary_request_ids,
+            }
 
         return DirectSolverOutput(
             assignments=assignments,
@@ -966,6 +983,10 @@ class DirectBunkingSolver:
                     )
                     break
 
+        # Merge frozen locked rosters back in (#1609): the model only solved the
+        # working set; locked occupants keep their pinned cabin.
+        assignments.extend(self._frozen_assignments)
+
         # Calculate satisfied requests
         satisfied_requests = satisfied_request_ids_by_person(
             assignments, self.input.requests_by_person, self.input.person_by_cm_id
@@ -1013,8 +1034,19 @@ class DirectBunkingSolver:
         stats["request_validation"] = self.request_validation_summary
 
         # Partial cabin re-solve (#1609): completion-summary counts for the toast.
-        if self.input.locked_bunks:
-            stats["partial_resolve"] = partial_resolve_summary(self.input, assignments)
+        # Keyed off allow_unassigned (set on the original input); after reduction
+        # self.input.locked_bunks is {}, so the old locked_bunks gate is gone.
+        if self.input.allow_unassigned:
+            placed_cms = {a.person_cm_id for a in assignments}
+            unassigned = [
+                p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
+            ]
+            stats["partial_resolve"] = {
+                "unassigned_count": len(unassigned),
+                "unassigned_person_cm_ids": unassigned,
+                "cross_boundary_request_count": len(self._cross_boundary_request_ids),
+                "cross_boundary_request_ids": self._cross_boundary_request_ids,
+            }
 
         return DirectSolverOutput(
             assignments=assignments,
