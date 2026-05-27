@@ -213,10 +213,10 @@ describe('BunkingBoardByArea — cabin lock wiring', () => {
         onToggleBunkLock={vi.fn()}
       />
     )
-    // Bunk G-9 (cm_id 1001) should show the locked indicator
+    // Bunk G-9 (cm_id 1000001) should show the locked indicator
     const cardG9 = screen.getByTestId('bunk-card-g9')
     expect(cardG9).toHaveTextContent('locked')
-    // Bunk G-10 (cm_id 1002) should NOT show the locked indicator
+    // Bunk G-10 (cm_id 1000002) should NOT show the locked indicator
     const cardG10 = screen.getByTestId('bunk-card-g10')
     expect(cardG10).not.toHaveTextContent('locked')
   })

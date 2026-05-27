@@ -84,3 +84,30 @@ def test_places_everyone_when_room_exists(mock_config):
     cp, status = _solve(solver)
     assert is_optimal_or_feasible(status)
     assert _count_placed(solver, cp) == 11  # nobody left unassigned when there's room
+
+
+def test_single_working_bunk_still_respects_gender(mock_config):
+    """#1609 regression: a partial re-solve that locks all but one cabin reduces the
+    WORKING set to a single bunk, taking the simplified single-bunk path. That path
+    must still honour the gender hard constraint — a wrong-gender unplaced camper must
+    be left unassigned, never crammed into the only (opposite-gender) unlocked cabin.
+    """
+    # Full session: two female cabins. Lock G-1 (with its occupant) so the working set
+    # collapses to the single unlocked female cabin G-2.
+    locked_occupant = make_person(1000001, gender="F", grade=5)
+    unplaced_boy = make_person(1000002, gender="M", grade=5)
+    locked_bunk = make_bunk(2000001, gender="F", name="G-1")
+    free_bunk = make_bunk(2000002, gender="F", name="G-2")
+    inp = make_input([locked_occupant, unplaced_boy], [locked_bunk, free_bunk], [])
+    inp.allow_unassigned = True
+    inp.locked_bunks = {2000001: [1000001]}  # lock G-1 with its occupant -> working set = {G-2}
+
+    output = DirectBunkingSolver(inp, mock_config).solve(time_limit_seconds=10)
+
+    assert output is not None
+    placements = {(a.person_cm_id, a.bunk_cm_id) for a in output.assignments}
+    # Frozen occupant keeps her locked cabin.
+    assert (1000001, 2000001) in placements
+    # The boy has no valid (male) cabin and must stay unassigned — never placed in G-2.
+    assert (1000002, 2000002) not in placements
+    assert all(a.person_cm_id != 1000002 for a in output.assignments)

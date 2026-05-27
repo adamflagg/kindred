@@ -717,27 +717,47 @@ class DirectBunkingSolver:
     def _solve_single_bunk_session(self) -> DirectSolverOutput:
         """Simplified solving for single-bunk sessions (like AG sessions).
 
-        For sessions with only one bunk, we simply assign all enrolled campers
+        For sessions with only one bunk, we assign every gender-compatible camper
         to that bunk. No complex constraints needed.
         """
         bunk = self.bunks[0]
         bunk_cm_id = bunk.campminder_id
-        over_capacity = len(self.person_ids) > bunk.capacity
+
+        # Gender safety: a genuine AG/Mixed single-bunk session accepts everyone, but a
+        # partial re-solve (#1609) can collapse the working set to a single *gendered*
+        # unlocked bunk. Never place a gender-incompatible camper there — leave them
+        # unassigned (the partial summary surfaces them), mirroring the gender hard
+        # constraint on the multi-bunk path. Campers with no gender data fit any bunk,
+        # matching add_gender_constraints.
+        def _gender_compatible(cm_id: int) -> bool:
+            if bunk.gender in ("AG", "Mixed"):
+                return True
+            person_gender = self.input.person_by_cm_id[cm_id].gender
+            return not person_gender or person_gender == bunk.gender
+
+        assignable = [cm for cm in self.person_ids if _gender_compatible(cm)]
+        skipped = len(self.person_ids) - len(assignable)
+        over_capacity = len(assignable) > bunk.capacity
 
         logger.info(f"Single-bunk session: {bunk.name} (capacity: {bunk.capacity})")
-        logger.info(f"Campers to assign: {len(self.person_ids)}")
+        logger.info(f"Campers to assign: {len(assignable)}")
+        if skipped:
+            logger.warning(
+                f"Single-bunk session {bunk.name} ({bunk.gender}): leaving "
+                f"{skipped} gender-incompatible camper(s) unassigned"
+            )
 
         # Check if we have too many campers for the bunk
         if over_capacity:
-            logger.warning(f"WARNING: {len(self.person_ids)} campers but only {bunk.capacity} spots!")
+            logger.warning(f"WARNING: {len(assignable)} campers but only {bunk.capacity} spots!")
             logger.warning("This will be infeasible, but continuing anyway...")
 
         # Get configured year from CampMinder settings
         year = get_current_season()
 
-        # Create assignments - everyone goes to the single bunk
+        # Create assignments - every gender-compatible camper goes to the single bunk
         assignments = []
-        for person_cm_id in self.person_ids:
+        for person_cm_id in assignable:
             person = self.input.person_by_cm_id[person_cm_id]
             assignments.append(
                 DirectBunkAssignment(
@@ -1102,7 +1122,7 @@ class DirectBunkingSolver:
             bunk_idx = self.bunk_idx_map[bunk_cm_id]
             bunk = self.bunks[bunk_idx]
             occupancy = len(person_cm_ids)
-            effective_cap = (DEFAULT_BUNK_CAPACITY + 1) if overflow else min(bunk.capacity, DEFAULT_BUNK_CAPACITY)
+            effective_cap = min(bunk.capacity, DEFAULT_BUNK_CAPACITY) + (1 if overflow else 0)
 
             if occupancy > effective_cap:
                 capacity_violations += 1
