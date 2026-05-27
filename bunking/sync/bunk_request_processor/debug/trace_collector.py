@@ -33,9 +33,10 @@ logger = get_logger(__name__)
 class TraceCollector:
     """Collects per-request trace data during pipeline execution."""
 
-    def __init__(self, run_id: str = "", enabled: bool = True) -> None:
+    def __init__(self, run_id: str = "", enabled: bool = True, trigger: str = "manual") -> None:
         self.run_id = run_id
         self.enabled = enabled
+        self.trigger = trigger
         self._traces: dict[str, TraceData] = {}
         self._trace_metadata: dict[str, dict[str, Any]] = {}
 
@@ -229,6 +230,8 @@ class TraceCollector:
                     "force": run_meta.get("force", False),
                     "trace_count": len(self._traces),
                     "status_breakdown": status_breakdown,
+                    "trigger": self.trigger,
+                    "session_breakdown": self._compute_session_breakdown(),
                     "pinned": False,
                 }
             )

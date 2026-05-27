@@ -75,6 +75,7 @@ async def process_bunk_requests(
     force: bool = False,
     debug: bool = False,
     collect_traces: bool = False,
+    trigger: str = "manual",
 ) -> dict[str, Any]:
     """Process bunk requests from a data source.
 
@@ -89,6 +90,7 @@ async def process_bunk_requests(
         force: If True, clear processed flags before fetching (enables reprocessing)
         debug: If True, enable verbose AI parse logging
         collect_traces: If True, enable pipeline trace collection for debugging
+        trigger: What initiated this processing run (e.g. 'manual', 'upload', 'scheduled')
 
     Returns:
         Processing results
@@ -97,7 +99,7 @@ async def process_bunk_requests(
     trace_collector: TraceCollector
     if collect_traces:
         run_id = uuid4().hex
-        trace_collector = TraceCollector(run_id=run_id)
+        trace_collector = TraceCollector(run_id=run_id, trigger=trigger)
     else:
         trace_collector = NoOpTraceCollector()
 
