@@ -44,7 +44,6 @@ from .constraints.grade_ratio import add_grade_ratio_constraints
 from .constraints.grade_spread import add_grade_spread_constraints
 from .constraints.group_locks import add_group_lock_constraints
 from .constraints.level_progression import add_level_progression_constraints
-from .constraints.locked_bunks import add_locked_bunk_constraints
 from .constraints.parent_paramount import add_must_satisfy_one_request_constraints
 from .constraints.staff_separation import add_staff_separation_constraints
 from .feasibility import RequestValidationSummary
@@ -482,10 +481,6 @@ class DirectBunkingSolver:
         # 4. Group locks
         # Uses extracted constraint module - debug check is internal
         add_group_lock_constraints(self._build_solver_context())
-
-        # 4b. Locked bunks (#1609) — freeze selected cabins' exact rosters in place.
-        # Uses extracted constraint module - debug check is internal.
-        add_locked_bunk_constraints(self._build_solver_context())
 
         # 6. Grade spread (hard) - max MAX_UNIQUE_GRADES_PER_BUNK distinct grades per bunk
         # Uses extracted constraint module - debug check is internal
