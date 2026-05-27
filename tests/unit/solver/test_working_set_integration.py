@@ -202,4 +202,4 @@ def test_run_stats_score_full_board_including_locked_requests() -> None:
     satisfied_for_1 = out.satisfied_requests.get(1, [])
     assert "r1" in satisfied_for_1
     # Stats should reflect the full request board, not the empty working-set
-    assert out.stats["num_requests"] >= 1
+    assert out.stats["total_requests"] >= 1

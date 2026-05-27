@@ -759,8 +759,10 @@ class DirectBunkingSolver:
         # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
         # and so all request types — NOT_BUNK_WITH, AGE_PREFERENCE, etc. —
         # are evaluated, not just BUNK_WITH.
+        # Score the full merged board against the FULL request set (#1609) so
+        # locked-cabin requests (e.g. bunk_with for frozen pairs) are counted.
         satisfied_requests = satisfied_request_ids_by_person(
-            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+            assignments, self._full_input.requests_by_person, self._full_input.person_by_cm_id
         )
 
         # Log results
@@ -783,7 +785,7 @@ class DirectBunkingSolver:
             "solve_time": 0.0,
             "total_persons": len(self.person_ids),
             "total_bunks": len(self.bunks),
-            "total_requests": len(self.input.requests),
+            "total_requests": len(self._full_input.requests),
             "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
             # CP-SAT-only fields are None, not absent — keeps frontend
             # `stats?.foo` lookups consistent (always null, never undefined).
@@ -812,7 +814,7 @@ class DirectBunkingSolver:
             "soft_constraints_by_module": single_bunk_fires,
             "soft_constraint_penalty_by_module": single_bunk_penalties,
             "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
-                self.input.requests_by_person
+                self._full_input.requests_by_person
             ),
             # Tier 2 observability (Stream 2, Phase 2) — single-bunk path has
             # no CP-SAT solve, so trajectories are empty and derived scalars
@@ -987,9 +989,12 @@ class DirectBunkingSolver:
         # working set; locked occupants keep their pinned cabin.
         assignments.extend(self._frozen_assignments)
 
-        # Calculate satisfied requests
+        # Score the full merged board against the FULL request set (#1609).
+        # self.input contains only the working-set requests (frozen persons removed);
+        # using _full_input here ensures locked-cabin requests (e.g. a bunk_with
+        # whose both parties are frozen together) are counted as satisfied.
         satisfied_requests = satisfied_request_ids_by_person(
-            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+            assignments, self._full_input.requests_by_person, self._full_input.person_by_cm_id
         )
 
         # Check constraint violations in final solution
@@ -997,15 +1002,16 @@ class DirectBunkingSolver:
 
         # Save logs to file if we have a session ID
         log_file_path = None
-        if self.input.requests and len(self.input.requests) > 0:
-            session_id = self.input.requests[0].session_cm_id
+        if self._full_input.requests and len(self._full_input.requests) > 0:
+            session_id = self._full_input.requests[0].session_cm_id
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
         # Material-only counts for user-facing stats (Group 65 #1539).
         # Immaterial requests (socialize_with) still ran through the solver but
         # are excluded from the reported aggregates.
-        material_requests = [r for r in self.input.requests if is_counted_request(r)]
-        request_by_id = {r.id: r for r in self.input.requests}
+        # Score against the full request board so locked-cabin satisfactions count.
+        material_requests = [r for r in self._full_input.requests if is_counted_request(r)]
+        request_by_id = {r.id: r for r in self._full_input.requests}
         satisfied_material_count = sum(
             1
             for req_ids in satisfied_requests.values()
@@ -1025,7 +1031,7 @@ class DirectBunkingSolver:
             num_requests=len(material_requests),
             satisfied_count=satisfied_material_count,
             soft_constraint_violations=self.soft_constraint_violations,
-            requests_by_person=self.input.requests_by_person,
+            requests_by_person=self._full_input.requests_by_person,
             objective_trajectory=callback.objective_trajectory,
             bound_trajectory=bound_cb.bound_trajectory,
             bound_trajectory_truncated=bound_cb.truncated,
