@@ -26,7 +26,7 @@ from bunking.config import ConfigLoader
 from bunking.logging_config import get_logger
 from bunking.satisfaction import weight_for
 from bunking.solver.bunk_ordering import get_bunk_rank
-from bunking.solver.constants import PREFERRED_BUNK_OCCUPANCY
+from bunking.solver.constants import AGE_GRADE_FLOW_WEIGHT, PREFERRED_BUNK_OCCUPANCY
 from bunking.solver.direct_solver import (
     BASE_REQUEST_WEIGHT,
     FIRST_REQUEST_MULTIPLIER,
@@ -293,10 +293,9 @@ class ObjectiveEvaluator:
 
         Exactly mirrors add_age_grade_flow_objective() logic.
         """
-        grade_target_weight = self.config.get_soft_constraint_weight("age_grade_flow")
-
-        if grade_target_weight <= 0:
-            return 0, {"enabled": False}
+        # Hardcoded bonus weight — same constant the solver objective reads, so
+        # the displayed score can't drift from what was optimized.
+        grade_target_weight = AGE_GRADE_FLOW_WEIGHT
 
         total_bonus = 0
         details: dict[str, Any] = {"enabled": True, "weight": grade_target_weight, "by_group": {}}

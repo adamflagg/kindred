@@ -41,6 +41,16 @@ hatch via ``EDGE_AGE_OVERFLOW_PENALTY`` so a hard MSO chain into the top
 cabin remains feasible. ``constraint.age_spread.preferred_bonus`` is KEPT
 in the config as the lone tunable knob in this domain.
 
+Grade ratio + age/grade flow (Phase 2): collapsed four PB config rows — none
+ever tuned at runtime (live config DB: all four ``updated == created``) — into
+the three constants below. ``constraint.grade_ratio.max_percentage`` →
+``MAX_SINGLE_GRADE_PERCENTAGE`` (also dedups the parallel hardcode of ``67`` in
+``bunking_validator.py``); ``constraint.grade_ratio.penalty`` →
+``GRADE_RATIO_PENALTY``; ``constraint.age_grade_flow.weight`` →
+``AGE_GRADE_FLOW_WEIGHT``. The fourth, ``constraint.grade_cohesion.weight``, was
+a confirmed orphan (no constraint module, evaluator, validator, or frontend ever
+read it) and was deleted outright — no constant.
+
 If per-bunk variance is ever needed (e.g., a smaller specialty cabin), add a
 real ``max_size`` integer column on the ``bunks`` PocketBase collection with a
 sync path that populates it. That's a feature, not a refactor.
@@ -117,6 +127,29 @@ exceeds MAX_AGE_SPREAD_MONTHS. Not exposed as a config knob — fires only when 
 constraint (MSO, locked group) leaves no other option. Set above the typical soft-objective
 gains the solver would otherwise chase (bunk-with weights are in the hundreds to low
 thousands), so overflow never happens for non-structural reasons."""
+
+MAX_SINGLE_GRADE_PERCENTAGE = 67
+"""Soft cap: a multi-grade non-AG bunk is penalized when any single grade
+exceeds this percentage of the cabin. Read by the solver soft constraint
+(``grade_ratio.py``) and the board-side validator
+(``bunking_validator.py:_validate_grade_ratios``), which previously carried its
+own parallel literal ``67``. With grade_spread now a hard 2-unique-grades cap,
+this keeps a 2-grade bunk from going lopsided (e.g. 90/10). Never tuned at
+runtime; change via code PR if lopsided-bunk warnings become a recurring
+concern."""
+
+GRADE_RATIO_PENALTY = 5000
+"""Soft penalty per (grade × bunk) when ``MAX_SINGLE_GRADE_PERCENTAGE`` is
+exceeded. Sits in the soft-penalty band below the hard constraints — a real
+secondary penalty, not measured against any hard miss. Never tuned at runtime."""
+
+AGE_GRADE_FLOW_WEIGHT = 300
+"""Objective bonus weight nudging each camper toward the bunk whose target
+average grade best matches theirs (cross-bunk grade distribution shaping).
+Read by both the solver objective (``age_grade_flow.py``) and the post-solve
+mirror (``objective_evaluator._calculate_age_grade_flow``) — same constant so
+the displayed score can't drift from what the solver optimized. Bonus-only, no
+infeasibility risk. Never tuned at runtime."""
 
 # Partial cabin re-solve (#1609): per-assigned-camper bonus applied ONLY in partial
 # mode so the relaxed `<= 1` cardinality places everyone there's room for instead of

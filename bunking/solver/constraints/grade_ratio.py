@@ -2,7 +2,7 @@
 Grade Ratio Constraints - Limit single grade dominance in bunks.
 
 This is a soft constraint that penalizes bunks where a single grade
-makes up more than the configured percentage (default 67%) of the cabin.
+makes up more than ``MAX_SINGLE_GRADE_PERCENTAGE`` (67%) of the cabin.
 """
 
 from collections import defaultdict
@@ -10,7 +10,7 @@ from collections import defaultdict
 from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
-from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
+from bunking.solver.constants import DEFAULT_BUNK_CAPACITY, GRADE_RATIO_PENALTY, MAX_SINGLE_GRADE_PERCENTAGE
 
 from .base import SolverContext
 from .helpers import get_eligible_campers_for_bunk, is_ag_session_bunk, should_exempt_edge_bunk_from_ratio
@@ -21,8 +21,9 @@ logger = get_logger(__name__)
 def add_grade_ratio_constraints(ctx: SolverContext) -> None:
     """Add soft constraints for grade ratio percentage within bunks.
 
-    Creates a penalty when a single grade makes up more than the configured
-    percentage (default 67%) of a cabin when the cabin has more than one grade.
+    Creates a penalty when a single grade makes up more than
+    ``MAX_SINGLE_GRADE_PERCENTAGE`` (67%) of a cabin when the cabin has more
+    than one grade.
 
     OPTIMIZED: Only considers campers eligible for each bunk,
     respecting session and gender boundaries.
@@ -31,10 +32,10 @@ def add_grade_ratio_constraints(ctx: SolverContext) -> None:
         logger.info("Grade ratio constraints DISABLED via debug settings")
         return
 
-    max_percentage = ctx.config.get_constraint("grade_ratio", "max_percentage", default=67) / 100.0
+    max_percentage = MAX_SINGLE_GRADE_PERCENTAGE / 100.0
 
-    # Get penalty weight for violations
-    penalty_weight = ctx.config.get_constraint("grade_ratio", "penalty", default=5000)
+    # Penalty weight for violations (hardcoded constant — never tuned at runtime).
+    penalty_weight = GRADE_RATIO_PENALTY
 
     # Standard capacity for edge exemption threshold calculation.
     # Hardcoded constant (Phase 2 cabin-capacity cleanup); previously read
