@@ -1223,6 +1223,7 @@ func (o *Orchestrator) RunSyncWithOptions(ctx context.Context, opts Options) err
 		o.RegisterService("bunk_requests", NewBunkRequestsSync(o.app, yearClient))
 		yearProcessor := NewRequestProcessor(o.app)
 		yearProcessor.CollectTraces = true // Always collect traces for scheduled/automated runs
+		yearProcessor.Trigger = "scheduled"
 		o.RegisterService("process_requests", yearProcessor)
 		o.RegisterService("staff", NewStaffSync(o.app, yearClient))
 
@@ -1773,6 +1774,7 @@ func (o *Orchestrator) InitializeSyncServices() error {
 	// Register the request processor (no CampMinder client needed)
 	processor := NewRequestProcessor(o.app)
 	processor.CollectTraces = true // Always collect traces for scheduled/automated runs
+	processor.Trigger = "scheduled"
 	o.RegisterService("process_requests", processor)
 	// Camper history computation (no CampMinder client needed - reads from PocketBase)
 	o.RegisterService("camper_history", NewCamperHistorySync(o.app))

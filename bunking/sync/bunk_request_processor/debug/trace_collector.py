@@ -33,9 +33,10 @@ logger = get_logger(__name__)
 class TraceCollector:
     """Collects per-request trace data during pipeline execution."""
 
-    def __init__(self, run_id: str = "", enabled: bool = True) -> None:
+    def __init__(self, run_id: str = "", enabled: bool = True, trigger: str = "manual") -> None:
         self.run_id = run_id
         self.enabled = enabled
+        self.trigger = trigger
         self._traces: dict[str, TraceData] = {}
         self._trace_metadata: dict[str, dict[str, Any]] = {}
 
@@ -229,6 +230,8 @@ class TraceCollector:
                     "force": run_meta.get("force", False),
                     "trace_count": len(self._traces),
                     "status_breakdown": status_breakdown,
+                    "trigger": self.trigger,
+                    "session_breakdown": self._compute_session_breakdown(),
                     "pinned": False,
                 }
             )
@@ -314,27 +317,48 @@ class TraceCollector:
 
         return str(run_record.id)
 
+    def _resolve_trace_status(self, trace_data: TraceData) -> str:
+        """Return the most significant status for a single trace.
+
+        Priority order (highest to lowest): pending > declined > deduped > resolved.
+        A trace with no final bunk requests is considered 'skipped'.
+        """
+        if not trace_data.disposition.final_bunk_requests:
+            return "skipped"
+        trace_status = "resolved"
+        for br in trace_data.disposition.final_bunk_requests:
+            status = (br.status or "").lower()
+            if status == "pending":
+                return "pending"  # highest priority — short-circuit
+            elif status == "declined" and trace_status != "pending":
+                trace_status = "declined"
+            elif status == "deduped" and trace_status not in ("pending", "declined"):
+                trace_status = "deduped"
+        return trace_status
+
     def _compute_status_breakdown(self) -> dict[str, int]:
         breakdown: dict[str, int] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0, "deduped": 0}
         for trace_data in self._traces.values():
-            if not trace_data.disposition.final_bunk_requests:
-                breakdown["skipped"] += 1
-                continue
-            # Determine the most significant status across all requests in this trace.
-            # Priority: pending > declined > deduped > resolved (pending is most actionable).
-            trace_status = "resolved"
-            for br in trace_data.disposition.final_bunk_requests:
-                status = br.status.lower()
-                if status == "pending":
-                    trace_status = "pending"
-                    break  # pending is highest priority, no need to check further
-                elif status == "declined" and trace_status != "pending":
-                    trace_status = "declined"
-                elif status == "deduped" and trace_status not in ("pending", "declined"):
-                    trace_status = "deduped"
+            trace_status = self._resolve_trace_status(trace_data)
             if trace_status in breakdown:
                 breakdown[trace_status] += 1
         return breakdown
+
+    def _compute_session_breakdown(self) -> dict[str, dict[str, int]]:
+        """Return per-session status counts, keyed by str(session_cm_id).
+
+        Each value has the same shape as _compute_status_breakdown():
+        {"resolved": n, "pending": n, "declined": n, "skipped": n, "deduped": n}.
+        """
+        result: dict[str, dict[str, int]] = {}
+        for key, trace_data in self._traces.items():
+            session_cm_id = str(self._trace_metadata.get(key, {}).get("session_cm_id", 0))
+            if session_cm_id not in result:
+                result[session_cm_id] = {"resolved": 0, "pending": 0, "declined": 0, "skipped": 0, "deduped": 0}
+            trace_status = self._resolve_trace_status(trace_data)
+            if trace_status in result[session_cm_id]:
+                result[session_cm_id][trace_status] += 1
+        return result
 
 
 class NoOpTraceCollector(TraceCollector):

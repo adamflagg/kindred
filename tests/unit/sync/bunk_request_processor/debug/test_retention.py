@@ -101,11 +101,12 @@ def _make_pb_mock(
 ) -> MagicMock:
     """Build a PB mock that responds correctly to the new targeted-query retention logic.
 
-    The new cleanup_old_runs makes these calls:
-    1. get_full_list(filter='pinned = false && created < ...')  -> expired_runs
-    2. get_full_list(filter='pinned = false', sort='-created')  -> unpinned_runs
-    3. get_list(1, 1) -> total_count (for pinned count estimation)
-    4. For each run to delete: get_full_list(filter='run_id = "..."') -> traces
+    cleanup_old_runs makes these calls (keyed on method + filter; order-agnostic):
+    1. get_list(1, 1, query_params={trigger='upload'})           -> page.items = [] (no upload runs)
+    2. get_full_list(filter='pinned = false && created < ...')   -> expired_runs
+    3. get_full_list(filter='pinned = false', sort='-created')   -> unpinned_runs
+    4. get_list(1, 1)  (no query_params)                         -> page.total_items = total_count
+    5. For each run to delete: get_full_list(filter='run_id = "..."') -> traces
     """
     pb = MagicMock()
     trace_results = trace_results or {}
@@ -123,13 +124,31 @@ def _make_pb_mock(
 
     pb.collection.side_effect = collection_router
 
-    # get_full_list calls: first expired, then all unpinned
-    runs_collection.get_full_list.side_effect = [expired_runs, unpinned_runs]
+    # get_full_list calls: keyed on filter string so call order doesn't matter
+    def runs_get_full_list(query_params: dict[str, str] | None = None, **kwargs: object) -> list[MagicMock]:
+        f = (query_params or {}).get("filter", "")
+        # Time-based expired query
+        if "created <" in f:
+            return expired_runs
+        # All-unpinned query (count-based)
+        return unpinned_runs
 
-    # get_list call for total count
-    list_result = MagicMock()
-    list_result.total_items = total_count
-    runs_collection.get_list.return_value = list_result
+    runs_collection.get_full_list.side_effect = runs_get_full_list
+
+    # get_list calls: newest-upload single-row fetch (has query_params) vs total-count fetch
+    def runs_get_list(
+        page: int = 1, per_page: int = 30, query_params: dict[str, str] | None = None, **kwargs: object
+    ) -> MagicMock:
+        f = (query_params or {}).get("filter", "")
+        page_result = MagicMock()
+        if "trigger" in f and "upload" in f:
+            page_result.items = []  # no upload runs in most tests
+        else:
+            page_result.total_items = total_count
+            page_result.items = []
+        return page_result
+
+    runs_collection.get_list.side_effect = runs_get_list
 
     # Trace lookups for runs being deleted
     def traces_full_list(query_params: dict[str, str] | None = None, **kwargs: object) -> list[MagicMock]:

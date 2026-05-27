@@ -11,7 +11,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from bunking.logging_config import TRACE, get_logger
 
@@ -31,6 +31,11 @@ from .shared.constants import ALL_PROCESSING_FIELDS, validate_source_fields
 
 # Setup logging
 logger = get_logger(__name__)
+
+# Run source for a processing run. Mirrors the debug_pipeline_runs.trigger
+# PocketBase select field (see pb_migrations/1500000111). Kept here as the
+# single source of truth so the API boundary and the processor agree.
+TriggerType = Literal["upload", "scheduled", "manual"]
 
 
 def load_configuration() -> dict[str, Any]:
@@ -75,6 +80,7 @@ async def process_bunk_requests(
     force: bool = False,
     debug: bool = False,
     collect_traces: bool = False,
+    trigger: TriggerType = "manual",
 ) -> dict[str, Any]:
     """Process bunk requests from a data source.
 
@@ -89,6 +95,7 @@ async def process_bunk_requests(
         force: If True, clear processed flags before fetching (enables reprocessing)
         debug: If True, enable verbose AI parse logging
         collect_traces: If True, enable pipeline trace collection for debugging
+        trigger: What initiated this processing run (e.g. 'manual', 'upload', 'scheduled')
 
     Returns:
         Processing results
@@ -97,7 +104,7 @@ async def process_bunk_requests(
     trace_collector: TraceCollector
     if collect_traces:
         run_id = uuid4().hex
-        trace_collector = TraceCollector(run_id=run_id)
+        trace_collector = TraceCollector(run_id=run_id, trigger=trigger)
     else:
         trace_collector = NoOpTraceCollector()
 

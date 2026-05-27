@@ -18,6 +18,7 @@ from bunking.geo_normalizer.normalizer import normalize_values
 from bunking.logging_config import TRACE, get_logger
 from bunking.sync.bunk_request_processor.data.repositories import SessionRepository
 from bunking.sync.bunk_request_processor.process_requests import (
+    TriggerType,
     load_configuration,
     process_bunk_requests,
 )
@@ -77,6 +78,7 @@ class ProcessRequestsRequest(BaseModel):
     debug: bool = False
     trace: bool = False
     collect_traces: bool = False
+    trigger: TriggerType = "manual"
 
 
 class ProcessRequestsResponse(BaseModel):
@@ -102,6 +104,7 @@ async def run_process_requests(
     debug: bool,
     trace: bool,
     collect_traces: bool = False,
+    trigger: TriggerType = "manual",
 ) -> dict[str, Any]:
     """Run the bunk request processor. Extracted for testability."""
     # Configure logging level (same as process_requests.py CLI)
@@ -140,6 +143,7 @@ async def run_process_requests(
         source_fields=validated_fields,
         debug=debug,
         collect_traces=collect_traces,
+        trigger=trigger,
     )
 
 
@@ -166,6 +170,7 @@ async def process_requests(body: ProcessRequestsRequest) -> JSONResponse:
             debug=body.debug,
             trace=body.trace,
             collect_traces=body.collect_traces,
+            trigger=body.trigger,
         )
 
         stats = result.get("statistics", {})

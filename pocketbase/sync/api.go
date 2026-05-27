@@ -862,6 +862,7 @@ func handleBunkRequestsUpload(e *core.RequestEvent, scheduler *Scheduler) error 
 						processor.ClearExisting = true
 						// Always collect pipeline traces for CSV uploads
 						processor.CollectTraces = true
+						processor.Trigger = "upload"
 
 						// Panic recovery — matches /process-requests endpoint pattern
 						defer func() {

@@ -3274,6 +3274,10 @@ export type ProcessRequestsRequest = {
    * Collect Traces
    */
   collect_traces?: boolean
+  /**
+   * Trigger
+   */
+  trigger?: 'upload' | 'scheduled' | 'manual'
 }
 
 /**
