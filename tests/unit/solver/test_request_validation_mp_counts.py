@@ -338,3 +338,62 @@ def test_not_bunk_with_unassigned_target_counts_as_satisfied() -> None:
     assert s["unsatisfied_no_possible"] == 0
     # not_bunk_with is non-material, so MP scopes are untouched.
     assert s["mp_campers_total"] == 0
+
+
+def test_parent_nbw_yield_excluded_from_mp_bug_signal() -> None:
+    """#1669: an intentionally-yielded parent NBW (Stream C carve-out, #1667)
+    must NOT count as an unmet material-parent request or trip
+    mp_constraint_bug_signal."""
+    persons = [_person(1), _person(2)]
+    bunks = [_bunk(100)]
+    # Camper 1's sole material request: form not_bunk_with -> camper 2.
+    requests = [_req("n1", 1, 2, source_field="bunk_request_form", request_type="not_bunk_with")]
+    # Place them TOGETHER so the NBW is UNsatisfied.
+    assignments = {1: 100, 2: 100}
+
+    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    solver = DirectBunkingSolver(input_data, config_service=MagicMock())
+    # Simulate Stream C having yielded n1 (the carve-out records it pre-solve).
+    solver.parent_nbw_yields = [
+        {
+            "nbw_request_id": "n1",
+            "subject_cm": 1,
+            "target_cm": 2,
+            "protected_parent_request_id": "pX",
+            "protected_camper_cm": 2,
+        }
+    ]
+    assignment_list = [
+        DirectBunkAssignment(person_cm_id=pid, bunk_cm_id=bid, session_cm_id=500, year=2026)
+        for pid, bid in assignments.items()
+    ]
+    solver._check_must_satisfy_one_violations(assignment_list)
+    s = solver.request_validation_summary
+
+    assert s["mp_constraint_bug_signal"] == 0
+    assert s["unsatisfied_material_parent_unmet"] == 0
+    assert s["mp_requests_total"] == 0  # the only MP request was a yield
+    assert s["mp_campers_total"] == 0
+
+
+def test_non_yielded_unmet_mp_still_signals() -> None:
+    """Guard against over-exclusion: a genuinely unmet material NBW (no yield
+    recorded) still increments mp_constraint_bug_signal."""
+    persons = [_person(1), _person(2)]
+    bunks = [_bunk(100)]
+    requests = [_req("n1", 1, 2, source_field="bunk_request_form", request_type="not_bunk_with")]
+    assignments = {1: 100, 2: 100}  # together -> NBW unsatisfied
+
+    input_data = DirectSolverInput(persons=persons, bunks=bunks, requests=requests)
+    solver = DirectBunkingSolver(input_data, config_service=MagicMock())
+    assert solver.parent_nbw_yields == []  # no yield recorded
+
+    assignment_list = [
+        DirectBunkAssignment(person_cm_id=pid, bunk_cm_id=bid, session_cm_id=500, year=2026)
+        for pid, bid in assignments.items()
+    ]
+    solver._check_must_satisfy_one_violations(assignment_list)
+    s = solver.request_validation_summary
+
+    assert s["mp_constraint_bug_signal"] == 1
+    assert s["mp_requests_total"] == 1
