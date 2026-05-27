@@ -282,7 +282,6 @@ class TestBunkRequest:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"resolution_method": "exact_match"},
         )
 
@@ -291,7 +290,7 @@ class TestBunkRequest:
         assert request.is_first_requested
         assert request.year == 2025
         assert request.status == RequestStatus.RESOLVED
-        assert not request.is_placeholder
+        assert not request.is_age_preference
 
     def test_bunk_request_age_preference(self):
         """Test creating an age preference request (no requested_cm_id)"""
@@ -312,15 +311,13 @@ class TestBunkRequest:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older"},
         )
 
         assert request.requested_cm_id is None
         assert request.request_type == RequestType.AGE_PREFERENCE
 
-    def test_bunk_request_placeholder(self):
-        """Test creating a LAST_YEAR_BUNKMATES placeholder"""
+    def test_bunk_request_is_age_preference_true_for_age_pref(self):
         from bunking.sync.bunk_request_processor.core.models import (
             BunkRequest,
             RequestStatus,
@@ -329,22 +326,41 @@ class TestBunkRequest:
 
         request = BunkRequest(
             requester_cm_id=12345,
-            requested_cm_id=None,  # Placeholder has no specific target
-            request_type=RequestType.BUNK_WITH,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
-            is_first_requested=True,
+            is_first_requested=False,
             confidence_score=1.0,
-            source_field="bunk_request_form",
+            source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
-            status=RequestStatus.PENDING,  # Needs review
-            is_placeholder=True,
-            metadata={"placeholder_type": "LAST_YEAR_BUNKMATES", "notes": "Review prior year bunking arrangement"},
+            status=RequestStatus.RESOLVED,
+            metadata={"age_preference": "older"},
+        )
+        assert request.is_age_preference is True
+
+    def test_bunk_request_is_age_preference_false_for_person_requests(self):
+        from bunking.sync.bunk_request_processor.core.models import (
+            BunkRequest,
+            RequestStatus,
+            RequestType,
         )
 
-        assert request.is_placeholder
-        assert request.requested_cm_id is None
-        assert request.status == RequestStatus.PENDING
+        for rt in (RequestType.BUNK_WITH, RequestType.NOT_BUNK_WITH):
+            request = BunkRequest(
+                requester_cm_id=12345,
+                requested_cm_id=67890,
+                request_type=rt,
+                session_cm_id=1000002,
+                is_first_requested=False,
+                confidence_score=0.95,
+                source_field="bunk_request_form",
+                csv_position=0,
+                year=2025,
+                status=RequestStatus.RESOLVED,
+                metadata={},
+            )
+            assert request.is_age_preference is False
 
 
 class TestResolvedName:

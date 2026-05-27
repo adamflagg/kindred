@@ -155,7 +155,6 @@ describe('deriveStageStatus', () => {
             status: 'RESOLVED',
             confidence: 0.95,
             resolution_method: 'exact_match',
-            is_placeholder: false,
             declined_reason: null,
             disposition_reason: 'exact_match',
             is_reciprocal: false,

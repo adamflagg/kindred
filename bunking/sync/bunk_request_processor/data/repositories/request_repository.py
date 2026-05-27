@@ -268,7 +268,6 @@ class RequestRepository:
             "csv_position": request.csv_position,
             "year": request.year,
             "status": request.status.value,
-            "is_placeholder": request.is_placeholder,
             "metadata": json.dumps(request.metadata) if request.metadata else "{}",
         }
 
@@ -578,7 +577,6 @@ class RequestRepository:
             csv_position=get_field(db_record, "csv_position"),
             year=get_field(db_record, "year"),
             status=RequestStatus(get_field(db_record, "status")),
-            is_placeholder=get_field(db_record, "is_placeholder", False),
             metadata=metadata,
             id=get_field(db_record, "id"),  # PocketBase record ID for updates
         )

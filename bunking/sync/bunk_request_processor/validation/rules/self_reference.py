@@ -25,7 +25,7 @@ class SelfReferenceRule(ValidationRule):
 
         Self-referential means:
         1. Requester CM ID = Requested CM ID
-        2. For placeholders or unresolved requests, check if raw names match exactly
+        2. For requests with no resolved target person, check if raw names match exactly
 
         Args:
             request: The request to validate
@@ -44,9 +44,9 @@ class SelfReferenceRule(ValidationRule):
                 result.metadata["self_ref_type"] = "cm_id_match"
                 return result
 
-        # For placeholders or when requested_cm_id is not resolved,
+        # For requests with no resolved target person,
         # check if the raw target name matches requester's name
-        if request.is_placeholder and "raw_target_name" in request.metadata:
+        if not request.requested_cm_id and "raw_target_name" in request.metadata:
             raw_name = request.metadata.get("raw_target_name", "").strip().lower()
             requester_name = request.metadata.get("requester_full_name", "").strip().lower()
 

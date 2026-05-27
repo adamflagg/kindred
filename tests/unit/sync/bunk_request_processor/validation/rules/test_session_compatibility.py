@@ -61,7 +61,6 @@ class TestSessionCompatibilityRule:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -100,9 +99,9 @@ class TestSessionCompatibilityRule:
         assert result.metadata["requester_session"] == 1000002
         assert result.metadata["requested_session"] == 1000021
 
-    def test_placeholder_requests_skip_validation(self, rule, base_request, mock_attendee_repo):
-        """Test that placeholder requests skip validation"""
-        base_request.is_placeholder = True
+    def test_age_preference_request_skips_validation(self, rule, base_request, mock_attendee_repo):
+        """Test that age_preference requests skip validation (no target person)"""
+        base_request.requested_cm_id = None
 
         result = rule.validate(base_request)
 

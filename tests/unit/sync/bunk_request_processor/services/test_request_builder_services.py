@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from bunking.sync.bunk_request_processor.core.models import (
+    AgePreference,
     BunkRequest,
     ParsedRequest,
     RequestStatus,
@@ -151,7 +152,7 @@ class TestRequestBuilderIntegration:
 
         resolution_info = {
             "requester_cm_id": 12345,
-            "requester_name": "Test Requester",
+            "requester_name": "Emma Johnson",
             "person_cm_id": 67890,
             "person_name": "Jane Smith",
             "session_cm_id": 1000002,
@@ -381,7 +382,6 @@ class TestBunkRequestDispositionFields:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
             resolution_method="exact_match",
         )
@@ -400,7 +400,6 @@ class TestBunkRequestDispositionFields:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
             disposition_reason="exact_match",
         )
@@ -419,7 +418,6 @@ class TestBunkRequestDispositionFields:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
         assert br.resolution_method == ""
@@ -758,6 +756,61 @@ class TestBuildMetadataSourceFragment:
 
         # target_name not in raw_text contiguously → can't narrow → keep AI fragment as-is
         assert metadata["source_fragment"] == "Levi (Fern) Weissenborn, Nico Mosseri"
+
+
+class TestBuilderPlaceholderInvariant:
+    """#1245: is_placeholder was redundant — requested_cm_id is None ⟺ AGE_PREFERENCE."""
+
+    @pytest.fixture
+    def builder(self) -> RequestBuilder:
+        return RequestBuilder(temporal_name_cache=None, year=2025, auto_resolve_threshold=0.8)
+
+    def test_age_preference_has_no_target(self, builder):
+        parsed = ParsedRequest(
+            raw_text="older",
+            target_name=None,
+            request_type=RequestType.AGE_PREFERENCE,
+            age_preference=AgePreference.OLDER,
+            confidence=1.0,
+            source_field="ret_parent_socialize_with_best",
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "requester_name": "Emma Johnson",
+            "person_cm_id": None,
+            "session_cm_id": 1000002,
+            "confidence": 1.0,
+        }
+        req = builder.build_single_request(parsed, resolution_info, [parsed], 12345)
+        assert req is not None
+        assert req.requested_cm_id is None
+        assert req.is_age_preference is True
+
+    def test_resolved_person_request_has_target_and_is_not_age_pref(self, builder):
+        parsed = ParsedRequest(
+            raw_text="Liam Garcia",
+            target_name="Liam Garcia",
+            request_type=RequestType.BUNK_WITH,
+            age_preference=None,
+            confidence=0.95,
+            source_field="bunk_request_form",
+            csv_position=0,
+            metadata={},
+        )
+        resolution_info = {
+            "requester_cm_id": 12345,
+            "requester_name": "Emma Johnson",
+            "person_cm_id": 67890,
+            "person_name": "Liam Garcia",
+            "session_cm_id": 1000002,
+            "confidence": 0.95,
+        }
+        req = builder.build_single_request(parsed, resolution_info, [parsed], 12345)
+        assert req is not None
+        assert req.requested_cm_id == 67890
+        assert req.is_age_preference is False
 
 
 if __name__ == "__main__":

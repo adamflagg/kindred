@@ -55,7 +55,6 @@ def _create_bunk_request(
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
     priority: int = 3,
-    is_placeholder: bool = False,
     metadata: dict[str, Any] | None = None,
 ) -> BunkRequest:
     """Helper to create BunkRequest objects for testing"""
@@ -70,7 +69,6 @@ def _create_bunk_request(
         csv_position=1,
         year=2025,
         status=RequestStatus.RESOLVED,
-        is_placeholder=is_placeholder,
         metadata=metadata or {},
     )
 
@@ -341,8 +339,11 @@ class TestFirstNameAmbiguityHandling:
         requests = [
             _create_bunk_request(
                 requester_cm_id=100,
-                requested_cm_id=None,  # Unresolved
-                is_placeholder=True,
+                # requested_cm_id=None drives the raw-name self-reference path directly.
+                # In production an unresolved *named* request gets a negative-hash id
+                # (not None), which currently bypasses that check — see #1683. None is
+                # used here intentionally to exercise the first-name-ambiguity detection.
+                requested_cm_id=None,
                 metadata={
                     "raw_target_name": "Emma",  # First name only
                     "requester_first_name": "Emma",

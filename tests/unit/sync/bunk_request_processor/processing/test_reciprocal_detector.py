@@ -44,7 +44,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -62,7 +61,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -89,7 +87,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -111,7 +108,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -135,7 +131,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -149,7 +144,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             # Second pair
@@ -164,7 +158,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -178,7 +171,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -207,7 +199,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -221,7 +212,6 @@ class TestReciprocalDetector:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -244,7 +234,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,
-            is_placeholder=True,
             metadata={"raw_target_name": "John Doe"},
         )
 
@@ -266,7 +255,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"preference_value": "younger"},
         )
 
@@ -281,7 +269,6 @@ class TestReciprocalDetector:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"preference_value": "older"},
         )
 

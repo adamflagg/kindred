@@ -148,7 +148,6 @@ export interface BunkRequest {
   readonly confidence_level?: string
   readonly keywords_found?: Readonly<Record<string, unknown>>
   readonly can_be_dropped?: boolean
-  readonly is_placeholder?: boolean
   readonly requires_manual_review?: boolean
   readonly manual_review_reason?: string
   readonly was_dropped_for_spread?: boolean

@@ -119,13 +119,11 @@ class Deduplicator:
             DeduplicationResult with kept requests and statistics
         """
         # Group requests by duplicate key
-        # Requests with key=None are truly unique and added directly to unique_requests
         request_groups: dict[tuple[int, int | None, RequestType, str, int, int], list[BunkRequest]] = {}
-        unique_requests: list[BunkRequest] = []  # No dedup key → add directly
 
         for request in requests:
-            key: tuple[int, int | None, RequestType, str, int, int] | None
-            # Check AGE_PREFERENCE FIRST - they have is_placeholder=True (no requestee)
+            key: tuple[int, int | None, RequestType, str, int, int]
+            # Check AGE_PREFERENCE FIRST - they have no requestee
             # but still need deduplication across source fields
             if request.request_type == RequestType.AGE_PREFERENCE:
                 # Age preferences: group by (requester, None, type, "", year, session)
@@ -140,9 +138,6 @@ class Deduplicator:
                     request.year,
                     request.session_cm_id,
                 )
-            elif request.is_placeholder:
-                # True placeholders (non-age_preference with no target) are unique
-                key = None
             else:
                 # Cross-field dedup: merge duplicates from different form fields
                 # (e.g., same name in bunk_with AND bunking_notes) into one request,
@@ -160,18 +155,12 @@ class Deduplicator:
                     request.session_cm_id,
                 )
 
-            # Use key as single source of truth:
-            # - key=None → truly unique, add to unique_requests
-            # - key!=None → potential duplicate, add to request_groups for dedup
-            if key is None:
-                unique_requests.append(request)
-            else:
-                if key not in request_groups:
-                    request_groups[key] = []
-                request_groups[key].append(request)
+            if key not in request_groups:
+                request_groups[key] = []
+            request_groups[key].append(request)
 
         # Process each group
-        kept_requests = list(unique_requests)  # Start with truly unique requests
+        kept_requests: list[BunkRequest] = []
         duplicate_groups = []
         total_duplicates = 0
 
@@ -214,9 +203,6 @@ class Deduplicator:
                 self._merge_metadata(primary, duplicates)
 
                 kept_requests.append(primary)
-                # key cannot be None here because None keys are only for placeholders,
-                # which are handled separately and never reach request_groups
-                assert key is not None, "Non-placeholder request should have a key"
                 duplicate_groups.append(DuplicateGroup(primary=primary, duplicates=duplicates, duplicate_key=key))
 
                 total_duplicates += len(duplicates)
@@ -225,7 +211,7 @@ class Deduplicator:
         database_duplicates = 0
         if check_database and self.request_repository:
             for request in kept_requests:
-                if not request.is_placeholder:
+                if request.request_type != RequestType.AGE_PREFERENCE:
                     # Get request_type as string value (not enum)
                     request_type_str = (
                         request.request_type.value

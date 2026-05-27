@@ -29,7 +29,6 @@ def _make_request() -> BunkRequest:
         csv_position=0,
         year=2026,
         status=RequestStatus.RESOLVED,
-        is_placeholder=False,
         metadata={},
     )
 

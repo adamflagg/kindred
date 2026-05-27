@@ -154,7 +154,6 @@ export interface FinalBunkRequestTrace {
   status: string
   confidence: number
   resolution_method: string
-  is_placeholder: boolean
   declined_reason: string | null
   disposition_reason: string
   is_reciprocal: boolean

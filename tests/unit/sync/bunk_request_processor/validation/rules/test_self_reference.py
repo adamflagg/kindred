@@ -42,7 +42,6 @@ class TestSelfReferenceRule:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -69,7 +68,6 @@ class TestSelfReferenceRule:
 
     def test_placeholder_with_matching_names(self, rule, base_request):
         """Test placeholder request with matching full names"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "John Smith", "requester_full_name": "John Smith"}
 
@@ -82,7 +80,6 @@ class TestSelfReferenceRule:
 
     def test_placeholder_with_different_names(self, rule, base_request):
         """Test placeholder request with different names passes"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "Jane Doe", "requester_full_name": "John Smith"}
 
@@ -93,7 +90,6 @@ class TestSelfReferenceRule:
 
     def test_only_first_name_match_passes(self, rule, base_request):
         """Test that only matching first names is allowed"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "John Doe", "requester_full_name": "John Smith"}
 
@@ -104,7 +100,6 @@ class TestSelfReferenceRule:
 
     def test_case_insensitive_name_matching(self, rule, base_request):
         """Test that name matching is case-insensitive"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "JOHN SMITH", "requester_full_name": "john smith"}
 
@@ -151,7 +146,6 @@ class TestSelfReferenceRule:
 
     def test_empty_names_dont_match(self, rule, base_request):
         """Test that empty names don't cause false positives"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "", "requester_full_name": ""}
 
@@ -162,7 +156,6 @@ class TestSelfReferenceRule:
 
     def test_whitespace_trimmed_in_names(self, rule, base_request):
         """Test that whitespace is properly trimmed"""
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {"raw_target_name": "  John Smith  ", "requester_full_name": "John Smith"}
 
@@ -179,7 +172,6 @@ class TestSelfReferenceRule:
         are other "John"s in the session, it's probably targeting one of them,
         not the requester themselves.
         """
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {
             "raw_target_name": "John",  # First name only, no space
@@ -202,7 +194,6 @@ class TestSelfReferenceRule:
         When the target is just "John" and the requester is "John Smith", and
         there are NO other "John"s in the session, this is likely self-referential.
         """
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {
             "raw_target_name": "John",  # First name only
@@ -225,7 +216,6 @@ class TestSelfReferenceRule:
         If the target is "Jane" but the requester is "John Smith", it's clearly
         not self-referential regardless of session peers.
         """
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {
             "raw_target_name": "Jane",  # Different first name
@@ -245,7 +235,6 @@ class TestSelfReferenceRule:
         If session_peers_with_same_first_name is not provided, the rule should
         be conservative and allow the request (avoid false positives).
         """
-        base_request.is_placeholder = True
         base_request.requested_cm_id = None
         base_request.metadata = {
             "raw_target_name": "John",  # First name only
@@ -285,7 +274,6 @@ class TestSelfReferenceNicknameMatching:
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,
-            is_placeholder=True,
             metadata={},
         )
 
