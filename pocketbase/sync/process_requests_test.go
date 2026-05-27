@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,7 +80,7 @@ func TestCallAPIProcessor(t *testing.T) {
 			}))
 			defer server.Close()
 
-			stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+			stats, err := callAPIProcessor(context.Background(), server.URL, &apiProcessorRequest{
 				Year:    2025,
 				Session: "all",
 			})
@@ -124,7 +125,7 @@ func TestCallAPIProcessor_ForceField(t *testing.T) {
 	}))
 	defer server.Close()
 
-	stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+	stats, err := callAPIProcessor(context.Background(), server.URL, &apiProcessorRequest{
 		Year:    2025,
 		Session: "1",
 		Force:   true,
@@ -161,7 +162,7 @@ func TestCallAPIProcessor_CollectTracesField(t *testing.T) {
 	}))
 	defer server.Close()
 
-	stats, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+	stats, err := callAPIProcessor(context.Background(), server.URL, &apiProcessorRequest{
 		Year:          2025,
 		Session:       "all",
 		CollectTraces: true,
@@ -215,6 +216,28 @@ func TestGetProcessRequestsTimeout(t *testing.T) {
 				t.Errorf("getProcessRequestsTimeout() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestApiProcessorRequestSerializesTrigger verifies that the trigger field is serialized in the JSON body
+func TestApiProcessorRequestSerializesTrigger(t *testing.T) {
+	b, err := json.Marshal(apiProcessorRequest{Year: 2026, Session: "all", Trigger: "upload"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(b), `"trigger":"upload"`) {
+		t.Errorf("expected trigger in JSON, got: %s", string(b))
+	}
+}
+
+// TestApiProcessorRequestOmitsEmptyTrigger verifies that an empty trigger is omitted from the JSON body
+func TestApiProcessorRequestOmitsEmptyTrigger(t *testing.T) {
+	b, err := json.Marshal(apiProcessorRequest{Year: 2026, Session: "all"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "trigger") {
+		t.Errorf("empty trigger should be omitted, got: %s", string(b))
 	}
 }
 

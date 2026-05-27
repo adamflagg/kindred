@@ -30,6 +30,7 @@ type RequestProcessor struct {
 	Debug         bool     // Enable debug logging in Python processor
 	Trace         bool     // Enable trace logging (very verbose) in Python processor
 	CollectTraces bool     // Enable pipeline trace collection for debug tool
+	Trigger       string   // run source: "upload" | "scheduled" | "manual" (empty = manual)
 }
 
 // NewRequestProcessor creates a new processor
@@ -76,7 +77,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 	}
 
 	apiURL := getAPIURL()
-	pythonStats, err := callAPIProcessor(ctx, apiURL, apiProcessorRequest{
+	pythonStats, err := callAPIProcessor(ctx, apiURL, &apiProcessorRequest{
 		Year:          yearInt,
 		Session:       p.Session,
 		SourceFields:  p.SourceFields,
@@ -86,6 +87,7 @@ func (p *RequestProcessor) Sync(ctx context.Context) error {
 		Debug:         p.Debug,
 		Trace:         p.Trace,
 		CollectTraces: p.CollectTraces,
+		Trigger:       p.Trigger,
 	})
 	if err != nil {
 		slog.Error("API processing failed", "error", err)
@@ -121,6 +123,7 @@ type apiProcessorRequest struct {
 	Debug         bool     `json:"debug"`
 	Trace         bool     `json:"trace"`
 	CollectTraces bool     `json:"collect_traces"`
+	Trigger       string   `json:"trigger,omitempty"`
 }
 
 // apiProcessorResponse is the JSON response from the process-requests API
@@ -154,7 +157,7 @@ func getProcessRequestsTimeout() time.Duration {
 }
 
 // callAPIProcessor calls the FastAPI process-requests endpoint
-func callAPIProcessor(ctx context.Context, apiURL string, req apiProcessorRequest) (Stats, error) {
+func callAPIProcessor(ctx context.Context, apiURL string, req *apiProcessorRequest) (Stats, error) {
 	bodyBytes, err := json.Marshal(req)
 	if err != nil {
 		return Stats{}, fmt.Errorf("marshaling request: %w", err)

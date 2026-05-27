@@ -197,7 +197,7 @@ func TestCollectTraces_EndToEndFalseViaCallAPIProcessor(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := callAPIProcessor(context.Background(), server.URL, apiProcessorRequest{
+	_, err := callAPIProcessor(context.Background(), server.URL, &apiProcessorRequest{
 		Year:          2025,
 		Session:       "all",
 		CollectTraces: false,
