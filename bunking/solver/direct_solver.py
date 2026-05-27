@@ -58,6 +58,7 @@ from .observability import (
     _build_stats_dict,
     _count_constraint_types,
 )
+from .working_set import reduce_to_working_set
 
 if TYPE_CHECKING:
     from bunking.solver.impossibility import ImpossibilityReport
@@ -118,7 +119,11 @@ class DirectBunkingSolver:
         mp_skip_cms: set[int] | None = None,
         impossibility_report: ImpossibilityReport | None = None,
     ):
-        self.input = input_data
+        self._full_input = input_data
+        _reduction = reduce_to_working_set(input_data)
+        self.input = _reduction.reduced_input
+        self._frozen_assignments = _reduction.frozen_assignments
+        self._cross_boundary_request_ids = _reduction.cross_boundary_request_ids
         self.config = config_service
         self.model = cp_model.CpModel()
         self.debug_constraints = debug_constraints or {}  # Dict of constraint names to disable
