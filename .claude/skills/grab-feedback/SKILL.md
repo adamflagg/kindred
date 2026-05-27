@@ -52,7 +52,30 @@ for n in <numbers from step 1>; do
 done
 ```
 
-Drop mirrored issues from the working set before proceeding to Step 2. Mention them in the report so the user knows they were considered.
+Drop mirrored issues from the working set before proceeding to Step 2.
+
+### Step 1b: Close resolved mirrors (always run)
+
+Already-mirrored OPEN feedback issues are placeholder-mode stubs kept open as the
+source of truth until their public closes. **On every grab-feedback run, proactively
+check each one** — don't wait for the user to ask. The mirror annotation from Step 1a
+already contains the public issue number; extract it, check the public's state, and
+if the public is `CLOSED`, run the mirror-close on the feedback original now.
+
+```bash
+# For each already-mirrored OPEN feedback issue from Step 1a:
+pub=$(echo "$mirrored" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+state=$(gh issue view "$pub" --repo {owner}/{repo} --json state --jq '.state')
+if [ "$state" = "CLOSED" ]; then
+  gh issue close "$n" --repo {owner}/{repo}-feedback \
+    --comment "Auto-closed via {owner}/{repo}#${pub}"
+fi
+# else: public still OPEN → leave the feedback issue open, report it as pending.
+```
+
+In the final report, list each mirrored issue with its outcome: **closed** (public
+resolved) or **still open** (public `#N` not yet closed). This way the user sees the
+mirror set reconciled without having to ask.
 
 ## Step 2: Classify each issue
 
@@ -131,6 +154,11 @@ Substitute `{N}` (private number), `{PUBLIC_N}` (public number after creation), 
 
 ## Mirror-close (manual, agent-driven)
 
-There is no workflow — closing the private mirror is the responsibility of whichever agent closes the public issue (typically inside `handle-it` after a PR merges). The instruction is embedded in the public issue body in step 7 so any agent reading the issue will see and execute it.
+Closing the private mirror has two triggers, and both should fire:
+
+1. **At public-close time** — whichever agent closes the public issue (typically inside `handle-it` after a PR merges) closes the mirror too. The instruction is embedded in the public issue body in step 7 so any agent reading the issue will see and execute it.
+2. **At grab-feedback time** — Step 1b sweeps every still-open mirror and closes any whose public has already closed. This catches mirrors missed by trigger 1 (e.g. the public was closed manually, or by an agent that didn't read the embedded note).
+
+Trigger 2 is the safety net for trigger 1, so a forgotten close gets reconciled on the next `grab-feedback` run instead of lingering forever.
 
 If you (the grab-feedback skill) are also the agent later closing the public issue, run the embedded `gh issue close` command against the `-feedback` repo as part of that close action. Both repos are owned by the same user; local `gh` auth has access to both.
