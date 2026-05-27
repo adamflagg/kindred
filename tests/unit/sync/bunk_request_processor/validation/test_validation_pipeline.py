@@ -101,7 +101,6 @@ class TestValidationPipeline:
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -252,7 +251,6 @@ class TestValidationPipeline:
                 csv_position=0,
                 year=2025,
                 status=RequestStatus.PENDING,
-                is_placeholder=False,
                 metadata={},
             )
             for i in range(3)

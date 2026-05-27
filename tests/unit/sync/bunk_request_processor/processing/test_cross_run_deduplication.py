@@ -66,7 +66,6 @@ class TestCrossRunDeduplication:
             csv_position=0,
             year=year,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -129,29 +128,29 @@ class TestCrossRunDeduplication:
         assert "database_match_id" not in kept.metadata
         assert "database_match_action" not in kept.metadata
 
-    def test_placeholder_requests_skip_database_check(self, deduplicator, mock_request_repo):
-        """Test that placeholder requests don't check database.
+    def test_age_preference_requests_skip_database_check(self, deduplicator, mock_request_repo):
+        """Test that age_preference requests don't check database.
 
-        Placeholders are unique (unresolved names) and shouldn't merge.
+        AGE_PREFERENCE requests have no target person and are always unique by
+        (requester, session, year) — no DB dedup needed.
         """
-        placeholder = BunkRequest(
+        age_pref = BunkRequest(
             requester_cm_id=12345,
-            requested_cm_id=-1000000,  # Negative ID = unresolved
-            request_type=RequestType.BUNK_WITH,
+            requested_cm_id=None,
+            request_type=RequestType.AGE_PREFERENCE,
             session_cm_id=1000002,
             is_first_requested=False,
-            confidence_score=0.5,
-            source_field="bunk_request_form",
+            confidence_score=1.0,
+            source_field="ret_parent_socialize_with_best",
             csv_position=0,
             year=2025,
-            status=RequestStatus.PENDING,
-            is_placeholder=True,  # This is a placeholder
-            metadata={},
+            status=RequestStatus.RESOLVED,
+            metadata={"age_preference": "older"},
         )
 
-        deduplicator.deduplicate_batch([placeholder], check_database=True)
+        deduplicator.deduplicate_batch([age_pref], check_database=True)
 
-        # find_existing should NOT be called for placeholders
+        # find_existing should NOT be called for age_preference requests
         mock_request_repo.find_existing.assert_not_called()
 
     def test_batch_dedup_happens_before_database_check(self, deduplicator, mock_request_repo):
@@ -216,13 +215,12 @@ class TestCrossRunAgePreferenceDeduplication:
         """Create a Deduplicator with mocked dependencies"""
         return Deduplicator(mock_request_repo)
 
-    def test_age_preference_cross_run_merge(self, deduplicator, mock_request_repo):
-        """Test age_preference from Field B merges with existing Field A.
+    def test_age_preference_cross_run_skips_db_check(self, deduplicator, mock_request_repo):
+        """AGE_PREFERENCE requests skip the database duplicate check.
 
-        Scenario:
-        - ret_parent_socialize_with_best dropdown already processed
-        - bunking_notes now mentions "prefers older kids"
-        - Should merge, not create duplicate
+        Cross-run deduplication for age preferences happens via the in-batch dedup
+        key (requester, None, type, "", year, session). The DB check is skipped
+        because AGE_PREFERENCE requests have no target person to look up.
         """
         existing = Mock()
         existing.id = "existing_age_pref"
@@ -239,15 +237,15 @@ class TestCrossRunAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older"},
         )
 
         result = deduplicator.deduplicate_batch([new_request], check_database=True)
 
         kept = result.kept_requests[0]
-        assert kept.metadata.get("has_database_duplicate") is True
-        assert kept.metadata.get("database_duplicate_id") == "existing_age_pref"
+        # DB check is skipped for AGE_PREFERENCE — no has_database_duplicate flag
+        assert kept.metadata.get("has_database_duplicate") is None
+        mock_request_repo.find_existing.assert_not_called()
 
 
 class TestCrossRunDeduplicationStatistics:
@@ -283,7 +281,6 @@ class TestCrossRunDeduplicationStatistics:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -298,7 +295,6 @@ class TestCrossRunDeduplicationStatistics:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 

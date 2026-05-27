@@ -58,7 +58,6 @@ class TestRequestRepository:
         source_field: str = "bunk_with",
         csv_position: int = 0,
         status: str = "resolved",
-        is_placeholder: bool = False,
         metadata: str = "{}",
     ) -> Mock:
         """Helper to create a properly structured request mock with new field names"""
@@ -75,7 +74,6 @@ class TestRequestRepository:
         mock.source_field = source_field
         mock.csv_position = csv_position
         mock.status = status
-        mock.is_placeholder = is_placeholder
         mock.metadata = metadata
         return mock
 
@@ -95,7 +93,6 @@ class TestRequestRepository:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"resolution_method": "exact_match"},
         )
 
@@ -122,7 +119,7 @@ class TestRequestRepository:
         assert create_args["csv_position"] == 0
         assert create_args["year"] == 2025
         assert create_args["status"] == "resolved"
-        assert create_args["is_placeholder"] is False
+        assert "is_placeholder" not in create_args
         assert "metadata" in create_args
 
     def test_create_age_preference_request(self, repository, mock_pb_client):
@@ -140,7 +137,6 @@ class TestRequestRepository:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older"},
         )
 
@@ -175,7 +171,6 @@ class TestRequestRepository:
                 source_field="bunk_request_form",
                 csv_position=0,
                 status="resolved",
-                is_placeholder=False,
                 metadata='{"resolution_method": "exact_match"}',
             )
         ]
@@ -239,7 +234,6 @@ class TestRequestRepository:
             csv_position=0,
             year=2025,
             status=RequestStatus.PENDING,  # Changed from RESOLVED
-            is_placeholder=False,
             metadata={"resolution_method": "fuzzy_match", "updated": True},
         )
         # Add ID to simulate loaded record
@@ -285,7 +279,6 @@ class TestRequestRepository:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata=metadata,
             resolution_method="fuzzy_match",
         )
@@ -726,7 +719,6 @@ class TestMapToDbDispositionFields:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata=metadata,
             resolution_method=resolution_method,
             disposition_reason=disposition_reason,
@@ -800,7 +792,6 @@ class TestMapToDbSourceFragment:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata=metadata,
         )
 

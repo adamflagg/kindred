@@ -145,7 +145,6 @@ class TestRequestRepositorySoftDelete:
         merged_req_1.source_field = "bunking_notes"
         merged_req_1.csv_position = 0
         merged_req_1.status = "resolved"
-        merged_req_1.is_placeholder = False
         merged_req_1.metadata = {}
         merged_req_1.merged_into = "kept_req_456"
 
@@ -162,7 +161,6 @@ class TestRequestRepositorySoftDelete:
         merged_req_2.source_field = "internal_notes"
         merged_req_2.csv_position = 0
         merged_req_2.status = "resolved"
-        merged_req_2.is_placeholder = False
         merged_req_2.metadata = {}
         merged_req_2.merged_into = "kept_req_456"
 
@@ -234,7 +232,6 @@ class TestGetByIdExcludesMerged:
         mock_record.source_field = "share_bunk_with"
         mock_record.csv_position = 0
         mock_record.status = "resolved"
-        mock_record.is_placeholder = False
         mock_record.metadata = {}
         mock_record.merged_into = "kept_req_456"  # This request is merged
 

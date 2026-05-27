@@ -55,7 +55,6 @@ def _create_bunk_request(
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
     priority: int = 3,
-    is_placeholder: bool = False,
     metadata: dict[str, Any] | None = None,
 ) -> BunkRequest:
     """Helper to create BunkRequest objects for testing"""
@@ -70,7 +69,6 @@ def _create_bunk_request(
         csv_position=1,
         year=2025,
         status=RequestStatus.RESOLVED,
-        is_placeholder=is_placeholder,
         metadata=metadata or {},
     )
 
@@ -342,7 +340,6 @@ class TestFirstNameAmbiguityHandling:
             _create_bunk_request(
                 requester_cm_id=100,
                 requested_cm_id=None,  # Unresolved
-                is_placeholder=True,
                 metadata={
                     "raw_target_name": "Emma",  # First name only
                     "requester_first_name": "Emma",

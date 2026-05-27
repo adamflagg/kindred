@@ -47,7 +47,6 @@ class TestPartialInvalidationSingleSource:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
         request.id = pb_id

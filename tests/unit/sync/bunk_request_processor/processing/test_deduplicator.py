@@ -52,7 +52,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -89,7 +88,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -120,7 +118,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"version": "high"},
         )
         low_conf = BunkRequest(
@@ -134,7 +131,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"version": "low"},
         )
 
@@ -158,7 +154,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -173,7 +168,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -220,7 +214,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"field2": "value2", "shared": "duplicate"},
         )
 
@@ -253,7 +246,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -279,7 +271,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
         req1b = BunkRequest(
@@ -293,7 +284,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -309,7 +299,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
         req2b = BunkRequest(
@@ -323,7 +312,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -348,7 +336,6 @@ class TestDeduplicator:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -363,7 +350,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -432,7 +418,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -448,7 +433,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -483,7 +467,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"origin": "form"},
         )
 
@@ -499,7 +482,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"origin": "notes"},
         )
 
@@ -531,7 +513,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -547,7 +528,6 @@ class TestDeduplicator:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -586,7 +566,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"original_text": "Please don't put with Ashley"},
         )
 
@@ -601,7 +580,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"original_text": "Neg req Ashley"},
         )
 
@@ -630,7 +608,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -645,7 +622,6 @@ class TestSimplifiedSourcePriority:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -705,7 +681,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "younger"},
         )
 
@@ -720,7 +695,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "younger"},
         )
 
@@ -751,7 +725,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "older"},
         )
 
@@ -766,7 +739,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "older"},
         )
 
@@ -797,7 +769,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"original_text": "wants to bunk with target"},
         )
 
@@ -812,7 +783,6 @@ class TestSimplifiedSourcePriority:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"original_text": "internal: bunk with target"},
         )
 
@@ -852,7 +822,6 @@ class TestDatabaseDuplicateMerge:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"ai_p1_reasoning": {"parsed": True}},
         )
 
@@ -906,7 +875,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older", "origin": "ai_parsed"},
         )
 
@@ -922,7 +890,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older", "origin": "dropdown"},
         )
 
@@ -968,7 +935,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "older"},
         )
 
@@ -984,7 +950,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"age_preference": "younger"},
         )
 
@@ -1012,7 +977,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1027,7 +991,6 @@ class TestAgePreferenceDeduplication:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1050,7 +1013,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1065,7 +1027,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1088,7 +1049,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1103,7 +1063,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -1113,23 +1072,17 @@ class TestAgePreferenceDeduplication:
         assert len(result.kept_requests) == 2
         assert result.statistics["duplicates_removed"] == 0
 
-    def test_age_preference_with_is_placeholder_true_not_duplicated(self, deduplicator):
-        """BUG FIX: AGE_PREFERENCE with is_placeholder=True must not be added twice.
+    def test_age_preference_not_duplicated(self, deduplicator):
+        """AGE_PREFERENCE requests must not be added twice.
 
-        Root cause: AGE_PREFERENCE requests have is_placeholder=True (no target person)
-        but ALSO get a valid dedup key (requester, None, type, "", year, session).
-
-        The buggy code:
-        1. Lines 130-132: Adds ALL is_placeholder=True requests unconditionally
-        2. Lines 135-138: Adds keyed requests from request_groups (including AGE_PREFERENCE)
-
-        Result: Every AGE_PREFERENCE request is added to kept_requests TWICE,
-        causing DB unique constraint violations even on an empty table.
+        AGE_PREFERENCE requests get a valid dedup key (requester, None, type, "", year, session)
+        and should be processed via request_groups — not added unconditionally via a
+        separate placeholder branch (the now-deleted is_placeholder dead branch).
 
         Fix: Use the key as source of truth. If key=None, add directly. Otherwise,
         only add via request_groups processing.
         """
-        # Single AGE_PREFERENCE request with is_placeholder=True (real production behavior)
+        # Single AGE_PREFERENCE request
         age_pref = BunkRequest(
             requester_cm_id=12345,
             requested_cm_id=None,  # No target for age preferences
@@ -1141,7 +1094,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,  # THE KEY: production AGE_PREFERENCE has this True
             metadata={"age_preference": "older"},
         )
 
@@ -1149,17 +1101,16 @@ class TestAgePreferenceDeduplication:
 
         # MUST be exactly 1 - not duplicated
         assert len(result.kept_requests) == 1, (
-            f"Expected 1 kept request, got {len(result.kept_requests)}. "
-            f"Bug: AGE_PREFERENCE with is_placeholder=True being added twice."
+            f"Expected 1 kept request, got {len(result.kept_requests)}. Bug: AGE_PREFERENCE being added twice."
         )
         assert result.statistics["unique_requests"] == 1
         assert result.statistics["duplicates_removed"] == 0
 
-    def test_age_preference_with_is_placeholder_true_deduplicates_across_sources(self, deduplicator):
-        """Test that AGE_PREFERENCE with is_placeholder=True still deduplicates across sources.
+    def test_age_preference_deduplicates_across_sources(self, deduplicator):
+        """Test that AGE_PREFERENCE requests deduplicate across sources.
 
-        Even though is_placeholder=True, multiple AGE_PREFERENCE requests for the same
-        requester/session/year from different sources should deduplicate to 1.
+        Multiple AGE_PREFERENCE requests for the same requester/session/year from
+        different sources should deduplicate to 1.
 
         Under #1142 Stage 3, bunking_notes (rank 2) outranks socialize_with (rank 1).
         """
@@ -1175,7 +1126,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,  # Production behavior
             metadata={"age_preference": "older", "origin": "ai_parsed"},
         )
 
@@ -1191,7 +1141,6 @@ class TestAgePreferenceDeduplication:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,  # Production behavior
             metadata={"age_preference": "older", "origin": "dropdown"},
         )
 
@@ -1245,7 +1194,6 @@ class TestParentAgePreferenceDeduplication:
             csv_position=0,
             year=year,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={},
         )
 
@@ -1337,7 +1285,6 @@ class TestConflictTargetDemotion:
             csv_position=0,
             year=year,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": age_target},
         )
 
@@ -1503,7 +1450,6 @@ class TestFamilyParamountTiebreak:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"source_detail": "parent_form", "original_text": "Please bunk with Liam Garcia"},
         )
 
@@ -1518,7 +1464,6 @@ class TestFamilyParamountTiebreak:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={"source_detail": "staff_observation", "original_text": "Liam Garcia - bunk with"},
         )
 
@@ -1581,7 +1526,6 @@ class TestFamilyParamountTiebreak:
             csv_position=0,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "younger", "original_text": "prefers younger bunk-mates"},
         )
 
@@ -1596,7 +1540,6 @@ class TestFamilyParamountTiebreak:
             csv_position=1,
             year=2025,
             status=RequestStatus.RESOLVED,
-            is_placeholder=True,
             metadata={"age_preference": "younger", "original_text": "Liam likes younger kids"},
         )
 

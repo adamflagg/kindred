@@ -41,11 +41,11 @@ class ReciprocalDetector:
         pairs = []
         processed_pairs: set[tuple[int, int]] = set()
 
-        # Filter to only relevant requests (no placeholders, age preferences)
+        # Filter to only relevant requests (no age preferences)
         eligible_requests = [
             r
             for r in requests
-            if not r.is_placeholder
+            if r.request_type != RequestType.AGE_PREFERENCE
             and r.request_type in (RequestType.BUNK_WITH, RequestType.NOT_BUNK_WITH)
             and r.requested_cm_id is not None
         ]

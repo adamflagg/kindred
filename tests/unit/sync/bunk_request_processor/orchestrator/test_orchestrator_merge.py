@@ -51,7 +51,6 @@ class TestOrchestratorMergeOnSave:
             csv_position=0,
             year=year,
             status=RequestStatus.RESOLVED,
-            is_placeholder=requested_cm_id is None,
             metadata=metadata or {},
         )
 
@@ -387,7 +386,6 @@ class TestMergeIntoExistingSourcePrecedence:
             csv_position=0,
             year=year,
             status=RequestStatus.RESOLVED,
-            is_placeholder=requested_cm_id is None,
             metadata=metadata or {},
         )
 

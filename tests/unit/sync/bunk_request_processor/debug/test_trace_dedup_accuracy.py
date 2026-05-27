@@ -39,7 +39,6 @@ class TestDedupTraceAccuracy:
             is_first_requested=False,
             csv_position=1,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
             requested_name="Emma Johnson",
         )
@@ -54,7 +53,6 @@ class TestDedupTraceAccuracy:
             is_first_requested=False,
             csv_position=1,
             status=RequestStatus.RESOLVED,
-            is_placeholder=False,
             metadata={},
             requested_name="Emma Johnson",
         )

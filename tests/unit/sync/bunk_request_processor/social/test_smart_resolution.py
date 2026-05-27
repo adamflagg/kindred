@@ -555,7 +555,6 @@ class TestMutualRequestDetection:
             source_field="bunk_request_form",
             csv_position=0,
             status=RequestStatus.PENDING,
-            is_placeholder=False,
             metadata={},
         )
         request_b = BunkRequest(
@@ -569,7 +568,6 @@ class TestMutualRequestDetection:
             source_field="bunk_request_form",
             csv_position=0,
             status=RequestStatus.PENDING,
-            is_placeholder=False,
             metadata={},
         )
 
@@ -599,7 +597,6 @@ class TestMutualRequestDetection:
             source_field="bunk_request_form",
             csv_position=0,
             status=RequestStatus.PENDING,
-            is_placeholder=False,
             metadata={},
         )
 

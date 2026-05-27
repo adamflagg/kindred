@@ -54,11 +54,7 @@ class SessionCompatibilityRule(ValidationRule):
         """
         result = ValidationResult(is_valid=True)
 
-        # Skip validation for placeholders or when requested_cm_id is missing
-        if request.is_placeholder or not request.requested_cm_id:
-            return result
-
-        # Skip validation for age preference requests (no target)
+        # Skip validation when there is no resolved target (missing id or age preference)
         if not request.requested_cm_id:
             return result
 

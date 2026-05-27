@@ -144,7 +144,6 @@ class TestStatusBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -158,7 +157,6 @@ class TestStatusBreakdownTracking:
                 csv_position=2,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -183,7 +181,6 @@ class TestStatusBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.PENDING,
-                is_placeholder=True,
                 metadata={},
             ),
         ]
@@ -207,7 +204,6 @@ class TestStatusBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.DECLINED,
-                is_placeholder=False,
                 metadata={"declined_reason": "Session mismatch"},
             ),
         ]
@@ -260,7 +256,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -274,7 +269,6 @@ class TestTypeBreakdownTracking:
                 csv_position=2,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -298,7 +292,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -322,7 +315,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -346,7 +338,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -360,7 +351,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -374,7 +364,6 @@ class TestTypeBreakdownTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -429,7 +418,6 @@ class TestDeclinedReasonTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.DECLINED,
-                is_placeholder=False,
                 metadata={},
                 disposition_reason="session_mismatch",
             ),
@@ -454,7 +442,6 @@ class TestDeclinedReasonTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.DECLINED,
-                is_placeholder=False,
                 metadata={},
                 disposition_reason="target_not_attending",
             ),
@@ -479,7 +466,6 @@ class TestDeclinedReasonTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.DECLINED,
-                is_placeholder=False,
                 metadata={},
                 disposition_reason="target_not_enrolled",
             ),
@@ -504,7 +490,6 @@ class TestDeclinedReasonTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.DECLINED,
-                is_placeholder=False,
                 metadata={},
                 disposition_reason="some_unknown_reason",
             ),
@@ -558,7 +543,6 @@ class TestAIQualityTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
             BunkRequest(
@@ -572,7 +556,6 @@ class TestAIQualityTracking:
                 csv_position=2,
                 year=2025,
                 status=RequestStatus.RESOLVED,
-                is_placeholder=False,
                 metadata={},
             ),
         ]
@@ -596,7 +579,6 @@ class TestAIQualityTracking:
                 csv_position=1,
                 year=2025,
                 status=RequestStatus.PENDING,  # PENDING status means needs review
-                is_placeholder=False,
                 metadata={},
             ),
         ]

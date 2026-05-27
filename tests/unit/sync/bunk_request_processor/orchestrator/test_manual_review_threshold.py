@@ -47,7 +47,6 @@ def _create_bunk_request(
     session_cm_id: int = 1000002,
     confidence: float = 0.95,
     is_first_requested: bool = False,
-    is_placeholder: bool = False,
     status: RequestStatus = RequestStatus.RESOLVED,
     metadata: dict[str, Any] | None = None,
 ) -> BunkRequest:
@@ -63,7 +62,6 @@ def _create_bunk_request(
         csv_position=1,
         year=2025,
         status=status,
-        is_placeholder=is_placeholder,
         metadata=metadata or {},
     )
 

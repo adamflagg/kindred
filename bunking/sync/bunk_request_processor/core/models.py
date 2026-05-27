@@ -308,8 +308,16 @@ class BunkRequest:
     csv_position: int  # Position in the field (1-based; see openai_provider.py:427)
     year: int
     status: RequestStatus
-    is_placeholder: bool  # True when no concrete person is resolved (e.g. age preferences)
     metadata: dict[str, Any]  # All tracking info
+
+    @property
+    def is_age_preference(self) -> bool:
+        """True iff this is an age-preference request (no target person).
+
+        Replaces the former stored `is_placeholder` flag, which was a redundant
+        boolean shadow of `request_type` — see #1245.
+        """
+        return self.request_type == RequestType.AGE_PREFERENCE
 
     # Promoted fields — written directly, not via metadata
     priority_keyword_detected: bool = False  # True only when raw_text had an explicit keyword (TG-3)

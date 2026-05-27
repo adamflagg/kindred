@@ -130,7 +130,6 @@ class FinalBunkRequestTrace(BaseModel):
     confidence: float = 0.0
     is_first_requested: bool = False
     resolution_method: str = ""
-    is_placeholder: bool = False
     declined_reason: str | None = None
     disposition_reason: str = ""
     is_reciprocal: bool = False
