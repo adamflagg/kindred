@@ -3,6 +3,8 @@ import {
   derivePhase,
   fetchSyncStatus,
   fetchLatestDebugRun,
+  countsFromStatusBreakdown,
+  fetchLatestUploadRun,
   type SyncJobStatus,
   type DebugPipelineRun,
 } from './csvPipelineStatus'
@@ -544,6 +546,59 @@ describe('fetchLatestDebugRun', () => {
     expect(res?.status_breakdown.resolved).toBe(200)
     expect(res?.status_breakdown.pending).toBe(12)
     expect(res?.status_breakdown.declined).toBe(8)
+  })
+})
+
+describe('countsFromStatusBreakdown', () => {
+  it('maps resolved+declined→autoMatched, pending→needReview', () => {
+    expect(countsFromStatusBreakdown({ resolved: 10, pending: 3, declined: 1 })).toEqual({
+      total: 14,
+      autoMatched: 11,
+      needReview: 3,
+    })
+  })
+})
+
+describe('fetchLatestUploadRun', () => {
+  it("filters trigger='upload' and requests session_breakdown", async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'r1',
+            created: 't',
+            status_breakdown: { resolved: 1, pending: 0, declined: 0 },
+            session_breakdown: {},
+          },
+        ],
+      }),
+    })
+    const run = await fetchLatestUploadRun(fetchWithAuth)
+    const url = fetchWithAuth.mock.calls[0]![0] as string
+    expect(url).toContain("trigger='upload'")
+    expect(url).toContain('session_breakdown')
+    expect(run?.run_id).toBe('r1')
+  })
+  it('returns null on non-ok response', async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue({ ok: false })
+    expect(await fetchLatestUploadRun(fetchWithAuth)).toBeNull()
+  })
+  it('returns null when status_breakdown is malformed (non-numeric counts)', async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'run-bad',
+            created: 't',
+            status_breakdown: { resolved: 'five', pending: 0, declined: 0 },
+            session_breakdown: {},
+          },
+        ],
+      }),
+    })
+    expect(await fetchLatestUploadRun(fetchWithAuth)).toBeNull()
   })
 })
 
