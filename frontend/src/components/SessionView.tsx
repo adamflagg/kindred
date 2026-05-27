@@ -17,6 +17,7 @@ import {
   useSessionCampers,
   useBunkRequestsCount,
   useLockedBunks,
+  useResetPartialResolveOnSessionChange,
 } from '../hooks/session'
 import { scopeLockedToBunks } from '../hooks/session/scopeLockedToBunks'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
@@ -256,10 +257,7 @@ export default function SessionView() {
 
   // Partial-resolve lock state is per-session; clear it when the session changes so
   // stale locks/overflow never leak into a different session's solve (#1609).
-  useEffect(() => {
-    unlockAll()
-    setAllowOverflow(false)
-  }, [selectedSession, unlockAll])
+  useResetPartialResolveOnSessionChange(selectedSession, unlockAll, setAllowOverflow)
 
   // #1310 — feed in-session campers into RequestReviewPanel as the seed for
   // its personMap. The panel only needs cm_id + first/last name + grade for
