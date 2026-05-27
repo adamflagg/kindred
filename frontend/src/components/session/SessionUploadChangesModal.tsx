@@ -6,6 +6,7 @@ import {
   fetchSessionUploadChanges,
   type UploadChangeRow,
 } from '../../services/sessionUploadChanges'
+import { queryKeys } from '../../utils/queryKeys'
 
 interface Props {
   runId: string
@@ -31,7 +32,7 @@ export default function SessionUploadChangesModal({
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['sessionUploadChanges', runId, sessionCmIds],
+    queryKey: queryKeys.sessionUploadChanges(runId, sessionCmIds),
     queryFn: () => fetchSessionUploadChanges(runId, sessionCmIds, fetchWithAuth),
   })
 

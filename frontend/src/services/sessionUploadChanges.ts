@@ -19,6 +19,8 @@ export async function fetchSessionUploadChanges(
   const filter = encodeURIComponent(`run_id = '${runId}' && (${sessionClause})`)
   const fields =
     'requester_cm_id,requester_name,target_name,request_type,final_status,session_cm_id'
+  // perPage=500 is a deliberate ceiling with no pagination — a session
+  // realistically produces ≤~100 new requests; >500 would silently truncate.
   const res = await fetchWithAuth(
     `/api/collections/debug_pipeline_summary/records?filter=${filter}&perPage=500&fields=${fields}`
   )

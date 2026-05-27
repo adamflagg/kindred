@@ -219,6 +219,7 @@ type RawDebugListResponse = {
       pending?: unknown
       declined?: unknown
     }
+    session_breakdown?: Record<string, { resolved: number; pending: number; declined: number }>
   }>
 }
 
