@@ -1247,6 +1247,11 @@ class DirectBunkingSolver:
         impossible_request_ids: set[str] = {item.request_id for item in self.impossibility_report.flat}
 
         for person_cm_id, requests in self.input.requests_by_person.items():
+            # Skip campers the solver did not place.  In partial mode
+            # (allow_unassigned=True) a working camper with no room is
+            # intentionally left unassigned — that is the expected relaxation
+            # outcome, not a solver bug.  In full mode every camper must be
+            # placed, so this continue is a no-op (all are in person_to_bunk).
             if person_cm_id not in person_to_bunk:
                 continue
             # Restrict to resolved requests — pending/declined aren't part of the solver's scope.

@@ -1,9 +1,11 @@
 """Unit B Tasks 5–7: working-set reduction wired into DirectBunkingSolver (#1609).
+Unit E Task 12: MSO false-signal guard for intentionally-unassigned campers.
 
 Tests verify:
   Task 5 — solver builds its CP-SAT model from the REDUCED working set only
   Task 6 — frozen rosters are merged into the output + partial_resolve summary
   Task 7 — run-result stats are scored against the FULL merged board
+  Task 12 — mp_constraint_bug_signal stays 0 for unassigned campers in partial mode
 """
 
 from typing import Any, ClassVar
@@ -236,3 +238,67 @@ def test_partial_resolve_stats_attached_via_solve() -> None:
     assert "partial_resolve" in out.stats
     assert out.stats["partial_resolve"]["unassigned_count"] == 0  # all 16 placed
     assert out.stats["partial_resolve"]["cross_boundary_request_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 12: MSO false-signal guard — unassigned campers in partial mode
+# ---------------------------------------------------------------------------
+
+
+def test_mso_bug_signal_not_raised_for_unassigned_camper_in_partial_mode() -> None:
+    """mp_constraint_bug_signal must be 0 when a material-request camper is
+    intentionally left unassigned in partial mode (allow_unassigned=True).
+
+    This test calls _check_must_satisfy_one_violations directly with a
+    synthetic assignments list that omits the material-request camper — exactly
+    the situation that arises when the solver can't place a working camper.
+
+    The guard is the existing ``if person_cm_id not in person_to_bunk: continue``
+    at the top of the diagnostic loop (line ~1250 of direct_solver.py), which
+    already skips campers absent from the assignments list.  This test would
+    fail if that guard were removed.
+    """
+    # Two campers: cm_id=1 has a material bunk_with request for cm_id=2.
+    # cm_id=2 has no requests.
+    p1 = _person(1)
+    p2 = _person(2)
+    bunk = _bunk(3001)
+    r1 = DirectBunkRequest(
+        id="r-material-1",
+        requester_person_cm_id=1,
+        requested_person_cm_id=2,
+        request_type="bunk_with",
+        session_cm_id=DEFAULT_SESSION,
+        year=DEFAULT_YEAR,
+        source_field="bunk_request_form",  # classifies as MATERIAL_PARENT
+        status="resolved",
+    )
+    # Build a partial-mode input (allow_unassigned=True).
+    inp = DirectSolverInput(
+        persons=[p1, p2],
+        bunks=[bunk],
+        requests=[r1],
+        allow_unassigned=True,
+    )
+
+    with ConfigLoader.use(_ZeroPenaltyLoader()):  # type: ignore[arg-type]
+        solver = DirectBunkingSolver(inp, _make_cfg())
+
+    # Simulate: only p2 was placed; p1 (the material requester) was left unassigned.
+    from bunking.models_v2 import DirectBunkAssignment
+
+    only_p2_assigned = [
+        DirectBunkAssignment(
+            person_cm_id=2,
+            session_cm_id=DEFAULT_SESSION,
+            bunk_cm_id=3001,
+            year=DEFAULT_YEAR,
+        )
+    ]
+    solver._check_must_satisfy_one_violations(only_p2_assigned)
+
+    # The unassigned material-request camper (p1) must NOT trip the bug signal.
+    signal = solver.request_validation_summary.get("mp_constraint_bug_signal", 0)
+    assert signal == 0, (
+        f"mp_constraint_bug_signal={signal} — unassigned camper in partial mode should not count as a solver bug"
+    )
