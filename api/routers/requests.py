@@ -252,17 +252,17 @@ async def merge_requests(
             detail="All requests must be in the same session to merge",
         )
 
-    # Guard: a manual merge must not downgrade a hard not_bunk_with separation.
-    # Folding a HARD_MNT NBW (staff_not_bunk_with / manual) into a non-hard NBW
-    # (parent / notes) silently weakens an unconditional separation — mirror the
-    # auto-dedup partition (deduplicator.py) and refuse it here too.
+    # Guard: a hard staff/manual "do not bunk with" and a parent/notes "do not
+    # bunk with" for the same pair are kept as SEPARATE rows (mirrors the
+    # auto-dedup partition in deduplicator.py) so the hard separation is always
+    # preserved. Refuse a manual merge that would collapse them.
     if would_downgrade_hard_separation(requests_to_merge):
         raise HTTPException(
             status_code=400,
             detail=(
                 "Cannot merge a hard staff/manual 'do not bunk with' request with a "
-                "parent or notes request: merging would downgrade the hard separation. "
-                "Keep them as separate rows."
+                "parent or notes 'do not bunk with' for the same pair: they are kept "
+                "as separate rows to preserve the hard separation."
             ),
         )
 
