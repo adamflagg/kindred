@@ -354,6 +354,56 @@ def test_camper_satisfaction_threads_detail_for_unsatisfied_not_bunk_with() -> N
     assert result.per_request[0].detail == "Same bunk (conflict!)"
 
 
+class TestMaterialParentSuppression1672:
+    def test_coexisting_form_age_pref_suppressed_from_material(self) -> None:
+        """#1672/#1664: a form age_preference is material only as a sole form
+        request. With a coexisting form bunk_with it drops from the MATERIAL_PARENT
+        totals (counted as immaterial), and no longer masks the unsatisfied bunk_with.
+        Per-request statuses are untouched."""
+        bunk_with = _req("r1", "bunk_with", 1, 2, "bunk_request_form")
+        age_pref = _req(
+            "ap",
+            "age_preference",
+            1,
+            None,
+            "bunk_request_form",
+            requester_grade=5,
+            age_preference_target="older",
+        )
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[bunk_with, age_pref],
+            person_to_bunk={1: 100, 2: 101},  # bunk_with UNsatisfied
+            bunkmate_grades={1: [8]},  # older bunkmate -> age_pref satisfiable
+        )
+        mp = result.counted_totals[RequestBucket.MATERIAL_PARENT]
+        assert mp.total == 1  # age-pref suppressed (was 2)
+        assert mp.satisfied == 0  # only the unsatisfied bunk_with counts
+        # The unsatisfied sole material request now correctly trips the flag.
+        assert result.flags.parent_min_one_violation
+        # Per-request statuses untouched — both rows still reported.
+        assert len(result.per_request) == 2
+
+    def test_sole_form_age_pref_stays_material(self) -> None:
+        """A form age_preference with no coexisting real form request stays material."""
+        age_pref = _req(
+            "ap",
+            "age_preference",
+            1,
+            None,
+            "bunk_request_form",
+            requester_grade=5,
+            age_preference_target="older",
+        )
+        result = camper_satisfaction(
+            person_cm_id=1,
+            person_requests=[age_pref],
+            person_to_bunk={1: 100},
+            bunkmate_grades={1: [8]},
+        )
+        assert result.counted_totals[RequestBucket.MATERIAL_PARENT].total == 1
+
+
 def test_camper_satisfaction_malformed_request_has_none_detail() -> None:
     """Malformed rows logged as warning + treated as unsatisfied keep detail=None."""
     bad_age = {
