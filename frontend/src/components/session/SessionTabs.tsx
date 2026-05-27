@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { Home, Users, Link2, UsersRound, type LucideIcon } from 'lucide-react'
 import type { ValidTab } from '../../utils/sessionUtils'
+import SessionLastUploadChip from './SessionLastUploadChip'
 
 export interface TabItem {
   id: ValidTab
@@ -29,6 +30,9 @@ interface SessionTabsProps {
   camperCount: number
   requestCount: number
   canManage?: boolean
+  sessionCmId?: number
+  agSessionCmIds?: number[]
+  sessionName?: string
 }
 
 export default function SessionTabs({
@@ -37,6 +41,9 @@ export default function SessionTabs({
   camperCount,
   requestCount,
   canManage = true,
+  sessionCmId,
+  agSessionCmIds,
+  sessionName,
 }: SessionTabsProps) {
   const tabs = createTabs({ camperCount, requestCount }).filter(
     (tab) => tab.id !== 'requests' || canManage
@@ -44,7 +51,7 @@ export default function SessionTabs({
 
   return (
     <nav className="border-border/50 border-b py-2">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
@@ -62,6 +69,13 @@ export default function SessionTabs({
             </Link>
           )
         })}
+        {sessionName !== undefined && (
+          <SessionLastUploadChip
+            sessionCmId={sessionCmId}
+            agSessionCmIds={agSessionCmIds ?? []}
+            sessionName={sessionName}
+          />
+        )}
       </div>
     </nav>
   )
