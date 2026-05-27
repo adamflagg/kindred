@@ -1178,6 +1178,13 @@ class DirectBunkingSolver:
         # down and the metrics drift apart purely as bookkeeping artifacts.
         impossible_request_ids: set[str] = {item.request_id for item in self.impossibility_report.flat}
 
+        # #1669: parent_nbw_yields are intentionally co-placed (Stream C, #1667),
+        # so a yielded NBW must not read as an unmet material-parent request.
+        # Excluding them keeps mp_constraint_bug_signal a true "hard constraint
+        # failed to bind" alarm and stops mp_*_total inflation. Staff NBW yields
+        # classify as STAFF (never in material_request_ids), so no exclusion needed.
+        yielded_request_ids: set[str] = {y["nbw_request_id"] for y in self.parent_nbw_yields}
+
         for person_cm_id, requests in self.input.requests_by_person.items():
             if person_cm_id not in person_to_bunk:
                 continue
@@ -1190,7 +1197,9 @@ class DirectBunkingSolver:
             # below, which skips campers with >=1 satisfied request.
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
-            resolved_mp = [r for r in resolved_requests if r.id in self.material_request_ids]
+            resolved_mp = [
+                r for r in resolved_requests if r.id in self.material_request_ids and r.id not in yielded_request_ids
+            ]
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
             resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
 
@@ -1225,7 +1234,7 @@ class DirectBunkingSolver:
 
             resolved_possible = [r for r in self.possible_requests.get(person_cm_id, []) if r.status == "resolved"]
             resolved_possible_count[person_cm_id] = len(resolved_possible)
-            if any(r.id in self.material_request_ids for r in resolved_possible):
+            if any(r.id in self.material_request_ids and r.id not in yielded_request_ids for r in resolved_possible):
                 material_parent_unmet.append(person_cm_id)
             else:
                 other_unmet.append(person_cm_id)
