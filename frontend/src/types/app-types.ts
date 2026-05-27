@@ -219,6 +219,11 @@ export interface SolverRun {
         readonly impossible_requests: number
         readonly affected_campers: number
       }
+      // Partial re-solve summary — only present when cabins were locked (#1609)
+      readonly partial_resolve?: {
+        readonly unassigned_count: number
+        readonly cross_boundary_request_count: number
+      }
     }
   }
   readonly error_message?: string

@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import clsx from 'clsx'
-import { Network, Download, ArrowLeftRight } from 'lucide-react'
+import { Network, Download, ArrowLeftRight, Lock, LockOpen } from 'lucide-react'
 import type { BunkWithCampers, Camper } from '../types/app-types'
 import CamperCard from './CamperCard'
 import { useBunkRequestsFromContext } from '../hooks'
@@ -27,6 +27,10 @@ interface BunkCardProps {
   isProductionMode?: boolean
   defaultCapacity?: number
   activeDragCamper?: Camper | null
+  /** Whether this cabin is locked from re-solving */
+  isLocked?: boolean
+  /** Called when the lock/unlock button is clicked (only renders when provided) */
+  onToggleLock?: () => void
 }
 
 /**
@@ -89,6 +93,8 @@ function BunkCard({
   isProductionMode = false,
   defaultCapacity = 12,
   activeDragCamper = null,
+  isLocked = false,
+  onToggleLock,
 }: BunkCardProps) {
   const viewingYear = useYear()
 
@@ -298,7 +304,11 @@ function BunkCard({
         isOver && 'ring-primary bg-primary/5 ring-2',
         'hover:shadow-lodge-lg',
         (ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) &&
+          !isLocked &&
           'border-destructive/50 border-2',
+        // Locked cabin — amber ring + subtle tint
+        isLocked &&
+          'bg-amber-50/30 ring-2 ring-amber-400/70 dark:bg-amber-900/10 dark:ring-amber-500/60',
         // Disabled drop target styling - grey out invalid gender matches
         dropDisabled && activeDragCamper && 'pointer-events-none opacity-40'
       )}
@@ -312,9 +322,8 @@ function BunkCard({
         <div className="flex-1">
           <h3 className="flex items-center gap-2 text-lg font-semibold">
             {bunk.name}
-            {(ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) && (
-              <span className="text-sm text-red-600">⚠️</span>
-            )}
+            {(ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) &&
+              !isLocked && <span className="text-sm text-red-600">⚠️</span>}
           </h3>
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3 text-sm">
@@ -384,7 +393,7 @@ function BunkCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-1">
           {bunk.campers.length > 0 && (
             <button
               onClick={() => {
@@ -423,6 +432,21 @@ function BunkCard({
               title="View social network"
             >
               <Network className="h-5 w-5" />
+            </button>
+          )}
+          {onToggleLock && (
+            <button
+              onClick={onToggleLock}
+              className="btn-ghost p-2"
+              title={isLocked ? 'Unlock cabin' : 'Lock cabin'}
+              aria-label={isLocked ? 'Unlock cabin' : 'Lock cabin'}
+              aria-pressed={!!isLocked}
+            >
+              {isLocked ? (
+                <Lock className="h-4 w-4 text-amber-500" />
+              ) : (
+                <LockOpen className="h-4 w-4" />
+              )}
             </button>
           )}
         </div>
@@ -478,7 +502,7 @@ function BunkCard({
         gradeRatioWarning={gradeRatioWarning}
         tooManyGradesWarning={tooManyGradesWarning}
         capacity={defaultCapacity}
-        isLocked={false}
+        isLocked={isLocked}
       />
     </div>
   )

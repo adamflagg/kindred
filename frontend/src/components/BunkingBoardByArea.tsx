@@ -59,6 +59,14 @@ interface BunkingBoardByAreaProps {
   onCamperLockToggle?: (camperId: string, locked: boolean, reason?: string) => Promise<void>
   isProductionMode?: boolean
   defaultCapacity?: number
+  /** Set of bunk CM IDs that are locked for partial re-solve (#1609). */
+  lockedBunkCmIds?: ReadonlySet<number>
+  /** Toggle the lock state for a single bunk by its CM ID. */
+  onToggleBunkLock?: (cmId: number) => void
+  /** Lock all currently-visible bunks (unions the provided cm_ids into the set). */
+  onLockAll?: (cmIds: number[]) => void
+  /** Clear all locked bunks. */
+  onUnlockAll?: () => void
 }
 
 type BunkArea = 'boys' | 'girls' | 'all-gender'
@@ -72,6 +80,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
     onCamperMove,
     isProductionMode = false,
     defaultCapacity = DEFAULT_BUNK_CAPACITY,
+    lockedBunkCmIds,
+    onToggleBunkLock,
+    onLockAll,
+    onUnlockAll,
   } = props
   // props.sessionId and props.onAreaChange are available if needed later
   const [, setActiveId] = useState<string | null>(null)
@@ -660,6 +672,25 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
             .join(' ')}
           style={reflow.marginRightPx ? { marginRight: `${reflow.marginRightPx}px` } : undefined}
         >
+          {/* Lock all / Unlock all — visible only to managers in non-production mode */}
+          {canManage && !isProductionMode && onLockAll && onUnlockAll && (
+            <div className="mb-3 flex items-center gap-2">
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+                onClick={() => onLockAll(displayedBunks.map((b) => b.cm_id))}
+              >
+                Lock all
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+                onClick={() => onUnlockAll()}
+              >
+                Unlock all
+              </button>
+            </div>
+          )}
           {/* Bunks Grid - 4 columns, full width */}
           {displayedBunks.length === 0 ? (
             <div className="bg-card border-border rounded-xl border p-8 text-center">
@@ -691,6 +722,10 @@ export default function BunkingBoardByArea(props: BunkingBoardByAreaProps) {
                   onSwapClick={
                     canManage && !isProductionMode ? () => setSelectedBunkForSwap(bunk) : undefined
                   }
+                  isLocked={lockedBunkCmIds?.has(bunk.cm_id) ?? false}
+                  {...(canManage && !isProductionMode && onToggleBunkLock
+                    ? { onToggleLock: () => onToggleBunkLock(bunk.cm_id) }
+                    : {})}
                   isDragging={isDragging}
                   isProductionMode={isProductionMode}
                   defaultCapacity={defaultCapacity}

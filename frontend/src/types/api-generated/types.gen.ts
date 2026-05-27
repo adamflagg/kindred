@@ -5220,6 +5220,18 @@ export type SolverRequest = {
    * Whether to respect locked bunk assignments
    */
   respect_locks?: boolean
+  /**
+   * Locked Bunk Cm Ids
+   *
+   * Bunk CM IDs to freeze in place during a partial re-solve (#1609)
+   */
+  locked_bunk_cm_ids?: Array<number>
+  /**
+   * Allow Overflow
+   *
+   * Allow up to 13 per unlocked cabin during a partial re-solve (#1609)
+   */
+  allow_overflow?: boolean
 }
 
 /**

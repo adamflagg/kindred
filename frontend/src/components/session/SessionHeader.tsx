@@ -48,6 +48,14 @@ export interface SessionHeaderProps {
   respectLocks: boolean
   /** Callback when respectLocks toggle changes */
   onRespectLocksChange: (value: boolean) => void
+  /** Number of currently locked cabins (0 = full solve, >0 = partial re-solve) */
+  lockedCount?: number
+  /** Number of unlocked cabins that will be re-solved */
+  unlockedCount?: number
+  /** Whether to allow up to 13 campers per cabin during partial re-solve */
+  allowOverflow?: boolean
+  /** Callback when allowOverflow toggle changes */
+  onAllowOverflowChange?: (value: boolean) => void
   /** Show clear assignments dialog */
   onShowClearDialog: () => void
   /** Show new scenario modal */
@@ -75,6 +83,10 @@ export default function SessionHeader({
   onRunSolver,
   respectLocks,
   onRespectLocksChange,
+  lockedCount,
+  unlockedCount,
+  allowOverflow,
+  onAllowOverflowChange,
   onShowClearDialog,
   onShowNewScenarioModal,
   onShowScenarioManagement,
@@ -204,6 +216,10 @@ export default function SessionHeader({
                 onRunSolver={onRunSolver}
                 respectLocks={respectLocks}
                 onRespectLocksChange={onRespectLocksChange}
+                {...(lockedCount !== undefined && { lockedCount })}
+                {...(unlockedCount !== undefined && { unlockedCount })}
+                {...(allowOverflow !== undefined && { allowOverflow })}
+                {...(onAllowOverflowChange !== undefined && { onAllowOverflowChange })}
               />
             )}
             <ValidateBunkingButton

@@ -1,12 +1,17 @@
 """
 Cabin Capacity Constraint — enforce per-bunk hard capacity.
 
-Hard-only: the solver caps each bunk at ``DEFAULT_BUNK_CAPACITY``. The previous
-soft-mode path (graduated overflow penalties with an unavoidable-overflow
-exception) was deleted in Phase 2 — the user's policy is "solver never exceeds
-the standard; staff can manually drag up to ``MAX_BUNK_CAPACITY`` after the
-solver runs". The soft penalty path was never used in practice and was the
-"too flexible" failure mode that prompted the cleanup.
+Hard-only: the solver caps each bunk at ``DEFAULT_BUNK_CAPACITY`` (12) by
+default. One exception to the "solver never exceeds the standard" rule:
+
+1. **Partial re-solve overflow** (PR #1609): when ``allow_unassigned=True``
+   AND ``allow_overflow=True``, each bunk's cap is raised by one seat — to 13
+   for a standard 12-seat cabin, or ``capacity + 1`` for a smaller specialty
+   cabin. This lets the re-solver absorb a camper displaced from a previously
+   locked (now-removed) cabin without leaving them unassigned, while still
+   respecting any per-bunk capacity below the standard.
+2. **Staff drag-and-drop**: staff can manually move a camper to any bunk up to
+   ``MAX_BUNK_CAPACITY`` (14) in the assignments editor after a solve completes.
 
 If per-bunk variance is ever needed, ``DirectBunk.capacity`` is still the
 right per-bunk attribute — wire it up to a real PB column at that point.
@@ -23,16 +28,23 @@ logger = get_logger(__name__)
 def add_cabin_capacity_constraints(ctx: SolverContext) -> None:
     """Add hard capacity constraints for cabins.
 
-    Caps each bunk at ``min(bunk.capacity, DEFAULT_BUNK_CAPACITY)`` so a future
-    smaller per-bunk capacity (e.g., specialty cabin) is still respected, while
-    larger ``bunk.capacity`` values are clamped at the standard.
+    Caps each bunk at ``min(bunk.capacity, DEFAULT_BUNK_CAPACITY)`` (12) so a
+    future smaller per-bunk capacity (e.g., specialty cabin) is still respected,
+    while larger ``bunk.capacity`` values are clamped at the standard.
+
+    During a partial re-solve (``allow_unassigned=True``) with ``allow_overflow=True``,
+    the cap is raised by one seat above the per-bunk cap (13 for a standard 12-seat
+    cabin, ``capacity + 1`` for a smaller specialty cabin) to absorb a displaced camper.
 
     Args:
         ctx: Solver context with model, assignments, and mappings
     """
+    # Overflow only applies during a partial re-solve (allow_unassigned=True);
+    # allow_overflow alone is intentionally a no-op on a full solve.
+    overflow = ctx.input.allow_unassigned and ctx.input.allow_overflow
     for bunk_idx, bunk in enumerate(ctx.bunks):
         total = sum(ctx.assignments[(person_idx, bunk_idx)] for person_idx in range(len(ctx.person_ids)))
-        capacity = min(bunk.capacity, DEFAULT_BUNK_CAPACITY)
-        ctx.model.Add(total <= capacity)
+        cap = min(bunk.capacity, DEFAULT_BUNK_CAPACITY) + (1 if overflow else 0)
+        ctx.model.Add(total <= cap)
 
-    logger.info(f"Added hard cabin capacity constraints (cap: {DEFAULT_BUNK_CAPACITY})")
+    logger.info(f"Added hard cabin capacity constraints (overflow={overflow})")

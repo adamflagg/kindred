@@ -301,7 +301,9 @@ export const solverService = {
     scenarioId: string | null | undefined,
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     timeLimit: number = 60,
-    respectLocks: boolean = true
+    respectLocks: boolean = true,
+    lockedBunkCmIds: number[] = [],
+    allowOverflow: boolean = false
   ): Promise<SolverRunWithDiagnostics> {
     try {
       // Call solver API directly
@@ -317,6 +319,8 @@ export const solverService = {
           time_limit: timeLimit,
           scenario: scenarioId ?? null,
           respect_locks: respectLocks,
+          locked_bunk_cm_ids: lockedBunkCmIds,
+          allow_overflow: allowOverflow,
         }),
       })
 

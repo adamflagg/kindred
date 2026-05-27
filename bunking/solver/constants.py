@@ -1,9 +1,15 @@
 """Solver-domain hardcoded constants.
 
 Cabin capacity (PR #1226): collapsed from ``constraint.cabin_capacity.{standard,
-max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into the two
-constants below. None were ever tuned at runtime, and ``max_size`` was never
-backed by a real PB column.
+max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into
+``DEFAULT_BUNK_CAPACITY`` and ``MAX_BUNK_CAPACITY``. None were ever tuned at
+runtime, and ``max_size`` was never backed by a real PB column.
+``PARTIAL_PLACEMENT_BONUS`` (PR #1609) is a third constant in this group: a
+per-camper objective bonus applied only during partial re-solve to bias the
+solver toward placing free campers without changing which bunk they prefer
+relative to their own requests. During a partial re-solve with
+``allow_overflow=True``, unlocked bunks may reach ``DEFAULT_BUNK_CAPACITY + 1``
+(13) to absorb displaced campers.
 
 Cabin minimum occupancy (PR #1331): collapsed from
 ``constraint.cabin_minimum_occupancy.{enabled,min,preferred,force_all_used}``
@@ -45,10 +51,12 @@ DEFAULT_BUNK_CAPACITY = 12
 math and post-solve evaluator displays."""
 
 MAX_BUNK_CAPACITY = 14
-"""Absolute ceiling enforced by the staff drag-and-drop UI. Solver does not
-read this — it caps at ``DEFAULT_BUNK_CAPACITY``. Staff judgment calls to put
-a 13th or 14th camper in a cabin happen post-solve in the assignments
-editor."""
+"""Absolute ceiling enforced by the staff drag-and-drop UI. The solver normally
+caps at ``DEFAULT_BUNK_CAPACITY`` (12). Two paths can legitimately reach 13:
+(1) **partial re-solve with allow_overflow=True** (PR #1609) — the solver fills
+unlocked bunks to ``DEFAULT_BUNK_CAPACITY + 1`` to absorb displaced campers;
+(2) **staff drag-and-drop** — post-solve manual edits in the assignments editor.
+A 14th camper can only be added via staff drag-and-drop."""
 
 MIN_BUNK_OCCUPANCY = 8
 """Hard floor: a used (non-AG) bunk must have at least this many campers.
@@ -109,3 +117,12 @@ exceeds MAX_AGE_SPREAD_MONTHS. Not exposed as a config knob — fires only when 
 constraint (MSO, locked group) leaves no other option. Set above the typical soft-objective
 gains the solver would otherwise chase (bunk-with weights are in the hundreds to low
 thousands), so overflow never happens for non-structural reasons."""
+
+# Partial cabin re-solve (#1609): per-assigned-camper bonus applied ONLY in partial
+# mode so the relaxed `<= 1` cardinality places everyone there's room for instead of
+# leaving request-less campers unassigned. Applied uniformly to every camper, so it
+# biases toward placement without changing which bunk a camper prefers relative to
+# their own requests. Kept below the cabin under-fill penalty (~2000/spot, seeded in
+# constraint.cabin_minimum_occupancy.penalty) so placement never forces a bunk past
+# its soft floor, while still dominating the small per-camper soft penalties.
+PARTIAL_PLACEMENT_BONUS = 1000

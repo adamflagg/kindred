@@ -46,3 +46,7 @@ export {
   type UseSessionCampersOptions,
   type UseBunkRequestsCountOptions,
 } from './useSessionData'
+
+export { useLockedBunks, type UseLockedBunksResult } from './useLockedBunks'
+
+export { useResetPartialResolveOnSessionChange } from './useResetPartialResolveOnSessionChange'

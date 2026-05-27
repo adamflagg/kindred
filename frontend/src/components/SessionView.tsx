@@ -16,7 +16,10 @@ import {
   useSessionBunks,
   useSessionCampers,
   useBunkRequestsCount,
+  useLockedBunks,
+  useResetPartialResolveOnSessionChange,
 } from '../hooks/session'
+import { scopeLockedToBunks } from '../hooks/session/scopeLockedToBunks'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
 import SolverDiagnosticsModal from './SolverDiagnosticsModal'
 import type { SolverDiagnostics } from '../services/solver'
@@ -109,6 +112,46 @@ export default function SessionView() {
     localStorage.setItem('solver-respect-locks', String(value))
   }
 
+  // Ephemeral cabin-lock state for partial re-solve (#1609).
+  const { lockedBunkCmIds, toggleBunkLock, lockAll, unlockAll } = useLockedBunks()
+
+  // Ephemeral overflow opt-in — per-partial-resolve, not persisted.
+  const [allowOverflow, setAllowOverflow] = useState(false)
+
+  // Data fetching hooks — campers must be available before handleRunSolver
+  // so camperNameById (which depends on campers) can be used in the callback.
+  const { data: bunks = [] } = useSessionBunks({
+    selectedSession,
+    sessionCmId: session?.cm_id,
+    agSessions,
+    currentYear,
+  })
+
+  // Filtered locked set — only ids that exist in the current session's bunk
+  // list. Stale ids from a previously-viewed session (no remount → raw set
+  // survives) are silently dropped here so the solver always runs in full mode
+  // when switching sessions (#1609 fix #2). Also ensures lock/unlock counts
+  // match the visible bunk set under area filtering (#1609 fix #6).
+  // NOTE: per-card lock UI (isLocked, badges) still reads the raw set so
+  // individual card states are unaffected.
+  const filteredLockedBunkCmIds = useMemo(
+    () => scopeLockedToBunks(lockedBunkCmIds, bunks),
+    [lockedBunkCmIds, bunks]
+  )
+
+  // Derived locked/unlocked counts + array for solver and header display.
+  // All three are based on the filtered set so they stay consistent with each
+  // other and with what the solver actually receives.
+  const lockedBunkCmIdsArray = useMemo(
+    () => Array.from(filteredLockedBunkCmIds),
+    [filteredLockedBunkCmIds]
+  )
+  const lockedCount = filteredLockedBunkCmIds.size
+  const unlockedCount = useMemo(
+    () => bunks.filter((b) => !filteredLockedBunkCmIds.has(b.cm_id)).length,
+    [bunks, filteredLockedBunkCmIds]
+  )
+
   // Solver operations hook
   const {
     isSolving,
@@ -125,15 +168,10 @@ export default function SessionView() {
     autoApplyTimeout,
     fetchWithAuth,
     respectLocks,
-  })
-
-  // Data fetching hooks — campers must be available before handleRunSolver
-  // so camperNameById (which depends on campers) can be used in the callback.
-  const { data: bunks = [] } = useSessionBunks({
-    selectedSession,
-    sessionCmId: session?.cm_id,
-    agSessions,
-    currentYear,
+    lockedBunkCmIds: lockedBunkCmIdsArray,
+    // Suppress overflow when nothing is locked in scope: stale-session locks
+    // would otherwise keep allowOverflow=true for a full (not partial) solve.
+    allowOverflow: lockedCount > 0 ? allowOverflow : false,
   })
 
   const { data: campers = [] } = useSessionCampers({
@@ -216,6 +254,10 @@ export default function SessionView() {
       setLockGroupSessionPbId(session.id)
     }
   }, [session?.id, setLockGroupSessionPbId])
+
+  // Partial-resolve lock state is per-session; clear it when the session changes so
+  // stale locks/overflow never leak into a different session's solve (#1609).
+  useResetPartialResolveOnSessionChange(selectedSession, unlockAll, setAllowOverflow)
 
   // #1310 — feed in-session campers into RequestReviewPanel as the seed for
   // its personMap. The panel only needs cm_id + first/last name + grade for
@@ -326,6 +368,10 @@ export default function SessionView() {
         onRunSolver={handleRunSolver}
         respectLocks={respectLocks}
         onRespectLocksChange={handleRespectLocksChange}
+        lockedCount={lockedCount}
+        unlockedCount={unlockedCount}
+        allowOverflow={allowOverflow}
+        onAllowOverflowChange={setAllowOverflow}
         onShowClearDialog={() => setShowClearDialog(true)}
         onShowNewScenarioModal={() => setShowNewScenarioModal(true)}
         onShowScenarioManagement={() => setShowScenarioManagementModal(true)}
@@ -378,6 +424,10 @@ export default function SessionView() {
                 }}
                 isProductionMode={isProductionMode}
                 defaultCapacity={defaultBunkCapacity}
+                lockedBunkCmIds={lockedBunkCmIds}
+                onToggleBunkLock={toggleBunkLock}
+                onLockAll={lockAll}
+                onUnlockAll={unlockAll}
               />
             </CamperHistoryProvider>
           </BunkRequestProvider>

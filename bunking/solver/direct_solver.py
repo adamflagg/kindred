@@ -28,10 +28,12 @@ from bunking.sync.bunk_request_processor.core.models import RequestType
 from campminder.client import get_current_season
 
 from .callbacks import BestBoundCallback, SolverProgressCallback
+from .constants import DEFAULT_BUNK_CAPACITY, PARTIAL_PLACEMENT_BONUS
 from .constraints.age_grade_flow import add_age_grade_flow_objective
 from .constraints.age_spread import add_age_spread_constraints
 from .constraints.base import SolverContext
 from .constraints.bunk_requests import get_or_create_request_sat_var
+from .constraints.cabin_capacity import add_cabin_capacity_constraints
 from .constraints.cabin_occupancy import (
     add_cabin_minimum_occupancy_constraints,
     add_cabin_minimum_occupancy_soft_penalty,
@@ -55,6 +57,7 @@ from .observability import (
     _build_stats_dict,
     _count_constraint_types,
 )
+from .working_set import reduce_to_working_set
 
 if TYPE_CHECKING:
     from bunking.solver.impossibility import ImpossibilityReport
@@ -115,7 +118,11 @@ class DirectBunkingSolver:
         mp_skip_cms: set[int] | None = None,
         impossibility_report: ImpossibilityReport | None = None,
     ):
-        self.input = input_data
+        self._full_input = input_data
+        _reduction = reduce_to_working_set(input_data)
+        self.input = _reduction.reduced_input
+        self._frozen_assignments = _reduction.frozen_assignments
+        self._cross_boundary_request_ids = _reduction.cross_boundary_request_ids
         self.config = config_service
         self.model = cp_model.CpModel()
         self.debug_constraints = debug_constraints or {}  # Dict of constraint names to disable
@@ -431,13 +438,19 @@ class DirectBunkingSolver:
         """Add all constraints to the model."""
         # 1. Each person assigned to exactly one bunk
         if not self.debug_constraints.get("assignment", False):
+            partial = self.input.allow_unassigned
             self.constraint_logger.log_constraint(
-                "hard", "assignment", f"Each of {len(self.person_ids)} campers must be assigned to exactly one bunk"
+                "hard",
+                "assignment",
+                f"Each of {len(self.person_ids)} campers must be assigned to "
+                + ("at most one bunk (partial re-solve)" if partial else "exactly one bunk"),
             )
             for person_idx in range(len(self.person_ids)):
-                self.model.Add(
-                    sum(self.assignments[(person_idx, bunk_idx)] for bunk_idx in range(len(self.bunks))) == 1
-                )
+                total = sum(self.assignments[(person_idx, bunk_idx)] for bunk_idx in range(len(self.bunks)))
+                if partial:
+                    self.model.Add(total <= 1)  # partial re-solve: a camper may stay unassigned
+                else:
+                    self.model.Add(total == 1)
         else:
             logger.warning("DEBUG: Assignment constraints DISABLED")
 
@@ -457,16 +470,8 @@ class DirectBunkingSolver:
         else:
             logger.warning("DEBUG: Session boundary constraints DISABLED")
 
-        # 3. Bunk capacity constraints — hard cap at bunk.capacity (always 12
-        # via DEFAULT_BUNK_CAPACITY today; future per-bunk variance lives here).
-        self.constraint_logger.log_constraint(
-            "hard", "cabin_capacity", f"Cabin capacity constraints for {len(self.bunks)} bunks"
-        )
-        for bunk_idx, bunk in enumerate(self.bunks):
-            self.model.Add(
-                sum(self.assignments[(person_idx, bunk_idx)] for person_idx in range(len(self.person_ids)))
-                <= bunk.capacity
-            )
+        # 3. Bunk capacity — delegated to the module so overflow/locked logic lives in one place.
+        add_cabin_capacity_constraints(self._build_solver_context())
 
         # 3.5. Minimum occupancy constraint for non-AG bunks
         # Staff never put fewer than ~8 campers in a cabin
@@ -688,6 +693,13 @@ class DirectBunkingSolver:
         for bonus_var, bonus in self.soft_constraint_bonuses.values():
             objective_terms.append(bonus * bonus_var)
 
+        # Partial cabin re-solve (#1609): reward placing each camper so the relaxed
+        # `<= 1` cardinality doesn't leave request-less campers unassigned when there's room.
+        if self.input.allow_unassigned:
+            for person_idx in range(len(self.person_ids)):
+                is_assigned = sum(self.assignments[(person_idx, b)] for b in range(len(self.bunks)))
+                objective_terms.append(PARTIAL_PLACEMENT_BONUS * is_assigned)
+
         # Maximize objective
         self.model.Maximize(sum(objective_terms))
 
@@ -705,27 +717,47 @@ class DirectBunkingSolver:
     def _solve_single_bunk_session(self) -> DirectSolverOutput:
         """Simplified solving for single-bunk sessions (like AG sessions).
 
-        For sessions with only one bunk, we simply assign all enrolled campers
+        For sessions with only one bunk, we assign every gender-compatible camper
         to that bunk. No complex constraints needed.
         """
         bunk = self.bunks[0]
         bunk_cm_id = bunk.campminder_id
-        over_capacity = len(self.person_ids) > bunk.capacity
+
+        # Gender safety: a genuine AG/Mixed single-bunk session accepts everyone, but a
+        # partial re-solve (#1609) can collapse the working set to a single *gendered*
+        # unlocked bunk. Never place a gender-incompatible camper there — leave them
+        # unassigned (the partial summary surfaces them), mirroring the gender hard
+        # constraint on the multi-bunk path. Campers with no gender data fit any bunk,
+        # matching add_gender_constraints.
+        def _gender_compatible(cm_id: int) -> bool:
+            if bunk.gender in ("AG", "Mixed"):
+                return True
+            person_gender = self.input.person_by_cm_id[cm_id].gender
+            return not person_gender or person_gender == bunk.gender
+
+        assignable = [cm for cm in self.person_ids if _gender_compatible(cm)]
+        skipped = len(self.person_ids) - len(assignable)
+        over_capacity = len(assignable) > bunk.capacity
 
         logger.info(f"Single-bunk session: {bunk.name} (capacity: {bunk.capacity})")
-        logger.info(f"Campers to assign: {len(self.person_ids)}")
+        logger.info(f"Campers to assign: {len(assignable)}")
+        if skipped:
+            logger.warning(
+                f"Single-bunk session {bunk.name} ({bunk.gender}): leaving "
+                f"{skipped} gender-incompatible camper(s) unassigned"
+            )
 
         # Check if we have too many campers for the bunk
         if over_capacity:
-            logger.warning(f"WARNING: {len(self.person_ids)} campers but only {bunk.capacity} spots!")
+            logger.warning(f"WARNING: {len(assignable)} campers but only {bunk.capacity} spots!")
             logger.warning("This will be infeasible, but continuing anyway...")
 
         # Get configured year from CampMinder settings
         year = get_current_season()
 
-        # Create assignments - everyone goes to the single bunk
+        # Create assignments - every gender-compatible camper goes to the single bunk
         assignments = []
-        for person_cm_id in self.person_ids:
+        for person_cm_id in assignable:
             person = self.input.person_by_cm_id[person_cm_id]
             assignments.append(
                 DirectBunkAssignment(
@@ -733,13 +765,19 @@ class DirectBunkingSolver:
                 )
             )
 
+        # Merge frozen locked rosters back in (#1609): the working set may be a
+        # single bunk even after reduction; frozen occupants must still appear.
+        assignments.extend(self._frozen_assignments)
+
         # Use the shared helper so single-bunk satisfied_requests carry real
         # PocketBase request IDs (matching the multi-bunk path) rather than
         # synthetic 'bunk_with:<cm_id>' strings the frontend can't look up,
         # and so all request types — NOT_BUNK_WITH, AGE_PREFERENCE, etc. —
         # are evaluated, not just BUNK_WITH.
+        # Score the full merged board against the FULL request set (#1609) so
+        # locked-cabin requests (e.g. bunk_with for frozen pairs) are counted.
         satisfied_requests = satisfied_request_ids_by_person(
-            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+            assignments, self._full_input.requests_by_person, self._full_input.person_by_cm_id
         )
 
         # Log results
@@ -760,9 +798,12 @@ class DirectBunkingSolver:
             "status_code": int(cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL),
             "objective_value": None,
             "solve_time": 0.0,
-            "total_persons": len(self.person_ids),
-            "total_bunks": len(self.bunks),
-            "total_requests": len(self.input.requests),
+            # Reported display counts use the full merged board (#1609); the
+            # working-set model size (len(self.person_ids)/bunks) is captured
+            # separately by over_capacity above and the CP-SAT proto fields.
+            "total_persons": len(self._full_input.persons),
+            "total_bunks": len(self._full_input.bunks),
+            "total_requests": len(self._full_input.requests),
             "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
             # CP-SAT-only fields are None, not absent — keeps frontend
             # `stats?.foo` lookups consistent (always null, never undefined).
@@ -791,7 +832,7 @@ class DirectBunkingSolver:
             "soft_constraints_by_module": single_bunk_fires,
             "soft_constraint_penalty_by_module": single_bunk_penalties,
             "request_density_histogram_by_bucket": _build_request_density_histogram_by_bucket(
-                self.input.requests_by_person
+                self._full_input.requests_by_person
             ),
             # Tier 2 observability (Stream 2, Phase 2) — single-bunk path has
             # no CP-SAT solve, so trajectories are empty and derived scalars
@@ -816,11 +857,33 @@ class DirectBunkingSolver:
         self._check_must_satisfy_one_violations(assignments)
         stats["request_validation"] = self.request_validation_summary
 
+        # Partial cabin re-solve (#1609): emit completion summary on single-bunk path too.
+        if self.input.allow_unassigned:
+            stats["partial_resolve"] = self._partial_resolve_summary({a.person_cm_id for a in assignments})
+
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
             stats=stats,
         )
+
+    def _partial_resolve_summary(self, placed_cms: set[int]) -> dict[str, Any]:
+        """Completion-summary for a partial cabin re-solve (#1609).
+
+        Computed over the FULL merged board: campers in the full input not present
+        in ``placed_cms`` are reported as unassigned (the apply step uses the id list
+        to delete their stale assignments), and cross-boundary positive requests are
+        carried through from the working-set reduction.
+        """
+        unassigned = [
+            p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
+        ]
+        return {
+            "unassigned_count": len(unassigned),
+            "unassigned_person_cm_ids": unassigned,
+            "cross_boundary_request_count": len(self._cross_boundary_request_ids),
+            "cross_boundary_request_ids": self._cross_boundary_request_ids,
+        }
 
     def solve(self, time_limit_seconds: int = 60) -> DirectSolverOutput | None:
         """Solve the bunking problem."""
@@ -949,9 +1012,16 @@ class DirectBunkingSolver:
                     )
                     break
 
-        # Calculate satisfied requests
+        # Merge frozen locked rosters back in (#1609): the model only solved the
+        # working set; locked occupants keep their pinned cabin.
+        assignments.extend(self._frozen_assignments)
+
+        # Score the full merged board against the FULL request set (#1609).
+        # self.input contains only the working-set requests (frozen persons removed);
+        # using _full_input here ensures locked-cabin requests (e.g. a bunk_with
+        # whose both parties are frozen together) are counted as satisfied.
         satisfied_requests = satisfied_request_ids_by_person(
-            assignments, self.input.requests_by_person, self.input.person_by_cm_id
+            assignments, self._full_input.requests_by_person, self._full_input.person_by_cm_id
         )
 
         # Check constraint violations in final solution
@@ -959,15 +1029,16 @@ class DirectBunkingSolver:
 
         # Save logs to file if we have a session ID
         log_file_path = None
-        if self.input.requests and len(self.input.requests) > 0:
-            session_id = self.input.requests[0].session_cm_id
+        if self._full_input.requests:
+            session_id = self._full_input.requests[0].session_cm_id
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
         # Material-only counts for user-facing stats (Group 65 #1539).
         # Immaterial requests (socialize_with) still ran through the solver but
         # are excluded from the reported aggregates.
-        material_requests = [r for r in self.input.requests if is_counted_request(r)]
-        request_by_id = {r.id: r for r in self.input.requests}
+        # Score against the full request board so locked-cabin satisfactions count.
+        material_requests = [r for r in self._full_input.requests if is_counted_request(r)]
+        request_by_id = {r.id: r for r in self._full_input.requests}
         satisfied_material_count = sum(
             1
             for req_ids in satisfied_requests.values()
@@ -982,18 +1053,26 @@ class DirectBunkingSolver:
             model_proto=self.model.Proto(),
             time_limit_seconds=time_limit_seconds,
             num_workers=num_workers,
-            num_persons=len(self.person_ids),
-            num_bunks=len(self.bunks),
+            # Reported display counts use the full merged board (#1609); CP-SAT
+            # model size is captured by the model_proto fields inside _build_stats_dict.
+            num_persons=len(self._full_input.persons),
+            num_bunks=len(self._full_input.bunks),
             num_requests=len(material_requests),
             satisfied_count=satisfied_material_count,
             soft_constraint_violations=self.soft_constraint_violations,
-            requests_by_person=self.input.requests_by_person,
+            requests_by_person=self._full_input.requests_by_person,
             objective_trajectory=callback.objective_trajectory,
             bound_trajectory=bound_cb.bound_trajectory,
             bound_trajectory_truncated=bound_cb.truncated,
             objective_trajectory_truncated=callback.truncated,
         )
         stats["request_validation"] = self.request_validation_summary
+
+        # Partial cabin re-solve (#1609): completion-summary counts for the toast.
+        # Keyed off allow_unassigned (set on the original input); after reduction
+        # self.input.locked_bunks is {}, so the old locked_bunks gate is gone.
+        if self.input.allow_unassigned:
+            stats["partial_resolve"] = self._partial_resolve_summary({a.person_cm_id for a in assignments})
 
         return DirectSolverOutput(
             assignments=assignments,
@@ -1032,17 +1111,24 @@ class DirectBunkingSolver:
             bunk_to_persons[bunk_cm_id].append(person_cm_id)
 
         # 1. Check cabin capacity violations
+        # Cabin capacity — the solver only placed the working (unlocked) set; the
+        # effective cap matches cabin_capacity.py exactly. Frozen (locked) bunks were
+        # removed from self.bunks, so skip any assignment row pointing at one.
+        overflow = self.input.allow_unassigned and self.input.allow_overflow
         capacity_violations = 0
         for bunk_cm_id, person_cm_ids in bunk_to_persons.items():
+            if bunk_cm_id not in self.bunk_idx_map:
+                continue  # frozen/locked bunk — staff-frozen, not the solver's responsibility
             bunk_idx = self.bunk_idx_map[bunk_cm_id]
             bunk = self.bunks[bunk_idx]
             occupancy = len(person_cm_ids)
+            effective_cap = min(bunk.capacity, DEFAULT_BUNK_CAPACITY) + (1 if overflow else 0)
 
-            if occupancy > bunk.capacity:
+            if occupancy > effective_cap:
                 capacity_violations += 1
                 self.constraint_logger.log_violation(
                     "cabin_capacity",
-                    f"Cabin {bunk.name} is OVER capacity: {occupancy}/{bunk.capacity} (+{occupancy - bunk.capacity})",
+                    f"Cabin {bunk.name} is OVER capacity: {occupancy}/{effective_cap} (+{occupancy - effective_cap})",
                     severity="error",
                 )
 
@@ -1052,12 +1138,14 @@ class DirectBunkingSolver:
         # 2. Check gender constraint violations
         gender_violations = 0
         for bunk_cm_id, person_cm_ids in bunk_to_persons.items():
+            if bunk_cm_id not in self.bunk_idx_map:
+                continue  # frozen/locked bunk — skip, same reason as capacity check above
             bunk_idx = self.bunk_idx_map[bunk_cm_id]
             bunk = self.bunks[bunk_idx]
 
             if bunk.gender and bunk.gender not in ["Mixed", "AG"]:
                 for person_cm_id in person_cm_ids:
-                    person = self.input.person_by_cm_id[person_cm_id]
+                    person = self._full_input.person_by_cm_id[person_cm_id]
                     if person.gender and person.gender != bunk.gender:
                         gender_violations += 1
                         self.constraint_logger.log_violation(
@@ -1186,6 +1274,11 @@ class DirectBunkingSolver:
         yielded_request_ids: set[str] = {y["nbw_request_id"] for y in self.parent_nbw_yields}
 
         for person_cm_id, requests in self.input.requests_by_person.items():
+            # Skip campers the solver did not place.  In partial mode
+            # (allow_unassigned=True) a working camper with no room is
+            # intentionally left unassigned — that is the expected relaxation
+            # outcome, not a solver bug.  In full mode every camper must be
+            # placed, so this continue is a no-op (all are in person_to_bunk).
             if person_cm_id not in person_to_bunk:
                 continue
             # Restrict to resolved requests — pending/declined aren't part of the solver's scope.

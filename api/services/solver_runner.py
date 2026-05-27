@@ -90,6 +90,24 @@ async def resolve_session_relation(pb: PocketBase, session_cm_id: int, year: int
     return str(rec.id)
 
 
+def resolve_locked_bunk_occupants(
+    locked_bunk_cm_ids: list[int], assignments: list[tuple[int, int]]
+) -> dict[int, list[int]]:
+    """Map each locked bunk cm_id to the person cm_ids currently assigned to it.
+
+    Pure: builds the freeze map for partial cabin re-solve (#1609) from the current
+    board state (``assignments`` = (person_cm_id, bunk_cm_id) pairs). A locked bunk with
+    no current occupants maps to an empty list — it stays frozen (admits no one), and a
+    non-empty ``locked_bunks`` is what switches the solver into partial-resolve mode.
+    """
+    locked = set(locked_bunk_cm_ids)
+    result: dict[int, list[int]] = {bunk_cm_id: [] for bunk_cm_id in locked_bunk_cm_ids}
+    for person_cm_id, bunk_cm_id in assignments:
+        if bunk_cm_id in locked:
+            result[bunk_cm_id].append(person_cm_id)
+    return result
+
+
 async def run_solver_task_v2(
     run_id: str,
     session_cm_id: int,
@@ -99,6 +117,8 @@ async def run_solver_task_v2(
     debug_constraints: dict[str, Any] | None = None,
     config_overrides: dict[str, Any] | None = None,
     respect_locks: bool = True,
+    locked_bunk_cm_ids: list[int] | None = None,
+    allow_overflow: bool = False,
     scenario_name: str | None = None,
     sweep_id: str | None = None,
     sweep_label: str | None = None,
@@ -178,6 +198,15 @@ async def run_solver_task_v2(
                 pb_client=task_pb,
             )
             solver_input.lock_groups_data = lock_groups
+
+        # Partial cabin re-solve (#1609): freeze the selected cabins' current rosters.
+        # Resolve occupants from existing_assignments BEFORE any respect_locks clearing so
+        # the cabin lock is independent of the friend-group toggle.
+        if locked_bunk_cm_ids:
+            assignment_pairs = [(a.person_cm_id, a.bunk_cm_id) for a in solver_input.existing_assignments]
+            solver_input.locked_bunks = resolve_locked_bunk_occupants(locked_bunk_cm_ids, assignment_pairs)
+            solver_input.allow_overflow = allow_overflow
+        solver_input.allow_unassigned = bool(solver_input.locked_bunks)
 
         # If respect_locks is disabled, clear existing assignments and group locks
         # so the solver is free to reassign all campers from scratch
