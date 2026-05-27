@@ -322,12 +322,6 @@ function BunkCard({
         <div className="flex-1">
           <h3 className="flex items-center gap-2 text-lg font-semibold">
             {bunk.name}
-            {isLocked && (
-              <span className="badge badge-warning badge-sm gap-1">
-                <Lock className="h-3 w-3" />
-                locked
-              </span>
-            )}
             {(ageGapWarning || gradeRatioWarning || tooManyGradesWarning || isOverCapacity) &&
               !isLocked && <span className="text-sm text-red-600">⚠️</span>}
           </h3>

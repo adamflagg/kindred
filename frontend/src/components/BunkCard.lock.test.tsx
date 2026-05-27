@@ -139,7 +139,7 @@ describe('BunkCard cabin lock toggle', () => {
     expect(btn.getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('renders the locked-card visual indicator (header badge) when isLocked=true', () => {
+  it('does NOT render a "locked" badge text when isLocked=true (padlock toggle is sufficient visual)', () => {
     render(
       <BunkCard
         bunk={fakeBunk}
@@ -150,7 +150,9 @@ describe('BunkCard cabin lock toggle', () => {
         activeDragCamper={null}
       />
     )
-    expect(screen.getByText(/locked/i)).toBeInTheDocument()
+    // Badge text "locked" should be gone; lock-toggle button still present via aria-label
+    expect(screen.queryByText(/^locked$/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /unlock cabin/i })).toBeInTheDocument()
   })
 
   it('does NOT render a lock button when onToggleLock is not provided', () => {
