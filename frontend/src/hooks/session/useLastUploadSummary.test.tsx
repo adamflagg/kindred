@@ -3,7 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 
-vi.mock('../useApiWithAuth', () => ({ useApiWithAuth: () => ({ fetchWithAuth: vi.fn() }) }))
+const auth = vi.hoisted(() => ({ isAuthLoading: false }))
+vi.mock('../useApiWithAuth', () => ({
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthLoading: auth.isAuthLoading }),
+}))
 vi.mock('../../services/csvPipelineStatus', async () => {
   const actual = await vi.importActual<typeof import('../../services/csvPipelineStatus')>(
     '../../services/csvPipelineStatus'
@@ -28,9 +31,27 @@ const mockRun = (v: unknown) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  auth.isAuthLoading = false
 })
 
 describe('useLastUploadSummary', () => {
+  it('does not fetch while auth is still loading (frontend/CLAUDE.md auth gate)', async () => {
+    auth.isAuthLoading = true
+    mockRun({
+      run_id: 'r1',
+      created: 't',
+      status_breakdown: { resolved: 5, pending: 0, declined: 0 },
+      session_breakdown: { '1000001': { resolved: 5, pending: 0, declined: 0 } },
+    })
+    const { result } = renderHook(() => useLastUploadSummary(1000001, []), {
+      wrapper: makeWrapper(),
+    })
+    // Let any (incorrectly) enabled query microtask flush.
+    await Promise.resolve()
+    expect(fetchLatestUploadRun).not.toHaveBeenCalled()
+    expect(result.current.runId).toBeNull()
+  })
+
   it('returns all-null while data is loading / no run returned', async () => {
     mockRun(null)
     const { result } = renderHook(() => useLastUploadSummary(1000001, []), {

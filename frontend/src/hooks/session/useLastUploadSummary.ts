@@ -28,11 +28,12 @@ export function useLastUploadSummary(
   sessionCmId: number | undefined,
   agSessionCmIds: number[] = []
 ): LastUploadSummary {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
   const { data } = useQuery({
     queryKey: queryKeys.lastUploadSummary(),
     queryFn: () => fetchLatestUploadRun(fetchWithAuth),
     staleTime: 30_000,
+    enabled: !isAuthLoading,
   })
 
   if (!data) return { runId: null, finishedAt: null, global: null, session: null }

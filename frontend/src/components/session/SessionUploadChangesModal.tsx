@@ -25,7 +25,7 @@ export default function SessionUploadChangesModal({
   sessionName,
   onClose,
 }: Props) {
-  const { fetchWithAuth } = useApiWithAuth()
+  const { fetchWithAuth, isAuthLoading } = useApiWithAuth()
 
   const {
     data: rows = [],
@@ -34,6 +34,7 @@ export default function SessionUploadChangesModal({
   } = useQuery({
     queryKey: queryKeys.sessionUploadChanges(runId, sessionCmIds),
     queryFn: () => fetchSessionUploadChanges(runId, sessionCmIds, fetchWithAuth),
+    enabled: !isAuthLoading,
   })
 
   const byCamper = new Map<number, { name: string; rows: UploadChangeRow[] }>()

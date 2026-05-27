@@ -600,6 +600,49 @@ describe('fetchLatestUploadRun', () => {
     })
     expect(await fetchLatestUploadRun(fetchWithAuth)).toBeNull()
   })
+
+  it('drops malformed session_breakdown slices so counts never go NaN downstream', async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'r1',
+            created: 't',
+            status_breakdown: { resolved: 9, pending: 2, declined: 0 },
+            session_breakdown: {
+              '1000001': { resolved: 8, pending: 2, declined: 0 }, // valid
+              '1000002': { resolved: 'x', pending: 1, declined: 0 }, // malformed slice
+            },
+          },
+        ],
+      }),
+    })
+    const run = await fetchLatestUploadRun(fetchWithAuth)
+    expect(run?.session_breakdown).toEqual({
+      '1000001': { resolved: 8, pending: 2, declined: 0 },
+    })
+  })
+
+  it('preserves a well-formed session_breakdown unchanged', async () => {
+    const fetchWithAuth = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            run_id: 'r1',
+            created: 't',
+            status_breakdown: { resolved: 5, pending: 1, declined: 0 },
+            session_breakdown: { '1000001': { resolved: 5, pending: 1, declined: 0 } },
+          },
+        ],
+      }),
+    })
+    const run = await fetchLatestUploadRun(fetchWithAuth)
+    expect(run?.session_breakdown).toEqual({
+      '1000001': { resolved: 5, pending: 1, declined: 0 },
+    })
+  })
 })
 
 describe('derivePhase with production status_breakdown shape', () => {

@@ -1,10 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 
+const auth = vi.hoisted(() => ({ isAuthLoading: false }))
 vi.mock('../../hooks/useApiWithAuth', () => ({
-  useApiWithAuth: () => ({ fetchWithAuth: vi.fn() }),
+  useApiWithAuth: () => ({ fetchWithAuth: vi.fn(), isAuthLoading: auth.isAuthLoading }),
 }))
 vi.mock('../../services/sessionUploadChanges', () => ({ fetchSessionUploadChanges: vi.fn() }))
 import { fetchSessionUploadChanges } from '../../services/sessionUploadChanges'
@@ -16,7 +17,28 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 const mock = (rows: unknown) =>
   (fetchSessionUploadChanges as ReturnType<typeof vi.fn>).mockResolvedValue(rows)
 
+beforeEach(() => {
+  vi.clearAllMocks()
+  auth.isAuthLoading = false
+})
+
 describe('SessionUploadChangesModal', () => {
+  it('does not fetch while auth is still loading (frontend/CLAUDE.md auth gate)', async () => {
+    auth.isAuthLoading = true
+    mock([])
+    render(
+      <SessionUploadChangesModal
+        runId="r1"
+        sessionCmIds={[1000001]}
+        sessionName="Session 2"
+        onClose={() => {}}
+      />,
+      { wrapper }
+    )
+    await Promise.resolve()
+    expect(fetchSessionUploadChanges).not.toHaveBeenCalled()
+  })
+
   it('groups by camper and sorts needs-review first', async () => {
     mock([
       {

@@ -87,8 +87,10 @@ export const queryKeys = {
   syncStatusForService: (service: string) => ['sync-status', service] as const,
   csvPipelineStatus: () => ['csv-pipeline-status'] as const,
   lastUploadSummary: () => ['lastUploadSummary'] as const,
+  // sessionCmIds is sorted so cache identity is stable regardless of the
+  // caller's [sessionCmId, ...agSessionCmIds] order (matches cohortBunkAssignments).
   sessionUploadChanges: (runId: string, sessionCmIds: number[]) =>
-    ['sessionUploadChanges', runId, sessionCmIds] as const,
+    ['sessionUploadChanges', runId, sessionCmIds.toSorted((a, b) => a - b)] as const,
 
   // Users (Tier 2 - user data)
   users: () => ['users'] as const,

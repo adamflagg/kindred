@@ -120,3 +120,22 @@ describe('queryKeys.postCheck', () => {
     expect(full.slice(0, prefix.length)).toEqual([...prefix])
   })
 })
+
+describe('queryKeys.sessionUploadChanges', () => {
+  // Mirrors cohortBunkAssignments / campersForSession: array key segments are
+  // sorted so cache identity is stable regardless of caller-supplied order
+  // ([sessionCmId, ...agSessionCmIds] order can vary as AG links change).
+  it('is order-independent: same ids in different order produce equal keys', () => {
+    const a = queryKeys.sessionUploadChanges('r1', [1000001, 1000099])
+    const b = queryKeys.sessionUploadChanges('r1', [1000099, 1000001])
+    expect(a).toEqual(b)
+  })
+
+  it('pins the key shape: [sessionUploadChanges, runId, sortedIds]', () => {
+    expect(queryKeys.sessionUploadChanges('r1', [1000099, 1000001])).toEqual([
+      'sessionUploadChanges',
+      'r1',
+      [1000001, 1000099],
+    ])
+  })
+})

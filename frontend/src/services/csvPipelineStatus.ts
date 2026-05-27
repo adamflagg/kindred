@@ -219,8 +219,33 @@ type RawDebugListResponse = {
       pending?: unknown
       declined?: unknown
     }
-    session_breakdown?: Record<string, { resolved: number; pending: number; declined: number }>
+    // PB returns the JSON field as-is, so slice fields are validated at runtime
+    // (mirrors status_breakdown above) rather than trusted from the type.
+    session_breakdown?: Record<
+      string,
+      { resolved?: unknown; pending?: unknown; declined?: unknown }
+    >
   }>
+}
+
+// Keep only well-formed slices so a malformed entry can't propagate NaN into
+// the per-session counts that countsFromStatusBreakdown sums downstream.
+function sanitizeSessionBreakdown(
+  raw: RawDebugListResponse['items'][number]['session_breakdown']
+): DebugPipelineRun['session_breakdown'] {
+  if (!raw) return undefined
+  const out: Record<string, { resolved: number; pending: number; declined: number }> = {}
+  for (const [key, slice] of Object.entries(raw)) {
+    if (
+      slice &&
+      typeof slice.resolved === 'number' &&
+      typeof slice.pending === 'number' &&
+      typeof slice.declined === 'number'
+    ) {
+      out[key] = { resolved: slice.resolved, pending: slice.pending, declined: slice.declined }
+    }
+  }
+  return out
 }
 
 export async function fetchLatestDebugRun(
@@ -272,5 +297,12 @@ export async function fetchLatestUploadRun(
   ) {
     return null
   }
-  return first as DebugPipelineRun
+  const run: DebugPipelineRun = {
+    run_id: first.run_id,
+    created: first.created,
+    status_breakdown: { resolved: sb.resolved, pending: sb.pending, declined: sb.declined },
+  }
+  const sessionBreakdown = sanitizeSessionBreakdown(first.session_breakdown)
+  if (sessionBreakdown) run.session_breakdown = sessionBreakdown
+  return run
 }
