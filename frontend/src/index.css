@@ -751,10 +751,6 @@
     animation: slideUp 0.5s ease-out;
   }
 
-  .animate-slide-down {
-    animation: slideDown 0.5s ease-out;
-  }
-
   .animate-scale-in {
     animation: scaleIn 0.3s ease-out;
   }
@@ -784,17 +780,6 @@
     from {
       opacity: 0;
       transform: translateY(16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-16px);
     }
     to {
       opacity: 1;
@@ -1227,63 +1212,6 @@
   /* Columns: checkbox+expand | requester | request | type | confidence | status | actions */
   grid-template-columns: 64px 240px 260px 160px 100px 140px 120px;
   min-width: 1084px;
-}
-
-/* Mobile card layout for request review panel */
-@media (max-width: 767px) {
-  .request-card-mobile {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto auto;
-    gap: 0.5rem;
-    padding: 1rem;
-    border-bottom: 1px solid hsl(var(--border));
-    align-items: start;
-  }
-
-  .request-card-mobile .card-checkbox {
-    grid-row: 1 / 3;
-    align-self: center;
-    padding-top: 0.25rem;
-  }
-
-  .request-card-mobile .card-main {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .request-card-mobile .card-badges {
-    grid-column: 3;
-    grid-row: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 0.25rem;
-  }
-
-  .request-card-mobile .card-request {
-    grid-column: 2 / 4;
-    grid-row: 2;
-  }
-
-  .request-card-mobile .card-actions {
-    grid-column: 1 / 4;
-    grid-row: 3;
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.25rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid hsl(var(--border) / 0.5);
-    margin-top: 0.25rem;
-  }
-
-  .request-card-mobile .card-actions button {
-    min-width: 44px;
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 }
 
 /* ============================================

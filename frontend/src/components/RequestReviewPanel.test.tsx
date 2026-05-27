@@ -9,7 +9,7 @@
  * 2. Clickable requester name feature (opens CamperDetailsPanel)
  * 3. Filter and sort functionality
  */
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, within } from '@testing-library/react'
@@ -1330,19 +1330,17 @@ describe('RequestReviewPanel', () => {
    * decline, the just-processed row MUST collapse.
    */
   describe('Row collapse after approve/decline (feedback #11)', () => {
-    // Expand a request row by ID. Uses data-testid attributes to locate the
-    // clickable mobile row element and the expanded content block.
+    // Expand a request row by ID. Clicks the row container (desktop layout) and
+    // waits for the expanded content block to appear.
     async function expandRowById(requestId: string) {
       const rowContainers = await waitFor(() => {
         const found = document.querySelectorAll(`[data-request-row-id="${requestId}"]`)
         if (found.length === 0) throw new Error('row not yet rendered')
         return found
       })
-      const mobileRow = rowContainers[0]?.querySelector(
-        '[data-testid="request-card-mobile"]'
-      ) as HTMLElement
-      expect(mobileRow).toBeTruthy()
-      fireEvent.click(mobileRow)
+      const rowContainer = rowContainers[0] as HTMLElement
+      expect(rowContainer).toBeTruthy()
+      fireEvent.click(rowContainer)
       await waitFor(() => {
         expect(
           rowContainers[0]?.querySelector('[data-testid="request-row-expanded-content"]')
@@ -1455,9 +1453,7 @@ describe('RequestReviewPanel', () => {
         if (found.length === 0) throw new Error('row A not yet rendered')
         return found
       })
-      const mobileRowA = rowAContainers[0]?.querySelector(
-        '[data-testid="request-card-mobile"]'
-      ) as HTMLElement
+      const mobileRowA = rowAContainers[0] as HTMLElement
       expect(mobileRowA).toBeTruthy()
       fireEvent.click(mobileRowA)
 
@@ -1474,9 +1470,7 @@ describe('RequestReviewPanel', () => {
         if (found.length === 0) throw new Error('row B not yet rendered')
         return found
       })
-      const mobileRowB = rowBContainers[0]?.querySelector(
-        '[data-testid="request-card-mobile"]'
-      ) as HTMLElement
+      const mobileRowB = rowBContainers[0] as HTMLElement
       expect(mobileRowB).toBeTruthy()
       fireEvent.click(mobileRowB)
 
@@ -2257,10 +2251,9 @@ describe('RequestReviewPanel', () => {
       expect(Comp.$$typeof).toBe(Symbol.for('react.memo'))
     })
 
-    it('exports a React.memo-wrapped RequestRowMobile', async () => {
-      const mod = await import('./RequestRowMobile')
-      const Comp = mod.default as { $$typeof?: symbol }
-      expect(Comp.$$typeof).toBe(Symbol.for('react.memo'))
+    it('no longer ships a separate mobile row component (#1611)', () => {
+      const mobileRowPath = resolve(__dirname, 'RequestRowMobile.tsx')
+      expect(existsSync(mobileRowPath)).toBe(false)
     })
   })
 })

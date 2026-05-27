@@ -11,8 +11,6 @@ import {
   User,
   Home,
   ChevronDown,
-  Menu,
-  X,
   Sun,
   Moon,
   Clock,
@@ -67,7 +65,6 @@ export const AppLayout = () => {
   const { hasPermission, isAdmin } = usePermissions()
   const canAccessManage = MANAGE_TABS.some((tab) => hasPermission(tab.requiredPermission))
   const { fetchWithAuth } = useApiWithAuth()
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isProgramMenuOpen, setIsProgramMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const currentYear = useYear()
@@ -130,7 +127,6 @@ export const AppLayout = () => {
 
   const handleLogout = () => {
     setIsUserMenuOpen(false)
-    setIsMobileMenuOpen(false)
     logout()
     void navigate('/login')
   }
@@ -164,15 +160,6 @@ export const AppLayout = () => {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 justify-between">
             <div className="flex items-center gap-2 sm:gap-4">
-              {/* Mobile menu button */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="rounded-xl p-2 text-white/70 transition-all hover:bg-white/10 hover:text-white sm:hidden"
-                aria-label="Toggle navigation menu"
-              >
-                {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
-
               {/* Logo with subtle white outline for visibility on dark nav */}
               <Link
                 to={
@@ -203,7 +190,7 @@ export const AppLayout = () => {
                     return (
                       <>
                         <Icon className={`h-4 w-4 ${active.triggerColorClass}`} />
-                        <span className="hidden sm:inline">{active.label}</span>
+                        <span>{active.label}</span>
                       </>
                     )
                   })()}
@@ -246,7 +233,7 @@ export const AppLayout = () => {
               </div>
 
               {/* Desktop navigation */}
-              <div className="hidden sm:flex sm:gap-1">
+              <div className="flex gap-1">
                 {activeProgram === 'summer' && (
                   <Link
                     to="/summer/sessions"
@@ -303,7 +290,7 @@ export const AppLayout = () => {
             </div>
 
             {/* Right side items */}
-            <div className="hidden items-center gap-2 sm:flex">
+            <div className="flex items-center gap-2">
               {/* User Menu Dropdown */}
               {isAuthenticated && user && (
                 <div className="relative" ref={userMenuRef}>
@@ -444,257 +431,10 @@ export const AppLayout = () => {
             </div>
           </div>
         </div>
-
-        {/* Mobile menu */}
-        {isMobileMenuOpen && (
-          <div className="border-border/50 bg-card animate-slide-down border-t sm:hidden">
-            <div className="space-y-4 px-4 py-4">
-              {/* Program Switcher for Mobile */}
-              <div className="space-y-2">
-                <p className="text-muted-foreground px-1 text-xs font-semibold tracking-wider uppercase">
-                  Program
-                </p>
-                <div className="flex gap-2">
-                  {PROGRAM_BUTTONS.map((btn) => {
-                    const Icon = btn.icon
-                    return (
-                      <button
-                        key={btn.program}
-                        onClick={() => handleProgramSwitch(btn.program)}
-                        className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                          activeProgram === btn.program
-                            ? btn.mobileActiveClass
-                            : btn.mobileInactiveClass
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                        {btn.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* User Profile - Mobile */}
-              {isAuthenticated && user && (
-                <div className="border-border/50 border-t pt-4">
-                  <Link
-                    to="/user"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="bg-muted/30 hover:bg-muted/50 flex items-center gap-3 rounded-xl px-3 py-3 transition-colors"
-                  >
-                    <div className="bg-primary/10 border-primary/20 flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border">
-                      {user['avatar'] ? (
-                        <img
-                          src={pb.files.getURL(user, user['avatar'])}
-                          alt={(user['name'] ?? user['email']) as string}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <User className="text-primary h-5 w-5" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-foreground truncate font-semibold">
-                        {/* eslint-disable @typescript-eslint/prefer-nullish-coalescing -- intentional || for display name fallback on empty string */}
-                        {(user['name'] as string) ||
-                          (user['email'] as string).split('@')[0] ||
-                          'User'}
-                        {/* eslint-enable @typescript-eslint/prefer-nullish-coalescing */}
-                      </p>
-                      <p className="text-muted-foreground truncate text-xs">{user['email']}</p>
-                    </div>
-                    <Settings className="text-muted-foreground h-4 w-4" />
-                  </Link>
-                </div>
-              )}
-
-              {/* Navigation Items */}
-              <div className="space-y-1">
-                {activeProgram === 'summer' && (
-                  <Link
-                    to="/summer/sessions"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/session')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Sessions
-                  </Link>
-                )}
-                {activeProgram === 'analytics' && (
-                  <Link
-                    to="/analytics"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/analytics')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Dashboard
-                  </Link>
-                )}
-                <Link
-                  to="/campers"
-                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                    isActiveRoute('/camper')
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground hover:bg-muted/50'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  Campers
-                </Link>
-                <Link
-                  to="/users"
-                  className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                    isActiveRoute('/users')
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-foreground hover:bg-muted/50'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  Users
-                </Link>
-                {canAccessManage && (
-                  <Link
-                    to="/manage"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/manage')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Manage
-                  </Link>
-                )}
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/admin')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Admin
-                  </Link>
-                )}
-                {activeProgram === 'summer' && isAdmin && (
-                  <Link
-                    to="/summer/debug"
-                    className={`block rounded-xl px-4 py-3 text-base font-semibold transition-all ${
-                      isActiveRoute('/debug')
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-foreground hover:bg-muted/50'
-                    }`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Debug
-                  </Link>
-                )}
-              </div>
-
-              {/* Mobile-only utilities */}
-              <div className="border-border/50 space-y-3 border-t pt-4">
-                {/* Help & Feedback - Mobile */}
-                <div className="space-y-1">
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false)
-                      setIsFeedbackOpen(true)
-                    }}
-                    className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-semibold transition-colors"
-                  >
-                    <MessageSquareWarning className="h-4 w-4" />
-                    Report a Problem
-                  </button>
-                  {tourId && (
-                    <button
-                      onClick={() => {
-                        setIsMobileMenuOpen(false)
-                        replay()
-                      }}
-                      className="hover:bg-muted/50 text-foreground flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-base font-semibold transition-colors"
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                      Tour This Page
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground text-sm font-medium">Theme</span>
-                  <button
-                    onClick={toggleTheme}
-                    className="btn-ghost flex items-center gap-2 px-3 py-2 text-sm"
-                  >
-                    {theme === 'dark' ? (
-                      <>
-                        <Sun className="h-4 w-4" />
-                        Light
-                      </>
-                    ) : (
-                      <>
-                        <Moon className="h-4 w-4" />
-                        Dark
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <YearSelector />
-
-                {/* Summer-only: Bunking controls (manage permission required) */}
-                {activeProgram === 'summer' && hasPermission(Permission.BUNKING_MANAGE) && (
-                  <>
-                    <CsvPipelineIndicator />
-                    <BunkRequestsUpload />
-                    <button
-                      onClick={() => {
-                        toast(`Refreshing bunks & assignments for ${currentYear}...`, {
-                          icon: '🔄',
-                          duration: 2000,
-                        })
-                        refreshBunkingMutation.mutate()
-                        setIsMobileMenuOpen(false)
-                      }}
-                      disabled={refreshBunkingMutation.isPending}
-                      className="btn-primary w-full"
-                    >
-                      {refreshBunkingMutation.isPending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      <span>Refresh Bunking</span>
-                    </button>
-                  </>
-                )}
-
-                {/* Sign Out - Mobile */}
-                {isAuthenticated && (
-                  <button
-                    onClick={handleLogout}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-base font-semibold text-red-600 transition-all hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign Out
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </nav>
 
-      {/* Secondary Navigation Bar - Desktop only */}
-      <div className="bg-muted/20 border-border/30 hidden border-b sm:block">
+      {/* Secondary Navigation Bar */}
+      <div className="bg-muted/20 border-border/30 border-b">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
             {/* Left side: Year context + sync status (summer only) */}

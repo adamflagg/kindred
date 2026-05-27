@@ -128,17 +128,9 @@ describe('Program Switcher', () => {
     expect(screen.getByText('Camp Analytics')).toBeInTheDocument()
   })
 
-  it('renders all program labels in the mobile menu', () => {
+  it('no longer renders a mobile hamburger toggle (#1611)', () => {
     renderAppLayout()
-    // Open mobile menu via hamburger button
-    const menuButton = screen.getByLabelText('Toggle navigation menu')
-    fireEvent.click(menuButton)
-
-    // Mobile buttons use short labels
-    const summerButtons = screen.getAllByText('Summer')
-    expect(summerButtons.length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Weekend')).toBeInTheDocument()
-    expect(screen.getByText('Analytics')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Toggle navigation menu')).toBeNull()
   })
 
   it('renders Switch Programs button in desktop dropdown', () => {

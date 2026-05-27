@@ -18,8 +18,6 @@ describe('PROGRAM_BUTTONS config', () => {
       'triggerColorClass',
       'activeClass',
       'inactiveClass',
-      'mobileActiveClass',
-      'mobileInactiveClass',
     ] as const
 
     for (const btn of PROGRAM_BUTTONS) {
