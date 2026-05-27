@@ -1562,5 +1562,44 @@ class TestFamilyParamountTiebreak:
         assert source_from_field(dropped[0].source_field) == "staff"
 
 
+class TestNotBunkWithHardSeparationPartition:
+    """NBW dedup must not fold a HARD_MNT (staff_not_bunk_with/manual) row into a
+    non-hard (parent/notes) row — that silently downgrades an unconditional
+    separation. See 2026-05-27-nbw-hard-separation-dedup-guard spec."""
+
+    @pytest.fixture
+    def deduplicator(self):
+        return Deduplicator(Mock())
+
+    def _nbw(self, source_field: str, confidence: float = 0.9) -> BunkRequest:
+        return BunkRequest(
+            requester_cm_id=100,
+            requested_cm_id=200,
+            request_type=RequestType.NOT_BUNK_WITH,
+            session_cm_id=1000002,
+            is_first_requested=False,
+            confidence_score=confidence,
+            source_field=source_field,
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.RESOLVED,
+            metadata={},
+        )
+
+    def test_parent_and_staff_nbw_kept_separate(self, deduplicator):
+        result = deduplicator.deduplicate_batch(
+            [
+                self._nbw(SourceField.BUNK_REQUEST_FORM, confidence=0.95),
+                self._nbw(SourceField.STAFF_NOT_BUNK_WITH, confidence=0.80),
+            ]
+        )
+        assert len(result.kept_requests) == 2, (
+            f"parent + staff_not_bunk_with NBW must stay separate, got {len(result.kept_requests)}"
+        )
+        kept_fields = {r.source_field for r in result.kept_requests}
+        assert SourceField.STAFF_NOT_BUNK_WITH in kept_fields, "hard staff row must survive"
+        assert SourceField.BUNK_REQUEST_FORM in kept_fields, "parent row must survive"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

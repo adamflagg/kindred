@@ -146,11 +146,31 @@ class Deduplicator:
                 # Note: The DB unique constraint DOES include source_field. This in-batch
                 # dedup intentionally excludes it to merge cross-field duplicates before
                 # saving.
+                #
+                # NBW exception: a HARD_MNT separation (staff_not_bunk_with / manual) must
+                # NOT merge into a non-hard NBW (parent bunk_request_form = HARD_MSO, notes
+                # = SOFT) — display-priority would pick the parent source and silently
+                # downgrade the unconditional separation. Partition NBW dedup by hardness so
+                # the hard row survives independently. Hard rows still merge with each other
+                # (same "hard_mnt" slot); everything else merges as before.
+                #
+                # Late import to avoid circular dependency:
+                #   bunking.satisfaction.request_registry
+                #     → bunking.sync.bunk_request_processor.core.models
+                #     → bunking.sync.bunk_request_processor (package __init__)
+                #     → bunking.sync.bunk_request_processor.processing.deduplicator
+                from bunking.satisfaction.request_registry import is_hard_separation  # noqa: PLC0415
+
+                source_slot = ""
+                if request.request_type == RequestType.NOT_BUNK_WITH and is_hard_separation(
+                    request.source_field, request.request_type.value
+                ):
+                    source_slot = "hard_mnt"
                 key = (
                     request.requester_cm_id,
                     request.requested_cm_id,
                     request.request_type,
-                    "",  # Empty string placeholder to maintain tuple structure
+                    source_slot,
                     request.year,
                     request.session_cm_id,
                 )
