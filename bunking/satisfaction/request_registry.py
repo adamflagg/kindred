@@ -164,7 +164,9 @@ def report_group_for(source_field: str) -> RequestBucket:
 
 
 def rule_for(source_field: str, request_type: str) -> SolverRule:
-    """Solver rule for a combo. SCAFFOLD — no consumer reads this yet."""
+    """Solver rule for a combo. Consumed via `is_hard_separation` by the
+    dedup partition (`deduplicator.py`) and the merge guard
+    (`would_downgrade_hard_separation`)."""
     return classify(source_field, request_type).rule
 
 

@@ -18,6 +18,10 @@ logger = get_logger(__name__)
 # Materiality model: admin authority / material parent intent > staff exclusion >
 # staff observation > immaterial parent input. Higher number = higher priority.
 # confidence_score breaks ties within rank.
+# NBW exception: this table does NOT decide hard vs. soft not_bunk_with merges —
+# those are partitioned by hardness before the tiebreak (see the "hard_mnt" slot
+# in deduplicate_batch), so a parent BUNK_REQUEST_FORM never absorbs a hard
+# STAFF_NOT_BUNK_WITH for the same pair despite outranking it here.
 SOURCE_FIELD_PRIORITY = {
     SourceField.MANUAL: 4,  # admin-UI staff entry (tied with bunk_with — both top-tier positive intent)
     SourceField.BUNK_REQUEST_FORM: 4,  # material parent
@@ -83,8 +87,10 @@ class DuplicateGroup:
 
     primary: BunkRequest
     duplicates: list[BunkRequest]
-    # Key: (requester_cm_id, requested_cm_id, request_type, source_field, year, session_cm_id)
-    # source_field is always "" — cross-field deduplication is intentional
+    # Key: (requester_cm_id, requested_cm_id, request_type, source_slot, year, session_cm_id)
+    # source_slot is "" for cross-field deduplication (intentional), except hard
+    # not_bunk_with rows (staff/manual) use "hard_mnt" to stay partitioned — see
+    # deduplicate_batch.
     duplicate_key: tuple[int, int | None, RequestType, str, int, int]
 
 
