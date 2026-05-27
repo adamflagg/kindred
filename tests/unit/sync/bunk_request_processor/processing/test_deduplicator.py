@@ -547,13 +547,15 @@ class TestSimplifiedSourcePriority:
         return Deduplicator()
 
     def test_family_over_staff_tiebreaker(self):
-        """Test that bunk_with (material parent, rank 4) outranks not_bunk_with
-        (staff exclusion, rank 3) in dedup tiebreak (#1142 materiality model).
+        """NBW hard-separation partition: parent bunk_request_form NBW and
+        staff_not_bunk_with NBW for the same pair stay SEPARATE (not merged).
 
-        When same (requester, requestee, type, session, year) appears in both
-        bunk_with and not_bunk_with source_fields, bunk_with wins — material
-        parent intent is the highest-rank source_field. Test name preserved
-        for CI stability; original rationale was FAMILY > STAFF (#1088).
+        Before the 2026-05-27 fix this test asserted 1 kept row (the bug:
+        staff HARD_MNT was silently downgraded to parent HARD_MSO). The fix
+        partitions dedup by hardness so both rows survive independently.
+
+        Test name preserved for CI stability; original rationale was FAMILY > STAFF (#1088).
+        Cross-source merge still applies to other request types (bunk_with, etc.).
         """
         family_request = BunkRequest(
             requester_cm_id=12345,
@@ -586,11 +588,12 @@ class TestSimplifiedSourcePriority:
         deduplicator = Deduplicator()
         result = deduplicator.deduplicate_batch([family_request, staff_request])
 
-        # Family wins even with staff having a different source_field (source > confidence)
-        assert len(result.kept_requests) == 1
-        assert source_from_field(result.kept_requests[0].source_field) == "family"
-        assert result.kept_requests[0].source_field == "bunk_request_form"
-        assert result.statistics["duplicates_removed"] == 1
+        # Both survive: hard staff separation must not be downgraded to parent's HARD_MSO.
+        assert len(result.kept_requests) == 2
+        kept_fields = {r.source_field for r in result.kept_requests}
+        assert SourceField.STAFF_NOT_BUNK_WITH in kept_fields
+        assert "bunk_request_form" in kept_fields
+        assert result.statistics["duplicates_removed"] == 0
 
     def test_confidence_tiebreaker_same_source(self):
         """Test that confidence is tiebreaker when sources are equal.
@@ -1599,6 +1602,59 @@ class TestNotBunkWithHardSeparationPartition:
         kept_fields = {r.source_field for r in result.kept_requests}
         assert SourceField.STAFF_NOT_BUNK_WITH in kept_fields, "hard staff row must survive"
         assert SourceField.BUNK_REQUEST_FORM in kept_fields, "parent row must survive"
+
+    def test_manual_and_parent_nbw_kept_separate(self, deduplicator):
+        result = deduplicator.deduplicate_batch(
+            [
+                self._nbw(SourceField.BUNK_REQUEST_FORM, confidence=0.95),
+                self._nbw(SourceField.MANUAL, confidence=0.80),
+            ]
+        )
+        assert len(result.kept_requests) == 2
+        kept_fields = {r.source_field for r in result.kept_requests}
+        assert SourceField.MANUAL in kept_fields
+        assert SourceField.BUNK_REQUEST_FORM in kept_fields
+
+    def test_parent_and_notes_nbw_still_merge(self, deduplicator):
+        result = deduplicator.deduplicate_batch(
+            [
+                self._nbw(SourceField.BUNK_REQUEST_FORM, confidence=0.95),
+                self._nbw(SourceField.BUNKING_NOTES, confidence=0.80),
+            ]
+        )
+        assert len(result.kept_requests) == 1, "parent + soft note NBW must still merge"
+        assert result.kept_requests[0].source_field == SourceField.BUNK_REQUEST_FORM
+
+    def test_two_staff_nbw_still_merge(self, deduplicator):
+        result = deduplicator.deduplicate_batch(
+            [
+                self._nbw(SourceField.STAFF_NOT_BUNK_WITH, confidence=0.90),
+                self._nbw(SourceField.STAFF_NOT_BUNK_WITH, confidence=0.70),
+            ]
+        )
+        assert len(result.kept_requests) == 1
+        assert result.kept_requests[0].source_field == SourceField.STAFF_NOT_BUNK_WITH
+
+    def test_bunk_with_cross_source_unchanged(self, deduplicator):
+        def _bw(source_field: str, confidence: float) -> BunkRequest:
+            return BunkRequest(
+                requester_cm_id=100,
+                requested_cm_id=200,
+                request_type=RequestType.BUNK_WITH,
+                session_cm_id=1000002,
+                is_first_requested=False,
+                confidence_score=confidence,
+                source_field=source_field,
+                csv_position=0,
+                year=2025,
+                status=RequestStatus.RESOLVED,
+                metadata={},
+            )
+
+        result = deduplicator.deduplicate_batch(
+            [_bw(SourceField.BUNK_REQUEST_FORM, 0.95), _bw(SourceField.BUNKING_NOTES, 0.80)]
+        )
+        assert len(result.kept_requests) == 1
 
 
 if __name__ == "__main__":
