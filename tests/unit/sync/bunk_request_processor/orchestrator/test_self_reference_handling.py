@@ -29,6 +29,9 @@ from bunking.sync.bunk_request_processor.core.models import (
     RequestStatus,
     RequestType,
 )
+from bunking.sync.bunk_request_processor.orchestrator.orchestrator import (
+    generate_unresolved_person_id,
+)
 
 
 def _create_mock_pocketbase():
@@ -335,15 +338,14 @@ class TestFirstNameAmbiguityHandling:
         pb = _create_mock_pocketbase()
         orchestrator = RequestOrchestrator(pb=pb, year=2025)
 
-        # Simulate a first-name-only unresolvable request
+        # Simulate a first-name-only unresolvable request, production-faithfully (#1683):
+        # a named-but-unresolved request gets a deterministic negative-hash id from
+        # generate_unresolved_person_id — NOT None (only AGE_PREFERENCE gets None). The
+        # raw-name self-reference path must treat that truthy negative id as unresolved.
         requests = [
             _create_bunk_request(
                 requester_cm_id=100,
-                # requested_cm_id=None drives the raw-name self-reference path directly.
-                # In production an unresolved *named* request gets a negative-hash id
-                # (not None), which currently bypasses that check — see #1683. None is
-                # used here intentionally to exercise the first-name-ambiguity detection.
-                requested_cm_id=None,
+                requested_cm_id=generate_unresolved_person_id("Emma"),
                 metadata={
                     "raw_target_name": "Emma",  # First name only
                     "requester_first_name": "Emma",

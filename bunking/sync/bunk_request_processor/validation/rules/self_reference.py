@@ -45,8 +45,11 @@ class SelfReferenceRule(ValidationRule):
                 return result
 
         # For requests with no resolved target person,
-        # check if the raw target name matches requester's name
-        if not request.requested_cm_id and "raw_target_name" in request.metadata:
+        # check if the raw target name matches requester's name.
+        # Unresolved targets carry either None (age preferences) or a negative-hash
+        # id (named-but-unresolved, via generate_unresolved_person_id) — both mean
+        # "no real CM ID", so treat id < 0 as unresolved (#1683).
+        if (request.requested_cm_id is None or request.requested_cm_id < 0) and "raw_target_name" in request.metadata:
             raw_name = request.metadata.get("raw_target_name", "").strip().lower()
             requester_name = request.metadata.get("requester_full_name", "").strip().lower()
 
