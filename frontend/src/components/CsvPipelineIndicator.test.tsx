@@ -80,7 +80,7 @@ describe('CsvPipelineIndicator', () => {
     expect(screen.getByText(/Matching CSV requests/i)).toBeInTheDocument()
   })
 
-  it('renders done state with mapped counts', () => {
+  it('renders done state with compact chip summary', () => {
     setData({
       phase: 'done',
       runId: 'r1',
@@ -88,9 +88,11 @@ describe('CsvPipelineIndicator', () => {
       counts: { total: 28, autoMatched: 22, needReview: 6 },
     })
     render(<CsvPipelineIndicator />)
-    expect(
-      screen.getByText(/Done .*: 28 new or updated requests, 22 auto-matched, 6 need review/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Import complete/i)).toBeInTheDocument()
+    expect(screen.queryByText(/new or updated requests,/i)).not.toBeInTheDocument()
+    const chip = screen.getByText(/Import complete/i)
+    expect(chip).toHaveTextContent(/28 new/i)
+    expect(chip).toHaveTextContent(/6 review/i)
   })
 
   it('omits "need review" from button label when needReview is zero', () => {
@@ -101,10 +103,8 @@ describe('CsvPipelineIndicator', () => {
       counts: { total: 22, autoMatched: 22, needReview: 0 },
     })
     render(<CsvPipelineIndicator />)
-    expect(
-      screen.getByText(/Done .*: 22 new or updated requests, 22 auto-matched$/)
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/need review/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Import complete/i)).toBeInTheDocument()
+    expect(screen.queryByText(/review/i)).not.toBeInTheDocument()
   })
 
   it('omits "need review" from completion toast when needReview is zero', () => {
@@ -192,7 +192,7 @@ describe('CsvPipelineIndicator', () => {
       counts: { total: 1, autoMatched: 1, needReview: 0 },
     })
     render(<CsvPipelineIndicator />)
-    expect(screen.getByText(/Done .*: 1 new or updated request/)).toBeInTheDocument()
+    expect(screen.getByText(/Import complete/i)).toBeInTheDocument()
   })
 
   it('clicking × stores current runId in dismissed-key and hides indicator', () => {
