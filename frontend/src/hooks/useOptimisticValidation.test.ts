@@ -30,7 +30,6 @@ function createMockRequest(overrides: Partial<BunkRequestsResponse> = {}): BunkR
     source_field: 'share_bunk_with',
     status: 'pending',
     year: 2025,
-    is_placeholder: false,
     metadata: {},
     ...overrides,
   } as BunkRequestsResponse

@@ -58,7 +58,6 @@ function createMergedMockRequest(
     source_fields: ['share_bunk_with', 'bunking_notes'], // Multiple sources
     status: 'pending',
     year: 2025,
-    is_placeholder: false,
     metadata: {
       merged_from: ['req_original_1', 'req_original_2'],
     },

@@ -32,7 +32,6 @@ export const BunkRequestsRecordSchema = z.object({
   conflict_group_id: z.string().optional(),
   csv_position: z.number().optional(),
   is_active: z.boolean().optional(),
-  is_placeholder: z.boolean().optional(),
   is_reciprocal: z.boolean().optional(),
   keywords_found: nullableJson(z.array(z.string())),
   manual_review_reason: z.string().optional(),
