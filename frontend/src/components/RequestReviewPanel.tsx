@@ -37,7 +37,6 @@ import {
   MUTUAL_BADGE_CLASSES,
 } from '../utils/dispositionColors'
 import RequestRowDesktop from './RequestRowDesktop'
-import RequestRowMobile from './RequestRowMobile'
 import CreateRequestModal from './CreateRequestModal'
 import CamperDetailsPanel from './CamperDetailsPanel'
 import { CamperRequestSummary } from './CamperRequestSummary'
@@ -1027,7 +1026,7 @@ export default function RequestReviewPanel({
         {/* Request List */}
         <div className="overflow-hidden">
           {/* Table Header - Desktop only */}
-          <div className="bg-forest-50/40 dark:bg-forest-900/40 border-border sticky top-0 z-10 hidden border-b md:block">
+          <div className="bg-forest-50/40 dark:bg-forest-900/40 border-border sticky top-0 z-10 border-b">
             <div className="request-table-grid">
               <div className="flex items-center gap-2 px-3 py-3">
                 <input
@@ -1116,22 +1115,6 @@ export default function RequestReviewPanel({
             </div>
           </div>
 
-          {/* Mobile Header */}
-          <div className="bg-forest-50/40 dark:bg-forest-900/40 border-border flex items-center justify-between border-b px-4 py-3 md:hidden">
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={
-                  selectedRequests.size === sortedRequests.length && sortedRequests.length > 0
-                }
-                onChange={toggleAllSelection}
-                className="h-5 w-5 rounded"
-              />
-              <span className="text-sm font-medium">Select All</span>
-            </div>
-            <span className="text-muted-foreground text-sm">{sortedRequests.length} requests</span>
-          </div>
-
           {/* Table Body */}
           <div
             ref={scrollContainerRef}
@@ -1151,93 +1134,8 @@ export default function RequestReviewPanel({
               </div>
             ) : (
               <>
-                {/* Mobile Card Layout */}
-                <div className="pb-[100px] md:hidden">
-                  {sortedRequests.map((request) => {
-                    const requester = personMap.get(request.requester_id)
-                    const requestee =
-                      request.requestee_id > 0 ? personMap.get(request.requestee_id) : undefined
-                    const isExpanded = expandedRows.has(request.id)
-                    const rowHasMultipleSources = hasMultipleSources(request)
-
-                    return (
-                      <div
-                        key={request.id}
-                        data-request-row-id={request.id}
-                        onClick={() => toggleRowExpansion(request.id, request)}
-                      >
-                        <RequestRowMobile
-                          request={request}
-                          requester={requester}
-                          requestee={requestee}
-                          isSelected={selectedRequests.has(request.id)}
-                          sessionId={sessionId}
-                          year={year}
-                          sessionName={sessionName}
-                          personMap={personMap}
-                          hasMultipleSources={rowHasMultipleSources}
-                          onToggleSelection={toggleRequestSelection}
-                          onSelectCamper={handleSelectCamperId}
-                          onValidatedUpdate={handleValidatedUpdate}
-                          onSplit={handleSplitRow}
-                          onConfirmAction={openConfirmPopover}
-                        />
-
-                        {/* Expanded details - mobile */}
-                        {isExpanded && (
-                          <div
-                            className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-b px-4 py-3"
-                            data-testid="request-row-expanded-content"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="space-y-2 text-sm">
-                              <div>
-                                <span className="font-medium">Source:</span>{' '}
-                                <span className="text-muted-foreground">
-                                  {safeSourceFromField(request.source_field) ?? 'unknown'}
-                                </span>
-                              </div>
-                              {request.original_text && (
-                                <div>
-                                  <span className="font-medium">Original:</span>{' '}
-                                  <span className="text-muted-foreground">
-                                    {highlightSourceText(
-                                      request.original_text,
-                                      request.source_fragment
-                                    )}
-                                  </span>
-                                </div>
-                              )}
-                              {request.parse_notes && (
-                                <div>
-                                  <span className="font-medium">Notes:</span>{' '}
-                                  <span className="text-muted-foreground">
-                                    {request.parse_notes}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="mt-3 border-t pt-3">
-                              <CamperRequestSummary
-                                requesterCmId={request.requester_id}
-                                year={year}
-                                currentRequestId={request.id}
-                                requesterName={
-                                  requester
-                                    ? `${requester.first_name} ${requester.last_name}`.trim()
-                                    : undefined
-                                }
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
                 {/* Desktop Table Layout */}
-                <div className="hidden min-w-[1064px] pb-[200px] md:block">
+                <div className="min-w-[1064px] pb-[200px]">
                   {sortedRequests.map((request) => {
                     const requester = personMap.get(request.requester_id)
                     const requestee =
@@ -1276,6 +1174,7 @@ export default function RequestReviewPanel({
                         {isExpanded && (
                           <div
                             className="bg-parchment-50/50 dark:bg-forest-950/20 border-border border-t px-4 py-4"
+                            data-testid="request-row-expanded-content"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="ml-10 grid max-w-6xl grid-cols-1 gap-6 lg:grid-cols-2">
