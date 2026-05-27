@@ -254,6 +254,13 @@ export default function SessionView() {
     }
   }, [session?.id, setLockGroupSessionPbId])
 
+  // Partial-resolve lock state is per-session; clear it when the session changes so
+  // stale locks/overflow never leak into a different session's solve (#1609).
+  useEffect(() => {
+    unlockAll()
+    setAllowOverflow(false)
+  }, [selectedSession, unlockAll])
+
   // #1310 — feed in-session campers into RequestReviewPanel as the seed for
   // its personMap. The panel only needs cm_id + first/last name + grade for
   // display, but the prop is typed as PersonsResponse[] (full PB shape) for
