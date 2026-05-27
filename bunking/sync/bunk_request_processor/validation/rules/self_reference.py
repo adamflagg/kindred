@@ -25,7 +25,7 @@ class SelfReferenceRule(ValidationRule):
 
         Self-referential means:
         1. Requester CM ID = Requested CM ID
-        2. For placeholders or unresolved requests, check if raw names match exactly
+        2. For requests with no resolved target person, check if raw names match exactly
 
         Args:
             request: The request to validate

@@ -152,7 +152,7 @@ class TestRequestBuilderIntegration:
 
         resolution_info = {
             "requester_cm_id": 12345,
-            "requester_name": "Test Requester",
+            "requester_name": "Emma Johnson",
             "person_cm_id": 67890,
             "person_name": "Jane Smith",
             "session_cm_id": 1000002,
@@ -778,7 +778,7 @@ class TestBuilderPlaceholderInvariant:
         )
         resolution_info = {
             "requester_cm_id": 12345,
-            "requester_name": "Test Requester",
+            "requester_name": "Emma Johnson",
             "person_cm_id": None,
             "session_cm_id": 1000002,
             "confidence": 1.0,
@@ -790,8 +790,8 @@ class TestBuilderPlaceholderInvariant:
 
     def test_resolved_person_request_has_target_and_is_not_age_pref(self, builder):
         parsed = ParsedRequest(
-            raw_text="Jane Smith",
-            target_name="Jane Smith",
+            raw_text="Liam Garcia",
+            target_name="Liam Garcia",
             request_type=RequestType.BUNK_WITH,
             age_preference=None,
             confidence=0.95,
@@ -801,9 +801,9 @@ class TestBuilderPlaceholderInvariant:
         )
         resolution_info = {
             "requester_cm_id": 12345,
-            "requester_name": "Test Requester",
+            "requester_name": "Emma Johnson",
             "person_cm_id": 67890,
-            "person_name": "Jane Smith",
+            "person_name": "Liam Garcia",
             "session_cm_id": 1000002,
             "confidence": 0.95,
         }
