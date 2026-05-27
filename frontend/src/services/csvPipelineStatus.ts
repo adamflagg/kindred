@@ -17,6 +17,8 @@ export interface DebugPipelineRun {
     pending: number
     declined: number
   }
+  trigger?: 'upload' | 'scheduled' | 'manual'
+  session_breakdown?: Record<string, { resolved: number; pending: number; declined: number }>
 }
 
 export type PipelinePhase =
@@ -133,15 +135,29 @@ export function derivePhase(
   return { phase: 'idle' }
 }
 
+export interface UploadCounts {
+  total: number
+  autoMatched: number
+  needReview: number
+}
+
+export function countsFromStatusBreakdown(b: {
+  resolved: number
+  pending: number
+  declined: number
+}): UploadCounts {
+  const autoMatched = b.resolved + b.declined
+  const needReview = b.pending
+  return { total: autoMatched + needReview, autoMatched, needReview }
+}
+
 function doneFromDebug(d: DebugPipelineRun): PipelinePhase {
-  const { resolved, pending, declined } = d.status_breakdown
-  const autoMatched = resolved + declined
-  const needReview = pending
+  const counts = countsFromStatusBreakdown(d.status_breakdown)
   return {
     phase: 'done',
     runId: d.run_id,
     finishedAt: d.created,
-    counts: { total: autoMatched + needReview, autoMatched, needReview },
+    counts,
   }
 }
 
@@ -203,7 +219,33 @@ type RawDebugListResponse = {
       pending?: unknown
       declined?: unknown
     }
+    // PB returns the JSON field as-is, so slice fields are validated at runtime
+    // (mirrors status_breakdown above) rather than trusted from the type.
+    session_breakdown?: Record<
+      string,
+      { resolved?: unknown; pending?: unknown; declined?: unknown }
+    >
   }>
+}
+
+// Keep only well-formed slices so a malformed entry can't propagate NaN into
+// the per-session counts that countsFromStatusBreakdown sums downstream.
+function sanitizeSessionBreakdown(
+  raw: RawDebugListResponse['items'][number]['session_breakdown']
+): DebugPipelineRun['session_breakdown'] {
+  if (!raw) return undefined
+  const out: Record<string, { resolved: number; pending: number; declined: number }> = {}
+  for (const [key, slice] of Object.entries(raw)) {
+    if (
+      slice &&
+      typeof slice.resolved === 'number' &&
+      typeof slice.pending === 'number' &&
+      typeof slice.declined === 'number'
+    ) {
+      out[key] = { resolved: slice.resolved, pending: slice.pending, declined: slice.declined }
+    }
+  }
+  return out
 }
 
 export async function fetchLatestDebugRun(
@@ -232,4 +274,35 @@ export async function fetchLatestDebugRun(
     created: first.created,
     status_breakdown: { resolved: sb.resolved, pending: sb.pending, declined: sb.declined },
   }
+}
+
+export async function fetchLatestUploadRun(
+  fetchWithAuth: FetchWithAuth
+): Promise<DebugPipelineRun | null> {
+  const res = await fetchWithAuth(
+    "/api/collections/debug_pipeline_runs/records?filter=trigger='upload'&sort=-created&perPage=1&fields=run_id,created,status_breakdown,session_breakdown"
+  )
+  if (!res.ok) return null
+  const data = (await res.json()) as RawDebugListResponse
+  const first = data.items[0]
+  if (!first) return null
+  // Guard against malformed rows (schema mismatch, partial write). Without
+  // this, countsFromStatusBreakdown would compute NaN counts downstream.
+  const sb = first.status_breakdown
+  if (
+    !sb ||
+    typeof sb.resolved !== 'number' ||
+    typeof sb.pending !== 'number' ||
+    typeof sb.declined !== 'number'
+  ) {
+    return null
+  }
+  const run: DebugPipelineRun = {
+    run_id: first.run_id,
+    created: first.created,
+    status_breakdown: { resolved: sb.resolved, pending: sb.pending, declined: sb.declined },
+  }
+  const sessionBreakdown = sanitizeSessionBreakdown(first.session_breakdown)
+  if (sessionBreakdown) run.session_breakdown = sessionBreakdown
+  return run
 }

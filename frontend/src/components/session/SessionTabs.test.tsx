@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import SessionTabs, { createTabs } from './SessionTabs'
+
+vi.mock('./SessionLastUploadChip', () => ({
+  default: () => <div data-testid="last-upload-chip" />,
+}))
 
 describe('SessionTabs', () => {
   describe('createTabs', () => {
@@ -104,6 +108,23 @@ describe('SessionTabs', () => {
         expect(screen.getByRole('navigation')).toBeInTheDocument()
         unmount()
       })
+    })
+
+    it('renders the last-upload chip when session props are provided', () => {
+      render(
+        <MemoryRouter>
+          <SessionTabs
+            sessionId="2"
+            activeTab="bunks"
+            camperCount={69}
+            requestCount={45}
+            sessionCmId={1000001}
+            agSessionCmIds={[]}
+            sessionName="Session 2"
+          />
+        </MemoryRouter>
+      )
+      expect(screen.getByTestId('last-upload-chip')).toBeInTheDocument()
     })
 
     describe('canManage permission gating', () => {

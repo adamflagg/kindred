@@ -387,6 +387,9 @@ export default function SessionView() {
           camperCount={campers.length}
           requestCount={bunkRequestsCount}
           canManage={canManage}
+          sessionCmId={session.cm_id ?? undefined}
+          agSessionCmIds={agSessions.map((s) => s.cm_id)}
+          sessionName={session.name}
         />
 
         {/* Contextual Bar - Area filter + Stats (Bunks tab only) */}
