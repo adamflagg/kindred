@@ -123,7 +123,9 @@ class TestSummerProgramSessionTypesConstant:
         assert "training" not in SUMMER_PROGRAM_SESSION_TYPES
 
     def test_constant_excludes_tli_sessions(self) -> None:
-        """TLI (Teen Leadership Initiative) sessions should NOT be included."""
+        """TLI is NOT in this unconditional tuple. It still counts toward summers
+        at camp via the separate summer-window gate in compute_summer_metrics
+        (#1599) — see TestTeenSummersAtCamp."""
         from api.utils.session_metrics import SUMMER_PROGRAM_SESSION_TYPES
 
         assert "tli" not in SUMMER_PROGRAM_SESSION_TYPES
@@ -1098,7 +1100,9 @@ def test_display_types_include_teens():
 
 
 def test_summer_program_types_still_exclude_teens():
-    """Per #1599, 'summers at camp' stays main+quest — teens NOT added here."""
+    """Teens stay OUT of the unconditional tuple — they need the summer-window gate,
+    which tuple membership can't express. They still count toward summers at camp
+    via that gate in compute_summer_metrics (#1599); see TestTeenSummersAtCamp."""
     assert {"scit", "tli"}.isdisjoint(SUMMER_PROGRAM_SESSION_TYPES)
 
 
@@ -1118,3 +1122,175 @@ def test_resolver_still_window_gates_after_display_change():
     }
     assert resolve_cohort_session_ids(sessions, None) == {10, 16, 12}
     assert resolve_cohort_session_ids(sessions, ["scit", "tli"]) == {12}
+
+
+# ============================================================================
+# #1599: summer-window SCIT/TLI years count toward Summers at Camp
+# ============================================================================
+
+
+class TestTeenSummersAtCamp:
+    """#1599: summer-window SCIT/TLI years count toward computed Summers at Camp.
+
+    CampMinder's authoritative ``years_at_camp`` was empirically confirmed to
+    count teen (SCIT/TLI) years, and the computed metric is the corrected
+    stand-in for it — so summer-window teen years must count, otherwise a teen
+    camper is undercounted in the very chart meant to fix bad tenure data.
+
+    Off-season teen sessions (fall Family-Camp CIT, Feb L.A. Trip) do NOT count:
+    "a summer at camp" means physically at the site in summer. They are excluded
+    via the summer-window gate (``is_summer_teen_session``).
+
+    Each year's summer window is derived from that year's ``main`` sessions
+    present in the history. In production this is always available — every
+    summer that runs teen programs also runs main camp.
+    """
+
+    def test_summer_scit_year_counts(self) -> None:
+        """A summer-window SCIT year counts as a summer at camp."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")
+        main_2025 = create_mock_session(2, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")  # window anchor
+        scit_2025 = create_mock_session(3, "SCIT", 2025, "scit", "2025-06-20", "2025-06-27")  # summer teen
+
+        history = [
+            create_mock_attendee(201, 1, session=main_2024, year=2024),
+            create_mock_attendee(201, 3, session=scit_2025, year=2025),
+            create_mock_attendee(999, 2, session=main_2025, year=2025),  # anchor defines 2025 summer window
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {201})
+
+        assert summer_years[201] == 2  # 2024 main + 2025 summer SCIT
+        assert first_year[201] == 2024
+
+    def test_summer_tli_year_counts(self) -> None:
+        """A summer-window TLI year counts as a summer at camp."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")
+        # 2025 summer window spans Sessions 1-4 (Jun 15 - Aug 10), as in production
+        main_2025_early = create_mock_session(2, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")
+        main_2025_late = create_mock_session(5, "Session 4", 2025, "main", "2025-07-20", "2025-08-10")
+        tli_2025 = create_mock_session(3, "TLI", 2025, "tli", "2025-07-10", "2025-07-20")  # mid-summer teen
+
+        history = [
+            create_mock_attendee(202, 1, session=main_2024, year=2024),
+            create_mock_attendee(202, 3, session=tli_2025, year=2025),
+            create_mock_attendee(999, 2, session=main_2025_early, year=2025),  # window anchors
+            create_mock_attendee(999, 5, session=main_2025_late, year=2025),
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {202})
+
+        assert summer_years[202] == 2
+        assert first_year[202] == 2024
+
+    def test_offseason_scit_only_year_excluded(self) -> None:
+        """A fall Family-Camp CIT (SCIT) with no summer presence does NOT count."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")
+        main_2025 = create_mock_session(2, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")  # window anchor
+        scit_fall = create_mock_session(3, "Family Camp CIT", 2025, "scit", "2025-09-12", "2025-09-15")  # off-season
+
+        history = [
+            create_mock_attendee(301, 1, session=main_2024, year=2024),
+            create_mock_attendee(301, 3, session=scit_fall, year=2025),
+            create_mock_attendee(999, 2, session=main_2025, year=2025),  # anchor
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {301})
+
+        assert summer_years[301] == 1  # only 2024; fall SCIT outside summer window
+        assert first_year[301] == 2024
+
+    def test_offseason_tli_la_trip_excluded(self) -> None:
+        """A Feb Teen L.A. Trip (TLI) with no summer presence does NOT count."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")
+        main_2025 = create_mock_session(2, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")  # window anchor
+        tli_feb = create_mock_session(3, "Teen L.A. Trip", 2025, "tli", "2025-02-15", "2025-02-18")  # off-season
+
+        history = [
+            create_mock_attendee(302, 1, session=main_2024, year=2024),
+            create_mock_attendee(302, 3, session=tli_feb, year=2025),
+            create_mock_attendee(999, 2, session=main_2025, year=2025),  # anchor
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {302})
+
+        assert summer_years[302] == 1  # only 2024; Feb trip outside summer window
+        assert first_year[302] == 2024
+
+    def test_first_summer_year_unaffected_by_teen(self) -> None:
+        """Teens age up, so their earliest year is always a camper year — first_summer_year unchanged."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2022 = create_mock_session(1, "Session 1", 2022, "main", "2022-06-15", "2022-07-05")
+        main_2023 = create_mock_session(2, "Session 1", 2023, "main", "2023-06-15", "2023-07-05")
+        main_2025 = create_mock_session(3, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")  # window anchor
+        scit_2025 = create_mock_session(4, "SCIT", 2025, "scit", "2025-06-20", "2025-06-27")
+
+        history = [
+            create_mock_attendee(303, 1, session=main_2022, year=2022),
+            create_mock_attendee(303, 2, session=main_2023, year=2023),
+            create_mock_attendee(303, 4, session=scit_2025, year=2025),
+            create_mock_attendee(999, 3, session=main_2025, year=2025),  # anchor
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {303})
+
+        assert summer_years[303] == 3  # 2022, 2023, 2025
+        assert first_year[303] == 2022  # teen year does not move the floor
+
+    def test_teen_only_camper_counts_summer_window(self) -> None:
+        """A camper whose only enrollments are summer-window SCIT still accrues summers."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")  # anchor
+        main_2025 = create_mock_session(2, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")  # anchor
+        scit_2024 = create_mock_session(3, "SCIT", 2024, "scit", "2024-06-20", "2024-06-27")
+        scit_2025 = create_mock_session(4, "SCIT", 2025, "scit", "2025-06-20", "2025-06-27")
+
+        history = [
+            create_mock_attendee(304, 3, session=scit_2024, year=2024),
+            create_mock_attendee(304, 4, session=scit_2025, year=2025),
+            create_mock_attendee(999, 1, session=main_2024, year=2024),  # anchors
+            create_mock_attendee(999, 2, session=main_2025, year=2025),
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {304})
+
+        assert summer_years[304] == 2
+        assert first_year[304] == 2024
+
+    def test_concurrent_main_and_summer_scit_count_once(self) -> None:
+        """Main + summer SCIT in the same year is still one summer."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2025 = create_mock_session(1, "Session 1", 2025, "main", "2025-06-15", "2025-07-05")
+        scit_2025 = create_mock_session(2, "SCIT", 2025, "scit", "2025-06-20", "2025-06-27")
+
+        history = [
+            create_mock_attendee(305, 1, session=main_2025, year=2025),
+            create_mock_attendee(305, 2, session=scit_2025, year=2025),
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {305})
+
+        assert summer_years[305] == 1
+        assert first_year[305] == 2025
+
+    def test_teen_year_without_main_anchor_excluded(self) -> None:
+        """Conservative fallback: if a year's summer window can't be derived (no main
+        sessions in the history that year), teen sessions are not counted. In production
+        the main anchor is always present; this guards the gate's None-window branch."""
+        from api.utils.session_metrics import compute_summer_metrics
+
+        main_2024 = create_mock_session(1, "Session 1", 2024, "main", "2024-06-15", "2024-07-05")
+        scit_2025 = create_mock_session(2, "SCIT", 2025, "scit", "2025-06-20", "2025-06-27")  # no main 2025 anchor
+
+        history = [
+            create_mock_attendee(306, 1, session=main_2024, year=2024),
+            create_mock_attendee(306, 2, session=scit_2025, year=2025),
+        ]
+        summer_years, first_year = compute_summer_metrics(history, {306})
+
+        assert summer_years[306] == 1  # 2025 SCIT unverifiable as summer -> excluded
+        assert first_year[306] == 2024
