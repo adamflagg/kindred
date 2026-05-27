@@ -77,12 +77,8 @@ export default function CsvPipelineIndicator() {
           <>
             <CheckCircle className="h-3 w-3 text-green-600" aria-hidden="true" />
             <span>
-              Done {formatTimestamp(data.finishedAt)}: {data.counts.total} new or updated{' '}
-              {data.counts.total === 1 ? 'request' : 'requests'}, {data.counts.autoMatched}{' '}
-              auto-matched
-              {data.counts.needReview > 0
-                ? `, ${data.counts.needReview} need${data.counts.needReview === 1 ? 's' : ''} review`
-                : ''}
+              Import complete · {data.counts.total} new
+              {data.counts.needReview > 0 ? <> · ⚠ {data.counts.needReview} review</> : null}
             </span>
           </>
         )}
