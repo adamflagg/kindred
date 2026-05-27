@@ -1,8 +1,11 @@
 """
-Integration tests: trigger field forwarding on /api/internal/process-requests.
+Tests for trigger field forwarding on /api/internal/process-requests.
 
 Verifies that the `trigger` body field is accepted and forwarded to
 `run_process_requests`, with a default of "manual" when omitted.
+
+Lives under tests/unit/api/ so this dir's conftest applies AUTH_MODE=bypass
+before `api.main` builds its app singleton (avoids xdist auth pollution).
 """
 
 from unittest.mock import AsyncMock, patch
