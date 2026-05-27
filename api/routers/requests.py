@@ -14,6 +14,7 @@ from bunking.auth_middleware import AuthUser
 from bunking.logging_config import get_logger
 from bunking.rbac.dependencies import require_permission
 from bunking.rbac.permissions import Permission
+from bunking.satisfaction.request_registry import would_downgrade_hard_separation
 from bunking.sync.bunk_request_processor.core.models import (
     BunkRequest,
     RequestType,
@@ -249,6 +250,20 @@ async def merge_requests(
         raise HTTPException(
             status_code=400,
             detail="All requests must be in the same session to merge",
+        )
+
+    # Guard: a hard staff/manual "do not bunk with" and a parent/notes "do not
+    # bunk with" for the same pair are kept as SEPARATE rows (mirrors the
+    # auto-dedup partition in deduplicator.py) so the hard separation is always
+    # preserved. Refuse a manual merge that would collapse them.
+    if would_downgrade_hard_separation(requests_to_merge):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot merge a hard staff/manual 'do not bunk with' request with a "
+                "parent or notes 'do not bunk with' for the same pair: they are kept "
+                "as separate rows to preserve the hard separation."
+            ),
         )
 
     # Find the request to keep

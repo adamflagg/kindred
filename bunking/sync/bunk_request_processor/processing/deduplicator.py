@@ -18,6 +18,10 @@ logger = get_logger(__name__)
 # Materiality model: admin authority / material parent intent > staff exclusion >
 # staff observation > immaterial parent input. Higher number = higher priority.
 # confidence_score breaks ties within rank.
+# NBW exception: this table does NOT decide hard vs. soft not_bunk_with merges —
+# those are partitioned by hardness before the tiebreak (see the "hard_mnt" slot
+# in deduplicate_batch), so a parent BUNK_REQUEST_FORM never absorbs a hard
+# STAFF_NOT_BUNK_WITH for the same pair despite outranking it here.
 SOURCE_FIELD_PRIORITY = {
     SourceField.MANUAL: 4,  # admin-UI staff entry (tied with bunk_with — both top-tier positive intent)
     SourceField.BUNK_REQUEST_FORM: 4,  # material parent
@@ -83,8 +87,10 @@ class DuplicateGroup:
 
     primary: BunkRequest
     duplicates: list[BunkRequest]
-    # Key: (requester_cm_id, requested_cm_id, request_type, source_field, year, session_cm_id)
-    # source_field is always "" — cross-field deduplication is intentional
+    # Key: (requester_cm_id, requested_cm_id, request_type, source_slot, year, session_cm_id)
+    # source_slot is "" for cross-field deduplication (intentional), except hard
+    # not_bunk_with rows (staff/manual) use "hard_mnt" to stay partitioned — see
+    # deduplicate_batch.
     duplicate_key: tuple[int, int | None, RequestType, str, int, int]
 
 
@@ -118,6 +124,13 @@ class Deduplicator:
         Returns:
             DeduplicationResult with kept requests and statistics
         """
+        # Late import to avoid circular dependency:
+        #   bunking.satisfaction.request_registry
+        #     → bunking.sync.bunk_request_processor.core.models
+        #     → bunking.sync.bunk_request_processor (package __init__)
+        #     → bunking.sync.bunk_request_processor.processing.deduplicator
+        from bunking.satisfaction.request_registry import is_hard_separation  # noqa: PLC0415
+
         # Group requests by duplicate key
         request_groups: dict[tuple[int, int | None, RequestType, str, int, int], list[BunkRequest]] = {}
 
@@ -146,11 +159,23 @@ class Deduplicator:
                 # Note: The DB unique constraint DOES include source_field. This in-batch
                 # dedup intentionally excludes it to merge cross-field duplicates before
                 # saving.
+                #
+                # NBW exception: a HARD_MNT separation (staff_not_bunk_with / manual) must
+                # NOT merge into a non-hard NBW (parent bunk_request_form = HARD_MSO, notes
+                # = SOFT) — display-priority would pick the parent source and silently
+                # downgrade the unconditional separation. Partition NBW dedup by hardness so
+                # the hard row survives independently. Hard rows still merge with each other
+                # (same "hard_mnt" slot); everything else merges as before.
+                source_slot = ""
+                if request.request_type == RequestType.NOT_BUNK_WITH and is_hard_separation(
+                    request.source_field, request.request_type.value
+                ):
+                    source_slot = "hard_mnt"
                 key = (
                     request.requester_cm_id,
                     request.requested_cm_id,
                     request.request_type,
-                    "",  # Empty string placeholder to maintain tuple structure
+                    source_slot,
                     request.year,
                     request.session_cm_id,
                 )

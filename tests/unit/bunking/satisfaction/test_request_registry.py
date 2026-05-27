@@ -261,3 +261,64 @@ def test_every_weight_key_has_a_default() -> None:
 
     keys = {rc.weight_key for rc in request_registry._REGISTRY.values() if rc.weight_key is not None}
     assert keys <= set(request_registry._WEIGHT_DEFAULTS)
+
+
+from types import SimpleNamespace
+
+from bunking.satisfaction.request_registry import (
+    is_hard_separation,
+    would_downgrade_hard_separation,
+)
+
+
+class TestIsHardSeparation:
+    def test_staff_not_bunk_with_is_hard(self):
+        assert is_hard_separation(SourceField.STAFF_NOT_BUNK_WITH, "not_bunk_with") is True
+
+    def test_manual_not_bunk_with_is_hard(self):
+        assert is_hard_separation(SourceField.MANUAL, "not_bunk_with") is True
+
+    def test_parent_not_bunk_with_is_not_hard(self):
+        assert is_hard_separation(SourceField.BUNK_REQUEST_FORM, "not_bunk_with") is False
+
+    def test_notes_not_bunk_with_is_not_hard(self):
+        assert is_hard_separation(SourceField.BUNKING_NOTES, "not_bunk_with") is False
+        assert is_hard_separation(SourceField.INTERNAL_NOTES, "not_bunk_with") is False
+
+    def test_off_axis_combo_is_not_hard(self):
+        assert is_hard_separation(SourceField.SOCIALIZE_WITH, "not_bunk_with") is False
+
+
+def _r(source_field: str, request_type: str = "not_bunk_with") -> SimpleNamespace:
+    return SimpleNamespace(source_field=source_field, request_type=request_type)
+
+
+class TestWouldDowngradeHardSeparation:
+    def test_parent_plus_staff_nbw_downgrades(self):
+        assert (
+            would_downgrade_hard_separation([_r(SourceField.BUNK_REQUEST_FORM), _r(SourceField.STAFF_NOT_BUNK_WITH)])
+            is True
+        )
+
+    def test_parent_plus_manual_nbw_downgrades(self):
+        assert would_downgrade_hard_separation([_r(SourceField.BUNK_REQUEST_FORM), _r(SourceField.MANUAL)]) is True
+
+    def test_two_parent_nbw_no_downgrade(self):
+        assert (
+            would_downgrade_hard_separation([_r(SourceField.BUNK_REQUEST_FORM), _r(SourceField.BUNK_REQUEST_FORM)])
+            is False
+        )
+
+    def test_two_hard_nbw_no_downgrade(self):
+        assert would_downgrade_hard_separation([_r(SourceField.STAFF_NOT_BUNK_WITH), _r(SourceField.MANUAL)]) is False
+
+    def test_single_request_no_downgrade(self):
+        assert would_downgrade_hard_separation([_r(SourceField.STAFF_NOT_BUNK_WITH)]) is False
+
+    def test_non_nbw_requests_ignored(self):
+        assert (
+            would_downgrade_hard_separation(
+                [_r(SourceField.BUNK_REQUEST_FORM, "bunk_with"), _r(SourceField.STAFF_NOT_BUNK_WITH)]
+            )
+            is False
+        )
