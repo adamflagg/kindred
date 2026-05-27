@@ -751,10 +751,6 @@
     animation: slideUp 0.5s ease-out;
   }
 
-  .animate-slide-down {
-    animation: slideDown 0.5s ease-out;
-  }
-
   .animate-scale-in {
     animation: scaleIn 0.3s ease-out;
   }
@@ -784,17 +780,6 @@
     from {
       opacity: 0;
       transform: translateY(16px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes slideDown {
-    from {
-      opacity: 0;
-      transform: translateY(-16px);
     }
     to {
       opacity: 1;
