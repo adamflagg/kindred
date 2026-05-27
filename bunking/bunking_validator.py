@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from bunking.logging_config import get_logger
 from bunking.models import Bunk, BunkAssignment, BunkRequest, Person, Session
+from bunking.satisfaction.bucket import MaterialReqRow, compute_material_request_ids
 from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constants import (
     DEFAULT_BUNK_CAPACITY,
@@ -634,6 +635,26 @@ class BunkingValidator:
             except TypeError, ValueError:
                 return False
 
+        # #1664/#1671: contextual material-parent set. A form age_preference is
+        # material only as a sole form request — suppressed when its requester
+        # also has a resolved-and-possible form bunk_with/not_bunk_with. Computed
+        # once from the full request list with the impossibility report the
+        # validator already receives, mirroring the solver's single source of truth.
+        material_grouping: dict[int, list[MaterialReqRow]] = defaultdict(list)
+        for r in requests:
+            try:
+                material_grouping[int(r.requester_person_cm_id)].append(
+                    MaterialReqRow(
+                        id=r.id or "",
+                        source_field=r.source_field,
+                        request_type=r.request_type,
+                        status=r.status,
+                    )
+                )
+            except TypeError, ValueError:
+                pass  # non-numeric requester_person_cm_id — skipped, matching rest of validator
+        material_request_ids = compute_material_request_ids(material_grouping, impossible_request_ids or set())
+
         # Process each request
         for request in requests:
             requester_id = request.requester_person_cm_id
@@ -674,7 +695,13 @@ class BunkingValidator:
                     )
 
                 is_best_effort = raw_source_field == SourceField.SOCIALIZE_WITH
-                if raw_source_field == SourceField.BUNK_REQUEST_FORM:
+                # #1664/#1671: a form age-pref suppressed from material_request_ids
+                # is not a material request — drop it from material/alerting (it
+                # becomes an immaterial, uncounted row like socialize_with).
+                is_material = (
+                    raw_source_field == SourceField.BUNK_REQUEST_FORM and (request.id or "") in material_request_ids
+                )
+                if is_material:
                     material_parent_by_person[requester_id].append(request)
                     alerting_requests_by_person[requester_id].append(request)
                 elif is_best_effort:
@@ -691,7 +718,7 @@ class BunkingValidator:
                 # Check if this valid request is satisfied (#1170 — canonical predicate via _is_satisfied adapter).
                 if _is_satisfied(request):
                     satisfied_requests_by_person[requester_id].append(request)
-                    if raw_source_field == SourceField.BUNK_REQUEST_FORM:
+                    if is_material:
                         satisfied_material_parent_by_person[requester_id].append(request)
                         satisfied_alerting_by_person[requester_id].append(request)
                     elif is_best_effort:

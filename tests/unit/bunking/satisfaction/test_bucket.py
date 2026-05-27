@@ -225,3 +225,19 @@ class TestComputeMaterialRequestIds:
             2: [_req("c", "age_preference", "bunk_request_form", requester=2, requested=None)],
         }
         assert compute_material_request_ids(reqs, set()) == {"b", "c"}
+
+    def test_accepts_non_directbunkrequest_rows_via_protocol(self) -> None:
+        """#1670: the single source of truth must accept any MaterialReqLike row,
+        not just DirectBunkRequest, so validator + aggregator can call it."""
+        from bunking.satisfaction.bucket import MaterialReqRow
+
+        reqs = {
+            1: [
+                MaterialReqRow(
+                    id="a", source_field="bunk_request_form", request_type="age_preference", status="resolved"
+                ),
+                MaterialReqRow(id="b", source_field="bunk_request_form", request_type="bunk_with", status="resolved"),
+            ]
+        }
+        # Same #1664 suppression as DirectBunkRequest input: the age-pref is dropped.
+        assert compute_material_request_ids(reqs, set()) == {"b"}
