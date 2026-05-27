@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -181,7 +181,20 @@ def is_hard_separation(source_field: str, request_type: str) -> bool:
 
 class _SourcedRequest(Protocol):
     source_field: str
-    request_type: str
+    request_type: Any  # str or RequestType enum — normalised via _rtype_str()
+
+
+def _rtype_str(request_type: object) -> str:
+    """Normalise a request_type to its string value.
+
+    Accepts plain ``str`` (used in SimpleNamespace test fixtures) and enum
+    instances that carry a ``.value`` attribute (``RequestType`` from
+    ``bunk_request_processor.core.models``).
+    """
+    if isinstance(request_type, str):
+        return request_type
+    value = getattr(request_type, "value", None)
+    return value if isinstance(value, str) else str(request_type)
 
 
 def would_downgrade_hard_separation(requests: Iterable[_SourcedRequest]) -> bool:
@@ -191,7 +204,7 @@ def would_downgrade_hard_separation(requests: Iterable[_SourcedRequest]) -> bool
     Mirrors the auto-dedup partition: only fires when the set holds 2+
     not_bunk_with requests spanning the hard / non-hard boundary.
     """
-    nbw = [r for r in requests if str(r.request_type) == _NBW]
+    nbw = [r for r in requests if _rtype_str(r.request_type) == _NBW]
     if len(nbw) < 2:
         return False
     has_hard = any(is_hard_separation(r.source_field, _NBW) for r in nbw)
