@@ -434,7 +434,7 @@ class DirectBunkingSolver:
         """Add all constraints to the model."""
         # 1. Each person assigned to exactly one bunk
         if not self.debug_constraints.get("assignment", False):
-            partial = bool(self.input.locked_bunks)
+            partial = self.input.allow_unassigned
             self.constraint_logger.log_constraint(
                 "hard",
                 "assignment",
@@ -695,7 +695,7 @@ class DirectBunkingSolver:
 
         # Partial cabin re-solve (#1609): reward placing each camper so the relaxed
         # `<= 1` cardinality doesn't leave request-less campers unassigned when there's room.
-        if self.input.locked_bunks:
+        if self.input.allow_unassigned:
             for person_idx in range(len(self.person_ids)):
                 is_assigned = sum(self.assignments[(person_idx, b)] for b in range(len(self.bunks)))
                 objective_terms.append(PARTIAL_PLACEMENT_BONUS * is_assigned)

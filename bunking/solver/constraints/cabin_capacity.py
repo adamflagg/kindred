@@ -38,9 +38,9 @@ def add_cabin_capacity_constraints(ctx: SolverContext) -> None:
         ctx: Solver context with model, assignments, and mappings
     """
     locked = set(ctx.input.locked_bunks)  # bunk cm_ids frozen by add_locked_bunk_constraints
-    # Overflow only applies during a partial re-solve (locked_bunks non-empty);
+    # Overflow only applies during a partial re-solve (allow_unassigned=True);
     # allow_overflow alone is intentionally a no-op on a full solve.
-    overflow = bool(ctx.input.locked_bunks) and ctx.input.allow_overflow
+    overflow = ctx.input.allow_unassigned and ctx.input.allow_overflow
     for bunk_idx, bunk in enumerate(ctx.bunks):
         if bunk.campminder_id in locked:
             continue  # exact occupancy already pinned; never re-cap a frozen cabin
