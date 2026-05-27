@@ -29,8 +29,8 @@ export function getFcoseOptions(params: FcoseOptionsParams) {
     componentSpacing: 130,
   }
   const noCompound = {
-    nodeSeparation: 400,
-    componentSpacing: 400,
+    nodeSeparation: 180,
+    componentSpacing: 180,
   }
   const spacing = params.hasCompoundNodes ? compound : noCompound
 

@@ -314,6 +314,9 @@ export default function SocialNetworkGraph({ sessionCmId }: SocialNetworkGraphPr
       }
       cyRef.current.destroy()
       cyRef.current = null
+      // Re-arm the first-run guard so the expand/fit RAF chain doesn't race
+      // the new instance's worker layout+fit on the next rebuild.
+      hasMountedExpandRef.current = false
     }
 
     const cy = cytoscape({

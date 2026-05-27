@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  buildBunkFcoseLayoutOptions,
   buildBunkGraphElements,
   BUNK_NODE_COLORS,
   FIRST_YEAR_RING_COLOR,
@@ -100,6 +101,202 @@ describe('buildBunkGraphElements grade coloring', () => {
     const node = elements.find((e) => e.data?.id === 'node-101')
     expect(node?.data?.['gradeColor']).toBe(getBunkGradeColors([0])[0])
     expect(node?.data?.['gradeColor']).not.toBe('#666666')
+  })
+})
+
+describe('buildBunkGraphElements multi (mixed-type conflict pairs)', () => {
+  const nodes = [
+    { id: 1, name: 'Emma Johnson', grade: 4 },
+    { id: 2, name: 'Liam Garcia', grade: 4 },
+  ]
+
+  it('flags both edges of a mixed-type opposing pair so the stylesheet curves them', () => {
+    // Backend buckets by (pair, request_type), so an A→B bunk_with paired with
+    // B→A not_bunk_with ships as TWO directed edges. As straight edges they'd
+    // overlap on one line; multi splays them onto opposing beziers.
+    const elements = buildBunkGraphElements(
+      {
+        nodes,
+        edges: [
+          {
+            source: 1,
+            target: 2,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+          {
+            source: 2,
+            target: 1,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'not_bunk_with',
+          },
+        ],
+      },
+      false,
+      () => 0.5
+    )
+    const edges = elements.filter((e) => e.group === 'edges')
+    expect(edges).toHaveLength(2)
+    expect(edges.every((e) => e.data?.['multi'] === true)).toBe(true)
+  })
+
+  it('does not flag a single one-way edge as multi', () => {
+    const elements = buildBunkGraphElements(
+      {
+        nodes,
+        edges: [
+          {
+            source: 1,
+            target: 2,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+        ],
+      },
+      false,
+      () => 0.5
+    )
+    const edge = elements.find((e) => e.group === 'edges')
+    expect(edge?.data?.['multi']).toBeUndefined()
+  })
+
+  it('does not flag a backend-collapsed reciprocal edge as multi', () => {
+    // Same-type mutual pairs are collapsed to one reciprocal edge upstream —
+    // that single edge must stay straight/solid, not curved.
+    const elements = buildBunkGraphElements(
+      {
+        nodes,
+        edges: [
+          {
+            source: 1,
+            target: 2,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: true,
+            request_type: 'bunk_with',
+          },
+        ],
+      },
+      false,
+      () => 0.5
+    )
+    const edge = elements.find((e) => e.group === 'edges')
+    expect(edge?.data?.['multi']).toBeUndefined()
+  })
+
+  it('does not flag a same-type pair as multi (curving is only for bunk_with vs not_bunk_with)', () => {
+    // multi must be type-aware: two edges between a pair only splay onto beziers
+    // when they're a genuine bunk_with-vs-not_bunk_with conflict. Two same-type
+    // edges (or a request edge sitting next to a non-request edge) must NOT
+    // curve — that's what produced the spurious bezier on sibling pairs.
+    const elements = buildBunkGraphElements(
+      {
+        nodes,
+        edges: [
+          {
+            source: 1,
+            target: 2,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+          {
+            source: 2,
+            target: 1,
+            weight: 1,
+            edge_type: 'request',
+            reciprocal: false,
+            request_type: 'bunk_with',
+          },
+        ],
+      },
+      false,
+      () => 0.5
+    )
+    const edges = elements.filter((e) => e.group === 'edges')
+    expect(edges.every((e) => e.data?.['multi'] === undefined)).toBe(true)
+  })
+
+  it('flags mixed-type cross-scope pairs as multi too', () => {
+    const elements = buildBunkGraphElements(
+      {
+        nodes: [{ id: 1, name: 'Emma Johnson', grade: 4 }],
+        edges: [],
+        cross_scope_nodes: [{ id: 9, name: 'Olivia Chen', grade: 4, bunk_name: 'Cabin 3' }],
+        cross_scope_edges: [
+          {
+            source: 1,
+            target: 9,
+            weight: 1,
+            edge_type: 'request',
+            request_type: 'bunk_with',
+            confidence: 0.8,
+            reciprocal: false,
+            cross_scope: true,
+          },
+          {
+            source: 9,
+            target: 1,
+            weight: 1,
+            edge_type: 'request',
+            request_type: 'not_bunk_with',
+            confidence: 0.8,
+            reciprocal: false,
+            cross_scope: true,
+          },
+        ],
+      },
+      true,
+      () => 0.5
+    )
+    const crossEdges = elements.filter(
+      (e) => e.group === 'edges' && e.data?.['cross_scope'] === true
+    )
+    expect(crossEdges).toHaveLength(2)
+    expect(crossEdges.every((e) => e.data?.['multi'] === true)).toBe(true)
+  })
+})
+
+describe('getBunkCytoscapeStyles edge[?multi]', () => {
+  it('splays multi-flagged edges onto unbundled-bezier curves (parity with session graph)', () => {
+    const multiStyle = findEdgeStyle(getBunkCytoscapeStyles(), 'edge[?multi]')
+    expect(multiStyle).toBeDefined()
+    expect(multiStyle?.['curve-style']).toBe('unbundled-bezier')
+    expect(multiStyle?.['control-point-distances']).toEqual([40])
+    expect(multiStyle?.['control-point-weights']).toEqual([0.5])
+  })
+})
+
+describe('buildBunkFcoseLayoutOptions', () => {
+  it('lays out with fcose, animation off and self-fit off so the component frames once', () => {
+    // fcose spreads a single bunk into a cleaner 2D arrangement than cola (which
+    // tended to collapse sparse bunks toward a line). animate:false → the layout
+    // paints once, already settled (no settle animation). fit:false → cy.fit() in
+    // the modal's layoutstop is the sole framing authority.
+    const opts = buildBunkFcoseLayoutOptions()
+    expect(opts['name']).toBe('fcose')
+    expect(opts['animate']).toBe(false)
+    expect(opts['fit']).toBe(false)
+  })
+
+  it('packs disconnected components so unrelated sub-clusters do not look linked (#1640)', () => {
+    // fcose's packComponents replaces cola's handleDisconnected/landscape-box
+    // approach to keeping disconnected campers visually separate.
+    expect(buildBunkFcoseLayoutOptions()['packComponents']).toBe(true)
+  })
+
+  it('defines positive node-separation, edge-length and repulsion knobs', () => {
+    const opts = buildBunkFcoseLayoutOptions()
+    expect(opts['nodeSeparation']).toBeGreaterThan(0)
+    expect(opts['idealEdgeLength']).toBeGreaterThan(0)
+    expect(opts['nodeRepulsion']).toBeGreaterThan(0)
   })
 })
 

@@ -56,6 +56,24 @@ describe('SocialNetworkGraph safety guards', () => {
     expect(source).not.toMatch(/['"]ego['"]/)
     expect(source).not.toMatch(/\bViewMode\b/)
   })
+
+  it('resets hasMountedExpandRef on graph rebuild to prevent expand/fit RAF race (#1663)', () => {
+    // When graphData changes, the init effect destroys the old Cytoscape instance
+    // and creates a new one. Without resetting hasMountedExpandRef.current, the
+    // isExpanded effect skips its first-run guard and the expand/fit RAF chain
+    // races the new instance's own worker layout+fit call.
+    // Verify the reset appears adjacent to the destroy/null sequence.
+    const destroyPos = source.indexOf('cyRef.current.destroy()')
+    const nullPos = source.indexOf('cyRef.current = null')
+    const resetPos = source.indexOf('hasMountedExpandRef.current = false')
+    expect(destroyPos).toBeGreaterThan(0)
+    expect(nullPos).toBeGreaterThan(destroyPos)
+    // The ref reset must appear after the destroy and within the same block
+    expect(resetPos).toBeGreaterThan(destroyPos)
+    // And before a new `const cy = cytoscape` call that creates the next instance
+    const createPos = source.indexOf('const cy = cytoscape(')
+    expect(resetPos).toBeLessThan(createPos)
+  })
 })
 
 describe('SocialNetworkGraph header layout — slim single row', () => {
