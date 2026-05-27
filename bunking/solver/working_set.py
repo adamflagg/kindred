@@ -68,8 +68,12 @@ def reduce_to_working_set(inp: DirectSolverInput) -> WorkingSetReduction:
     frozen_assignments: list[DirectBunkAssignment] = []
     for bunk_cm, occupants in inp.locked_bunks.items():
         # Resolve the session for this bunk from the bunk object itself.
+        # A locked bunk absent from inp.bunks is a caller-contract violation —
+        # fail loud rather than guess a session.
         bunk_obj = next((b for b in inp.bunks if b.campminder_id == bunk_cm), None)
-        session_cm_id = bunk_obj.session_cm_id if bunk_obj else inp.persons[0].session_cm_id
+        if bunk_obj is None:
+            raise ValueError(f"locked_bunks references bunk {bunk_cm} not present in inp.bunks")
+        session_cm_id = bunk_obj.session_cm_id
         frozen_assignments.extend(
             DirectBunkAssignment(
                 person_cm_id=person_cm,

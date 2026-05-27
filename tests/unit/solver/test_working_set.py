@@ -4,6 +4,8 @@ Each task section is clearly delimited so the test file can grow incrementally.
 All person/bunk/request fixtures use fictional names per project conventions.
 """
 
+import pytest
+
 from bunking.models_v2 import (
     DirectBunk,
     DirectBunkRequest,
@@ -81,6 +83,7 @@ def test_empty_locked_bunks_is_identity():
     inp = DirectSolverInput(persons=[p1, p2], bunks=[b1, b2], requests=[])
     result = reduce_to_working_set(inp)
     assert isinstance(result, WorkingSetReduction)
+    assert result.reduced_input is inp  # no-copy identity guarantee
     assert result.frozen_assignments == []
     assert result.cross_boundary_request_ids == []
     assert {p.campminder_person_id for p in result.reduced_input.persons} == {1, 2}
@@ -219,3 +222,17 @@ def test_not_bunk_with_to_locked_dropped_silently():
     result = reduce_to_working_set(inp)
     assert result.reduced_input.requests == []
     assert result.cross_boundary_request_ids == []
+
+
+def test_locked_bunk_missing_from_inp_raises():
+    """locked_bunks referencing a bunk absent from inp.bunks is a contract violation."""
+    p1 = _person(1)
+    b1 = _bunk(3001)
+    inp = DirectSolverInput(
+        persons=[p1],
+        bunks=[b1],
+        requests=[],
+        locked_bunks={9999: [1]},  # 9999 is not in inp.bunks
+    )
+    with pytest.raises(ValueError):
+        reduce_to_working_set(inp)
