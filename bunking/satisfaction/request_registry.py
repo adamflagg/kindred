@@ -26,9 +26,10 @@ import (raises if a source's rows disagree).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from bunking.sync.bunk_request_processor.core.models import RequestType
 from bunking.sync.bunk_request_processor.shared.constants import SourceField
@@ -165,6 +166,37 @@ def report_group_for(source_field: str) -> RequestBucket:
 def rule_for(source_field: str, request_type: str) -> SolverRule:
     """Solver rule for a combo. SCAFFOLD — no consumer reads this yet."""
     return classify(source_field, request_type).rule
+
+
+def is_hard_separation(source_field: str, request_type: str) -> bool:
+    """True iff the combo is a HARD_MNT (unconditional) separation.
+
+    Wraps `rule_for`; off-axis combos not in the registry are treated as not hard.
+    """
+    try:
+        return rule_for(source_field, request_type) == SolverRule.HARD_MNT
+    except ValueError:
+        return False
+
+
+class _SourcedRequest(Protocol):
+    source_field: str
+    request_type: str
+
+
+def would_downgrade_hard_separation(requests: Iterable[_SourcedRequest]) -> bool:
+    """True iff merging this set would fold a HARD_MNT not_bunk_with into a
+    non-hard one — silently downgrading an unconditional separation.
+
+    Mirrors the auto-dedup partition: only fires when the set holds 2+
+    not_bunk_with requests spanning the hard / non-hard boundary.
+    """
+    nbw = [r for r in requests if str(r.request_type) == _NBW]
+    if len(nbw) < 2:
+        return False
+    has_hard = any(is_hard_separation(r.source_field, _NBW) for r in nbw)
+    has_non_hard = any(not is_hard_separation(r.source_field, _NBW) for r in nbw)
+    return has_hard and has_non_hard
 
 
 def weight_key_for(source_field: str, request_type: str) -> str | None:
