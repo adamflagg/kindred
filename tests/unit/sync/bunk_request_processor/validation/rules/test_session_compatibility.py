@@ -121,6 +121,19 @@ class TestSessionCompatibilityRule:
         assert len(result.errors) == 0
         mock_attendee_repo.get_by_person_and_year.assert_not_called()
 
+    def test_negative_hash_unresolved_skips_lookup(self, rule, base_request, mock_attendee_repo):
+        """#1683: a named-but-unresolved request carries a truthy negative-hash
+        ``requested_cm_id`` that cannot exist in ``attendees``. It must be treated
+        like an unresolved target and skip the session/attendee lookup entirely,
+        not query for an id that can never match."""
+        base_request.requested_cm_id = -1_000_123  # negative-hash unresolved id
+
+        result = rule.validate(base_request)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+        mock_attendee_repo.get_by_person_and_year.assert_not_called()
+
     def test_missing_requester_session_warning(self, rule, base_request, mock_attendee_repo):
         """Test warning when requester session not found"""
         mock_attendee_repo.get_by_person_and_year.side_effect = [

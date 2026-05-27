@@ -54,8 +54,11 @@ class SessionCompatibilityRule(ValidationRule):
         """
         result = ValidationResult(is_valid=True)
 
-        # Skip validation when there is no resolved target (missing id or age preference)
-        if not request.requested_cm_id:
+        # Skip validation when there is no resolved target. Unresolved targets carry
+        # either None (age preferences) or a negative-hash id (named-but-unresolved,
+        # via generate_unresolved_person_id) — a negative id cannot exist in
+        # `attendees`, so treat id < 0 as unresolved and skip the lookup (#1683).
+        if request.requested_cm_id is None or request.requested_cm_id < 0:
             return result
 
         # Get sessions for both people

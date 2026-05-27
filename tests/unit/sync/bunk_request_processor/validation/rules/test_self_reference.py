@@ -355,5 +355,82 @@ class TestSelfReferenceNicknameMatching:
         assert result.is_valid
 
 
+class TestSelfReferenceUnresolvedNegativeId:
+    """Tests for #1683: the raw-name self-reference check must treat
+    named-but-unresolved requests (negative-hash ``requested_cm_id``) as
+    unresolved.
+
+    In production, only AGE_PREFERENCE requests get ``requested_cm_id=None``;
+    a named-but-unresolved request is assigned a deterministic negative-hash id
+    by ``generate_unresolved_person_id`` (range -1,000,000 .. -1,000,000,000).
+    The old ``if not request.requested_cm_id`` gate treated that truthy negative
+    id as resolved, so the raw-name + first-name-ambiguity detection never ran
+    in production. These fixtures use a production-faithful negative id.
+    """
+
+    # A representative negative-hash id (must be < 0, in the unresolved range).
+    UNRESOLVED_ID = -1_000_123
+
+    @pytest.fixture
+    def rule(self):
+        return SelfReferenceRule()
+
+    @pytest.fixture
+    def base_request(self):
+        return BunkRequest(
+            requester_cm_id=12345,
+            requested_cm_id=self.UNRESOLVED_ID,
+            request_type=RequestType.BUNK_WITH,
+            session_cm_id=1000002,
+            is_first_requested=False,
+            confidence_score=0.0,
+            source_field="bunk_request_form",
+            csv_position=0,
+            year=2025,
+            status=RequestStatus.PENDING,
+            metadata={},
+        )
+
+    def test_negative_hash_full_name_match_flagged(self, rule, base_request):
+        """An unresolved named request whose raw name equals the requester's
+        full name is self-referential, even though its id is a truthy negative."""
+        base_request.metadata = {
+            "raw_target_name": "Emma Johnson",
+            "requester_full_name": "Emma Johnson",
+        }
+
+        result = rule.validate(base_request)
+
+        assert not result.is_valid
+        assert result.metadata["self_ref_type"] == "full_name_match"
+
+    def test_negative_hash_unresolvable_first_name_flagged(self, rule, base_request):
+        """A first-name-only unresolved request matching the requester's first
+        name with no session peers is flagged unresolvable_first_name."""
+        base_request.metadata = {
+            "raw_target_name": "Emma",
+            "requester_first_name": "Emma",
+            "requester_full_name": "Emma Johnson",
+            "session_peers_with_same_first_name": 0,
+        }
+
+        result = rule.validate(base_request)
+
+        assert not result.is_valid
+        assert result.metadata["self_ref_type"] == "unresolvable_first_name"
+
+    def test_negative_hash_different_names_passes(self, rule, base_request):
+        """An unresolved named request targeting a different person stays valid."""
+        base_request.metadata = {
+            "raw_target_name": "Liam Garcia",
+            "requester_full_name": "Emma Johnson",
+        }
+
+        result = rule.validate(base_request)
+
+        assert result.is_valid
+        assert len(result.errors) == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
