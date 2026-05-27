@@ -1,9 +1,15 @@
 """Solver-domain hardcoded constants.
 
 Cabin capacity (PR #1226): collapsed from ``constraint.cabin_capacity.{standard,
-max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into the two
-constants below. None were ever tuned at runtime, and ``max_size`` was never
-backed by a real PB column.
+max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into
+``DEFAULT_BUNK_CAPACITY`` and ``MAX_BUNK_CAPACITY``. None were ever tuned at
+runtime, and ``max_size`` was never backed by a real PB column.
+``PARTIAL_PLACEMENT_BONUS`` (PR #1609) is a third constant in this group: a
+per-camper objective bonus applied only during partial re-solve to bias the
+solver toward placing free campers without changing which bunk they prefer
+relative to their own requests. During a partial re-solve with
+``allow_overflow=True``, unlocked bunks may reach ``DEFAULT_BUNK_CAPACITY + 1``
+(13) to absorb displaced campers.
 
 Cabin minimum occupancy (PR #1331): collapsed from
 ``constraint.cabin_minimum_occupancy.{enabled,min,preferred,force_all_used}``

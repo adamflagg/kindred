@@ -16,9 +16,12 @@ import (raises if a source's rows disagree).
     not in the registry — there is no source-keyed fallback. Off-axis data
     (a strict source paired with a request_type it doesn't admit) is a
     pipeline-hygiene bug and we want it to fail loudly.
-  * `rule == HARD_MNT` is a DECLARED placeholder for deferred staff-hardening
-    (#1543 / #1541); it is not enforced. `parent_paramount` detects MP via
-    the contextual material set (`compute_material_request_ids`).
+  * `rule == HARD_MNT` is enforced as a hard separation by
+    `solver.constraints.staff_separation.add_staff_separation_constraints`
+    (wired into `direct_solver.py`). The single carve-out: if separating the
+    pair would starve a parent-paramount sole-MP bunk_with, the hard constraint
+    yields to that MSO. `parent_paramount` detects MP via the contextual
+    material set (`compute_material_request_ids`).
 """
 
 from __future__ import annotations
@@ -47,7 +50,8 @@ class RequestBucket(StrEnum):
 class SolverRule(StrEnum):
     """Constraint shape the solver should generate for a request.
 
-    HARD_MNT is declared but NOT enforced as of this PR — see module docstring.
+    HARD_MNT is enforced as a hard separation by
+    ``staff_separation.add_staff_separation_constraints`` — see module docstring.
     """
 
     HARD_MSO = "hard_mso"
