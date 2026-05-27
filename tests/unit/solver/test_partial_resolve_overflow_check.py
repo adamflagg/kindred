@@ -1,10 +1,8 @@
-"""Fix #4 — overflow-aware post-solve capacity check (#1609).
+"""Overflow-aware post-solve capacity check (#1609).
 
-In a partial re-solve with allow_overflow=True, an unlocked bunk that the solver
-fills to 13 (one above DEFAULT_BUNK_CAPACITY=12) should NOT produce a
-cabin_capacity error violation in _check_constraint_violations.
-
-TDD: test written BEFORE the fix and verified RED.
+In a partial re-solve with allow_unassigned=True + allow_overflow=True, a bunk
+that the solver fills to 13 (one above DEFAULT_BUNK_CAPACITY=12) should NOT
+produce a cabin_capacity error violation in _check_constraint_violations.
 """
 
 from collections.abc import Generator
@@ -66,36 +64,21 @@ def _solve(solver: DirectBunkingSolver) -> tuple[cp_model.CpSolver, Any]:
 
 
 def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
-    """Partial re-solve with allow_overflow=True filling an unlocked bunk to 13.
+    """Partial re-solve with allow_unassigned=True + allow_overflow=True filling a bunk to 13.
 
     Setup:
-      - locked_bunk (3001): 8 persons pinned → at exactly MIN_BUNK_OCCUPANCY,
-        so the old min-occupancy hard floor would NOT trigger INFEASIBLE even
-        pre-Fix-#1 (it was passing the hard floor). Frozen in place.
-      - free_bunk (3002): 13 free campers, capacity=12, allow_overflow=True
-        → solver can fill to 13 (cap is 12+1=13 in overflow mode).
+      - one bunk (3001), 13 female campers, capacity=12.
+      - allow_unassigned=True + allow_overflow=True → solver can fill to 13.
 
-    Without the fix:
-      _check_constraint_violations flags free_bunk at 13/12 as an "error"
-      severity cabin_capacity violation.
-
-    After the fix:
-      No cabin_capacity error violation is recorded.
-
-    Note: once Fix #1 (min-occupancy exemption) is applied this test also
-    confirms the post-solve check passes for the overflow bunk.
+    The post-solve violation check should NOT flag the bunk at 13/12 as an
+    "error" severity cabin_capacity violation when overflow is active.
     """
-    # 8 persons pinned in locked bunk — exactly at MIN_BUNK_OCCUPANCY
-    locked_persons = [make_person(1000 + i, gender="F", grade=5) for i in range(8)]
-    # 13 free campers — will all go to the unlocked bunk (overflow fills it to 13)
-    free_persons = [make_person(2000 + i, gender="F", grade=5) for i in range(13)]
+    # 13 campers — will all go to the single bunk (overflow fills it to 13)
+    persons = [make_person(1000 + i, gender="F", grade=5) for i in range(13)]
+    bunk = make_bunk(3001, gender="F")  # capacity=12 by default
 
-    locked_bunk = make_bunk(3001, gender="F")
-    free_bunk = make_bunk(3002, gender="F")  # capacity=12 by default
-
-    all_persons = locked_persons + free_persons
-    inp = make_input(all_persons, [locked_bunk, free_bunk], [])
-    inp.locked_bunks = {3001: [p.campminder_person_id for p in locked_persons]}
+    inp = make_input(persons, [bunk], [])
+    inp.allow_unassigned = True
     inp.allow_overflow = True
 
     solver = DirectBunkingSolver(inp, mock_config)
@@ -106,14 +89,14 @@ def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
     # Extract assignments from the cp solution (mirrors what DirectBunkingSolver.solve() does)
     assignments = []
     for person_idx, person_cm_id in enumerate(solver.person_ids):
-        for bunk_idx, bunk in enumerate(solver.bunks):
+        for bunk_idx, bunk_obj in enumerate(solver.bunks):
             if cp.Value(solver.assignments[(person_idx, bunk_idx)]) == 1:
                 person = solver.input.person_by_cm_id[person_cm_id]
                 assignments.append(
                     DirectBunkAssignment(
                         person_cm_id=person_cm_id,
                         session_cm_id=person.session_cm_id,
-                        bunk_cm_id=bunk.campminder_id,
+                        bunk_cm_id=bunk_obj.campminder_id,
                         year=2026,
                     )
                 )
@@ -122,7 +105,7 @@ def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
     # Directly invoke the post-solve violation check
     solver._check_constraint_violations(assignments, cp)
 
-    # Verify the unlocked bunk at 13 does NOT produce a cabin_capacity error violation
+    # Verify bunk at 13 does NOT produce a cabin_capacity error violation in overflow mode
     cabin_cap_violations = solver.constraint_logger.violations.get("cabin_capacity", [])
     error_violations = [v for v in cabin_cap_violations if v.get("severity") == "error"]
 
@@ -130,5 +113,5 @@ def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
         f"Expected no cabin_capacity error violations in overflow mode, "
         f"but got: {error_violations}. "
         "The post-solve check should use effective cap (13) not bunk.capacity (12) "
-        "when locked_bunks is non-empty and allow_overflow=True."
+        "when allow_unassigned=True and allow_overflow=True."
     )

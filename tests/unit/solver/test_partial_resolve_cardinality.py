@@ -1,11 +1,11 @@
 """Cardinality relaxation for partial re-solve mode (#1609).
 
-In partial mode (``locked_bunks`` is non-empty) the per-person cardinality
+In partial mode (``allow_unassigned=True``) the per-person cardinality
 constraint is relaxed from ``== 1`` to ``<= 1``, so surplus campers can be
 left unassigned when there is no room in the unlocked cabins.
 
-In normal mode (``locked_bunks`` empty) the ``== 1`` constraint is unchanged
-and the solver must assign everyone.
+In normal mode (``allow_unassigned=False``, the default) the ``== 1``
+constraint is unchanged and the solver must assign everyone.
 """
 
 from collections.abc import Generator
@@ -66,15 +66,13 @@ def _solve(solver: DirectBunkingSolver) -> tuple[cp_model.CpSolver, Any]:
 
 
 def test_partial_mode_allows_unassigned_when_no_room(mock_config):
-    # 2 campers, ONE unlocked male bunk capacity 1. locked_bunks is non-empty
-    # (sentinel id 9999 — not a real bunk; its only role is to switch the solver
-    # into PARTIAL mode). So the only question is: can a camper be left unassigned?
-    # Partial mode relaxes cardinality to <= 1, so one camper is placed and one
-    # is left unassigned -> FEASIBLE.
+    # 2 campers, ONE male bunk with capacity 1. allow_unassigned=True switches
+    # the solver into partial mode, relaxing cardinality to <= 1, so one camper
+    # is placed and one is left unassigned -> FEASIBLE.
     persons = [make_person(1001, gender="M", grade=5), make_person(1002, gender="M", grade=5)]
     bunks = [make_bunk(2002, gender="M", capacity=1)]
     inp = make_input(persons, bunks, [])
-    inp.locked_bunks = {9999: []}  # non-empty => partial mode
+    inp.allow_unassigned = True  # partial mode
     solver = DirectBunkingSolver(inp, mock_config)
     _cp, status = _solve(solver)
     assert is_optimal_or_feasible(status)  # feasible: surplus camper unassigned

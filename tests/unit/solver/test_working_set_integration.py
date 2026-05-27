@@ -203,3 +203,36 @@ def test_run_stats_score_full_board_including_locked_requests() -> None:
     assert "r1" in satisfied_for_1
     # Stats should reflect the full request board, not the empty working-set
     assert out.stats["total_requests"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# partial_resolve key: present on allow_unassigned=True solves
+# ---------------------------------------------------------------------------
+
+
+def test_partial_resolve_stats_attached_via_solve() -> None:
+    """End-to-end: allow_unassigned=True → partial_resolve key appears in output.stats.
+
+    16 F campers across 2 bunks (satisfies min-occupancy 8/bunk). Bunk 3001 locked
+    with 8 occupants; bunk 3002 is free. 8 unlocked campers all land in bunk 3002.
+    All 16 are placed → unassigned_count == 0.
+    """
+    locked_ids = list(range(1001, 1009))  # 8 campers frozen in bunk 3001
+    unlocked_ids = list(range(2001, 2009))  # 8 campers to be placed in bunk 3002
+    persons = [_person(i) for i in locked_ids + unlocked_ids]
+    bunks = [_bunk(3001), _bunk(3002)]
+    inp = DirectSolverInput(
+        persons=persons,
+        bunks=bunks,
+        requests=[],
+        locked_bunks={3001: locked_ids},
+        allow_unassigned=True,
+    )
+
+    with ConfigLoader.use(_ZeroPenaltyLoader()):  # type: ignore[arg-type]
+        out = DirectBunkingSolver(inp, _make_cfg()).solve(time_limit_seconds=5)
+
+    assert out is not None
+    assert "partial_resolve" in out.stats
+    assert out.stats["partial_resolve"]["unassigned_count"] == 0  # all 16 placed
+    assert out.stats["partial_resolve"]["cross_boundary_request_count"] == 0
