@@ -104,7 +104,7 @@ def _run_record_with_scenario(
     unassigned_cm_ids: list[int],
     *,
     scenario: str = "scen-1",
-) -> dict:
+) -> dict[str, Any]:
     """Run record that looks like a scenario (draft) run."""
     return {
         "status": "completed",
