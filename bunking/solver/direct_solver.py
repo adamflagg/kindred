@@ -783,8 +783,11 @@ class DirectBunkingSolver:
             "status_code": int(cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL),
             "objective_value": None,
             "solve_time": 0.0,
-            "total_persons": len(self.person_ids),
-            "total_bunks": len(self.bunks),
+            # Reported display counts use the full merged board (#1609); the
+            # working-set model size (len(self.person_ids)/bunks) is captured
+            # separately by over_capacity above and the CP-SAT proto fields.
+            "total_persons": len(self._full_input.persons),
+            "total_bunks": len(self._full_input.bunks),
             "total_requests": len(self._full_input.requests),
             "satisfied_request_count": sum(len(v) for v in satisfied_requests.values()),
             # CP-SAT-only fields are None, not absent — keeps frontend
@@ -841,22 +844,31 @@ class DirectBunkingSolver:
 
         # Partial cabin re-solve (#1609): emit completion summary on single-bunk path too.
         if self.input.allow_unassigned:
-            placed_cms = {a.person_cm_id for a in assignments}
-            unassigned = [
-                p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
-            ]
-            stats["partial_resolve"] = {
-                "unassigned_count": len(unassigned),
-                "unassigned_person_cm_ids": unassigned,
-                "cross_boundary_request_count": len(self._cross_boundary_request_ids),
-                "cross_boundary_request_ids": self._cross_boundary_request_ids,
-            }
+            stats["partial_resolve"] = self._partial_resolve_summary({a.person_cm_id for a in assignments})
 
         return DirectSolverOutput(
             assignments=assignments,
             satisfied_requests=satisfied_requests,
             stats=stats,
         )
+
+    def _partial_resolve_summary(self, placed_cms: set[int]) -> dict[str, Any]:
+        """Completion-summary for a partial cabin re-solve (#1609).
+
+        Computed over the FULL merged board: campers in the full input not present
+        in ``placed_cms`` are reported as unassigned (the apply step uses the id list
+        to delete their stale assignments), and cross-boundary positive requests are
+        carried through from the working-set reduction.
+        """
+        unassigned = [
+            p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
+        ]
+        return {
+            "unassigned_count": len(unassigned),
+            "unassigned_person_cm_ids": unassigned,
+            "cross_boundary_request_count": len(self._cross_boundary_request_ids),
+            "cross_boundary_request_ids": self._cross_boundary_request_ids,
+        }
 
     def solve(self, time_limit_seconds: int = 60) -> DirectSolverOutput | None:
         """Solve the bunking problem."""
@@ -1002,7 +1014,7 @@ class DirectBunkingSolver:
 
         # Save logs to file if we have a session ID
         log_file_path = None
-        if self._full_input.requests and len(self._full_input.requests) > 0:
+        if self._full_input.requests:
             session_id = self._full_input.requests[0].session_cm_id
             log_file_path = self.constraint_logger.save_to_file(session_id)
 
@@ -1026,8 +1038,10 @@ class DirectBunkingSolver:
             model_proto=self.model.Proto(),
             time_limit_seconds=time_limit_seconds,
             num_workers=num_workers,
-            num_persons=len(self.person_ids),
-            num_bunks=len(self.bunks),
+            # Reported display counts use the full merged board (#1609); CP-SAT
+            # model size is captured by the model_proto fields inside _build_stats_dict.
+            num_persons=len(self._full_input.persons),
+            num_bunks=len(self._full_input.bunks),
             num_requests=len(material_requests),
             satisfied_count=satisfied_material_count,
             soft_constraint_violations=self.soft_constraint_violations,
@@ -1043,16 +1057,7 @@ class DirectBunkingSolver:
         # Keyed off allow_unassigned (set on the original input); after reduction
         # self.input.locked_bunks is {}, so the old locked_bunks gate is gone.
         if self.input.allow_unassigned:
-            placed_cms = {a.person_cm_id for a in assignments}
-            unassigned = [
-                p.campminder_person_id for p in self._full_input.persons if p.campminder_person_id not in placed_cms
-            ]
-            stats["partial_resolve"] = {
-                "unassigned_count": len(unassigned),
-                "unassigned_person_cm_ids": unassigned,
-                "cross_boundary_request_count": len(self._cross_boundary_request_ids),
-                "cross_boundary_request_ids": self._cross_boundary_request_ids,
-            }
+            stats["partial_resolve"] = self._partial_resolve_summary({a.person_cm_id for a in assignments})
 
         return DirectSolverOutput(
             assignments=assignments,
