@@ -147,20 +147,10 @@ def add_grade_adjacency_constraints(ctx: SolverContext) -> None:
 
     track_debug = logger.isEnabledFor(logging.DEBUG)
 
-    # Partial cabin re-solve (#1609): locked bunks have frozen rosters — a pinned
-    # roster with non-adjacent grades would make this hard constraint infeasible for
-    # no benefit (the solver cannot change the locked roster anyway).
-    locked_bunk_cms = set(ctx.input.locked_bunks)
-
     # For each bunk, check grade adjacency
     for bunk_idx, bunk in enumerate(ctx.bunks):
         # Skip AG bunks - they have no constraints
         if is_ag_session_bunk(bunk):
-            total_bunks_skipped += 1
-            continue
-
-        # Skip locked bunks: their roster is frozen
-        if bunk.campminder_id in locked_bunk_cms:
             total_bunks_skipped += 1
             continue
 

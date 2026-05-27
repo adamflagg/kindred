@@ -45,12 +45,6 @@ def add_cabin_minimum_occupancy_constraints(
 
     min_occupancy = min_occupancy_threshold()
 
-    # Partial cabin re-solve (#1609): locked bunks have frozen rosters — exempting them
-    # from hard composition constraints avoids infeasibility when a pinned occupancy is
-    # below the minimum or when the roster spans forbidden grade combinations.
-    locked_bunk_cms: set[int] = set(ctx.input.locked_bunks)
-    locked_occupant_cms: set[int] = {c for occ in ctx.input.locked_bunks.values() for c in occ}
-
     # Count bunks and campers per gender for force-all-used logic
     bunks_by_gender: dict[str, list[int]] = {"M": [], "F": []}
     campers_by_gender: dict[str, int] = {"M": 0, "F": 0}
@@ -64,9 +58,6 @@ def add_cabin_minimum_occupancy_constraints(
     for bunk_idx, bunk in enumerate(ctx.bunks):
         if is_ag_session_bunk(bunk):
             continue
-        # Skip locked bunks: their occupancy is frozen, not free to fill unlocked space
-        if bunk.campminder_id in locked_bunk_cms:
-            continue
         gender = bunk.gender
         if gender in bunks_by_gender:
             bunks_by_gender[gender].append(bunk_idx)
@@ -74,9 +65,6 @@ def add_cabin_minimum_occupancy_constraints(
     for person in ctx.persons:
         # Skip AG-enrolled campers - they have their own bunks
         if person.session_cm_id in ag_session_ids:
-            continue
-        # Skip locked occupants: they are already frozen in their locked bunk
-        if person.campminder_person_id in locked_occupant_cms:
             continue
         gender = person.gender
         if gender in campers_by_gender:
@@ -116,12 +104,6 @@ def add_cabin_minimum_occupancy_constraints(
     for bunk_idx, bunk in enumerate(ctx.bunks):
         # Skip AG bunks - they take whoever is enrolled
         if is_ag_session_bunk(bunk):
-            continue
-
-        # Skip locked bunks: their exact occupancy is already pinned by
-        # add_locked_bunk_constraints — enforcing a hard floor on top would
-        # create infeasibility when the pinned count is below MIN_BUNK_OCCUPANCY.
-        if bunk.campminder_id in locked_bunk_cms:
             continue
 
         # Calculate occupancy expression for this bunk

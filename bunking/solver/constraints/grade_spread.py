@@ -25,15 +25,8 @@ def add_grade_spread_constraints(ctx: SolverContext) -> None:
 
     constraints_added = 0
 
-    # Partial cabin re-solve (#1609): locked bunks have frozen rosters — a pinned
-    # roster that spans 3+ grades would make this hard constraint infeasible for no
-    # benefit (the solver cannot change the locked roster anyway).
-    locked_bunk_cms = set(ctx.input.locked_bunks)
-
     for bunk_idx, bunk in enumerate(ctx.bunks):
         if is_ag_session_bunk(bunk):
-            continue
-        if bunk.campminder_id in locked_bunk_cms:
             continue
 
         eligible_campers = get_eligible_campers_for_bunk(ctx, bunk)
