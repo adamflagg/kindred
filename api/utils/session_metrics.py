@@ -57,9 +57,9 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
     "unknown": 4,
 }
 
-# Session types that count toward "summers at camp" / "years as camper"
-# Used for metrics calculations: "Summers at Camp", "First Summer Year".
-# Quest counts toward camper history to match CampMinder's years_at_camp.
+# Non-teen summer types that count UNCONDITIONALLY toward "summers at camp" /
+# "years as camper". Used for the computed "Summers at Camp" / "First Summer Year"
+# metrics. Quest is included to match CampMinder's years_at_camp.
 #
 # Includes:
 # - main: Standard sessions (Session 1, 2, 3, 4)
@@ -68,9 +68,11 @@ SESSION_LENGTH_ORDER: dict[str, int] = {
 # - quest: Quest adventure programs (child-oriented, counts toward years at camp)
 #
 # Excludes:
-# - family: Family camp (adult-focused)
-# - scit: SCIT teen program (different program)
-# - tli: Teen Leadership Initiative (different program)
+# - family: Family camp (adult-focused) — never counts
+# NOTE: SCIT/TLI are intentionally NOT in this tuple, but they DO count toward
+# "summers at camp" when within the summer window — admitted separately (with a
+# window gate the tuple can't express) in compute_summer_metrics(), per #1599.
+# CampMinder's years_at_camp counts teen years, and this metric mirrors it.
 SUMMER_PROGRAM_SESSION_TYPES = ("main", "embedded", "ag", "quest")
 
 # Summer teen programs: SCIT (CIT+SIT) and TLI. NOT a default-included cohort —
@@ -378,6 +380,21 @@ def resolve_duration_sessions(sessions: dict[int, Any], duration: str | None) ->
     return matching
 
 
+def _summer_record_year(record: Any, session: Any | None) -> int | None:
+    """Year a record belongs to: the record's ``year`` if set, else the session's start year."""
+    record_year = getattr(record, "year", None)
+    if record_year:
+        return int(record_year)
+    if session is not None:
+        start_date = getattr(session, "start_date", None)
+        if start_date:
+            try:
+                return int(str(start_date).split("-")[0])
+            except ValueError, IndexError:
+                return None
+    return None
+
+
 def compute_summer_metrics(
     enrollment_history: list[Any],
     person_ids: set[int],
@@ -385,6 +402,16 @@ def compute_summer_metrics(
     """Compute summer enrollment metrics from history.
 
     Shared logic used by both registration and retention services.
+
+    Counts the distinct years a person had a summer enrollment. Non-teen summer
+    types (``SUMMER_PROGRAM_SESSION_TYPES``) always count; SCIT/TLI count too,
+    but only when the session falls inside that year's summer window (#1599) — so
+    off-season teen sessions (fall Family-Camp CIT, Feb L.A. Trip) are excluded.
+    This keeps the computed metric aligned with CampMinder's ``years_at_camp``,
+    which counts teen years. Each year's window is derived from that year's
+    ``main`` sessions present in the history (always present in production — every
+    summer that runs teen programs also runs main camp); if a year's window can't
+    be derived, its teen sessions are conservatively excluded.
 
     Args:
         enrollment_history: List of attendee records with session expansion.
@@ -395,54 +422,59 @@ def compute_summer_metrics(
         - summer_years_by_person: person_id -> count of distinct summer years
         - first_year_by_person: person_id -> first summer enrollment year
     """
-    # Group records by person_id
+    # Pass 1: derive each year's summer window from that year's main sessions.
+    main_sessions_by_year: dict[int, dict[int, Any]] = {}
+    for record in enrollment_history:
+        session = get_session_from_expand(record)
+        if not session or getattr(session, "session_type", None) != "main":
+            continue
+        year = _summer_record_year(record, session)
+        if year is None:
+            continue
+        cm_id = getattr(session, "cm_id", None)
+        key = int(cm_id) if cm_id is not None else id(session)
+        main_sessions_by_year.setdefault(year, {})[key] = session
+    summer_window_by_year: dict[int, tuple[str, str] | None] = {
+        year: get_summer_window(sessions) for year, sessions in main_sessions_by_year.items()
+    }
+
+    # Pass 2: group qualifying records by person. Non-teen summer types count
+    # unconditionally; teen types (SCIT/TLI) are summer-window-gated.
     by_person: dict[int, list[Any]] = {}
     for record in enrollment_history:
         pid = getattr(record, "person_id", None)
         if pid is None or pid not in person_ids:
             continue
 
-        # Filter to summer session types
         session = get_session_from_expand(record)
         if not session:
             continue
 
         session_type = getattr(session, "session_type", None)
-        if session_type not in SUMMER_PROGRAM_SESSION_TYPES:
+        if session_type in SUMMER_PROGRAM_SESSION_TYPES:
+            pass
+        elif session_type in SUMMER_TEEN_TYPES:
+            year = _summer_record_year(record, session)
+            window = summer_window_by_year.get(year) if year is not None else None
+            if not is_summer_teen_session(session, window):
+                continue
+        else:
             continue
 
-        if pid not in by_person:
-            by_person[pid] = []
-        by_person[pid].append(record)
+        by_person.setdefault(pid, []).append(record)
 
-    # Compute aggregations
+    # Aggregate: count distinct years per person.
     summer_years_by_person: dict[int, int] = {}
     first_year_by_person: dict[int, int] = {}
 
     for pid, records in by_person.items():
-        # Summer years: count distinct years from session start_date or record year
         years: set[int] = set()
         for r in records:
-            # Try to get year from record first
-            record_year = getattr(r, "year", None)
-            if record_year:
-                years.add(int(record_year))
-                continue
-
-            # Fall back to session start_date
-            session = get_session_from_expand(r)
-            if session:
-                start_date = getattr(session, "start_date", None)
-                if start_date:
-                    try:
-                        year_str = str(start_date).split("-")[0]
-                        years.add(int(year_str))
-                    except ValueError, IndexError:
-                        pass
+            year = _summer_record_year(r, get_session_from_expand(r))
+            if year is not None:
+                years.add(year)
 
         summer_years_by_person[pid] = len(years)
-
-        # First summer year: min year
         if years:
             first_year_by_person[pid] = min(years)
 
