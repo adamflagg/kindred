@@ -304,7 +304,6 @@ export type BunkRequestsRecord<
   id: string
   is_active?: boolean
   is_first_requested?: boolean
-  is_placeholder?: boolean
   is_reciprocal?: boolean
   keywords_found?: null | Tkeywords_found
   manual_review_reason?: string
