@@ -71,14 +71,14 @@ def _count_placed(solver: DirectBunkingSolver, cp: cp_model.CpSolver) -> int:
 
 
 def test_places_everyone_when_room_exists(mock_config):
-    # 11 request-less campers; locked bunk 2001 (empty -> forbids everyone) + unlocked
-    # bunk 2002 (cap 12). Hard cardinality == 1: every working camper must land somewhere.
-    # All 11 fit in 2002; solver must place them all.
-    persons = [make_person(1000 + i, gender="M", grade=5) for i in range(11)]
-    locked = make_bunk(2001, gender="M")
-    free = make_bunk(2002, gender="M")
+    # 11 request-less campers; locked bunk 2000001 (empty -> forbids everyone) + unlocked
+    # bunk 2000002 (cap 12). Hard cardinality == 1: every working camper must land somewhere.
+    # All 11 fit in 2000002; solver must place them all.
+    persons = [make_person(1000000 + i, gender="M", grade=5) for i in range(1, 12)]
+    locked = make_bunk(2000001, gender="M")
+    free = make_bunk(2000002, gender="M")
     inp = make_input(persons, [locked, free], [])
-    inp.locked_bunks = {2001: []}  # partial mode; 2001 frozen empty -> all go to 2002
+    inp.locked_bunks = {2000001: []}  # partial mode; 2000001 frozen empty -> all go to 2000002
     solver = DirectBunkingSolver(inp, mock_config)
     cp, status = _solve(solver)
     assert is_optimal_or_feasible(status)

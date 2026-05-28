@@ -713,10 +713,10 @@ class DirectBunkingSolver:
 
         # Gender safety: a genuine AG/Mixed single-bunk session accepts everyone, but a
         # partial re-solve (#1609) can collapse the working set to a single *gendered*
-        # unlocked bunk. Never place a gender-incompatible camper there — leave them
-        # unassigned (the partial summary surfaces them), mirroring the gender hard
-        # constraint on the multi-bunk path. Campers with no gender data fit any bunk,
-        # matching add_gender_constraints.
+        # unlocked bunk. A gender-incompatible camper has no valid placement there;
+        # under the must-place invariant (#1696) that means INFEASIBLE — the branch
+        # below returns None, mirroring the gender hard constraint on the multi-bunk
+        # path. Campers with no gender data fit any bunk, matching add_gender_constraints.
         def _gender_compatible(cm_id: int) -> bool:
             if bunk.gender in ("AG", "Mixed"):
                 return True
@@ -725,7 +725,10 @@ class DirectBunkingSolver:
 
         assignable = [cm for cm in self.person_ids if _gender_compatible(cm)]
         skipped = len(self.person_ids) - len(assignable)
-        over_capacity = len(assignable) > bunk.capacity
+        # Effective cap mirrors cabin_capacity.py — clamp raw bunk.capacity to
+        # DEFAULT_BUNK_CAPACITY (12) and add a seat when allow_overflow=True.
+        effective_cap = min(bunk.capacity, DEFAULT_BUNK_CAPACITY) + (1 if self.input.allow_overflow else 0)
+        over_capacity = len(assignable) > effective_cap
 
         logger.info(f"Single-bunk session: {bunk.name} (capacity: {bunk.capacity})")
         logger.info(f"Campers to assign: {len(assignable)}")
@@ -739,10 +742,20 @@ class DirectBunkingSolver:
             )
             return None
 
-        # Check if we have too many campers for the bunk
+        # Must-place invariant: more campers than the effective cap → INFEASIBLE.
+        # Mirrors the skipped branch above — the caller (`solve()` → `solver_runner`)
+        # treats only `None` as infeasible, so we cannot return a populated output
+        # with status="INFEASIBLE" or apply_solver_results would write the
+        # over-capacity assignments to PocketBase.
         if over_capacity:
-            logger.warning(f"WARNING: {len(assignable)} campers but only {bunk.capacity} spots!")
-            logger.warning("This will be infeasible, but continuing anyway...")
+            logger.warning(
+                "single_bunk_infeasible bunk=%s campers=%d effective_cap=%d allow_overflow=%s",
+                bunk.name,
+                len(assignable),
+                effective_cap,
+                self.input.allow_overflow,
+            )
+            return None
 
         # Get configured year from CampMinder settings
         year = get_current_season()
@@ -784,10 +797,13 @@ class DirectBunkingSolver:
             None, self.soft_constraint_violations
         )
         stats: dict[str, Any] = {
-            "status": "INFEASIBLE" if over_capacity else "OPTIMAL",
+            # Single-bunk shortcut only reaches this point when every working
+            # camper fits within the effective cap — the over-capacity and
+            # gender-incompatible branches above already returned `None`.
+            "status": "OPTIMAL",
             # int() cast — same reason as _build_stats_dict above: cp_model
             # status constants are an enum in current OR-Tools, not raw ints.
-            "status_code": int(cp_model.INFEASIBLE if over_capacity else cp_model.OPTIMAL),
+            "status_code": int(cp_model.OPTIMAL),
             "objective_value": None,
             "solve_time": 0.0,
             # Reported display counts use the full merged board (#1609); the
@@ -1238,9 +1254,11 @@ class DirectBunkingSolver:
         yielded_request_ids: set[str] = {y["nbw_request_id"] for y in self.parent_nbw_yields}
 
         for person_cm_id, requests in self.input.requests_by_person.items():
-            # Skip campers the solver did not place (e.g., frozen locked campers
-            # removed from the working set). Every working-set camper must be
-            # placed; if a camper is absent here it is a frozen roster row.
+            # Frozen locked-roster campers are removed from the working set, so
+            # they have no row in person_to_bunk; skip them. The must-place
+            # invariant (#1696) means every *working-set* camper is in
+            # person_to_bunk on any successful solve — reaching this skip for a
+            # working-set camper would indicate a solver bug.
             if person_cm_id not in person_to_bunk:
                 continue
             # Restrict to resolved requests — pending/declined aren't part of the solver's scope.
