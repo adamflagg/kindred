@@ -1,18 +1,18 @@
 import { useEffect } from 'react'
 
 /**
- * Clears per-session partial-resolve lock state (#1609) whenever the selected
- * session changes, so stale locks/overflow never leak into a different session's solve.
+ * Clears per-session lock state (#1609) whenever the selected session
+ * changes, so stale locks never leak into a different session's solve.
+ *
+ * Stream C: previously also reset allowOverflow. That state is gone (the
+ * solver auto-uses overflow only when needed), so this hook now only resets
+ * the lock set.
  */
 export function useResetPartialResolveOnSessionChange(
   selectedSession: string,
-  unlockAll: () => void,
-  setAllowOverflow: (v: boolean) => void
+  unlockAll: () => void
 ) {
-  // unlockAll is a stable useCallback and setAllowOverflow is a stable useState
-  // setter, so the effect re-fires only when selectedSession actually changes.
   useEffect(() => {
     unlockAll()
-    setAllowOverflow(false)
-  }, [selectedSession, unlockAll, setAllowOverflow])
+  }, [selectedSession, unlockAll])
 }

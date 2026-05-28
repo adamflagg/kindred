@@ -11,102 +11,66 @@ function makeProps(overrides: Partial<Parameters<typeof OptimizeBunksButton>[0]>
     onRespectLocksChange: vi.fn(),
     lockedCount: 0,
     unlockedCount: 0,
-    allowOverflow: false,
-    onAllowOverflowChange: vi.fn(),
     ...overrides,
   }
 }
 
-function openDropdown() {
-  const chevronBtn = screen.getByRole('button', { name: /select optimization level/i })
-  fireEvent.click(chevronBtn)
-}
+describe('OptimizeBunksButton — partial re-solve controls (Stream C)', () => {
+  // Stream C removed the "Allow up to 13 per cabin" checkbox entirely.
+  // The smart orchestrator auto-uses overflow only when strict 12-cap is
+  // infeasible, minimally — no staff opt-in required.
 
-describe('OptimizeBunksButton — partial re-solve controls', () => {
-  // A. lockedCount=0 → main button text is "Optimize"; dropdown shows overflow
-  //    checkbox (Stream A — overflow available on every solve) but NO scope line.
-  it('A: shows "Optimize" when lockedCount=0; dropdown has overflow checkbox but no scope line', () => {
+  // A. lockedCount=0 → main button text is "Optimize"
+  it('A: shows "Optimize" when lockedCount=0', () => {
     render(<OptimizeBunksButton {...makeProps({ lockedCount: 0, unlockedCount: 0 })} />)
-
-    // Main button text
     expect(screen.getByText('Optimize')).toBeInTheDocument()
-
-    // Open the dropdown
-    openDropdown()
-
-    // Overflow checkbox IS present even with no locked bunks (Stream A)
-    expect(screen.getByText(/allow up to 13 per cabin/i)).toBeInTheDocument()
-
-    // Scope line still absent when nothing is locked
-    expect(screen.queryByText(/locked \d+ · re-solving \d+/i)).not.toBeInTheDocument()
   })
 
-  // B. lockedCount=3, unlockedCount=5 → main button text is "Solve" (short label, no wrap)
-  it('B: shows "Solve" when lockedCount=3, unlockedCount=5 (not solving/applying)', () => {
-    render(<OptimizeBunksButton {...makeProps({ lockedCount: 3, unlockedCount: 5 })} />)
-
+  // B. respectLocks=true + lockedCount=3, unlockedCount=5 → "Solve" (partial re-solve)
+  it('B: shows "Solve" when respectLocks=true and lockedCount=3, unlockedCount=5', () => {
+    render(
+      <OptimizeBunksButton
+        {...makeProps({ respectLocks: true, lockedCount: 3, unlockedCount: 5 })}
+      />
+    )
     expect(screen.getByText('Solve')).toBeInTheDocument()
     expect(screen.queryByText(/re-solve unlocked/i)).not.toBeInTheDocument()
   })
 
-  // C. lockedCount=3, unlockedCount=5 → dropdown shows overflow checkbox AND scope line
-  it('C: dropdown shows overflow checkbox and scope line when lockedCount>0', () => {
-    render(<OptimizeBunksButton {...makeProps({ lockedCount: 3, unlockedCount: 5 })} />)
-
-    openDropdown()
-
-    expect(screen.getByText(/allow up to 13 per cabin/i)).toBeInTheDocument()
-    expect(screen.getByText(/locked 3 · re-solving 5/i)).toBeInTheDocument()
-  })
-
-  // D. With lockedCount>0, clicking the overflow checkbox calls onAllowOverflowChange(true)
-  it('D: clicking overflow checkbox calls onAllowOverflowChange(true)', () => {
-    const onAllowOverflowChange = vi.fn()
+  // C. respectLocks=false but locked cabins exist → full re-solve, so "Optimize".
+  // The label/scope must reflect the actual solve mode, not the mere presence of
+  // locks (the solver ignores locks when respectLocks is false).
+  it('C: shows "Optimize" when respectLocks=false even though lockedCount>0', () => {
     render(
       <OptimizeBunksButton
-        {...makeProps({
-          lockedCount: 3,
-          unlockedCount: 5,
-          allowOverflow: false,
-          onAllowOverflowChange,
-        })}
+        {...makeProps({ respectLocks: false, lockedCount: 3, unlockedCount: 5 })}
       />
     )
-
-    openDropdown()
-
-    const overflowLabel = screen.getByText(/allow up to 13 per cabin/i)
-    const overflowCheckbox = overflowLabel
-      .closest('label')!
-      .querySelector('input[type="checkbox"]')!
-    fireEvent.click(overflowCheckbox)
-
-    expect(onAllowOverflowChange).toHaveBeenCalledWith(true)
+    expect(screen.getByText('Optimize')).toBeInTheDocument()
   })
 
-  // E. With lockedCount=0, clicking the overflow checkbox still calls onAllowOverflowChange(true)
-  //    (Stream A — overflow toggle works on full solves too).
-  it('E: clicking overflow checkbox calls onAllowOverflowChange(true) when lockedCount=0', () => {
-    const onAllowOverflowChange = vi.fn()
+  // D. respectLocks=true + locked cabins → the "Locked N · Re-solving M" scope
+  // footer renders inside the open dropdown (sanity baseline for E).
+  it('D: shows the locked-scope footer when respectLocks=true (dropdown open)', () => {
     render(
       <OptimizeBunksButton
-        {...makeProps({
-          lockedCount: 0,
-          unlockedCount: 0,
-          allowOverflow: false,
-          onAllowOverflowChange,
-        })}
+        {...makeProps({ respectLocks: true, lockedCount: 3, unlockedCount: 5 })}
       />
     )
+    fireEvent.click(screen.getByLabelText('Select optimization level'))
+    expect(screen.getByText(/Locked 3 · Re-solving 5/)).toBeInTheDocument()
+  })
 
-    openDropdown()
-
-    const overflowLabel = screen.getByText(/allow up to 13 per cabin/i)
-    const overflowCheckbox = overflowLabel
-      .closest('label')!
-      .querySelector('input[type="checkbox"]')!
-    fireEvent.click(overflowCheckbox)
-
-    expect(onAllowOverflowChange).toHaveBeenCalledWith(true)
+  // E. respectLocks=false + locked cabins → footer must NOT render (it would
+  // misdescribe a full re-solve as a partial one). Dropdown is opened so the
+  // assertion exercises the real conditional, not the closed-menu default.
+  it('E: hides the locked-scope footer when respectLocks=false (dropdown open)', () => {
+    render(
+      <OptimizeBunksButton
+        {...makeProps({ respectLocks: false, lockedCount: 3, unlockedCount: 5 })}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('Select optimization level'))
+    expect(screen.queryByText(/Locked 3 · Re-solving 5/)).not.toBeInTheDocument()
   })
 })

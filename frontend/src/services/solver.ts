@@ -116,8 +116,12 @@ export interface StaffNbwYieldRaw {
 /** Raw parent-NBW yield — identical shape to StaffNbwYieldRaw, distinct source (#1638 Stream C). */
 export type ParentNbwYieldRaw = StaffNbwYieldRaw
 
-/** A SolverRun plus the optional failure diagnostics (#1638). */
-export type SolverRunWithDiagnostics = SolverRun & { diagnostics?: SolverDiagnostics }
+/** A SolverRun plus the optional failure diagnostics (#1638) and Stream C\'s
+ * overflow_used (number of bunks the solver placed at 13-cap; 0 means clean 12-cap). */
+export type SolverRunWithDiagnostics = SolverRun & {
+  diagnostics?: SolverDiagnostics
+  overflow_used?: number
+}
 
 interface ValidationResult {
   valid: boolean
@@ -302,8 +306,7 @@ export const solverService = {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>,
     timeLimit: number = 60,
     respectLocks: boolean = true,
-    lockedBunkCmIds: number[] = [],
-    allowOverflow: boolean = false
+    lockedBunkCmIds: number[] = []
   ): Promise<SolverRunWithDiagnostics> {
     try {
       // Call solver API directly
@@ -320,7 +323,6 @@ export const solverService = {
           scenario: scenarioId ?? null,
           respect_locks: respectLocks,
           locked_bunk_cm_ids: lockedBunkCmIds,
-          allow_overflow: allowOverflow,
         }),
       })
 
@@ -370,6 +372,8 @@ export const solverService = {
           started_at: runStatus.started_at ?? new Date().toISOString(),
           completed_at: runStatus.completed_at ?? new Date().toISOString(),
           results: runStatus.results,
+          // Stream C: count of bunks at 13-cap; 0 on a clean 12-cap solve.
+          overflow_used: runStatus.overflow_used ?? 0,
           // Don't include error_message when undefined
           created: runStatus.created_at ?? new Date().toISOString(),
           updated: runStatus.updated_at ?? new Date().toISOString(),

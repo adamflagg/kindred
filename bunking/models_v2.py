@@ -153,3 +153,11 @@ class DirectSolverOutput(BaseModel):
     )  # person_cm_id -> list of satisfied request IDs
     warnings: list[str] = Field(default_factory=list)
     log_file_path: str | None = None  # Path to saved solver log file
+    # Stream C: count of bunks in the returned assignments that exceed
+    # DEFAULT_BUNK_CAPACITY (i.e., are at 13). 0 means a clean 12-cap solve.
+    # Populated by DirectBunkingSolver.solve when pass 2 runs.
+    overflow_used: int = 0
+    # Stream C: when solve() returns an INFEASIBLE result (empty assignments),
+    # this holds the actionable diagnostic message for staff. None when
+    # solve succeeded. Populated from the tier-3 diagnostic flow.
+    infeasibility_diagnosis: str | None = None

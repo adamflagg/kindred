@@ -25,6 +25,39 @@ from bunking.solver.logging import ConstraintLogger
 # Type alias for config values
 ConfigValue = int | float | str | bool
 
+# Fictional camper names for test rosters (CLAUDE.md: no real names in code or
+# tests). Indexed by roster position so a roster of N campers gets N distinct
+# fictional names. 27 entries cover the largest roster in the solver suites.
+FICTIONAL_CAMPER_NAMES: list[tuple[str, str]] = [
+    ("Emma", "Johnson"),
+    ("Liam", "Garcia"),
+    ("Olivia", "Chen"),
+    ("Riley", "Sam"),
+    ("Samuel", "Johnson"),
+    ("Noah", "Martinez"),
+    ("Ava", "Patel"),
+    ("Mason", "Nguyen"),
+    ("Sophia", "Kim"),
+    ("Lucas", "Brown"),
+    ("Isabella", "Davis"),
+    ("Ethan", "Lopez"),
+    ("Mia", "Wilson"),
+    ("Logan", "Anderson"),
+    ("Charlotte", "Thomas"),
+    ("Jackson", "Taylor"),
+    ("Amelia", "Moore"),
+    ("Aiden", "Jackson"),
+    ("Harper", "White"),
+    ("Elijah", "Harris"),
+    ("Evelyn", "Clark"),
+    ("James", "Lewis"),
+    ("Abigail", "Walker"),
+    ("Benjamin", "Hall"),
+    ("Emily", "Young"),
+    ("Henry", "King"),
+    ("Ella", "Wright"),
+]
+
 
 def is_optimal_or_feasible(status: Any) -> bool:
     """Check if solver status is optimal or feasible.
@@ -187,6 +220,7 @@ def build_solver_context(
     requests: list[DirectBunkRequest] | None = None,
     config_overrides: dict[str, ConfigValue] | None = None,
     debug_constraints: dict[str, bool] | None = None,
+    allow_overflow: bool = False,
 ) -> SolverContext:
     """
     Build a minimal SolverContext for constraint testing.
@@ -244,6 +278,7 @@ def build_solver_context(
         requests=requests,
         existing_assignments=[],
         historical_bunking=[],
+        allow_overflow=allow_overflow,
     )
 
     return SolverContext(
@@ -265,6 +300,24 @@ def build_solver_context(
         debug_constraints=debug_constraints or {},
         soft_constraint_violations={},
         material_request_ids=material_ids,
+    )
+
+
+def build_direct_solver_input(
+    persons: list[DirectPerson],
+    bunks: list[DirectBunk],
+    requests: list[DirectBunkRequest] | None = None,
+    allow_overflow: bool = False,
+) -> DirectSolverInput:
+    """Build a DirectSolverInput for tests that exercise the full solver
+    (DirectBunkingSolver.solve) rather than a single constraint module."""
+    return DirectSolverInput(
+        persons=persons,
+        bunks=sorted(bunks, key=lambda b: b.campminder_id),
+        requests=requests or [],
+        existing_assignments=[],
+        historical_bunking=[],
+        allow_overflow=allow_overflow,
     )
 
 

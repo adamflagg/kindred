@@ -60,6 +60,8 @@ class TestSolverRunnerPocketBaseSave:
             mock_result.assignments = []
             mock_result.stats = {"status": "OPTIMAL", "solve_time": 5.0}
             mock_result.satisfied_requests = {}
+            mock_result.infeasibility_diagnosis = None
+            mock_result.overflow_used = 0
             mock_solver.solve.return_value = mock_result
         else:
             mock_solver.solve.side_effect = ValueError("Solver failed to find a solution")
@@ -199,6 +201,91 @@ class TestSolverRunnerPocketBaseSave:
 
             pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
             assert pb_data["status"] == "success"
+
+    @pytest.mark.asyncio
+    async def test_success_path_persists_overflow_used(self, mock_solver_input):
+        """#9 (Stream C): the result's overflow_used must be written to PB so the
+        impact-analysis UI can flag overflowed runs. A mocked field that is never
+        asserted lets a contract regression slip through silently."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            # Override the default overflow_used=0 to prove it's plumbed through.
+            m6.return_value.solve.return_value.overflow_used = 3
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
+            assert pb_data["overflow_used"] == 3
+
+    @pytest.mark.asyncio
+    async def test_success_path_stores_overflow_used_in_memory(self, mock_solver_input):
+        """#2 (scan): overflow_used must be stored in the in-memory solver_runs
+        dict too — not just pb_data — so GET /solver/run/{id} can surface it and
+        the frontend overflow toast fires. Writing it only to pb_data means the
+        run-status poll always returns the default 0."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            self._configure_mocks(mocks, mock_solver_input)
+            m6.return_value.solve.return_value.overflow_used = 2
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            assert mock_runs["test_run"]["overflow_used"] == 2
 
     @pytest.mark.asyncio
     async def test_success_path_sends_result_field(self, mock_solver_input):
@@ -529,6 +616,58 @@ class TestFailedRunPersistsDetails:
         return patches, mock_runs
 
     @pytest.mark.asyncio
+    async def test_failure_path_persists_infeasibility_diagnosis(self, mock_solver_input):
+        """#9 (Stream C): when the orchestrator returns a structured infeasible
+        result carrying an actionable diagnosis, that diagnosis must be written
+        to the failure record's infeasibility_diagnosis field for staff."""
+        patches, mock_runs = self._setup_for_failure()
+        diagnosis = "Locked group spans 36 months — split the group or override the age spread."
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"],
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            m1.return_value = ([], [], [], [], [])
+            m2.return_value = []
+            m3.return_value = mock_solver_input
+            mock_pb_instance = MagicMock()
+            mock_pb_instance.collection.return_value.auth_with_password.return_value = {}
+            mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
+            m7.return_value = mock_pb_instance
+            m5.get_instance.return_value = MagicMock()
+            mock_solver = MagicMock()
+            # Stream C orchestrator returns an empty-assignments output carrying
+            # the diagnosis (instead of raising) — solver_runner converts it.
+            infeasible_result = MagicMock()
+            infeasible_result.assignments = []
+            infeasible_result.infeasibility_diagnosis = diagnosis
+            mock_solver.solve.return_value = infeasible_result
+            m6.return_value = mock_solver
+            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+
+            mock_runs["prod_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="prod_run",
+                session_cm_id=1000001,
+                year=2026,
+                time_limit=60,
+            )
+
+        create_calls = mock_pb_instance.collection.return_value.create.call_args_list
+        assert len(create_calls) == 1, "Solo failure must persist a PB record via create"
+        pb_data = create_calls[0][0][0]
+        assert pb_data["status"] == "failed"
+        assert pb_data["infeasibility_diagnosis"] == diagnosis
+
+    @pytest.mark.asyncio
     async def test_failure_path_persists_details_with_sweep_metadata(self, mock_solver_input):
         """Failed sweep child runs must carry sweep_id + sweep_label + scenario + time_limit_seconds
         so they group correctly in the impact-analysis sweep view."""
@@ -620,6 +759,8 @@ class TestFailedRunPersistsDetails:
             mock_result.assignments = []
             mock_result.stats = {"status": "OPTIMAL"}
             mock_result.satisfied_requests = {}
+            mock_result.infeasibility_diagnosis = None
+            mock_result.overflow_used = 0
             mock_solver.solve.return_value = mock_result
             m6.return_value = mock_solver
             m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")

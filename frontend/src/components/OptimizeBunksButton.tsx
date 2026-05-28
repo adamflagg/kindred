@@ -139,10 +139,6 @@ export interface OptimizeBunksButtonProps {
   lockedCount?: number
   /** Number of unlocked cabins that will be re-solved */
   unlockedCount?: number
-  /** Whether to allow up to 13 campers per cabin */
-  allowOverflow?: boolean
-  /** Callback when allowOverflow toggle changes */
-  onAllowOverflowChange?: (value: boolean) => void
   /** Optional class name override */
   className?: string
 }
@@ -155,8 +151,6 @@ export default function OptimizeBunksButton({
   onRespectLocksChange,
   lockedCount = 0,
   unlockedCount = 0,
-  allowOverflow = false,
-  onAllowOverflowChange,
   className,
 }: OptimizeBunksButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -249,7 +243,10 @@ export default function OptimizeBunksButton({
   const getButtonText = () => {
     if (isSolving) return 'Optimizing...'
     if (isApplyingResults) return 'Applying...'
-    if (lockedCount > 0) return 'Solve'
+    // "Solve" signals a partial re-solve — only accurate when locks are actually
+    // respected. With respectLocks off the solver ignores locks (full re-solve),
+    // so the label stays "Optimize" even if locked cabins exist.
+    if (respectLocks && lockedCount > 0) return 'Solve'
     return 'Optimize'
   }
 
@@ -380,21 +377,14 @@ export default function OptimizeBunksButton({
                 </label>
               </div>
 
-              {/* Overflow checkbox — available on every solve (Stream A) */}
-              <div className="border-border border-t px-4 py-2.5">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={allowOverflow}
-                    onChange={(e) => onAllowOverflowChange?.(e.target.checked)}
-                    className="accent-primary h-3.5 w-3.5 rounded"
-                  />
-                  <span className="text-muted-foreground text-xs">Allow up to 13 per cabin</span>
-                </label>
-              </div>
-
-              {/* Partial re-solve scope line — only when cabins are locked */}
-              {lockedCount > 0 && (
+              {/* Partial re-solve scope line — only when locks are respected AND
+                  cabins are locked. With respectLocks off the solve is a full
+                  re-solve, so describing it as "Locked N · Re-solving M" would
+                  misrepresent the mode.
+                  Stream C: the 13-cap "Allow up to 13 per cabin" checkbox was
+                  removed; the smart orchestrator auto-uses overflow only when
+                  strict 12-cap is infeasible, minimally. */}
+              {respectLocks && lockedCount > 0 && (
                 <div className="border-border border-t px-4 py-2">
                   <p className="text-muted-foreground text-xs">
                     {`Locked ${lockedCount} · Re-solving ${unlockedCount}`}

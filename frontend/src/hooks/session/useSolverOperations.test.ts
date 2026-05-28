@@ -230,7 +230,6 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [],
-          allowOverflow: false,
         }),
       { wrapper }
     )
@@ -269,7 +268,6 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [],
-          allowOverflow: false,
         }),
       { wrapper }
     )
@@ -286,8 +284,8 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
   })
 })
 
-describe('useSolverOperations locked bunks + overflow (#1609)', () => {
-  it('passes lockedBunkCmIds and allowOverflow to solverService.runSolver', async () => {
+describe('useSolverOperations locked bunks (#1609)', () => {
+  it('passes lockedBunkCmIds to solverService.runSolver', async () => {
     vi.spyOn(solverService, 'runSolver').mockResolvedValue({
       id: 'run-2',
       session: '1000002',
@@ -310,7 +308,6 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [2001, 2002],
-          allowOverflow: true,
         }),
       { wrapper }
     )
@@ -319,7 +316,7 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
       await result.current.handleRunSolver(60)
     })
 
-    // Arg order: sessionId, year, scenarioId, fetchWithAuth, timeLimit, respectLocks, lockedBunkCmIds, allowOverflow
+    // Arg order: sessionId, year, scenarioId, fetchWithAuth, timeLimit, respectLocks, lockedBunkCmIds
     expect(solverService.runSolver).toHaveBeenCalledWith(
       '1000002',
       2026,
@@ -327,8 +324,88 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
       expect.any(Function),
       60,
       true,
-      [2001, 2002],
-      true
+      [2001, 2002]
+    )
+  })
+})
+
+describe('useSolverOperations overflow notification (Stream C)', () => {
+  it('shows the overflow toast when the solver used overflow bunks', async () => {
+    const { toast } = await import('react-hot-toast')
+    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
+      id: 'run-overflow',
+      session: '1000002',
+      status: 'completed',
+      overflow_used: 2,
+      results: { stats: { satisfied_request_count: 5, total_requests: 5 } },
+      diagnostics: null,
+      created: '',
+      updated: '',
+    } as never)
+
+    const { result } = renderHook(
+      () =>
+        useSolverOperations({
+          selectedSession: '1000002',
+          currentYear: 2026,
+          currentScenario: null,
+          scenarios: [],
+          autoApplyEnabled: false,
+          autoApplyTimeout: 0,
+          fetchWithAuth: vi.fn(),
+          respectLocks: true,
+          lockedBunkCmIds: [],
+        }),
+      { wrapper }
+    )
+
+    await act(async () => {
+      await result.current.handleRunSolver(60)
+    })
+
+    expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('overflow on 2 bunks'),
+      expect.objectContaining({ duration: 6000 })
+    )
+  })
+
+  it('does not show the overflow toast when overflow_used is 0', async () => {
+    const { toast } = await import('react-hot-toast')
+    vi.mocked(toast.success).mockClear()
+    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
+      id: 'run-clean',
+      session: '1000002',
+      status: 'completed',
+      overflow_used: 0,
+      results: { stats: { satisfied_request_count: 5, total_requests: 5 } },
+      diagnostics: null,
+      created: '',
+      updated: '',
+    } as never)
+
+    const { result } = renderHook(
+      () =>
+        useSolverOperations({
+          selectedSession: '1000002',
+          currentYear: 2026,
+          currentScenario: null,
+          scenarios: [],
+          autoApplyEnabled: false,
+          autoApplyTimeout: 0,
+          fetchWithAuth: vi.fn(),
+          respectLocks: true,
+          lockedBunkCmIds: [],
+        }),
+      { wrapper }
+    )
+
+    await act(async () => {
+      await result.current.handleRunSolver(60)
+    })
+
+    expect(toast.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('overflow'),
+      expect.anything()
     )
   })
 })

@@ -101,8 +101,9 @@ def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
                 )
                 break
 
-    # Directly invoke the post-solve violation check
-    solver._check_constraint_violations(assignments, cp)
+    # Directly invoke the post-solve violation check with the pass-scoped
+    # overflow flag (the model above was built with allow_overflow=True).
+    solver._check_constraint_violations(assignments, cp, allow_overflow=True)
 
     # Verify bunk at 13 does NOT produce a cabin_capacity error violation in overflow mode
     cabin_cap_violations = solver.constraint_logger.violations.get("cabin_capacity", [])

@@ -23,6 +23,20 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Stream C: see bunking/solver/constraint_classification.py for the tier model.
+# Kept here (not imported from classification) to avoid circular imports —
+# constraint_classification is a pure module with no deps; this constant lives
+# at the consumer site. The invariant test enforces they stay in sync.
+_DIAGNOSTIC_PROBE_CONSTRAINTS: frozenset[str] = frozenset(
+    {
+        "grade_spread",
+        "age_spread",
+        "group_locks",
+        "parent_paramount",
+        "staff_separation",
+    }
+)
+
 
 class _RequestValidationSummaryBase(TypedDict, total=True):
     # Required keys set by _validate_requests before check_feasibility is called
@@ -296,19 +310,20 @@ def find_infeasibility_cause(
 
     logger.info("=== Starting Infeasibility Analysis ===")
 
-    # List of constraints to test. Each name must have a matching
-    # is_constraint_disabled() check in its constraint module, or the probe
-    # is a no-op solve that can never isolate a cause.
-    constraint_types = [
-        "session_boundary",
-        "parent_paramount",  # supersedes the former must_satisfy_one probe
-        "staff_separation",  # hard staff/manual not_bunk_with (#1541)
-        "grade_spread",
-        "age_spread",
-        "gender",
-        "level_progression",
-        "group_locks",
-    ]
+    # Probe only constraints whose relaxation could meaningfully change
+    # feasibility AND produces actionable output. INVIOLABLE_CONSTRAINTS
+    # (gender, session_boundary) excluded — suggesting them as a fix is
+    # unactionable. SOLVER_RELAXABLE_CONSTRAINTS (cabin_capacity) handled
+    # upstream by the smart orchestrator's capacity probe. level_progression
+    # excluded because it's a soft constraint — disabling it cannot change
+    # feasibility. The test in
+    # tests/unit/bunking/solver/test_constraint_classification.py enforces
+    # _DIAGNOSTIC_PROBE_CONSTRAINTS == INFO_ONLY_CONSTRAINTS.
+    # sorted(): the loop returns on the first constraint whose removal restores
+    # feasibility, so an unordered frozenset would make the reported cause flip
+    # between processes (PYTHONHASHSEED). A stable order keeps the diagnosis
+    # deterministic for identical inputs.
+    constraint_types = sorted(_DIAGNOSTIC_PROBE_CONSTRAINTS)
 
     results = {}
 

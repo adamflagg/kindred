@@ -86,12 +86,13 @@ def test_places_everyone_when_room_exists(mock_config):
 
 
 def test_single_working_bunk_gender_mismatch_is_infeasible(mock_config):
-    """Under the new must-place rule, a boy in a session with only female bunks returns
+    """Under the must-place rule, a boy in a session with only female bunks is
     INFEASIBLE — the solver cannot silently leave him unassigned.
 
     Setup: lock G-1 (with its occupant), leaving G-2 (F) as the only working bunk.
     Working set = 1 unlocked F bunk + 1 boy. The boy must be placed; no valid (male)
-    bunk exists; solve returns None.
+    bunk exists. Stream C returns a structured empty-assignments output carrying a
+    gender diagnosis rather than a bare None.
     """
     locked_occupant = make_person(1000001, gender="F", grade=5)
     unplaceable_boy = make_person(1000002, gender="M", grade=5)
@@ -102,5 +103,9 @@ def test_single_working_bunk_gender_mismatch_is_infeasible(mock_config):
 
     output = DirectBunkingSolver(inp, mock_config).solve(time_limit_seconds=10)
 
-    # Under the new rule the boy cannot be silently dropped — solver is INFEASIBLE.
-    assert output is None
+    # Under the must-place rule the boy cannot be silently dropped — INFEASIBLE,
+    # surfaced as a structured diagnosis (empty assignments + gender message).
+    assert output is not None
+    assert output.assignments == []
+    assert output.infeasibility_diagnosis is not None
+    assert "gender" in output.infeasibility_diagnosis.lower()
