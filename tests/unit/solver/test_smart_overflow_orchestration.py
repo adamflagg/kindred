@@ -404,6 +404,12 @@ class TestRequestConflictDiagnosis:
     boundary unambiguous.
     """
 
+    @pytest.mark.skip(
+        reason="Stream D break-glass: request conflicts are now PLACED via break-glass "
+        "(break_glass_used=True), not diagnosed. diagnostic_probe_constraints() narrowed to "
+        "STRUCTURAL_HARD. Retargeted by the break-glass orchestrator task in "
+        "tests/unit/solver/test_break_glass_orchestration.py."
+    )
     def test_request_conflict_diagnosis_names_parent_paramount(self, mock_config):
         """Capacity AND requests both block at 12-cap, but at the established
         (overflow) capacity the request cause isolates cleanly — so the diagnosis
