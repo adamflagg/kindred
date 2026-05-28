@@ -290,27 +290,14 @@ class TestCapacityMultipleBunks:
 
 
 class TestOverflowCapacity:
-    def test_default_caps_at_12_without_allow_unassigned(self):
-        # Without allow_unassigned=True, overflow is never active; cap stays at 12.
+    def test_overflow_allows_13(self):
+        # allow_overflow=True → cap raised to 13.
         campers = [
             create_person(cm_id=1001 + i, first_name=f"Camper{i}", last_name="Test", gender="M", grade=5)
             for i in range(13)
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=20)
         ctx = build_solver_context(persons=campers, bunks=[bunk])
-        add_cabin_capacity_constraints(ctx)
-        # conftest already forces every camper into the single bunk (cardinality == 1)
-        assert is_infeasible(cp_model.CpSolver().Solve(ctx.model))  # 13 > 12
-
-    def test_overflow_allows_13_in_partial_mode(self):
-        # allow_unassigned=True + allow_overflow=True → cap raised to 13.
-        campers = [
-            create_person(cm_id=1001 + i, first_name=f"Camper{i}", last_name="Test", gender="M", grade=5)
-            for i in range(13)
-        ]
-        bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=20)
-        ctx = build_solver_context(persons=campers, bunks=[bunk])
-        ctx.input.allow_unassigned = True
         ctx.input.allow_overflow = True
         add_cabin_capacity_constraints(ctx)
         assert is_optimal_or_feasible(cp_model.CpSolver().Solve(ctx.model))  # 13 fits
@@ -323,7 +310,6 @@ class TestOverflowCapacity:
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=20)
         ctx = build_solver_context(persons=campers, bunks=[bunk])
-        ctx.input.allow_unassigned = True
         ctx.input.allow_overflow = True
         add_cabin_capacity_constraints(ctx)
         assert is_infeasible(cp_model.CpSolver().Solve(ctx.model))  # 14 > 13
@@ -338,7 +324,6 @@ class TestOverflowCapacity:
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=8)
         ctx = build_solver_context(persons=campers, bunks=[bunk])
-        ctx.input.allow_unassigned = True
         ctx.input.allow_overflow = True
         add_cabin_capacity_constraints(ctx)
         assert is_infeasible(cp_model.CpSolver().Solve(ctx.model))  # 10 > 9 (8 + 1)

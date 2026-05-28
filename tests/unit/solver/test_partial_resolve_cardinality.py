@@ -1,11 +1,8 @@
-"""Cardinality relaxation for partial re-solve mode (#1609).
+"""Cardinality invariant: the solver always requires every working-set camper to be placed.
 
-In partial mode (``allow_unassigned=True``) the per-person cardinality
-constraint is relaxed from ``== 1`` to ``<= 1``, so surplus campers can be
-left unassigned when there is no room in the unlocked cabins.
-
-In normal mode (``allow_unassigned=False``, the default) the ``== 1``
-constraint is unchanged and the solver must assign everyone.
+The ``allow_unassigned`` field has been removed; the per-person cardinality
+constraint is unconditionally ``== 1``. A roster that exceeds available capacity
+returns INFEASIBLE so staff see the diagnostics modal.
 """
 
 from collections.abc import Generator
@@ -17,7 +14,7 @@ from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
 from bunking.solver.direct_solver import DirectBunkingSolver
-from tests.unit.bunking.solver.conftest import is_infeasible, is_optimal_or_feasible
+from tests.unit.bunking.solver.conftest import is_infeasible
 from tests.unit.solver.impossibility.conftest import make_bunk, make_input, make_person
 
 
@@ -65,25 +62,48 @@ def _solve(solver: DirectBunkingSolver) -> tuple[cp_model.CpSolver, Any]:
     return cp, cp.Solve(solver.model)
 
 
-def test_partial_mode_allows_unassigned_when_no_room(mock_config):
-    # 2 campers, ONE male bunk with capacity 1. allow_unassigned=True switches
-    # the solver into partial mode, relaxing cardinality to <= 1, so one camper
-    # is placed and one is left unassigned -> FEASIBLE.
-    persons = [make_person(1001, gender="M", grade=5), make_person(1002, gender="M", grade=5)]
-    bunks = [make_bunk(2002, gender="M", capacity=1)]
-    inp = make_input(persons, bunks, [])
-    inp.allow_unassigned = True  # partial mode
-    solver = DirectBunkingSolver(inp, mock_config)
-    _cp, status = _solve(solver)
-    assert is_optimal_or_feasible(status)  # feasible: surplus camper unassigned
-
-
-def test_full_mode_still_requires_everyone_assigned(mock_config):
-    # Same roster, NO locked_bunks => normal mode (== 1). 2 campers, one cap-1
-    # bunk -> everyone must be placed but there's no room -> INFEASIBLE.
-    persons = [make_person(1001, gender="M", grade=5), make_person(1002, gender="M", grade=5)]
-    bunks = [make_bunk(2002, gender="M", capacity=1)]
+def test_solver_requires_everyone_assigned(mock_config):
+    # 2 campers, ONE male bunk with capacity 1 → everyone must be placed but there's
+    # no room → INFEASIBLE. The solver never silently drops a camper.
+    persons = [make_person(1000001, gender="M", grade=5), make_person(1000002, gender="M", grade=5)]
+    bunks = [make_bunk(2000002, gender="M", capacity=1)]
     inp = make_input(persons, bunks, [])
     solver = DirectBunkingSolver(inp, mock_config)
     _cp, status = _solve(solver)
     assert is_infeasible(status)
+
+
+def test_single_bunk_over_capacity_returns_none(mock_config):
+    # Single-bunk shortcut (the `len(self.bunks) == 1` path in solve()): 13 campers
+    # but only one bunk with effective_cap=12 → must-place invariant cannot hold
+    # → solve() must return None so the runner records the run as failed instead
+    # of treating it as a completed-but-over-capacity result.
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    bunks = [make_bunk(2000001, gender="F", capacity=12)]
+    inp = make_input(persons, bunks, [])
+    solver = DirectBunkingSolver(inp, mock_config)
+    assert solver.solve() is None
+
+
+def test_single_bunk_over_capacity_clamps_to_default(mock_config):
+    # A bunk declared with capacity > DEFAULT_BUNK_CAPACITY (12) is still clamped
+    # to the standard, matching cabin_capacity.py. 13 campers → INFEASIBLE even
+    # though raw bunk.capacity (15) would suggest there's room.
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    bunks = [make_bunk(2000001, gender="F", capacity=15)]
+    inp = make_input(persons, bunks, [])
+    solver = DirectBunkingSolver(inp, mock_config)
+    assert solver.solve() is None
+
+
+def test_single_bunk_at_overflow_capacity_succeeds(mock_config):
+    # allow_overflow=True raises effective_cap to DEFAULT_BUNK_CAPACITY+1 = 13.
+    # 13 campers must now fit in a single 12-cap bunk and solve() returns a result.
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    bunks = [make_bunk(2000001, gender="F", capacity=12)]
+    inp = make_input(persons, bunks, [])
+    inp.allow_overflow = True
+    solver = DirectBunkingSolver(inp, mock_config)
+    output = solver.solve()
+    assert output is not None
+    assert len(output.assignments) == 13

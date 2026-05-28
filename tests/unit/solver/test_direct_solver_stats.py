@@ -431,20 +431,20 @@ class TestSingleBunkPathStats:
         assert result is not None
         assert result.stats.get("status") == "OPTIMAL"
 
-    def test_single_bunk_over_capacity_is_infeasible(self) -> None:
-        """Over-capacity single-bunk run must report INFEASIBLE, not a hardcoded OPTIMAL.
+    def test_single_bunk_over_capacity_returns_none(self) -> None:
+        """Over-capacity single-bunk run must return None (INFEASIBLE).
 
-        Impact-analysis aggregates `solver_runs.stats.status_code`; a hardcoded
-        OPTIMAL would silently skew comparisons for AG sessions that don't fit.
+        Under the must-place invariant (#1696), the single-bunk shortcut path
+        cannot produce a populated ``DirectSolverOutput`` with ``status="INFEASIBLE"``
+        — the runner only treats ``None`` as failure, and a populated output would
+        cause ``apply_solver_results`` to write over-capacity assignments to PB.
         """
         solver = DirectBunkingSolver(
             input_data=self._make_input(num_persons=5, capacity=2),
             config_service=MagicMock(),
         )
         result = solver.solve(time_limit_seconds=10)
-        assert result is not None
-        assert result.stats.get("status") == "INFEASIBLE"
-        assert result.stats.get("status_code") == cp_model.INFEASIBLE
+        assert result is None
 
 
 # Keys emitted by _build_stats_dict on the multi-bunk path. Single-bunk runs

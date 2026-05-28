@@ -9,16 +9,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { useSolverOperations } from './useSolverOperations'
 import { solverService } from '../../services/solver'
-import * as hotToast from 'react-hot-toast'
-
 // Mock react-hot-toast so toast is both callable and has .success / .error
 vi.mock('react-hot-toast', () => ({
   toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
 }))
-
-// Typed reference to the mocked toast callable
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockedToast = hotToast.toast as any
 
 // These tests verify the solver operation logic
 // The actual hook uses solverService which is mocked in tests
@@ -336,133 +330,5 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
       [2001, 2002],
       true
     )
-  })
-})
-
-describe('useSolverOperations partial re-solve summary toast (#1609)', () => {
-  it('fires toast for each summary line when partial_resolve has non-zero counts', async () => {
-    mockedToast.mockClear()
-    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
-      id: 'run-3',
-      session: '1000003',
-      status: 'completed',
-      results: {
-        stats: {
-          satisfied_request_count: 8,
-          total_requests: 10,
-          partial_resolve: { unassigned_count: 2, cross_boundary_request_count: 1 },
-        },
-      },
-      diagnostics: null,
-      created: '',
-      updated: '',
-    } as never)
-
-    const { result } = renderHook(
-      () =>
-        useSolverOperations({
-          selectedSession: '1000003',
-          currentYear: 2026,
-          currentScenario: null,
-          scenarios: [],
-          autoApplyEnabled: false,
-          autoApplyTimeout: 0,
-          fetchWithAuth: vi.fn(),
-          respectLocks: true,
-          lockedBunkCmIds: [3001],
-          allowOverflow: false,
-        }),
-      { wrapper }
-    )
-
-    await act(async () => {
-      await result.current.handleRunSolver(60)
-    })
-
-    // Should have been called once per summary line (2 lines: unassigned + cross-boundary)
-    expect(mockedToast).toHaveBeenCalledTimes(2)
-    expect(mockedToast).toHaveBeenCalledWith(expect.stringMatching(/2 campers left unassigned/))
-    expect(mockedToast).toHaveBeenCalledWith(expect.stringMatching(/1 request couldn't be met/))
-  })
-
-  it('does NOT fire a summary toast when partial_resolve is absent', async () => {
-    mockedToast.mockClear()
-    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
-      id: 'run-4',
-      session: '1000004',
-      status: 'completed',
-      results: {
-        stats: { satisfied_request_count: 10, total_requests: 10 },
-      },
-      diagnostics: null,
-      created: '',
-      updated: '',
-    } as never)
-
-    const { result } = renderHook(
-      () =>
-        useSolverOperations({
-          selectedSession: '1000004',
-          currentYear: 2026,
-          currentScenario: null,
-          scenarios: [],
-          autoApplyEnabled: false,
-          autoApplyTimeout: 0,
-          fetchWithAuth: vi.fn(),
-          respectLocks: false,
-          lockedBunkCmIds: [],
-          allowOverflow: false,
-        }),
-      { wrapper }
-    )
-
-    await act(async () => {
-      await result.current.handleRunSolver(60)
-    })
-
-    // No summary lines — toast should not have been called
-    expect(mockedToast).not.toHaveBeenCalled()
-  })
-
-  it('does NOT fire a summary toast when both counts are 0', async () => {
-    mockedToast.mockClear()
-    vi.spyOn(solverService, 'runSolver').mockResolvedValue({
-      id: 'run-5',
-      session: '1000005',
-      status: 'completed',
-      results: {
-        stats: {
-          satisfied_request_count: 10,
-          total_requests: 10,
-          partial_resolve: { unassigned_count: 0, cross_boundary_request_count: 0 },
-        },
-      },
-      diagnostics: null,
-      created: '',
-      updated: '',
-    } as never)
-
-    const { result } = renderHook(
-      () =>
-        useSolverOperations({
-          selectedSession: '1000005',
-          currentYear: 2026,
-          currentScenario: null,
-          scenarios: [],
-          autoApplyEnabled: false,
-          autoApplyTimeout: 0,
-          fetchWithAuth: vi.fn(),
-          respectLocks: true,
-          lockedBunkCmIds: [5001],
-          allowOverflow: false,
-        }),
-      { wrapper }
-    )
-
-    await act(async () => {
-      await result.current.handleRunSolver(60)
-    })
-
-    expect(mockedToast).not.toHaveBeenCalled()
   })
 })

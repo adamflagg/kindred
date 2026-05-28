@@ -1,8 +1,8 @@
-"""Overflow-aware post-solve capacity check (#1609).
+"""Overflow-aware post-solve capacity check.
 
-In a partial re-solve with allow_unassigned=True + allow_overflow=True, a bunk
-that the solver fills to 13 (one above DEFAULT_BUNK_CAPACITY=12) should NOT
-produce a cabin_capacity error violation in _check_constraint_violations.
+With allow_overflow=True, a bunk that the solver fills to 13 (one above
+DEFAULT_BUNK_CAPACITY=12) should NOT produce a cabin_capacity error violation
+in _check_constraint_violations.
 """
 
 from collections.abc import Generator
@@ -64,21 +64,20 @@ def _solve(solver: DirectBunkingSolver) -> tuple[cp_model.CpSolver, Any]:
 
 
 def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
-    """Partial re-solve with allow_unassigned=True + allow_overflow=True filling a bunk to 13.
+    """allow_overflow=True filling a bunk to 13.
 
     Setup:
-      - one bunk (3001), 13 female campers, capacity=12.
-      - allow_unassigned=True + allow_overflow=True → solver can fill to 13.
+      - one bunk (3000001), 13 female campers, capacity=12.
+      - allow_overflow=True → solver can fill to 13.
 
     The post-solve violation check should NOT flag the bunk at 13/12 as an
     "error" severity cabin_capacity violation when overflow is active.
     """
     # 13 campers — will all go to the single bunk (overflow fills it to 13)
-    persons = [make_person(1000 + i, gender="F", grade=5) for i in range(13)]
-    bunk = make_bunk(3001, gender="F")  # capacity=12 by default
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    bunk = make_bunk(3000001, gender="F")  # capacity=12 by default
 
     inp = make_input(persons, [bunk], [])
-    inp.allow_unassigned = True
     inp.allow_overflow = True
 
     solver = DirectBunkingSolver(inp, mock_config)
@@ -113,5 +112,5 @@ def test_overflow_bunk_no_cabin_capacity_violation(mock_config: Any) -> None:
         f"Expected no cabin_capacity error violations in overflow mode, "
         f"but got: {error_violations}. "
         "The post-solve check should use effective cap (13) not bunk.capacity (12) "
-        "when allow_unassigned=True and allow_overflow=True."
+        "when allow_overflow=True."
     )

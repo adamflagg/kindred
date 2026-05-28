@@ -85,7 +85,6 @@ def test_empty_locked_bunks_is_identity():
     assert isinstance(result, WorkingSetReduction)
     assert result.reduced_input is inp  # no-copy identity guarantee
     assert result.frozen_assignments == []
-    assert result.cross_boundary_request_ids == []
     assert {p.campminder_person_id for p in result.reduced_input.persons} == {1, 2}
     assert {b.campminder_id for b in result.reduced_input.bunks} == {3001, 3002}
 
@@ -118,12 +117,12 @@ def test_partitions_frozen_and_working():
 
 
 # ---------------------------------------------------------------------------
-# Task 3: narrow requests + capture cross-boundary
+# Task 3: narrow requests — any request involving a frozen person is dropped
 # ---------------------------------------------------------------------------
 
 
 def test_intra_working_requests_kept():
-    """A request between two working persons is kept; cross_boundary is empty."""
+    """A request between two working persons is kept."""
     p1, p2 = _person(1), _person(2)
     b1 = _bunk(3001)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
@@ -136,11 +135,10 @@ def test_intra_working_requests_kept():
     result = reduce_to_working_set(inp)
     assert len(result.reduced_input.requests) == 1
     assert result.reduced_input.requests[0].id == "r1"
-    assert result.cross_boundary_request_ids == []
 
 
-def test_free_to_locked_bunk_with_is_cross_boundary_and_dropped():
-    """working requester → locked target (bunk_with) → dropped and flagged cross_boundary."""
+def test_free_to_locked_bunk_with_dropped():
+    """working requester → locked target (bunk_with) → dropped from requests."""
     p1 = _person(1)  # working
     p2 = _person(2)  # locked
     b1, b2 = _bunk(3001), _bunk(3002)
@@ -152,14 +150,11 @@ def test_free_to_locked_bunk_with_is_cross_boundary_and_dropped():
         locked_bunks={3001: [2]},
     )
     result = reduce_to_working_set(inp)
-    # request dropped from reduced input
     assert result.reduced_input.requests == []
-    # flagged as cross-boundary
-    assert result.cross_boundary_request_ids == ["r1"]
 
 
-def test_locked_to_free_bunk_with_is_cross_boundary():
-    """locked requester → working target (bunk_with) → cross_boundary."""
+def test_locked_to_free_bunk_with_dropped():
+    """locked requester → working target (bunk_with) → dropped from requests."""
     p1 = _person(1)  # locked
     p2 = _person(2)  # working
     b1, b2 = _bunk(3001), _bunk(3002)
@@ -172,27 +167,10 @@ def test_locked_to_free_bunk_with_is_cross_boundary():
     )
     result = reduce_to_working_set(inp)
     assert result.reduced_input.requests == []
-    assert result.cross_boundary_request_ids == ["r1"]
 
 
-def test_both_locked_same_cabin_bunk_with_is_satisfied_not_cross_boundary():
-    """Both occupants of the SAME locked bunk with bunk_with → NOT cross_boundary (satisfied)."""
-    p1, p2 = _person(1), _person(2)
-    b1 = _bunk(3001)
-    req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
-    inp = DirectSolverInput(
-        persons=[p1, p2],
-        bunks=[b1],
-        requests=[req],
-        locked_bunks={3001: [1, 2]},
-    )
-    result = reduce_to_working_set(inp)
-    assert result.reduced_input.requests == []
-    assert result.cross_boundary_request_ids == []
-
-
-def test_both_locked_different_cabins_bunk_with_is_cross_boundary():
-    """Locked in DIFFERENT cabins with bunk_with → cross_boundary."""
+def test_both_locked_bunk_with_dropped():
+    """Both persons frozen → request dropped from working set regardless of same/different cabin."""
     p1, p2 = _person(1), _person(2)
     b1, b2 = _bunk(3001), _bunk(3002)
     req = _request("r1", requester=1, requestee=2, request_type="bunk_with")
@@ -204,11 +182,10 @@ def test_both_locked_different_cabins_bunk_with_is_cross_boundary():
     )
     result = reduce_to_working_set(inp)
     assert result.reduced_input.requests == []
-    assert result.cross_boundary_request_ids == ["r1"]
 
 
-def test_not_bunk_with_to_locked_dropped_silently():
-    """working → locked not_bunk_with → dropped from requests, NOT in cross_boundary."""
+def test_not_bunk_with_to_locked_dropped():
+    """working → locked not_bunk_with → dropped from requests."""
     p1 = _person(1)  # working
     p2 = _person(2)  # locked
     b1, b2 = _bunk(3001), _bunk(3002)
@@ -221,7 +198,6 @@ def test_not_bunk_with_to_locked_dropped_silently():
     )
     result = reduce_to_working_set(inp)
     assert result.reduced_input.requests == []
-    assert result.cross_boundary_request_ids == []
 
 
 def test_locked_bunk_missing_from_inp_raises():

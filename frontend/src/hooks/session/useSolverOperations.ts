@@ -21,7 +21,6 @@ import {
 import { graphCacheService } from '../../services/GraphCacheService'
 import { queryKeys } from '../../utils/queryKeys'
 import { invalidateAssignmentDerivedQueries } from '../../utils/queryInvalidation'
-import { partialResolveToastMessages, type PartialResolveSummary } from './partialResolveToast'
 
 /** Type for fetchWithAuth function from useApiWithAuth */
 export type FetchWithAuthFn = (
@@ -42,7 +41,6 @@ export interface SolverStats {
     staff_nbw_yielded?: StaffNbwYieldRaw[]
     parent_nbw_yielded?: ParentNbwYieldRaw[]
   }
-  partial_resolve?: PartialResolveSummary
 }
 
 export interface SolverRunResult {
@@ -136,10 +134,6 @@ export function useSolverOperations({
 
         if (solverRun.status === 'completed') {
           const stats = solverRun.results?.stats
-
-          // Partial re-solve summary: report campers left unassigned or requests
-          // that couldn't be met due to locked cabins (#1609)
-          partialResolveToastMessages(stats?.partial_resolve).forEach((line) => toast(line))
 
           // Store stats to return
           const resultStats = stats
