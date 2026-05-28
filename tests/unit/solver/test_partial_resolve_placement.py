@@ -1,8 +1,8 @@
-"""Placement bonus for partial cabin re-solve (#1609).
+"""Placement behaviour for partial cabin re-solve under hard cardinality.
 
-Verifies that in PARTIAL mode (locked_bunks non-empty), the solver places every
-request-less camper that can physically fit rather than leaving them unassigned
-under the relaxed ``<= 1`` cardinality introduced in Task 3.
+Every working-set camper must be placed (``total == 1``). If no valid bunk
+exists for a camper, the solver returns INFEASIBLE — never silently drops the
+camper.
 """
 
 from collections.abc import Generator
@@ -72,9 +72,8 @@ def _count_placed(solver: DirectBunkingSolver, cp: cp_model.CpSolver) -> int:
 
 def test_places_everyone_when_room_exists(mock_config):
     # 11 request-less campers; locked bunk 2001 (empty -> forbids everyone) + unlocked
-    # bunk 2002 (cap 12). Partial mode (locked_bunks non-empty). With the relaxed <= 1
-    # cardinality, the solver COULD leave campers unassigned at no objective cost; the
-    # placement bonus must drive it to place all 11 (room exists in 2002).
+    # bunk 2002 (cap 12). Hard cardinality == 1: every working camper must land somewhere.
+    # All 11 fit in 2002; solver must place them all.
     persons = [make_person(1000 + i, gender="M", grade=5) for i in range(11)]
     locked = make_bunk(2001, gender="M")
     free = make_bunk(2002, gender="M")
@@ -86,28 +85,22 @@ def test_places_everyone_when_room_exists(mock_config):
     assert _count_placed(solver, cp) == 11  # nobody left unassigned when there's room
 
 
-def test_single_working_bunk_still_respects_gender(mock_config):
-    """#1609 regression: a partial re-solve that locks all but one cabin reduces the
-    WORKING set to a single bunk, taking the simplified single-bunk path. That path
-    must still honour the gender hard constraint — a wrong-gender unplaced camper must
-    be left unassigned, never crammed into the only (opposite-gender) unlocked cabin.
+def test_single_working_bunk_gender_mismatch_is_infeasible(mock_config):
+    """Under the new must-place rule, a boy in a session with only female bunks returns
+    INFEASIBLE — the solver cannot silently leave him unassigned.
+
+    Setup: lock G-1 (with its occupant), leaving G-2 (F) as the only working bunk.
+    Working set = 1 unlocked F bunk + 1 boy. The boy must be placed; no valid (male)
+    bunk exists; solve returns None.
     """
-    # Full session: two female cabins. Lock G-1 (with its occupant) so the working set
-    # collapses to the single unlocked female cabin G-2.
     locked_occupant = make_person(1000001, gender="F", grade=5)
-    unplaced_boy = make_person(1000002, gender="M", grade=5)
+    unplaceable_boy = make_person(1000002, gender="M", grade=5)
     locked_bunk = make_bunk(2000001, gender="F", name="G-1")
     free_bunk = make_bunk(2000002, gender="F", name="G-2")
-    inp = make_input([locked_occupant, unplaced_boy], [locked_bunk, free_bunk], [])
-    inp.allow_unassigned = True
+    inp = make_input([locked_occupant, unplaceable_boy], [locked_bunk, free_bunk], [])
     inp.locked_bunks = {2000001: [1000001]}  # lock G-1 with its occupant -> working set = {G-2}
 
     output = DirectBunkingSolver(inp, mock_config).solve(time_limit_seconds=10)
 
-    assert output is not None
-    placements = {(a.person_cm_id, a.bunk_cm_id) for a in output.assignments}
-    # Frozen occupant keeps her locked cabin.
-    assert (1000001, 2000001) in placements
-    # The boy has no valid (male) cabin and must stay unassigned — never placed in G-2.
-    assert (1000002, 2000002) not in placements
-    assert all(a.person_cm_id != 1000002 for a in output.assignments)
+    # Under the new rule the boy cannot be silently dropped — solver is INFEASIBLE.
+    assert output is None

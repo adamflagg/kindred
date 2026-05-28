@@ -4,11 +4,7 @@ Cabin capacity (PR #1226): collapsed from ``constraint.cabin_capacity.{standard,
 max,mode,penalty}`` + a ``Bunk.max_size`` Pydantic default into
 ``DEFAULT_BUNK_CAPACITY`` and ``MAX_BUNK_CAPACITY``. None were ever tuned at
 runtime, and ``max_size`` was never backed by a real PB column.
-``PARTIAL_PLACEMENT_BONUS`` (PR #1609) is a third constant in this group: a
-per-camper objective bonus applied only during partial re-solve to bias the
-solver toward placing free campers without changing which bunk they prefer
-relative to their own requests. During a partial re-solve with
-``allow_overflow=True``, unlocked bunks may reach ``DEFAULT_BUNK_CAPACITY + 1``
+With ``allow_overflow=True``, unlocked bunks may reach ``DEFAULT_BUNK_CAPACITY + 1``
 (13) to absorb displaced campers.
 
 Cabin minimum occupancy (PR #1331): collapsed from
@@ -150,12 +146,3 @@ Read by both the solver objective (``age_grade_flow.py``) and the post-solve
 mirror (``objective_evaluator._calculate_age_grade_flow``) — same constant so
 the displayed score can't drift from what the solver optimized. Bonus-only, no
 infeasibility risk. Never tuned at runtime."""
-
-# Partial cabin re-solve (#1609): per-assigned-camper bonus applied ONLY in partial
-# mode so the relaxed `<= 1` cardinality places everyone there's room for instead of
-# leaving request-less campers unassigned. Applied uniformly to every camper, so it
-# biases toward placement without changing which bunk a camper prefers relative to
-# their own requests. Kept below the cabin under-fill penalty (~2000/spot, seeded in
-# constraint.cabin_minimum_occupancy.penalty) so placement never forces a bunk past
-# its soft floor, while still dominating the small per-camper soft penalties.
-PARTIAL_PLACEMENT_BONUS = 1000

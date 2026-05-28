@@ -1,11 +1,8 @@
-"""Cardinality relaxation for partial re-solve mode (#1609).
+"""Cardinality invariant: the solver always requires every working-set camper to be placed.
 
-In partial mode (``allow_unassigned=True``) the per-person cardinality
-constraint is relaxed from ``== 1`` to ``<= 1``, so surplus campers can be
-left unassigned when there is no room in the unlocked cabins.
-
-In normal mode (``allow_unassigned=False``, the default) the ``== 1``
-constraint is unchanged and the solver must assign everyone.
+The ``allow_unassigned`` field has been removed; the per-person cardinality
+constraint is unconditionally ``== 1``. A roster that exceeds available capacity
+returns INFEASIBLE so staff see the diagnostics modal.
 """
 
 from collections.abc import Generator
@@ -17,7 +14,7 @@ from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
 from bunking.solver.direct_solver import DirectBunkingSolver
-from tests.unit.bunking.solver.conftest import is_infeasible, is_optimal_or_feasible
+from tests.unit.bunking.solver.conftest import is_infeasible
 from tests.unit.solver.impossibility.conftest import make_bunk, make_input, make_person
 
 
@@ -65,22 +62,9 @@ def _solve(solver: DirectBunkingSolver) -> tuple[cp_model.CpSolver, Any]:
     return cp, cp.Solve(solver.model)
 
 
-def test_partial_mode_allows_unassigned_when_no_room(mock_config):
-    # 2 campers, ONE male bunk with capacity 1. allow_unassigned=True switches
-    # the solver into partial mode, relaxing cardinality to <= 1, so one camper
-    # is placed and one is left unassigned -> FEASIBLE.
-    persons = [make_person(1001, gender="M", grade=5), make_person(1002, gender="M", grade=5)]
-    bunks = [make_bunk(2002, gender="M", capacity=1)]
-    inp = make_input(persons, bunks, [])
-    inp.allow_unassigned = True  # partial mode
-    solver = DirectBunkingSolver(inp, mock_config)
-    _cp, status = _solve(solver)
-    assert is_optimal_or_feasible(status)  # feasible: surplus camper unassigned
-
-
-def test_full_mode_still_requires_everyone_assigned(mock_config):
-    # Same roster, NO locked_bunks => normal mode (== 1). 2 campers, one cap-1
-    # bunk -> everyone must be placed but there's no room -> INFEASIBLE.
+def test_solver_requires_everyone_assigned(mock_config):
+    # 2 campers, ONE male bunk with capacity 1 → everyone must be placed but there's
+    # no room → INFEASIBLE. The solver never silently drops a camper.
     persons = [make_person(1001, gender="M", grade=5), make_person(1002, gender="M", grade=5)]
     bunks = [make_bunk(2002, gender="M", capacity=1)]
     inp = make_input(persons, bunks, [])

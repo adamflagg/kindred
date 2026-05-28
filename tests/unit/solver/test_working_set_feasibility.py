@@ -109,7 +109,6 @@ def test_staff_not_bunk_with_inside_locked_cabin_is_feasible() -> None:
         ],
         bunks=[_f_bunk(3001, "G-1"), _f_bunk(3002, "G-2")],
         locked_bunks={3001: [1, 2]},
-        allow_unassigned=True,
     )
 
     with ConfigLoader.use(_ZeroPenaltyLoader()):  # type: ignore[arg-type]
@@ -153,7 +152,6 @@ def test_material_bunk_with_into_locked_cabin_is_feasible_and_reported() -> None
         ],
         bunks=[_f_bunk(3001, "G-1"), _f_bunk(3002, "G-2")],
         locked_bunks={3001: [1, 2]},
-        allow_unassigned=True,
     )
 
     with ConfigLoader.use(_ZeroPenaltyLoader()):  # type: ignore[arg-type]
@@ -162,8 +160,4 @@ def test_material_bunk_with_into_locked_cabin_is_feasible_and_reported() -> None
     assert out is not None, (
         "INFEASIBLE — cross-boundary bunk_with request was NOT dropped during "
         "working-set reduction; MSO forced a structurally-zero var to 1"
-    )
-    assert out.stats["partial_resolve"]["cross_boundary_request_count"] == 1, (
-        "Expected exactly 1 cross-boundary request (camper 3 → locked camper 1); "
-        f"got {out.stats['partial_resolve']['cross_boundary_request_count']}"
     )

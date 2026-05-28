@@ -120,10 +120,6 @@ class DirectSolverInput(BaseModel):
     locked_bunks: dict[int, list[int]] = Field(default_factory=dict)
     # Opt-in: raise per-unlocked-cabin cap from 12 to 13 during a partial re-solve.
     allow_overflow: bool = False
-    # Partial re-solve (#1609): relax assignment cardinality to <= 1 (campers may
-    # stay unassigned) and add the placement bonus. After reduce_to_working_set the
-    # reduced input's locked_bunks is empty, so partial behavior keys off THIS flag.
-    allow_unassigned: bool = False
 
     @property
     def person_by_cm_id(self) -> dict[int, DirectPerson]:
