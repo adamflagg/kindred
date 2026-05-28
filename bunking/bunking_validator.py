@@ -167,10 +167,13 @@ class ValidationStatistics(BaseModel):
     unsatisfied_material_parent_detail: list[dict[str, str]] = Field(
         default_factory=list,
         description=(
-            "One entry per unsatisfied MP request with requester_cm_id, requester_name, "
-            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on the "
-            "validation payload; no longer rendered (the post-check 'Unmet parent requests' "
-            "drill-down was removed in Group 65)."
+            "One entry per unsatisfied MP request. Keys: requester_cm_id, requester_name, "
+            "request_type, target_cm_id, target_name, requester_bunk_name, target_bunk_name. "
+            "For age_preference requests (no target person), target_cm_id is '' and target_name "
+            "holds the preference label (e.g. 'older'/'younger'); target_bunk_name is 'n/a'. "
+            "For bunk_with/not_bunk_with, all fields are populated normally. "
+            "Emitted on the validation payload; the post-check 'Unmet parent requests' "
+            "drill-down was removed in Group 65 but the field is retained for future consumers."
         ),
     )
 
@@ -921,23 +924,43 @@ class BunkingValidator:
                 # Camper has ≥1 satisfied MP request → canonical "satisfied" bucket, skip all.
                 continue
             for req in reqs:
-                if not req.requested_person_cm_id:
-                    continue
                 # Fall back to a Person {pid} label when person_by_id is incomplete
                 # (degraded-data scenarios e.g. partial sync). Mirrors the sibling
                 # `unsatisfied_material_parent_persons` block above so the modal's
                 # count stays accurate when one variant has data the other lacks.
                 requester = person_by_id.get(pid)
-                target = person_by_id.get(req.requested_person_cm_id)
                 requester_asgn = assignments_by_person.get(pid)
-                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
                 bunks_map = bunk_by_id or {}
                 requester_bunk = bunks_map.get(requester_asgn.bunk_cm_id) if requester_asgn else None
+                if not req.requested_person_cm_id:
+                    # No target person — only emit an entry for known targetless types.
+                    # age_preference requests are the canonical case (solver sacrifices
+                    # these during break-glass). The preference label (e.g. "older" /
+                    # "younger") is stored in age_preference_target and used as
+                    # target_name so the frontend can render a meaningful reason.
+                    if req.request_type == "age_preference":
+                        pref = getattr(req, "age_preference_target", None) or "preference"
+                        unsatisfied_material_parent_detail.append(
+                            {
+                                "requester_cm_id": str(req.requester_person_cm_id),
+                                "requester_name": requester.name if requester else f"Person {pid}",
+                                "request_type": str(req.request_type),
+                                "target_cm_id": "",
+                                "target_name": str(pref),
+                                "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
+                                "target_bunk_name": "n/a",
+                            }
+                        )
+                    # Other no-target types are skipped — don't guess at semantics.
+                    continue
+                target = person_by_id.get(req.requested_person_cm_id)
+                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
                 target_bunk = bunks_map.get(target_asgn.bunk_cm_id) if target_asgn else None
                 unsatisfied_material_parent_detail.append(
                     {
                         "requester_cm_id": str(req.requester_person_cm_id),
                         "requester_name": requester.name if requester else f"Person {pid}",
+                        "request_type": str(req.request_type),
                         "target_cm_id": str(req.requested_person_cm_id),
                         "target_name": (target.name if target else f"Person {req.requested_person_cm_id}"),
                         "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
