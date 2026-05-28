@@ -121,6 +121,8 @@ export type ParentNbwYieldRaw = StaffNbwYieldRaw
 export type SolverRunWithDiagnostics = SolverRun & {
   diagnostics?: SolverDiagnostics
   overflow_used?: number
+  /** Stream D: true when the break-glass fallback fired (request layer relaxed to place every camper). */
+  break_glass_used?: boolean
 }
 
 interface ValidationResult {

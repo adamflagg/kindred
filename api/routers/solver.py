@@ -353,6 +353,8 @@ async def get_solver_run(
                 # Stream C: overflow_used is persisted as a PB column; surface it
                 # (defaulting to 0) so the response shape matches the in-memory branch.
                 "overflow_used": getattr(pb_run, "overflow_used", 0) or 0,
+                # Stream D: True when break-glass relaxed the request layer to place everyone.
+                "break_glass_used": getattr(pb_run, "break_glass_used", False) or False,
                 # Stream B diagnostics are in-memory only; the PB-fetch path never
                 # has them. Return the keys as None so the response shape matches
                 # the in-memory branch below (#1656).
@@ -372,6 +374,8 @@ async def get_solver_run(
         # Stream C: number of bunks the solver placed at 13-cap (0 on a clean
         # 12-cap solve). The frontend gates the overflow toast on this.
         "overflow_used": run.get("overflow_used", 0),
+        # Stream D: True when break-glass relaxed the request layer to place everyone.
+        "break_glass_used": run.get("break_glass_used", False),
         # Stream B (#1638): structured infeasibility diagnostics (in-memory only;
         # the PB-fetch fallback above returns these as absent → null client-side).
         "infeasibility_cause": run.get("infeasibility_cause"),

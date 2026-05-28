@@ -288,6 +288,98 @@ class TestSolverRunnerPocketBaseSave:
             assert mock_runs["test_run"]["overflow_used"] == 2
 
     @pytest.mark.asyncio
+    async def test_success_path_persists_break_glass_used(self, mock_solver_input):
+        """#10 (Stream D): the result's break_glass_used must be written to PB so
+        the frontend can render the compromise banner and admins can surface which
+        historical runs used the break-glass path. A mocked field that is never
+        asserted lets a contract regression slip through silently."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            mock_pb = self._configure_mocks(mocks, mock_solver_input)
+            # Simulate a break-glass result: assignments present, break_glass_used True.
+            m6.return_value.solve.return_value.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
+            m6.return_value.solve.return_value.break_glass_used = True
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            pb_data = mock_pb.collection.return_value.create.call_args_list[0][0][0]
+            assert pb_data["break_glass_used"] is True
+
+    @pytest.mark.asyncio
+    async def test_success_path_stores_break_glass_used_in_memory(self, mock_solver_input):
+        """#11 (Stream D): break_glass_used must be stored in the in-memory
+        solver_runs dict so GET /solver/run/{id} can surface it before the
+        PocketBase record is fetched. A result with break_glass_used=True and
+        assignments present must be routed as completed/success, not failed."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            self._configure_mocks(mocks, mock_solver_input)
+            # Simulate a break-glass result: assignments present, break_glass_used True.
+            m6.return_value.solve.return_value.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
+            m6.return_value.solve.return_value.break_glass_used = True
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            # break_glass_used must be stored in-memory.
+            assert mock_runs["test_run"]["break_glass_used"] is True
+            # A break-glass result (assignments present) must be recorded as completed, not failed.
+            assert mock_runs["test_run"]["status"] == "completed"
+
+    @pytest.mark.asyncio
     async def test_success_path_sends_result_field(self, mock_solver_input):
         """Schema field is 'result' (singular), not 'results'."""
         patches, mock_runs = self._setup_mocks(mock_solver_input)

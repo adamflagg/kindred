@@ -349,6 +349,8 @@ async def run_solver_task_v2(
         # Stream C: keep overflow_used in the in-memory run too (not just pb_data)
         # so GET /solver/run/{id} surfaces it and the frontend overflow toast fires.
         solver_runs[run_id]["overflow_used"] = result.overflow_used
+        # Stream D: True when break-glass relaxed the request layer to place everyone.
+        solver_runs[run_id]["break_glass_used"] = result.break_glass_used
 
         # Compose run-tagging details (git SHA, config snapshot, source labels,
         # scenario_id_at_run, attendee count, sweep grouping). Best-effort —
@@ -388,6 +390,8 @@ async def run_solver_task_v2(
                 "details": json.dumps(details),
                 # Stream C: number of bunks at 13-cap; 0 on a clean 12-cap solve.
                 "overflow_used": result.overflow_used,
+                # Stream D: True when break-glass relaxed the request layer to place everyone.
+                "break_glass_used": result.break_glass_used,
             }
             if scenario:
                 pb_data["scenario"] = scenario
