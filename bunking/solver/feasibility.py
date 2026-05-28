@@ -13,6 +13,7 @@ from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
 from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
+from bunking.solver.constraint_classification import diagnostic_probe_constraints
 from bunking.solver.constraints.age_spread import _age_to_months
 
 if TYPE_CHECKING:
@@ -23,19 +24,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Stream C: see bunking/solver/constraint_classification.py for the tier model.
-# Kept here (not imported from classification) to avoid circular imports —
-# constraint_classification is a pure module with no deps; this constant lives
-# at the consumer site. The invariant test enforces they stay in sync.
-_DIAGNOSTIC_PROBE_CONSTRAINTS: frozenset[str] = frozenset(
-    {
-        "grade_spread",
-        "age_spread",
-        "group_locks",
-        "parent_paramount",
-        "staff_separation",
-    }
-)
+# Single source of truth — see constraint_classification.diagnostic_probe_constraints().
+_DIAGNOSTIC_PROBE_CONSTRAINTS: frozenset[str] = diagnostic_probe_constraints()
 
 
 class _RequestValidationSummaryBase(TypedDict, total=True):
@@ -290,6 +280,7 @@ def find_infeasibility_cause(
     input_data: DirectSolverInput,
     config: ConfigLoader,
     time_limit_seconds: int = 10,
+    allow_overflow: bool = False,
 ) -> str:
     """Try to identify which constraint is causing infeasibility.
 
@@ -300,6 +291,13 @@ def find_infeasibility_cause(
         input_data: The solver input data
         config: Configuration service
         time_limit_seconds: Time limit for each solver run
+        allow_overflow: When True, each probe runs at 13-cap (overflow allowed).
+            The smart orchestrator passes True when it has already established via
+            its capacity probe that overflow is the floor — otherwise capacity
+            co-blocks with the real cause at 12-cap, so no single-constraint
+            removal isolates (and the diagnostic returns the useless "multiple
+            interacting constraints" instead of naming the real culprit).
+            Default False keeps all existing callers unaffected.
 
     Returns:
         A description of the likely cause.
@@ -308,7 +306,7 @@ def find_infeasibility_cause(
         DirectBunkingSolver,
     )
 
-    logger.info("=== Starting Infeasibility Analysis ===")
+    logger.info(f"=== Starting Infeasibility Analysis (allow_overflow={allow_overflow}) ===")
 
     # Probe only constraints whose relaxation could meaningfully change
     # feasibility AND produces actionable output. INVIOLABLE_CONSTRAINTS
@@ -327,9 +325,16 @@ def find_infeasibility_cause(
 
     results = {}
 
+    def _make_probe_input() -> DirectSolverInput:
+        """Deep-copy the input and apply the established overflow flag."""
+        probe = input_data.model_copy(deep=True)
+        probe.allow_overflow = allow_overflow
+        return probe
+
     # First, try with all constraints
     logger.info("Testing with all constraints enabled...")
-    solver = DirectBunkingSolver(input_data, config, {})
+    probe_input = _make_probe_input()
+    solver = DirectBunkingSolver(probe_input, config, {})
     # Reuse this report across every probe solver below — the request set is
     # identical, so re-running validate_impossibility per probe is wasted work.
     base_impossibility_report = solver.impossibility_report
@@ -352,8 +357,9 @@ def find_infeasibility_cause(
         logger.info(f"Testing with {constraint} DISABLED...")
 
         debug_constraints = {constraint: True}  # True means disabled
+        probe_input = _make_probe_input()
         solver = DirectBunkingSolver(
-            input_data, config, debug_constraints, impossibility_report=base_impossibility_report
+            probe_input, config, debug_constraints, impossibility_report=base_impossibility_report
         )
         solver.check_feasibility()
         solver.add_constraints()
@@ -376,6 +382,13 @@ def find_infeasibility_cause(
                 actionable = _explain_age_spread_infeasibility(input_data)
                 if actionable is not None:
                     return actionable
+            elif constraint == "grade_adjacency":
+                return (
+                    "Grade adjacency is forcing infeasibility: a cabin would need non-consecutive "
+                    "grades (e.g., grades 2 and 4 without 3), which is never allowed. Review the "
+                    "grade mix for this session — a grade with too few campers to fill a cabin, or "
+                    "a bunk-with request bridging non-adjacent grades, is the usual cause."
+                )
             return f"The {constraint} constraint is causing infeasibility"
 
     # If still infeasible with each individual constraint disabled, try combinations

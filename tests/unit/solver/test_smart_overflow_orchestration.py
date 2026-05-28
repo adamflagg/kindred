@@ -386,3 +386,111 @@ class TestPass2TimeoutDiagnostic:
 
         # The flag must be back to its pre-pass value despite the exception.
         assert solver.input.allow_overflow is False
+
+
+class TestRequestConflictDiagnosis:
+    """Stream D Task 4: diagnostic must probe at the established (overflow) capacity.
+
+    When pass-1 is INFEASIBLE and the capacity probe also returns INFEASIBLE
+    (overflow alone doesn't fix it), the tier-3 diagnostic calls
+    find_infeasibility_cause. At strict 12-cap, capacity co-blocks, so no
+    single-constraint removal isolates — the diagnostic returns "multiple
+    interacting constraints". At the established overflow (13-cap) capacity,
+    request conflicts isolate cleanly and the diagnostic names the cause.
+
+    This test calls find_infeasibility_cause directly (focused unit test) to
+    pin the before/after contract of the allow_overflow flag. The full solve()
+    integration is tested separately; the focused approach makes the RED/GREEN
+    boundary unambiguous.
+    """
+
+    def test_request_conflict_diagnosis_names_parent_paramount(self, mock_config):
+        """Capacity AND requests both block at 12-cap, but at the established
+        (overflow) capacity the request cause isolates cleanly — so the diagnosis
+        must name parent_paramount, not 'multiple interacting constraints'.
+
+        Roster design (all same grade to avoid grade-adjacency interference):
+          - 25 F campers, all grade 5, 2 F bunks (12-cap each = 24 seats total)
+          - 14 of the 25 campers each have a material bunk_with to camper X
+          - MSO hard constraint forces each of the 14 into X's bunk: X+14=15>13cap
+          - At 12-cap: INFEASIBLE (25>24 capacity); removing parent_paramount
+            alone still leaves 25>24 → no single removal isolates → "multiple
+            interacting constraints"
+          - At 13-cap: INFEASIBLE (parent_paramount forces 15 into one bunk);
+            removing grade_adjacency doesn't help (no grade issue), removing
+            parent_paramount restores OPTIMAL → diagnostic names parent_paramount
+
+        Mirrors the production failure pattern where the SAME roster is:
+          12-cap: capacity co-blocks, obscuring the real request cause
+          13-cap: capacity resolved, only parent_paramount blocks
+        """
+        from bunking.models_v2 import DirectBunkRequest
+        from bunking.solver.feasibility import find_infeasibility_cause
+
+        # 25 F G5 campers — no grade adjacency or spread issues (all same grade)
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="F",
+                grade=5,
+            )
+            for i in range(25)
+        ]
+        # Camper 0 (cm_id 1001) = X, the shared bunk_with target
+        x_target = campers[0]
+
+        bunks = [
+            create_bunk(cm_id=2001, name="G-1", gender="F", capacity=DEFAULT_BUNK_CAPACITY),
+            create_bunk(cm_id=2002, name="G-2", gender="F", capacity=DEFAULT_BUNK_CAPACITY),
+        ]
+
+        # 14 material bunk_with requests to X. MSO hard constraint forces all 14
+        # into X's bunk → bunk needs X + 14 = 15 seats > 13-cap → INFEASIBLE at 13-cap.
+        requests = [
+            DirectBunkRequest(
+                id=f"req-diag-{i + 1:04d}",
+                requester_person_cm_id=campers[1 + i].campminder_person_id,
+                requested_person_cm_id=x_target.campminder_person_id,
+                request_type="bunk_with",
+                source_field="bunk_request_form",
+                status="resolved",
+                session_cm_id=1000,
+                year=2026,
+                is_first_requested=True,
+            )
+            for i in range(14)
+        ]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks, requests=requests)
+
+        # At strict 12-cap: capacity also blocks (25 > 24), so no single constraint
+        # removal fixes it — removing parent_paramount still leaves 25>24 INFEASIBLE.
+        # Diagnostic must return "multiple interacting constraints".
+        result_strict = find_infeasibility_cause(
+            input_data=solver_input,
+            config=mock_config,
+            time_limit_seconds=15,
+            allow_overflow=False,
+        )
+        strict_diag = result_strict.lower()
+        assert "multiple interacting" in strict_diag, (
+            f"Expected 'multiple interacting' at 12-cap (capacity co-blocks), got: {result_strict!r}"
+        )
+
+        # At overflow (13-cap): capacity no longer co-blocks. The only remaining
+        # infeasibility is parent_paramount (15 must-colocate > 13-cap). The
+        # diagnostic must name parent_paramount, NOT "multiple interacting".
+        result_overflow = find_infeasibility_cause(
+            input_data=solver_input,
+            config=mock_config,
+            time_limit_seconds=15,
+            allow_overflow=True,
+        )
+        diag = result_overflow.lower()
+        assert "multiple interacting" not in diag, (
+            f"Expected named cause at 13-cap, still got 'multiple interacting': {result_overflow!r}"
+        )
+        assert "parent_paramount" in diag or "parent paramount" in diag, (
+            f"Expected parent_paramount named at 13-cap, got: {result_overflow!r}"
+        )

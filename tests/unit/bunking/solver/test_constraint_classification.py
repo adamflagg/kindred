@@ -37,6 +37,15 @@ class TestClassificationInvariants:
         conscious update."""
         assert frozenset({"cabin_capacity"}) == SOLVER_RELAXABLE_CONSTRAINTS
 
+    def test_grade_adjacency_is_probed(self):
+        """Regression for Stream D: grade_adjacency was an unclassified hard
+        constraint; it must now be both classified and probed."""
+        from bunking.solver.constraint_classification import INFO_ONLY_CONSTRAINTS
+        from bunking.solver.feasibility import _DIAGNOSTIC_PROBE_CONSTRAINTS
+
+        assert "grade_adjacency" in INFO_ONLY_CONSTRAINTS
+        assert "grade_adjacency" in _DIAGNOSTIC_PROBE_CONSTRAINTS
+
     def test_diagnostic_probe_order_is_deterministic(self):
         """#3: find_infeasibility_cause must probe constraints in a stable
         (sorted) order. Iterating the frozenset directly makes the

@@ -734,7 +734,7 @@ class DirectBunkingSolver:
         # Maximize objective
         self.model.Maximize(sum(objective_terms))
 
-    def find_infeasibility_cause(self, time_limit_seconds: int = 10) -> str:
+    def find_infeasibility_cause(self, time_limit_seconds: int = 10, allow_overflow: bool = False) -> str:
         """Try to identify which constraint is causing infeasibility.
 
         Returns a description of the likely cause.
@@ -743,6 +743,7 @@ class DirectBunkingSolver:
             input_data=self.input,
             config=self.config,
             time_limit_seconds=time_limit_seconds,
+            allow_overflow=allow_overflow,
         )
 
     def _solve_single_bunk_session(self) -> DirectSolverOutput:
@@ -1066,8 +1067,14 @@ class DirectBunkingSolver:
             )
 
         # Tier-3 diagnostic — overflow doesn't help. Tell staff what does.
+        # The capacity probe above returned False: overflow alone does NOT make
+        # this session feasible. Probe the diagnostic at 13-cap anyway so that
+        # capacity doesn't co-block with the real cause — at the strict 12-cap
+        # capacity also blocks, so no single-constraint removal isolates and the
+        # diagnostic returns the useless "multiple interacting constraints"
+        # instead of naming the culprit.
         try:
-            diagnosis = self.find_infeasibility_cause(time_limit_seconds=10)
+            diagnosis = self.find_infeasibility_cause(time_limit_seconds=10, allow_overflow=True)
         except Exception as e:
             logger.warning(f"find_infeasibility_cause raised: {e}")
             diagnosis = "Infeasibility could not be diagnosed (probe failed)."

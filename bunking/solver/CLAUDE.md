@@ -54,9 +54,11 @@ When adding a new constraint module or changing a constraint's hardness:
 
 - Hard constraints (issue `model.Add()`): classify in
   `bunking/solver/constraint_classification.py` as INVIOLABLE,
-  SOLVER_RELAXABLE, or INFO_ONLY.
-- INFO_ONLY constraints must also appear in
-  `feasibility.py::_DIAGNOSTIC_PROBE_CONSTRAINTS`.
+  SOLVER_RELAXABLE, or INFO_ONLY. Just classify it here — INFO_ONLY membership
+  auto-propagates to the failure diagnostic: `feasibility.py` derives
+  `_DIAGNOSTIC_PROBE_CONSTRAINTS` from
+  `constraint_classification.diagnostic_probe_constraints()`, so there is no
+  separate probe set to edit there.
 - Soft constraints (`soft_constraint_violations`): do NOT add to any tier.
   Soft constraints never cause INFEASIBLE — listing them in the diagnostic
   probe wastes a solve.

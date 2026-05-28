@@ -23,18 +23,21 @@ infeasibility flow:
 ============================================================================
 MAINTENANCE — UPDATE THIS FILE WHEN:
 ============================================================================
+INFO_ONLY membership propagates automatically: ``feasibility.py`` derives its
+probe list from ``diagnostic_probe_constraints()``, so there is no separate set
+to edit there — just classify the constraint here.
+
 1. **Adding a new constraint module** (anything in bunking/solver/constraints/
-   that issues hard ``model.Add()`` calls): classify it here AND add it to the
-   ``_DIAGNOSTIC_PROBE_CONSTRAINTS`` set in
-   ``feasibility.py::find_infeasibility_cause`` if it belongs to INFO_ONLY.
+   that issues hard ``model.Add()`` calls): classify it here. If it belongs to
+   INFO_ONLY, the diagnostic probes it automatically — no manual edit needed.
 
 2. **Promoting a soft constraint to hard** (replacing ``soft_constraint_violations``
    with ``model.Add()``): add to INFO_ONLY here (or INVIOLABLE/SOLVER_RELAXABLE
-   if appropriate). Also add to ``_DIAGNOSTIC_PROBE_CONSTRAINTS``.
+   if appropriate). The probe list follows INFO_ONLY automatically.
 
-3. **Demoting a hard constraint to soft**: remove from INFO_ONLY here AND from
-   ``_DIAGNOSTIC_PROBE_CONSTRAINTS`` (a soft-only constraint is a no-op probe —
-   wastes a solve in the failure path).
+3. **Demoting a hard constraint to soft**: remove from INFO_ONLY here (a
+   soft-only constraint is a no-op probe — wastes a solve in the failure path).
+   The probe list drops it automatically.
 
 4. **Adding a new SOLVER_RELAXABLE class**: add to ``SOLVER_RELAXABLE_CONSTRAINTS``
    here, then add an orchestrator probe in ``DirectBunkingSolver.solve`` and a
@@ -70,15 +73,34 @@ INFO_ONLY_CONSTRAINTS: frozenset[str] = frozenset(
         "grade_spread",
         "age_spread",
         "group_locks",
+        # Hard structural constraint: forbids non-consecutive grades in a bunk
+        # (e.g., grades 2 and 4 without 3). Actionable explainer in feasibility.py.
+        # Added Stream D — was missing from classification in Stream C.
+        "grade_adjacency",
         # Rarely fire as the diagnostic cause — both have yield mechanisms that
         # resolve the most common conflict pattern (NBW <-> MSO). Kept here for
         # the residual cases where MSO conflicts with non-NBW hard rules, or NBW
         # conflicts with non-MSO hard rules.
         "parent_paramount",
         "staff_separation",
-        # NOTE: level_progression is intentionally NOT in this set. It's a SOFT
-        # constraint (contributes soft_constraint_violations, never model.Add()),
-        # so disabling it cannot make an INFEASIBLE problem feasible. Including
-        # it would be a no-op probe that wastes a solve in the failure path.
+        # NOTE: level_progression and grade_ratio are intentionally NOT in this
+        # set. Both are SOFT constraints (penalty-based, conditional model.Add()
+        # only), so disabling them cannot make an INFEASIBLE problem feasible.
+        # Including them would be no-op probes that waste a solve in the failure
+        # path.
     }
 )
+
+# The authoritative set of EVERY hard constraint the solver can issue.
+# The golden-rule test asserts this equals the union of all tiers, and that
+# each name maps to a real constraint module with a debug-disable hook.
+ALL_HARD_CONSTRAINTS: frozenset[str] = INVIOLABLE_CONSTRAINTS | SOLVER_RELAXABLE_CONSTRAINTS | INFO_ONLY_CONSTRAINTS
+
+
+def diagnostic_probe_constraints() -> frozenset[str]:
+    """Returns the constraints the failure diagnostic probes.
+
+    Currently equals INFO_ONLY_CONSTRAINTS; will narrow to the structural subset
+    once break-glass tiering relaxes the request constraints.
+    """
+    return INFO_ONLY_CONSTRAINTS
