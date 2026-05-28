@@ -429,7 +429,13 @@ class TestRequestConflictDiagnosis:
 
         # 25 F G5 campers — no grade adjacency or spread issues (all same grade)
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{1001 + i}", last_name="T", gender="F", grade=5)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="F",
+                grade=5,
+            )
             for i in range(25)
         ]
         # Camper 0 (cm_id 1001) = X, the shared bunk_with target

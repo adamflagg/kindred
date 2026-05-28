@@ -1067,11 +1067,12 @@ class DirectBunkingSolver:
             )
 
         # Tier-3 diagnostic — overflow doesn't help. Tell staff what does.
-        # The capacity probe above established that overflow is the floor:
-        # probe at 13-cap so capacity doesn't co-block with the real cause.
-        # At strict 12-cap, capacity also blocks, so no single-constraint
-        # removal isolates and the diagnostic returns the useless "multiple
-        # interacting constraints" instead of naming the culprit.
+        # The capacity probe above returned False: overflow alone does NOT make
+        # this session feasible. Probe the diagnostic at 13-cap anyway so that
+        # capacity doesn't co-block with the real cause — at the strict 12-cap
+        # capacity also blocks, so no single-constraint removal isolates and the
+        # diagnostic returns the useless "multiple interacting constraints"
+        # instead of naming the culprit.
         try:
             diagnosis = self.find_infeasibility_cause(time_limit_seconds=10, allow_overflow=True)
         except Exception as e:
