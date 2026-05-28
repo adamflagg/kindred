@@ -50,3 +50,5 @@ export {
 export { useLockedBunks, type UseLockedBunksResult } from './useLockedBunks'
 
 export { useResetPartialResolveOnSessionChange } from './useResetPartialResolveOnSessionChange'
+
+export { useResetAllowOverflowOnUnlock } from './useResetAllowOverflowOnUnlock'

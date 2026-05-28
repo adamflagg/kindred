@@ -18,6 +18,7 @@ import {
   useBunkRequestsCount,
   useLockedBunks,
   useResetPartialResolveOnSessionChange,
+  useResetAllowOverflowOnUnlock,
 } from '../hooks/session'
 import { scopeLockedToBunks } from '../hooks/session/scopeLockedToBunks'
 import SolverProgressModal, { useSolverProgress } from './SolverProgressModal'
@@ -253,9 +254,14 @@ export default function SessionView() {
     }
   }, [session?.id, setLockGroupSessionPbId])
 
-  // Partial-resolve lock state is per-session; clear it when the session changes so
-  // stale locks/overflow never leak into a different session's solve (#1609).
+  // Locks and overflow are per-session ephemeral state; clear both when the
+  // session changes so they never leak into a different session's solve (#1609).
   useResetPartialResolveOnSessionChange(selectedSession, unlockAll, setAllowOverflow)
+
+  // When the user unlocks the last bunk in scope (lockedCount >0 → 0), reset
+  // overflow so a partial-re-solve opt-in doesn't silently carry into the
+  // next full solve. Toggling overflow at lockedCount=0 still sticks.
+  useResetAllowOverflowOnUnlock(lockedCount, setAllowOverflow)
 
   // #1310 — feed in-session campers into RequestReviewPanel as the seed for
   // its personMap. The panel only needs cm_id + first/last name + grade for
