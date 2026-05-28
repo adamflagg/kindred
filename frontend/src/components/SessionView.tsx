@@ -169,9 +169,7 @@ export default function SessionView() {
     fetchWithAuth,
     respectLocks,
     lockedBunkCmIds: lockedBunkCmIdsArray,
-    // Suppress overflow when nothing is locked in scope: stale-session locks
-    // would otherwise keep allowOverflow=true for a full (not partial) solve.
-    allowOverflow: lockedCount > 0 ? allowOverflow : false,
+    allowOverflow,
   })
 
   const { data: campers = [] } = useSessionCampers({

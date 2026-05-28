@@ -23,8 +23,9 @@ function openDropdown() {
 }
 
 describe('OptimizeBunksButton — partial re-solve controls', () => {
-  // A. lockedCount=0 → main button text is "Optimize"; dropdown has NO "Allow up to 13" and NO scope line
-  it('A: shows "Optimize" when lockedCount=0 and dropdown has no overflow controls', () => {
+  // A. lockedCount=0 → main button text is "Optimize"; dropdown shows overflow
+  //    checkbox (Stream A — overflow available on every solve) but NO scope line.
+  it('A: shows "Optimize" when lockedCount=0; dropdown has overflow checkbox but no scope line', () => {
     render(<OptimizeBunksButton {...makeProps({ lockedCount: 0, unlockedCount: 0 })} />)
 
     // Main button text
@@ -33,8 +34,10 @@ describe('OptimizeBunksButton — partial re-solve controls', () => {
     // Open the dropdown
     openDropdown()
 
-    // No overflow checkbox and no scope line
-    expect(screen.queryByText(/allow up to 13/i)).not.toBeInTheDocument()
+    // Overflow checkbox IS present even with no locked bunks (Stream A)
+    expect(screen.getByText(/allow up to 13 per cabin/i)).toBeInTheDocument()
+
+    // Scope line still absent when nothing is locked
     expect(screen.queryByText(/locked \d+ · re-solving \d+/i)).not.toBeInTheDocument()
   })
 
@@ -64,6 +67,32 @@ describe('OptimizeBunksButton — partial re-solve controls', () => {
         {...makeProps({
           lockedCount: 3,
           unlockedCount: 5,
+          allowOverflow: false,
+          onAllowOverflowChange,
+        })}
+      />
+    )
+
+    openDropdown()
+
+    const overflowLabel = screen.getByText(/allow up to 13 per cabin/i)
+    const overflowCheckbox = overflowLabel
+      .closest('label')!
+      .querySelector('input[type="checkbox"]')!
+    fireEvent.click(overflowCheckbox)
+
+    expect(onAllowOverflowChange).toHaveBeenCalledWith(true)
+  })
+
+  // E. With lockedCount=0, clicking the overflow checkbox still calls onAllowOverflowChange(true)
+  //    (Stream A — overflow toggle works on full solves too).
+  it('E: clicking overflow checkbox calls onAllowOverflowChange(true) when lockedCount=0', () => {
+    const onAllowOverflowChange = vi.fn()
+    render(
+      <OptimizeBunksButton
+        {...makeProps({
+          lockedCount: 0,
+          unlockedCount: 0,
           allowOverflow: false,
           onAllowOverflowChange,
         })}
