@@ -121,13 +121,10 @@ migrate((app) => {
       display_order: 6,
       expanded_by_default: false
     },
-    {
-      section_key: "flow-cohesion",
-      title: "Cabin Flow & Cohesion",
-      description: "Encourage logical cabin arrangements",
-      display_order: 7,
-      expanded_by_default: false
-    },
+    // "flow-cohesion" section removed in Grade Ratio Phase 2 — its only members
+    // (age_grade_flow.weight, grade_cohesion.weight) were hardcoded/deleted, so
+    // the section is empty. Drop migration 1500000112 removes the row from
+    // already-migrated DBs.
     {
       section_key: "request-weighting",
       title: "Request Source Importance",

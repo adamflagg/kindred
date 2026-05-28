@@ -18,6 +18,7 @@ from bunking.satisfaction.predicate import is_request_satisfied
 from bunking.solver.constants import (
     DEFAULT_BUNK_CAPACITY,
     MAX_AGE_SPREAD_MONTHS,
+    MAX_SINGLE_GRADE_PERCENTAGE,
     MAX_UNIQUE_GRADES_PER_BUNK,
 )
 from bunking.solver.constraints.helpers import extract_bunk_level, get_level_order
@@ -1155,7 +1156,7 @@ class BunkingValidator:
         Note: AG (All-Gender) bunks are exempt from grade ratio checks since they
         intentionally have mixed ages/grades.
         """
-        max_percentage = 67  # Maximum percentage of any single grade in a bunk
+        max_percentage = MAX_SINGLE_GRADE_PERCENTAGE  # max % of any single grade in a bunk
 
         for bunk in bunks:
             # Skip AG bunks - they intentionally have mixed ages/grades

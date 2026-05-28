@@ -381,14 +381,16 @@ class ConfigLoader:
             UnknownKeyError: If the resolved key is not in CONFIG_SCHEMA.
             MissingKeyError: If the required key is absent from the database.
         """
-        weight_mappings = {
-            # level_progression removed - uses no_regression_penalty via constraint module
-            # must_satisfy_one removed in Stage 4 (#1379) - replaced by hard MP constraint
-            # grade_spread removed in Phase 2 - replaced by hard MAX_UNIQUE_GRADES_PER_BUNK constant
-            # age_spread removed in Phase 2 - replaced by hard MAX_AGE_SPREAD_MONTHS constant
-            "age_grade_flow": "constraint.age_grade_flow.weight",
-            "grade_cohesion": "constraint.grade_cohesion.weight",
-        }
+        # Every prior mapping has been collapsed to a constant (or deleted as an
+        # orphan) across Phases 1-2. The mechanism is retained: any name falls
+        # through to ``constraint.<name>.weight`` and fails loudly if absent.
+        #   level_progression  - uses no_regression_penalty via constraint module
+        #   must_satisfy_one   - Stage 4 (#1379) hard MP constraint
+        #   grade_spread       - hard MAX_UNIQUE_GRADES_PER_BUNK constant
+        #   age_spread         - hard MAX_AGE_SPREAD_MONTHS constant
+        #   age_grade_flow     - AGE_GRADE_FLOW_WEIGHT constant
+        #   grade_cohesion     - orphan key, deleted (no consumer ever existed)
+        weight_mappings: dict[str, str] = {}
 
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
         return self.get_int(key)

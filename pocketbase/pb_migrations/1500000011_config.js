@@ -182,8 +182,8 @@ migrate((app) => {
     // removed in Age Spread Phase 2 (collapsed to MAX_AGE_SPREAD_MONTHS and
     // PREFERRED_AGE_SPREAD_MONTHS). Only the bonus knob remains.
     'constraint.age_spread.preferred_bonus': 'Preferred Age Spread Bonus',
-    'constraint.grade_ratio.max_percentage': 'Max Single Grade Percentage',
-    'constraint.grade_ratio.penalty': 'Grade Ratio Violation Penalty',
+    // grade_ratio.{max_percentage, penalty} removed in Phase 2 — hardcoded as
+    // MAX_SINGLE_GRADE_PERCENTAGE / GRADE_RATIO_PENALTY in bunking/solver/constants.py.
 
     // Constraint Settings - Cabin Minimum Occupancy (Phase 2: min/preferred/
     // enabled/force_all_used collapsed to constants in bunking/solver/constants.py)
@@ -193,9 +193,8 @@ migrate((app) => {
     'constraint.level_progression.no_regression': 'Prevent Level Regression',
     'constraint.level_progression.no_regression_penalty': 'Regression Penalty',
 
-    // Constraint Settings - Flow & Cohesion
-    'constraint.age_grade_flow.weight': 'Age/Grade Flow Weight',
-    'constraint.grade_cohesion.weight': 'Grade Cohesion Weight',
+    // Flow & Cohesion removed in Phase 2 — age_grade_flow.weight hardcoded as
+    // AGE_GRADE_FLOW_WEIGHT; grade_cohesion.weight deleted (orphan, no consumer).
 
     // Objective Settings - Source Multipliers
     'objective.source_multipliers.share_bunk_with': 'Parent Request Importance',
@@ -247,8 +246,7 @@ migrate((app) => {
     // removed in Age Spread Phase 2 (collapsed to MAX_AGE_SPREAD_MONTHS and
     // PREFERRED_AGE_SPREAD_MONTHS).
     'constraint.age_spread.preferred_bonus': 'Objective bonus for each cabin within the preferred age spread. Higher = solver tries harder to form tight age groups.',
-    'constraint.grade_ratio.max_percentage': 'Maximum percentage of cabin that can be from a single grade',
-    'constraint.grade_ratio.penalty': 'Penalty weight for exceeding grade ratio limit',
+    // grade_ratio.{max_percentage, penalty} removed in Phase 2 (hardcoded constants).
 
     // Constraint Settings - Cabin Minimum Occupancy (Phase 2: only the
     // penalty weight is tunable; thresholds are constants in code)
@@ -258,9 +256,7 @@ migrate((app) => {
     'constraint.level_progression.no_regression': 'Prevent returning campers from being placed in lower level bunks than previous year',
     'constraint.level_progression.no_regression_penalty': 'Penalty weight for placing camper in lower level than previous year',
 
-    // Constraint Settings - Flow & Cohesion
-    'constraint.age_grade_flow.weight': 'Bonus weight for placing campers in bunks matching their target grade. Uses distribution-based targeting (not pairwise).',
-    'constraint.grade_cohesion.weight': 'Keep same grades together in adjacent cabins',
+    // Flow & Cohesion removed in Phase 2 (age_grade_flow hardcoded; grade_cohesion deleted).
 
     // Objective Settings - Source Multipliers
     'objective.source_multipliers.share_bunk_with': 'Weight multiplier for parent bunk requests (higher = more important)',
@@ -310,8 +306,7 @@ migrate((app) => {
     // spread.max_age_months + constraint.age_spread.{penalty, preferred_months}
     // removed in Age Spread Phase 2.
     'constraint.age_spread.preferred_bonus': 'age-grade',
-    'constraint.grade_ratio.max_percentage': 'age-grade',
-    'constraint.grade_ratio.penalty': 'age-grade',
+    // grade_ratio.{max_percentage, penalty} removed in Phase 2 (hardcoded constants).
     // Cabin Minimum Occupancy
     'constraint.cabin_minimum_occupancy.penalty': 'cabin-occupancy',
 
@@ -319,9 +314,8 @@ migrate((app) => {
     'constraint.level_progression.no_regression': 'level-progression',
     'constraint.level_progression.no_regression_penalty': 'level-progression',
 
-    // Flow & Cohesion
-    'constraint.age_grade_flow.weight': 'flow-cohesion',
-    'constraint.grade_cohesion.weight': 'flow-cohesion',
+    // Flow & Cohesion section removed in Phase 2 — age_grade_flow hardcoded,
+    // grade_cohesion deleted (orphan). The flow-cohesion section is dropped.
 
     // Request Weighting
     'objective.source_multipliers.share_bunk_with': 'request-weighting',
@@ -580,18 +574,9 @@ migrate((app) => {
   // Configuration definitions with metadata
   const configDefinitions = {
     // Constraint configurations
-    "constraint.grade_ratio.max_percentage": {
-      value: 67,
-      description: "Maximum percentage of any single grade in a multi-grade cabin",
-      min: 50,
-      max: 100
-    },
-    "constraint.grade_ratio.penalty": {
-      value: 5000,
-      description: "Penalty for grade ratio violations",
-      min: 0,
-      max: 50000
-    },
+    // constraint.grade_ratio.{max_percentage, penalty} removed in Phase 2 —
+    // hardcoded as MAX_SINGLE_GRADE_PERCENTAGE (67) / GRADE_RATIO_PENALTY (5000)
+    // in bunking/solver/constants.py. Neither was ever tuned at runtime.
 
     // Cabin minimum occupancy (Phase 2: only the penalty weight is tunable;
     // hard floor and preferred target are constants in bunking/solver/constants.py)
@@ -649,18 +634,9 @@ migrate((app) => {
       min: 0,
       max: 10000
     },
-    "constraint.age_grade_flow.weight": {
-      value: 300,
-      description: "Weight for age-grade flow constraint",
-      min: 0,
-      max: 10000
-    },
-    "constraint.grade_cohesion.weight": {
-      value: 5,
-      description: "Weight for grade cohesion in cabins",
-      min: 0,
-      max: 100
-    },
+    // constraint.age_grade_flow.weight removed in Phase 2 — hardcoded as
+    // AGE_GRADE_FLOW_WEIGHT (300). constraint.grade_cohesion.weight was a
+    // confirmed orphan (no consumer ever existed) and was deleted outright.
     // constraint.grade_spread.{mode, penalty} removed in Phase 2 cleanup.
     // Solver enforces MAX_UNIQUE_GRADES_PER_BUNK as a hard constraint; no
     // soft-mode toggle and no penalty knob.

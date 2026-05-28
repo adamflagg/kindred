@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 from ortools.sat.python import cp_model
 
+from bunking.config.errors import UnknownKeyError
 from bunking.models import RequestType
 from bunking.models_v2 import (
     DirectBunk,
@@ -54,11 +55,10 @@ class MinimalConfigLoader:
             "constraint.cabin_capacity.max": 14,
             "constraint.cabin_capacity.standard": 12,
             "constraint.cabin_capacity.penalty": 3000,
-            "constraint.grade_ratio.max_percentage": 67,
-            "constraint.grade_ratio.penalty": 1000,
+            # grade_ratio.{max_percentage, penalty} + age_grade_flow.weight
+            # removed in Grade Ratio Phase 2 (hardcoded constants).
             "constraint.age_spread.preferred_bonus": 0,
             "constraint.must_satisfy_one.penalty": 100000,
-            "constraint.age_grade_flow.weight": 10,
         }
         if overrides:
             self._defaults.update(overrides)
@@ -106,13 +106,17 @@ class MinimalConfigLoader:
         keep this dict in sync so test code can't silently pass on a key
         that production now resolves to ``UnknownKeyError``.
         """
-        weight_mappings = {
-            # age_spread, grade_spread, must_satisfy_one removed in Phase 2 —
-            # see ``bunking/config/loader.py`` for the production mapping.
-            "age_grade_flow": "constraint.age_grade_flow.weight",
-            "grade_cohesion": "constraint.grade_cohesion.weight",
+        weight_mappings: dict[str, str] = {
+            # age_spread, grade_spread, must_satisfy_one, age_grade_flow, and
+            # grade_cohesion all removed in Phase 2 — see ``bunking/config/loader.py``
+            # for the production mapping. The mechanism (fall through to
+            # ``constraint.<name>.weight`` and fail loudly) is retained.
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
+        # Mirror production: a missing key raises rather than silently returning
+        # 0, so a config-key regression can't slip through a constraint test.
+        if self.get(key) is None:
+            raise UnknownKeyError(f"Unknown config key: '{key}'")
         return self.get_int(key)
 
 

@@ -18,6 +18,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from bunking.logging_config import get_logger
+from bunking.solver.constants import AGE_GRADE_FLOW_WEIGHT
 
 from ..bunk_ordering import get_bunk_rank
 from .base import SolverContext
@@ -41,10 +42,8 @@ def add_age_grade_flow_objective(ctx: SolverContext, objective_terms: list[Any])
         ctx: Solver context with model, assignments, and mappings
         objective_terms: List to append bonus terms to
     """
-    # Check if age/grade flow is enabled in config
-    grade_target_weight = ctx.config.get_soft_constraint_weight("age_grade_flow")
-    if grade_target_weight <= 0:
-        return
+    # Hardcoded bonus weight (never tuned at runtime; > 0 so the path always runs).
+    grade_target_weight = AGE_GRADE_FLOW_WEIGHT
 
     logger.debug(f"Adding target grade distribution incentives (weight: {grade_target_weight})")
 

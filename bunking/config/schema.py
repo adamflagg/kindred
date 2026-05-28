@@ -26,21 +26,10 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Grade Ratio
     # =========================================================================
-    "constraint.grade_ratio.max_percentage": ConfigKey(
-        key="constraint.grade_ratio.max_percentage",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Maximum percentage of cabin that can be same grade",
-        min_value=0,
-        max_value=100,
-    ),
-    "constraint.grade_ratio.penalty": ConfigKey(
-        key="constraint.grade_ratio.penalty",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Penalty for exceeding grade ratio limit",
-        min_value=0,
-    ),
+    # Phase 2 cleanup: constraint.grade_ratio.{max_percentage, penalty} were
+    # collapsed into bunking/solver/constants.py — MAX_SINGLE_GRADE_PERCENTAGE
+    # (=67) and GRADE_RATIO_PENALTY (=5000). Neither was ever tuned at runtime;
+    # the validator's parallel literal 67 now imports the same constant.
     # =========================================================================
     # SOLVER CONSTRAINTS - Grade Adjacency (HARD CONSTRAINT - no config needed)
     # =========================================================================
@@ -115,20 +104,11 @@ CONFIG_SCHEMA: dict[str, ConfigKey] = {
     # =========================================================================
     # SOLVER CONSTRAINTS - Age/Grade Flow
     # =========================================================================
-    "constraint.age_grade_flow.weight": ConfigKey(
-        key="constraint.age_grade_flow.weight",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Weight for age/grade flow objective",
-        min_value=0,
-    ),
-    "constraint.grade_cohesion.weight": ConfigKey(
-        key="constraint.grade_cohesion.weight",
-        config_type=ConfigType.INT,
-        required=True,
-        description="Weight for keeping same-grade campers together",
-        min_value=0,
-    ),
+    # Phase 2 cleanup: constraint.age_grade_flow.weight was collapsed into
+    # AGE_GRADE_FLOW_WEIGHT (=300) in bunking/solver/constants.py (never tuned).
+    # constraint.grade_cohesion.weight was a confirmed orphan — no constraint
+    # module, evaluator, validator, or frontend ever read it — and was deleted
+    # outright (no constant).
     # Phase 2 cleanup (Grade Spread): constraint.grade_spread.{mode, penalty}
     # were removed in favor of MAX_UNIQUE_GRADES_PER_BUNK (=2) in
     # bunking/solver/constants.py. The soft constraint path was deleted; solver
