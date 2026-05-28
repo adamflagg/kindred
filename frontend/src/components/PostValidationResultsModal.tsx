@@ -568,15 +568,21 @@ const COHORT_STYLES = {
   got_nothing: 'bg-red-100 text-red-800',
   violated: 'bg-amber-100 text-amber-800',
   priority_unmet: 'bg-pink-100 text-pink-800',
+  sacrificed_mp: 'bg-orange-100 text-orange-800',
 } as const
 
 const COHORT_LABELS = {
   got_nothing: 'Got nothing',
   violated: 'Not-bunk-with violated',
   priority_unmet: 'Priority unmet',
+  sacrificed_mp: 'Request sacrificed',
 } as const
 
-function CohortPill({ cohort }: { cohort: 'got_nothing' | 'violated' | 'priority_unmet' }) {
+function CohortPill({
+  cohort,
+}: {
+  cohort: 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
+}) {
   return (
     <span
       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COHORT_STYLES[cohort]}`}
@@ -592,7 +598,7 @@ type FamilyRow = {
   cm_id: string
   grade: number
   gender: string
-  cohort: 'got_nothing' | 'violated' | 'priority_unmet'
+  cohort: 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
   sessions: string[]
   subRows: { session: string; detail: React.ReactNode }[]
 }
@@ -738,6 +744,9 @@ export function PostCheckContents({
           ) : (
             <span>{sub.detail}</span>
           )
+        } else if (r.cohort === 'sacrificed_mp') {
+          // Render the pre-built detail string from familyRows (already human-readable).
+          detail = <span>{sub.detail}</span>
         } else {
           detail = sub.targetName ? (
             <span>

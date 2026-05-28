@@ -1,7 +1,7 @@
 import type { ValidationStatistics, ImpossibilityReport } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
 
-export type FamilyCohort = 'got_nothing' | 'violated' | 'priority_unmet'
+export type FamilyCohort = 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
 
 export type FamilySubRow = {
   session: string
@@ -112,6 +112,32 @@ export function buildFamilyRows(
       rawText: p.raw_text,
     })
   }
+  // Stream D Phase 3: campers whose material-parent request was sacrificed by break-glass
+  // (placed but request left unmet). One entry per unmet request — deduplicated by (cm_id, cohort).
+  for (const s of statistics.unsatisfied_material_parent_detail ?? []) {
+    let detail: string
+    if (s.request_type === 'bunk_with') {
+      detail = `Material request unmet: wanted to bunk with ${s.target_name}`
+    } else if (s.request_type === 'not_bunk_with') {
+      detail = `Material request unmet: wanted to NOT bunk with ${s.target_name}`
+    } else if (s.request_type === 'age_preference') {
+      detail = `Material request unmet: age preference (${s.target_name})`
+    } else {
+      // Future request types — produce a safe generic label rather than silently dropping.
+      detail = `Material request unmet: ${s.target_name}`
+    }
+    raw.push({
+      cm_id: s.requester_cm_id,
+      name: s.requester_name,
+      grade: 0, // unsatisfied_material_parent_detail carries no grade field
+      gender: '',
+      cohort: 'sacrificed_mp',
+      session: s.requester_bunk_name, // use requester bunk as session proxy (no session_cm_id here)
+      detail,
+      targetName: s.target_name,
+      bunkName: s.requester_bunk_name,
+    })
+  }
 
   // Collapse per-(cm_id, cohort)
   const grouped = new Map<string, FamilyRowData>()
@@ -154,4 +180,6 @@ export const cohortLabel = (c: FamilyCohort): string =>
     ? 'Got nothing'
     : c === 'violated'
       ? 'Not-bunk-with violated'
-      : 'Priority unmet'
+      : c === 'sacrificed_mp'
+        ? 'Request sacrificed'
+        : 'Priority unmet'

@@ -220,9 +220,13 @@ export interface ValidationStatistics {
   unsatisfied_material_parent_detail?: Array<{
     requester_cm_id: string
     requester_name: string
+    /** "bunk_with" | "not_bunk_with" | "age_preference" — added Stream D Phase 3. */
+    request_type?: string
     target_cm_id: string
+    /** Camper name for bunk_with/not_bunk_with; preference label ("older"/"younger") for age_preference. */
     target_name: string
     requester_bunk_name: string
+    /** "n/a" for age_preference entries. */
     target_bunk_name: string
   }>
   /** TG-polish: per-gender bunk capacity + assigned counts. */

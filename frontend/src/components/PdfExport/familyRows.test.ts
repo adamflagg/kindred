@@ -269,3 +269,127 @@ describe('buildFamilyRows — honored reconciliation', () => {
     expect(rows.filter((r) => r.cohort === 'got_nothing')).toHaveLength(0)
   })
 })
+
+describe('buildFamilyRows — sacrificed material-parent cohort (Stream D, Phase 3)', () => {
+  it('surfaces a bunk_with unsatisfied MP request as a sacrificed_mp row with correct reason', () => {
+    const stats = _statistics({
+      unsatisfied_material_parent_detail: [
+        {
+          requester_cm_id: '42001',
+          requester_name: 'Emma Johnson',
+          request_type: 'bunk_with',
+          target_cm_id: '42002',
+          target_name: 'Liam Garcia',
+          requester_bunk_name: 'Cedar 1',
+          target_bunk_name: 'Cedar 2',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    const match = rows.find((r) => r.cohort === 'sacrificed_mp')
+    expect(match).toBeDefined()
+    expect(match!.name).toBe('Emma Johnson')
+    expect(match!.cm_id).toBe('42001')
+    expect(match!.subRows[0]!.detail).toBe(
+      'Material request unmet: wanted to bunk with Liam Garcia'
+    )
+  })
+
+  it('surfaces a not_bunk_with unsatisfied MP request with correct reason', () => {
+    const stats = _statistics({
+      unsatisfied_material_parent_detail: [
+        {
+          requester_cm_id: '42003',
+          requester_name: 'Olivia Chen',
+          request_type: 'not_bunk_with',
+          target_cm_id: '42004',
+          target_name: 'Riley Sam',
+          requester_bunk_name: 'Maple 3',
+          target_bunk_name: 'Maple 3',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    const match = rows.find((r) => r.cohort === 'sacrificed_mp')
+    expect(match).toBeDefined()
+    expect(match!.subRows[0]!.detail).toBe(
+      'Material request unmet: wanted to NOT bunk with Riley Sam'
+    )
+  })
+
+  it('surfaces an age_preference unsatisfied MP request with the preference label', () => {
+    const stats = _statistics({
+      unsatisfied_material_parent_detail: [
+        {
+          requester_cm_id: '42005',
+          requester_name: 'Samuel Johnson',
+          request_type: 'age_preference',
+          target_cm_id: '',
+          target_name: 'older',
+          requester_bunk_name: 'Redwood 4',
+          target_bunk_name: 'n/a',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    const match = rows.find((r) => r.cohort === 'sacrificed_mp')
+    expect(match).toBeDefined()
+    expect(match!.subRows[0]!.detail).toBe('Material request unmet: age preference (older)')
+  })
+
+  it('collapses multiple unsatisfied MP entries for the same camper into one row', () => {
+    const stats = _statistics({
+      unsatisfied_material_parent_detail: [
+        {
+          requester_cm_id: '42001',
+          requester_name: 'Emma Johnson',
+          request_type: 'bunk_with',
+          target_cm_id: '42002',
+          target_name: 'Liam Garcia',
+          requester_bunk_name: 'Cedar 1',
+          target_bunk_name: 'Cedar 2',
+        },
+        {
+          requester_cm_id: '42001',
+          requester_name: 'Emma Johnson',
+          request_type: 'age_preference',
+          target_cm_id: '',
+          target_name: 'older',
+          requester_bunk_name: 'Cedar 1',
+          target_bunk_name: 'n/a',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    const sacrificedRows = rows.filter((r) => r.cohort === 'sacrificed_mp')
+    expect(sacrificedRows).toHaveLength(1)
+    expect(sacrificedRows[0]!.subRows).toHaveLength(2)
+  })
+
+  it('returns an empty array when unsatisfied_material_parent_detail is absent', () => {
+    const stats = _statistics() // no unsatisfied_material_parent_detail
+    const rows = buildFamilyRows(stats, _report())
+    expect(rows.filter((r) => r.cohort === 'sacrificed_mp')).toHaveLength(0)
+  })
+
+  it('uses unknown request type fallback gracefully', () => {
+    const stats = _statistics({
+      unsatisfied_material_parent_detail: [
+        {
+          requester_cm_id: '42009',
+          requester_name: 'Aaron Brown',
+          request_type: 'some_future_type',
+          target_cm_id: '42010',
+          target_name: 'Zoe Williams',
+          requester_bunk_name: 'Oak 1',
+          target_bunk_name: 'Oak 2',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, _report())
+    const match = rows.find((r) => r.cohort === 'sacrificed_mp')
+    expect(match).toBeDefined()
+    // Should still produce a row with some detail text
+    expect(match!.subRows[0]!.detail).toContain('Material request unmet')
+  })
+})
