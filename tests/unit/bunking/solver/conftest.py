@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 from ortools.sat.python import cp_model
 
+from bunking.config.errors import UnknownKeyError
 from bunking.models import RequestType
 from bunking.models_v2 import (
     DirectBunk,
@@ -112,6 +113,10 @@ class MinimalConfigLoader:
             # ``constraint.<name>.weight`` and fail loudly) is retained.
         }
         key = weight_mappings.get(constraint_name, f"constraint.{constraint_name}.weight")
+        # Mirror production: a missing key raises rather than silently returning
+        # 0, so a config-key regression can't slip through a constraint test.
+        if self.get(key) is None:
+            raise UnknownKeyError(f"Unknown config key: '{key}'")
         return self.get_int(key)
 
 

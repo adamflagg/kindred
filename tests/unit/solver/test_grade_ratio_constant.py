@@ -63,7 +63,7 @@ def test_grade_ratio_module_imports_constants() -> None:
 
     source = inspect.getsource(module)
 
-    assert 'get_constraint("grade_ratio"' not in source, (
+    assert re.search(r"get_constraint\(\s*['\"]grade_ratio['\"]", source) is None, (
         "grade_ratio still reads grade_ratio config keys via get_constraint"
     )
     assert "MAX_SINGLE_GRADE_PERCENTAGE" in source
@@ -76,7 +76,7 @@ def test_age_grade_flow_module_uses_constant() -> None:
 
     source = inspect.getsource(module)
 
-    assert 'get_soft_constraint_weight("age_grade_flow")' not in source, (
+    assert re.search(r"get_soft_constraint_weight\(\s*['\"]age_grade_flow['\"]", source) is None, (
         "age_grade_flow still reads the config key via get_soft_constraint_weight"
     )
     assert "AGE_GRADE_FLOW_WEIGHT" in source
@@ -88,7 +88,7 @@ def test_objective_evaluator_age_grade_flow_uses_constant() -> None:
 
     source = inspect.getsource(ObjectiveEvaluator._calculate_age_grade_flow)
 
-    assert 'get_soft_constraint_weight("age_grade_flow")' not in source, (
+    assert re.search(r"get_soft_constraint_weight\(\s*['\"]age_grade_flow['\"]", source) is None, (
         "objective_evaluator still reads age_grade_flow via get_soft_constraint_weight"
     )
     assert "AGE_GRADE_FLOW_WEIGHT" in source
@@ -108,8 +108,12 @@ def test_loader_weight_mappings_drop_age_grade_flow_and_grade_cohesion() -> None
     from bunking.config.loader import ConfigLoader
 
     source = inspect.getsource(ConfigLoader.get_soft_constraint_weight)
-    assert '"age_grade_flow"' not in source, "loader weight_mappings still references age_grade_flow"
-    assert '"grade_cohesion"' not in source, "loader weight_mappings still references grade_cohesion"
+    assert re.search(r"['\"]age_grade_flow['\"]", source) is None, (
+        "loader weight_mappings still references age_grade_flow"
+    )
+    assert re.search(r"['\"]grade_cohesion['\"]", source) is None, (
+        "loader weight_mappings still references grade_cohesion"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -192,9 +196,19 @@ def test_config_sections_seed_drops_flow_cohesion() -> None:
 
 def test_drop_migration_exists_and_targets_keys_and_section() -> None:
     assert DROP_MIGRATION.exists(), "drop migration 1500000112_drop_grade_ratio_config.js missing"
-    raw = DROP_MIGRATION.read_text(encoding="utf-8")
+    # Strip comments so the header docstring (which names every key) can't satisfy
+    # these asserts — only executable target/seed entries should count.
+    cleaned = _strip_js_comments(DROP_MIGRATION.read_text(encoding="utf-8"))
     # Subcategory + config_key targets for the four config rows.
-    for sub in ("grade_ratio", "age_grade_flow", "grade_cohesion"):
-        assert sub in raw, f"drop migration does not target subcategory {sub}"
+    for sub, cfg_key in (
+        ("grade_ratio", "max_percentage"),
+        ("grade_ratio", "penalty"),
+        ("age_grade_flow", "weight"),
+        ("grade_cohesion", "weight"),
+    ):
+        assert re.search(
+            rf'subcategory:\s*"{sub}"\s*,\s*config_key:\s*"{cfg_key}"',
+            cleaned,
+        ), f"drop migration does not target {sub}.{cfg_key}"
     # The empty flow-cohesion section row is removed too.
-    assert "flow-cohesion" in raw, "drop migration does not remove the flow-cohesion section row"
+    assert 'section_key = "flow-cohesion"' in cleaned, "drop migration does not remove the flow-cohesion section row"
