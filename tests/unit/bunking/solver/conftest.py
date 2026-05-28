@@ -387,3 +387,73 @@ def basic_context_male_female(
         persons=[male_camper, female_camper],
         bunks=[male_bunk, female_bunk],
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for building material parent requests in integration tests.
+# Materiality requires source_field="bunk_request_form" (MATERIAL_PARENT bucket)
+# and status="resolved". For age_preference to be material the camper must have
+# no other resolved-and-possible bunk_request_form BUNK_WITH/NOT_BUNK_WITH
+# request (#1664 suppression rule).
+# ---------------------------------------------------------------------------
+
+_req_counter: list[int] = [0]
+
+
+def _next_req_id() -> str:
+    _req_counter[0] += 1
+    return f"req-{_req_counter[0]:04d}"
+
+
+def add_material_request(
+    solver_input: DirectSolverInput,
+    requester: DirectPerson,
+    target: DirectPerson,
+    request_type: str = "bunk_with",
+) -> DirectBunkRequest:
+    """Append a material-parent bunk_with/not_bunk_with request to solver_input.requests.
+
+    source_field="bunk_request_form" makes it MATERIAL_PARENT per the registry.
+    status="resolved" is required by compute_material_request_ids.
+    """
+    req = DirectBunkRequest(
+        id=_next_req_id(),
+        requester_person_cm_id=requester.campminder_person_id,
+        requested_person_cm_id=target.campminder_person_id,
+        request_type=request_type,
+        source_field="bunk_request_form",
+        status="resolved",
+        session_cm_id=requester.session_cm_id,
+        year=2026,
+        is_first_requested=True,
+    )
+    solver_input.requests.append(req)
+    return req
+
+
+def add_material_age_preference(
+    solver_input: DirectSolverInput,
+    requester: DirectPerson,
+    target: str,
+) -> DirectBunkRequest:
+    """Append a material-parent age_preference request to solver_input.requests.
+
+    For this to be material the camper must have no other resolved+possible
+    bunk_request_form BUNK_WITH/NOT_BUNK_WITH requests (the #1664 suppression
+    rule). In a clean test fixture that has no prior requests for this camper,
+    this request is material by default.
+    """
+    req = DirectBunkRequest(
+        id=_next_req_id(),
+        requester_person_cm_id=requester.campminder_person_id,
+        requested_person_cm_id=None,
+        request_type="age_preference",
+        age_preference_target=target,
+        source_field="bunk_request_form",
+        status="resolved",
+        session_cm_id=requester.session_cm_id,
+        year=2026,
+        is_first_requested=True,
+    )
+    solver_input.requests.append(req)
+    return req

@@ -280,6 +280,7 @@ def find_infeasibility_cause(
     input_data: DirectSolverInput,
     config: ConfigLoader,
     time_limit_seconds: int = 10,
+    allow_overflow: bool = False,
 ) -> str:
     """Try to identify which constraint is causing infeasibility.
 
@@ -290,6 +291,13 @@ def find_infeasibility_cause(
         input_data: The solver input data
         config: Configuration service
         time_limit_seconds: Time limit for each solver run
+        allow_overflow: When True, each probe runs at 13-cap (overflow allowed).
+            The smart orchestrator passes True when it has already established via
+            its capacity probe that overflow is the floor — otherwise capacity
+            co-blocks with the real cause at 12-cap, so no single-constraint
+            removal isolates (and the diagnostic returns the useless "multiple
+            interacting constraints" instead of naming the real culprit).
+            Default False keeps all existing callers unaffected.
 
     Returns:
         A description of the likely cause.
@@ -298,7 +306,7 @@ def find_infeasibility_cause(
         DirectBunkingSolver,
     )
 
-    logger.info("=== Starting Infeasibility Analysis ===")
+    logger.info(f"=== Starting Infeasibility Analysis (allow_overflow={allow_overflow}) ===")
 
     # Probe only constraints whose relaxation could meaningfully change
     # feasibility AND produces actionable output. INVIOLABLE_CONSTRAINTS
@@ -317,9 +325,16 @@ def find_infeasibility_cause(
 
     results = {}
 
+    def _make_probe_input() -> DirectSolverInput:
+        """Deep-copy the input and apply the established overflow flag."""
+        probe = input_data.model_copy(deep=True)
+        probe.allow_overflow = allow_overflow
+        return probe
+
     # First, try with all constraints
     logger.info("Testing with all constraints enabled...")
-    solver = DirectBunkingSolver(input_data, config, {})
+    probe_input = _make_probe_input()
+    solver = DirectBunkingSolver(probe_input, config, {})
     # Reuse this report across every probe solver below — the request set is
     # identical, so re-running validate_impossibility per probe is wasted work.
     base_impossibility_report = solver.impossibility_report
@@ -342,8 +357,9 @@ def find_infeasibility_cause(
         logger.info(f"Testing with {constraint} DISABLED...")
 
         debug_constraints = {constraint: True}  # True means disabled
+        probe_input = _make_probe_input()
         solver = DirectBunkingSolver(
-            input_data, config, debug_constraints, impossibility_report=base_impossibility_report
+            probe_input, config, debug_constraints, impossibility_report=base_impossibility_report
         )
         solver.check_feasibility()
         solver.add_constraints()
