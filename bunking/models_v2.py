@@ -157,6 +157,10 @@ class DirectSolverOutput(BaseModel):
     # DEFAULT_BUNK_CAPACITY (i.e., are at 13). 0 means a clean 12-cap solve.
     # Populated by DirectBunkingSolver.solve when pass 2 runs.
     overflow_used: int = 0
+    break_glass_used: bool = False
+    """Stream D: True when the solver placed every camper by relaxing the request
+    layer (MSO / staff NBW) because no clean or overflow-only solution existed. The
+    compromised requests surface via the post-solve bunking check."""
     # Stream C: when solve() returns an INFEASIBLE result (empty assignments),
     # this holds the actionable diagnostic message for staff. None when
     # solve succeeded. Populated from the tier-3 diagnostic flow.
