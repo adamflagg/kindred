@@ -89,6 +89,16 @@ class SolverContext:
     # post-solve into request_validation_summary["staff_nbw_yielded"].
     staff_nbw_yields: list[dict[str, Any]] = field(default_factory=list)
 
+    # Stream D break-glass: when True, the request layer (parent_paramount MSO +
+    # staff NBW) is relaxed to penalized-soft so every camper is still placed.
+    break_glass: bool = False
+    # cm_id -> slack BoolVar (1 == this camper's must-satisfy-one went unsatisfied).
+    # Populated by parent_paramount under break_glass; consumed by the lex objective.
+    break_glass_mso_unmet_vars: dict[int, "cp_model.IntVar"] = field(default_factory=dict)
+    # Staff NBWs relaxed under break-glass (same shape as staff_nbw_yields records).
+    # Populated by add_staff_separation_constraints under break_glass.
+    break_glass_nbw_relaxed: list[dict[str, Any]] = field(default_factory=list)
+
     # IIS-localization probe: hard-NBW (subject, target) pairs whose separation
     # should be skipped to localize a staff-separation infeasibility. Empty in
     # production runs. Analogue of mp_skip_cms.

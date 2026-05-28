@@ -176,9 +176,17 @@ def add_must_satisfy_one_request_constraints(ctx: SolverContext) -> None:
             forcing_vars.extend(age_forcing_indicators_by_req_id.get(r.id, []))
 
         if forcing_vars:
-            # Forces at least one forcing indicator to 1, which in turn forces
-            # the corresponding request's satisfaction condition.
-            ctx.model.Add(sum(forcing_vars) >= 1)
+            if ctx.break_glass:
+                # Break-glass: MSO becomes soft. A per-camper slack lets the model
+                # place the camper even when no material request can be honored; the
+                # lex objective (break_glass_minimization) minimizes how many fire.
+                unmet = ctx.model.NewBoolVar(f"mso_unmet_{person_cm_id}")
+                ctx.model.Add(sum(forcing_vars) + unmet >= 1)
+                ctx.break_glass_mso_unmet_vars[person_cm_id] = unmet
+            else:
+                # Forces at least one forcing indicator to 1, which in turn forces
+                # the corresponding request's satisfaction condition.
+                ctx.model.Add(sum(forcing_vars) >= 1)
             constraints_added += 1
             continue
 
