@@ -25,6 +25,39 @@ from bunking.solver.logging import ConstraintLogger
 # Type alias for config values
 ConfigValue = int | float | str | bool
 
+# Fictional camper names for test rosters (CLAUDE.md: no real names in code or
+# tests). Indexed by roster position so a roster of N campers gets N distinct
+# fictional names. 27 entries cover the largest roster in the solver suites.
+FICTIONAL_CAMPER_NAMES: list[tuple[str, str]] = [
+    ("Emma", "Johnson"),
+    ("Liam", "Garcia"),
+    ("Olivia", "Chen"),
+    ("Riley", "Sam"),
+    ("Samuel", "Johnson"),
+    ("Noah", "Martinez"),
+    ("Ava", "Patel"),
+    ("Mason", "Nguyen"),
+    ("Sophia", "Kim"),
+    ("Lucas", "Brown"),
+    ("Isabella", "Davis"),
+    ("Ethan", "Lopez"),
+    ("Mia", "Wilson"),
+    ("Logan", "Anderson"),
+    ("Charlotte", "Thomas"),
+    ("Jackson", "Taylor"),
+    ("Amelia", "Moore"),
+    ("Aiden", "Jackson"),
+    ("Harper", "White"),
+    ("Elijah", "Harris"),
+    ("Evelyn", "Clark"),
+    ("James", "Lewis"),
+    ("Abigail", "Walker"),
+    ("Benjamin", "Hall"),
+    ("Emily", "Young"),
+    ("Henry", "King"),
+    ("Ella", "Wright"),
+]
+
 
 def is_optimal_or_feasible(status: Any) -> bool:
     """Check if solver status is optimal or feasible.

@@ -73,26 +73,54 @@ def test_solver_requires_everyone_assigned(mock_config):
     assert is_infeasible(status)
 
 
-def test_single_bunk_over_capacity_returns_none(mock_config):
+def test_single_bunk_over_capacity_returns_structured_diagnosis(mock_config):
     # Single-bunk shortcut (the ``len(self.bunks) == 1`` path in solve()):
     # Stream C now always allows up to 13 (DEFAULT_BUNK_CAPACITY + 1). So 14+
-    # campers in a single 12-cap bunk is what now triggers INFEASIBLE.
+    # campers in a single 12-cap bunk is INFEASIBLE. Rather than a bare None,
+    # the path now returns a structured empty-assignments output carrying an
+    # actionable infeasibility_diagnosis (parity with the multi-bunk tier-3
+    # path) so staff see *why* it failed instead of a generic error.
     persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 15)]
     bunks = [make_bunk(2000001, gender="F", capacity=12)]
     inp = make_input(persons, bunks, [])
     solver = DirectBunkingSolver(inp, mock_config)
-    assert solver.solve() is None
+    output = solver.solve()
+    assert output is not None
+    assert output.assignments == []
+    assert output.infeasibility_diagnosis is not None
+    # Diagnosis must name the over-capacity cause (the count and the 13 ceiling).
+    assert "13" in output.infeasibility_diagnosis
+    assert "14" in output.infeasibility_diagnosis
 
 
 def test_single_bunk_over_capacity_clamps_to_default(mock_config):
     # Raw bunk.capacity > DEFAULT_BUNK_CAPACITY is clamped to the standard
     # (mirroring cabin_capacity.py); Stream C raises the effective cap by 1
-    # because overflow is always available, so 14+ campers → INFEASIBLE.
+    # because overflow is always available, so 14+ campers → INFEASIBLE with a
+    # structured diagnosis.
     persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 15)]
     bunks = [make_bunk(2000001, gender="F", capacity=15)]
     inp = make_input(persons, bunks, [])
     solver = DirectBunkingSolver(inp, mock_config)
-    assert solver.solve() is None
+    output = solver.solve()
+    assert output is not None
+    assert output.assignments == []
+    assert output.infeasibility_diagnosis is not None
+
+
+def test_single_bunk_gender_mismatch_returns_structured_diagnosis(mock_config):
+    # A gendered single bunk with an opposite-gender camper in the working set
+    # is INFEASIBLE under the must-place invariant. Stream C surfaces an
+    # actionable gender diagnosis instead of a bare None.
+    persons = [make_person(1000001, gender="F", grade=5), make_person(1000002, gender="M", grade=5)]
+    bunks = [make_bunk(2000001, gender="F", capacity=12)]
+    inp = make_input(persons, bunks, [])
+    solver = DirectBunkingSolver(inp, mock_config)
+    output = solver.solve()
+    assert output is not None
+    assert output.assignments == []
+    assert output.infeasibility_diagnosis is not None
+    assert "gender" in output.infeasibility_diagnosis.lower()
 
 
 def test_single_bunk_at_overflow_capacity_succeeds(mock_config):
@@ -106,3 +134,6 @@ def test_single_bunk_at_overflow_capacity_succeeds(mock_config):
     output = solver.solve()
     assert output is not None
     assert len(output.assignments) == 13
+    # #2: the single-bunk success path must report the overflowed bunk so the
+    # frontend overflow toast fires (the bunk seats 13 > DEFAULT_BUNK_CAPACITY).
+    assert output.overflow_used == 1

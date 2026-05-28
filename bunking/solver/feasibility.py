@@ -319,7 +319,11 @@ def find_infeasibility_cause(
     # feasibility. The test in
     # tests/unit/bunking/solver/test_constraint_classification.py enforces
     # _DIAGNOSTIC_PROBE_CONSTRAINTS == INFO_ONLY_CONSTRAINTS.
-    constraint_types = list(_DIAGNOSTIC_PROBE_CONSTRAINTS)
+    # sorted(): the loop returns on the first constraint whose removal restores
+    # feasibility, so an unordered frozenset would make the reported cause flip
+    # between processes (PYTHONHASHSEED). A stable order keeps the diagnosis
+    # deterministic for identical inputs.
+    constraint_types = sorted(_DIAGNOSTIC_PROBE_CONSTRAINTS)
 
     results = {}
 

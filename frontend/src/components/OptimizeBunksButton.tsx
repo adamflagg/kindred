@@ -243,7 +243,10 @@ export default function OptimizeBunksButton({
   const getButtonText = () => {
     if (isSolving) return 'Optimizing...'
     if (isApplyingResults) return 'Applying...'
-    if (lockedCount > 0) return 'Solve'
+    // "Solve" signals a partial re-solve — only accurate when locks are actually
+    // respected. With respectLocks off the solver ignores locks (full re-solve),
+    // so the label stays "Optimize" even if locked cabins exist.
+    if (respectLocks && lockedCount > 0) return 'Solve'
     return 'Optimize'
   }
 
@@ -374,11 +377,14 @@ export default function OptimizeBunksButton({
                 </label>
               </div>
 
-              {/* Partial re-solve scope line — only when cabins are locked.
+              {/* Partial re-solve scope line — only when locks are respected AND
+                  cabins are locked. With respectLocks off the solve is a full
+                  re-solve, so describing it as "Locked N · Re-solving M" would
+                  misrepresent the mode.
                   Stream C: the 13-cap "Allow up to 13 per cabin" checkbox was
                   removed; the smart orchestrator auto-uses overflow only when
                   strict 12-cap is infeasible, minimally. */}
-              {lockedCount > 0 && (
+              {respectLocks && lockedCount > 0 && (
                 <div className="border-border border-t px-4 py-2">
                   <p className="text-muted-foreground text-xs">
                     {`Locked ${lockedCount} · Re-solving ${unlockedCount}`}

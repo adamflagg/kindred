@@ -17,14 +17,21 @@ from bunking.solver.constraints.overflow_minimization import (
     add_overflow_minimization_objective,
 )
 
-from ..conftest import build_solver_context, create_bunk, create_person
+from ..conftest import FICTIONAL_CAMPER_NAMES, build_solver_context, create_bunk, create_person
 
 
 class TestOverflowMinimizationObjective:
     def test_is_overflowed_true_when_count_is_13(self):
         """13 campers, 1 bunk, allow_overflow=True → is_overflowed = 1."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(13)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)
         ctx = build_solver_context(persons=campers, bunks=[bunk], allow_overflow=True)
@@ -42,7 +49,14 @@ class TestOverflowMinimizationObjective:
     def test_is_overflowed_false_when_count_is_12(self):
         """12 campers, 1 bunk, allow_overflow=True → is_overflowed = 0."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(12)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(12)
         ]
         bunk = create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)
         ctx = build_solver_context(persons=campers, bunks=[bunk], allow_overflow=True)
@@ -60,7 +74,14 @@ class TestOverflowMinimizationObjective:
     def test_penalty_prefers_balanced_split_over_overflow(self):
         """13 campers across 2 bunks: prefers 7+6 (no overflow) over 13+0."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(13)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),

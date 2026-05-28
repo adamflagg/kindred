@@ -20,6 +20,7 @@ from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from tests.unit.bunking.solver.conftest import (
+    FICTIONAL_CAMPER_NAMES,
     build_direct_solver_input,
     create_bunk,
     create_person,
@@ -65,7 +66,14 @@ class TestSmartOverflowOrchestration:
     def test_12cap_feasible_returns_solution_no_overflow(self, mock_config):
         """12 M campers, 1 M bunk + 1 F bunk (room to spare) → 12-cap solve."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(12)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(12)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
@@ -86,7 +94,14 @@ class TestSmartOverflowOrchestration:
         """13 M campers + (M bunk + F bunk) — strict 12-cap INFEASIBLE.
         Pass 2 auto-runs, puts 13 in B-1 (B-2 is F-only). overflow_used=1."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(13)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
@@ -106,7 +121,14 @@ class TestSmartOverflowOrchestration:
         """14 M campers, 1 M bunk only — INFEASIBLE even at 13-cap (14 > 13).
         Returns empty-assignments output with infeasibility_diagnosis set."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(14)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(14)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
@@ -131,7 +153,14 @@ class TestSmartOverflowOrchestration:
         """25 M campers, 2 M bunks. Pass 1 infeasible (>24 cap). Pass 2 must
         split 13+12 (exactly 1 overflowed bunk), NOT 13+13+... wastefully."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(25)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(25)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
@@ -148,3 +177,66 @@ class TestSmartOverflowOrchestration:
         # Exactly one bunk at 13, the other at 12
         overflowed = sum(1 for c in counts.values() if c > DEFAULT_BUNK_CAPACITY)
         assert overflowed == 1
+
+
+class TestSolveOnceStatePreservation:
+    """Stream C's two-pass orchestrator reuses one solver instance across
+    passes. These tests pin the invariants that keep per-pass state changes
+    from corrupting input-derived state."""
+
+    def test_rebuild_model_preserves_mp_set_entirely_impossible(self, mock_config):
+        """#1: _rebuild_model resets model-derived state but MUST preserve
+        mp_set_entirely_impossible — it is input-derived (computed once in
+        __init__ from the impossibility report) and read post-solve for the
+        request_validation_summary dashboard signal."""
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(3)
+        ]
+        bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(solver_input, mock_config)
+
+        # Simulate __init__ having recorded an entirely-impossible MP camper.
+        solver.mp_set_entirely_impossible = [1002]
+
+        solver._rebuild_model()
+
+        assert solver.mp_set_entirely_impossible == [1002]
+
+    def test_solve_once_restores_allow_overflow_on_exception(self, mock_config):
+        """#5: _solve_once mutates self.input.allow_overflow for the pass and
+        must restore it even when an inner build step raises — otherwise a
+        later pass / inspection sees the wrong overflow state."""
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(3)
+        ]
+        bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(solver_input, mock_config)
+        solver.input.allow_overflow = False
+
+        # Force a raise after the flag has been mutated for the pass.
+        def _boom() -> None:
+            raise RuntimeError("simulated build failure")
+
+        solver.add_constraints = _boom  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="simulated build failure"):
+            solver._solve_once(allow_overflow=True, time_limit_seconds=5)
+
+        # The flag must be back to its pre-pass value despite the exception.
+        assert solver.input.allow_overflow is False

@@ -782,18 +782,23 @@ class DirectBunkingSolver:
 
         # Must-place invariant: every working-set camper must be assigned. A
         # gender-incompatible working camper has no valid bunk → INFEASIBLE.
+        # Return a structured empty-assignments output carrying an actionable
+        # diagnosis (parity with the multi-bunk tier-3 path). solver_runner
+        # treats an empty-assignments output with infeasibility_diagnosis set as
+        # infeasible (result→None), so nothing is written to PocketBase.
         if skipped:
             logger.warning(
                 f"Single-bunk session {bunk.name} ({bunk.gender}): "
                 f"{skipped} gender-incompatible working camper(s) cannot be placed — INFEASIBLE"
             )
-            return None
+            diagnosis = (
+                f"{skipped} camper(s) cannot be placed in {bunk.name} "
+                f"({bunk.gender} bunk) due to gender restrictions. "
+                f"Move them to a gender-compatible bunk."
+            )
+            return self._single_bunk_infeasible_output(diagnosis)
 
         # Must-place invariant: more campers than the effective cap → INFEASIBLE.
-        # Mirrors the skipped branch above — the caller (`solve()` → `solver_runner`)
-        # treats only `None` as infeasible, so we cannot return a populated output
-        # with status="INFEASIBLE" or apply_solver_results would write the
-        # over-capacity assignments to PocketBase.
         if over_capacity:
             logger.warning(
                 "single_bunk_infeasible bunk=%s campers=%d effective_cap=%d (Stream C: overflow always available)",
@@ -801,7 +806,12 @@ class DirectBunkingSolver:
                 len(assignable),
                 effective_cap,
             )
-            return None
+            diagnosis = (
+                f"{bunk.name} has {len(assignable)} campers but a single bunk holds at most "
+                f"{effective_cap} (12 + 1 overflow seat). Remove {len(assignable) - effective_cap} "
+                f"camper(s) or add another bunk to this session."
+            )
+            return self._single_bunk_infeasible_output(diagnosis)
 
         # Get configured year from CampMinder settings
         year = get_current_season()
@@ -915,6 +925,22 @@ class DirectBunkingSolver:
             assignments=assignments,
             satisfied_requests=satisfied_requests,
             stats=stats,
+            # #2: report any bunk seating 13 so the frontend overflow toast fires
+            # for single-bunk sessions exactly as it does for the multi-bunk path.
+            overflow_used=self._count_overflowed_bunks(assignments),
+        )
+
+    def _single_bunk_infeasible_output(self, diagnosis: str) -> DirectSolverOutput:
+        """Build the empty-assignments output carrying a single-bunk diagnosis.
+
+        Mirrors the multi-bunk tier-3 shape so solver_runner converts it to the
+        infeasible path (result→None) while surfacing the actionable message.
+        """
+        return DirectSolverOutput(
+            assignments=[],
+            satisfied_requests={},
+            stats={"status": "INFEASIBLE", "single_bunk_session": True},
+            infeasibility_diagnosis=diagnosis,
         )
 
     def _rebuild_model(self) -> None:
@@ -924,17 +950,22 @@ class DirectBunkingSolver:
         12-cap, optionally pass 2 with allow_overflow=True). CP-SAT models
         can\'t be cleared in-place, so each pass needs a fresh model with
         freshly-created decision variables. Non-model state (self.input,
-        self.bunks, self.person_ids, self.impossibility_report) is stable
-        across passes and not reset here.
+        self.bunks, self.person_ids, self.impossibility_report,
+        self.mp_set_entirely_impossible) is input-derived — computed once in
+        __init__ and stable across passes — so it is NOT reset here.
         """
         self.model = cp_model.CpModel()
 
-        # Reset model-derived state.
+        # Reset model-derived state. NOTE: mp_set_entirely_impossible is
+        # deliberately NOT reset — it is input-derived (populated once by
+        # _validate_requests in __init__ and never repopulated) and is read
+        # post-solve for the request_validation_summary dashboard signal.
+        # Wiping it here under-counted entirely-impossible MP sets to 0 on
+        # every Stream C pass.
         self.soft_constraint_violations = {}
         self.soft_constraint_bonuses = {}
         self.staff_nbw_yields = []
         self.parent_nbw_yields = []
-        self.mp_set_entirely_impossible = []
         self.request_satisfied_vars = {}
         self._pair_reduction_logged = 0
 
@@ -1049,22 +1080,30 @@ class DirectBunkingSolver:
         cleared in-place, so each pass starts with a new CpModel and re-runs
         check_feasibility -> add_constraints -> add_objective.
         """
+        # Mutate the pass-scoped overflow flag only for model construction —
+        # cabin_capacity reads self.input.allow_overflow while add_constraints
+        # runs. Restore in finally so an exception in any build step can't leave
+        # the shared input mutated for a later pass / inspection. Nothing after
+        # add_objective (solve, extraction) reads the flag, so restoring here is
+        # both sufficient and safe.
         saved_allow_overflow = self.input.allow_overflow
         self.input.allow_overflow = allow_overflow
+        try:
+            # Rebuild the CP-SAT model from scratch so pass 2 doesn't inherit
+            # pass 1's accumulated constraints.
+            self._rebuild_model()
 
-        # Rebuild the CP-SAT model from scratch so pass 2 doesn't inherit
-        # pass 1's accumulated constraints.
-        self._rebuild_model()
+            # Run feasibility check first
+            self.check_feasibility()
 
-        # Run feasibility check first
-        self.check_feasibility()
+            # Add constraints and objective
+            self.constraint_logger.log_progress("Adding constraints to model...")
+            self.add_constraints()
 
-        # Add constraints and objective
-        self.constraint_logger.log_progress("Adding constraints to model...")
-        self.add_constraints()
-
-        self.constraint_logger.log_progress("Setting up objective function...")
-        self.add_objective(with_overflow_penalty=with_overflow_penalty)
+            self.constraint_logger.log_progress("Setting up objective function...")
+            self.add_objective(with_overflow_penalty=with_overflow_penalty)
+        finally:
+            self.input.allow_overflow = saved_allow_overflow
 
         # Create solver and set time limit
         solver = cp_model.CpSolver()
@@ -1151,7 +1190,6 @@ class DirectBunkingSolver:
                 log_file_path = self.constraint_logger.save_to_file(session_id)
                 logger.info(f"Solver logs saved to {log_file_path} despite failure")
 
-            self.input.allow_overflow = saved_allow_overflow
             return (None, status)
 
         # Log success
@@ -1233,7 +1271,6 @@ class DirectBunkingSolver:
         )
         stats["request_validation"] = self.request_validation_summary
 
-        self.input.allow_overflow = saved_allow_overflow
         return (
             DirectSolverOutput(
                 assignments=assignments,

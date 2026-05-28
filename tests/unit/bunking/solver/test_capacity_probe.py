@@ -15,7 +15,7 @@ from bunking.config import ConfigLoader
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from bunking.solver.direct_solver import probe_capacity_relaxation_feasible
 
-from .conftest import build_direct_solver_input, create_bunk, create_person
+from .conftest import FICTIONAL_CAMPER_NAMES, build_direct_solver_input, create_bunk, create_person
 
 
 class _PenaltyStubLoader:
@@ -67,7 +67,14 @@ class TestCapacityProbe:
         """13 M campers, 1 M bunk + 1 F bunk → strict 12-cap is INFEASIBLE
         (gender forces all to B-1), but allow_overflow=True is feasible."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(13)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
         ]
         bunks = [
             create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
@@ -80,7 +87,14 @@ class TestCapacityProbe:
     def test_overflow_doesnt_help_returns_false(self, mock_config):
         """14 M campers, 1 M bunk → INFEASIBLE even at 13-cap (14 > 13)."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(14)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(14)
         ]
         bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)]
         input_data = build_direct_solver_input(persons=campers, bunks=bunks)
@@ -90,7 +104,14 @@ class TestCapacityProbe:
     def test_12_cap_already_feasible_returns_true(self, mock_config):
         """12 M campers, 1 M bunk → trivially feasible at 12 AND 13."""
         campers = [
-            create_person(cm_id=1001 + i, first_name=f"C{i}", last_name="T", gender="M", grade=5) for i in range(12)
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(12)
         ]
         bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)]
         input_data = build_direct_solver_input(persons=campers, bunks=bunks)
