@@ -118,7 +118,6 @@ async def run_solver_task_v2(
     config_overrides: dict[str, Any] | None = None,
     respect_locks: bool = True,
     locked_bunk_cm_ids: list[int] | None = None,
-    allow_overflow: bool = False,
     scenario_name: str | None = None,
     sweep_id: str | None = None,
     sweep_label: str | None = None,
@@ -199,10 +198,9 @@ async def run_solver_task_v2(
             )
             solver_input.lock_groups_data = lock_groups
 
-        # Overflow flag applies on every solve (Stream A): full solves can opt
-        # into 13-cap as an escape valve for INFEASIBLE rosters, not just
-        # partial re-solves with locked cabins.
-        solver_input.allow_overflow = allow_overflow
+        # Stream C: the solver now ignores input.allow_overflow — it always
+        # auto-runs pass 2 with overflow + lex penalty when pass 1 (strict
+        # 12-cap) returns INFEASIBLE. No checkbox, no explicit gate.
 
         # Partial cabin re-solve (#1609): freeze the selected cabins' current rosters.
         # Resolve occupants from existing_assignments BEFORE any respect_locks clearing so
@@ -251,6 +249,16 @@ async def run_solver_task_v2(
         # event loop stays responsive.
         result = await asyncio.to_thread(solver.solve, time_limit_seconds=time_limit)
 
+        # Stream C: orchestrator returns an empty-assignments DirectSolverOutput
+        # with infeasibility_diagnosis on INFEASIBLE (instead of None) so the
+        # diagnosis travels with the result. Convert here so the existing
+        # failure path handles it; surface the diagnosis directly (avoid the
+        # redundant find_infeasibility_cause call below).
+        orchestrator_diagnosis: str | None = None
+        if result is not None and not result.assignments and result.infeasibility_diagnosis is not None:
+            orchestrator_diagnosis = result.infeasibility_diagnosis
+            result = None
+
         if result is None:
             # Try to identify the cause of infeasibility
             logger.warning("Solver failed - running infeasibility analysis...")
@@ -265,8 +273,12 @@ async def run_solver_task_v2(
                 logger.error(f"Failed to capture impossibility report: {e}", exc_info=True)
 
             try:
-                cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
-                logger.error(f"Infeasibility analysis result: {cause}")
+                if orchestrator_diagnosis is not None:
+                    cause = orchestrator_diagnosis
+                    logger.info(f"Using orchestrator-supplied diagnosis: {cause}")
+                else:
+                    cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
+                    logger.error(f"Infeasibility analysis result: {cause}")
                 solver_runs[run_id]["infeasibility_cause"] = cause
 
                 # If parent_paramount is the cause, localize the conflict to
@@ -371,6 +383,8 @@ async def run_solver_task_v2(
                 "result": json.dumps(solver_runs[run_id]["results"]),
                 "stats": json.dumps(stats_with_changes),
                 "details": json.dumps(details),
+                # Stream C: number of bunks at 13-cap; 0 on a clean 12-cap solve.
+                "overflow_used": result.overflow_used,
             }
             if scenario:
                 pb_data["scenario"] = scenario
@@ -411,6 +425,9 @@ async def run_solver_task_v2(
                 "completed_at": solver_runs[run_id]["completed_at"].strftime("%Y-%m-%d %H:%M:%S.000Z"),
                 "error": json.dumps({"message": str(e)}),
                 "details": json.dumps(minimal_details),
+                # Stream C: actionable diagnosis if the orchestrator provided one
+                # (e.g., "Locked group G spans 36 months — split or override").
+                "infeasibility_diagnosis": solver_runs[run_id].get("infeasibility_cause", "") or "",
             }
             await _persist_run_record(task_pb, run_id, failure_payload, sweep_id=sweep_id)
         except Exception:  # noqa: S110 — intentional silent handling

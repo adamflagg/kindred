@@ -230,7 +230,6 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [],
-          allowOverflow: false,
         }),
       { wrapper }
     )
@@ -269,7 +268,6 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [],
-          allowOverflow: false,
         }),
       { wrapper }
     )
@@ -286,8 +284,8 @@ describe('useSolverOperations diagnostics passthrough (#1638)', () => {
   })
 })
 
-describe('useSolverOperations locked bunks + overflow (#1609)', () => {
-  it('passes lockedBunkCmIds and allowOverflow to solverService.runSolver', async () => {
+describe('useSolverOperations locked bunks (#1609)', () => {
+  it('passes lockedBunkCmIds to solverService.runSolver', async () => {
     vi.spyOn(solverService, 'runSolver').mockResolvedValue({
       id: 'run-2',
       session: '1000002',
@@ -310,7 +308,6 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
           fetchWithAuth: vi.fn(),
           respectLocks: true,
           lockedBunkCmIds: [2001, 2002],
-          allowOverflow: true,
         }),
       { wrapper }
     )
@@ -319,7 +316,7 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
       await result.current.handleRunSolver(60)
     })
 
-    // Arg order: sessionId, year, scenarioId, fetchWithAuth, timeLimit, respectLocks, lockedBunkCmIds, allowOverflow
+    // Arg order: sessionId, year, scenarioId, fetchWithAuth, timeLimit, respectLocks, lockedBunkCmIds
     expect(solverService.runSolver).toHaveBeenCalledWith(
       '1000002',
       2026,
@@ -327,8 +324,7 @@ describe('useSolverOperations locked bunks + overflow (#1609)', () => {
       expect.any(Function),
       60,
       true,
-      [2001, 2002],
-      true
+      [2001, 2002]
     )
   })
 })

@@ -68,7 +68,6 @@ export interface UseSolverOperationsOptions {
   fetchWithAuth: FetchWithAuthFn
   respectLocks: boolean
   lockedBunkCmIds: number[]
-  allowOverflow: boolean
 }
 
 export interface SolverRunResultWithStats {
@@ -103,7 +102,6 @@ export function useSolverOperations({
   fetchWithAuth,
   respectLocks,
   lockedBunkCmIds,
-  allowOverflow,
 }: UseSolverOperationsOptions): UseSolverOperationsReturn {
   const queryClient = useQueryClient()
   const [isSolving, setIsSolving] = useState(false)
@@ -128,8 +126,7 @@ export function useSolverOperations({
           fetchWithAuth,
           timeLimit,
           respectLocks,
-          lockedBunkCmIds,
-          allowOverflow
+          lockedBunkCmIds
         )
 
         if (solverRun.status === 'completed') {
@@ -137,6 +134,17 @@ export function useSolverOperations({
 
           // Store stats to return
           const resultStats = stats
+
+          // Stream C: notify staff when the smart solver had to use overflow
+          // (pass 1 strict 12-cap was infeasible; pass 2 auto-ran with overflow
+          // + lex penalty, using the minimum number of overflowed bunks).
+          const overflowed = solverRun.overflow_used ?? 0
+          if (overflowed > 0) {
+            toast.success(
+              `Used overflow on ${overflowed} bunk${overflowed > 1 ? 's' : ''} (13/cabin) — strict 12-cap was infeasible.`,
+              { duration: 6000 }
+            )
+          }
 
           // Auto-apply results if enabled
           if (autoApplyEnabled) {
@@ -239,7 +247,6 @@ export function useSolverOperations({
       queryClient,
       respectLocks,
       lockedBunkCmIds,
-      allowOverflow,
     ]
   )
 

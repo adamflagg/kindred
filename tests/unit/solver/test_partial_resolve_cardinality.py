@@ -74,11 +74,10 @@ def test_solver_requires_everyone_assigned(mock_config):
 
 
 def test_single_bunk_over_capacity_returns_none(mock_config):
-    # Single-bunk shortcut (the `len(self.bunks) == 1` path in solve()): 13 campers
-    # but only one bunk with effective_cap=12 → must-place invariant cannot hold
-    # → solve() must return None so the runner records the run as failed instead
-    # of treating it as a completed-but-over-capacity result.
-    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    # Single-bunk shortcut (the ``len(self.bunks) == 1`` path in solve()):
+    # Stream C now always allows up to 13 (DEFAULT_BUNK_CAPACITY + 1). So 14+
+    # campers in a single 12-cap bunk is what now triggers INFEASIBLE.
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 15)]
     bunks = [make_bunk(2000001, gender="F", capacity=12)]
     inp = make_input(persons, bunks, [])
     solver = DirectBunkingSolver(inp, mock_config)
@@ -86,10 +85,10 @@ def test_single_bunk_over_capacity_returns_none(mock_config):
 
 
 def test_single_bunk_over_capacity_clamps_to_default(mock_config):
-    # A bunk declared with capacity > DEFAULT_BUNK_CAPACITY (12) is still clamped
-    # to the standard, matching cabin_capacity.py. 13 campers → INFEASIBLE even
-    # though raw bunk.capacity (15) would suggest there's room.
-    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 14)]
+    # Raw bunk.capacity > DEFAULT_BUNK_CAPACITY is clamped to the standard
+    # (mirroring cabin_capacity.py); Stream C raises the effective cap by 1
+    # because overflow is always available, so 14+ campers → INFEASIBLE.
+    persons = [make_person(1000000 + i, gender="F", grade=5) for i in range(1, 15)]
     bunks = [make_bunk(2000001, gender="F", capacity=15)]
     inp = make_input(persons, bunks, [])
     solver = DirectBunkingSolver(inp, mock_config)

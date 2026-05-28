@@ -23,10 +23,6 @@ class SolverRequest(BaseModel):
         default_factory=list,
         description="Bunk CM IDs to freeze in place during a partial re-solve (#1609)",
     )
-    allow_overflow: bool = Field(
-        default=False,
-        description="Allow up to 13 per unlocked cabin during a partial re-solve (#1609)",
-    )
 
 
 class MultiSessionSolverRequest(BaseModel):

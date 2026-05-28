@@ -60,6 +60,8 @@ class TestSolverRunnerPocketBaseSave:
             mock_result.assignments = []
             mock_result.stats = {"status": "OPTIMAL", "solve_time": 5.0}
             mock_result.satisfied_requests = {}
+            mock_result.infeasibility_diagnosis = None
+            mock_result.overflow_used = 0
             mock_solver.solve.return_value = mock_result
         else:
             mock_solver.solve.side_effect = ValueError("Solver failed to find a solution")
@@ -620,6 +622,8 @@ class TestFailedRunPersistsDetails:
             mock_result.assignments = []
             mock_result.stats = {"status": "OPTIMAL"}
             mock_result.satisfied_requests = {}
+            mock_result.infeasibility_diagnosis = None
+            mock_result.overflow_used = 0
             mock_solver.solve.return_value = mock_result
             m6.return_value = mock_solver
             m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")

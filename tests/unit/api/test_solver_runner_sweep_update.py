@@ -71,6 +71,8 @@ def _configure_solver(mocks: dict[str, Any], solver_input: DirectSolverInput, su
         result.assignments = []
         result.stats = {"status": "OPTIMAL", "solve_time": 5.0}
         result.satisfied_requests = {}
+        result.infeasibility_diagnosis = None
+        result.overflow_used = 0
         mock_solver.solve.return_value = result
     else:
         mock_solver.solve.side_effect = ValueError("solver blew up")

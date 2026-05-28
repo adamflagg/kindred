@@ -187,6 +187,7 @@ def build_solver_context(
     requests: list[DirectBunkRequest] | None = None,
     config_overrides: dict[str, ConfigValue] | None = None,
     debug_constraints: dict[str, bool] | None = None,
+    allow_overflow: bool = False,
 ) -> SolverContext:
     """
     Build a minimal SolverContext for constraint testing.
@@ -244,6 +245,7 @@ def build_solver_context(
         requests=requests,
         existing_assignments=[],
         historical_bunking=[],
+        allow_overflow=allow_overflow,
     )
 
     return SolverContext(
@@ -265,6 +267,24 @@ def build_solver_context(
         debug_constraints=debug_constraints or {},
         soft_constraint_violations={},
         material_request_ids=material_ids,
+    )
+
+
+def build_direct_solver_input(
+    persons: list[DirectPerson],
+    bunks: list[DirectBunk],
+    requests: list[DirectBunkRequest] | None = None,
+    allow_overflow: bool = False,
+) -> DirectSolverInput:
+    """Build a DirectSolverInput for tests that exercise the full solver
+    (DirectBunkingSolver.solve) rather than a single constraint module."""
+    return DirectSolverInput(
+        persons=persons,
+        bunks=sorted(bunks, key=lambda b: b.campminder_id),
+        requests=requests or [],
+        existing_assignments=[],
+        historical_bunking=[],
+        allow_overflow=allow_overflow,
     )
 
 

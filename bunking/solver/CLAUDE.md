@@ -46,3 +46,23 @@ Soft violations and bonuses accumulate in `SolverContext.soft_constraint_violati
 - **Satisfied ≠ possible.** A request can be possible (campers exist + eligible) but unsatisfied (solver didn't place them together). The metric distinction is enforced.
 - **Cross-session bunk requests auto-DECLINE.** They're physically impossible, not low-confidence. Don't raise thresholds to "fix" them.
 - **SAME_AGE preferences stay PENDING.** May be a dog-whistle for avoiding AG cabins — staff review required.
+
+
+## Constraint classification (Stream C)
+
+When adding a new constraint module or changing a constraint's hardness:
+
+- Hard constraints (issue `model.Add()`): classify in
+  `bunking/solver/constraint_classification.py` as INVIOLABLE,
+  SOLVER_RELAXABLE, or INFO_ONLY.
+- INFO_ONLY constraints must also appear in
+  `feasibility.py::_DIAGNOSTIC_PROBE_CONSTRAINTS`.
+- Soft constraints (`soft_constraint_violations`): do NOT add to any tier.
+  Soft constraints never cause INFEASIBLE — listing them in the diagnostic
+  probe wastes a solve.
+- New SOLVER_RELAXABLE classes need a corresponding orchestrator probe in
+  `DirectBunkingSolver.solve` and a relaxation-objective module in
+  `constraints/` paralleling `overflow_minimization.py`.
+
+The invariant test in `tests/unit/bunking/solver/test_constraint_classification.py`
+fails loudly if these are out of sync.

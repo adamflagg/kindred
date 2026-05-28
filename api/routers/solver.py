@@ -124,7 +124,6 @@ async def run_solver(
         request.config,
         respect_locks=request.respect_locks,
         locked_bunk_cm_ids=request.locked_bunk_cm_ids,
-        allow_overflow=request.allow_overflow,
     )
 
     return SolverResponse(run_id=run_id, status="started", message="Solver run started in background")
