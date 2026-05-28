@@ -13,6 +13,7 @@ from ortools.sat.python import cp_model
 
 from bunking.logging_config import get_logger
 from bunking.solver.constants import MAX_AGE_SPREAD_MONTHS, MAX_UNIQUE_GRADES_PER_BUNK
+from bunking.solver.constraint_classification import diagnostic_probe_constraints
 from bunking.solver.constraints.age_spread import _age_to_months
 
 if TYPE_CHECKING:
@@ -23,19 +24,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Stream C: see bunking/solver/constraint_classification.py for the tier model.
-# Kept here (not imported from classification) to avoid circular imports —
-# constraint_classification is a pure module with no deps; this constant lives
-# at the consumer site. The invariant test enforces they stay in sync.
-_DIAGNOSTIC_PROBE_CONSTRAINTS: frozenset[str] = frozenset(
-    {
-        "grade_spread",
-        "age_spread",
-        "group_locks",
-        "parent_paramount",
-        "staff_separation",
-    }
-)
+# Single source of truth — see constraint_classification.diagnostic_probe_constraints().
+_DIAGNOSTIC_PROBE_CONSTRAINTS: frozenset[str] = diagnostic_probe_constraints()
 
 
 class _RequestValidationSummaryBase(TypedDict, total=True):
@@ -376,6 +366,13 @@ def find_infeasibility_cause(
                 actionable = _explain_age_spread_infeasibility(input_data)
                 if actionable is not None:
                     return actionable
+            elif constraint == "grade_adjacency":
+                return (
+                    "Grade adjacency is forcing infeasibility: a cabin would need non-consecutive "
+                    "grades (e.g., grades 2 and 4 without 3), which is never allowed. Review the "
+                    "grade mix for this session — a grade with too few campers to fill a cabin, or "
+                    "a bunk-with request bridging non-adjacent grades, is the usual cause."
+                )
             return f"The {constraint} constraint is causing infeasibility"
 
     # If still infeasible with each individual constraint disabled, try combinations
