@@ -6,7 +6,6 @@
  *  2. In-scope ids (present in bunks) are kept.
  *  3. Empty locked set → empty result.
  *  4. All stale → empty result.
- *  5. Overflow-gate derivation: overflow is suppressed when filteredLockedCount = 0.
  */
 import { describe, it, expect } from 'vitest'
 import { scopeLockedToBunks } from './scopeLockedToBunks'
@@ -47,23 +46,5 @@ describe('scopeLockedToBunks', () => {
     const locked = new Set([1000001]) as ReadonlySet<number>
     const result = scopeLockedToBunks(locked, bunks)
     expect(result).not.toBe(locked)
-  })
-
-  it('overflow-gate: filteredCount > 0 → allowOverflow passes through', () => {
-    // Caller pattern: lockedCount > 0 ? allowOverflow : false
-    const locked = new Set([1000001]) as ReadonlySet<number>
-    const result = scopeLockedToBunks(locked, bunks)
-    const filteredCount = result.size
-    const effectiveOverflow = filteredCount > 0 ? true : false
-    expect(effectiveOverflow).toBe(true)
-  })
-
-  it('overflow-gate: filteredCount = 0 → allowOverflow suppressed to false', () => {
-    // All ids are stale → no locks in scope → overflow must be false
-    const locked = new Set([9999]) as ReadonlySet<number>
-    const result = scopeLockedToBunks(locked, bunks)
-    const filteredCount = result.size
-    const effectiveOverflow = filteredCount > 0 ? true : false
-    expect(effectiveOverflow).toBe(false)
   })
 })

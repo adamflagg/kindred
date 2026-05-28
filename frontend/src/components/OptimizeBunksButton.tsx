@@ -139,7 +139,7 @@ export interface OptimizeBunksButtonProps {
   lockedCount?: number
   /** Number of unlocked cabins that will be re-solved */
   unlockedCount?: number
-  /** Whether to allow up to 13 campers per cabin during partial re-solve */
+  /** Whether to allow up to 13 campers per cabin */
   allowOverflow?: boolean
   /** Callback when allowOverflow toggle changes */
   onAllowOverflowChange?: (value: boolean) => void
@@ -380,28 +380,26 @@ export default function OptimizeBunksButton({
                 </label>
               </div>
 
-              {/* Partial re-solve controls — only when cabins are locked */}
+              {/* Overflow checkbox — available on every solve (Stream A) */}
+              <div className="border-border border-t px-4 py-2.5">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allowOverflow}
+                    onChange={(e) => onAllowOverflowChange?.(e.target.checked)}
+                    className="accent-primary h-3.5 w-3.5 rounded"
+                  />
+                  <span className="text-muted-foreground text-xs">Allow up to 13 per cabin</span>
+                </label>
+              </div>
+
+              {/* Partial re-solve scope line — only when cabins are locked */}
               {lockedCount > 0 && (
-                <>
-                  <div className="border-border border-t px-4 py-2.5">
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={allowOverflow}
-                        onChange={(e) => onAllowOverflowChange?.(e.target.checked)}
-                        className="accent-primary h-3.5 w-3.5 rounded"
-                      />
-                      <span className="text-muted-foreground text-xs">
-                        Allow up to 13 per cabin
-                      </span>
-                    </label>
-                  </div>
-                  <div className="border-border border-t px-4 py-2">
-                    <p className="text-muted-foreground text-xs">
-                      {`Locked ${lockedCount} · Re-solving ${unlockedCount}`}
-                    </p>
-                  </div>
-                </>
+                <div className="border-border border-t px-4 py-2">
+                  <p className="text-muted-foreground text-xs">
+                    {`Locked ${lockedCount} · Re-solving ${unlockedCount}`}
+                  </p>
+                </div>
               )}
 
               {/* Footer hint */}

@@ -199,13 +199,17 @@ async def run_solver_task_v2(
             )
             solver_input.lock_groups_data = lock_groups
 
+        # Overflow flag applies on every solve (Stream A): full solves can opt
+        # into 13-cap as an escape valve for INFEASIBLE rosters, not just
+        # partial re-solves with locked cabins.
+        solver_input.allow_overflow = allow_overflow
+
         # Partial cabin re-solve (#1609): freeze the selected cabins' current rosters.
         # Resolve occupants from existing_assignments BEFORE any respect_locks clearing so
         # the cabin lock is independent of the friend-group toggle.
         if locked_bunk_cm_ids:
             assignment_pairs = [(a.person_cm_id, a.bunk_cm_id) for a in solver_input.existing_assignments]
             solver_input.locked_bunks = resolve_locked_bunk_occupants(locked_bunk_cm_ids, assignment_pairs)
-            solver_input.allow_overflow = allow_overflow
 
         # If respect_locks is disabled, clear existing assignments and group locks
         # so the solver is free to reassign all campers from scratch
