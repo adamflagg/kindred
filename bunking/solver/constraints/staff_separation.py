@@ -102,7 +102,15 @@ def add_staff_separation_constraints(ctx: SolverContext) -> None:
             sat_var = get_or_create_request_sat_var(ctx, r)
             if sat_var is None:
                 continue  # target not in roster ⇒ trivially separated
-            ctx.model.Add(sat_var == 1)  # force separation
-            enforced += 1
+            if ctx.break_glass:
+                # Break-glass: staff NBW becomes soft. Don't force separation;
+                # leave sat_var free so the lex objective penalizes (1 - sat_var).
+                # Record the relaxation for the post-solve compromise report.
+                ctx.break_glass_nbw_relaxed.append(
+                    {"nbw_request_id": r.id, "subject_cm": subject_cm, "target_cm": target_cm}
+                )
+            else:
+                ctx.model.Add(sat_var == 1)  # force separation
+                enforced += 1
 
     logger.info(f"staff_separation: enforced={enforced}, yielded(parent-paramount)={yielded}")

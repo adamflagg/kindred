@@ -264,3 +264,54 @@ def test_carveout_fires_when_sole_real_mp_is_bunk_with_and_age_pref_suppressed()
     assert y["nbw_request_id"] == "n1"
     assert y["protected_parent_request_id"] == "p1"
     assert y["protected_camper_cm"] == 200
+
+
+def _one_bunk_two_girls(requests: list[DirectBunkRequest]) -> SolverContext:
+    """Scenario with only one bunk — the two campers MUST share it, making any
+    staff NBW between them structurally impossible to honour."""
+    return build_solver_context(
+        persons=[
+            create_person(cm_id=100, first_name="Emma", last_name="Johnson", gender="F", grade=5),
+            create_person(cm_id=200, first_name="Liam", last_name="Garcia", gender="F", grade=5),
+        ],
+        bunks=[
+            create_bunk(cm_id=2001, name="G-1", gender="F", capacity=12),
+        ],
+        requests=requests,
+    )
+
+
+def test_break_glass_softens_staff_nbw():
+    """Stream D, Phase 2: with ctx.break_glass=True a structurally-impossible
+    staff NBW no longer renders the model infeasible.  The sat var is left free
+    (so the lex objective can penalise the violation) and the relaxation is
+    recorded in ctx.break_glass_nbw_relaxed.
+
+    Contrast: the same setup WITHOUT break_glass is INFEASIBLE (validated by
+    test_staff_not_bunk_with_forces_separation which uses _force_together).
+    """
+    from bunking.solver.constraints.staff_separation import add_staff_separation_constraints
+
+    # One bunk, two campers — they MUST share it.  The staff NBW is impossible.
+    ctx = _one_bunk_two_girls([_nbw("n1", 100, 200, "staff_not_bunk_with")])
+    ctx.break_glass = True
+    add_staff_separation_constraints(ctx)
+    # No forced-together pins needed — one bunk means co-placement is the only option.
+    assert is_optimal_or_feasible(cp_model.CpSolver().Solve(ctx.model))
+
+    assert len(ctx.break_glass_nbw_relaxed) == 1
+    rec = ctx.break_glass_nbw_relaxed[0]
+    assert rec["nbw_request_id"] == "n1"
+    assert rec["subject_cm"] == 100
+    assert rec["target_cm"] == 200
+
+    # break_glass_nbw_relaxed is separate from staff_nbw_yields
+    assert ctx.staff_nbw_yields == []
+
+    # Contrast: without break_glass the same structural scenario is infeasible.
+    # (Two-bunk scenario forced together already tested by
+    # test_staff_not_bunk_with_forces_separation; here we confirm via one-bunk.)
+    ctx2 = _one_bunk_two_girls([_nbw("n1", 100, 200, "staff_not_bunk_with")])
+    # break_glass defaults to False
+    add_staff_separation_constraints(ctx2)
+    assert is_infeasible(cp_model.CpSolver().Solve(ctx2.model))
