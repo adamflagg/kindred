@@ -1038,7 +1038,7 @@ class DirectBunkingSolver:
             # Rebuild model fresh — pass 1's model is fully populated and the
             # CpModel can't be cleared in-place. _solve_once creates a new model
             # on each call via _rebuild_model.
-            pass2_output, _pass2_status = self._solve_once(
+            pass2_output, pass2_status = self._solve_once(
                 allow_overflow=True,
                 time_limit_seconds=remaining,
                 with_overflow_penalty=True,
@@ -1046,7 +1046,24 @@ class DirectBunkingSolver:
             if pass2_output is not None:
                 pass2_output.overflow_used = self._count_overflowed_bunks(pass2_output.assignments)
                 logger.info(f"pass2_overflowed_bunks={pass2_output.overflow_used}")
-            return pass2_output
+                return pass2_output
+
+            # Pass 2 found no incumbent within budget even though the probe
+            # proved overflow is feasible. Returning None would route
+            # solver_runner into find_infeasibility_cause, which only probes
+            # INFO_ONLY constraints (never capacity) and would emit a misleading
+            # "no cause found" message. Surface an actionable timeout diagnostic
+            # so staff know to re-run with a longer budget.
+            logger.warning(f"pass2 found no incumbent (status={pass2_status}) despite a positive capacity probe")
+            return DirectSolverOutput(
+                assignments=[],
+                stats={"status": "UNKNOWN"},
+                satisfied_requests={},
+                infeasibility_diagnosis=(
+                    "Overflow (13/cabin) would make this session solvable, but the solver ran out "
+                    "of time before finding a valid arrangement. Try again with a longer time limit."
+                ),
+            )
 
         # Tier-3 diagnostic — overflow doesn't help. Tell staff what does.
         try:
@@ -1062,11 +1079,26 @@ class DirectBunkingSolver:
         )
 
     def _count_overflowed_bunks(self, assignments: list[DirectBunkAssignment]) -> int:
-        """Count bunks whose post-solve occupancy exceeds DEFAULT_BUNK_CAPACITY."""
+        """Count working-set bunks this solve overflowed past their strict cap.
+
+        A bunk counts iff its occupancy exceeds ``min(bunk.capacity, 12)`` — its
+        own overflow seat, so a sub-12 specialty cabin at capacity+1 is counted
+        too (a fixed 12 threshold would under-report it). Frozen (locked) bunks
+        merged back into the result are NOT in ``self.bunk_idx_map`` and are
+        skipped: a pre-existing overfilled locked bunk is a staff manual edit,
+        not overflow this solve chose (mirrors _check_constraint_violations).
+        """
         counts: dict[int, int] = defaultdict(int)
         for a in assignments:
             counts[a.bunk_cm_id] += 1
-        return sum(1 for c in counts.values() if c > DEFAULT_BUNK_CAPACITY)
+        overflowed = 0
+        for bunk_cm_id, occupancy in counts.items():
+            if bunk_cm_id not in self.bunk_idx_map:
+                continue  # frozen/locked bunk — not this solve's overflow
+            strict_cap = min(self.bunks[self.bunk_idx_map[bunk_cm_id]].capacity, DEFAULT_BUNK_CAPACITY)
+            if occupancy > strict_cap:
+                overflowed += 1
+        return overflowed
 
     def _solve_once(
         self,

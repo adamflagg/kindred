@@ -15,9 +15,11 @@ from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import pytest
+from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
+from bunking.models_v2 import DirectBunkAssignment
 from bunking.solver.constants import DEFAULT_BUNK_CAPACITY
 from tests.unit.bunking.solver.conftest import (
     FICTIONAL_CAMPER_NAMES,
@@ -241,6 +243,118 @@ class TestSolveOnceStatePreservation:
         assert result.overflow_used == 1  # pass 2 ran and seated 13 in B-1
         # The 13-seat bunk is the intended pass-2 outcome — no capacity violation.
         assert "cabin_capacity" not in solver.constraint_logger.violations
+
+
+class TestCountOverflowedBunks:
+    """`_count_overflowed_bunks` reports how many bunks THIS solve overflowed.
+
+    It must measure each bunk against its own strict cap ``min(capacity, 12)``
+    (not a fixed 12) and must ignore frozen (locked) bunks merged back into the
+    result — a pre-existing overfilled locked bunk is a staff action, not the
+    solver's overflow.
+    """
+
+    def test_counts_specialty_bunk_over_its_own_strict_cap(self, mock_config):
+        """A capacity-8 bunk seating 9 used its overflow seat → counts as 1.
+
+        A fixed ``> 12`` threshold would miss it (9 < 12) and under-report
+        overflow_used / the staff toast.
+        """
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(9)
+        ]
+        bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=8)]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(solver_input, mock_config)
+
+        assignments = [
+            DirectBunkAssignment(person_cm_id=1001 + i, bunk_cm_id=2001, session_cm_id=1000, year=2025)
+            for i in range(9)
+        ]
+        assert solver._count_overflowed_bunks(assignments) == 1
+
+    def test_skips_frozen_locked_bunks(self, mock_config):
+        """A frozen (locked) bunk merged back into the result is NOT in
+        self.bunk_idx_map; a pre-existing 13-occupant locked bunk must not
+        inflate the count. Only the working bunk this solve overflowed counts."""
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
+        ]
+        bunks = [create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY)]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(solver_input, mock_config)
+
+        # Working bunk 2001 (in bunk_idx_map) at 13 → overflowed by this solve.
+        working = [
+            DirectBunkAssignment(person_cm_id=1001 + i, bunk_cm_id=2001, session_cm_id=1000, year=2025)
+            for i in range(13)
+        ]
+        # Frozen locked bunk 9999 (NOT in bunk_idx_map) also at 13 → staff's doing.
+        frozen = [
+            DirectBunkAssignment(person_cm_id=5001 + i, bunk_cm_id=9999, session_cm_id=1000, year=2025)
+            for i in range(13)
+        ]
+        assert solver._count_overflowed_bunks(working + frozen) == 1
+
+
+class TestPass2TimeoutDiagnostic:
+    """When the capacity probe proves overflow would help but pass 2 times out
+    before finding an incumbent, solve() must surface a structured timeout
+    diagnostic — never None. Returning None routes solver_runner into
+    find_infeasibility_cause, which only probes INFO_ONLY constraints (never
+    capacity) and would emit a misleading 'no cause found' message."""
+
+    def test_pass2_timeout_after_positive_probe_returns_diagnostic(self, mock_config, monkeypatch):
+        import bunking.solver.direct_solver as ds
+
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(3)
+        ]
+        bunks = [
+            create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
+            create_bunk(cm_id=2002, name="B-2", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
+        ]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(solver_input, mock_config)
+
+        # Probe says overflow WOULD fix infeasibility...
+        monkeypatch.setattr(ds, "probe_capacity_relaxation_feasible", lambda *a, **k: True)
+
+        # ...but pass 1 is INFEASIBLE and pass 2 times out with no incumbent.
+        def fake_solve_once(allow_overflow, time_limit_seconds, with_overflow_penalty=False):
+            if not allow_overflow:
+                return (None, cp_model.INFEASIBLE)
+            return (None, cp_model.UNKNOWN)
+
+        monkeypatch.setattr(solver, "_solve_once", fake_solve_once)
+
+        result = solver.solve(time_limit_seconds=30)
+
+        assert result is not None
+        assert result.assignments == []
+        assert result.infeasibility_diagnosis is not None
+        assert "time" in result.infeasibility_diagnosis.lower()
 
     def test_solve_once_restores_allow_overflow_on_exception(self, mock_config):
         """#5: _solve_once mutates self.input.allow_overflow for the pass and

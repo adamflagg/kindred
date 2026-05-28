@@ -33,8 +33,12 @@ def add_overflow_minimization_objective(ctx: SolverContext, objective_terms: lis
     """Append a lex-dominant per-bunk overflow penalty to ``objective_terms``.
 
     For each bunk, creates ``is_overflowed[b]`` that is true iff the bunk's
-    occupancy exceeds ``DEFAULT_BUNK_CAPACITY``. Appends
-    ``-LEX_DOMINANT_OVERFLOW_WEIGHT * sum(is_overflowed)`` to objective_terms.
+    occupancy exceeds its strict cap ``min(bunk.capacity, DEFAULT_BUNK_CAPACITY)``
+    — i.e., the bunk used its one overflow seat. This mirrors cabin_capacity.py,
+    which raises each bunk's cap to ``strict_cap + 1`` under allow_overflow, so a
+    sub-12 specialty cabin's overflow is penalized too (a fixed 12 threshold would
+    silently ignore it). Appends ``-LEX_DOMINANT_OVERFLOW_WEIGHT * sum(is_overflowed)``
+    to objective_terms.
 
     Args:
         ctx: Solver context with model, assignments, and bunks.
@@ -42,12 +46,13 @@ def add_overflow_minimization_objective(ctx: SolverContext, objective_terms: lis
     """
     num_persons = len(ctx.person_ids)
     overflowed_vars = []
-    for bunk_idx, _bunk in enumerate(ctx.bunks):
+    for bunk_idx, bunk in enumerate(ctx.bunks):
         total = sum(ctx.assignments[(person_idx, bunk_idx)] for person_idx in range(num_persons))
+        strict_cap = min(bunk.capacity, DEFAULT_BUNK_CAPACITY)
         is_overflowed = ctx.model.NewBoolVar(f"is_overflowed_b{bunk_idx}")
-        # is_overflowed == 1 iff total >= DEFAULT_BUNK_CAPACITY + 1 (i.e., 13).
-        ctx.model.Add(total >= DEFAULT_BUNK_CAPACITY + 1).OnlyEnforceIf(is_overflowed)
-        ctx.model.Add(total <= DEFAULT_BUNK_CAPACITY).OnlyEnforceIf(is_overflowed.Not())
+        # is_overflowed == 1 iff total >= strict_cap + 1 (the bunk used its overflow seat).
+        ctx.model.Add(total >= strict_cap + 1).OnlyEnforceIf(is_overflowed)
+        ctx.model.Add(total <= strict_cap).OnlyEnforceIf(is_overflowed.Not())
         overflowed_vars.append(is_overflowed)
 
     objective_terms.append(-LEX_DOMINANT_OVERFLOW_WEIGHT * sum(overflowed_vars))
