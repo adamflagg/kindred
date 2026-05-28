@@ -346,6 +346,9 @@ async def run_solver_task_v2(
 
         solver_runs[run_id]["results"] = results_data
         solver_runs[run_id]["scenario"] = scenario
+        # Stream C: keep overflow_used in the in-memory run too (not just pb_data)
+        # so GET /solver/run/{id} surfaces it and the frontend overflow toast fires.
+        solver_runs[run_id]["overflow_used"] = result.overflow_used
 
         # Compose run-tagging details (git SHA, config snapshot, source labels,
         # scenario_id_at_run, attendee count, sweep grouping). Best-effort —

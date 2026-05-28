@@ -350,6 +350,9 @@ async def get_solver_run(
                 "status": getattr(pb_run, "status", "unknown"),
                 "results": json.loads(getattr(pb_run, "results", "{}")) if getattr(pb_run, "results", None) else None,
                 "error_message": getattr(pb_run, "error_message", None),
+                # Stream C: overflow_used is persisted as a PB column; surface it
+                # (defaulting to 0) so the response shape matches the in-memory branch.
+                "overflow_used": getattr(pb_run, "overflow_used", 0) or 0,
                 # Stream B diagnostics are in-memory only; the PB-fetch path never
                 # has them. Return the keys as None so the response shape matches
                 # the in-memory branch below (#1656).
@@ -366,6 +369,9 @@ async def get_solver_run(
         "status": run["status"],
         "results": run.get("results"),
         "error_message": run.get("error_message"),
+        # Stream C: number of bunks the solver placed at 13-cap (0 on a clean
+        # 12-cap solve). The frontend gates the overflow toast on this.
+        "overflow_used": run.get("overflow_used", 0),
         # Stream B (#1638): structured infeasibility diagnostics (in-memory only;
         # the PB-fetch fallback above returns these as absent → null client-side).
         "infeasibility_cause": run.get("infeasibility_cause"),

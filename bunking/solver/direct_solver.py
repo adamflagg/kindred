@@ -745,12 +745,14 @@ class DirectBunkingSolver:
             time_limit_seconds=time_limit_seconds,
         )
 
-    def _solve_single_bunk_session(self) -> DirectSolverOutput | None:
+    def _solve_single_bunk_session(self) -> DirectSolverOutput:
         """Simplified solving for single-bunk sessions (like AG sessions).
 
         For sessions with only one bunk, we assign every gender-compatible camper
-        to that bunk. No complex constraints needed. Returns None when working-set
-        campers cannot be placed (gender mismatch → INFEASIBLE under must-place rule).
+        to that bunk. No complex constraints needed. When working-set campers
+        cannot be placed (gender mismatch or over-capacity → INFEASIBLE under the
+        must-place rule), returns an empty-assignments DirectSolverOutput carrying
+        an infeasibility_diagnosis — never None.
         """
         bunk = self.bunks[0]
         bunk_cm_id = bunk.campminder_id
@@ -759,8 +761,9 @@ class DirectBunkingSolver:
         # partial re-solve (#1609) can collapse the working set to a single *gendered*
         # unlocked bunk. A gender-incompatible camper has no valid placement there;
         # under the must-place invariant (#1696) that means INFEASIBLE — the branch
-        # below returns None, mirroring the gender hard constraint on the multi-bunk
-        # path. Campers with no gender data fit any bunk, matching add_gender_constraints.
+        # below returns an empty-assignments diagnostic output, mirroring the gender
+        # hard constraint on the multi-bunk path. Campers with no gender data fit any
+        # bunk, matching add_gender_constraints.
         def _gender_compatible(cm_id: int) -> bool:
             if bunk.gender in ("AG", "Mixed"):
                 return True
@@ -770,7 +773,7 @@ class DirectBunkingSolver:
         assignable = [cm for cm in self.person_ids if _gender_compatible(cm)]
         skipped = len(self.person_ids) - len(assignable)
         # Effective cap mirrors cabin_capacity.py — clamp raw bunk.capacity to
-        # DEFAULT_BUNK_CAPACITY (12) and add a seat when allow_overflow=True.
+        # DEFAULT_BUNK_CAPACITY (12) and always add the one overflow seat.
         # Stream C: overflow is always available; the smart orchestrator never
         # refuses to overflow when it's the only option. 13 in a single bunk is
         # always feasible; 14+ remains INFEASIBLE.
@@ -855,7 +858,8 @@ class DirectBunkingSolver:
         stats: dict[str, Any] = {
             # Single-bunk shortcut only reaches this point when every working
             # camper fits within the effective cap — the over-capacity and
-            # gender-incompatible branches above already returned `None`.
+            # gender-incompatible branches above already returned an empty-
+            # assignments diagnostic output.
             "status": "OPTIMAL",
             # int() cast — same reason as _build_stats_dict above: cp_model
             # status constants are an enum in current OR-Tools, not raw ints.
@@ -1033,7 +1037,7 @@ class DirectBunkingSolver:
             logger.info(f"pass1=INFEASIBLE, capacity_probe=True, running pass2 (budget={remaining}s)")
             # Rebuild model fresh — pass 1's model is fully populated and the
             # CpModel can't be cleared in-place. _solve_once creates a new model
-            # on each call via _build_solver_context.
+            # on each call via _rebuild_model.
             pass2_output, _pass2_status = self._solve_once(
                 allow_overflow=True,
                 time_limit_seconds=remaining,
@@ -1083,9 +1087,10 @@ class DirectBunkingSolver:
         # Mutate the pass-scoped overflow flag only for model construction —
         # cabin_capacity reads self.input.allow_overflow while add_constraints
         # runs. Restore in finally so an exception in any build step can't leave
-        # the shared input mutated for a later pass / inspection. Nothing after
-        # add_objective (solve, extraction) reads the flag, so restoring here is
-        # both sufficient and safe.
+        # the shared input mutated for a later pass / inspection. The post-solve
+        # _check_constraint_violations also needs the pass-scoped value, but it
+        # receives it as an explicit argument (not via self.input), so restoring
+        # here is safe.
         saved_allow_overflow = self.input.allow_overflow
         self.input.allow_overflow = allow_overflow
         try:
@@ -1227,8 +1232,10 @@ class DirectBunkingSolver:
             assignments, self._full_input.requests_by_person, self._full_input.person_by_cm_id
         )
 
-        # Check constraint violations in final solution
-        self._check_constraint_violations(assignments, solver)
+        # Check constraint violations in final solution. Pass the pass-scoped
+        # allow_overflow explicitly — the finally above already restored
+        # self.input.allow_overflow, so the effective cap must come from here.
+        self._check_constraint_violations(assignments, solver, allow_overflow)
 
         # Save logs to file if we have a session ID
         log_file_path = None
@@ -1300,8 +1307,16 @@ class DirectBunkingSolver:
         else:
             logger.info("No soft constraint penalties incurred")
 
-    def _check_constraint_violations(self, assignments: list[DirectBunkAssignment], solver: cp_model.CpSolver) -> None:
-        """Check for constraint violations in the final solution."""
+    def _check_constraint_violations(
+        self, assignments: list[DirectBunkAssignment], solver: cp_model.CpSolver, allow_overflow: bool
+    ) -> None:
+        """Check for constraint violations in the final solution.
+
+        ``allow_overflow`` is the pass-scoped flag the model was built with — NOT
+        ``self.input.allow_overflow``, which _solve_once has already restored by
+        the time this runs. Reading the restored value would compute a 12-cap for
+        a pass-2 overflow solve and falsely flag every intended 13-seat bunk.
+        """
         logger.info("=== Post-Solve Constraint Violation Check ===")
 
         # Build assignment structures for analysis
@@ -1314,7 +1329,7 @@ class DirectBunkingSolver:
         # Cabin capacity — the solver only placed the working (unlocked) set; the
         # effective cap matches cabin_capacity.py exactly. Frozen (locked) bunks were
         # removed from self.bunks, so skip any assignment row pointing at one.
-        overflow = self.input.allow_overflow
+        overflow = allow_overflow
         capacity_violations = 0
         for bunk_cm_id, person_cm_ids in bunk_to_persons.items():
             if bunk_cm_id not in self.bunk_idx_map:

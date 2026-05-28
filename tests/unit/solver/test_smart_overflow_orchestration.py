@@ -210,6 +210,38 @@ class TestSolveOnceStatePreservation:
 
         assert solver.mp_set_entirely_impossible == [1002]
 
+    def test_pass2_overflow_does_not_log_spurious_capacity_violation(self, mock_config):
+        """#1: a pass-2 overflow solve legitimately seats 13 in a bunk. The
+        post-solve _check_constraint_violations must use the pass-scoped
+        allow_overflow=True cap (13), NOT the restored input value (12), so it
+        does not log a spurious cabin_capacity violation for the intended
+        13-seat bunk. The input flag stays at its default False, so a check that
+        reads the restored flag would compute a 12-cap and wrongly flag the bunk."""
+        campers = [
+            create_person(
+                cm_id=1001 + i,
+                first_name=FICTIONAL_CAMPER_NAMES[i][0],
+                last_name=FICTIONAL_CAMPER_NAMES[i][1],
+                gender="M",
+                grade=5,
+            )
+            for i in range(13)
+        ]
+        bunks = [
+            create_bunk(cm_id=2001, name="B-1", gender="M", capacity=DEFAULT_BUNK_CAPACITY),
+            create_bunk(cm_id=2002, name="B-2", gender="F", capacity=DEFAULT_BUNK_CAPACITY),
+        ]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        assert solver_input.allow_overflow is False  # input flag is the restored value
+
+        solver = DirectBunkingSolver(solver_input, mock_config)
+        result = solver.solve(time_limit_seconds=30)
+
+        assert result is not None
+        assert result.overflow_used == 1  # pass 2 ran and seated 13 in B-1
+        # The 13-seat bunk is the intended pass-2 outcome — no capacity violation.
+        assert "cabin_capacity" not in solver.constraint_logger.violations
+
     def test_solve_once_restores_allow_overflow_on_exception(self, mock_config):
         """#5: _solve_once mutates self.input.allow_overflow for the pass and
         must restore it even when an inner build step raises — otherwise a

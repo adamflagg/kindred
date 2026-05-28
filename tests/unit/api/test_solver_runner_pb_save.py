@@ -246,6 +246,48 @@ class TestSolverRunnerPocketBaseSave:
             assert pb_data["overflow_used"] == 3
 
     @pytest.mark.asyncio
+    async def test_success_path_stores_overflow_used_in_memory(self, mock_solver_input):
+        """#2 (scan): overflow_used must be stored in the in-memory solver_runs
+        dict too — not just pb_data — so GET /solver/run/{id} can surface it and
+        the frontend overflow toast fires. Writing it only to pb_data means the
+        run-status poll always returns the default 0."""
+        patches, mock_runs = self._setup_mocks(mock_solver_input)
+
+        with (
+            patches["fetch_session_data_v2"] as m1,
+            patches["fetch_historical_bunking"] as m2,
+            patches["prepare_direct_solver_input"] as m3,
+            patches["fetch_lock_groups"] as m4,
+            patches["ConfigLoader"] as m5,
+            patches["DirectBunkingSolver"] as m6,
+            patches["PocketBase"] as m7,
+            patches["get_settings"] as m8,
+            patches["solver_runs"],
+        ):
+            mocks = {
+                "fetch_session_data_v2": m1,
+                "fetch_historical_bunking": m2,
+                "prepare_direct_solver_input": m3,
+                "fetch_lock_groups": m4,
+                "ConfigLoader": m5,
+                "DirectBunkingSolver": m6,
+                "PocketBase": m7,
+                "get_settings": m8,
+            }
+            self._configure_mocks(mocks, mock_solver_input)
+            m6.return_value.solve.return_value.overflow_used = 2
+            mock_runs["test_run"] = {"status": "pending"}
+
+            await sr_module.run_solver_task_v2(
+                run_id="test_run",
+                session_cm_id=100,
+                year=2026,
+                time_limit=60,
+            )
+
+            assert mock_runs["test_run"]["overflow_used"] == 2
+
+    @pytest.mark.asyncio
     async def test_success_path_sends_result_field(self, mock_solver_input):
         """Schema field is 'result' (singular), not 'results'."""
         patches, mock_runs = self._setup_mocks(mock_solver_input)

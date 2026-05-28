@@ -64,6 +64,57 @@ def test_get_solver_run_diagnostics_default_none() -> None:
     assert body["impossibility_report"] is None
 
 
+def test_get_solver_run_includes_overflow_used() -> None:
+    """#2 (scan): the in-memory branch must surface overflow_used so the
+    frontend overflow toast fires. Without it the response omits the key and the
+    client's `?? 0` fallback silently swallows every overflowed run."""
+    run_id = "run-of-1"
+    run: dict[str, Any] = {
+        "id": run_id,
+        "status": "completed",
+        "results": {"stats": {}},
+        "error_message": None,
+        "overflow_used": 2,
+    }
+    with patch.dict("api.routers.solver.solver_runs", {run_id: run}, clear=False):
+        resp = _client().get(f"/api/solver/run/{run_id}")
+    assert resp.status_code == 200
+    assert resp.json()["overflow_used"] == 2
+
+
+def test_get_solver_run_overflow_used_defaults_zero() -> None:
+    """A clean 12-cap run has no overflow_used key in the in-memory dict; the
+    response must default it to 0, not omit it."""
+    run_id = "run-of-2"
+    run: dict[str, Any] = {"id": run_id, "status": "completed", "results": {"stats": {}}, "error_message": None}
+    with patch.dict("api.routers.solver.solver_runs", {run_id: run}, clear=False):
+        resp = _client().get(f"/api/solver/run/{run_id}")
+    assert resp.json()["overflow_used"] == 0
+
+
+def test_get_solver_run_pb_fallback_includes_overflow_used() -> None:
+    """The PocketBase-fetch fallback persists overflow_used as a column, so the
+    response must surface it (defaulting to 0 when absent) to match the
+    in-memory branch."""
+    run_id = "run-pb-of"
+
+    class _PbRun:
+        id = run_id
+        status = "completed"
+        results = '{"stats": {}}'
+        error_message = None
+        overflow_used = 3
+
+    with (
+        patch.dict("api.routers.solver.solver_runs", {}, clear=True),
+        patch("api.routers.solver.pb") as mock_pb,
+    ):
+        mock_pb.collection.return_value.get_one.return_value = _PbRun()
+        resp = _client().get(f"/api/solver/run/{run_id}")
+    assert resp.status_code == 200
+    assert resp.json()["overflow_used"] == 3
+
+
 def test_get_solver_run_pb_fallback_includes_diagnostics_keys() -> None:
     """The PocketBase-fetch fallback returns the same diagnostics keys (as None)
     as the in-memory path, so the response shape is uniform across storage paths (#1656)."""
