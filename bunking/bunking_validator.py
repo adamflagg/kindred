@@ -295,16 +295,47 @@ class BunkingValidator:
         issues: list[ValidationIssue] = []
         stats = ValidationStatistics()
 
+        # Split out assignments for campers who are no longer actively enrolled.
+        # ``persons`` is the active-enrolled set (status_id=2); a saved scenario's
+        # draft can still hold rows for campers who cancelled after it was built.
+        # Counting those stale rows inflates per-bunk occupancy, capacity_by_gender,
+        # and assigned_campers (and drives unassigned negative). We exclude them
+        # from all occupancy/spread math below — but keep them in the
+        # request-satisfaction lookup, which has its own missing-person fallback
+        # (a transient sync gap must not silently drop request detail rows; see
+        # ``unsatisfied_material_parent_detail``). The next sync's orphan sweep
+        # removes the stale rows at the source. Surfaced as an INFO issue.
+        active_ids = {p.campminder_id for p in persons}
+        active_assignments = [a for a in assignments if a.person_cm_id in active_ids]
+        stale_assignments = [a for a in assignments if a.person_cm_id not in active_ids]
+        if stale_assignments:
+            issues.append(
+                ValidationIssue(
+                    severity=ValidationSeverity.INFO,
+                    type="stale_assignments",
+                    message=(
+                        f"{len(stale_assignments)} assigned campers are no longer enrolled "
+                        f"and were excluded from capacity counts"
+                    ),
+                    details={"count": len(stale_assignments)},
+                    affected_ids=[a.person_cm_id for a in stale_assignments][:10],
+                )
+            )
+
         # Create lookup structures
         person_by_id = {p.campminder_id: p for p in persons}
+        # Request satisfaction reads the FULL set — its missing-person fallback
+        # keeps detail rows from dropping during a sync gap.
         assignments_by_person = {a.person_cm_id: a for a in assignments}
+        # Occupancy, capacity, and spread checks read the active-enrolled subset
+        # so cancelled campers don't inflate counts or trip spread warnings.
         assignments_by_bunk = defaultdict(list)
-        for assignment in assignments:
+        for assignment in active_assignments:
             assignments_by_bunk[assignment.bunk_cm_id].append(assignment)
 
         # Basic statistics
         stats.total_campers = len(persons)
-        stats.assigned_campers = len(assignments)
+        stats.assigned_campers = len(active_assignments)
         stats.unassigned_campers = stats.total_campers - stats.assigned_campers
 
         # Check for unassigned campers

@@ -11,24 +11,27 @@ import (
 
 const serviceNameStrandedAssignmentCleanup = "stranded_assignment_cleanup"
 
-// msgStrandedProd is the Warn message for the observe-only production audit.
+// msgOrphanProd is the Warn message for the observe-only production audit.
 // Hoisted to a const to keep the call site within the line-length limit.
-const msgStrandedProd = "stranded_assignment_cleanup: stranded production assignments detected — " +
-	"not deleted (bunk_assignments sync owns prod cleanup)"
+const msgOrphanProd = "stranded_assignment_cleanup: orphaned production assignments detected " +
+	"(bunk lost its plan or camper no longer enrolled) — not deleted (bunk_assignments sync owns prod cleanup)"
 
 // strandedCandidate is the minimal projection of an assignment row needed for
-// stranded-detection — decoupled from *core.Record so the detection logic is
-// unit-testable without a database.
+// orphan-detection — decoupled from *core.Record so the detection logic is
+// unit-testable without a database. BunkID drives bunk-stranding (the bunk lost
+// its plan); PersonID drives enrollment-orphaning (the camper cancelled).
 type strandedCandidate struct {
 	RecordID  string
 	SessionID string
 	BunkID    string
+	PersonID  string
 }
 
-// strandedPairKey builds the composite key used to test whether a (session, bunk)
-// pair has a surviving bunk_plan. Both args are PocketBase record IDs.
-func strandedPairKey(sessionID, bunkID string) string {
-	return sessionID + ":" + bunkID
+// strandedPairKey builds the composite key used to test membership of a
+// (session, X) pair — X is a bunk for plan validity, or a person for enrollment.
+// Both args are PocketBase record IDs.
+func strandedPairKey(sessionID, otherID string) string {
+	return sessionID + ":" + otherID
 }
 
 // findStrandedAssignments returns the candidates whose (session, bunk) pair is
@@ -56,11 +59,82 @@ func findStrandedAssignments(
 	return stranded
 }
 
-// StrandedAssignmentCleanupSync silently auto-unassigns scenario draft assignments whose
-// bunk no longer has a bunk_plan for their session — left stranded when staff
-// reorganize a session's bunk plan — and audits production for the same.
-// Runs as the final step of the sync orchestrator. PocketBase-only — no
-// CampMinder client.
+// findEnrollmentOrphans returns the candidates whose (session, person) pair is
+// absent from enrolledPairs — i.e. the camper is no longer actively enrolled
+// (status_id=2) in that session. Candidates with no person are skipped.
+// Candidates whose session is absent from enrolledSessions are also skipped: a
+// session with zero enrolled attendees is unreliable (attendees may have failed
+// to sync), so sweeping its drafts would null every assignment for the session.
+// Mirrors findStrandedAssignments — the same guard shape, keyed on the camper
+// instead of the bunk.
+func findEnrollmentOrphans(
+	enrolledSessions, enrolledPairs map[string]bool,
+	candidates []strandedCandidate,
+) []strandedCandidate {
+	orphans := []strandedCandidate{}
+	for _, c := range candidates {
+		if c.PersonID == "" {
+			continue
+		}
+		if !enrolledSessions[c.SessionID] {
+			continue
+		}
+		if !enrolledPairs[strandedPairKey(c.SessionID, c.PersonID)] {
+			orphans = append(orphans, c)
+		}
+	}
+	return orphans
+}
+
+// dedupeByRecordID merges candidate slices, keeping the first occurrence of each
+// RecordID — a row flagged by both passes (bunk gone AND camper cancelled) is
+// handled once.
+func dedupeByRecordID(groups ...[]strandedCandidate) []strandedCandidate {
+	seen := make(map[string]bool)
+	merged := []strandedCandidate{}
+	for _, g := range groups {
+		for _, c := range g {
+			if seen[c.RecordID] {
+				continue
+			}
+			seen[c.RecordID] = true
+			merged = append(merged, c)
+		}
+	}
+	return merged
+}
+
+// loadEnrolledAttendeeSets returns (enrolledSessions, enrolledPairs) built from
+// status_id=2 attendees for the year. On query failure it records the error and
+// returns empty maps — the enrollment-orphan pass then becomes a no-op via its
+// per-session guard (fail closed: never sweep on enrollment we couldn't read).
+func loadEnrolledAttendeeSets(app core.App, year int, stats *Stats) (enrolledSessions, enrolledPairs map[string]bool) {
+	enrolledSessions = make(map[string]bool)
+	enrolledPairs = make(map[string]bool)
+	attendees, err := app.FindRecordsByFilter("attendees", fmt.Sprintf("year = %d && status_id = 2", year), "", 0, 0)
+	if err != nil {
+		stats.Errors++
+		slog.Error("stranded_assignment_cleanup: query attendees (enrollment pass skipped)", "error", err)
+		return enrolledSessions, enrolledPairs
+	}
+	for _, a := range attendees {
+		sessionID := a.GetString("session")
+		enrolledSessions[sessionID] = true
+		enrolledPairs[strandedPairKey(sessionID, a.GetString("person"))] = true
+	}
+	return enrolledSessions, enrolledPairs
+}
+
+// StrandedAssignmentCleanupSync silently auto-unassigns scenario draft assignments
+// that no longer make sense, for either of two reasons:
+//   - the bunk no longer has a bunk_plan for their session (staff reorganized
+//     the session's bunk plan), or
+//   - the camper is no longer actively enrolled (status_id=2) in that session
+//     (they cancelled/withdrew after the scenario was built).
+//
+// It nulls bunk + bunk_plan on those drafts and audits production for the same
+// (observe-only). Runs as the final step of the sync orchestrator — after
+// attendees sync, so enrollment is current. PocketBase-only — no CampMinder client.
 type StrandedAssignmentCleanupSync struct {
 	App   core.App
 	Year  int
@@ -105,15 +179,18 @@ func (s *StrandedAssignmentCleanupSync) Sync(_ context.Context) error {
 }
 
 // reconcileStrandedAssignments is the integration logic:
-//  1. Build the valid (session, bunk) set, plus the set of sessions that have
-//     at least one bunk_plan, from bunk_plans for the year.
+//  1. Build the valid (session, bunk) set + planned-session set from bunk_plans,
+//     and the enrolled (session, person) set + enrolled-session set from
+//     status_id=2 attendees, for the year.
 //  2. GATE: if there are zero bunk_plans for the year, the plan set is
 //     unreliable (bunk_plans sync failed or never ran) — skip entirely. The
-//     same guard applies per session: a session with zero bunk_plans is left
-//     untouched, so a partial sync can't sweep an entire session's drafts.
-//  3. Sweep bunk_assignments_draft: null bunk + bunk_plan on stranded rows so
-//     the camper falls back into the Unassigned pool.
-//  4. Audit bunk_assignments (production): log stranded rows — but do NOT
+//     same per-session guard protects both passes: a session with zero
+//     bunk_plans (or zero enrolled attendees) is left untouched, so a partial
+//     sync can't sweep an entire session's drafts.
+//  3. Sweep bunk_assignments_draft: null bunk + bunk_plan on rows that are
+//     bunk-stranded OR enrollment-orphaned, so the camper falls back into the
+//     Unassigned pool (a cancelled camper falls out of the scenario entirely).
+//  4. Audit bunk_assignments (production): log flagged rows — but do NOT
 //     delete. The bunk_assignments sync's own deleteOrphans() owns prod.
 func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 	yearFilter := fmt.Sprintf("year = %d", year)
@@ -136,6 +213,8 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 		plannedSessions[sessionID] = true
 	}
 
+	enrolledSessions, enrolledPairs := loadEnrolledAttendeeSets(app, year, stats)
+
 	// --- Draft sweep ---
 	drafts, err := app.FindRecordsByFilter(
 		"bunk_assignments_draft",
@@ -148,23 +227,25 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 	}
 	draftByID := make(map[string]*core.Record, len(drafts))
 	draftCandidates := make([]strandedCandidate, 0, len(drafts))
-	// Validity is derived from the (session, bunk) pair, NOT the draft's own
+	// Bunk validity is derived from the (session, bunk) pair, NOT the draft's own
 	// bunk_plan relation: that relation is non-authoritative and may dangle
 	// (point at a since-deleted plan) even when the bunk is still planned. A
-	// draft whose bunk is still planned is left untouched here, stale
-	// bunk_plan and all.
+	// draft whose bunk is still planned and whose camper is still enrolled is
+	// left untouched here, stale bunk_plan and all.
 	for _, d := range drafts {
 		draftByID[d.Id] = d
 		draftCandidates = append(draftCandidates, strandedCandidate{
 			RecordID:  d.Id,
 			SessionID: d.GetString("session"),
 			BunkID:    d.GetString("bunk"),
+			PersonID:  d.GetString("person"),
 		})
 	}
 	strandedDrafts := findStrandedAssignments(validPairs, plannedSessions, draftCandidates)
+	orphanDrafts := findEnrollmentOrphans(enrolledSessions, enrolledPairs, draftCandidates)
 
 	writes := 0
-	for _, c := range strandedDrafts {
+	for _, c := range dedupeByRecordID(strandedDrafts, orphanDrafts) {
 		rec := draftByID[c.RecordID]
 		rec.Set("bunk", "")
 		rec.Set("bunk_plan", "")
@@ -196,16 +277,20 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 				RecordID:  p.Id,
 				SessionID: p.GetString("session"),
 				BunkID:    p.GetString("bunk"),
+				PersonID:  p.GetString("person"),
 			})
 		}
 		strandedProd := findStrandedAssignments(validPairs, plannedSessions, prodCandidates)
-		stats.ProdAuditWarnings = len(strandedProd)
-		if len(strandedProd) > 0 {
-			pairs := make([]string, len(strandedProd))
-			for i, c := range strandedProd {
-				pairs[i] = fmt.Sprintf("%s(session=%s,bunk=%s)", c.RecordID, c.SessionID, c.BunkID)
+		orphanProd := findEnrollmentOrphans(enrolledSessions, enrolledPairs, prodCandidates)
+		flaggedProd := dedupeByRecordID(strandedProd, orphanProd)
+		stats.ProdAuditWarnings = len(flaggedProd)
+		if len(flaggedProd) > 0 {
+			recs := make([]string, len(flaggedProd))
+			for i, c := range flaggedProd {
+				recs[i] = fmt.Sprintf("%s(session=%s,bunk=%s,person=%s)", c.RecordID, c.SessionID, c.BunkID, c.PersonID)
 			}
-			slog.Warn(msgStrandedProd, "year", year, "count", len(strandedProd), "records", pairs)
+			slog.Warn(msgOrphanProd, "year", year,
+				"count", len(flaggedProd), "stranded", len(strandedProd), "orphaned", len(orphanProd), "records", recs)
 		}
 	}
 
@@ -219,6 +304,7 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 	slog.Info("stranded_assignment_cleanup complete",
 		"year", year,
 		"stranded_drafts", len(strandedDrafts),
+		"orphaned_drafts", len(orphanDrafts),
 		"drafts_swept", stats.Updated,
 		"errors", stats.Errors,
 	)
