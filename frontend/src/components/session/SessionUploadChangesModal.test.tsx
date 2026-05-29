@@ -40,13 +40,15 @@ describe('SessionUploadChangesModal', () => {
   })
 
   it('groups by camper and sorts needs-review first', async () => {
+    // debug_pipeline_summary.final_status is stored UPPERCASE by convention
+    // (orchestrator.py: raw_status.upper()), so fixtures must match production.
     mock([
       {
         requester_cm_id: 1,
         requester_name: 'Emma Johnson',
         target_name: 'Olivia Chen',
         request_type: 'bunk_with',
-        final_status: 'resolved',
+        final_status: 'RESOLVED',
         session_cm_id: 1,
       },
       {
@@ -54,7 +56,7 @@ describe('SessionUploadChangesModal', () => {
         requester_name: 'Noah Smith',
         target_name: 'Ethan',
         request_type: 'not_bunk_with',
-        final_status: 'pending',
+        final_status: 'PENDING',
         session_cm_id: 1,
       },
     ])
