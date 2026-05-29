@@ -65,33 +65,19 @@ migrate((app) => {
         type: "text",
         name: "content",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "content_hash",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 32,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "processed",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "autodate",

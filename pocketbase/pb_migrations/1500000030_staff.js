@@ -148,31 +148,19 @@ migrate((app) => {
         type: "date",
         name: "hire_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "employment_start_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "employment_end_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
 
       // Contract tracking
@@ -180,31 +168,19 @@ migrate((app) => {
         type: "date",
         name: "contract_in_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "contract_out_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "contract_due_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
 
       // Other fields

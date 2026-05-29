@@ -34,23 +34,13 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: true,
-        presentable: true,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         type: "text",
         name: "description",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "bool",

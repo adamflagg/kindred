@@ -62,23 +62,13 @@ migrate((app) => {
         name: "name",
         type: "text",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "code",
         type: "text",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "year",

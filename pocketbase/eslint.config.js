@@ -27,6 +27,14 @@ export default [
       }],
       'no-undef': 'error',
       'no-console': 'off',
+      // PB v0.23+ ignores the options:{} field wrapper — the declared constraint
+      // is silently dropped and the field falls back to PB's default cap. Declare
+      // field constraints (max/min/pattern/maxSize) inline on the field object.
+      // Keyed on ObjectExpression so seed-data `options: [...]` arrays are NOT flagged.
+      'no-restricted-syntax': ['error', {
+        selector: "Property[key.name='options'][value.type='ObjectExpression']",
+        message: "PB v0.23+ ignores the options:{} field wrapper (declared constraint silently dropped). Declare field constraints (max/min/pattern/maxSize) inline on the field object instead.",
+      }],
     }
   },
   {

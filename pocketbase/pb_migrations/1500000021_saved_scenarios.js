@@ -27,23 +27,13 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "description",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "relation",
@@ -74,10 +64,7 @@ migrate((app) => {
         type: "json",
         name: "metadata",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "autodate",

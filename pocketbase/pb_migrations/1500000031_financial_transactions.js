@@ -70,41 +70,25 @@ migrate((app) => {
         type: "date",
         name: "post_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "effective_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "service_start_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "service_end_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
 
       // Reversal tracking
@@ -118,11 +102,7 @@ migrate((app) => {
         type: "date",
         name: "reversal_date",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
 
       // Financial category relation
@@ -142,34 +122,19 @@ migrate((app) => {
         type: "text",
         name: "description",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 1000,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "transaction_note",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 2000,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "gl_account_note",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        presentable: false
       },
 
       // Amounts
@@ -206,23 +171,13 @@ migrate((app) => {
         type: "text",
         name: "recognition_gl_account_id",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "deferral_gl_account_id",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
 
       // Payment method relation

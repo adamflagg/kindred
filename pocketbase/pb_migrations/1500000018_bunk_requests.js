@@ -27,36 +27,21 @@ migrate((app) => {
         name: "requester_id",
         type: "number",
         required: true,
-        unique: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: false
-        }
+        unique: false
       },
       // Target person (optional for age preferences)
       {
         name: "requestee_id",
         type: "number",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: null,
-          noDecimal: false
-        }
+        unique: false
       },
       // Target person name before resolution
       {
         name: "requested_person_name",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 200,
-          pattern: ""
-        }
+        unique: false
       },
       // Type of request
       {
@@ -119,70 +104,42 @@ migrate((app) => {
         name: "original_text",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        unique: false
       },
       // AI confidence score
       {
         name: "confidence_score",
         type: "number",
         required: false,
-        unique: false,
-        options: {
-          min: 0,
-          max: 1,
-          noDecimal: false
-        }
+        unique: false
       },
       // Confidence level description
       {
         name: "confidence_level",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
+        unique: false
       },
       // Detailed confidence explanation
       {
         name: "confidence_explanation",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       // Parsing notes
       {
         name: "parse_notes",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        unique: false
       },
       // Manual resolution notes
       {
         name: "resolution_notes",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 500,
-          pattern: ""
-        }
+        unique: false
       },
       // Is this a reciprocal request?
       {
@@ -196,30 +153,21 @@ migrate((app) => {
         name: "keywords_found",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       // Phase 1 AI reasoning details
       {
         name: "ai_p1_reasoning",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       // Phase 3 AI reasoning details
       {
         name: "ai_p3_reasoning",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       // Was this parsed by AI?
       {
@@ -233,12 +181,7 @@ migrate((app) => {
         name: "source_field",
         type: "text",
         required: true,
-        unique: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        unique: false
       },
       // Position in the CSV field (1-based)
       {
@@ -255,12 +198,7 @@ migrate((app) => {
         name: "source_detail",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 200,
-          pattern: ""
-        }
+        unique: false
       },
       // Requires manual review flag
       {
@@ -274,46 +212,28 @@ migrate((app) => {
         name: "manual_review_reason",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 200,
-          pattern: ""
-        }
+        unique: false
       },
       // Additional metadata
       {
         name: "metadata",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       // For age preference requests - the target preference
       {
         name: "age_preference_target",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
+        unique: false
       },
       // Conflict group ID for related requests
       {
         name: "conflict_group_id",
         type: "text",
         required: false,
-        unique: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        unique: false
       },
       // Requires family decision
       {
@@ -362,10 +282,7 @@ migrate((app) => {
         name: "source_fields",
         type: "json",
         required: false,
-        unique: false,
-        options: {
-          maxSize: 2000000
-        }
+        unique: false
       },
       {
         type: "autodate",

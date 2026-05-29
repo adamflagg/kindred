@@ -54,19 +54,13 @@ migrate((app) => {
         type: "json",
         name: "parsed_intents",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "ai_raw_response",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "number",
@@ -81,12 +75,7 @@ migrate((app) => {
         type: "text",
         name: "prompt_version",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "number",
@@ -107,12 +96,7 @@ migrate((app) => {
         type: "text",
         name: "error_message",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 5000,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "autodate",

@@ -36,12 +36,7 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: false,
-        presentable: true,
-        options: {
-          min: null,
-          max: 200,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         type: "autodate",

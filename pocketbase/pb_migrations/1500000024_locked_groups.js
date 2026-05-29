@@ -41,14 +41,7 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: false,
-        presentable: true,
-        options: {
-          autogeneratePattern: "",
-          min: 0,
-          max: 0,
-          pattern: "",
-          primaryKey: false
-        }
+        presentable: true
       },
       {
         type: "relation",
@@ -73,23 +66,13 @@ migrate((app) => {
         type: "text",
         name: "color",
         required: true,
-        presentable: false,
-        options: {
-          min: 1,
-          max: 20,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "created_by",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 255,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "autodate",

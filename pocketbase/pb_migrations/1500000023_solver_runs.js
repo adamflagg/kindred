@@ -28,23 +28,13 @@ migrate((app) => {
         type: "text",
         name: "session",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "run_id",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "select",
@@ -58,95 +48,61 @@ migrate((app) => {
         type: "number",
         name: "progress",
         required: false,
-        presentable: false,
-        options: {
-          min: 0,
-          max: 100,
-          noDecimal: false
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "started_at",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "completed_at",
         required: false,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "logs",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "error",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "result",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "details",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "request_data",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "assignment_counts",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "json",
         name: "stats",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         type: "relation",
@@ -162,23 +118,13 @@ migrate((app) => {
         type: "text",
         name: "run_type",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 50,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "text",
         name: "triggered_by",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "number",
