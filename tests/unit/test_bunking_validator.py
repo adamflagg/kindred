@@ -2619,6 +2619,197 @@ def test_unsatisfied_material_parent_detail_falls_back_when_person_missing():
     assert by_requester["2002"]["target_name"] == "Person 2003"
 
 
+def test_unsatisfied_material_parent_detail_age_preference_emitted():
+    """A camper whose SOLE material-parent request is an unmet age_preference gets a
+    detail entry with request_type='age_preference' and target_name='older'.
+
+    Previously the loop did `if not req.requested_person_cm_id: continue`, dropping
+    age_preference requests entirely (they have no target person).
+
+    Age-preference satisfaction logic: "older" is UNsatisfied when at least one
+    bunkmate is younger (lower grade) than the requester. Use a grade-7 requester
+    with a grade-5 bunkmate to guarantee an unsatisfied preference.
+    """
+    session = _mock_session(cm_id="10000001", name="AgePrefDetail")
+    persons = [
+        MockPerson(campminder_id="3001", name="Olivia Chen", grade=7),  # requester wants older
+        MockPerson(campminder_id="3002", name="Emma Johnson", grade=5),  # younger → makes pref unsatisfied
+    ]
+    bunks = [
+        MockBunk(campminder_id="4001", name="Cabin A", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("3001", "4001"),
+        _mock_assignment("3002", "4001"),  # younger bunkmate → "older" pref is unmet
+    ]
+    # Sole material request: age_preference (form source, no coexisting bunk_with/not_bunk_with)
+    requests = [
+        MockBunkRequest(
+            id="ap1",
+            requester_person_cm_id="3001",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            age_preference_target="older",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    assert len(detail) == 1, f"Expected 1 detail entry for unmet age_preference; got {len(detail)}: {detail}"
+    entry = detail[0]
+    assert entry["requester_cm_id"] == "3001"
+    assert entry["requester_name"] == "Olivia Chen"
+    assert entry["request_type"] == "age_preference", f"request_type missing or wrong: {entry}"
+    assert entry["target_name"] == "older", f"target_name should be the preference label 'older', got: {entry}"
+    assert entry["target_cm_id"] == "", f"target_cm_id should be empty string for age_preference; got: {entry}"
+    assert entry["requester_bunk_name"] == "Cabin A"
+    assert entry["target_bunk_name"] == "n/a"
+
+
+def test_unsatisfied_material_parent_detail_bunk_with_carries_request_type():
+    """bunk_with / not_bunk_with detail entries must carry request_type so the
+    frontend can distinguish them from age_preference entries.
+    """
+    session = _mock_session(cm_id="10000001", name="BunkWithRequestType")
+    persons = [
+        MockPerson(campminder_id="5001", name="Liam Garcia", grade=5),
+        MockPerson(campminder_id="5002", name="Samuel Johnson", grade=5),
+    ]
+    bunks = [
+        MockBunk(campminder_id="6001", name="Pine 3", max_size=8),
+        MockBunk(campminder_id="6002", name="Oak 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("5001", "6001"),
+        _mock_assignment("5002", "6002"),  # different bunk → bunk_with unsatisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            id="bw1",
+            requester_person_cm_id="5001",
+            requested_person_cm_id="5002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+    )
+    detail = result.statistics.unsatisfied_material_parent_detail
+
+    assert len(detail) == 1
+    entry = detail[0]
+    assert entry["request_type"] == "bunk_with", (
+        f"Expected request_type='bunk_with' on with-target detail entry; got: {entry}"
+    )
+    assert entry["requester_cm_id"] == "5001"
+    assert entry["target_cm_id"] == "5002"
+
+
+def test_unsatisfied_material_parent_cohorts_exclude_entirely_impossible_campers():
+    """Entirely-impossible campers must NOT appear in the three unsatisfied-material
+    cohorts (count, persons list, detail list).
+
+    An entirely-impossible camper is one whose material-parent request id appears in
+    `impossible_request_ids`. They are already surfaced under `mp_campers_entirely_
+    impossible` ("Got nothing" cohort) and must not ALSO be flagged as "sacrificed"
+    since the solver never could have honored the request.
+
+    Fixture:
+    - Emma Johnson (cm_id=7001): age_preference "younger" on form; her request id
+      "req-emma" IS passed in impossible_request_ids → entirely-impossible.
+      Placed in Maple 1 with an older bunkmate (grade 8 > grade 5 → "younger" unmet).
+    - Liam Garcia (cm_id=7002): age_preference "younger" on form; his request id
+      "req-liam" is NOT in impossible_request_ids → genuine possible-but-unmet sacrifice.
+      Also placed in Maple 1 with an older bunkmate.
+
+    Both are materially unsatisfied in the plan, but only Liam (the possible-but-unmet
+    one) should appear in the three cohorts.
+    """
+    session = _mock_session(cm_id="10000001", name="ImpossibilityGatingFixture")
+    persons = [
+        MockPerson(campminder_id="7001", name="Emma Johnson", grade=5),
+        MockPerson(campminder_id="7002", name="Liam Garcia", grade=5),
+        MockPerson(campminder_id="7003", name="Olivia Chen", grade=8),  # older bunkmate
+    ]
+    bunks = [MockBunk(campminder_id="8001", name="Maple 1", max_size=8)]
+    assignments = [
+        _mock_assignment("7001", "8001"),
+        _mock_assignment("7002", "8001"),
+        _mock_assignment("7003", "8001"),  # older → "younger" prefs unsatisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            id="req-emma",
+            requester_person_cm_id="7001",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            age_preference_target="younger",
+        ),
+        MockBunkRequest(
+            id="req-liam",
+            requester_person_cm_id="7002",
+            requested_person_cm_id=None,
+            request_type="age_preference",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            age_preference_target="younger",
+        ),
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=session,
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        # Emma's request is entirely impossible; Liam's is possible-but-unmet.
+        impossible_request_ids={"req-emma"},
+    )
+    stats = result.statistics
+
+    # Camper count: only Liam (possible-but-unmet) counts as a sacrifice.
+    assert stats.campers_with_unsatisfied_material_parent_requests == 1, (
+        f"Expected 1 (Liam only); got {stats.campers_with_unsatisfied_material_parent_requests}. "
+        "Emma is entirely-impossible and must NOT appear in this count."
+    )
+
+    # Persons list: only Liam appears.
+    unmet_ids = {entry["cm_id"] for entry in stats.unsatisfied_material_parent_persons}
+    assert unmet_ids == {7002}, (
+        f"Expected {{7002}} (Liam only) in unsatisfied_material_parent_persons; got {unmet_ids}. "
+        "Emma (7001) is entirely-impossible and must be excluded."
+    )
+
+    # Detail list: only Liam's entry appears.
+    detail_requester_ids = {entry["requester_cm_id"] for entry in stats.unsatisfied_material_parent_detail}
+    assert detail_requester_ids == {"7002"}, (
+        f"Expected {{'7002'}} (Liam only) in unsatisfied_material_parent_detail; "
+        f"got {detail_requester_ids}. Emma's impossible req must be excluded from detail."
+    )
+
+
 def test_capacity_by_gender_aggregates_bunks_and_assignments():
     """capacity_by_gender splits bunks/assignments by bunk.gender (F/M).
 

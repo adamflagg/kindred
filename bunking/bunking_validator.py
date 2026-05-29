@@ -160,17 +160,20 @@ class ValidationStatistics(BaseModel):
     # modal drill-down (#1105). Each entry is {cm_id, name}.
     unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
     # One entry per unsatisfied MP request with requester_cm_id, requester_name,
-    # target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on
+    # request_type, target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on
     # the validation payload (typed in solver.ts). The post-check modal drill-down
     # this once fed was removed in Group 65 (de-duped against "Families to contact");
     # the field is retained for the API contract / future consumers.
     unsatisfied_material_parent_detail: list[dict[str, str]] = Field(
         default_factory=list,
         description=(
-            "One entry per unsatisfied MP request with requester_cm_id, requester_name, "
-            "target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on the "
-            "validation payload; no longer rendered (the post-check 'Unmet parent requests' "
-            "drill-down was removed in Group 65)."
+            "One entry per unsatisfied MP request. Keys: requester_cm_id, requester_name, "
+            "request_type, target_cm_id, target_name, requester_bunk_name, target_bunk_name. "
+            "For age_preference requests (no target person), target_cm_id is '' and target_name "
+            "holds the preference label (e.g. 'older'/'younger'); target_bunk_name is 'n/a'. "
+            "For bunk_with/not_bunk_with, all fields are populated normally. "
+            "Emitted on the validation payload; the post-check 'Unmet parent requests' "
+            "drill-down was removed in Group 65 but the field is retained for future consumers."
         ),
     )
 
@@ -892,15 +895,18 @@ class BunkingValidator:
         stats.campers_with_unsatisfied_material_parent_requests = sum(
             1
             for pid, reqs in material_parent_by_person.items()
-            if reqs and not satisfied_material_parent_by_person.get(pid)
+            if _gated(reqs) and not satisfied_material_parent_by_person.get(pid)
         )
         # Match the canonical satisfaction policy from `bunking/satisfaction/aggregate.bucket_status`:
         # the bucket is "unsatisfied" only when total > 0 AND zero satisfied. Partial satisfaction
         # (≥1 of N) classifies as "satisfied" and must NOT appear here, otherwise the drill-down
         # contradicts `campers_with_unsatisfied_material_parent_requests` above.
+        # #1520: gate on impossibility so entirely-impossible campers (all requests in
+        # impossible_request_ids) are excluded — they belong under "Got nothing"
+        # (mp_campers_entirely_impossible), not "sacrificed".
         unmet_persons: list[dict[str, Any]] = []
         for pid, reqs in material_parent_by_person.items():
-            if not reqs or satisfied_material_parent_by_person.get(pid):
+            if not _gated(reqs) or satisfied_material_parent_by_person.get(pid):
                 continue
             try:
                 cm_id = int(pid)
@@ -915,29 +921,56 @@ class BunkingValidator:
         # Per-request detail for unsatisfied MP requests — one entry per request (not per requester).
         # Reuses material_parent_by_person, satisfied_material_parent_by_person, person_by_id,
         # assignments_by_person, and bunk_by_id — no new lookups needed.
+        # #1520: gate on impossibility — entirely-impossible campers (empty _gated(reqs)) are
+        # excluded from this cohort; they belong under "Got nothing" (mp_campers_entirely_impossible).
+        # For partially-impossible campers, only emit entries for their POSSIBLE unmet requests.
         unsatisfied_material_parent_detail: list[dict[str, str]] = []
         for pid, reqs in material_parent_by_person.items():
-            if not reqs or satisfied_material_parent_by_person.get(pid):
-                # Camper has ≥1 satisfied MP request → canonical "satisfied" bucket, skip all.
+            if not _gated(reqs) or satisfied_material_parent_by_person.get(pid):
+                # Entirely-impossible camper (no possible requests) OR has ≥1 satisfied MP
+                # request → canonical "satisfied" bucket; skip all.
                 continue
             for req in reqs:
-                if not req.requested_person_cm_id:
+                # Skip impossible requests — only emit entries for possible-but-unmet ones.
+                if _impossible_ids and getattr(req, "id", None) in _impossible_ids:
                     continue
                 # Fall back to a Person {pid} label when person_by_id is incomplete
                 # (degraded-data scenarios e.g. partial sync). Mirrors the sibling
                 # `unsatisfied_material_parent_persons` block above so the modal's
                 # count stays accurate when one variant has data the other lacks.
                 requester = person_by_id.get(pid)
-                target = person_by_id.get(req.requested_person_cm_id)
                 requester_asgn = assignments_by_person.get(pid)
-                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
                 bunks_map = bunk_by_id or {}
                 requester_bunk = bunks_map.get(requester_asgn.bunk_cm_id) if requester_asgn else None
+                if not req.requested_person_cm_id:
+                    # No target person — only emit an entry for known targetless types.
+                    # age_preference requests are the canonical case (solver sacrifices
+                    # these during break-glass). The preference label (e.g. "older" /
+                    # "younger") is stored in age_preference_target and used as
+                    # target_name so the frontend can render a meaningful reason.
+                    if req.request_type == "age_preference":
+                        pref = getattr(req, "age_preference_target", None) or "preference"
+                        unsatisfied_material_parent_detail.append(
+                            {
+                                "requester_cm_id": str(req.requester_person_cm_id),
+                                "requester_name": requester.name if requester else f"Person {pid}",
+                                "request_type": str(req.request_type),
+                                "target_cm_id": "",
+                                "target_name": str(pref),
+                                "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",
+                                "target_bunk_name": "n/a",
+                            }
+                        )
+                    # Other no-target types are skipped — don't guess at semantics.
+                    continue
+                target = person_by_id.get(req.requested_person_cm_id)
+                target_asgn = assignments_by_person.get(req.requested_person_cm_id)
                 target_bunk = bunks_map.get(target_asgn.bunk_cm_id) if target_asgn else None
                 unsatisfied_material_parent_detail.append(
                     {
                         "requester_cm_id": str(req.requester_person_cm_id),
                         "requester_name": requester.name if requester else f"Person {pid}",
+                        "request_type": str(req.request_type),
                         "target_cm_id": str(req.requested_person_cm_id),
                         "target_name": (target.name if target else f"Person {req.requested_person_cm_id}"),
                         "requester_bunk_name": requester_bunk.name if requester_bunk else "unassigned",

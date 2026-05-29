@@ -85,6 +85,63 @@ def _force_apart(ctx: SolverContext, requester_cm_id: int, requested_cm_id: int)
     ctx.model.Add(ctx.assignments[(tgt_idx, bunk_idxs[1])] == 1)
 
 
+class TestBreakGlassSoftMSO:
+    def test_break_glass_softens_mso(self):
+        """Stream D Phase 2 — break_glass=True turns the hard MSO into a soft one.
+
+        Same scenario as test_camper_with_one_mp_request_must_satisfy: Emma has
+        one MP bunk_with request for Liam, but they are forced into different
+        bunks (the request is provably unsatisfied).
+
+        Without break_glass the model is INFEASIBLE (proven by the sibling test).
+        With break_glass=True the model must be OPTIMAL/FEASIBLE — a per-camper
+        slack BoolVar (mso_unmet) absorbs the infeasibility.
+
+        Post-solve checks:
+        - ctx.break_glass_mso_unmet_vars contains cm_id 100 (Emma's slack).
+        - The slack fired: solver.Value(ctx.break_glass_mso_unmet_vars[100]) == 1.
+        """
+        camper1 = create_person(cm_id=100, first_name="Emma", last_name="Johnson", gender="F", grade=5)
+        camper2 = create_person(cm_id=200, first_name="Liam", last_name="Garcia", gender="F", grade=5)
+        bunk1 = create_bunk(cm_id=2001, name="G-1", gender="F", capacity=12)
+        bunk2 = create_bunk(cm_id=2002, name="G-2", gender="F", capacity=12)
+
+        req = _mp_request("r1", requester_cm_id=100, requested_cm_id=200)
+
+        ctx = build_solver_context(
+            persons=[camper1, camper2],
+            bunks=[bunk1, bunk2],
+            requests=[req],
+        )
+
+        # Engage break-glass mode before adding constraints.
+        ctx.break_glass = True
+
+        from bunking.solver.constraints.parent_paramount import add_must_satisfy_one_request_constraints
+
+        add_must_satisfy_one_request_constraints(ctx)
+
+        # Force the two campers into DIFFERENT bunks — the bunk_with is unsatisfied.
+        # Under hard MSO this would be INFEASIBLE; under break-glass the slack absorbs it.
+        _force_apart(ctx, 100, 200)
+
+        solver = cp_model.CpSolver()
+        status = solver.Solve(ctx.model)
+
+        assert is_optimal_or_feasible(status), (
+            "With break_glass=True, the MSO slack should allow placement even when the "
+            "only MP request is provably unsatisfied — model must be OPTIMAL or FEASIBLE"
+        )
+
+        assert 100 in ctx.break_glass_mso_unmet_vars, (
+            "break_glass_mso_unmet_vars must contain cm_id 100 (Emma's MSO slack BoolVar)"
+        )
+
+        assert solver.Value(ctx.break_glass_mso_unmet_vars[100]) == 1, (
+            "The MSO slack for camper 100 must fire (value=1) because the request could not be satisfied"
+        )
+
+
 class TestParentParamountBindsMPHavers:
     def test_camper_with_one_mp_request_must_satisfy(self):
         """Camper has 1 MP bunk_with request.

@@ -230,6 +230,18 @@ class DirectBunkingSolver:
         # parent_paramount and add_objective; one shared var per request.
         self.request_satisfied_vars: dict[str, cp_model.IntVar] = {}
 
+        # Stream D break-glass state. These MUST live on self (not default-
+        # constructed inside each fresh SolverContext) because every constraint
+        # module call in add_constraints builds its own ctx, yet the slack vars
+        # parent_paramount/staff_separation populate during add_constraints must
+        # be visible to add_objective's separate ctx. _build_solver_context passes
+        # these same objects by reference into every ctx — mirroring the existing
+        # staff_nbw_yields lifetime pattern. _break_glass is a per-pass flag set by
+        # _solve_once; the two MUTABLE containers are reset in _rebuild_model.
+        self._break_glass: bool = False
+        self.break_glass_mso_unmet_vars: dict[int, cp_model.IntVar] = {}
+        self.break_glass_nbw_relaxed: list[dict[str, Any]] = []
+
         # Limit debug logging for pair reduction (only first 5 pairs)
         self._pair_reduction_logged = 0
 
@@ -280,6 +292,12 @@ class DirectBunkingSolver:
             material_request_ids=self.material_request_ids,
             mp_skip_cms=self.mp_skip_cms,
             request_satisfied_vars=self.request_satisfied_vars,
+            # Stream D: pass the SAME objects by reference into every ctx so slack
+            # vars populated by parent_paramount/staff_separation during
+            # add_constraints are visible to add_objective's separate ctx.
+            break_glass=self._break_glass,
+            break_glass_mso_unmet_vars=self.break_glass_mso_unmet_vars,
+            break_glass_nbw_relaxed=self.break_glass_nbw_relaxed,
         )
 
     def _get_valid_bunks_for_pair(self, person1_idx: int, person2_idx: int) -> list[int]:
@@ -568,12 +586,17 @@ class DirectBunkingSolver:
             )
             return 1.0
 
-    def add_objective(self, with_overflow_penalty: bool = False) -> None:
+    def add_objective(self, with_overflow_penalty: bool = False, break_glass: bool = False) -> None:
         """Add objective function to maximize satisfied requests with diminishing returns.
 
         Stream C: when with_overflow_penalty=True (pass 2 only), append a per-bunk
         lex-dominant overflow penalty so the solver minimizes overflowed-bunk
         count first, then maximizes satisfaction among ties.
+
+        Stream D: when break_glass=True (break-glass pass only), append the L1-L3
+        request-loss minimization penalties. The ctx built here references the
+        populated self.break_glass_mso_unmet_vars by reference, so the penalties
+        see the slack vars parent_paramount created during add_constraints.
         """
         objective_terms = []
 
@@ -730,6 +753,17 @@ class DirectBunkingSolver:
         # Stream C: pass-2-only overflow minimization penalty (lex-dominant).
         if with_overflow_penalty:
             add_overflow_minimization_objective(ctx, objective_terms)
+
+        # Stream D: break-glass-pass-only L1-L3 request-loss minimization. Reads
+        # ctx.break_glass_mso_unmet_vars (populated by parent_paramount during
+        # add_constraints, visible here because the dict is backed on self and
+        # passed by reference) and ctx.request_satisfied_vars.
+        if break_glass:
+            from bunking.solver.constraints.break_glass_minimization import (  # noqa: PLC0415
+                add_break_glass_penalties,
+            )
+
+            add_break_glass_penalties(ctx, objective_terms)  # L1-L3 request-loss minimization
 
         # Maximize objective
         self.model.Maximize(sum(objective_terms))
@@ -972,6 +1006,11 @@ class DirectBunkingSolver:
         self.staff_nbw_yields = []
         self.parent_nbw_yields = []
         self.request_satisfied_vars = {}
+        # Break-glass slack containers hold BoolVars created on the model just
+        # discarded — reset them so the new pass repopulates fresh vars. NOT
+        # self._break_glass: that is the per-pass flag, set by _solve_once.
+        self.break_glass_mso_unmet_vars = {}
+        self.break_glass_nbw_relaxed = []
         self._pair_reduction_logged = 0
 
         # Re-create decision variables on the fresh model.
@@ -993,14 +1032,23 @@ class DirectBunkingSolver:
                 )
 
     def solve(self, time_limit_seconds: int = 60) -> DirectSolverOutput | None:
-        """Smart overflow orchestrator (Stream C).
+        """Smart overflow + break-glass orchestrator (Stream C + Stream D).
 
         Pass 1: strict 12-cap solve. If FEASIBLE/OPTIMAL -> return immediately.
         If INFEASIBLE -> capacity probe.
           If overflow would fix it -> pass 2 with lex-dominant overflow penalty,
             return solution with overflow_used populated.
-          Else -> tier-3 diagnostic via find_infeasibility_cause; return an
-            empty-assignments DirectSolverOutput with infeasibility_diagnosis set.
+          Else -> break-glass pass (Stream D): relax the request layer (MSO +
+            staff NBW) to penalized-soft, keep the structural wall hard, and
+            place every camper in the least-bad arrangement.
+              If break-glass places everyone -> return it with
+                break_glass_used=True.
+              If break-glass times out (UNKNOWN) -> return an empty-assignments
+                DirectSolverOutput with an actionable timeout diagnosis.
+              If even break-glass is INFEASIBLE -> the structural wall
+                self-contradicts; run find_infeasibility_cause and return an
+                empty-assignments DirectSolverOutput with infeasibility_diagnosis
+                set.
         """
         # Single-bunk session path is unchanged in shape — it checks capacity
         # arithmetically. Stream C makes it always treat overflow as available
@@ -1052,9 +1100,9 @@ class DirectBunkingSolver:
             # Pass 2 found no incumbent within budget even though the probe
             # proved overflow is feasible. Returning None would route
             # solver_runner into find_infeasibility_cause, which only probes
-            # INFO_ONLY constraints (never capacity) and would emit a misleading
-            # "no cause found" message. Surface an actionable timeout diagnostic
-            # so staff know to re-run with a longer budget.
+            # STRUCTURAL_HARD constraints (never capacity) and would emit a
+            # misleading "no cause found" message. Surface an actionable timeout
+            # diagnostic so staff know to re-run with a longer budget.
             logger.warning(f"pass2 found no incumbent (status={pass2_status}) despite a positive capacity probe")
             return DirectSolverOutput(
                 assignments=[],
@@ -1066,13 +1114,43 @@ class DirectBunkingSolver:
                 ),
             )
 
-        # Tier-3 diagnostic — overflow doesn't help. Tell staff what does.
-        # The capacity probe above returned False: overflow alone does NOT make
-        # this session feasible. Probe the diagnostic at 13-cap anyway so that
-        # capacity doesn't co-block with the real cause — at the strict 12-cap
-        # capacity also blocks, so no single-constraint removal isolates and the
-        # diagnostic returns the useless "multiple interacting constraints"
-        # instead of naming the culprit.
+        # Overflow alone can't fix it. Break-glass: relax the request layer (MSO +
+        # staff NBW), keep the structural wall hard, place every camper in the
+        # least-bad arrangement. This REPLACES Stream C's no-assignments return.
+        bg_budget = max(int(time_limit_seconds - pass1_wall - probe_wall), 1)
+        logger.info(f"pass1=INFEASIBLE, capacity_probe=False, running break-glass (budget={bg_budget}s)")
+        bg_output, bg_status = self._solve_once(
+            allow_overflow=True,
+            time_limit_seconds=bg_budget,
+            with_overflow_penalty=True,  # L4 overflow minimization
+            break_glass=True,  # L1-L3 request-loss minimization + soft MSO/NBW
+        )
+        if bg_output is not None and bg_output.assignments:
+            bg_output.break_glass_used = True
+            bg_output.overflow_used = self._count_overflowed_bunks(bg_output.assignments)
+            logger.info(f"break-glass placed {len(bg_output.assignments)} campers, overflow={bg_output.overflow_used}")
+            return bg_output
+
+        if bg_status == cp_model.UNKNOWN:
+            # Break-glass found no incumbent within its (often tiny) budget — but
+            # it never proved INFEASIBLE, so this is a timeout, NOT a structural
+            # contradiction. Treating it as structural would run
+            # find_infeasibility_cause and emit a misleading "constraints
+            # contradict each other" message. Surface an actionable timeout
+            # diagnosis instead (mirrors the pass-2 timeout branch above).
+            logger.warning(f"break-glass found no incumbent within {bg_budget}s (status=UNKNOWN)")
+            return DirectSolverOutput(
+                assignments=[],
+                stats={"status": "UNKNOWN"},
+                satisfied_requests={},
+                infeasibility_diagnosis=(
+                    "Break-glass relaxation is likely solvable, but the solver ran out of "
+                    "time before finding a valid arrangement. Try again with a longer time limit."
+                ),
+            )
+
+        # Even break-glass is infeasible -> the WALL self-contradicts (true
+        # structural impossibility). Diagnose at the established (overflow) capacity.
         try:
             diagnosis = self.find_infeasibility_cause(time_limit_seconds=10, allow_overflow=True)
         except Exception as e:
@@ -1112,6 +1190,7 @@ class DirectBunkingSolver:
         allow_overflow: bool,
         time_limit_seconds: int,
         with_overflow_penalty: bool = False,
+        break_glass: bool = False,
     ) -> tuple[DirectSolverOutput | None, int]:
         """One solver pass. Returns (output, cp_sat_status).
 
@@ -1119,10 +1198,20 @@ class DirectBunkingSolver:
         cabin_capacity reads the right value. ``with_overflow_penalty=True``
         adds the lex-dominant overflow penalty to the objective (pass 2 only).
 
+        Stream D: ``break_glass=True`` relaxes the request layer to penalized-soft
+        (parent_paramount/staff_separation read ctx.break_glass) and appends the
+        L1-L3 request-loss penalties. Set self._break_glass BEFORE _rebuild_model
+        so that every _build_solver_context() in add_constraints/add_objective
+        carries the flag — the slack-var containers are reset by _rebuild_model.
+
         IMPORTANT: rebuilds self.model fresh per call. CP-SAT models can't be
         cleared in-place, so each pass starts with a new CpModel and re-runs
         check_feasibility -> add_constraints -> add_objective.
         """
+        # Per-pass break-glass flag. Set before _rebuild_model so every ctx built
+        # during this pass sees ctx.break_glass=break_glass. Defaults False on
+        # pass 1 / pass 2, leaving those paths byte-equivalent.
+        self._break_glass = break_glass
         # Mutate the pass-scoped overflow flag only for model construction —
         # cabin_capacity reads self.input.allow_overflow while add_constraints
         # runs. Restore in finally so an exception in any build step can't leave
@@ -1145,7 +1234,7 @@ class DirectBunkingSolver:
             self.add_constraints()
 
             self.constraint_logger.log_progress("Setting up objective function...")
-            self.add_objective(with_overflow_penalty=with_overflow_penalty)
+            self.add_objective(with_overflow_penalty=with_overflow_penalty, break_glass=break_glass)
         finally:
             self.input.allow_overflow = saved_allow_overflow
 

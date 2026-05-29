@@ -121,6 +121,8 @@ export type ParentNbwYieldRaw = StaffNbwYieldRaw
 export type SolverRunWithDiagnostics = SolverRun & {
   diagnostics?: SolverDiagnostics
   overflow_used?: number
+  /** Stream D: true when the break-glass fallback fired (request layer relaxed to place every camper). */
+  break_glass_used?: boolean
 }
 
 interface ValidationResult {
@@ -218,9 +220,13 @@ export interface ValidationStatistics {
   unsatisfied_material_parent_detail?: Array<{
     requester_cm_id: string
     requester_name: string
+    /** "bunk_with" | "not_bunk_with" | "age_preference" — added Stream D Phase 3. */
+    request_type?: string
     target_cm_id: string
+    /** Camper name for bunk_with/not_bunk_with; preference label ("older"/"younger") for age_preference. */
     target_name: string
     requester_bunk_name: string
+    /** "n/a" for age_preference entries. */
     target_bunk_name: string
   }>
   /** TG-polish: per-gender bunk capacity + assigned counts. */
@@ -374,6 +380,8 @@ export const solverService = {
           results: runStatus.results,
           // Stream C: count of bunks at 13-cap; 0 on a clean 12-cap solve.
           overflow_used: runStatus.overflow_used ?? 0,
+          // Stream D: true when break-glass relaxed the request layer to place everyone.
+          break_glass_used: runStatus.break_glass_used ?? false,
           // Don't include error_message when undefined
           created: runStatus.created_at ?? new Date().toISOString(),
           updated: runStatus.updated_at ?? new Date().toISOString(),

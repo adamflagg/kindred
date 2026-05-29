@@ -30,7 +30,7 @@ import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
-import { buildFamilyRows } from './PdfExport/familyRows'
+import { buildFamilyRows, type FamilyCohort } from './PdfExport/familyRows'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
@@ -568,15 +568,17 @@ const COHORT_STYLES = {
   got_nothing: 'bg-red-100 text-red-800',
   violated: 'bg-amber-100 text-amber-800',
   priority_unmet: 'bg-pink-100 text-pink-800',
+  sacrificed_mp: 'bg-orange-100 text-orange-800',
 } as const
 
 const COHORT_LABELS = {
   got_nothing: 'Got nothing',
   violated: 'Not-bunk-with violated',
   priority_unmet: 'Priority unmet',
+  sacrificed_mp: 'Request dropped',
 } as const
 
-function CohortPill({ cohort }: { cohort: 'got_nothing' | 'violated' | 'priority_unmet' }) {
+function CohortPill({ cohort }: { cohort: FamilyCohort }) {
   return (
     <span
       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COHORT_STYLES[cohort]}`}
@@ -592,7 +594,7 @@ type FamilyRow = {
   cm_id: string
   grade: number
   gender: string
-  cohort: 'got_nothing' | 'violated' | 'priority_unmet'
+  cohort: FamilyCohort
   sessions: string[]
   subRows: { session: string; detail: React.ReactNode }[]
 }
@@ -738,6 +740,9 @@ export function PostCheckContents({
           ) : (
             <span>{sub.detail}</span>
           )
+        } else if (r.cohort === 'sacrificed_mp') {
+          // Render the pre-built detail string from familyRows (already human-readable).
+          detail = <span>{sub.detail}</span>
         } else {
           detail = sub.targetName ? (
             <span>

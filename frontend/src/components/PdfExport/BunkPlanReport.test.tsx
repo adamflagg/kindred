@@ -168,20 +168,22 @@ describe('BunkPlanReport (PDF)', () => {
 })
 
 describe('BunkPlanReport (PDF) — Bunks/Other page', () => {
-  it('renders Bunks needing attention and Other issues, with no unmet-parents list', async () => {
+  it('renders Bunks needing attention, Other issues, and families-to-contact for sacrificed MP', async () => {
     const buf = await renderToBuffer(
       <BunkPlanReport
         sessionName="Session 3"
         year={2026}
         plannerName="Test Staff"
         statistics={makeStats({
-          // Group 65: these no longer drive any PDF section — the unmet
-          // drill-down + full-list page were removed (those campers are already
-          // in "Families to contact"). Supplied here to prove they don't leak.
+          // Stream D Phase 3: unsatisfied_material_parent_detail entries now appear
+          // in "Families to contact" (sacrificed_mp cohort) so staff can follow up.
+          // unsatisfied_material_parent_persons (per-person view) does NOT drive any
+          // PDF section — only the per-request detail list does.
           unsatisfied_material_parent_detail: [
             {
               requester_cm_id: '1',
               requester_name: 'Emma Johnson',
+              request_type: 'bunk_with',
               target_cm_id: '2',
               target_name: 'Liam Garcia',
               requester_bunk_name: 'Pine 3',
@@ -219,9 +221,9 @@ describe('BunkPlanReport (PDF) — Bunks/Other page', () => {
     expect(text).toMatch(/Pine 3/)
     expect(flat).toMatch(/OTHERISSUES/)
     expect(text).toMatch(/unassigned/i)
-    // No unmet-parents section anywhere in the document.
-    expect(flat).not.toMatch(/UNMET/)
-    expect(text).not.toMatch(/Emma Johnson/)
+    // sacrificed_mp entries now appear in "Families to contact" (Stream D Phase 3).
+    expect(text).toMatch(/Emma Johnson/)
+    // unsatisfied_material_parent_persons (per-person list) does NOT drive any PDF section.
     expect(text).not.toMatch(/Riley Sam/)
   }, 30000)
 })
