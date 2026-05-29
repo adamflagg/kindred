@@ -21,6 +21,7 @@ import {
   Percent,
   Table2,
   Download,
+  type LucideIcon,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headlessui/react'
@@ -186,6 +187,21 @@ export interface ValidationResult {
 type ViewMode = 'split' | 'changes'
 type ChangeFilter = 'all' | 'moved' | 'newly-assigned' | 'newly-unassigned'
 
+/**
+ * #1703: staff land on the differences-only "Changes Table" view by default;
+ * the all-bunks "Split View" is the secondary toggle. Both views are empty
+ * until a comparison scenario is selected, so no empty-state handling differs
+ * between them.
+ */
+export const DEFAULT_VIEW_MODE: ViewMode = 'changes'
+
+/** View-mode tabs, ordered Changes Table first (the default), Split View second. */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for tests
+export const VIEW_MODE_TABS: Array<{ mode: ViewMode; icon: LucideIcon; label: string }> = [
+  { mode: 'changes', icon: Table2, label: 'Changes Table' },
+  { mode: 'split', icon: LayoutGrid, label: 'Split View' },
+]
+
 /** Returns the export button label that matches the active change filter. */
 // eslint-disable-next-line react-refresh/only-export-components -- pure utility, exported for tests
 export function getExportButtonLabel(filter: 'moved' | 'all'): string {
@@ -224,7 +240,7 @@ export default function ScenarioComparisonPage() {
   // State for scenario selection
   const [leftScenarioId, setLeftScenarioId] = useState<string>('production')
   const [rightScenarioId, setRightScenarioId] = useState<string>('')
-  const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE)
   const [changeFilter, setChangeFilter] = useState<ChangeFilter>('all')
   const [selectedBunkArea, setSelectedBunkArea] = useState<BunkArea>('all')
 
@@ -689,20 +705,9 @@ export default function ScenarioComparisonPage() {
               </div>
             </div>
 
-            {/* View mode toggle */}
+            {/* View mode toggle — Changes Table first (default), then Split View (#1703) */}
             <div className="flex items-center gap-2 rounded-xl bg-white/10 p-1">
-              {[
-                {
-                  mode: 'split' as ViewMode,
-                  icon: LayoutGrid,
-                  label: 'Split View',
-                },
-                {
-                  mode: 'changes' as ViewMode,
-                  icon: Table2,
-                  label: 'Changes Table',
-                },
-              ].map(({ mode, icon: Icon, label }) => (
+              {VIEW_MODE_TABS.map(({ mode, icon: Icon, label }) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}

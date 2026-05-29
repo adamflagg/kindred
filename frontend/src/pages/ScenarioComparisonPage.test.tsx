@@ -8,6 +8,8 @@ import {
   ValidationSection,
   getExportButtonLabel,
   getExportButtonTitle,
+  DEFAULT_VIEW_MODE,
+  VIEW_MODE_TABS,
   type ValidationResult,
   type ValidationStatistics,
 } from './ScenarioComparisonPage'
@@ -415,6 +417,21 @@ describe('getExportButtonTitle', () => {
 
   it('returns all tooltip when changeFilter is "all"', () => {
     expect(getExportButtonTitle('all')).toBe('Export all campers to CSV')
+  })
+})
+
+// ─── #1703: compare defaults to the Changes Table view, tabs swapped ─────────
+// Staff land on the differences-only view first (the all-bunks Split View is a
+// toggle). Both views are empty until a comparison scenario is chosen, so no
+// special empty-state handling is needed.
+describe('#1703 compare default view + tab order', () => {
+  it('defaults to the "changes" (Changes Table) view, not "split"', () => {
+    expect(DEFAULT_VIEW_MODE).toBe('changes')
+  })
+
+  it('orders the view-mode tabs with Changes Table first, Split View second', () => {
+    expect(VIEW_MODE_TABS.map((t) => t.mode)).toEqual(['changes', 'split'])
+    expect(VIEW_MODE_TABS.map((t) => t.label)).toEqual(['Changes Table', 'Split View'])
   })
 })
 
