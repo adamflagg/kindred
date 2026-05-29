@@ -181,5 +181,5 @@ export const cohortLabel = (c: FamilyCohort): string =>
     : c === 'violated'
       ? 'Not-bunk-with violated'
       : c === 'sacrificed_mp'
-        ? 'Request sacrificed'
+        ? 'Request dropped'
         : 'Priority unmet'

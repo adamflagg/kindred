@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildFamilyRows } from './familyRows'
+import { buildFamilyRows, cohortLabel } from './familyRows'
 import type { ValidationStatistics, ImpossibilityReport } from '../../services/solver'
 
 const _statistics = (overrides: Partial<ValidationStatistics> = {}): ValidationStatistics => ({
@@ -391,5 +391,13 @@ describe('buildFamilyRows — sacrificed material-parent cohort (Stream D, Phase
     expect(match).toBeDefined()
     // Should still produce a row with some detail text
     expect(match!.subRows[0]!.detail).toContain('Material request unmet')
+  })
+})
+
+describe('cohortLabel', () => {
+  it('labels the sacrificed material-parent cohort as "Request dropped"', () => {
+    // Staff-facing wording: a break-glass placement "drops" an unmet request
+    // rather than "sacrificing" it (gentler, clearer terminology).
+    expect(cohortLabel('sacrificed_mp')).toBe('Request dropped')
   })
 })

@@ -575,7 +575,7 @@ const COHORT_LABELS = {
   got_nothing: 'Got nothing',
   violated: 'Not-bunk-with violated',
   priority_unmet: 'Priority unmet',
-  sacrificed_mp: 'Request sacrificed',
+  sacrificed_mp: 'Request dropped',
 } as const
 
 function CohortPill({ cohort }: { cohort: FamilyCohort }) {
