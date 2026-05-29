@@ -30,7 +30,7 @@ import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
 import { friendlyReasonLabel } from './impossibility/reasonHints'
-import { buildFamilyRows } from './PdfExport/familyRows'
+import { buildFamilyRows, type FamilyCohort } from './PdfExport/familyRows'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
@@ -578,11 +578,7 @@ const COHORT_LABELS = {
   sacrificed_mp: 'Request sacrificed',
 } as const
 
-function CohortPill({
-  cohort,
-}: {
-  cohort: 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
-}) {
+function CohortPill({ cohort }: { cohort: FamilyCohort }) {
   return (
     <span
       className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COHORT_STYLES[cohort]}`}
@@ -598,7 +594,7 @@ type FamilyRow = {
   cm_id: string
   grade: number
   gender: string
-  cohort: 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
+  cohort: FamilyCohort
   sessions: string[]
   subRows: { session: string; detail: React.ReactNode }[]
 }

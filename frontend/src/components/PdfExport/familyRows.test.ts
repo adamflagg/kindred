@@ -377,10 +377,10 @@ describe('buildFamilyRows — sacrificed material-parent cohort (Stream D, Phase
       unsatisfied_material_parent_detail: [
         {
           requester_cm_id: '42009',
-          requester_name: 'Aaron Brown',
+          requester_name: 'Riley Sam',
           request_type: 'some_future_type',
           target_cm_id: '42010',
-          target_name: 'Zoe Williams',
+          target_name: 'Olivia Chen',
           requester_bunk_name: 'Oak 1',
           target_bunk_name: 'Oak 2',
         },

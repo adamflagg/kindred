@@ -1032,14 +1032,23 @@ class DirectBunkingSolver:
                 )
 
     def solve(self, time_limit_seconds: int = 60) -> DirectSolverOutput | None:
-        """Smart overflow orchestrator (Stream C).
+        """Smart overflow + break-glass orchestrator (Stream C + Stream D).
 
         Pass 1: strict 12-cap solve. If FEASIBLE/OPTIMAL -> return immediately.
         If INFEASIBLE -> capacity probe.
           If overflow would fix it -> pass 2 with lex-dominant overflow penalty,
             return solution with overflow_used populated.
-          Else -> tier-3 diagnostic via find_infeasibility_cause; return an
-            empty-assignments DirectSolverOutput with infeasibility_diagnosis set.
+          Else -> break-glass pass (Stream D): relax the request layer (MSO +
+            staff NBW) to penalized-soft, keep the structural wall hard, and
+            place every camper in the least-bad arrangement.
+              If break-glass places everyone -> return it with
+                break_glass_used=True.
+              If break-glass times out (UNKNOWN) -> return an empty-assignments
+                DirectSolverOutput with an actionable timeout diagnosis.
+              If even break-glass is INFEASIBLE -> the structural wall
+                self-contradicts; run find_infeasibility_cause and return an
+                empty-assignments DirectSolverOutput with infeasibility_diagnosis
+                set.
         """
         # Single-bunk session path is unchanged in shape — it checks capacity
         # arithmetically. Stream C makes it always treat overflow as available
@@ -1091,9 +1100,9 @@ class DirectBunkingSolver:
             # Pass 2 found no incumbent within budget even though the probe
             # proved overflow is feasible. Returning None would route
             # solver_runner into find_infeasibility_cause, which only probes
-            # INFO_ONLY constraints (never capacity) and would emit a misleading
-            # "no cause found" message. Surface an actionable timeout diagnostic
-            # so staff know to re-run with a longer budget.
+            # STRUCTURAL_HARD constraints (never capacity) and would emit a
+            # misleading "no cause found" message. Surface an actionable timeout
+            # diagnostic so staff know to re-run with a longer budget.
             logger.warning(f"pass2 found no incumbent (status={pass2_status}) despite a positive capacity probe")
             return DirectSolverOutput(
                 assignments=[],
@@ -1110,7 +1119,7 @@ class DirectBunkingSolver:
         # least-bad arrangement. This REPLACES Stream C's no-assignments return.
         bg_budget = max(int(time_limit_seconds - pass1_wall - probe_wall), 1)
         logger.info(f"pass1=INFEASIBLE, capacity_probe=False, running break-glass (budget={bg_budget}s)")
-        bg_output, _bg_status = self._solve_once(
+        bg_output, bg_status = self._solve_once(
             allow_overflow=True,
             time_limit_seconds=bg_budget,
             with_overflow_penalty=True,  # L4 overflow minimization
@@ -1121,6 +1130,24 @@ class DirectBunkingSolver:
             bg_output.overflow_used = self._count_overflowed_bunks(bg_output.assignments)
             logger.info(f"break-glass placed {len(bg_output.assignments)} campers, overflow={bg_output.overflow_used}")
             return bg_output
+
+        if bg_status == cp_model.UNKNOWN:
+            # Break-glass found no incumbent within its (often tiny) budget — but
+            # it never proved INFEASIBLE, so this is a timeout, NOT a structural
+            # contradiction. Treating it as structural would run
+            # find_infeasibility_cause and emit a misleading "constraints
+            # contradict each other" message. Surface an actionable timeout
+            # diagnosis instead (mirrors the pass-2 timeout branch above).
+            logger.warning(f"break-glass found no incumbent within {bg_budget}s (status=UNKNOWN)")
+            return DirectSolverOutput(
+                assignments=[],
+                stats={"status": "UNKNOWN"},
+                satisfied_requests={},
+                infeasibility_diagnosis=(
+                    "Break-glass relaxation is likely solvable, but the solver ran out of "
+                    "time before finding a valid arrangement. Try again with a longer time limit."
+                ),
+            )
 
         # Even break-glass is infeasible -> the WALL self-contradicts (true
         # structural impossibility). Diagnose at the established (overflow) capacity.

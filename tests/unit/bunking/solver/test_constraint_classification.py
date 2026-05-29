@@ -34,18 +34,21 @@ class TestClassificationInvariants:
         """ALL_HARD_CONSTRAINTS must equal the union of all four tiers and the
         expected 9 constraint names."""
         assert ALL_HARD_CONSTRAINTS == (INVIOLABLE_ALWAYS | STRUCTURAL_HARD | REQUEST_RELAXABLE | CAPACITY_RELAXABLE)
-        assert ALL_HARD_CONSTRAINTS == frozenset(
-            {
-                "gender",
-                "session_boundary",
-                "grade_spread",
-                "grade_adjacency",
-                "age_spread",
-                "group_locks",
-                "parent_paramount",
-                "staff_separation",
-                "cabin_capacity",
-            }
+        assert (
+            frozenset(
+                {
+                    "gender",
+                    "session_boundary",
+                    "grade_spread",
+                    "grade_adjacency",
+                    "age_spread",
+                    "group_locks",
+                    "parent_paramount",
+                    "staff_separation",
+                    "cabin_capacity",
+                }
+            )
+            == ALL_HARD_CONSTRAINTS
         )
 
     def test_diagnostic_probe_equals_structural_hard(self):

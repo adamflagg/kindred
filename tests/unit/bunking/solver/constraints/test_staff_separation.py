@@ -315,3 +315,23 @@ def test_break_glass_softens_staff_nbw():
     # break_glass defaults to False
     add_staff_separation_constraints(ctx2)
     assert is_infeasible(cp_model.CpSolver().Solve(ctx2.model))
+
+
+def test_break_glass_relaxation_count_logged(caplog):
+    """Stream D: the staff_separation summary log must surface how many hard
+    staff NBWs break-glass relaxed, so operators get an INFO-level signal that
+    staff-mandated separations were sacrificed in a run. #1693 made silent NBW
+    downgrades a safety concern; with no log line, the relaxed count lives only
+    in ctx.break_glass_nbw_relaxed and never reaches the run logs."""
+    import logging
+
+    from bunking.solver.constraints.staff_separation import add_staff_separation_constraints
+
+    ctx = _one_bunk_two_girls([_nbw("n1", 100, 200, "staff_not_bunk_with")])
+    ctx.break_glass = True
+    with caplog.at_level(logging.INFO):
+        add_staff_separation_constraints(ctx)
+
+    summary = [r.message for r in caplog.records if "staff_separation:" in r.message]
+    assert summary, "expected a staff_separation summary log line"
+    assert "relaxed(break-glass)=1" in summary[-1]

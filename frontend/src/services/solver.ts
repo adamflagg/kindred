@@ -380,6 +380,8 @@ export const solverService = {
           results: runStatus.results,
           // Stream C: count of bunks at 13-cap; 0 on a clean 12-cap solve.
           overflow_used: runStatus.overflow_used ?? 0,
+          // Stream D: true when break-glass relaxed the request layer to place everyone.
+          break_glass_used: runStatus.break_glass_used ?? false,
           // Don't include error_message when undefined
           created: runStatus.created_at ?? new Date().toISOString(),
           updated: runStatus.updated_at ?? new Date().toISOString(),

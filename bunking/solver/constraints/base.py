@@ -94,7 +94,7 @@ class SolverContext:
     break_glass: bool = False
     # cm_id -> slack BoolVar (1 == this camper's must-satisfy-one went unsatisfied).
     # Populated by parent_paramount under break_glass; consumed by the lex objective.
-    break_glass_mso_unmet_vars: dict[int, "cp_model.IntVar"] = field(default_factory=dict)
+    break_glass_mso_unmet_vars: dict[int, cp_model.IntVar] = field(default_factory=dict)
     # Staff NBWs relaxed under break-glass (same shape as staff_nbw_yields records).
     # Populated by add_staff_separation_constraints under break_glass.
     break_glass_nbw_relaxed: list[dict[str, Any]] = field(default_factory=list)

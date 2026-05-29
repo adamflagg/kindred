@@ -113,4 +113,7 @@ def add_staff_separation_constraints(ctx: SolverContext) -> None:
                 ctx.model.Add(sat_var == 1)  # force separation
                 enforced += 1
 
-    logger.info(f"staff_separation: enforced={enforced}, yielded(parent-paramount)={yielded}")
+    logger.info(
+        f"staff_separation: enforced={enforced}, yielded(parent-paramount)={yielded}, "
+        f"relaxed(break-glass)={len(ctx.break_glass_nbw_relaxed)}"
+    )

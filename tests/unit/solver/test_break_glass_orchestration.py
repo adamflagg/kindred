@@ -13,9 +13,10 @@ requests, never structure.
 
 from collections.abc import Generator
 from typing import Any, ClassVar
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from ortools.sat.python import cp_model
 
 from bunking.config import ConfigLoader
 from bunking.direct_solver import DirectBunkingSolver
@@ -180,3 +181,63 @@ class TestBreakGlassOrchestration:
         assert result.break_glass_used is False
         assert result.infeasibility_diagnosis is not None
         assert len(result.infeasibility_diagnosis) > 0
+
+    def test_break_glass_timeout_returns_unknown_not_structural(self, mock_config):
+        """A break-glass pass that TIMES OUT (cp_model.UNKNOWN) must not be
+        reported as a structural impossibility. The orchestrator should surface
+        an actionable timeout diagnosis (stats status UNKNOWN) and must NOT run
+        the structural find_infeasibility_cause probe — running it would emit a
+        misleading 'constraints contradict each other' message for what is
+        actually a solver timeout (the break-glass budget can shrink to ~1s once
+        pass-1 + the capacity probe have spent most of the time limit).
+
+        Driven deterministically: pass-1 INFEASIBLE, capacity probe False (so
+        break-glass fires), and the break-glass _solve_once returns UNKNOWN.
+        """
+        campers = [
+            create_person(
+                cm_id=1001,
+                first_name=FICTIONAL_CAMPER_NAMES[0][0],
+                last_name=FICTIONAL_CAMPER_NAMES[0][1],
+                gender="F",
+                grade=5,
+            ),
+            create_person(
+                cm_id=1002,
+                first_name=FICTIONAL_CAMPER_NAMES[1][0],
+                last_name=FICTIONAL_CAMPER_NAMES[1][1],
+                gender="F",
+                grade=5,
+            ),
+        ]
+        bunks = [
+            create_bunk(cm_id=2001, name="G-1", gender="F", capacity=DEFAULT_BUNK_CAPACITY),
+            create_bunk(cm_id=2002, name="G-2", gender="F", capacity=DEFAULT_BUNK_CAPACITY),
+        ]
+        solver_input = build_direct_solver_input(persons=campers, bunks=bunks)
+        solver = DirectBunkingSolver(input_data=solver_input, config_service=mock_config)
+
+        def fake_solve_once(*_args, **kwargs):
+            # Pass 1 (strict 12-cap) is INFEASIBLE; the break-glass pass times out.
+            if kwargs.get("break_glass"):
+                return None, cp_model.UNKNOWN
+            return None, cp_model.INFEASIBLE
+
+        with (
+            patch.object(solver, "_solve_once", side_effect=fake_solve_once),
+            patch(
+                "bunking.solver.direct_solver.probe_capacity_relaxation_feasible",
+                return_value=False,
+            ),
+            patch.object(solver, "find_infeasibility_cause") as mock_diag,
+        ):
+            result = solver.solve(time_limit_seconds=30)
+
+        assert result is not None
+        assert result.assignments == []
+        assert result.break_glass_used is False
+        # Timeout, NOT structural impossibility:
+        assert result.stats.get("status") == "UNKNOWN"
+        assert "time" in (result.infeasibility_diagnosis or "").lower()
+        # The structural probe must be short-circuited on a timeout.
+        mock_diag.assert_not_called()

@@ -48,23 +48,38 @@ Soft violations and bonuses accumulate in `SolverContext.soft_constraint_violati
 - **SAME_AGE preferences stay PENDING.** May be a dog-whistle for avoiding AG cabins — staff review required.
 
 
-## Constraint classification (Stream C)
+## Constraint classification (Stream D — four-tier model)
 
-When adding a new constraint module or changing a constraint's hardness:
+When adding a new constraint module or changing a constraint's hardness, classify
+hard constraints (those that issue `model.Add()`) in
+`bunking/solver/constraint_classification.py`. The module docstring is the
+authoritative reference; the four tiers are:
 
-- Hard constraints (issue `model.Add()`): classify in
-  `bunking/solver/constraint_classification.py` as INVIOLABLE,
-  SOLVER_RELAXABLE, or INFO_ONLY. Just classify it here — INFO_ONLY membership
-  auto-propagates to the failure diagnostic: `feasibility.py` derives
-  `_DIAGNOSTIC_PROBE_CONSTRAINTS` from
-  `constraint_classification.diagnostic_probe_constraints()`, so there is no
-  separate probe set to edit there.
-- Soft constraints (`soft_constraint_violations`): do NOT add to any tier.
-  Soft constraints never cause INFEASIBLE — listing them in the diagnostic
-  probe wastes a solve.
-- New SOLVER_RELAXABLE classes need a corresponding orchestrator probe in
-  `DirectBunkingSolver.solve` and a relaxation-objective module in
-  `constraints/` paralleling `overflow_minimization.py`.
+- **INVIOLABLE_ALWAYS** (`gender`, `session_boundary`) — never relaxed by the
+  solver, never probed by the diagnostic. Hard physical/logical impossibilities.
+- **STRUCTURAL_HARD** (`grade_spread`, `grade_adjacency`, `age_spread`,
+  `group_locks`) — inviolable for solver action but staff-actionable. The failure
+  diagnostic probes these (break-glass cannot relax them). Membership
+  auto-propagates: `feasibility.py` derives `_DIAGNOSTIC_PROBE_CONSTRAINTS` from
+  `diagnostic_probe_constraints()`, which returns `STRUCTURAL_HARD` — no separate
+  probe set to edit.
+- **REQUEST_RELAXABLE** (`parent_paramount`, `staff_separation`) — request-driven
+  hard constraints. Break-glass softens these (yielding `break_glass_used=True`)
+  before the diagnostic runs, so they do NOT appear in the diagnostic probe list.
+- **CAPACITY_RELAXABLE** (`cabin_capacity`) — relaxed at solve time (12 → 13),
+  gated by the capacity probe in `DirectBunkingSolver.solve`.
+
+Notes:
+- Soft constraints (`soft_constraint_violations`): do NOT add to any tier. They
+  never cause INFEASIBLE — listing them in the diagnostic probe wastes a solve.
+- A new CAPACITY_RELAXABLE class needs a corresponding orchestrator probe in
+  `DirectBunkingSolver.solve` plus a relaxation-objective module in `constraints/`
+  paralleling `overflow_minimization.py`.
+- A new REQUEST_RELAXABLE class needs break-glass handling; do NOT also list it in
+  STRUCTURAL_HARD or it will wrongly surface in the diagnostic.
+- Back-compat aliases (`INVIOLABLE_CONSTRAINTS`, `SOLVER_RELAXABLE_CONSTRAINTS`,
+  `INFO_ONLY_CONSTRAINTS`) still resolve for older imports but are slated for
+  removal — prefer the four-tier names.
 
 The invariant test in `tests/unit/bunking/solver/test_constraint_classification.py`
 fails loudly if these are out of sync.

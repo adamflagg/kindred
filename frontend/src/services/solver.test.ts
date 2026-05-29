@@ -120,6 +120,29 @@ describe('solverService.pollSolverStatus', () => {
     expect(result.status).toBe('completed')
     expect(fetchWithAuth).toHaveBeenCalledTimes(1)
   })
+
+  it('surfaces break_glass_used and overflow_used from a completed run', async () => {
+    // Stream D: the break-glass signal must flow through the completed-run
+    // mapper, mirroring overflow_used (Stream C). Without it the UI always sees
+    // break_glass_used === undefined for successful runs retrieved via polling.
+    const fetchWithAuth = vi.fn(async () =>
+      jsonResponse({
+        status: 'completed',
+        session_id: TEST_SESSION_ID,
+        started_at: '2026-05-06T21:07:12.000Z',
+        completed_at: '2026-05-06T21:12:12.000Z',
+        results: { stats: { status: 'FEASIBLE' } },
+        overflow_used: 2,
+        break_glass_used: true,
+      })
+    )
+
+    const result = await solverService.pollSolverStatus('run-bg', fetchWithAuth, 300)
+
+    expect(result.status).toBe('completed')
+    expect(result.overflow_used).toBe(2)
+    expect(result.break_glass_used).toBe(true)
+  })
 })
 
 describe('pollSolverStatus diagnostics (#1638)', () => {
