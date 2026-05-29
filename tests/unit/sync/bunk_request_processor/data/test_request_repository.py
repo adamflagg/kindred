@@ -151,48 +151,6 @@ class TestRequestRepository:
         assert create_args["requestee_id"] is None
         assert create_args["request_type"] == "age_preference"
 
-    def test_find_existing_request(self, repository, mock_pb_client):
-        """Test finding an existing request"""
-        mock_client, mock_collection = mock_pb_client
-
-        # Mock existing request with new field names
-        mock_result = Mock()
-        mock_result.items = [
-            self._create_request_mock(
-                id="abc123",
-                requester_id=12345,
-                requestee_id=67890,
-                request_type="bunk_with",
-                session_id=1000002,
-                year=2025,
-                is_first_requested=True,
-                confidence_score=0.95,
-                source="family",
-                source_field="bunk_request_form",
-                csv_position=0,
-                status="resolved",
-                metadata='{"resolution_method": "exact_match"}',
-            )
-        ]
-        mock_collection.get_list.return_value = mock_result
-
-        # Test finding
-        request = repository.find_existing(12345, 67890, "bunk_with", 2025)
-
-        assert request is not None
-        assert request.requester_cm_id == 12345
-        assert request.requested_cm_id == 67890
-        assert request.request_type == RequestType.BUNK_WITH
-        assert request.year == 2025
-
-        # Verify query uses new field names
-        args = mock_collection.get_list.call_args[1]
-        filter_str = args["query_params"]["filter"]
-        assert "requester_id = 12345" in filter_str
-        assert "requestee_id = 67890" in filter_str
-        assert "request_type = 'bunk_with'" in filter_str
-        assert "year = 2025" in filter_str
-
     def test_clear_by_source_fields(self, repository, mock_pb_client):
         """Test clearing requests by source fields"""
         mock_client, mock_collection = mock_pb_client

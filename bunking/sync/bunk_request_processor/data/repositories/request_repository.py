@@ -61,58 +61,6 @@ class RequestRepository:
             logger.warning(f"Error updating bunk request {request.id}: {e}")
             return False
 
-    def find_existing(
-        self,
-        requester_cm_id: int,
-        requested_cm_id: int | None,
-        request_type: str,
-        year: int,
-        session_cm_id: int | None = None,
-    ) -> BunkRequest | None:
-        """Find an existing request matching the criteria.
-
-        Args:
-            requester_cm_id: CampMinder ID of the requester
-            requested_cm_id: CampMinder ID of the requested person (None for placeholders)
-            request_type: Type of request as string (e.g., 'bunk_with', 'not_bunk_with')
-            year: Year of the request
-            session_cm_id: Optional session filter - if provided, only matches requests
-                          for this specific session
-
-        Returns:
-            Matching BunkRequest if found, None otherwise
-        """
-        try:
-            # Build filter using current schema field names (post-migration)
-            # Exclude soft-deleted (merged) requests
-            filter_parts = [
-                f"requester_id = {requester_cm_id}",
-                f"request_type = '{request_type}'",
-                f"year = {year}",
-                'merged_into = ""',  # Exclude soft-deleted requests
-            ]
-
-            if requested_cm_id is not None:
-                filter_parts.append(f"requestee_id = {requested_cm_id}")
-            else:
-                filter_parts.append("requestee_id = null")
-
-            # Add session filter if provided
-            if session_cm_id is not None:
-                filter_parts.append(f"session_id = {session_cm_id}")
-
-            filter_str = " && ".join(filter_parts)
-
-            result = self.pb.collection("bunk_requests").get_list(query_params={"filter": filter_str, "perPage": 1})
-
-            if result.items:
-                return self._map_from_db(result.items[0])
-
-        except Exception as e:
-            logger.warning(f"Error finding existing request: {e}")
-
-        return None
-
     def clear_by_source_fields(
         self, requester_cm_id: int, source_fields: list[str], year: int, session_cm_ids: list[int] | None = None
     ) -> int:

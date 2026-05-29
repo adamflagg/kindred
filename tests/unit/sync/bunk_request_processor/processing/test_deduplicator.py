@@ -4,7 +4,6 @@ Tests the deduplication of bunk requests based on source priority."""
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -29,14 +28,9 @@ class TestDeduplicator:
     """Test the Deduplicator"""
 
     @pytest.fixture
-    def mock_request_repo(self):
-        """Create a mock request repository"""
-        return Mock()
-
-    @pytest.fixture
-    def deduplicator(self, mock_request_repo):
-        """Create a Deduplicator with mocked dependencies"""
-        return Deduplicator(mock_request_repo)
+    def deduplicator(self):
+        """Create a Deduplicator"""
+        return Deduplicator()
 
     @pytest.fixture
     def base_request(self):
@@ -176,27 +170,6 @@ class TestDeduplicator:
 
         assert len(result.kept_requests) == 2
         assert len(result.duplicate_groups) == 0
-
-    def test_database_duplicates_check(self, deduplicator, base_request, mock_request_repo):
-        """Test checking for duplicates in database"""
-        # Mock existing request in database - use Mock object with id attribute
-        # (find_existing returns BunkRequest, not dict)
-        existing_mock = Mock()
-        existing_mock.id = "existing_123"
-        existing_mock.requester_cm_id = 12345
-        existing_mock.requested_cm_id = 67890
-        existing_mock.request_type = "bunk_with"
-        existing_mock.session_cm_id = 1000002
-        mock_request_repo.find_existing.return_value = existing_mock
-
-        requests = [base_request]
-        result = deduplicator.deduplicate_batch(requests, check_database=True)
-
-        # Should still be kept but marked as database duplicate
-        assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].metadata["has_database_duplicate"] is True
-        assert result.kept_requests[0].metadata["database_duplicate_id"] == "existing_123"
-        assert result.statistics["database_duplicates"] == 1
 
     def test_merge_metadata(self, deduplicator, base_request):
         """Test that metadata is merged from same-source duplicates"""
@@ -361,43 +334,6 @@ class TestDeduplicator:
         kept = result.kept_requests[0]
         assert kept.confidence_score == 0.99  # Highest confidence wins
         assert result.statistics["duplicates_removed"] == 1
-
-    def test_find_existing_called_with_correct_parameters(self, deduplicator, base_request, mock_request_repo):
-        """Test that find_existing is called with year and session_cm_id.
-
-        Bug fix: Deduplicator was passing session_cm_id to wrong parameter.
-        find_existing() needs both year AND session_cm_id for proper filtering.
-        """
-        mock_request_repo.find_existing.return_value = None
-
-        requests = [base_request]
-        deduplicator.deduplicate_batch(requests, check_database=True)
-
-        # Verify find_existing was called with correct parameters
-        mock_request_repo.find_existing.assert_called_once()
-        call_kwargs = mock_request_repo.find_existing.call_args.kwargs
-
-        # Collect all failures to see full picture
-        errors = []
-
-        # Must have all required parameters
-        if call_kwargs.get("requester_cm_id") != 12345:
-            errors.append(f"requester_cm_id: expected 12345, got {call_kwargs.get('requester_cm_id')}")
-        if call_kwargs.get("requested_cm_id") != 67890:
-            errors.append(f"requested_cm_id: expected 67890, got {call_kwargs.get('requested_cm_id')}")
-        # request_type should be passed as string value, not enum
-        if call_kwargs.get("request_type") != "bunk_with":
-            errors.append(
-                f"request_type: expected 'bunk_with' (str), got {call_kwargs.get('request_type')} ({type(call_kwargs.get('request_type')).__name__})"
-            )
-        # CRITICAL: Both year AND session_cm_id must be passed
-        if call_kwargs.get("year") != 2025:
-            errors.append(f"year: expected 2025, got {call_kwargs.get('year')}")
-        if call_kwargs.get("session_cm_id") != 1000002:
-            errors.append(f"session_cm_id: expected 1000002, got {call_kwargs.get('session_cm_id')}")
-
-        if errors:
-            raise AssertionError("Parameter mismatches:\n  " + "\n  ".join(errors))
 
     def test_socialize_with_bunk_with_deduped_across_fields(self, deduplicator):
         """Test that non-AGE_PREFERENCE socialize_with requests cross-field dedupe normally.
@@ -797,44 +733,6 @@ class TestSimplifiedSourcePriority:
             f"Expected higher-confidence internal_notes to win on confidence tiebreak; got {survivor.source_field}"
         )
         assert survivor.confidence_score == 0.95
-
-
-class TestDatabaseDuplicateMerge:
-    """Test database duplicate detection and merge metadata."""
-
-    @pytest.fixture
-    def mock_request_repo(self):
-        """Create a mock request repository"""
-        return Mock()
-
-    def test_database_duplicate_flagged_with_all_metadata(self, mock_request_repo):
-        """Test that database duplicates are flagged with ID for merge handling."""
-        existing_mock = Mock()
-        existing_mock.id = "existing_record_123"
-        mock_request_repo.find_existing.return_value = existing_mock
-
-        new_request = BunkRequest(
-            requester_cm_id=12345,
-            requested_cm_id=67890,
-            request_type=RequestType.NOT_BUNK_WITH,
-            session_cm_id=1000002,
-            is_first_requested=True,
-            confidence_score=0.95,
-            source_field="staff_not_bunk_with",
-            csv_position=0,
-            year=2025,
-            status=RequestStatus.RESOLVED,
-            metadata={"ai_p1_reasoning": {"parsed": True}},
-        )
-
-        deduplicator = Deduplicator(mock_request_repo)
-        result = deduplicator.deduplicate_batch([new_request], check_database=True)
-
-        # Should be flagged for merge handling
-        assert len(result.kept_requests) == 1
-        assert result.kept_requests[0].metadata["has_database_duplicate"] is True
-        assert result.kept_requests[0].metadata["database_duplicate_id"] == "existing_record_123"
-        assert result.statistics["database_duplicates"] == 1
 
 
 class TestAgePreferenceDeduplication:
@@ -1571,7 +1469,7 @@ class TestNotBunkWithHardSeparationPartition:
 
     @pytest.fixture
     def deduplicator(self):
-        return Deduplicator(Mock())
+        return Deduplicator()
 
     def _nbw(self, source_field: str, confidence: float = 0.9) -> BunkRequest:
         return BunkRequest(
