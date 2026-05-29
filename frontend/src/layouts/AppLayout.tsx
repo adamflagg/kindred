@@ -466,18 +466,17 @@ export const AppLayout = () => {
                     {syncStatus._bunk_requests_upload?.uploaded_at ? (
                       <span
                         className="flex items-center gap-1.5 whitespace-nowrap"
-                        title={`${syncStatus._bunk_requests_upload.filename} • ${buildSyncTooltip(
+                        title={`Uploaded ${format(
+                          new Date(syncStatus._bunk_requests_upload.uploaded_at),
+                          'MMM d, h:mm a'
+                        )} • ${syncStatus._bunk_requests_upload.filename} • ${buildSyncTooltip(
                           'bunk requests',
                           syncStatus.bunk_requests ?? { status: 'idle' }
                         )}`}
                       >
                         <Clock className="h-3 w-3" />
+                        {/* #1706: relative-only inline; absolute time lives in the tooltip */}
                         Requests uploaded{' '}
-                        {format(
-                          new Date(syncStatus._bunk_requests_upload.uploaded_at),
-                          'MMM d, h:mm a'
-                        )}
-                        {' · '}
                         {formatDistanceToNow(
                           new Date(syncStatus._bunk_requests_upload.uploaded_at),
                           { addSuffix: true }

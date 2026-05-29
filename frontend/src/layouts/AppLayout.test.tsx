@@ -300,21 +300,23 @@ describe('AppLayout requests upload label', () => {
     }))
   }
 
-  it('uses upload time and absolute+relative wording when metadata is present', () => {
+  it('uses upload time with relative-only wording in the label (#1706)', () => {
     mockWithUpload('BunkRequests_2026-04-04.csv')
     renderAppLayout()
 
     const label = screen.getByText(/Requests uploaded/)
     expect(label).toBeInTheDocument()
-    // Absolute date (date-fns "MMM d" — locale-independent month abbrev)
-    expect(label.textContent).toMatch(/Apr 4/)
-    // Relative phrase ("ago" suffix)
+    // Relative phrase ("ago" suffix) is what's shown inline
     expect(label.textContent).toMatch(/ago/)
+    // #1706: the absolute date must NOT appear in the visible label — rendering
+    // both the full timestamp and the relative phrase made the header status
+    // string too long. The absolute time moves to the tooltip instead.
+    expect(label.textContent).not.toMatch(/Apr 4/)
     // Should NOT use the sync end_time wording when upload metadata exists
     expect(screen.queryByText(/Requests synced/)).not.toBeInTheDocument()
   })
 
-  it('exposes the original CSV filename via tooltip', () => {
+  it('exposes the original CSV filename and absolute upload time via tooltip (#1706)', () => {
     mockWithUpload('BunkRequests_2026-04-04.csv')
     renderAppLayout()
     const label = screen.getByText(/Requests uploaded/)
@@ -322,6 +324,8 @@ describe('AppLayout requests upload label', () => {
     expect(tooltipHost).not.toBeNull()
     const title = tooltipHost?.getAttribute('title') ?? ''
     expect(title).toContain('BunkRequests_2026-04-04.csv')
+    // Absolute date preserved in the tooltip now that it's out of the label
+    expect(title).toMatch(/Apr 4/)
   })
 
   it('falls back to "Requests synced" wording when upload metadata is missing', () => {
