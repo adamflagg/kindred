@@ -27,12 +27,7 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: true,
-        presentable: true,
-        options: {
-          min: 1,
-          max: 200,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         type: "bool",
@@ -50,12 +45,7 @@ migrate((app) => {
         type: "text",
         name: "last_updated_utc",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "autodate",

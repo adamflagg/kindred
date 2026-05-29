@@ -18,34 +18,19 @@ migrate((app) => {
         name: "section_key",
         type: "text",
         required: true,
-        presentable: true,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         name: "title",
         type: "text",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: 255,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "description",
         type: "text",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 1000,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "display_order",
@@ -87,8 +72,7 @@ migrate((app) => {
     viewRule: '@request.auth.is_admin = true',
     createRule: '@request.auth.is_admin = true',
     updateRule: '@request.auth.is_admin = true',
-    deleteRule: '@request.auth.is_admin = true',
-    options: {}
+    deleteRule: '@request.auth.is_admin = true'
   });
 
   app.save(collection);

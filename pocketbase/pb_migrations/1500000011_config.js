@@ -18,63 +18,37 @@ migrate((app) => {
         name: "category",
         type: "text",
         required: true,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "subcategory",
         type: "text",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 100,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         name: "config_key",
         type: "text",
         required: true,
-        presentable: true,
-        options: {
-          min: null,
-          max: 255,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         name: "value",
         type: "json",
         required: true,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         name: "metadata",
         type: "json",
         required: false,
-        presentable: false,
-        options: {
-          maxSize: 2000000
-        }
+        presentable: false
       },
       {
         name: "description",
         type: "text",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 1000,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "autodate",
@@ -101,8 +75,7 @@ migrate((app) => {
     viewRule: '@request.auth.id != ""',
     createRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "registration.manage"',
     updateRule: '@request.auth.is_admin = true || @request.auth.cached_permissions ~ "registration.manage"',
-    deleteRule: '@request.auth.is_admin = true',
-    options: {}
+    deleteRule: '@request.auth.is_admin = true'
   });
 
   app.save(collection);

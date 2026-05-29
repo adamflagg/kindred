@@ -35,12 +35,7 @@ migrate((app) => {
         type: "text",
         name: "name",
         required: true,
-        presentable: true,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: true
       },
       {
         type: "number",
@@ -55,21 +50,13 @@ migrate((app) => {
         type: "date",
         name: "start_date",
         required: true,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "date",
         name: "end_date",
         required: true,
-        presentable: false,
-        options: {
-          min: "",
-          max: ""
-        }
+        presentable: false
       },
       {
         type: "select",
@@ -92,12 +79,7 @@ migrate((app) => {
         type: "text",
         name: "description",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: null,
-          pattern: ""
-        }
+        presentable: false
       },
       {
         type: "bool",

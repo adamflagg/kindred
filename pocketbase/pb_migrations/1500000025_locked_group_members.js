@@ -51,12 +51,7 @@ migrate((app) => {
         type: "text",
         name: "added_by",
         required: false,
-        presentable: false,
-        options: {
-          min: null,
-          max: 255,
-          pattern: ""
-        }
+        presentable: false
       }
     ],
     indexes: [
