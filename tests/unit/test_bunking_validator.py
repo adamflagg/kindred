@@ -242,6 +242,57 @@ class TestBunkingValidator:
         assert result.statistics.bunks_at_capacity == 1
         assert result.statistics.bunks_over_capacity == 0
 
+    def test_non_enrolled_assignments_excluded_from_capacity_counts(self, validator, basic_session):
+        """Assignments whose camper is no longer enrolled must not count toward occupancy.
+
+        ``persons`` is the active-enrolled set (status_id=2); ``assignments`` may
+        still reference a camper who has since cancelled, leaving a stale draft
+        row. Counting that row inflates per-bunk occupancy, ``capacity_by_gender``,
+        and ``assigned_campers`` (and drives ``unassigned`` negative). The
+        validator must exclude assignments whose person is absent from ``persons``.
+        """
+        bunk = MockBunk(campminder_id="30001", name="B-1", gender="M")
+        # 12 active-enrolled campers...
+        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Camper {i}", age=10, grade=5) for i in range(12)]
+        assignments = [MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="30001") for i in range(12)]
+        # ...plus one stale draft row for a cancelled camper (not in `persons`),
+        # which would push the bunk to 13 if counted.
+        assignments.append(MockBunkAssignment(person_cm_id="19999", bunk_cm_id="30001"))
+
+        result = validator.validate_bunking(
+            session=basic_session,
+            bunks=[bunk],
+            assignments=assignments,
+            persons=persons,
+            requests=[],
+        )
+
+        assert result.statistics.bunks_over_capacity == 0
+        assert result.statistics.bunks_at_capacity == 1
+        assert result.statistics.assigned_campers == 12
+        assert result.statistics.unassigned_campers == 0
+        assert result.statistics.capacity_by_gender["male"]["assigned"] == 12
+
+    def test_non_enrolled_assignments_emit_info_issue(self, validator, basic_session):
+        """Excluded stale assignments surface as an INFO issue so staff see the drift."""
+        bunk = MockBunk(campminder_id="30001", name="B-1", gender="M")
+        persons = [MockPerson(campminder_id=f"{10000 + i}", name=f"Camper {i}", age=10, grade=5) for i in range(12)]
+        assignments = [MockBunkAssignment(person_cm_id=f"{10000 + i}", bunk_cm_id="30001") for i in range(12)]
+        assignments.append(MockBunkAssignment(person_cm_id="19999", bunk_cm_id="30001"))
+
+        result = validator.validate_bunking(
+            session=basic_session,
+            bunks=[bunk],
+            assignments=assignments,
+            persons=persons,
+            requests=[],
+        )
+
+        stale_issue = next((i for i in result.issues if i.type == "stale_assignments"), None)
+        assert stale_issue is not None
+        assert stale_issue.severity == ValidationSeverity.INFO
+        assert stale_issue.details["count"] == 1
+
     def test_validate_request_satisfaction_bunk_with(self, validator, basic_session, basic_bunks, basic_persons):
         """Test satisfaction tracking for bunk_with requests."""
         assignments = [
@@ -694,6 +745,43 @@ class TestLevelProgressionValidation:
         # Should not detect regression since different session
         regression_issues = [i for i in result.issues if i.type == "level_regression"]
         assert len(regression_issues) == 0
+
+    def test_level_regression_skipped_for_non_enrolled_camper(self, validator, session):
+        """A camper no longer enrolled (absent from `persons`) must not trip a
+        level-regression warning, even with a prior-year higher bunk in the same
+        session. Same exclusion the occupancy/capacity checks apply — a cancelled
+        camper's stale draft row should not surface as a regression for staff.
+        """
+        bunks = [
+            MockBunk(campminder_id="20005", name="B-5"),
+            MockBunk(campminder_id="20003", name="B-3"),
+        ]
+        # The only assignee below is no longer enrolled (not in `persons`).
+        persons: list[MockPerson] = []
+        assignments = [
+            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="20003", session_cm_id="1234567"),
+        ]
+        historical = [
+            HistoricalBunkingRecord(
+                person_cm_id=10001,
+                bunk_name="B-5",  # higher level last year, same session → would be a regression
+                year=2024,
+                session_cm_id=1234567,
+            ),
+        ]
+
+        result = validator.validate_bunking(
+            session=session,
+            bunks=bunks,
+            assignments=assignments,
+            persons=persons,
+            requests=[],
+            historical_bunking=historical,
+        )
+
+        regression_issues = [i for i in result.issues if i.type == "level_regression"]
+        assert regression_issues == [], "cancelled camper should not trigger a level regression"
+        assert result.statistics.level_progression["regressed"] == 0
 
 
 class TestNormalizeSourceField:

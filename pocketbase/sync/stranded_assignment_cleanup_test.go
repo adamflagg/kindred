@@ -32,6 +32,29 @@ func TestFindStrandedAssignments(t *testing.T) {
 	}
 }
 
+func TestFindEnrollmentOrphans(t *testing.T) {
+	enrolledPairs := map[string]bool{
+		strandedPairKey("sess1", "p1"): true,
+	}
+	// Only sess1 has enrolled attendees; sess2 has none (its attendees failed to sync).
+	enrolledSessions := map[string]bool{"sess1": true}
+	candidates := []strandedCandidate{
+		{RecordID: "r1", SessionID: "sess1", PersonID: "p1"}, // enrolled - kept
+		{RecordID: "r2", SessionID: "sess1", PersonID: "p2"}, // cancelled - orphan
+		{RecordID: "r3", SessionID: "sess1", PersonID: ""},   // no person - skipped
+		{RecordID: "r4", SessionID: "sess2", PersonID: "p9"}, // session has zero enrolled - skipped
+	}
+
+	orphans := findEnrollmentOrphans(enrolledSessions, enrolledPairs, candidates)
+
+	if len(orphans) != 1 {
+		t.Fatalf("want 1 orphan, got %d: %+v", len(orphans), orphans)
+	}
+	if orphans[0].RecordID != "r2" {
+		t.Errorf("want [r2], got [%s]", orphans[0].RecordID)
+	}
+}
+
 // setupStrandedCollections builds the minimal schema the reconciler touches.
 func setupStrandedCollections(t *testing.T, app core.App) {
 	t.Helper()
@@ -91,6 +114,15 @@ func setupStrandedCollections(t *testing.T, app core.App) {
 	prod.Fields.Add(&core.NumberField{Name: "year"})
 	if err := app.Save(prod); err != nil {
 		t.Fatalf("create bunk_assignments: %v", err)
+	}
+
+	attendees := core.NewBaseCollection("attendees")
+	attendees.Fields.Add(&core.RelationField{Name: "person", CollectionId: persons.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.RelationField{Name: "session", CollectionId: sessions.Id, MaxSelect: 1})
+	attendees.Fields.Add(&core.NumberField{Name: "status_id"})
+	attendees.Fields.Add(&core.NumberField{Name: "year"})
+	if err := app.Save(attendees); err != nil {
+		t.Fatalf("create attendees: %v", err)
 	}
 }
 
@@ -426,5 +458,133 @@ func TestStrandedAssignmentCleanup_ProdQueryErrorIsCountedNotFatal(t *testing.T)
 	}
 	if svc.WasSuccessful() {
 		t.Error("WasSuccessful() should be false when Stats.Errors > 0")
+	}
+}
+
+func TestStrandedAssignmentCleanup_SweepsEnrollmentOrphanDraft(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "G-Bet", "year": 2026})
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	enrolled := saveRec(t, app, "persons", map[string]any{"cm_id": 9002})
+	// Bunk IS planned for the session, so the draft is NOT bunk-stranded — the
+	// only thing wrong is the camper's enrollment.
+	plan := saveRec(t, app, "bunk_plans", map[string]any{"bunk": bunk.Id, "session": sess.Id, "year": 2026})
+	// cancelled camper has a non-enrolled attendee row; an enrolled peer keeps
+	// the session's enrolled set non-empty so the per-session guard passes.
+	saveRec(t, app, "attendees", map[string]any{"person": cancelled.Id, "session": sess.Id, "status_id": 32, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{"person": enrolled.Id, "session": sess.Id, "status_id": 2, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sess.Id, "year": 2026})
+	draft := saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": cancelled.Id, "session": sess.Id,
+		"bunk": bunk.Id, "bunk_plan": plan.Id, "year": 2026,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("bunk_assignments_draft", draft.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if got.GetString("bunk") != "" {
+		t.Errorf("want bunk cleared for cancelled camper, got %q", got.GetString("bunk"))
+	}
+	if got.GetString("bunk_plan") != "" {
+		t.Errorf("want bunk_plan cleared for cancelled camper, got %q", got.GetString("bunk_plan"))
+	}
+}
+
+func TestStrandedAssignmentCleanup_EnrollmentGateSkipsPerSession(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	// Session A has enrolled attendees; session B has none (its attendees failed
+	// to sync). The per-session guard must protect session B's drafts from being
+	// nulled as "orphans" — a zero-enrolled session is unreliable, not authoritative.
+	sessA := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	sessB := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 200, "year": 2026})
+	bunkA := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "A-1", "year": 2026})
+	bunkB := saveRec(t, app, "bunks", map[string]any{"cm_id": 2, "name": "B-1", "year": 2026})
+	personA := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	personB := saveRec(t, app, "persons", map[string]any{"cm_id": 9002})
+	// Both sessions have valid bunk plans, so neither draft is bunk-stranded.
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": bunkA.Id, "session": sessA.Id, "year": 2026})
+	planB := saveRec(t, app, "bunk_plans", map[string]any{"bunk": bunkB.Id, "session": sessB.Id, "year": 2026})
+	// Only session A has an enrolled attendee.
+	saveRec(t, app, "attendees", map[string]any{"person": personA.Id, "session": sessA.Id, "status_id": 2, "year": 2026})
+	scenario := saveRec(t, app, "saved_scenarios", map[string]any{"name": "April", "session": sessB.Id, "year": 2026})
+	// A draft in session B for a person with no enrolled attendee there. It must
+	// NOT be swept — session B's empty enrolled set is unreliable.
+	draftB := saveRec(t, app, "bunk_assignments_draft", map[string]any{
+		"scenario": scenario.Id, "person": personB.Id, "session": sessB.Id,
+		"bunk": bunkB.Id, "bunk_plan": planB.Id, "year": 2026,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	got, err := app.FindRecordById("bunk_assignments_draft", draftB.Id)
+	if err != nil {
+		t.Fatalf("reload draft: %v", err)
+	}
+	if got.GetString("bunk") != bunkB.Id {
+		t.Errorf("per-session enrollment gate failed — session-B draft swept despite zero enrolled (bunk=%q)",
+			got.GetString("bunk"))
+	}
+}
+
+func TestStrandedAssignmentCleanup_EnrollmentOrphanProdAudit(t *testing.T) {
+	app, err := pbtests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	setupStrandedCollections(t, app)
+
+	sess := saveRec(t, app, "camp_sessions", map[string]any{"cm_id": 100, "year": 2026})
+	bunk := saveRec(t, app, "bunks", map[string]any{"cm_id": 1, "name": "G-Bet", "year": 2026})
+	cancelled := saveRec(t, app, "persons", map[string]any{"cm_id": 9001})
+	enrolled := saveRec(t, app, "persons", map[string]any{"cm_id": 9002})
+	// Bunk is planned (not bunk-stranded); the prod row is only enrollment-orphaned.
+	saveRec(t, app, "bunk_plans", map[string]any{"bunk": bunk.Id, "session": sess.Id, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{"person": cancelled.Id, "session": sess.Id, "status_id": 32, "year": 2026})
+	saveRec(t, app, "attendees", map[string]any{"person": enrolled.Id, "session": sess.Id, "status_id": 2, "year": 2026})
+	prodRow := saveRec(t, app, "bunk_assignments", map[string]any{
+		"person": cancelled.Id, "session": sess.Id, "bunk": bunk.Id, "year": 2026,
+	})
+
+	svc := NewStrandedAssignmentCleanupSync(app)
+	svc.SetYear(2026)
+	if err = svc.Sync(context.Background()); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	if svc.Stats.ProdAuditWarnings != 1 {
+		t.Errorf("want ProdAuditWarnings=1 for enrollment-orphaned prod row, got %d", svc.Stats.ProdAuditWarnings)
+	}
+	// Prod row must NOT be cleared (observe-only).
+	got, err := app.FindRecordById("bunk_assignments", prodRow.Id)
+	if err != nil {
+		t.Fatalf("prod row was deleted by the reconciler: %v", err)
+	}
+	if got.GetString("bunk") != bunk.Id {
+		t.Errorf("prod row bunk must not be cleared (observe-only), got %q", got.GetString("bunk"))
 	}
 }
