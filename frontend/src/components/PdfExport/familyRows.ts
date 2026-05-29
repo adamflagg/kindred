@@ -113,7 +113,8 @@ export function buildFamilyRows(
     })
   }
   // Stream D Phase 3: campers whose material-parent request was sacrificed by break-glass
-  // (placed but request left unmet). One entry per unmet request — deduplicated by (cm_id, cohort).
+  // (placed but request left unmet). One raw entry per unmet request; deduplicated by
+  // (cm_id, cohort) into one row per camper (multiple unmet requests become subRows).
   for (const s of statistics.unsatisfied_material_parent_detail ?? []) {
     let detail: string
     if (s.request_type === 'bunk_with') {

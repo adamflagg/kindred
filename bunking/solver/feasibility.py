@@ -316,7 +316,7 @@ def find_infeasibility_cause(
     # excluded because it's a soft constraint — disabling it cannot change
     # feasibility. The test in
     # tests/unit/bunking/solver/test_constraint_classification.py enforces
-    # _DIAGNOSTIC_PROBE_CONSTRAINTS == INFO_ONLY_CONSTRAINTS.
+    # _DIAGNOSTIC_PROBE_CONSTRAINTS == STRUCTURAL_HARD.
     # sorted(): the loop returns on the first constraint whose removal restores
     # feasibility, so an unordered frozenset would make the reported cause flip
     # between processes (PYTHONHASHSEED). A stable order keeps the diagnosis

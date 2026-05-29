@@ -160,7 +160,7 @@ class ValidationStatistics(BaseModel):
     # modal drill-down (#1105). Each entry is {cm_id, name}.
     unsatisfied_material_parent_persons: list[dict[str, Any]] = Field(default_factory=list)
     # One entry per unsatisfied MP request with requester_cm_id, requester_name,
-    # target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on
+    # request_type, target_cm_id, target_name, requester_bunk_name, target_bunk_name. Emitted on
     # the validation payload (typed in solver.ts). The post-check modal drill-down
     # this once fed was removed in Group 65 (de-duped against "Families to contact");
     # the field is retained for the API contract / future consumers.
