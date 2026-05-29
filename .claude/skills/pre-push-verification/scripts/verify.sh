@@ -299,9 +299,12 @@ if $HAS_MIGRATIONS; then
         # `options: [ ... ]` arrays (e.g. select-option values in config.js) are
         # legitimate and must NOT be flagged — same object-vs-array distinction
         # the eslint no-restricted-syntax rule makes.
-        if grep -n 'options\s*:\s*{' "$file" | grep -v '//.*options' | grep -q .; then
+        # Filter only full-line `//` comments. grep -n prefixes each hit with
+        # `LINENUM:`, so anchor on that prefix; a bare `^[[:space:]]*//` would
+        # never match. Keeps real `options: {` hits that carry an inline comment.
+        if grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .; then
             echo "    Found 'options: {}' field wrapper (v0.23+ anti-pattern): $file"
-            grep -n 'options\s*:\s*{' "$file" | grep -v '//.*options' | head -5 | while read -r line; do
+            grep -n 'options\s*:\s*{' "$file" | grep -vE '^[0-9]+:[[:space:]]*//' | head -5 | while read -r line; do
                 echo "      $line"
             done
             OPTIONS_OK=false
