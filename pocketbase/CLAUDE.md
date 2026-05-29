@@ -14,7 +14,7 @@ Go service: SQLite DB, auth, CampMinder sync. Entry: `main.go`. Module: `github.
 
 ## Migrations — read before writing any
 
-**MANDATORY:** `docs/reference/pocketbase-migrations.md`. PocketBase v0.23 changed field property syntax; using the old `options: {}` wrapper causes **silent data truncation**.
+**MANDATORY:** `docs/reference/pocketbase-migrations.md`. PocketBase v0.23 changed field property syntax; the old `options: {}` wrapper is **silently ignored** — fields fall back to PB defaults (text→5000 chars, json→1 MB) instead of your declared values, and over-cap writes are rejected (not truncated).
 
 ### Numbering rule
 

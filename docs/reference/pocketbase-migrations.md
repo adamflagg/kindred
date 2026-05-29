@@ -1,6 +1,6 @@
 # PocketBase Migration Patterns (v0.23.0+) — READ THIS FIRST
 
-> **MANDATORY**: Before writing ANY PocketBase migration, you MUST review this section. PocketBase v0.23+ changed how field properties are defined. Using the old `options: {}` wrapper pattern will cause fields to use DEFAULT values (e.g., 5000 char limit for text) even if you specify different values. This causes silent data truncation bugs that are hard to diagnose.
+> **MANDATORY**: Before writing ANY PocketBase migration, you MUST review this section. PocketBase v0.23+ changed how field properties are defined. The old `options: {}` wrapper pattern is silently ignored — the field uses PB's DEFAULT cap (5000 chars for text, 1 MB for json) instead of your declared value. PB then REJECTS over-cap writes with a validation error (it does NOT truncate), so the live schema silently diverges from what the migration says — a hard-to-diagnose integrity bug.
 
 ## Field Type Reference (v0.23+ Syntax)
 
@@ -159,14 +159,14 @@ migrate((app) => {
 
 | Wrong | Right | Consequence of Wrong |
 |-------|-------|---------------------|
-| `options: { min: 0, max: 100000 }` for text | `min: 0, max: 100000` (direct) | Silent 5000 char limit, data truncation |
+| `options: { min: 0, max: 100000 }` for text | `min: 0, max: 100000` (direct) | Silent 5000-char default cap; over-cap writes rejected (declared limit never applied) |
 | `options: { values: [...] }` for select | `values: [...]` (direct) | Empty enum, validation fails |
 | `collectionId` inside `options: {}` | `collectionId` as direct property | Relation breaks |
 | `collection.fields.push({...})` | `collection.fields.add(new Field({...}))` | Field not added |
 | Hardcoded collection IDs | `app.findCollectionByNameOrId("name").id` | Breaks on fresh DB |
 | `for...of` on fields | Index-based `for` loop | "object is not iterable" error |
 | `return app.save()` | `app.save()` (no return needed) | May cause issues |
-| `min: null, max: null` for text | `min: 0, max: 0` (0 = unlimited for text) | N/A — both work for text fields |
+| `min: null, max: null` for text | `min: 0, max: 0` (0 → PB default 5000-char cap, NOT unlimited) | N/A — both normalize to the 5000 default for text |
 | `min: 0, max: 0` for number | `min: null, max: null` (null = no limit for number) | `max: 0` enforced as literal maximum of 0, rejects all positive values |
 
 ## Migration Checklist

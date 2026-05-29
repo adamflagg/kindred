@@ -233,7 +233,7 @@ Worktree mechanics (ports, isolation, cleanup): `docs/reference/git-workflow.md`
 
 ### PocketBase Migrations
 
-> **MANDATORY:** Read `docs/reference/pocketbase-migrations.md` before writing ANY migration. PocketBase v0.23+ changed field property syntax — using the old `options: {}` wrapper pattern causes silent data truncation.
+> **MANDATORY:** Read `docs/reference/pocketbase-migrations.md` before writing ANY migration. PocketBase v0.23+ changed field property syntax — the old `options: {}` wrapper is silently ignored, so fields fall back to PB defaults (text capped at 5000 chars, not your declared value) and over-cap writes are rejected.
 
 **Numbering rule:** New migrations MUST use a number greater than the highest filename in `pocketbase/pb_migrations/` on `origin/main`. Do not fill numbering gaps left by past consolidations.
 
