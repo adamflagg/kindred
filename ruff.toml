@@ -80,6 +80,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "bunking/sync/bunk_request_processor/processing/deduplicator.py" = ["S101"]
 "bunking/solver/constraints/break_glass_minimization.py" = ["S101"]  # deliberate int64 objective-range guard
 "api/services/metrics_sql_repository.py" = ["S608"]  # f-string SQL uses parameterized ?'s only
+"tests/setup/*.py" = ["S608"]  # #1623 synthetic-seed tests build parameterized IN-clauses over fixture DBs
 
 # Allow fix for all enabled rules when using --fix
 fixable = ["ALL"]

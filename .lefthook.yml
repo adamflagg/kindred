@@ -51,6 +51,15 @@ pre-commit:
           fi
         done
 
+    synthetic-seed-leak-scan:
+      # #1623: never let a regenerated synthetic fixture be committed with PII.
+      # Runs only when the artifact is staged; artifact-only mode needs no real DB.
+      glob: "tests/fixtures/synthetic_pb/data.db.gz"
+      run: |
+        tmp="$(mktemp -d)/data.db"
+        gunzip -c tests/fixtures/synthetic_pb/data.db.gz > "$tmp"
+        uv run python -m scripts.setup.synthetic.scan_leaks --artifact "$tmp" --artifact-only
+
     json-validate:
       glob:
         - "config/*.json"
