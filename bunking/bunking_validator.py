@@ -895,15 +895,18 @@ class BunkingValidator:
         stats.campers_with_unsatisfied_material_parent_requests = sum(
             1
             for pid, reqs in material_parent_by_person.items()
-            if reqs and not satisfied_material_parent_by_person.get(pid)
+            if _gated(reqs) and not satisfied_material_parent_by_person.get(pid)
         )
         # Match the canonical satisfaction policy from `bunking/satisfaction/aggregate.bucket_status`:
         # the bucket is "unsatisfied" only when total > 0 AND zero satisfied. Partial satisfaction
         # (≥1 of N) classifies as "satisfied" and must NOT appear here, otherwise the drill-down
         # contradicts `campers_with_unsatisfied_material_parent_requests` above.
+        # #1520: gate on impossibility so entirely-impossible campers (all requests in
+        # impossible_request_ids) are excluded — they belong under "Got nothing"
+        # (mp_campers_entirely_impossible), not "sacrificed".
         unmet_persons: list[dict[str, Any]] = []
         for pid, reqs in material_parent_by_person.items():
-            if not reqs or satisfied_material_parent_by_person.get(pid):
+            if not _gated(reqs) or satisfied_material_parent_by_person.get(pid):
                 continue
             try:
                 cm_id = int(pid)
@@ -918,12 +921,19 @@ class BunkingValidator:
         # Per-request detail for unsatisfied MP requests — one entry per request (not per requester).
         # Reuses material_parent_by_person, satisfied_material_parent_by_person, person_by_id,
         # assignments_by_person, and bunk_by_id — no new lookups needed.
+        # #1520: gate on impossibility — entirely-impossible campers (empty _gated(reqs)) are
+        # excluded from this cohort; they belong under "Got nothing" (mp_campers_entirely_impossible).
+        # For partially-impossible campers, only emit entries for their POSSIBLE unmet requests.
         unsatisfied_material_parent_detail: list[dict[str, str]] = []
         for pid, reqs in material_parent_by_person.items():
-            if not reqs or satisfied_material_parent_by_person.get(pid):
-                # Camper has ≥1 satisfied MP request → canonical "satisfied" bucket, skip all.
+            if not _gated(reqs) or satisfied_material_parent_by_person.get(pid):
+                # Entirely-impossible camper (no possible requests) OR has ≥1 satisfied MP
+                # request → canonical "satisfied" bucket; skip all.
                 continue
             for req in reqs:
+                # Skip impossible requests — only emit entries for possible-but-unmet ones.
+                if _impossible_ids and getattr(req, "id", None) in _impossible_ids:
+                    continue
                 # Fall back to a Person {pid} label when person_by_id is incomplete
                 # (degraded-data scenarios e.g. partial sync). Mirrors the sibling
                 # `unsatisfied_material_parent_persons` block above so the modal's
