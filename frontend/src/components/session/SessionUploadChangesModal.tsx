@@ -16,7 +16,10 @@ interface Props {
 }
 
 function isReview(r: UploadChangeRow): boolean {
-  return r.final_status === 'pending'
+  // debug_pipeline_summary.final_status is stored UPPERCASE ("PENDING",
+  // "RESOLVED", …) by orchestrator convention; normalize so the case-sensitive
+  // comparison can't silently mislabel every pending row as auto-matched.
+  return r.final_status.toUpperCase() === 'PENDING'
 }
 
 export default function SessionUploadChangesModal({
