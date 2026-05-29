@@ -107,6 +107,29 @@ These survived the regex pass in the previous (pre-§a/§b/§c) audit before bei
 
 Survey scope: features added in Python 3.10–3.14. Re-run Part A after toolchain bumps to 3.15+.
 
+### Open linting row — docstring presence (pydocstyle `D` subset) — supersedes #919
+
+> A code-quality lint track, **separate from the closed 3.10–3.14 language-idiom audit above.** Tracked under §1 because ruff-rule expansion is repo-wide `ruff.toml` work (cf. `PLC0415` in #1575); the language-idiom closeout is unaffected.
+
+**Why #919 is closed, not worked as written.** CodeRabbit's docstring pre-merge check is already **off** (`.coderabbit.yaml` → `pre_merge_checks.docstrings.mode: "off"`, "not a gate we want CR enforcing"), so #919's "⚠️ on every PR until resolved" premise is dead. Its "56.52% vs 80%" was also a measurement artifact — a bare `interrogate .` walks stale `.claude/worktrees/*/.venv/site-packages` and drags the number to ~48%. Scoped to git-tracked source, real **presence** coverage is **~77%** (`interrogate`, default counting). We do **not** chase an arbitrary coverage %; adopt a curated ruff `D` subset instead.
+
+**Measured `D` surface** (`ruff check --select D --statistics bunking api campminder scripts`, 2026-05-29): **1,651** violations, but only ~190 are *missing* docstrings — the rest format docstrings that already exist.
+
+| Bucket | Count | Codes |
+|---|---|---|
+| Format of *existing* docstrings | ~1,340 | D413 476 · D400 332 · D415 332 · D212 146 · D209 57 · D205 35 · D401 34 · D200 17 · … (685 auto-fixable) |
+| **Missing presence** | ~190 | D101 class **67** · D102 method 46 · D107 init 45 · D103 func **12** · D104 pkg **12** · D105 magic 8 · D100 module **1** |
+| Param docs | 23 | D417 |
+
+**§a — enable (high-value presence only).** Add to `ruff.toml` `[lint] select`: `D100` (module), `D101` (public class), `D103` (public function), `D104` (package). ~**92** missing across those four — a bounded one-time sweep of *domain-meaningful* docstrings (solver constraints, satisfaction policy, request pipeline), not filler. Selecting the four codes explicitly pulls in **zero** format rules and sidesteps the D203/D211 + D212/D213 convention conflicts (no `convention =` needed). `[lint.per-file-ignores]`: add `D1` to the existing `tests/**/*.py` and `scripts/**/*.py` entries.
+
+**§b — surveyed, deliberately skipped** (low value / filler-inducing; matches #919's own "non-obvious behavior, not trivial wrappers" bar):
+- `D102` (every public method, 46), `D107` (`__init__`, 45), `D105` (magic, 8) — the mypy-strict typed signature already documents these; enforcing yields `"Initialize the processor."` noise.
+- `D417` (document every param, 23) — high friction, restates the typed signature.
+- D2xx/D4xx format rules (~1,340) — pure style. *Optional* throwaway `ruff check --select D --fix` of the 685 auto-fixable for consistency; **not** gated, not part of this row.
+
+**Execution (one PR).** Write the ~92 §a docstrings + add the four codes to `select` + the two `per-file-ignores`; verify `ruff check --select D100,D101,D103,D104` is clean. Ratchets via the existing ruff pre-push + CI — **no new tooling** (no `interrogate` gate). Split the sweep by package if it gets large.
+
 ---
 
 ## 2. Go — closed at 1.26 (May 2026)
