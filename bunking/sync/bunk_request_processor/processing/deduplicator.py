@@ -1,7 +1,6 @@
 """Deduplicator - Removes duplicate bunk requests based on source priority
 
-Handles deduplication within batches and optionally checks against
-existing database records."""
+Handles in-batch deduplication only; does not consult the database."""
 
 import copy
 from dataclasses import dataclass, field
@@ -9,7 +8,6 @@ from dataclasses import dataclass, field
 from bunking.logging_config import get_logger
 
 from ..core.models import BunkRequest, RequestStatus, RequestType, source_from_field
-from ..data.repositories.request_repository import RequestRepository
 from ..shared.constants import SourceField
 
 logger = get_logger(__name__)
@@ -104,15 +102,7 @@ class DeduplicationResult:
 
 
 class Deduplicator:
-    """Handles deduplication of bunk requests"""
-
-    def __init__(self, request_repository: RequestRepository | None = None):
-        """Initialize the deduplicator.
-
-        Args:
-            request_repository: Repository for checking database duplicates
-        """
-        self.request_repository = request_repository
+    """Handles in-batch deduplication of bunk requests (no DB lookups)."""
 
     def deduplicate_batch(self, requests: list[BunkRequest]) -> DeduplicationResult:
         """Deduplicate a batch of requests based on source priority.

@@ -4,7 +4,6 @@ Tests the deduplication of bunk requests based on source priority."""
 
 import sys
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -29,14 +28,9 @@ class TestDeduplicator:
     """Test the Deduplicator"""
 
     @pytest.fixture
-    def mock_request_repo(self):
-        """Create a mock request repository"""
-        return Mock()
-
-    @pytest.fixture
-    def deduplicator(self, mock_request_repo):
-        """Create a Deduplicator with mocked dependencies"""
-        return Deduplicator(mock_request_repo)
+    def deduplicator(self):
+        """Create a Deduplicator"""
+        return Deduplicator()
 
     @pytest.fixture
     def base_request(self):
@@ -1475,7 +1469,7 @@ class TestNotBunkWithHardSeparationPartition:
 
     @pytest.fixture
     def deduplicator(self):
-        return Deduplicator(Mock())
+        return Deduplicator()
 
     def _nbw(self, source_field: str, confidence: float = 0.9) -> BunkRequest:
         return BunkRequest(

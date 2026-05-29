@@ -783,7 +783,7 @@ class RequestOrchestrator:
         self.request_repository = RequestRepository(self.pb)
         self.source_link_repository = SourceLinkRepository(self.pb)
         self.self_reference_rule = SelfReferenceRule()
-        self.deduplicator = Deduplicator(self.request_repository)
+        self.deduplicator = Deduplicator()
         # Create request builder for constructing BunkRequest objects
         self.request_builder = RequestBuilder(
             temporal_name_cache=self.temporal_name_cache,
