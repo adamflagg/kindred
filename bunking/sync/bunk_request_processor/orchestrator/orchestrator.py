@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import warnings
 from collections.abc import Callable
@@ -56,7 +55,7 @@ from ..integration.provider_factory import ProviderFactory
 from ..name_resolution.filters.spread_filter import SpreadFilter
 from ..processing.batch_signals import ResolvedRequest as BSResolvedRequest
 from ..processing.batch_signals import detect_batch_signals
-from ..processing.deduplicator import SOURCE_FIELD_PRIORITY, Deduplicator
+from ..processing.deduplicator import Deduplicator
 from ..resolution.interfaces import ResolutionResult
 from ..resolution.resolution_pipeline import ResolutionPipeline
 from ..resolution.strategies.exact_match import ExactMatchStrategy
@@ -2193,12 +2192,11 @@ class RequestOrchestrator:
 
         for bunk_request in validated_requests:
             try:
-                # Check if this request should be merged with an existing DB record
-                if bunk_request.metadata.get("database_match_action") == "merge":
-                    saved = self._merge_into_existing(bunk_request)
-                else:
-                    # No database match - create new request with source link
-                    saved = self._save_new_request_with_source_link(bunk_request)
+                # Create new request with primary source link. Cross-run DB merge is
+                # intentionally unsupported: duplicate avoidance is handled upstream by
+                # content-hash change detection (clears `processed` on change) plus granular
+                # clear-then-recreate, so the deduplicator never flags a DB match to merge.
+                saved = self._save_new_request_with_source_link(bunk_request)
 
                 if saved:
                     saved_requests.append(bunk_request)
@@ -2232,83 +2230,6 @@ class RequestOrchestrator:
                 is_primary=True,
                 source_field=request.source_field,
             )
-
-        return True
-
-    def _merge_into_existing(self, request: BunkRequest) -> bool:
-        """Merge a new request into an existing database record.
-
-        Updates source_fields, confidence, and metadata on the existing record.
-        Creates a non-primary source link for the new original_request.
-
-        Args:
-            request: BunkRequest with database_duplicate_id in metadata
-
-        Returns:
-            True if merge succeeded
-        """
-        existing_id = request.metadata.get("database_duplicate_id")
-        if not existing_id:
-            logger.warning("Merge requested but no database_duplicate_id in metadata")
-            return False
-
-        # Get existing record to merge with
-        existing = self.request_repository.get_by_id(existing_id)
-        if not existing:
-            logger.warning(f"Could not find existing record {existing_id} for merge")
-            return False
-
-        # Combine source_fields arrays
-        existing_source_fields = getattr(existing, "source_fields", None) or []
-        if isinstance(existing_source_fields, str):
-            try:
-                existing_source_fields = json.loads(existing_source_fields)
-            except json.JSONDecodeError:
-                existing_source_fields = [existing.source_field] if existing.source_field else []
-
-        new_source_fields = list({*existing_source_fields, request.source_field})
-
-        # Use higher confidence score
-        final_confidence = max(existing.confidence_score, request.confidence_score)
-
-        # Merge metadata
-        merged_metadata = {**existing.metadata, **request.metadata}
-        merged_metadata["is_merged_duplicate"] = True
-        merged_metadata["merge_source_field"] = request.source_field
-
-        # Pick winning source_field by SOURCE_FIELD_PRIORITY (mirrors deduplicate_batch
-        # tiebreak logic — higher-priority source wins regardless of save order).
-        existing_priority = SOURCE_FIELD_PRIORITY.get(existing.source_field, 0)
-        incoming_priority = SOURCE_FIELD_PRIORITY.get(request.source_field, 0)
-        winning_source_field = request.source_field if incoming_priority > existing_priority else existing.source_field
-
-        # Update existing record
-        if not self.request_repository.update_for_merge(
-            record_id=existing_id,
-            source_fields=new_source_fields,
-            confidence_score=final_confidence,
-            metadata=merged_metadata,
-            source_field=winning_source_field,
-        ):
-            return False
-
-        # Add source link for the new original_request
-        original_request_id = request.metadata.get("original_request_id")
-        if original_request_id:
-            self.source_link_repository.add_source_link(
-                bunk_request_id=existing_id,
-                original_request_id=original_request_id,
-                is_primary=False,  # Not primary since we're merging
-                source_field=request.source_field,
-            )
-
-        # Track merge statistics
-        self._stats["cross_run_merges"] = self._stats.get("cross_run_merges", 0) + 1
-
-        logger.info(
-            f"Merged request into existing {existing_id}: "
-            f"source_fields={new_source_fields}, confidence={final_confidence}"
-        )
 
         return True
 

@@ -114,12 +114,11 @@ class Deduplicator:
         """
         self.request_repository = request_repository
 
-    def deduplicate_batch(self, requests: list[BunkRequest], check_database: bool = False) -> DeduplicationResult:
+    def deduplicate_batch(self, requests: list[BunkRequest]) -> DeduplicationResult:
         """Deduplicate a batch of requests based on source priority.
 
         Args:
             requests: List of requests to deduplicate
-            check_database: Whether to check for existing database records
 
         Returns:
             DeduplicationResult with kept requests and statistics
@@ -232,33 +231,6 @@ class Deduplicator:
 
                 total_duplicates += len(duplicates)
 
-        # Check database for duplicates if requested
-        database_duplicates = 0
-        if check_database and self.request_repository:
-            for request in kept_requests:
-                if request.request_type != RequestType.AGE_PREFERENCE:
-                    # Get request_type as string value (not enum)
-                    request_type_str = (
-                        request.request_type.value
-                        if hasattr(request.request_type, "value")
-                        else str(request.request_type)
-                    )
-                    existing = self.request_repository.find_existing(
-                        requester_cm_id=request.requester_cm_id,
-                        requested_cm_id=request.requested_cm_id,
-                        request_type=request_type_str,
-                        year=request.year,
-                        session_cm_id=request.session_cm_id,
-                    )
-
-                    if existing:
-                        request.metadata["has_database_duplicate"] = True
-                        # existing is a BunkRequest object, access id attribute directly
-                        request.metadata["database_duplicate_id"] = getattr(existing, "id", None)
-                        # Set action for orchestrator - indicates this should be merged
-                        request.metadata["database_match_action"] = "merge"
-                        database_duplicates += 1
-
         # Compile statistics
         statistics = {
             "total_requests": len(requests),
@@ -266,9 +238,6 @@ class Deduplicator:
             "duplicates_removed": total_duplicates,
             "duplicate_groups": len(duplicate_groups),
         }
-
-        if check_database:
-            statistics["database_duplicates"] = database_duplicates
 
         return DeduplicationResult(
             kept_requests=kept_requests, duplicate_groups=duplicate_groups, statistics=statistics

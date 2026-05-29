@@ -519,44 +519,5 @@ class TestSplitEndpointRestore:
         assert "created_request_ids" not in data
 
 
-class TestFindExistingExcludesMerged:
-    """Test that find_existing excludes soft-deleted (merged) requests."""
-
-    @pytest.fixture
-    def mock_pb_client(self) -> tuple[Mock, Mock]:
-        """Create a mock PocketBase client."""
-        mock_client = Mock()
-        mock_collection = Mock()
-        mock_client.collection.return_value = mock_collection
-        return mock_client, mock_collection
-
-    @pytest.fixture
-    def repository(self, mock_pb_client: tuple[Mock, Mock]) -> Any:
-        """Create a RequestRepository with mocked client."""
-        from bunking.sync.bunk_request_processor.data.repositories.request_repository import (
-            RequestRepository,
-        )
-
-        mock_client, _ = mock_pb_client
-        return RequestRepository(mock_client)
-
-    def test_find_existing_filters_out_merged_requests(
-        self, repository: Any, mock_pb_client: tuple[Mock, Mock]
-    ) -> None:
-        """Test that find_existing excludes requests with merged_into set."""
-        _, mock_collection = mock_pb_client
-
-        mock_result = Mock()
-        mock_result.items = []  # No results (the merged one is filtered)
-        mock_collection.get_list.return_value = mock_result
-
-        repository.find_existing(12345, 67890, "bunk_with", 2025)
-
-        # Verify query includes filter for merged_into = ""
-        call_args = mock_collection.get_list.call_args
-        filter_str = call_args[1]["query_params"]["filter"]
-        assert 'merged_into = ""' in filter_str or "merged_into = ''" in filter_str
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
