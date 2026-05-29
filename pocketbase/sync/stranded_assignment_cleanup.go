@@ -243,9 +243,12 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 	}
 	strandedDrafts := findStrandedAssignments(validPairs, plannedSessions, draftCandidates)
 	orphanDrafts := findEnrollmentOrphans(enrolledSessions, enrolledPairs, draftCandidates)
+	// Deduplicated once so the sweep count and the log agree: a draft flagged by
+	// both passes is swept once, not double-counted.
+	draftsToSweep := dedupeByRecordID(strandedDrafts, orphanDrafts)
 
 	writes := 0
-	for _, c := range dedupeByRecordID(strandedDrafts, orphanDrafts) {
+	for _, c := range draftsToSweep {
 		rec := draftByID[c.RecordID]
 		rec.Set("bunk", "")
 		rec.Set("bunk_plan", "")
@@ -303,6 +306,7 @@ func reconcileStrandedAssignments(app core.App, year int, stats *Stats) error {
 
 	slog.Info("stranded_assignment_cleanup complete",
 		"year", year,
+		"flagged_drafts", len(draftsToSweep),
 		"stranded_drafts", len(strandedDrafts),
 		"orphaned_drafts", len(orphanDrafts),
 		"drafts_swept", stats.Updated,

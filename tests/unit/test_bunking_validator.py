@@ -746,6 +746,43 @@ class TestLevelProgressionValidation:
         regression_issues = [i for i in result.issues if i.type == "level_regression"]
         assert len(regression_issues) == 0
 
+    def test_level_regression_skipped_for_non_enrolled_camper(self, validator, session):
+        """A camper no longer enrolled (absent from `persons`) must not trip a
+        level-regression warning, even with a prior-year higher bunk in the same
+        session. Same exclusion the occupancy/capacity checks apply — a cancelled
+        camper's stale draft row should not surface as a regression for staff.
+        """
+        bunks = [
+            MockBunk(campminder_id="20005", name="B-5"),
+            MockBunk(campminder_id="20003", name="B-3"),
+        ]
+        # The only assignee below is no longer enrolled (not in `persons`).
+        persons: list[MockPerson] = []
+        assignments = [
+            MockBunkAssignment(person_cm_id="10001", bunk_cm_id="20003", session_cm_id="1234567"),
+        ]
+        historical = [
+            HistoricalBunkingRecord(
+                person_cm_id=10001,
+                bunk_name="B-5",  # higher level last year, same session → would be a regression
+                year=2024,
+                session_cm_id=1234567,
+            ),
+        ]
+
+        result = validator.validate_bunking(
+            session=session,
+            bunks=bunks,
+            assignments=assignments,
+            persons=persons,
+            requests=[],
+            historical_bunking=historical,
+        )
+
+        regression_issues = [i for i in result.issues if i.type == "level_regression"]
+        assert regression_issues == [], "cancelled camper should not trigger a level regression"
+        assert result.statistics.level_progression["regressed"] == 0
+
 
 class TestNormalizeSourceField:
     """Tests that normalize_source_field derives mappings from canonical SourceField constants.

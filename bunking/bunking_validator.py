@@ -327,6 +327,10 @@ class BunkingValidator:
         # Request satisfaction reads the FULL set — its missing-person fallback
         # keeps detail rows from dropping during a sync gap.
         assignments_by_person = {a.person_cm_id: a for a in assignments}
+        # Active-only view for checks that judge a camper's own placement (e.g.
+        # level regression): a cancelled camper's stale row must not surface as a
+        # finding, same as occupancy.
+        active_assignments_by_person = {a.person_cm_id: a for a in active_assignments}
         # Occupancy, capacity, and spread checks read the active-enrolled subset
         # so cancelled campers don't inflate counts or trip spread warnings.
         assignments_by_bunk = defaultdict(list)
@@ -382,7 +386,7 @@ class BunkingValidator:
         # Validate level progression (regression detection) - NEW
         if historical_bunking:
             self._validate_level_progression(
-                bunks, assignments_by_person, person_by_id, historical_bunking, stats, issues
+                bunks, active_assignments_by_person, person_by_id, historical_bunking, stats, issues
             )
 
         # Validate age/grade flow (younger kids in lower bunks) - NEW
