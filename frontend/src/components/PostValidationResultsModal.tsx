@@ -569,6 +569,7 @@ const COHORT_STYLES = {
   violated: 'bg-amber-100 text-amber-800',
   priority_unmet: 'bg-pink-100 text-pink-800',
   sacrificed_mp: 'bg-orange-100 text-orange-800',
+  impossible_request: 'bg-purple-100 text-purple-800',
 } as const
 
 const COHORT_LABELS = {
@@ -576,6 +577,7 @@ const COHORT_LABELS = {
   violated: 'Not-bunk-with violated',
   priority_unmet: 'Priority unmet',
   sacrificed_mp: 'Request dropped',
+  impossible_request: "Request can't be placed",
 } as const
 
 function CohortPill({ cohort }: { cohort: FamilyCohort }) {

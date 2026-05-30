@@ -1,7 +1,13 @@
 import type { ValidationStatistics, ImpossibilityReport } from '../../services/solver'
 import { friendlyReasonLabel } from '../impossibility/reasonHints'
+import { isMaterialRequest } from '../../utils/requestBucket'
 
-export type FamilyCohort = 'got_nothing' | 'violated' | 'priority_unmet' | 'sacrificed_mp'
+export type FamilyCohort =
+  | 'got_nothing'
+  | 'violated'
+  | 'priority_unmet'
+  | 'sacrificed_mp'
+  | 'impossible_request'
 
 export type FamilySubRow = {
   session: string
@@ -142,6 +148,37 @@ export function buildFamilyRows(
     })
   }
 
+  // #1717: fold the full pre-check impossibility detail into Families to contact.
+  // Mirror the pre-check filter EXACTLY: PreValidationResultsModal hides
+  // socialize_with rows (isMaterialRequest=false) ONLY for the
+  // age_pref_no_eligible_grade reason (Group 65 #1537); every other reason shows
+  // all items. The modal never filters by bucket directly — source_field is the
+  // actual predicate, and only for that one reason. Items already surfaced via a
+  // cohort row are skipped to avoid duplication.
+  const seenCmIds = new Set(raw.map((r) => r.cm_id))
+  for (const item of impossibilityReport.flat ?? []) {
+    // Parity with pre-check: only socialize_with rows under age_pref are hidden;
+    // a socialize_with friend who isn't enrolled (target_not_in_solver) is still
+    // shown by the pre-check, so it must survive the fold-in too.
+    if (
+      item.reason_code === 'age_pref_no_eligible_grade' &&
+      !isMaterialRequest({ source_field: item.source_field })
+    )
+      continue
+    const cmId = String(item.requester.cm_id)
+    if (seenCmIds.has(cmId)) continue // already surfaced via a cohort — don't duplicate
+    raw.push({
+      cm_id: cmId,
+      name: item.requester.name,
+      grade: item.requester.grade ?? 0,
+      gender: item.requester.gender ?? '',
+      cohort: 'impossible_request',
+      session: String((item.detail?.['requester_session'] as number | undefined) ?? ''),
+      detail: friendlyReasonLabel(item.reason_code),
+      reasonCodes: [item.reason_code],
+    })
+  }
+
   // Collapse per-(cm_id, cohort)
   const grouped = new Map<string, FamilyRowData>()
   for (const r of raw) {
@@ -185,4 +222,6 @@ export const cohortLabel = (c: FamilyCohort): string =>
       ? 'Not-bunk-with violated'
       : c === 'sacrificed_mp'
         ? 'Request dropped'
-        : 'Priority unmet'
+        : c === 'impossible_request'
+          ? "Request can't be placed"
+          : 'Priority unmet'

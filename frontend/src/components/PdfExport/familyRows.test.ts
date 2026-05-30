@@ -447,4 +447,110 @@ describe('cohortLabel', () => {
     // rather than "sacrificing" it (gentler, clearer terminology).
     expect(cohortLabel('sacrificed_mp')).toBe('Request dropped')
   })
+  it('labels the impossible_request cohort as "Request can\'t be placed"', () => {
+    expect(cohortLabel('impossible_request')).toBe("Request can't be placed")
+  })
+})
+
+describe('buildFamilyRows — #1717 pre-check impossibility fold-in', () => {
+  it('folds in a pre-check impossibility for a camper not in any cohort', () => {
+    const stats = _statistics({ mp_campers_entirely_impossible: [] })
+    const report = _report({
+      flat: [
+        {
+          request_id: 'r1',
+          reason_code: 'target_not_in_solver',
+          reason_message: '',
+          request_type: 'bunk_with',
+          source_field: 'bunk_request_form',
+          requester: { cm_id: 9, name: 'Noah Davis', grade: 4, gender: 'M' },
+          requestee: null,
+          detail: {},
+          bucket: 'material_parent',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    const row = rows.find((r) => r.cm_id === '9')!
+    expect(row).toBeDefined()
+    expect(row.cohort).toBe('impossible_request')
+    expect(row.subRows[0]!.reasonCodes).toEqual(['target_not_in_solver'])
+  })
+
+  it('does NOT duplicate a camper already shown via a cohort', () => {
+    const stats = _statistics({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 9,
+          name: 'Noah Davis',
+          grade: 4,
+          gender: 'M',
+          session_cm_id: 10,
+          reason_codes: ['target_not_in_solver'],
+          honored_in_plan: false,
+          fully_honored: false,
+        },
+      ],
+    })
+    const report = _report({
+      flat: [
+        {
+          request_id: 'r1',
+          reason_code: 'target_not_in_solver',
+          reason_message: '',
+          request_type: 'bunk_with',
+          source_field: 'bunk_request_form',
+          requester: { cm_id: 9, name: 'Noah Davis', grade: 4, gender: 'M' },
+          requestee: null,
+          detail: {},
+          bucket: 'material_parent',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    expect(rows.filter((r) => r.cm_id === '9')).toHaveLength(1)
+  })
+
+  it('mirrors the pre-check conditional filter: socialize_with hidden ONLY under age_pref', () => {
+    // Parity with PreValidationResultsModal (lines 581-584): it filters out
+    // socialize_with rows (isMaterialRequest=false) ONLY for the
+    // age_pref_no_eligible_grade reason (Group 65 #1537); every other reason
+    // shows all items. So a socialize_with friend who isn't enrolled
+    // (target_not_in_solver) is SHOWN by the pre-check and must survive here too.
+    const stats = _statistics({ mp_campers_entirely_impossible: [] })
+    const report = _report({
+      flat: [
+        // EXCLUDED: socialize_with under age_pref — pre-check hides this.
+        {
+          request_id: 'r2',
+          reason_code: 'age_pref_no_eligible_grade',
+          reason_message: '',
+          request_type: 'age_preference',
+          source_field: 'socialize_with',
+          requester: { cm_id: 77, name: 'Lily Adams', grade: 5, gender: 'F' },
+          requestee: null,
+          detail: {},
+          bucket: 'immaterial_parent',
+        },
+        // INCLUDED: socialize_with under a NON-age-pref reason — pre-check shows
+        // this; the old blanket filter wrongly dropped it.
+        {
+          request_id: 'r3',
+          reason_code: 'target_not_in_solver',
+          reason_message: '',
+          request_type: 'bunk_with',
+          source_field: 'socialize_with',
+          requester: { cm_id: 88, name: 'Mason Reed', grade: 6, gender: 'M' },
+          requestee: null,
+          detail: {},
+          bucket: 'immaterial_parent',
+        },
+      ],
+    })
+    const rows = buildFamilyRows(stats, report)
+    expect(rows.find((r) => r.cm_id === '77')).toBeUndefined()
+    const included = rows.find((r) => r.cm_id === '88')
+    expect(included).toBeDefined()
+    expect(included!.cohort).toBe('impossible_request')
+  })
 })
