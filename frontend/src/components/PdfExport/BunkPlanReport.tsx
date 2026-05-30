@@ -20,7 +20,7 @@ interface Props {
   issues?: PostCheckIssue[]
 }
 
-// Theme: forest green, amber, cream (generic Tawonga-inspired palette)
+// Theme: forest green, amber, cream (generic mountain-camp palette)
 const GREEN = '#0f5132' // hsl(160 100% 21%) approx
 const AMBER = '#f5a623' // hsl(42 92% 62%) approx
 const CREAM = '#f5f2e8' // hsl(42 35% 97%) approx

@@ -929,6 +929,27 @@ jobs:
         # need a seeded dataset CD lacks — tracked in #1623.
         uv run pytest tests/integration/sync -v --tb=short -p no:cacheprovider
 
+    - name: Run data-dependent metrics suites (seeded synthetic DB)
+      # #1623: the requires_pb_db metrics/retention suites assert real cohorts, so an
+      # empty PB makes them fail. Load the committed synthetic, no-PII fixture into a
+      # runner-readable data.db and run them reading SQLite directly (these suites use an
+      # in-process FastAPI TestClient + direct SQLite — no live PB needed). AI_PROVIDER=mock
+      # keeps it hermetic (no LLM key, no spend). The artifact-only leak scan re-verifies
+      # the committed fixture is PII-free in CI before we trust it.
+      env:
+        SKIP_POCKETBASE_TESTS: "false"
+        AI_PROVIDER: mock
+      run: |
+        SEED_DIR="$(mktemp -d)/pocketbase"
+        uv run python scripts/setup/load_synthetic_ci.py --dest "${SEED_DIR}/data.db"
+        uv run python -m scripts.setup.synthetic.scan_leaks --artifact "${SEED_DIR}/data.db" --artifact-only
+        PB_DATA_DIR="${SEED_DIR}" uv run pytest \
+          tests/test_metrics_retention.py \
+          tests/unit/api/test_metrics.py \
+          tests/unit/api/test_retention_trends.py \
+          tests/unit/api/test_metrics_registration.py \
+          -v --tb=short -p no:cacheprovider
+
     - name: Verify non-root user and distroless containers
       run: |
         COMPOSE_CMD="docker compose --env-file .env.ci -f docker-compose.yml -f docker-compose.ci.yml"

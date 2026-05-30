@@ -328,3 +328,7 @@ docs/camp
 docs/plans
 docs/reference/issue-triage.md
 docs/reference/solver-config-decisions.md
+
+# Synthetic no-PII seed fixture (issue #1623) — committed test data, not local config.
+# Override the repo-wide *.json ignore for the manifest; the .db.gz is not matched by *.db.
+!tests/fixtures/synthetic_pb/MANIFEST.json

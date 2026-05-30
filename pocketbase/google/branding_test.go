@@ -26,7 +26,7 @@ func TestGetCampName_FromConfigFile(t *testing.T) {
 	}
 
 	brandingFile := filepath.Join(configDir, "branding.local.json")
-	content := `{"camp_name": "Camp Tawonga", "camp_name_short": "Tawonga"}`
+	content := `{"camp_name": "Camp Kindred", "camp_name_short": "Kindred"}`
 	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write temp branding file: %v", err)
 	}
@@ -38,8 +38,8 @@ func TestGetCampName_FromConfigFile(t *testing.T) {
 	defer func() { configBasePath = oldConfigPath }()
 
 	got := GetCampName()
-	if got != "Camp Tawonga" {
-		t.Errorf("GetCampName() = %q, want %q", got, "Camp Tawonga")
+	if got != "Camp Kindred" {
+		t.Errorf("GetCampName() = %q, want %q", got, "Camp Kindred")
 	}
 }
 
@@ -174,7 +174,7 @@ func TestFormatWorkbookTitle_WithCampName(t *testing.T) {
 	}
 
 	brandingFile := filepath.Join(configDir, "branding.local.json")
-	content := `{"camp_name": "Camp Tawonga"}`
+	content := `{"camp_name": "Camp Kindred"}`
 	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write temp branding file: %v", err)
 	}
@@ -189,13 +189,13 @@ func TestFormatWorkbookTitle_WithCampName(t *testing.T) {
 	t.Setenv("IS_DOCKER", "true")
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	if globalsTitle != "Camp Tawonga CM Data - Globals" {
-		t.Errorf("FormatWorkbookTitle(globals) = %q, want %q", globalsTitle, "Camp Tawonga CM Data - Globals")
+	if globalsTitle != "Camp Kindred CM Data - Globals" {
+		t.Errorf("FormatWorkbookTitle(globals) = %q, want %q", globalsTitle, "Camp Kindred CM Data - Globals")
 	}
 
 	yearTitle := FormatWorkbookTitle("year", 2025)
-	if yearTitle != "Camp Tawonga CM Data - 2025" {
-		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", yearTitle, "Camp Tawonga CM Data - 2025")
+	if yearTitle != "Camp Kindred CM Data - 2025" {
+		t.Errorf("FormatWorkbookTitle(year, 2025) = %q, want %q", yearTitle, "Camp Kindred CM Data - 2025")
 	}
 }
 
@@ -229,7 +229,7 @@ func TestFormatWorkbookTitle_DevPrefixWithCampName(t *testing.T) {
 	}
 
 	brandingFile := filepath.Join(configDir, "branding.local.json")
-	content := `{"camp_name": "Camp Tawonga"}`
+	content := `{"camp_name": "Camp Kindred"}`
 	if err := os.WriteFile(brandingFile, []byte(content), 0644); err != nil {
 		t.Fatalf("Failed to write temp branding file: %v", err)
 	}
@@ -244,13 +244,13 @@ func TestFormatWorkbookTitle_DevPrefixWithCampName(t *testing.T) {
 	t.Setenv("IS_DOCKER", "")
 
 	yearTitle := FormatWorkbookTitle("year", 2025)
-	expectedYear := devPrefix + "Camp Tawonga CM Data - 2025"
+	expectedYear := devPrefix + "Camp Kindred CM Data - 2025"
 	if yearTitle != expectedYear {
 		t.Errorf("FormatWorkbookTitle(year, 2025) in dev = %q, want %q", yearTitle, expectedYear)
 	}
 
 	globalsTitle := FormatWorkbookTitle("globals", 0)
-	expectedGlobals := devPrefix + "Camp Tawonga CM Data - Globals"
+	expectedGlobals := devPrefix + "Camp Kindred CM Data - Globals"
 	if globalsTitle != expectedGlobals {
 		t.Errorf("FormatWorkbookTitle(globals, 0) in dev = %q, want %q", globalsTitle, expectedGlobals)
 	}

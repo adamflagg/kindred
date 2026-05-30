@@ -196,7 +196,7 @@ func TestHouseholdDemographicsFirstNonEmptyWins(t *testing.T) {
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: ""},             // Empty
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ"},        // First non-empty
-		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "Tawonga Alum"}, // Should be ignored
+		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "Kindred Alum"}, // Should be ignored
 	}
 
 	aggregated := aggregatePersonValuesByHousehold(values)
@@ -332,7 +332,7 @@ func TestHouseholdDemographicsMultiSelectAggregation(t *testing.T) {
 	personValues := []testHHPersonCustomValue{
 		// Multiple values for same field (different family members selecting different options)
 		{HouseholdID: 5001, FieldName: "HH-Family Description", Value: "LGBTQ|Interfaith"},
-		{HouseholdID: 5002, FieldName: "HH-Family Description", Value: "Tawonga Alum"},
+		{HouseholdID: 5002, FieldName: "HH-Family Description", Value: "Kindred Alum"},
 		{HouseholdID: 5003, FieldName: "HH-Family Description", Value: "Single Parent|LGBTQ"},
 	}
 
@@ -342,7 +342,7 @@ func TestHouseholdDemographicsMultiSelectAggregation(t *testing.T) {
 	if aggregated[5001]["HH-Family Description"] != "LGBTQ|Interfaith" {
 		t.Errorf("household 5001: got %q", aggregated[5001]["HH-Family Description"])
 	}
-	if aggregated[5002]["HH-Family Description"] != "Tawonga Alum" {
+	if aggregated[5002]["HH-Family Description"] != "Kindred Alum" {
 		t.Errorf("household 5002: got %q", aggregated[5002]["HH-Family Description"])
 	}
 	if aggregated[5003]["HH-Family Description"] != "Single Parent|LGBTQ" {
