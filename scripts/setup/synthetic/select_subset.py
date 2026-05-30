@@ -16,8 +16,6 @@ LOCAL ONLY: this reads the real DB; it never runs in CI. The builder uses the
 returned id sets to prune a scratch copy.
 """
 
-from __future__ import annotations
-
 import sqlite3
 from dataclasses import dataclass, field
 

@@ -17,8 +17,6 @@ Usage:
   uv run python -m scripts.setup.synthetic.build_synthetic_db [--real-db PATH] [--out PATH]
 """
 
-from __future__ import annotations
-
 import argparse
 import gzip
 import hashlib
@@ -61,7 +59,30 @@ AUTH_TABLES = (
 # System tables that must end up empty (verified post-build).
 MUST_BE_EMPTY_SYSTEM = ("users", "_superusers", "_externalAuths", "_authOrigins", "_mfas", "_otps")
 
-CAMP_REPLACEMENTS = [("Camp Tawonga", "Camp Kindred"), ("Tawonga", "Kindred")]
+
+def _camp_scrub_config(branding: Path) -> tuple[list[tuple[str, str]], list[str]]:
+    """Derive (scrub_replacements, gate_tokens) from the gitignored branding config.
+
+    The real camp name is never hardcoded into this (public) module — it is read from
+    ``branding.local.json`` at build time. Fails LOUDLY if the config is missing or
+    yields no tokens: a silent fallback would leave the scrub and the leak gate
+    scanning for nothing, so a regression could ship the real brand undetected.
+
+    ``scrub_replacements`` are longest-token-first so a multi-word brand ("Camp X") is
+    scrubbed before its substring ("X"); ``gate_tokens`` are the raw distinctive strings
+    the leak scan asserts are absent from the artifact.
+    """
+    if not branding.is_file():
+        raise FileNotFoundError(f"branding config required to derive camp scrub/gate tokens: {branding}")
+    tokens = scan_leaks.build_camp_tokens(str(branding))
+    if not tokens:
+        raise ValueError(f"no camp tokens derived from {branding}; scrub + leak gate would do nothing")
+    replacements = [
+        (tok, "Camp Kindred" if tok.lower().startswith("camp ") else "Kindred")
+        for tok in sorted(tokens, key=len, reverse=True)
+    ]
+    return replacements, tokens
+
 
 # Brand-token schema columns on staff_applications (an empty, dropped table that no test
 # reads). The repo's live CampMinder sync rename is deferred to its own PR, but the FIXTURE
@@ -228,6 +249,14 @@ def build(real_db: Path, out: Path, branding: Path) -> int:
         print(f"ERROR: real DB not found: {real_db}", file=sys.stderr)
         return 2
 
+    # Derive the brand scrub/gate tokens from the gitignored branding config up front,
+    # so we never start a build that would silently scrub nothing (fail loud, no work).
+    try:
+        camp_replacements, camp_tokens = _camp_scrub_config(branding)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
     work = Path(tempfile.mkdtemp(prefix="synthetic-seed-"))
     scratch = work / "data.db"
     print(f"[1/9] backing up real DB -> {scratch}")
@@ -261,9 +290,9 @@ def build(real_db: Path, out: Path, branding: Path) -> int:
     anonymizer.anonymize_db(str(scratch))
     print("[5/9] de-branding (relabel + token scrub)")
     debrand.relabel_db(str(scratch))
-    # Capital-T brand strings + the lowercase staff_applications field identifiers; the
+    # Branding-derived brand strings + the staff_applications field identifiers; the
     # latter renames the field name inside PB's _collections JSON metadata.
-    debrand.scrub_tokens(str(scratch), CAMP_REPLACEMENTS + list(_BRAND_SCHEMA_COLUMN_RENAMES))
+    debrand.scrub_tokens(str(scratch), camp_replacements + list(_BRAND_SCHEMA_COLUMN_RENAMES))
 
     print("[6/9] scrubbing _params + brand-token schema columns")
     conn = sqlite3.connect(scratch)
@@ -291,8 +320,7 @@ def build(real_db: Path, out: Path, branding: Path) -> int:
     denylist = sorted(set(scan_leaks.build_denylist_from_db(str(real_db))))
     pool = fixtures_pools.pool_tokens()
     deny_tokens = scan_leaks._denylist_token_set(denylist) - pool
-    camp_tokens = scan_leaks.build_camp_tokens(str(branding)) if branding.is_file() else []
-    camp_tokens = sorted(set(camp_tokens) | {"Tawonga", "Camp Tawonga"})
+    # camp_tokens derived from branding above (no hardcoded brand fallback).
 
     violations = scan_leaks.scan(str(scratch), denylist=list(deny_tokens), camp_tokens=camp_tokens)
     sys_problems = _system_table_violations(scratch, camp_tokens)

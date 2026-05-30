@@ -10,8 +10,7 @@ Two passes:
    cannot survive. The build-time leak scan is the proof this worked.
 """
 
-from __future__ import annotations
-
+import re
 import sqlite3
 
 # table -> (name_column, generic_prefix). description columns (if present) are blanked.
@@ -79,9 +78,13 @@ def _all_tables(conn: sqlite3.Connection) -> list[str]:
 def scrub_tokens(db_path: str, replacements: list[tuple[str, str]]) -> int:
     """Replace each (token, replacement) across every text cell of every table.
 
-    ``replacements`` should be ordered longest-token-first so "Camp Tawonga" is
-    handled before the substring "Tawonga". Returns the number of cells changed.
+    Matching is CASE-INSENSITIVE: brand tokens hide in lowercase emails/URLs
+    ("info@acme.org") and uppercase shouting, which a case-sensitive SQL REPLACE
+    would silently miss. ``replacements`` should be ordered longest-token-first so
+    a multi-word brand ("Camp Acme") is handled before its substring ("Acme").
+    Returns the number of cells actually changed (no inflation from no-op matches).
     """
+    patterns = [(re.compile(re.escape(token), re.IGNORECASE), repl) for token, repl in replacements]
     conn = sqlite3.connect(db_path)
     changed = 0
     try:
@@ -89,21 +92,16 @@ def scrub_tokens(db_path: str, replacements: list[tuple[str, str]]) -> int:
             cols = _text_columns(conn, table)
             if not cols:
                 continue
-            # Build a single UPDATE with nested REPLACE() over all tokens per column.
             for col in cols:
-                expr = f"[{col}]"
-                for token, repl in replacements:
-                    expr = f"REPLACE({expr}, ?, ?)"
-                params: list[str] = []
-                for token, repl in replacements:
-                    params.extend([token, repl])
-                like_clauses = " OR ".join(f"[{col}] LIKE ?" for _ in replacements)
-                like_params = [f"%{token}%" for token, _ in replacements]
-                cur = conn.execute(
-                    f"UPDATE [{table}] SET [{col}] = {expr} WHERE [{col}] IS NOT NULL AND ({like_clauses})",
-                    [*params, *like_params],
-                )
-                changed += cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+                rows = conn.execute(f"SELECT rowid, [{col}] FROM [{table}] WHERE [{col}] IS NOT NULL").fetchall()
+                for rowid, value in rows:
+                    original = str(value)
+                    scrubbed = original
+                    for pat, repl in patterns:
+                        scrubbed = pat.sub(repl, scrubbed)
+                    if scrubbed != original:
+                        conn.execute(f"UPDATE [{table}] SET [{col}] = ? WHERE rowid = ?", (scrubbed, rowid))
+                        changed += 1
         conn.commit()
     finally:
         conn.close()

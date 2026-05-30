@@ -101,6 +101,76 @@ def test_clean_db_has_no_violations(tmp_path, scan_module):
     assert violations == [], f"clean DB should pass, got {violations}"
 
 
+def _make_db_with_system_tables(path: Path, *, superusers_rows: list[tuple[object, ...]], params_value: str) -> None:
+    """Build an artifact-shaped DB that also carries PB ``_``-prefixed system tables."""
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE persons (id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT)")
+    cur.execute("INSERT INTO persons VALUES ('p1', 'Emma', 'Johnson')")
+    cur.execute("CREATE TABLE _superusers (id TEXT PRIMARY KEY, email TEXT)")
+    cur.executemany("INSERT INTO _superusers (id, email) VALUES (?, ?)", superusers_rows)
+    cur.execute("CREATE TABLE _params (id TEXT PRIMARY KEY, value TEXT)")
+    cur.execute("INSERT INTO _params (id, value) VALUES ('p', ?)", (params_value,))
+    conn.commit()
+    conn.close()
+
+
+def test_flags_nonempty_auth_system_table(tmp_path, scan_module):
+    """A regression that leaves real superusers (emails/creds) in the artifact must
+    be caught — even though _data_tables() skips _-prefixed tables."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_system_tables(
+        db,
+        superusers_rows=[("s1", "admin@example.com")],
+        params_value='{"meta": {"appName": "Kindred"}}',
+    )
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[])
+    cats = {v.category for v in violations}
+    assert "nonempty_system_table" in cats, f"expected nonempty_system_table, got {violations}"
+    assert any(v.table == "_superusers" for v in violations)
+
+
+def test_flags_real_email_domain_in_params(tmp_path, scan_module):
+    """_params carries the SMTP sender / app URL; a non-example.com email domain there
+    is a leak the data-table scan would never see (system tables are excluded)."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_system_tables(
+        db,
+        superusers_rows=[],
+        params_value='{"meta": {"senderAddress": "office@realcamp.org"}}',
+    )
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[])
+    cats = {v.category for v in violations}
+    assert "bad_email_domain" in cats, f"expected bad_email_domain in _params, got {violations}"
+    assert any(v.table == "_params" for v in violations)
+
+
+def test_flags_camp_token_in_params(tmp_path, scan_module):
+    """A camp brand token surviving in _params settings is flagged when camp_tokens given."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_system_tables(
+        db,
+        superusers_rows=[],
+        params_value='{"meta": {"appName": "Wildwood"}}',
+    )
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[], camp_tokens=["Wildwood"])
+    cats = {v.category for v in violations}
+    assert "camp_token" in cats, f"expected camp_token in _params, got {violations}"
+    assert any(v.table == "_params" for v in violations)
+
+
+def test_clean_system_tables_pass(tmp_path, scan_module):
+    """Empty auth tables + a scrubbed _params (example.com sender, no camp token) pass."""
+    db = tmp_path / "artifact.db"
+    _make_db_with_system_tables(
+        db,
+        superusers_rows=[],
+        params_value='{"meta": {"appName": "Kindred", "senderAddress": "support@example.com"}}',
+    )
+    violations = scan_module.scan(str(db), denylist=None, drop_list=[], camp_tokens=["Wildwood"])
+    assert violations == [], f"clean system tables should pass, got {violations}"
+
+
 def test_artifact_only_skips_denylist(tmp_path, scan_module):
     """--artifact-only mode (CI/pre-commit) has no real DB, so the denylist is empty;
     it must still catch shape + drop-list leaks but never crash on a missing denylist."""

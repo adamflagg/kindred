@@ -10,8 +10,6 @@ Usage:
     uv run python scripts/setup/load_synthetic_ci.py --dest /path/to/pocketbase/data.db
 """
 
-from __future__ import annotations
-
 import argparse
 import gzip
 import shutil

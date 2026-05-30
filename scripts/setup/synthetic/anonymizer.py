@@ -11,8 +11,6 @@ Only the PII-bearing tables that survive into the artifact are transformed
 selector (see scan_leaks.DROP_LIST_TABLES), so there is nothing to anonymize there.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import sqlite3

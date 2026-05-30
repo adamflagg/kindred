@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PII leak-proof gate for the synthetic seed artifact (issue #1623).
 
-Scans every cell of a SQLite artifact and asserts the ABSENCE of leaks:
+Scans every data-table cell of a SQLite artifact and asserts the ABSENCE of leaks:
 
 1. ``nonempty_drop_table`` — any high-risk table that must be empty has rows.
    This is the strongest guarantee: the entire medical/financial/essay/custom-value
@@ -10,6 +10,13 @@ Scans every cell of a SQLite artifact and asserts the ABSENCE of leaks:
 3. ``bad_phone`` — a phone-shaped value outside the fake ``555-0XXX`` band.
 4. ``real_value_leak`` — a token from the (build-time-only) real-value denylist.
 5. ``camp_token`` — a camp brand token (e.g. from the gitignored branding config).
+6. ``nonempty_system_table`` — a PB ``_``-prefixed auth/system table that must be
+   empty (no real users/emails/credentials) still has rows.
+
+The denylist/email/phone/camp scans run over the data tables (``_``-prefixed system
+tables are excluded — their schema vocabulary false-matches the name denylist). The
+auth-emptiness and ``_params`` settings checks cover the system tables that DO matter,
+so the committed artifact self-verifies in CI without the real DB.
 
 Two modes:
 - **full** (build time): denylist + camp tokens supplied from the real DB / local
@@ -20,8 +27,6 @@ Two modes:
 
 Exit code is non-zero if any violation is found.
 """
-
-from __future__ import annotations
 
 import argparse
 import json
@@ -79,6 +84,21 @@ DROP_LIST_TABLES: tuple[str, ...] = (
     "bunk_request_sources",
     "sheets_workbooks",
     "enrollment_snapshots",
+)
+
+# PB ``_``-prefixed auth/system tables that must hold zero rows in the artifact (no
+# real users, emails, or credentials). _data_tables() excludes ``_``-prefixed tables
+# from the cell scans (their schema vocabulary false-matches the name denylist), so the
+# gate asserts these are empty explicitly — otherwise a scrubbing regression that left
+# real superusers/auth rows would slip past the standing CI/pre-commit gate.
+MUST_BE_EMPTY_SYSTEM: tuple[str, ...] = (
+    "users",
+    "user_roles",
+    "_superusers",
+    "_externalAuths",
+    "_authOrigins",
+    "_mfas",
+    "_otps",
 )
 
 # Find email- and phone-shaped substrings inside any cell value (incl. JSON text).
@@ -222,6 +242,10 @@ def _data_tables(conn: sqlite3.Connection) -> list[str]:
     return [r[0] for r in rows]
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+
 _WORD_SPLIT_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -300,6 +324,27 @@ def scan(
                 for tok in camp_lower:
                     if tok in folded:
                         violations.append(Violation("camp_token", table, f"{col}: matched camp token"))
+
+        # 6. system tables: _data_tables() skips ``_``-prefixed tables (schema vocab
+        # false-matches the name denylist), so check the two things that DO matter here:
+        #   - auth/system tables hold no rows (no real users/emails/credentials)
+        #   - _params settings carry no real email domain or camp brand token
+        for table in MUST_BE_EMPTY_SYSTEM:
+            if not _table_exists(conn, table):
+                continue
+            (n,) = conn.execute(f"SELECT count(*) FROM [{table}]").fetchone()
+            if n:
+                violations.append(Violation("nonempty_system_table", table, f"{n} row(s) in system table"))
+        if _table_exists(conn, "_params"):
+            for col, value in _iter_cells(conn, "_params"):
+                for m in _EMAIL_RE.finditer(value):
+                    domain = m.group(0).rsplit("@", 1)[-1].casefold()
+                    if domain != ALLOWED_EMAIL_DOMAIN:
+                        violations.append(Violation("bad_email_domain", "_params", f"{col}: domain {domain!r}"))
+                folded = value.casefold()
+                for tok in camp_lower:
+                    if tok in folded:
+                        violations.append(Violation("camp_token", "_params", f"{col}: matched camp token"))
     finally:
         conn.close()
     return violations

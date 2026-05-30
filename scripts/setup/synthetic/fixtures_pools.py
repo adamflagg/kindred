@@ -11,8 +11,6 @@ NOTE: the real year-round staff roster lives in the gitignored
 ``config/staff_list.json`` and is treated as a DENYLIST, never a pool.
 """
 
-from __future__ import annotations
-
 import re
 
 FIRST_NAMES: tuple[str, ...] = (
