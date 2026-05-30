@@ -3376,3 +3376,131 @@ def test_cohort_absent_leaves_field_empty():
         requests=[],
     )
     assert result.statistics.mp_campers_entirely_impossible == []
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (PR #1716): fully_honored on entirely-impossible MP cohort entries
+# ---------------------------------------------------------------------------
+
+
+def test_fully_honored_when_sole_material_age_pref_satisfied():
+    """Case A: camper with ONE material age_preference request, satisfied in the final plan.
+
+    Emma Johnson (cm_id=1000001, grade=10) has a single 'older' age preference
+    flagged impossible pre-solve (passed in impossible_mp_cohort). The final cabin
+    contains only grade-10 campers, so the age preference IS satisfied in the plan.
+
+    Expected: honored_in_plan is True AND fully_honored is True.
+    """
+    session = _mock_session(cm_id="10000010", name="FullyHonoredFixture")
+    persons = [
+        MockPerson(campminder_id="1000001", name="Emma Johnson", grade=10, gender="M"),
+        MockPerson(campminder_id="1000002", name="Liam Garcia", grade=10, gender="M"),
+    ]
+    bunks = [_mock_bunk("2000001")]
+    assignments = [
+        _mock_assignment("1000001", "2000001"),
+        _mock_assignment("1000002", "2000001"),
+    ]
+    # Single material age_preference request for Emma; id must appear in impossible_request_ids
+    # so it's treated as impossible pre-solve but still flows through material_parent_by_person.
+    requests = [_age_pref_request("1000001", "older", id="ap_emma")]
+    cohort = [
+        {
+            "cm_id": 1000001,
+            "name": "Emma Johnson",
+            "grade": 10,
+            "gender": "M",
+            "session_cm_id": 10000010,
+            "reason_codes": ["age_pref_no_eligible_grade"],
+        }
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        impossible_request_ids={"ap_emma"},
+        impossible_mp_cohort=cohort,
+    )
+    out = result.statistics.mp_campers_entirely_impossible
+    assert len(out) == 1
+    assert out[0]["cm_id"] == 1000001
+    assert out[0]["honored_in_plan"] is True
+    assert out[0]["fully_honored"] is True
+
+
+def test_partially_honored_when_one_of_two_material_requests_unmet():
+    """Case B: camper with TWO material requests where one is satisfied, one is not.
+
+    Liam Garcia (cm_id=1000001) requests bunk_with both Emma Johnson (1000002) and
+    Olivia Chen (1000003). The final plan places Liam with Emma (satisfied) but not
+    Olivia (unsatisfied). Liam is in the impossible_mp_cohort.
+
+    Expected: honored_in_plan is True (at least one met) AND fully_honored is False
+    (not all met).
+    """
+    session = _mock_session(cm_id="10000010", name="PartiallyHonoredFixture")
+    persons = [
+        MockPerson(campminder_id="1000001", name="Liam Garcia", grade=6, gender="M"),
+        MockPerson(campminder_id="1000002", name="Emma Johnson", grade=6, gender="M"),
+        MockPerson(campminder_id="1000003", name="Olivia Chen", grade=6, gender="M"),
+    ]
+    bunks = [
+        MockBunk(campminder_id="2000001", name="Cedar 1", max_size=8),
+        MockBunk(campminder_id="2000002", name="Cedar 2", max_size=8),
+    ]
+    assignments = [
+        _mock_assignment("1000001", "2000001"),  # Liam in Cedar 1
+        _mock_assignment("1000002", "2000001"),  # Emma in Cedar 1 → Liam's req satisfied
+        _mock_assignment("1000003", "2000002"),  # Olivia in Cedar 2 → Liam's req NOT satisfied
+    ]
+    requests = [
+        MockBunkRequest(
+            requester_person_cm_id="1000001",
+            requested_person_cm_id="1000002",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            id="req_liam_emma",
+        ),
+        MockBunkRequest(
+            requester_person_cm_id="1000001",
+            requested_person_cm_id="1000003",
+            request_type="bunk_with",
+            status="resolved",
+            source_field=SourceField.BUNK_REQUEST_FORM,
+            source="family",
+            id="req_liam_olivia",
+        ),
+    ]
+    cohort = [
+        {
+            "cm_id": 1000001,
+            "name": "Liam Garcia",
+            "grade": 6,
+            "gender": "M",
+            "session_cm_id": 10000010,
+            "reason_codes": ["cross_session"],
+        }
+    ]
+
+    result = BunkingValidator().validate_bunking(
+        session=cast(Any, session),
+        bunks=cast(list[Bunk], bunks),
+        assignments=cast(list[BunkAssignment], assignments),
+        persons=cast(list[Person], persons),
+        requests=cast(list[BunkRequest], requests),
+        # A real entirely-impossible cohort member has ALL material requests
+        # flagged impossible pre-solve — mark both of Liam's bunk_with ids.
+        impossible_request_ids={"req_liam_emma", "req_liam_olivia"},
+        impossible_mp_cohort=cohort,
+    )
+    out = result.statistics.mp_campers_entirely_impossible
+    assert len(out) == 1
+    assert out[0]["cm_id"] == 1000001
+    assert out[0]["honored_in_plan"] is True
+    assert out[0]["fully_honored"] is False
