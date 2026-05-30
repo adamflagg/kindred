@@ -213,6 +213,8 @@ export interface ValidationStatistics {
     session_cm_id: number
     reason_codes: string[]
     honored_in_plan: boolean
+    /** True when every impossible request was still honored (met via always-place). */
+    fully_honored?: boolean
     /** Cabin that met the preference when honored_in_plan; null/absent otherwise. */
     bunk_name?: string | null
   }>
