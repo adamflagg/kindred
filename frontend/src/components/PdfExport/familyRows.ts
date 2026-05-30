@@ -57,15 +57,17 @@ export function buildFamilyRows(
   const statsCohort = statistics.mp_campers_entirely_impossible
   if (statsCohort !== undefined) {
     for (const c of statsCohort) {
+      if (c.fully_honored) continue // #1716: got their whole material ask — drop (modal footer counts these)
+      const partial = Boolean(c.honored_in_plan && !c.fully_honored)
       raw.push({
         cm_id: String(c.cm_id),
         name: c.name,
         grade: c.grade ?? 0,
         gender: c.gender ?? '',
-        cohort: 'got_nothing',
+        cohort: partial ? 'sacrificed_mp' : 'got_nothing',
         session: String(c.session_cm_id),
-        detail: c.honored_in_plan
-          ? `Met by same age cabin${c.bunk_name ? ` ${c.bunk_name}` : ''}`
+        detail: partial
+          ? `Material request unmet · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`
           : `All requests impossible · ${c.reason_codes.map(friendlyReasonLabel).join(', ')}`,
         reasonCodes: c.reason_codes,
         honoredInPlan: c.honored_in_plan,
