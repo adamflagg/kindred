@@ -4,6 +4,9 @@ import {
   SUPPRESSED_ISSUE_TYPES,
   extractBunkName,
   type PostCheckIssue,
+  ISSUE_SEVERITY,
+  COHORT_SEVERITY,
+  type Severity,
 } from './issueClassifier'
 import { formatBunkIssueDetail } from '../utils/validationIssueFormatter'
 import {
@@ -17,7 +20,6 @@ import {
   Star,
   Sparkles,
   TrendingUp,
-  Target,
   Activity,
   ExternalLink,
   Loader2,
@@ -29,8 +31,8 @@ import { Modal } from './ui/Modal'
 import { LazyPdfExportButton } from './PdfExport/LazyPdfExportButton'
 import { formatSourceField } from '../utils/formatSourceField'
 import { LazyCamperDetailsPanel } from './impossibility/LazyCamperDetailsPanel'
-import { friendlyReasonLabel } from './impossibility/reasonHints'
-import { buildFamilyRows, type FamilyCohort } from './PdfExport/familyRows'
+import { friendlyReasonLabel, REASON_SEVERITY } from './impossibility/reasonHints'
+import { buildFamilyRows, type FamilyCohort, type FamilyRowData } from './PdfExport/familyRows'
 
 import { ErrorBoundary } from './ErrorBoundary'
 import type { ImpossibilityReport, ValidationStatistics } from '../services/solver'
@@ -709,7 +711,8 @@ export function PostCheckContents({
   // and priority_unmet (priority-flagged requests that didn't land). Sorted grade-first.
   // Sort/filter logic lives in PdfExport/familyRows.ts (shared with PDF export).
   // Modal re-decorates string sub-row detail into JSX for richer inline formatting.
-  const familyRows: FamilyRow[] = useMemo(() => {
+  // baseRows holds the pre-decorated FamilyRowData for severity computation.
+  const baseRows: FamilyRowData[] = useMemo(() => {
     const safeReport = impossibilityReport ?? {
       mp_campers_entirely_impossible: [],
       flat: [],
@@ -717,7 +720,10 @@ export function PostCheckContents({
       total_impossible: 0,
       affected_campers: 0,
     }
-    const baseRows = buildFamilyRows(statistics, safeReport)
+    return buildFamilyRows(statistics, safeReport)
+  }, [statistics, impossibilityReport])
+
+  const familyRows: FamilyRow[] = useMemo(() => {
     return baseRows.map((r) => {
       const decoratedSubRows = r.subRows.map((sub) => {
         let detail: React.ReactNode
@@ -743,8 +749,17 @@ export function PostCheckContents({
             <span>{sub.detail}</span>
           )
         } else if (r.cohort === 'sacrificed_mp') {
-          // Render the pre-built detail string from familyRows (already human-readable).
-          detail = <span>{sub.detail}</span>
+          // When the camper was placed in a same-age cabin that honored the request,
+          // surface the positive "met by same age cabin" text instead of the unmet detail.
+          detail = sub.honoredInPlan ? (
+            <span>
+              Met by same age cabin{' '}
+              {sub.bunkName && <span className="font-mono text-xs">{sub.bunkName}</span>}
+            </span>
+          ) : (
+            // Render the pre-built detail string from familyRows (already human-readable).
+            <span>{sub.detail}</span>
+          )
         } else {
           detail = sub.targetName ? (
             <span>
@@ -759,15 +774,25 @@ export function PostCheckContents({
       })
       return { ...r, subRows: decoratedSubRows }
     })
-  }, [statistics, impossibilityReport])
+  }, [baseRows])
 
   const errorCount = issues.filter((i) => i.severity === 'error').length
-  const warningCount = issues.filter((i) => i.severity === 'warning').length
-  // KPI tile + section counts exclude suppressed types so the headline number
-  // matches the sum of what staff actually see below.
-  const visibleIssuesCount = issues.filter((i) => !SUPPRESSED_ISSUE_TYPES.has(i.type)).length
 
-  // Bunk-level issues grouped by extracted bunk name (alphabetical).
+  // Per-row severity: impossible_request rows are keyed by their first reason code;
+  // all other cohorts map to COHORT_SEVERITY (all currently 'red').
+  // Uses baseRows (pre-decoration) to preserve reasonCodes on sub-rows.
+  const rowSeverity = (row: FamilyRowData): Severity =>
+    row.cohort === 'impossible_request'
+      ? (REASON_SEVERITY[
+          (row.subRows[0]?.reasonCodes?.[0] ?? '') as keyof typeof REASON_SEVERITY
+        ] ?? 'amber')
+      : (COHORT_SEVERITY[row.cohort] ?? 'red')
+
+  // "Cabins to review" is fundamentally PER-BUNK: one row per bunk. We group all
+  // cabin-composition issues by bunk name, then derive each bunk's severity (red if
+  // ANY of its issues is red per ISSUE_SEVERITY, else amber) and sort red-bunks-first
+  // (alphabetical tiebreak). The headline cabin count is the number of distinct bunks,
+  // so it always equals the number of rendered rows.
   const bunkLevelIssues = useMemo(
     () => issues.filter((i) => BUNK_LEVEL_ISSUE_TYPES.has(i.type)),
     [issues]
@@ -780,69 +805,128 @@ export function PostCheckContents({
       arr.push(issue)
       map.set(bunk, arr)
     }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
+    // Per-bunk severity: red if any issue in the bunk is red.
+    return [...map.entries()]
+      .map(([bunkName, bunkIssues]) => {
+        const severity: Severity = bunkIssues.some((i) => ISSUE_SEVERITY[i.type] === 'red')
+          ? 'red'
+          : 'amber'
+        return { bunkName, bunkIssues, severity }
+      })
+      .sort((a, b) =>
+        a.severity === b.severity
+          ? a.bunkName.localeCompare(b.bunkName)
+          : a.severity === 'red'
+            ? -1
+            : 1
+      )
   }, [bunkLevelIssues])
 
+  // familyCount and severity computations use baseRows (pre-decoration) so reasonCodes
+  // on sub-rows are available for impossible_request severity keying.
+  const familyCount = new Set(baseRows.map((r) => r.cm_id)).size
+  // Pre-compute row severity keyed by row.key for O(1) JSX lookup.
+  const rowSeverityMap = useMemo(
+    () => new Map(baseRows.map((r) => [r.key, rowSeverity(r)])),
+    [baseRows] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  // Cabin count is the number of distinct bunks (one rendered row each), NOT the
+  // raw issue count — a bunk with two issues is still "1 cabin to review".
+  const cabinCount = issuesByBunk.length
+  const hiddenMetBySameAge = (statistics.mp_campers_entirely_impossible ?? []).filter(
+    (c) => c.fully_honored
+  ).length
+  const hiddenNoRequests = statistics.campers_with_no_requests ?? 0
+  // Honest-footer copy: both hidden-as-non-issue categories, joined with "·".
+  const anyHidden = hiddenMetBySameAge > 0 || hiddenNoRequests > 0
+  const hiddenFooterText = [
+    hiddenNoRequests > 0 ? `${hiddenNoRequests} with no requests` : null,
+    hiddenMetBySameAge > 0 ? `${hiddenMetBySameAge} met by same-age cabin` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  // Family rows render red-before-amber. buildFamilyRows already grade/name-sorted,
+  // and Array#sort is stable, so equal-severity rows preserve that order.
+  const sortedFamilyRows = useMemo(
+    () =>
+      [...familyRows].sort((a, b) => {
+        const sa = (rowSeverityMap.get(a.key) ?? 'red') === 'red' ? 0 : 1
+        const sb = (rowSeverityMap.get(b.key) ?? 'red') === 'red' ? 0 : 1
+        return sa - sb
+      }),
+    [familyRows, rowSeverityMap]
+  )
+
   const getOverallStatus = () => {
-    let base: {
-      label: string
-      sublabel: string
-      icon: typeof Sparkles
-      gradient: string
-      iconBg: string
+    // Action-split sub-label: families to contact + cabins to review counts.
+    const redFamilies = baseRows.filter((r) => rowSeverity(r) === 'red').length
+    // Count BUNKS with ≥1 red issue (matches the per-bunk row model), not red issues.
+    const redCabins = issuesByBunk.filter((b) => b.severity === 'red').length
+    const redTotal = redFamilies + redCabins
+    const totalActionable = familyCount + cabinCount
+
+    const sublabelParts = [
+      familyCount > 0
+        ? `${familyCount} ${familyCount === 1 ? 'family' : 'families'} to contact`
+        : null,
+      cabinCount > 0 ? `${cabinCount} ${cabinCount === 1 ? 'cabin' : 'cabins'} to review` : null,
+    ].filter(Boolean) as string[]
+    const sublabel = totalActionable === 0 ? 'Nothing to review' : sublabelParts.join(' · ')
+
+    // Headline label and icon driven by red-severity action count, then total actionable,
+    // then satisfaction tier (only reached when nothing to review at all).
+    if (redTotal > 0) {
+      return {
+        label: 'Needs attention',
+        sublabel,
+        icon: AlertTriangle,
+        gradient: 'from-red-500/15 to-red-400/5',
+        iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
+      }
     }
+    if (totalActionable > 0) {
+      return {
+        label: 'Looks good',
+        sublabel,
+        icon: AlertCircle,
+        gradient: 'from-amber-500/15 to-amber-400/5',
+        iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
+      }
+    }
+    // Nothing actionable — use satisfaction tier to set the tone (ring already shows %).
     if (satisfactionRate >= PARENT_SATISFACTION_TARGET && errorCount === 0) {
-      base = {
+      return {
         label: 'Excellent!',
         sublabel: 'Bunking looks great',
         icon: Sparkles,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    } else if (satisfactionRate >= 0.7 && errorCount === 0) {
-      base = {
+    }
+    if (satisfactionRate >= 0.7 && errorCount === 0) {
+      return {
         label: 'Looking Good',
         sublabel: `${Math.round(satisfactionRate * 100)}% requests satisfied`,
         icon: CheckCircle2,
         gradient: 'from-forest-500/10 to-forest-400/5',
         iconBg: 'bg-forest-500 text-white shadow-lg shadow-forest-500/30',
       }
-    } else if (satisfactionRate >= 0.5) {
-      const parts: string[] = []
-      // Count distinct campers (not (camper, cohort) tuples) for the sublabel
-      const distinctFamilyCount = new Set(familyRows.map((r) => r.cm_id)).size
-      if (distinctFamilyCount > 0)
-        parts.push(`${distinctFamilyCount} ${distinctFamilyCount === 1 ? 'family' : 'families'}`)
-      if (issuesByBunk.length > 0)
-        parts.push(`${issuesByBunk.length} ${issuesByBunk.length === 1 ? 'bunk' : 'bunks'}`)
-      const otherCount = groupedOtherIssues.reduce((sum, [, g]) => sum + g.issues.length, 0)
-      if (otherCount > 0) parts.push(`${otherCount} other issue${otherCount === 1 ? '' : 's'}`)
-      const sublabel = parts.length > 0 ? parts.join(' · ') : 'no issues to review'
-      base = {
-        label: 'Needs Attention',
-        sublabel,
-        icon: AlertCircle,
-        gradient: 'from-amber-500/15 to-amber-400/5',
-        iconBg: 'bg-amber-500 text-white shadow-lg shadow-amber-500/30',
-      }
-    } else {
-      base = {
-        label: 'Needs Work',
-        sublabel: 'Consider re-running the solver',
-        icon: AlertTriangle,
-        gradient: 'from-red-500/15 to-red-400/5',
-        iconBg: 'bg-red-500 text-white shadow-lg shadow-red-500/30',
-      }
     }
-
-    const unmetKids = statistics.campers_with_unsatisfied_material_parent_requests ?? 0
-    if (unmetKids > 0) {
-      base.sublabel = `${unmetKids} kid${unmetKids === 1 ? '' : 's'} missed a parent request`
-    } else if (parentTotal > 0) {
-      base.sublabel = `All ${parentTotal} parent request${parentTotal === 1 ? '' : 's'} fulfilled`
+    // Low satisfaction but nothing actionable surfaced — show "no issues" message.
+    return {
+      label: satisfactionRate >= 0.5 ? 'Needs Attention' : 'Needs Work',
+      sublabel,
+      icon: satisfactionRate >= 0.5 ? AlertCircle : AlertTriangle,
+      gradient:
+        satisfactionRate >= 0.5
+          ? 'from-amber-500/15 to-amber-400/5'
+          : 'from-red-500/15 to-red-400/5',
+      iconBg:
+        satisfactionRate >= 0.5
+          ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/30'
+          : 'bg-red-500 text-white shadow-lg shadow-red-500/30',
     }
-
-    return base
   }
 
   const status = getOverallStatus()
@@ -898,7 +982,7 @@ export function PostCheckContents({
             {/* Ring */}
             <SatisfactionRing rate={satisfactionRate} size={100} />
 
-            {/* Stats grid — row 1: camper coverage; row 2: assigned + issues */}
+            {/* Stats grid — 3 positive coverage tiles */}
             <div className="grid flex-1 grid-cols-2 gap-3">
               {/* Tile 1: got ≥1 request */}
               <div className="flex items-center gap-2">
@@ -940,35 +1024,6 @@ export function PostCheckContents({
                   <p className="text-muted-foreground text-xs">assigned</p>
                 </div>
               </div>
-
-              {/* Tile 4: issues */}
-              <div className="flex items-center gap-2">
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
-                    errorCount > 0
-                      ? 'bg-red-500/10'
-                      : warningCount > 0
-                        ? 'bg-amber-500/10'
-                        : 'bg-forest-500/10'
-                  }`}
-                >
-                  <Target
-                    className={`h-4 w-4 ${
-                      errorCount > 0
-                        ? 'text-red-600'
-                        : warningCount > 0
-                          ? 'text-amber-600'
-                          : 'text-forest-600'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <p className="text-foreground text-lg leading-tight font-semibold">
-                    {visibleIssuesCount}
-                  </p>
-                  <p className="text-muted-foreground text-xs">issues</p>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -976,64 +1031,60 @@ export function PostCheckContents({
           - Cohort A: entirely-impossible MP campers (got nothing)
           - Cohort B: not-bunk-with violations (families to call)
           - Cohort C: priority-flagged requests that didn't land
-          All rows sorted alphabetically by camper first name. */}
+          All rows sorted grade-first, name tiebreak. */}
           {familyRows.length > 0 && (
             <div className="px-5 pt-4">
               <div className="rounded-xl border border-red-200 bg-red-50/40 p-4">
                 <div className="flex items-center justify-between">
-                  {(() => {
-                    const distinctCount = new Set(familyRows.map((r) => r.cm_id)).size
-                    return (
-                      <>
-                        <div>
-                          <h3 className="text-sm font-semibold text-red-900">
-                            Families to contact
-                          </h3>
-                          <p className="mt-0.5 text-xs text-red-800/80">
-                            {distinctCount} follow-up call{distinctCount === 1 ? '' : 's'}{' '}
-                            recommended
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
-                          {distinctCount}
-                        </span>
-                      </>
-                    )
-                  })()}
+                  <div>
+                    <h3 className="text-sm font-semibold text-red-900">Families to contact</h3>
+                    <p className="mt-0.5 text-xs text-red-800/80">
+                      {familyCount} follow-up call{familyCount === 1 ? '' : 's'} recommended
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-red-200/80 px-2.5 py-1 text-xs font-medium text-red-900">
+                    {familyCount}
+                  </span>
                 </div>
                 <div className="mt-3 divide-y divide-red-100 text-sm">
-                  {familyRows.map((row) => (
-                    <div key={row.key} className="px-1 py-2">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
-                          onClick={() => handleCamperClick(row.cm_id)}
-                        >
-                          {row.name}
-                        </span>
-                        {row.grade > 0 && (
-                          <span className="text-xs text-stone-500">
-                            · {row.grade}
-                            {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
-                              ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
-                              'th'}
-                          </span>
-                        )}
-                        <CohortPill cohort={row.cohort} />
-                      </div>
-                      <div className="mt-1 space-y-0.5 pl-3">
-                        {row.subRows.map((sub, i) => (
-                          <div
-                            key={`${row.key}-${i}`}
-                            data-testid={`family-subrow-${row.key}-${i}`}
-                            className="text-xs text-stone-600"
+                  {sortedFamilyRows.map((row) => {
+                    const sev = rowSeverityMap.get(row.key) ?? 'red'
+                    return (
+                      <div key={row.key} className="px-1 py-2">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-block h-2 w-2 rounded-full ${sev === 'red' ? 'bg-red-600' : 'bg-amber-500'}`}
+                          />
+                          <span
+                            className="cursor-pointer font-medium text-stone-900 hover:text-red-700"
+                            onClick={() => handleCamperClick(row.cm_id)}
                           >
-                            {sub.detail}
-                          </div>
-                        ))}
+                            {row.name}
+                          </span>
+                          {row.grade > 0 && (
+                            <span className="text-xs text-stone-500">
+                              · {row.grade}
+                              {['th', 'st', 'nd', 'rd'][((row.grade % 100) - 20) % 10] ||
+                                ['th', 'st', 'nd', 'rd'][row.grade % 100] ||
+                                'th'}
+                            </span>
+                          )}
+                          <CohortPill cohort={row.cohort} />
+                        </div>
+                        <div className="mt-1 space-y-0.5 pl-3">
+                          {row.subRows.map((sub, i) => (
+                            <div
+                              key={`${row.key}-${i}`}
+                              data-testid={`family-subrow-${row.key}-${i}`}
+                              className="text-xs text-stone-600"
+                            >
+                              {sub.detail}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
@@ -1125,40 +1176,50 @@ export function PostCheckContents({
             </div>
           )}
 
-          {/* Bunks needing attention */}
+          {/* "Cabins to review" — bunk-composition issues grouped per bunk (one row per
+          bunk), each row carrying a red/amber severity dot. Rows are sorted red-first.
+          Replaces the former "Bunks needing attention" + "Other issues" sections. */}
           {issuesByBunk.length > 0 && (
             <div className="px-5 pt-3">
               <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold text-orange-900">
-                      Bunks needing attention
-                    </h3>
+                    <h3 className="text-sm font-semibold text-orange-900">Cabins to review</h3>
                     <p className="mt-0.5 text-xs text-orange-800/80">
-                      {issuesByBunk.length} bunk{issuesByBunk.length === 1 ? '' : 's'} have warnings
+                      {cabinCount} {cabinCount === 1 ? 'cabin' : 'cabins'} with warnings
                     </p>
                   </div>
                   <span className="rounded-full bg-orange-200/80 px-2.5 py-1 text-xs font-medium text-orange-900">
-                    {issuesByBunk.length}
+                    {cabinCount}
                   </span>
                 </div>
                 <ul className="mt-3 space-y-2 text-sm">
-                  {issuesByBunk.map(([bunkName, bunkIssues]) => (
-                    <li key={bunkName} className="rounded-lg bg-white px-3 py-2">
+                  {issuesByBunk.map(({ bunkName, bunkIssues, severity }) => (
+                    <li
+                      key={bunkName}
+                      data-testid="cabin-review-row"
+                      className="rounded-lg bg-white px-3 py-2"
+                    >
                       <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-block h-2 w-2 rounded-full ${severity === 'red' ? 'bg-red-600' : 'bg-amber-500'}`}
+                        />
                         <span className="font-medium text-stone-900">{bunkName}</span>
-                        {bunkIssues.map((iss, idx) => (
-                          <span
-                            key={idx}
-                            className={`rounded-full px-2 py-0.5 text-xs ${
-                              iss.type === 'capacity_violation'
-                                ? 'bg-red-200 text-red-900'
-                                : 'bg-amber-200 text-amber-900'
-                            }`}
-                          >
-                            {getIssueTypeLabel(iss.type)}
-                          </span>
-                        ))}
+                        {bunkIssues.map((iss, idx) => {
+                          const issueSev = (ISSUE_SEVERITY[iss.type] ?? 'amber') as Severity
+                          return (
+                            <span
+                              key={idx}
+                              className={`rounded-full px-2 py-0.5 text-xs ${
+                                issueSev === 'red'
+                                  ? 'bg-red-200 text-red-900'
+                                  : 'bg-amber-200 text-amber-900'
+                              }`}
+                            >
+                              {getIssueTypeLabel(iss.type)}
+                            </span>
+                          )
+                        })}
                       </div>
                       <div className="mt-1 space-y-0.5 pl-3">
                         {bunkIssues.map((iss, idx) => (
@@ -1170,11 +1231,27 @@ export function PostCheckContents({
                     </li>
                   ))}
                 </ul>
+                {/* Honest footer — hidden items that are non-issues */}
+                {anyHidden && (
+                  <p className="text-muted-foreground mt-3 border-t border-dashed pt-2 text-xs">
+                    Hidden as non-issues: {hiddenFooterText}
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {/* Other issues — residual types not covered by Families to contact or Bunks needing attention */}
+          {/* Honest footer when cabins section is absent but hidden items exist */}
+          {issuesByBunk.length === 0 && anyHidden && (
+            <div className="px-5 pt-3">
+              <p className="text-muted-foreground border-t border-dashed pt-2 text-xs">
+                Hidden as non-issues: {hiddenFooterText}
+              </p>
+            </div>
+          )}
+
+          {/* Residual "Other issues" — types not in ISSUE_SECTION (e.g. level_regression).
+          Kept so no issue type silently disappears. */}
           {groupedOtherIssues.length > 0 && (
             <div className="px-5 pt-3">
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
@@ -1182,7 +1259,7 @@ export function PostCheckContents({
                   <div>
                     <h3 className="text-sm font-semibold text-stone-900">Other issues</h3>
                     <p className="mt-0.5 text-xs text-stone-500">
-                      Items not covered by Families to contact or Bunks needing attention
+                      Items not covered by Families to contact or Cabins to review
                     </p>
                   </div>
                   <span className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-700">

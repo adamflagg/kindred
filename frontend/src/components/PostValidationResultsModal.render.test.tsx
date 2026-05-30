@@ -136,8 +136,12 @@ describe('PostValidationResultsModal — best-effort line removed (Stage 3b.2)',
   })
 })
 
-describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
-  it('shows kid-count copy when ≥1 kid has an unmet parent request', () => {
+describe('PostValidationResultsModal — banner sub-text (Stage 3b.2 → Task 6 action-split)', () => {
+  // NOTE (Task 6): The old "N kids missed a parent request" / "All N parent requests fulfilled"
+  // sublabel overrides have been removed in favor of the action-split sublabel
+  // ("N families to contact · M cabins to review"). Tests updated accordingly.
+
+  it('shows action-split "Nothing to review" when rate is low but no actionable rows exist', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -151,10 +155,13 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
         })}
       />
     )
-    expect(screen.getByText(/6 kids missed a parent request/i)).toBeInTheDocument()
+    // No family rows (no mp_campers_entirely_impossible etc.), no cabin issues
+    // → action-split sublabel says "Nothing to review"
+    expect(screen.queryByText(/6 kids missed a parent request/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/nothing to review/i)).toBeInTheDocument()
   })
 
-  it('uses singular "kid" when exactly 1 kid is unmet', () => {
+  it('does not show "N kids missed" copy in the sublabel (removed by Task 6)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -168,11 +175,11 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
         })}
       />
     )
-    expect(screen.getByText(/1 kid missed a parent request/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 kid missed a parent request/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/1 kids missed/i)).not.toBeInTheDocument()
   })
 
-  it('shows "All N parent requests fulfilled" when zero kids unmet but parent requests exist', () => {
+  it('does not show "All N parent requests fulfilled" sublabel (removed by Task 6)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -186,10 +193,12 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
         })}
       />
     )
-    expect(screen.getByText(/all 12 parent requests fulfilled/i)).toBeInTheDocument()
+    expect(screen.queryByText(/all 12 parent requests fulfilled/i)).not.toBeInTheDocument()
+    // No action items + high satisfaction → "Bunking looks great" (Excellent tier)
+    expect(screen.getByText(/bunking looks great/i)).toBeInTheDocument()
   })
 
-  it('uses singular "request" when exactly 1 parent request exists and is fulfilled', () => {
+  it('does not show singular "All 1 parent request fulfilled" sublabel (removed by Task 6)', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -203,10 +212,10 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
         })}
       />
     )
-    expect(screen.getByText(/all 1 parent request fulfilled/i)).toBeInTheDocument()
+    expect(screen.queryByText(/all 1 parent request fulfilled/i)).not.toBeInTheDocument()
   })
 
-  it('falls back to per-tier generic sub when zero parent requests in session', () => {
+  it('falls back to per-tier generic sub when zero parent requests and no action items', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -224,7 +233,7 @@ describe('PostValidationResultsModal — banner sub-text (Stage 3b.2)', () => {
         })}
       />
     )
-    // Expect existing per-tier copy ("Bunking looks great" for Excellent tier)
+    // No action items, Excellent tier → "Bunking looks great"
     expect(screen.getByText(/bunking looks great/i)).toBeInTheDocument()
     expect(screen.queryByText(/missed a parent request/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/parent requests fulfilled/i)).not.toBeInTheDocument()
@@ -381,9 +390,13 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 // #1105: Unmet parent requests drill-down section
 // ---------------------------------------------------------------------------
 
-describe('PostValidationResultsModal — KPI "issues" tile excludes suppressed types', () => {
-  it('counts only non-suppressed issues so the tile matches the sections below', () => {
-    // 2 visible + 3 suppressed = 5 raw; tile should show "2".
+describe('PostValidationResultsModal — KPI "issues" tile removed (Task 6 supersedes)', () => {
+  // NOTE (Task 6): The "issues" KPI tile has been removed. Suppressed-type filtering is
+  // now enforced by the section rendering itself — suppressed types never appear in
+  // "Cabins to review" (ISSUE_SECTION maps them to 'hidden'). The tile's old job of
+  // "count visible issues" is no longer needed in the headline; action counts live in
+  // the sublabel instead.
+  it('does not render an "issues" KPI tile (removed in Task 6)', () => {
     const issues = [
       { type: 'capacity_violation', severity: 'error', message: 'Bunk Pine 1 is over capacity' },
       { type: 'age_spread_warning', severity: 'warning', message: 'Bunk Oak 2 has excessive age' },
@@ -399,9 +412,12 @@ describe('PostValidationResultsModal — KPI "issues" tile excludes suppressed t
         results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
       />
     )
-    const tileLabel = screen.getByText(/^issues$/i)
-    const tileValue = tileLabel.previousElementSibling
-    expect(tileValue?.textContent).toBe('2')
+    // Tile is gone — no "issues" label in the KPI grid
+    expect(screen.queryByText(/^issues$/i)).toBeNull()
+    // The "Cabins to review" section naturally excludes suppressed types
+    // (capacity_violation + age_spread_warning both in ISSUE_SECTION 'cabins',
+    //  3 suppressed types not in it at all)
+    expect(screen.getAllByText(/Cabins to review/i).length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -829,7 +845,9 @@ describe('PostValidationResultsModal — Capacity by gender section', () => {
   })
 })
 
-describe('PostValidationResultsModal — Bunks needing attention', () => {
+describe('PostValidationResultsModal — Cabins to review (formerly "Bunks needing attention")', () => {
+  // NOTE (Task 6): The "Bunks needing attention" section was renamed to "Cabins to review"
+  // and now uses ISSUE_SECTION classification. Tests updated accordingly.
   it('groups bunk-level issues into one row per bunk with chips', () => {
     // Real validator emits structured `details.bunk_name` for every
     // bunk-level issue; the extractor reads that first and falls back to
@@ -862,7 +880,9 @@ describe('PostValidationResultsModal — Bunks needing attention', () => {
         results={{ ...makeResults(), issues }}
       />
     )
-    expect(screen.getByText(/bunks needing attention/i)).toBeInTheDocument()
+    // Section heading is now "Cabins to review" (renamed from "Bunks needing attention")
+    expect(screen.getAllByText(/cabins to review/i).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/bunks needing attention/i)).not.toBeInTheDocument()
     // Pine 3 appears in both the bunk row and the issues list — use getAllByText
     expect(screen.getAllByText(/Pine 3/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Oak 2/).length).toBeGreaterThan(0)
@@ -878,11 +898,11 @@ describe('PostValidationResultsModal — Bunks needing attention', () => {
         results={{ ...makeResults(), issues }}
       />
     )
-    // The "Other issues" subtitle mentions "Bunks needing attention" — use a
-    // heading-role query to verify the Bunks section heading itself is absent.
-    expect(
-      screen.queryByRole('heading', { name: /bunks needing attention/i })
-    ).not.toBeInTheDocument()
+    // No cabin-level issues (unassigned_campers goes to Other issues) → section absent.
+    // Use heading role to avoid matching "Cabins to review" appearing in the
+    // "Other issues" description string.
+    expect(screen.queryByRole('heading', { name: /cabins to review/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/bunks needing attention/i)).not.toBeInTheDocument()
   })
 })
 
@@ -982,7 +1002,8 @@ describe('PostValidationResultsModal — Families to contact', () => {
         impossibilityReport={impossibilityReport}
       />
     )
-    expect(screen.getByText(/families to contact/i)).toBeInTheDocument()
+    // Section heading (and possibly the sublabel) both match — use getAllByText
+    expect(screen.getAllByText(/families to contact/i).length).toBeGreaterThanOrEqual(1)
     // Rows are now flat divs with always-visible sub-lines (no expand toggle).
     // Verify grade-first ordering by DOM position of each name span.
     // Grades: Olivia=4, Riley=4, Emma=5, Sophia=5 → grade-first, name tiebreak
@@ -1042,7 +1063,7 @@ describe('PostValidationResultsModal — KPI tiles use MSP signal', () => {
         results={makeResults(stats)}
       />
     )
-    expect(screen.getByText(/83\s*%/)).toBeInTheDocument()
+    expect(screen.getAllByText(/83\s*%/).length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -1170,11 +1191,11 @@ describe('PostValidationResultsModal — bunk issue rows (always-visible details
 })
 
 // ---------------------------------------------------------------------------
-// Issue #1481 Item 2 — Sub-label section-aware breakdown
+// Issue #1481 Item 2 — Sub-label section-aware breakdown (updated for Task 6 action-split)
 // ---------------------------------------------------------------------------
 
 describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
-  it('shows "no issues to review" when issues list is empty', () => {
+  it('shows "Nothing to review" when issues list is empty and satisfaction is moderate', () => {
     render(
       <PostValidationResultsModal
         sessionCmId={1000001}
@@ -1189,12 +1210,13 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
         })}
       />
     )
-    // The "Needs Attention" tier is triggered by rate 0.5 — sub-label shows empty state
-    expect(screen.getByText(/no issues to review/i)).toBeInTheDocument()
+    // "Needs Attention" tier, no action items → "Nothing to review"
+    expect(screen.getByText(/nothing to review/i)).toBeInTheDocument()
   })
 
-  it('shows section-aware breakdown with families, bunks, and other counts', () => {
-    // 1 family row (got_nothing camper), 1 bunk issue, 1 other issue
+  it('shows action-split breakdown with families and cabins counts', () => {
+    // 1 family row (got_nothing camper), 1 cabin issue (age_spread_warning).
+    // unassigned_camper is present but does NOT count toward cabins (#1712).
     const impossibilityReport = makeImpossibilityReport({
       mp_campers_entirely_impossible: [
         {
@@ -1240,14 +1262,13 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
         impossibilityReport={impossibilityReport}
       />
     )
-    // Sub-label is in the header <p class="text-muted-foreground text-sm">
-    // It should contain sections for family/bunk separated by "·"
-    const sublabelMatches = screen.getAllByText(/famil.*bunk|bunk.*famil/i)
-    expect(sublabelMatches.length).toBeGreaterThanOrEqual(1)
+    // Sub-label should contain "family" and "cabin" action counts (Task 6 format)
+    const allText = document.body.textContent ?? ''
+    expect(allText).toMatch(/famil.*cabin|cabin.*famil/i)
   })
 
   it('omits zero-count sections from breakdown', () => {
-    // Only bunk issues — no family rows, no other issues
+    // Only 1 cabin issue — no family rows
     const issues = [
       {
         type: 'age_spread_warning',
@@ -1277,9 +1298,9 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
     // "0 families" or "0 other" should NOT appear
     expect(screen.queryByText(/0 famil/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/0 other/i)).not.toBeInTheDocument()
-    // "1 bunk" should appear somewhere in the document (the sub-label)
-    const bunkMatches = screen.getAllByText(/1 bunk/i)
-    expect(bunkMatches.length).toBeGreaterThanOrEqual(1)
+    // "1 cabin to review" should appear in the sub-label
+    const cabinMatches = screen.getAllByText(/1 cabin to review/i)
+    expect(cabinMatches.length).toBeGreaterThanOrEqual(1)
   })
 
   it('does not show raw issues.length as the sub-label', () => {
@@ -1317,15 +1338,19 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
     )
     // The old label "2 issues to review" should not appear
     expect(screen.queryByText(/2 issues? to review/i)).not.toBeInTheDocument()
+    // Action-split sublabel should show "2 cabins to review"
+    expect(screen.getAllByText(/2 cabins to review/i).length).toBeGreaterThanOrEqual(1)
   })
 
-  it('uses singular "other issue" when otherCount === 1', () => {
-    // One non-bunk issue → should render "1 other issue", not "1 other issues"
+  it('uses singular "cabin" in the sub-label when only 1 cabin issue', () => {
+    // NOTE (Task 6): "Other issues" concept in the sublabel is replaced by "N cabins to review".
+    // Only bunk-composition issues (ISSUE_SECTION==='cabins') count toward cabins.
     const issues = [
       {
-        type: 'unassigned_camper',
+        type: 'capacity_violation',
         severity: 'error',
-        message: 'Liam Garcia is not assigned to any bunk',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
       },
     ]
     render(
@@ -1346,22 +1371,25 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
         }}
       />
     )
-    expect(screen.getAllByText(/1 other issue(?!s)/i).length).toBeGreaterThanOrEqual(1)
-    expect(screen.queryByText(/1 other issues/i)).not.toBeInTheDocument()
+    // One cabin-composition issue → "1 cabin to review"
+    expect(screen.getAllByText(/1 cabin to review/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/1 cabin to reviews/i)).not.toBeInTheDocument()
   })
 
-  it('uses plural "other issues" when otherCount > 1', () => {
-    // Two non-bunk issues → should render "2 other issues", not "2 other"
+  it('uses plural "cabins" when cabinCount > 1', () => {
+    // Two distinct cabin-composition issues → "2 cabins to review"
     const issues = [
       {
-        type: 'unassigned_camper',
+        type: 'capacity_violation',
         severity: 'error',
-        message: 'Liam Garcia is not assigned to any bunk',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
       },
       {
-        type: 'unassigned_camper',
-        severity: 'error',
-        message: 'Olivia Chen is not assigned to any bunk',
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
       },
     ]
     render(
@@ -1382,7 +1410,8 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
         }}
       />
     )
-    expect(screen.getAllByText(/2 other issues/i).length).toBeGreaterThanOrEqual(1)
+    // Two cabin-composition issues (different bunks) → "2 cabins to review"
+    expect(screen.getAllByText(/2 cabins to review/i).length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -1948,6 +1977,7 @@ describe('PostValidationResultsModal — honored subtext (Task 5)', () => {
               session_cm_id: 1000001,
               reason_codes: ['age_pref_no_eligible_grade'],
               honored_in_plan: true,
+              fully_honored: false,
               bunk_name: 'Redwood 4',
             },
           ],
@@ -1957,5 +1987,317 @@ describe('PostValidationResultsModal — honored subtext (Task 5)', () => {
     expect(screen.getByText(/met by same age cabin/i)).toBeInTheDocument()
     expect(screen.getByText('Redwood 4')).toBeInTheDocument()
     expect(screen.queryByText(/All requests impossible/i)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 6 — Action-split sections, severity, headline, honest footer; remove issues tile
+// ---------------------------------------------------------------------------
+
+describe('PostValidationResultsModal — issues KPI tile removed (Task 6)', () => {
+  it('does not render the standalone "issues" KPI tile', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues: [], validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    expect(screen.queryByText(/^issues$/i)).toBeNull()
+  })
+})
+
+describe('PostValidationResultsModal — Cabins to review section (Task 6)', () => {
+  it('renders both action sections when there are family + cabin problems', () => {
+    const impossibilityReport = makeImpossibilityReport({
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 1000001,
+          name: 'Emma Johnson',
+          grade: 5,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
+        },
+      ],
+      by_reason: {},
+    })
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    expect(screen.getByText(/Families to contact/i)).toBeInTheDocument()
+    expect(screen.getByText(/Cabins to review/i)).toBeInTheDocument()
+  })
+
+  it('hides "Cabins to review" when there are no cabin-level issues', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues: [], validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    expect(screen.queryByText(/Cabins to review/i)).not.toBeInTheDocument()
+  })
+
+  it('cabin count equals rendered cabin rows — unassigned_camper not counted (#1712)', () => {
+    // Invariant: the "N cabins to review" headline count must equal the number of
+    // cabin rows actually rendered. unassigned_camper is NOT a cabin issue (it is
+    // surfaced via the dedicated unassigned block / Other issues), so adding one
+    // must NOT inflate the cabin count beyond the single bunk-composition issue.
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+      {
+        type: 'unassigned_camper',
+        severity: 'error',
+        message: 'Liam Garcia is not assigned to any bunk',
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    // Exactly one cabin row is rendered (Pine 3 capacity_violation only).
+    const cabinRows = screen.getAllByTestId('cabin-review-row')
+    expect(cabinRows).toHaveLength(1)
+    // The headline cabin count matches the rendered rows (singular "1 cabin to review").
+    expect(screen.getAllByText(/1 cabin to review/i).length).toBeGreaterThanOrEqual(1)
+    // It must NOT claim "2 cabins" (the pre-fix bug counted the unassigned one).
+    expect(screen.queryByText(/2 cabins to review/i)).not.toBeInTheDocument()
+  })
+
+  it('cabin count counts BUNKS, not issues — one bunk with two issues is "1 cabin" (Fix 1)', () => {
+    // A single bunk (Pine 3) with TWO cabin-composition issues must render ONE
+    // cabin row and the headline must say "1 cabin to review", not "2 cabins".
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Pine 3 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Pine 3', age_spread_months: 26, max_allowed: 24 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    expect(screen.getAllByTestId('cabin-review-row')).toHaveLength(1)
+    expect(screen.getAllByText(/1 cabin to review/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/2 cabins to review/i)).not.toBeInTheDocument()
+  })
+
+  it('each cabin row has a severity dot (Fix 2)', () => {
+    const issues = [
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    const row = screen.getByTestId('cabin-review-row')
+    // A capacity_violation is red → the dot uses bg-red-600.
+    const dot = row.querySelector('span.h-2.w-2.rounded-full')
+    expect(dot).not.toBeNull()
+    expect(dot?.className).toContain('bg-red-600')
+  })
+
+  it('sorts cabin rows red-bunks-first (Fix 2)', () => {
+    // Oak 2 (amber: age_spread) alphabetically precedes Pine 3 (red: capacity),
+    // but the red bunk must render first.
+    const issues = [
+      {
+        type: 'age_spread_warning',
+        severity: 'warning',
+        message: 'Bunk Oak 2 has excessive age spread (26.0 months)',
+        details: { bunk_name: 'Oak 2', age_spread_months: 26, max_allowed: 24 },
+      },
+      {
+        type: 'capacity_violation',
+        severity: 'error',
+        message: 'Bunk Pine 3 is over capacity (9/8)',
+        details: { bunk_name: 'Pine 3', assigned: 9, max_size: 8 },
+      },
+    ]
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={{ statistics: makeStats(), issues, validated_at: '2025-06-01T12:00:00Z' }}
+      />
+    )
+    const rows = screen.getAllByTestId('cabin-review-row')
+    expect(rows).toHaveLength(2)
+    // Red bunk (Pine 3) renders before amber bunk (Oak 2).
+    expect(rows[0]?.textContent).toMatch(/Pine 3/)
+    expect(rows[1]?.textContent).toMatch(/Oak 2/)
+  })
+})
+
+describe('PostValidationResultsModal — honest footer (Task 6)', () => {
+  it('footer counts fully-honored campers as hidden non-issues', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 1000001,
+              name: 'Emma Johnson',
+              grade: 5,
+              gender: 'F',
+              session_cm_id: 1000001,
+              reason_codes: ['cross_session'],
+              fully_honored: true,
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText(/met by same-age cabin/i)).toBeInTheDocument()
+  })
+
+  it('does not render the honest footer when nothing is hidden', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+      />
+    )
+    expect(screen.queryByText(/hidden as non-issues/i)).not.toBeInTheDocument()
+  })
+
+  it('footer renders the "N with no requests" half (Fix 3)', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({ campers_with_no_requests: 3 })}
+      />
+    )
+    expect(screen.getByText(/hidden as non-issues/i)).toBeInTheDocument()
+    expect(screen.getByText(/3 with no requests/i)).toBeInTheDocument()
+  })
+
+  it('footer renders both halves when both hidden categories are present (Fix 3)', () => {
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults({
+          campers_with_no_requests: 2,
+          mp_campers_entirely_impossible: [
+            {
+              cm_id: 1000001,
+              name: 'Emma Johnson',
+              grade: 5,
+              gender: 'F',
+              session_cm_id: 1000001,
+              reason_codes: ['cross_session'],
+              fully_honored: true,
+            },
+          ],
+        })}
+      />
+    )
+    expect(screen.getByText(/2 with no requests/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 met by same-age cabin/i)).toBeInTheDocument()
+  })
+})
+
+describe('PostValidationResultsModal — family rows red-before-amber (Fix 4)', () => {
+  it('renders a higher-grade red family row before a lower-grade amber family row', () => {
+    // Lower-grade row is amber (impossible_request, cross_session = amber reason),
+    // higher-grade row is red (got_nothing, always red). Grade-first sort would put
+    // the amber (grade 3) before the red (grade 8); severity sort must invert that.
+    const impossibilityReport = makeImpossibilityReport({
+      // got_nothing → red, grade 8
+      mp_campers_entirely_impossible: [
+        {
+          cm_id: 2002,
+          name: 'Zoe Adams',
+          grade: 8,
+          gender: 'F',
+          reason_codes: ['grade_compatibility'],
+          session_cm_id: 1000001,
+        },
+      ],
+      // impossible_request via flat → amber (cross_session), grade 3
+      flat: [
+        {
+          request_id: 'r-amber',
+          reason_code: 'cross_session',
+          reason_message: 'different session',
+          request_type: 'bunk_with',
+          source_field: 'share_bunk_with',
+          requester: { cm_id: 2001, name: 'Amy Brooks', grade: 3, gender: 'F' },
+          requestee: { cm_id: 9999, name: 'Friend Elsewhere', grade: 3, gender: 'F' },
+          detail: { requester_session: 1000001 },
+          bucket: 'material_parent' as const,
+        },
+      ],
+    })
+    render(
+      <PostValidationResultsModal
+        sessionCmId={1000001}
+        isOpen={true}
+        onClose={() => {}}
+        results={makeResults()}
+        impossibilityReport={impossibilityReport}
+      />
+    )
+    const allText = document.body.textContent ?? ''
+    // Red (Zoe, grade 8) renders before amber (Amy, grade 3), despite grade order.
+    expect(allText.indexOf('Zoe Adams')).toBeLessThan(allText.indexOf('Amy Brooks'))
   })
 })

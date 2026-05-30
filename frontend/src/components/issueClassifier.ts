@@ -50,7 +50,16 @@ export interface PostCheckIssue {
 export type Section = 'families' | 'cabins' | 'hidden'
 export type Severity = 'red' | 'amber'
 
-/** Issue[] type → which action section it renders in. */
+/**
+ * Issue[] type → which action section it renders in.
+ *
+ * The 'cabins' set must stay equal to BUNK_LEVEL_ISSUE_TYPES so the headline
+ * cabin count (derived from ISSUE_SECTION==='cabins') matches the rows actually
+ * rendered in the "Cabins to review" section (derived from BUNK_LEVEL_ISSUE_TYPES).
+ * `unassigned_camper` is intentionally NOT here: it is surfaced via the modal's
+ * dedicated "campers need bunk assignment" block and the "Other issues" catch-all,
+ * so listing it as a cabin would count it without showing it (the #1712 bug).
+ */
 export const ISSUE_SECTION: Record<string, Section> = {
   capacity_violation: 'cabins',
   age_spread_warning: 'cabins',
@@ -59,17 +68,15 @@ export const ISSUE_SECTION: Record<string, Section> = {
   grade_adjacency_warning: 'cabins',
   age_flow_inversion: 'cabins',
   isolation_risk: 'cabins',
-  unassigned_camper: 'cabins',
   no_requests: 'hidden',
   valid_request_unsatisfied: 'hidden',
   valid_negative_request_violated: 'hidden',
   campers_with_unsatisfied_valid_requests: 'hidden',
 }
 
-/** Issue[] type → severity. Over-capacity + unassigned are serious; the rest are FYI nits. */
+/** Issue[] type → severity. Over-capacity is serious; the rest are FYI nits. */
 export const ISSUE_SEVERITY: Record<string, Severity> = {
   capacity_violation: 'red',
-  unassigned_camper: 'red',
   age_spread_warning: 'amber',
   grade_ratio_warning: 'amber',
   grade_spread_warning: 'amber',

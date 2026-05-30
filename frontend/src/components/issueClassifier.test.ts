@@ -104,15 +104,19 @@ describe('issue classification', () => {
   it('routes composition warnings to cabins', () => {
     expect(ISSUE_SECTION['capacity_violation']).toBe('cabins')
     expect(ISSUE_SECTION['isolation_risk']).toBe('cabins')
-    expect(ISSUE_SECTION['unassigned_camper']).toBe('cabins')
+  })
+  it('does NOT route unassigned_camper to cabins (surfaced via dedicated block; #1712)', () => {
+    // unassigned_camper would inflate the cabin count without adding a rendered
+    // cabin row, since the section body renders from BUNK_LEVEL_ISSUE_TYPES only.
+    expect(ISSUE_SECTION['unassigned_camper']).toBeUndefined()
+    expect(ISSUE_SEVERITY['unassigned_camper']).toBeUndefined()
   })
   it('hides benign/suppressed types', () => {
     expect(ISSUE_SECTION['no_requests']).toBe('hidden')
     expect(ISSUE_SECTION['valid_request_unsatisfied']).toBe('hidden')
   })
-  it('marks capacity + unassigned red, composition nits amber', () => {
+  it('marks capacity red, composition nits amber', () => {
     expect(ISSUE_SEVERITY['capacity_violation']).toBe('red')
-    expect(ISSUE_SEVERITY['unassigned_camper']).toBe('red')
     expect(ISSUE_SEVERITY['age_spread_warning']).toBe('amber')
     expect(ISSUE_SEVERITY['isolation_risk']).toBe('amber')
   })
