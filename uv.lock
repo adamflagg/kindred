@@ -758,7 +758,7 @@ requires-dist = [
     { name = "nicknames", specifier = ">=1.0.1" },
     { name = "openai", specifier = ">=2.0.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "ortools", specifier = ">=9.15" },
+    { name = "ortools", specifier = ">=9.15.6755" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pocketbase", specifier = ">=0.17.1" },
     { name = "psutil", specifier = ">=5.9.0" },
