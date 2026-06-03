@@ -121,14 +121,14 @@ Survey scope: features added in Python 3.10–3.14. Re-run Part A after toolchai
 | **Missing presence** | ~190 | D101 class **67** · D102 method 46 · D107 init 45 · D103 func **12** · D104 pkg **12** · D105 magic 8 · D100 module **1** |
 | Param docs | 23 | D417 |
 
-**§a — enable (high-value presence only).** Add to `ruff.toml` `[lint] select`: `D100` (module), `D101` (public class), `D103` (public function), `D104` (package). ~**92** missing across those four — a bounded one-time sweep of *domain-meaningful* docstrings (solver constraints, satisfaction policy, request pipeline), not filler. Selecting the four codes explicitly pulls in **zero** format rules and sidesteps the D203/D211 + D212/D213 convention conflicts (no `convention =` needed). `[lint.per-file-ignores]`: add `D1` to the existing `tests/**/*.py` and `scripts/**/*.py` entries.
+**§a — enable (high-value presence only).** Add to `ruff.toml` `[lint] select`: `D100` (module), `D101` (public class), `D103` (public function), `D104` (package). ~**92** missing across those four — a bounded one-time sweep of *domain-meaningful* docstrings (solver constraints, satisfaction policy, request pipeline), not filler. Selecting the four codes explicitly pulls in **zero** format rules and sidesteps the D203/D211 + D212/D213 convention conflicts (no `convention =` needed). `[lint.per-file-ignores]`: add `D1` to the existing `tests/**/*.py`, `scripts/**/*.py`, and `api/services/test_*.py` (co-located tests) entries — the last is its own glob, not covered by `tests/**/*.py`, and its public `def test_*` functions would otherwise trip `D103`.
 
 **§b — surveyed, deliberately skipped** (low value / filler-inducing; matches #919's own "non-obvious behavior, not trivial wrappers" bar):
 - `D102` (every public method, 46), `D107` (`__init__`, 45), `D105` (magic, 8) — the mypy-strict typed signature already documents these; enforcing yields `"Initialize the processor."` noise.
 - `D417` (document every param, 23) — high friction, restates the typed signature.
 - D2xx/D4xx format rules (~1,340) — pure style. *Optional* throwaway `ruff check --select D --fix` of the 685 auto-fixable for consistency; **not** gated, not part of this row.
 
-**Execution (one PR).** Write the ~92 §a docstrings + add the four codes to `select` + the two `per-file-ignores`; verify `ruff check --select D100,D101,D103,D104` is clean. Ratchets via the existing ruff pre-push + CI — **no new tooling** (no `interrogate` gate). Split the sweep by package if it gets large.
+**Execution (one PR).** Write the ~92 §a docstrings + add the four codes to `select` + the three `per-file-ignores`; verify `ruff check --select D100,D101,D103,D104` is clean. Ratchets via the existing ruff pre-push + CI — **no new tooling** (no `interrogate` gate). Split the sweep by package if it gets large.
 
 ---
 
