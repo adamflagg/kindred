@@ -67,7 +67,7 @@ reviews:
 
     - path: "pocketbase/**/*.go"
       instructions: |
-        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.3`). Idiomatic baseline:
+        Go 1.26+ codebase (pocketbase/go.mod declares `go 1.26.4`). Idiomatic baseline:
         - `any` (not `interface{}`); `map[string]any` (not `map[string]interface{}`)
         - `slices`, `maps`, `cmp` packages over legacy `sort.*`
         - `min`/`max`/`clear` builtins; `cmp.Or` for first-non-zero
@@ -77,7 +77,7 @@ reviews:
         - `math/rand/v2` (already adopted); `crypto/rand` for jitter
         - `testing/synctest` for time-dependent tests
         Logging contract: the `logging` package installs the default slog handler via `slog.SetDefault` at init — direct `slog.Info(...)` / `slog.Error(...)` / etc. calls are the correct pattern. There is no `logging.Info` wrapper. Do NOT flag direct `slog.*` calls as "bypasses logging contract" — that's a false positive.
-        Do NOT suggest `encoding/json/v2` — still `GOEXPERIMENT=jsonv2`-gated as of Go 1.26.3 and not subject to the Go 1 compatibility promise. The codebase deliberately uses `encoding/json` until v2 is GA.
+        Do NOT suggest `encoding/json/v2` — still `GOEXPERIMENT=jsonv2`-gated as of Go 1.26.4 and not subject to the Go 1 compatibility promise. The codebase deliberately uses `encoding/json` until v2 is GA.
         Domain invariant: cross-table relationships use CampMinder IDs (`cm_id`, `person_id`), never PocketBase record IDs. All CampMinder-derived tables include a required `year` field; year filtering must use `CAMPMINDER_SEASON_ID` from env.
 
     - path: "pocketbase/pb_migrations/*.js"
