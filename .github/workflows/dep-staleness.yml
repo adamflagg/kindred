@@ -1,0 +1,55 @@
+name: Dependency Staleness
+
+# Proactively surfaces dependency floors that have fallen behind the latest published
+# release -- a MAJOR version (or more) for 1.x+ packages, or a large minor gap for 0.x.
+# The canonical case is the "croniter pattern" (shipped as >=2.0.0 while the ecosystem
+# moved to 6.x). Dependabot only files these as throttled individual major-bump PRs,
+# so a stale floor picked at implementation time can sit unnoticed.
+#
+# Warn-only: the check never fails. It posts a job-summary table and inline
+# ::warning:: annotations. It is NOT a required status check.
+
+on:
+  # Weekly sweep — Mondays 13:00 UTC, after the 06:00 ET Dependabot run.
+  schedule:
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+  # On PRs that touch a manifest — catches a stale floor the moment it is added.
+  # Also self-references the checker and workflow so changes to them re-run here.
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'frontend/package.json'
+      - 'package.json'
+      - 'pocketbase/package.json'
+      - 'scripts/ci/check_dep_staleness.py'
+      - '.github/workflows/dep-staleness.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dep-staleness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  floor-staleness:
+    name: Floor Staleness Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        persist-credentials: false
+
+    - name: Setup Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version-file: '.python-version'
+
+    # Pure-stdlib script (urllib + tomllib) — no dependency install needed.
+    - name: Check dependency floor staleness
+      run: python scripts/ci/check_dep_staleness.py
