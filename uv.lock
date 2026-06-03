@@ -750,7 +750,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "apscheduler", specifier = ">=3.11.2" },
-    { name = "croniter", specifier = ">=2.0.0" },
+    { name = "croniter", specifier = ">=6.2.2" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jellyfish", specifier = ">=1.2.1" },
