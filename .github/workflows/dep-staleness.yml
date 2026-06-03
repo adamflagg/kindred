@@ -1,9 +1,10 @@
 name: Dependency Staleness
 
-# Proactively surfaces dependency floors that are a MAJOR version (or more) behind
-# the latest published release -- the "croniter pattern" (shipped as >=2.0.0 while
-# the ecosystem moved to 6.x). Dependabot only files these as throttled individual
-# major-bump PRs, so a stale floor picked at implementation time can sit unnoticed.
+# Proactively surfaces dependency floors that have fallen behind the latest published
+# release -- a MAJOR version (or more) for 1.x+ packages, or a large minor gap for 0.x.
+# The canonical case is the "croniter pattern" (shipped as >=2.0.0 while the ecosystem
+# moved to 6.x). Dependabot only files these as throttled individual major-bump PRs,
+# so a stale floor picked at implementation time can sit unnoticed.
 #
 # Warn-only: the check never fails. It posts a job-summary table and inline
 # ::warning:: annotations. It is NOT a required status check.
@@ -14,6 +15,7 @@ on:
     - cron: '0 13 * * 1'
   workflow_dispatch:
   # On PRs that touch a manifest — catches a stale floor the moment it is added.
+  # Also self-references the checker and workflow so changes to them re-run here.
   pull_request:
     paths:
       - 'pyproject.toml'
@@ -21,6 +23,8 @@ on:
       - 'frontend/package.json'
       - 'package.json'
       - 'pocketbase/package.json'
+      - 'scripts/ci/check_dep_staleness.py'
+      - '.github/workflows/dep-staleness.yml'
 
 permissions:
   contents: read

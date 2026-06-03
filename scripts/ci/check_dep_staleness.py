@@ -2,9 +2,11 @@
 """Proactive dependency floor-staleness checker (warn-only CI guard).
 
 Compares every declared dependency floor against the latest version published on
-its registry and flags floors that are one or more MAJOR versions behind -- the
-"croniter pattern": shipped as ``croniter>=2.0.0`` while the ecosystem had moved
-to 6.x. Dependabot only surfaces these as throttled individual major-bump PRs, so
+its registry and flags floors that have fallen behind -- one or more MAJOR versions
+for a 1.x+ package, or a large MINOR gap for a 0.x package (which has no "major" to
+speak of). The canonical case is the "croniter pattern": shipped as ``croniter>=2.0.0``
+while the ecosystem had moved to 6.x. Dependabot only surfaces these as throttled
+individual major-bump PRs, so
 a stale floor picked at implementation time can sit unnoticed for weeks. This
 check makes the gap visible on every manifest-touching PR and on a weekly cron.
 
@@ -48,7 +50,8 @@ SEVERITY_AHEAD = "ahead"
 ZEROX_MINOR_MEDIUM = 5
 ZEROX_MINOR_HIGH = 10
 
-# npm manifests scanned in repo mode (first occurrence of a package wins).
+# npm manifests scanned in repo mode (deduped per (name, floor), so divergent
+# floors for the same package across manifests are each reported).
 NPM_MANIFESTS = ("frontend/package.json", "package.json", "pocketbase/package.json")
 
 
@@ -189,13 +192,21 @@ def _is_flagged(severity: str) -> bool:
 def render_summary(rows: list[dict[str, Any]]) -> str:
     """Render a Markdown report of flagged rows (for ``$GITHUB_STEP_SUMMARY``)."""
     flagged = [r for r in rows if _is_flagged(r["severity"])]
+    unknown = [r for r in rows if r["severity"] == SEVERITY_UNKNOWN]
     lines = ["## Dependency floor staleness", ""]
     if not flagged:
-        lines.append(f"✅ No stale floors — all {len(rows)} declared deps are within one major of latest.")
+        if unknown:
+            # No flags, but lookups failed -- staleness is indeterminate, not clear.
+            lines.append(
+                f"⚠️ {len(unknown)} of {len(rows)} registry lookups failed — "
+                "staleness could not be determined for those deps."
+            )
+        else:
+            lines.append(f"✅ No stale floors — all {len(rows)} declared deps are within one major of latest.")
         return "\n".join(lines) + "\n"
 
     lines += [
-        f"⚠️ {len(flagged)} of {len(rows)} declared floors are a major version (or more) behind latest.",
+        f"⚠️ {len(flagged)} of {len(rows)} declared floors are behind latest (see the Gap column).",
         "",
         "| Severity | Eco | Package | Floor | Latest | Gap |",
         "|----------|-----|---------|-------|--------|-----|",
@@ -206,9 +217,11 @@ def render_summary(rows: list[dict[str, Any]]) -> str:
             f"| {badge.get(r['severity'], r['severity'])} | {r['eco']} | `{r['name']}` "
             f"| {r['floor']} | {r['latest']} | {r['label']} |"
         )
+    if unknown:
+        lines += ["", f"_{len(unknown)} registry lookup(s) failed — those deps were not evaluated._"]
     lines += [
         "",
-        "_Floors are `>=` (PyPI) / `^`~`~` (npm); a stale floor usually means the lock "
+        "_Floors are `>=` (PyPI) / `^`/`~` (npm); a stale floor usually means the lock "
         "already resolved higher but the declared minimum was never revisited._",
     ]
     return "\n".join(lines) + "\n"
@@ -224,16 +237,18 @@ def collect_repo_rows(root: Path) -> list[dict[str, Any]]:
         for name, floor in parse_pypi_floors(pyproject):
             rows.append({"eco": "pypi", "name": name, "floor": floor})
 
-    seen_npm: set[str] = set()
+    # Dedup on (name, floor): identical pins across manifests collapse to one row,
+    # but a divergent (possibly stale) floor in a later manifest is still reported.
+    seen_npm: set[tuple[str, str]] = set()
     for manifest in NPM_MANIFESTS:
         path = root / manifest
         if not path.exists():
             continue
         package_json = json.loads(path.read_text())
         for name, floor in parse_npm_floors(package_json):
-            if name in seen_npm:
+            if (name, floor) in seen_npm:
                 continue
-            seen_npm.add(name)
+            seen_npm.add((name, floor))
             rows.append({"eco": "npm", "name": name, "floor": floor})
     return rows
 

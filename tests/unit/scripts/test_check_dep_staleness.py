@@ -192,3 +192,60 @@ def test_cli_emits_github_warning_annotations():
     rows = [{"eco": "pypi", "name": "psutil", "floor": "5.9.0", "latest": "7.2.2"}]
     _, out, _ = run_cli(rows)
     assert "::warning" in out  # surfaced as a GitHub annotation
+
+
+# --------------------------- render_summary ---------------------------
+
+
+def test_render_summary_no_false_all_clear_when_all_lookups_failed():
+    # If every registry lookup failed, staleness is indeterminate -- the summary
+    # must NOT claim an all-clear (regression guard for the false-green bug).
+    rows = mod.evaluate(
+        [
+            {"eco": "pypi", "name": "rich", "floor": "13.0.0", "latest": "ERR:URLError"},
+            {"eco": "pypi", "name": "psutil", "floor": "5.9.0", "latest": None},
+        ]
+    )
+    summary = mod.render_summary(rows)
+    assert "No stale floors" not in summary
+    assert "lookup" in summary.lower()  # surfaces that lookups failed
+
+
+def test_render_summary_clean_run_still_reports_all_clear():
+    rows = mod.evaluate([{"eco": "npm", "name": "react", "floor": "19.2.4", "latest": "19.2.7"}])
+    summary = mod.render_summary(rows)
+    assert "No stale floors" in summary
+
+
+def test_render_summary_zerox_flagged_not_described_as_major():
+    # A 0.x package flagged on a large MINOR gap must not be called a major-version gap.
+    rows = mod.evaluate([{"eco": "npm", "name": "somepkg", "floor": "0.17.1", "latest": "0.30.0"}])
+    summary = mod.render_summary(rows)
+    assert "somepkg" in summary
+    assert "major version" not in summary.lower()
+
+
+# --------------------------- collect_repo_rows (npm dedup) ---------------------------
+
+
+def _write_manifest(path: Path, deps: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"dependencies": deps}))
+
+
+def test_collect_repo_rows_reports_divergent_npm_floors(tmp_path):
+    # Same package, different floors across manifests: the later (possibly stale)
+    # floor must NOT be hidden by a repo-wide name-only dedup.
+    _write_manifest(tmp_path / "frontend" / "package.json", {"eslint": "^10.4.0"})
+    _write_manifest(tmp_path / "pocketbase" / "package.json", {"eslint": "^9.0.0"})
+    rows = mod.collect_repo_rows(tmp_path)
+    eslint_floors = {r["floor"] for r in rows if r["name"] == "eslint"}
+    assert eslint_floors == {"10.4.0", "9.0.0"}
+
+
+def test_collect_repo_rows_dedupes_identical_npm_floors(tmp_path):
+    # Identical (name, floor) across manifests is redundant -- report it once.
+    _write_manifest(tmp_path / "frontend" / "package.json", {"eslint": "^10.4.0"})
+    _write_manifest(tmp_path / "pocketbase" / "package.json", {"eslint": "^10.4.0"})
+    rows = mod.collect_repo_rows(tmp_path)
+    assert sum(1 for r in rows if r["name"] == "eslint") == 1
