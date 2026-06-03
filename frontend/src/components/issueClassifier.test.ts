@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractBunkName, ISSUE_SECTION, ISSUE_SEVERITY, COHORT_SEVERITY } from './issueClassifier'
+import { extractBunkName, ISSUE_SEVERITY, COHORT_SEVERITY } from './issueClassifier'
 import { REASON_SEVERITY } from './impossibility/reasonHints'
 
 describe('extractBunkName', () => {
@@ -101,19 +101,10 @@ describe('extractBunkName', () => {
 })
 
 describe('issue classification', () => {
-  it('routes composition warnings to cabins', () => {
-    expect(ISSUE_SECTION['capacity_violation']).toBe('cabins')
-    expect(ISSUE_SECTION['isolation_risk']).toBe('cabins')
-  })
-  it('does NOT route unassigned_camper to cabins (surfaced via dedicated block; #1712)', () => {
+  it('does NOT assign unassigned_camper a cabin severity (surfaced via dedicated block; #1712)', () => {
     // unassigned_camper would inflate the cabin count without adding a rendered
     // cabin row, since the section body renders from BUNK_LEVEL_ISSUE_TYPES only.
-    expect(ISSUE_SECTION['unassigned_camper']).toBeUndefined()
     expect(ISSUE_SEVERITY['unassigned_camper']).toBeUndefined()
-  })
-  it('hides benign/suppressed types', () => {
-    expect(ISSUE_SECTION['no_requests']).toBe('hidden')
-    expect(ISSUE_SECTION['valid_request_unsatisfied']).toBe('hidden')
   })
   it('marks capacity red, composition nits amber', () => {
     expect(ISSUE_SEVERITY['capacity_violation']).toBe('red')

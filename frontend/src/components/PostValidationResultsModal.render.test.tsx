@@ -393,7 +393,7 @@ describe('PostValidationResultsModal — parent stats tile (Stage 3b.2)', () => 
 describe('PostValidationResultsModal — KPI "issues" tile removed (Task 6 supersedes)', () => {
   // NOTE (Task 6): The "issues" KPI tile has been removed. Suppressed-type filtering is
   // now enforced by the section rendering itself — suppressed types never appear in
-  // "Cabins to review" (ISSUE_SECTION maps them to 'hidden'). The tile's old job of
+  // "Cabins to review" (they are not in BUNK_LEVEL_ISSUE_TYPES). The tile's old job of
   // "count visible issues" is no longer needed in the headline; action counts live in
   // the sublabel instead.
   it('does not render an "issues" KPI tile (removed in Task 6)', () => {
@@ -415,8 +415,8 @@ describe('PostValidationResultsModal — KPI "issues" tile removed (Task 6 super
     // Tile is gone — no "issues" label in the KPI grid
     expect(screen.queryByText(/^issues$/i)).toBeNull()
     // The "Cabins to review" section naturally excludes suppressed types
-    // (capacity_violation + age_spread_warning both in ISSUE_SECTION 'cabins',
-    //  3 suppressed types not in it at all)
+    // (capacity_violation + age_spread_warning are both bunk-level;
+    //  the 3 suppressed types are not in BUNK_LEVEL_ISSUE_TYPES at all)
     expect(screen.getAllByText(/Cabins to review/i).length).toBeGreaterThanOrEqual(1)
   })
 })
@@ -847,7 +847,7 @@ describe('PostValidationResultsModal — Capacity by gender section', () => {
 
 describe('PostValidationResultsModal — Cabins to review (formerly "Bunks needing attention")', () => {
   // NOTE (Task 6): The "Bunks needing attention" section was renamed to "Cabins to review"
-  // and now uses ISSUE_SECTION classification. Tests updated accordingly.
+  // and now renders from BUNK_LEVEL_ISSUE_TYPES. Tests updated accordingly.
   it('groups bunk-level issues into one row per bunk with chips', () => {
     // Real validator emits structured `details.bunk_name` for every
     // bunk-level issue; the extractor reads that first and falls back to
@@ -1344,7 +1344,7 @@ describe('PostValidationResultsModal — sub-label breakdown (#1481)', () => {
 
   it('uses singular "cabin" in the sub-label when only 1 cabin issue', () => {
     // NOTE (Task 6): "Other issues" concept in the sublabel is replaced by "N cabins to review".
-    // Only bunk-composition issues (ISSUE_SECTION==='cabins') count toward cabins.
+    // Only bunk-composition issues (BUNK_LEVEL_ISSUE_TYPES) count toward cabins.
     const issues = [
       {
         type: 'capacity_violation',

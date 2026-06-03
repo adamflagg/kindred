@@ -828,7 +828,7 @@ export function PostCheckContents({
   // Pre-compute row severity keyed by row.key for O(1) JSX lookup.
   const rowSeverityMap = useMemo(
     () => new Map(baseRows.map((r) => [r.key, rowSeverity(r)])),
-    [baseRows] // eslint-disable-line react-hooks/exhaustive-deps
+    [baseRows]
   )
   // Cabin count is the number of distinct bunks (one rendered row each), NOT the
   // raw issue count — a bunk with two issues is still "1 cabin to review".
@@ -860,7 +860,7 @@ export function PostCheckContents({
 
   const getOverallStatus = () => {
     // Action-split sub-label: families to contact + cabins to review counts.
-    const redFamilies = baseRows.filter((r) => rowSeverity(r) === 'red').length
+    const redFamilies = baseRows.filter((r) => rowSeverityMap.get(r.key) === 'red').length
     // Count BUNKS with ≥1 red issue (matches the per-bunk row model), not red issues.
     const redCabins = issuesByBunk.filter((b) => b.severity === 'red').length
     const redTotal = redFamilies + redCabins
@@ -1250,8 +1250,8 @@ export function PostCheckContents({
             </div>
           )}
 
-          {/* Residual "Other issues" — types not in ISSUE_SECTION (e.g. level_regression).
-          Kept so no issue type silently disappears. */}
+          {/* Residual "Other issues" — types neither bunk-level nor suppressed
+          (e.g. level_regression). Kept so no issue type silently disappears. */}
           {groupedOtherIssues.length > 0 && (
             <div className="px-5 pt-3">
               <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
