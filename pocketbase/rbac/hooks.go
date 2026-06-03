@@ -91,8 +91,45 @@ func extractBusinessCategory(raw any) string {
 	return cat
 }
 
+// configWriteDecision is the authorization outcome for a config write, extracted
+// as a pure value so the policy can be unit-tested without a request harness.
+type configWriteDecision int
+
+const (
+	configWriteAllow configWriteDecision = iota
+	configWriteDenyMissingPermission
+	configWriteDenyWrongCategory
+	configWriteDenyCategoryMutation
+)
+
+// decideConfigWrite is the pure authorization policy for a config write.
+//
+// Superusers (PocketBase _/ admin dashboard) and admins bypass every check.
+// Non-admins need registration.manage AND may only touch registration-category
+// configs — both on the existing record and in the incoming body (newCategory),
+// the latter preventing category mutation. newCategory == "" means the body did
+// not change the category.
+func decideConfigWrite(
+	isSuperuser, isAdmin, hasRegistrationManage bool,
+	existingCategory, newCategory string,
+) configWriteDecision {
+	if isSuperuser || isAdmin {
+		return configWriteAllow
+	}
+	if !hasRegistrationManage {
+		return configWriteDenyMissingPermission
+	}
+	if !isRegistrationConfig(existingCategory) {
+		return configWriteDenyWrongCategory
+	}
+	if newCategory != "" && !isRegistrationConfig(newCategory) {
+		return configWriteDenyCategoryMutation
+	}
+	return configWriteAllow
+}
+
 // guardConfigWrite ensures non-admin users can only write registration-category configs.
-// Admin users bypass this check (they can write any config).
+// Superusers and admin users bypass this check (they can write any config).
 // Non-admin users with registration.manage can only write configs where
 // metadata.business_category is "registration" — both on the existing record
 // AND in the incoming request body (to prevent category mutation).
@@ -101,31 +138,33 @@ func guardConfigWrite(e *core.RecordRequestEvent) error {
 		return apis.NewUnauthorizedError("Authentication required", nil)
 	}
 
-	// Admin bypass
-	if e.Auth.GetBool("is_admin") {
-		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
-	}
-
-	// Non-admin must have registration.manage permission
-	if !slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage) {
-		return apis.NewForbiddenError("Missing registration.manage permission", nil)
-	}
-
-	// Check the existing record's business_category
-	if extractBusinessCategory(e.Record.Get("metadata")) != categoryRegistration {
-		return apis.NewForbiddenError("Admin access required for this config category", nil)
-	}
-
-	// Also check the incoming request body to prevent category mutation
-	info, err := e.RequestInfo()
-	if err == nil && info != nil && info.Body != nil {
+	// Pull the incoming body's business_category (if any) to detect mutation.
+	newCategory := ""
+	if info, err := e.RequestInfo(); err == nil && info != nil && info.Body != nil {
 		if newMeta, ok := info.Body["metadata"]; ok {
-			if newCat := extractBusinessCategory(newMeta); newCat != "" && newCat != categoryRegistration {
-				return apis.NewForbiddenError("Cannot change config category", nil)
-			}
+			newCategory = extractBusinessCategory(newMeta)
 		}
 	}
 
+	switch decideConfigWrite(
+		e.Auth.IsSuperuser(),
+		e.Auth.GetBool("is_admin"),
+		slices.Contains(e.Auth.GetStringSlice("cached_permissions"), permRegistrationManage),
+		extractBusinessCategory(e.Record.Get("metadata")),
+		newCategory,
+	) {
+	case configWriteDenyMissingPermission:
+		return apis.NewForbiddenError("Missing registration.manage permission", nil)
+	case configWriteDenyWrongCategory:
+		return apis.NewForbiddenError("Admin access required for this config category", nil)
+	case configWriteDenyCategoryMutation:
+		return apis.NewForbiddenError("Cannot change config category", nil)
+	case configWriteAllow:
+		return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
+	}
+
+	// Unreachable: decideConfigWrite returns one of the cases above. Required by
+	// the compiler because the switch deliberately has no default.
 	return e.Next() //nolint:wrapcheck // standard PocketBase hook pattern
 }
 

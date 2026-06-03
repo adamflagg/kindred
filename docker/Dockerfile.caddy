@@ -21,7 +21,7 @@ RUN npm run build
 # =============================================================================
 # Stage 2: Build healthcheck binary
 # =============================================================================
-FROM golang:1.26.3-alpine AS healthcheck-builder
+FROM golang:1.26.4-alpine AS healthcheck-builder
 
 WORKDIR /build
 COPY docker/healthcheck/ ./

@@ -4,6 +4,85 @@ import (
 	"testing"
 )
 
+func TestDecideConfigWrite(t *testing.T) {
+	tests := []struct {
+		name                  string
+		isSuperuser           bool
+		isAdmin               bool
+		hasRegistrationManage bool
+		existingCategory      string
+		newCategory           string
+		want                  configWriteDecision
+	}{
+		{
+			// Regression: a PocketBase superuser writing config via the _/ admin
+			// dashboard has neither is_admin nor cached_permissions, so without an
+			// explicit bypass it was wrongly denied "Missing registration.manage".
+			name:        "superuser bypasses all checks",
+			isSuperuser: true,
+			want:        configWriteAllow,
+		},
+		{
+			name:             "superuser without admin/permission on a solver config is still allowed",
+			isSuperuser:      true,
+			existingCategory: "solver",
+			want:             configWriteAllow,
+		},
+		{
+			name:             "admin bypasses all checks",
+			isAdmin:          true,
+			existingCategory: "solver",
+			want:             configWriteAllow,
+		},
+		{
+			name:             "non-admin without registration.manage is denied",
+			existingCategory: "registration",
+			want:             configWriteDenyMissingPermission,
+		},
+		{
+			name:                  "registration.manage on a registration config is allowed",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			want:                  configWriteAllow,
+		},
+		{
+			name:                  "registration.manage on a non-registration config is denied",
+			hasRegistrationManage: true,
+			existingCategory:      "solver",
+			want:                  configWriteDenyWrongCategory,
+		},
+		{
+			name:                  "registration.manage mutating category is denied",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			newCategory:           "solver",
+			want:                  configWriteDenyCategoryMutation,
+		},
+		{
+			name:                  "registration.manage same-category update is allowed",
+			hasRegistrationManage: true,
+			existingCategory:      "registration",
+			newCategory:           "registration",
+			want:                  configWriteAllow,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decideConfigWrite(
+				tt.isSuperuser,
+				tt.isAdmin,
+				tt.hasRegistrationManage,
+				tt.existingCategory,
+				tt.newCategory,
+			)
+			if got != tt.want {
+				t.Errorf("decideConfigWrite() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFlattenPermissions(t *testing.T) {
 	tests := []struct {
 		name     string
