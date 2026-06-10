@@ -14,6 +14,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
+from pocketbase.errors import ClientResponseError
+
 from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
@@ -63,38 +65,60 @@ class ConfigLoader:
         self,
         pb_client: PocketBase | None = None,
         cache_ttl_seconds: int = 300,
+        reauth_interval_seconds: int = 3600,
     ):
         """
         Initialize the config loader.
 
         Args:
             pb_client: PocketBase client. If None, creates one from environment.
+                Injected clients are never re-authenticated by the loader.
             cache_ttl_seconds: Cache TTL in seconds (default 5 minutes).
+            reauth_interval_seconds: Re-authenticate the loader-owned client when
+                its auth is older than this (default 1 hour).
         """
+        self._owns_client = pb_client is None
+        self._reauth_interval = reauth_interval_seconds
+        self._authed_at: float | None = None
+
         if pb_client is not None:
             self._pb = pb_client
         else:
-            self._pb = self._create_pb_client()
+            url = os.environ.get("POCKETBASE_URL", "http://127.0.0.1:8090")
+            self._pb = PocketBase(url)
+            self._authenticate()
 
         self._cache_ttl = cache_ttl_seconds
         self._cache: dict[str, tuple[Any, float]] = {}
         self._validated = False
 
-    def _create_pb_client(self) -> PocketBase:
-        """Create and authenticate a PocketBase client."""
-        url = os.environ.get("POCKETBASE_URL", "http://127.0.0.1:8090")
-        pb = PocketBase(url)
-
+    def _authenticate(self) -> None:
+        """(Re-)authenticate the loader-owned client with env credentials."""
         email = os.environ.get("POCKETBASE_ADMIN_EMAIL", "admin@camp.local")
         password = os.environ.get("POCKETBASE_ADMIN_PASSWORD", "campbunking123")
 
         try:
-            pb.collection("_superusers").auth_with_password(email, password)
+            self._pb.collection("_superusers").auth_with_password(email, password)
+            self._authed_at = time.monotonic()
         except Exception as e:
-            # Log but don't fail yet - validation will catch DB issues
+            # Log but don't fail yet - the previous token (if any) may still be
+            # valid, and the next DB access retries authentication.
             logger.warning(f"Failed to authenticate with PocketBase: {e}")
 
-        return pb
+    def _maybe_reauth(self) -> None:
+        """
+        Re-authenticate before DB access once the auth is older than the interval.
+
+        Superuser tokens expire after 24h, and PocketBase answers an expired token
+        with 200-and-empty-items (not 401) on rule-protected collections — which is
+        indistinguishable from "row missing". The refresh must therefore be
+        proactive; it cannot be triggered by detecting an auth error.
+        """
+        if not self._owns_client:
+            return
+        if self._authed_at is not None and time.monotonic() - self._authed_at < self._reauth_interval:
+            return
+        self._authenticate()
 
     @classmethod
     def initialize(
@@ -424,12 +448,32 @@ class ConfigLoader:
         else:
             filter_str += ' && (subcategory = null || subcategory = "")'
 
+        self._maybe_reauth()
+
         try:
             record = self._pb.collection("config").get_first_list_item(filter_str)
             return record.value
-        except Exception:
-            # Record not found
-            return None
+        except ClientResponseError as e:
+            if e.status == 404:
+                if self._owns_client and self._authed_at is None:
+                    # We own this client but have NEVER authenticated (bad creds or
+                    # PB down at startup). The rule-protected config collection
+                    # answers an unauthenticated request with 200+empty, which
+                    # get_first_list_item reports as 404 — indistinguishable from a
+                    # genuine missing row. With no session we cannot trust that, so
+                    # surface it as a DB failure rather than a masquerading
+                    # MissingKeyError. (__init__ stays lazy; this only fires once a
+                    # query is actually attempted.)
+                    raise DatabaseUnavailableError(
+                        f"PocketBase authentication never established; cannot "
+                        f"distinguish a missing '{key}' from an unauthenticated "
+                        f"empty result."
+                    ) from e
+                # Record genuinely not found
+                return None
+            # Auth/transport failures must NOT masquerade as a missing key —
+            # callers wrap this into DatabaseUnavailableError.
+            raise
 
     def _convert_type(self, value: Any, config_type: ConfigType) -> Any:
         """Convert a raw value to the specified type."""
@@ -533,6 +577,8 @@ class ConfigLoader:
         else:
             filter_str += ' && (subcategory = null || subcategory = "")'
 
+        self._maybe_reauth()
+
         record = self._pb.collection("config").get_first_list_item(filter_str)
         self._pb.collection("config").update(record.id, {"value": value})
 
@@ -556,8 +602,11 @@ class ConfigLoader:
             "issues": [],
         }
 
-        # Check database connection
+        # Check database connection. Refresh a stale token first: an expired token
+        # makes get_list return 200+empty (no error), which would otherwise report
+        # database_connected=True during the very token-expiry outage we guard against.
         try:
+            self._maybe_reauth()
             self._pb.collection("config").get_list(page=1, per_page=1)
             result["database_connected"] = True
         except Exception as e:
