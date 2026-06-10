@@ -455,6 +455,20 @@ class ConfigLoader:
             return record.value
         except ClientResponseError as e:
             if e.status == 404:
+                if self._owns_client and self._authed_at is None:
+                    # We own this client but have NEVER authenticated (bad creds or
+                    # PB down at startup). The rule-protected config collection
+                    # answers an unauthenticated request with 200+empty, which
+                    # get_first_list_item reports as 404 — indistinguishable from a
+                    # genuine missing row. With no session we cannot trust that, so
+                    # surface it as a DB failure rather than a masquerading
+                    # MissingKeyError. (__init__ stays lazy; this only fires once a
+                    # query is actually attempted.)
+                    raise DatabaseUnavailableError(
+                        f"PocketBase authentication never established; cannot "
+                        f"distinguish a missing '{key}' from an unauthenticated "
+                        f"empty result."
+                    ) from e
                 # Record genuinely not found
                 return None
             # Auth/transport failures must NOT masquerade as a missing key —
@@ -588,8 +602,11 @@ class ConfigLoader:
             "issues": [],
         }
 
-        # Check database connection
+        # Check database connection. Refresh a stale token first: an expired token
+        # makes get_list return 200+empty (no error), which would otherwise report
+        # database_connected=True during the very token-expiry outage we guard against.
         try:
+            self._maybe_reauth()
             self._pb.collection("config").get_list(page=1, per_page=1)
             result["database_connected"] = True
         except Exception as e:

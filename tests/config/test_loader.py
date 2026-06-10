@@ -88,6 +88,19 @@ class TestTokenReauthentication:
         loader.update_config(REQUIRED_KEY, 600)
         assert superusers.auth_with_password.call_count == 2
 
+    def test_health_check_reauths_stale_token(self) -> None:
+        """health_check probes the DB, so it must refresh a stale token first like reads/writes.
+
+        Without this, an expired token makes ``get_list`` return 200+empty (no error)
+        and ``database_connected`` reports True — a false-healthy signal during the
+        exact token-expiry outage this fix targets.
+        """
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader(reauth_interval_seconds=0)
+        loader.health_check()
+        assert superusers.auth_with_password.call_count == 2  # startup + reauth before probe
+
 
 class TestQueryErrorDiscrimination:
     """
@@ -112,6 +125,41 @@ class TestQueryErrorDiscrimination:
         config_col.get_first_list_item.side_effect = ClientResponseError("unauthorized", status=401)
         loader = ConfigLoader(pb_client=pb)
         with pytest.raises(DatabaseUnavailableError):
+            loader.get(REQUIRED_KEY)
+
+    def test_owns_client_never_authed_404_surfaces_as_database_unavailable(self) -> None:
+        """
+        Loader owns its client but never established a session (bad creds / PB down at
+        startup). The rule-protected config collection answers an unauthenticated
+        request with 200+empty -> ``get_first_list_item`` raises 404, indistinguishable
+        from a genuine missing row. While we hold no session that 404 must surface as
+        DatabaseUnavailableError, not a masquerading MissingKeyError.
+
+        ``__init__`` must still stay lazy (construction itself does not raise).
+        """
+        pb, superusers, config_col = _make_fake_pb()
+        superusers.auth_with_password.side_effect = ClientResponseError("bad creds", status=400)
+        config_col.get_first_list_item.side_effect = ClientResponseError(
+            "The requested resource wasn't found.", status=404
+        )
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader()  # owns client; startup auth fails, _authed_at stays None
+        with pytest.raises(DatabaseUnavailableError):
+            loader.get(REQUIRED_KEY)
+
+    def test_owns_client_authed_404_still_surfaces_missing_key(self) -> None:
+        """Once a session exists, a 404 is a genuine missing row -> MissingKeyError.
+
+        Guards the never-authed special-case above from over-broadening into the
+        normal authenticated path.
+        """
+        pb, _, config_col = _make_fake_pb()
+        config_col.get_first_list_item.side_effect = ClientResponseError(
+            "The requested resource wasn't found.", status=404
+        )
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader()  # owns client; startup auth succeeds, _authed_at set
+        with pytest.raises(MissingKeyError):
             loader.get(REQUIRED_KEY)
 
 
@@ -192,7 +240,13 @@ class TestAgeSpreadRemovedFromWeightMappings:
         """Calling with 'age_spread' should resolve to constraint.age_spread.weight (not .penalty)."""
         ConfigLoader.reset()
         fake_collection = MagicMock()
-        fake_collection.get_first_list_item.side_effect = Exception("not found")
+        # Mirror the real PB not-found signal (404) used elsewhere in this module.
+        # The age_spread key resolves to UnknownKeyError before any DB access, so
+        # this mock never fires today — but keeping it faithful avoids a trap if the
+        # key were ever added to CONFIG_SCHEMA.
+        fake_collection.get_first_list_item.side_effect = ClientResponseError(
+            "The requested resource wasn't found.", status=404
+        )
         fake_pb = MagicMock()
         fake_pb.collection.return_value = fake_collection
 
