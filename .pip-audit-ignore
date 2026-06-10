@@ -7,3 +7,4 @@ CVE-2026-4539  # pygments ReDoS in AdlLexer (archetype.py) — local-only, no up
 CVE-2026-3219  # pip handles concatenated tar/ZIP files as ZIP — install-time only, no fix released yet — added 2026-04-25, remove by 2026-05-25
 CVE-2026-6357  # pip self-update import-deferral race; fixed in pip 26.1, system pip not yet bumped — added 2026-05-05, remove by 2026-06-05
 PYSEC-2025-183  # pyjwt weak-key advisory, disputed by supplier (key length is the application's choice); no fix version published — added 2026-05-20, remove by 2026-06-20
+PYSEC-2026-196  # pip installs console_scripts/gui_scripts to an unsanitized resolved path (entry points can land outside the install dir); fixed in pip 26.1.2, system pip not yet bumped — added 2026-06-10, remove by 2026-07-10
