@@ -6,12 +6,113 @@ implementation (removing the `default=` kwarg) is in place.
 """
 
 import inspect
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pocketbase.errors import ClientResponseError
 
 from bunking.config import ConfigLoader, MissingKeyError
-from bunking.config.errors import UnknownKeyError
+from bunking.config.errors import DatabaseUnavailableError, UnknownKeyError
+
+REQUIRED_KEY = "constraint.age_spread.preferred_bonus"
+
+
+def _make_fake_pb(record_value: int = 500) -> tuple[MagicMock, MagicMock, MagicMock]:
+    """Fake PocketBase client with separate _superusers and config collection mocks."""
+    superusers = MagicMock()
+    config_col = MagicMock()
+    record = MagicMock()
+    record.value = record_value
+    config_col.get_first_list_item.return_value = record
+    pb = MagicMock()
+
+    def _collection(name: str) -> Any:
+        return superusers if name == "_superusers" else config_col
+
+    pb.collection.side_effect = _collection
+    return pb, superusers, config_col
+
+
+class TestTokenReauthentication:
+    """
+    Prod incident 2026-06-10: ConfigLoader authenticates its private PB client once
+    at startup; the superuser token expires after 24h, after which the config
+    collection's listRule returns empty results and every required key surfaces as
+    "not found in database" until the container is restarted.
+
+    The loader must re-authenticate its own client once the auth is older than
+    ``reauth_interval_seconds`` (lazily, before the next DB access).
+    """
+
+    def test_reauths_before_query_when_auth_older_than_interval(self) -> None:
+        """With interval 0, every DB query re-authenticates first."""
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader(reauth_interval_seconds=0)
+        assert superusers.auth_with_password.call_count == 1  # startup auth
+        value = loader.get(REQUIRED_KEY)
+        assert value == 500
+        assert superusers.auth_with_password.call_count == 2
+
+    def test_does_not_reauth_within_interval(self) -> None:
+        """Fresh auth (default 1h interval) must not re-auth on every query."""
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader()
+        loader.get(REQUIRED_KEY)
+        loader.invalidate_cache()
+        loader.get(REQUIRED_KEY)
+        assert superusers.auth_with_password.call_count == 1  # startup auth only
+
+    def test_injected_client_is_never_reauthed(self) -> None:
+        """Injected clients (tests, callers managing their own auth) are left alone."""
+        pb, superusers, _ = _make_fake_pb()
+        loader = ConfigLoader(pb_client=pb, reauth_interval_seconds=0)
+        loader.get(REQUIRED_KEY)
+        assert superusers.auth_with_password.call_count == 0
+
+    def test_reauth_failure_keeps_serving_with_existing_token(self) -> None:
+        """A failed re-auth logs and falls through — the query still runs."""
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader(reauth_interval_seconds=0)
+        superusers.auth_with_password.side_effect = ClientResponseError("boom", status=500)
+        assert loader.get(REQUIRED_KEY) == 500
+
+    def test_update_config_reauths_stale_token(self) -> None:
+        """Config writes go through the same re-auth gate as reads."""
+        pb, superusers, _ = _make_fake_pb()
+        with patch("bunking.config.loader.PocketBase", return_value=pb):
+            loader = ConfigLoader(reauth_interval_seconds=0)
+        loader.update_config(REQUIRED_KEY, 600)
+        assert superusers.auth_with_password.call_count == 2
+
+
+class TestQueryErrorDiscrimination:
+    """
+    ``_query_database_raw`` must not report transport/auth failures as "key not
+    found" — that masking made the 2026-06-10 token-expiry outage impersonate the
+    missing-row bug fixed in PR #1730.
+    """
+
+    def test_404_from_pb_surfaces_as_missing_key(self) -> None:
+        """A true not-found (PB 404) keeps raising MissingKeyError."""
+        pb, _, config_col = _make_fake_pb()
+        config_col.get_first_list_item.side_effect = ClientResponseError(
+            "The requested resource wasn't found.", status=404
+        )
+        loader = ConfigLoader(pb_client=pb)
+        with pytest.raises(MissingKeyError):
+            loader.get(REQUIRED_KEY)
+
+    def test_non_404_error_surfaces_as_database_unavailable(self) -> None:
+        """A 401/5xx/etc must raise DatabaseUnavailableError, NOT MissingKeyError."""
+        pb, _, config_col = _make_fake_pb()
+        config_col.get_first_list_item.side_effect = ClientResponseError("unauthorized", status=401)
+        loader = ConfigLoader(pb_client=pb)
+        with pytest.raises(DatabaseUnavailableError):
+            loader.get(REQUIRED_KEY)
 
 
 class TestGetSoftConstraintWeightNoDefault:
@@ -50,10 +151,13 @@ class TestLoaderFailsLoudOnMissingRequiredKey:
     def test_validate_on_init_true_raises_on_missing_required_key(self) -> None:
         """initialize(validate_on_init=True) must raise MissingKeyError when a required key is absent."""
         ConfigLoader.reset()
-        # Inject a fake PB client whose get_first_list_item() always raises (record not
-        # found), so _query_database_raw returns None for every key, causing MissingKeyError.
+        # Inject a fake PB client whose get_first_list_item() always raises the
+        # library's not-found signal (404), so _query_database_raw returns None for
+        # every key, causing MissingKeyError.
         fake_collection = MagicMock()
-        fake_collection.get_first_list_item.side_effect = Exception("not found")
+        fake_collection.get_first_list_item.side_effect = ClientResponseError(
+            "The requested resource wasn't found.", status=404
+        )
         fake_pb = MagicMock()
         fake_pb.collection.return_value = fake_collection
 
