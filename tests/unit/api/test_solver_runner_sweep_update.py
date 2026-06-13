@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, _patch, patch
 import pytest
 
 import api.services.solver_runner as sr_module
+from api.services.solve_executor import SolveOutcome
 from bunking.models_v2 import DirectSolverInput
 
 
@@ -31,7 +32,7 @@ def _patches() -> dict[str, _patch[Any]]:
         "prepare_direct_solver_input": patch.object(sr_module, "prepare_direct_solver_input"),
         "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
         "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
-        "DirectBunkingSolver": patch.object(sr_module, "DirectBunkingSolver"),
+        "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
         "PocketBase": patch.object(sr_module, "PocketBase"),
         "get_settings": patch.object(sr_module, "get_settings"),
     }
@@ -65,7 +66,6 @@ def _configure_solver(mocks: dict[str, Any], solver_input: DirectSolverInput, su
     mocks["fetch_historical_bunking"].return_value = []
     mocks["prepare_direct_solver_input"].return_value = solver_input
     mocks["ConfigLoader"].get_instance.return_value = MagicMock()
-    mock_solver = MagicMock()
     if succeeds:
         result = MagicMock()
         result.assignments = []
@@ -73,12 +73,11 @@ def _configure_solver(mocks: dict[str, Any], solver_input: DirectSolverInput, su
         result.satisfied_requests = {}
         result.infeasibility_diagnosis = None
         result.overflow_used = 0
-        mock_solver.solve.return_value = result
+        mocks["solve_and_diagnose"].return_value = SolveOutcome(result=result)
     else:
-        mock_solver.solve.side_effect = ValueError("solver blew up")
-    mocks["DirectBunkingSolver"].return_value = mock_solver
+        mocks["solve_and_diagnose"].side_effect = ValueError("solver blew up")
     mocks["get_settings"].return_value = MagicMock(
-        pocketbase_admin_email="admin@camp.local", pocketbase_admin_password="pass"
+        pocketbase_admin_email="admin@camp.local", pocketbase_admin_password="pass", solver_subprocess=False
     )
 
 
@@ -95,7 +94,7 @@ class TestSweepChildUpdatesPreCreatedRow:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
         ):
@@ -105,7 +104,7 @@ class TestSweepChildUpdatesPreCreatedRow:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -144,7 +143,7 @@ class TestSweepChildUpdatesPreCreatedRow:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
         ):
@@ -154,7 +153,7 @@ class TestSweepChildUpdatesPreCreatedRow:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -188,7 +187,7 @@ class TestSweepChildUpdatesPreCreatedRow:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
         ):
@@ -198,7 +197,7 @@ class TestSweepChildUpdatesPreCreatedRow:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -238,7 +237,7 @@ class TestSweepChildUpdatesPreCreatedRow:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
         ):
@@ -248,7 +247,7 @@ class TestSweepChildUpdatesPreCreatedRow:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }

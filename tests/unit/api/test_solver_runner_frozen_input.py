@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import api.services.solver_runner as sr_module
+from api.services.solve_executor import SolveOutcome
 from bunking.models_v2 import (
     DirectBunkAssignment,
     DirectSolverInput,
@@ -41,7 +42,7 @@ def _patch_solver_pipeline():
         "prepare_direct_solver_input": patch.object(sr_module, "prepare_direct_solver_input"),
         "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
         "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
-        "DirectBunkingSolver": patch.object(sr_module, "DirectBunkingSolver"),
+        "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
         "PocketBase": patch.object(sr_module, "PocketBase"),
         "get_settings": patch.object(sr_module, "get_settings"),
     }
@@ -62,7 +63,7 @@ async def test_frozen_input_not_mutated_when_respect_locks_false() -> None:
         patches["prepare_direct_solver_input"],
         patches["fetch_lock_groups"],
         patches["ConfigLoader"] as cfg,
-        patches["DirectBunkingSolver"] as solver_cls,
+        patches["solve_and_diagnose"] as solver_cls,
         patches["PocketBase"] as pb_cls,
         patches["get_settings"] as settings,
         patch.object(sr_module, "solver_runs", mock_runs),
@@ -72,16 +73,16 @@ async def test_frozen_input_not_mutated_when_respect_locks_false() -> None:
         mock_pb.collection.return_value.auth_with_password.return_value = {}
         mock_pb.collection.return_value.create.return_value = MagicMock(id="pb_rec")
         pb_cls.return_value = mock_pb
-        settings.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+        settings.return_value = MagicMock(
+            pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+        )
 
         # Make solver "succeed" trivially
-        mock_solver = MagicMock()
         mock_result = MagicMock()
         mock_result.assignments = []
         mock_result.stats = {"status": "OPTIMAL"}
         mock_result.satisfied_requests = {}
-        mock_solver.solve.return_value = mock_result
-        solver_cls.return_value = mock_solver
+        solver_cls.return_value = SolveOutcome(result=mock_result)
 
         await sr_module.run_solver_task_v2(
             run_id="t1",

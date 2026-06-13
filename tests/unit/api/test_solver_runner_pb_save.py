@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import api.services.solver_runner as sr_module
+from api.services.solve_executor import SolveOutcome
 from bunking.models_v2 import DirectSolverInput
 
 
@@ -33,7 +34,7 @@ class TestSolverRunnerPocketBaseSave:
             "prepare_direct_solver_input": patch.object(sr_module, "prepare_direct_solver_input"),
             "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
             "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
-            "DirectBunkingSolver": patch.object(sr_module, "DirectBunkingSolver"),
+            "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
             "PocketBase": patch.object(sr_module, "PocketBase"),
             "get_settings": patch.object(sr_module, "get_settings"),
             "solver_runs": patch.object(sr_module, "solver_runs", mock_runs),
@@ -54,7 +55,6 @@ class TestSolverRunnerPocketBaseSave:
         mock_config = MagicMock()
         mocks["ConfigLoader"].get_instance.return_value = mock_config
 
-        mock_solver = MagicMock()
         if solver_succeeds:
             mock_result = MagicMock()
             mock_result.assignments = []
@@ -62,14 +62,14 @@ class TestSolverRunnerPocketBaseSave:
             mock_result.satisfied_requests = {}
             mock_result.infeasibility_diagnosis = None
             mock_result.overflow_used = 0
-            mock_solver.solve.return_value = mock_result
+            mocks["solve_and_diagnose"].return_value = SolveOutcome(result=mock_result)
         else:
-            mock_solver.solve.side_effect = ValueError("Solver failed to find a solution")
-        mocks["DirectBunkingSolver"].return_value = mock_solver
+            mocks["solve_and_diagnose"].side_effect = ValueError("Solver failed to find a solution")
 
         mocks["get_settings"].return_value = MagicMock(
             pocketbase_admin_email="admin@camp.local",
             pocketbase_admin_password="pass",
+            solver_subprocess=False,
         )
 
         return mock_pb_instance
@@ -85,7 +85,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -96,7 +96,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -128,7 +128,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -139,7 +139,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -174,7 +174,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -185,7 +185,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -215,7 +215,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -226,13 +226,13 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
             mock_pb = self._configure_mocks(mocks, mock_solver_input)
             # Override the default overflow_used=0 to prove it's plumbed through.
-            m6.return_value.solve.return_value.overflow_used = 3
+            m6.return_value.result.overflow_used = 3
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -259,7 +259,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -270,12 +270,12 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
             self._configure_mocks(mocks, mock_solver_input)
-            m6.return_value.solve.return_value.overflow_used = 2
+            m6.return_value.result.overflow_used = 2
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -301,7 +301,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -312,14 +312,14 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
             mock_pb = self._configure_mocks(mocks, mock_solver_input)
             # Simulate a break-glass result: assignments present, break_glass_used True.
-            m6.return_value.solve.return_value.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
-            m6.return_value.solve.return_value.break_glass_used = True
+            m6.return_value.result.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
+            m6.return_value.result.break_glass_used = True
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -346,7 +346,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -357,14 +357,14 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
             self._configure_mocks(mocks, mock_solver_input)
             # Simulate a break-glass result: assignments present, break_glass_used True.
-            m6.return_value.solve.return_value.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
-            m6.return_value.solve.return_value.break_glass_used = True
+            m6.return_value.result.assignments = [MagicMock(person_cm_id=1, bunk_cm_id=10)]
+            m6.return_value.result.break_glass_used = True
             mock_runs["test_run"] = {"status": "pending"}
 
             await sr_module.run_solver_task_v2(
@@ -390,7 +390,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -401,7 +401,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -430,7 +430,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -441,7 +441,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -470,7 +470,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -481,7 +481,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -510,7 +510,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -521,7 +521,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -550,7 +550,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -561,7 +561,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -600,7 +600,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -611,7 +611,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -645,7 +645,7 @@ class TestSolverRunnerPocketBaseSave:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"] as m4,
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -656,7 +656,7 @@ class TestSolverRunnerPocketBaseSave:
                 "prepare_direct_solver_input": m3,
                 "fetch_lock_groups": m4,
                 "ConfigLoader": m5,
-                "DirectBunkingSolver": m6,
+                "solve_and_diagnose": m6,
                 "PocketBase": m7,
                 "get_settings": m8,
             }
@@ -700,7 +700,7 @@ class TestFailedRunPersistsDetails:
             "prepare_direct_solver_input": patch.object(sr_module, "prepare_direct_solver_input"),
             "fetch_lock_groups": patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock),
             "ConfigLoader": patch.object(sr_module, "ConfigLoader"),
-            "DirectBunkingSolver": patch.object(sr_module, "DirectBunkingSolver"),
+            "solve_and_diagnose": patch.object(sr_module, "solve_and_diagnose"),
             "PocketBase": patch.object(sr_module, "PocketBase"),
             "get_settings": patch.object(sr_module, "get_settings"),
             "solver_runs": patch.object(sr_module, "solver_runs", mock_runs),
@@ -721,7 +721,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -734,15 +734,12 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
-            # Stream C orchestrator returns an empty-assignments output carrying
-            # the diagnosis (instead of raising) — solver_runner converts it.
-            infeasible_result = MagicMock()
-            infeasible_result.assignments = []
-            infeasible_result.infeasibility_diagnosis = diagnosis
-            mock_solver.solve.return_value = infeasible_result
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            # Stream C: solve_and_diagnose surfaces the orchestrator's diagnosis
+            # as the outcome's infeasibility_cause (result=None → failure path).
+            m6.return_value = SolveOutcome(result=None, infeasibility_cause=diagnosis)
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["prod_run"] = {"status": "pending"}
 
@@ -771,7 +768,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -787,10 +784,10 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.get_first_list_item.return_value = MagicMock(id="pre_created_id")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
-            mock_solver.solve.side_effect = ValueError("simulated solver failure")
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            m6.side_effect = ValueError("simulated solver failure")
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["sweep_child"] = {"status": "pending"}
 
@@ -832,7 +829,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -853,9 +850,10 @@ class TestFailedRunPersistsDetails:
             mock_result.satisfied_requests = {}
             mock_result.infeasibility_diagnosis = None
             mock_result.overflow_used = 0
-            mock_solver.solve.return_value = mock_result
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            m6.return_value = SolveOutcome(result=mock_result)
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["t1"] = {"status": "pending"}
 
@@ -897,7 +895,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -915,10 +913,10 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.get_first_list_item.return_value = MagicMock(id="pre_created_id")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
-            mock_solver.solve.side_effect = ValueError("simulated solver failure")
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            m6.side_effect = ValueError("simulated solver failure")
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["sweep_child"] = {"status": "pending"}
 
@@ -961,7 +959,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -975,10 +973,10 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
-            mock_solver.solve.side_effect = ValueError("boom")
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            m6.side_effect = ValueError("boom")
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["prod_run"] = {"status": "pending"}
 
@@ -1014,7 +1012,7 @@ class TestFailedRunPersistsDetails:
             patches["prepare_direct_solver_input"] as m3,
             patches["fetch_lock_groups"],
             patches["ConfigLoader"] as m5,
-            patches["DirectBunkingSolver"] as m6,
+            patches["solve_and_diagnose"] as m6,
             patches["PocketBase"] as m7,
             patches["get_settings"] as m8,
             patches["solver_runs"],
@@ -1027,10 +1025,10 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
-            mock_solver.solve.side_effect = ValueError("boom")
-            m6.return_value = mock_solver
-            m8.return_value = MagicMock(pocketbase_admin_email="x", pocketbase_admin_password="x")
+            m6.side_effect = ValueError("boom")
+            m8.return_value = MagicMock(
+                pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+            )
 
             mock_runs["prod_run"] = {"status": "pending"}
 

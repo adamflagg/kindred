@@ -6,10 +6,10 @@ event loop, starving GET /api/solver/run/{uuid}, GET /health, and the
 container HEALTHCHECK probe — which surfaced as Cloudflare 524s on the
 frontend's status poll.
 
-The fix is to offload `solver.solve(...)` (and the failure-path
-`solver.find_infeasibility_cause(...)`) to a worker thread via
+The fix is to offload the compute block (now `solve_and_diagnose`, the
+SOLVER_SUBPROCESS=false in-thread fallback) to a worker thread via
 `asyncio.to_thread` so the event loop stays responsive while the solver
-runs.
+runs. The default subprocess path offloads by construction.
 """
 
 import asyncio
@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import api.services.solver_runner as sr_module
+from api.services.solve_executor import SolveOutcome
 from bunking.models_v2 import DirectSolverInput
 
 
@@ -37,7 +38,7 @@ def _patches(mock_runs: dict[str, dict[str, object]], solver_input: DirectSolver
         patch.object(sr_module, "fetch_historical_bunking", new_callable=AsyncMock, return_value=[]),
         patch.object(sr_module, "prepare_direct_solver_input", return_value=solver_input),
         patch.object(sr_module, "ConfigLoader"),
-        patch.object(sr_module, "DirectBunkingSolver"),
+        patch.object(sr_module, "solve_and_diagnose"),
         patch.object(sr_module, "PocketBase"),
         patch.object(sr_module, "get_settings"),
         patch.object(sr_module, "solver_runs", mock_runs),
@@ -71,12 +72,12 @@ async def test_solver_solve_does_not_block_event_loop() -> None:
     solve_start = 0.0
     solve_end = 0.0
 
-    def blocking_solve(**_kwargs: object) -> MagicMock:
+    def blocking_solve(*_args: object) -> SolveOutcome:
         nonlocal solve_start, solve_end
         solve_start = time.monotonic()
         time.sleep(solve_duration)
         solve_end = time.monotonic()
-        return _build_mock_result()
+        return SolveOutcome(result=_build_mock_result())
 
     patches = _patches(mock_runs, solver_input)
     contexts = [p.start() for p in patches]
@@ -94,9 +95,7 @@ async def test_solver_solve_does_not_block_event_loop() -> None:
 
         mock_cfg.get_instance.return_value = MagicMock()
 
-        mock_solver = MagicMock()
-        mock_solver.solve.side_effect = blocking_solve
-        mock_solver_cls.return_value = mock_solver
+        mock_solver_cls.side_effect = blocking_solve
 
         mock_pb = MagicMock()
         mock_pb.collection.return_value.create.return_value = MagicMock(id="rec_1")
@@ -105,6 +104,9 @@ async def test_solver_solve_does_not_block_event_loop() -> None:
         mock_settings.return_value = MagicMock(
             pocketbase_admin_email="admin@camp.local",
             pocketbase_admin_password="pass",
+            # The in-thread fallback is the path that must not block the loop;
+            # the subprocess path offloads by construction (run_in_executor).
+            solver_subprocess=False,
         )
 
         tick_timestamps: list[float] = []
@@ -133,7 +135,7 @@ async def test_solver_solve_does_not_block_event_loop() -> None:
             except asyncio.CancelledError:
                 pass
 
-        assert mock_solver.solve.called, "Mocked solver.solve was never invoked"
+        assert mock_solver_cls.called, "Mocked solve_and_diagnose was never invoked"
         assert solve_start > 0, "blocking_solve did not record solve_start"
         assert solve_end > solve_start, "blocking_solve did not record solve_end after solve_start"
 

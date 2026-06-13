@@ -8,18 +8,13 @@ Main + AG sessions are automatically fetched together via get_related_session_id
 import asyncio
 import json
 import traceback
-from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
 from pocketbase.errors import ClientResponseError
 
-from bunking.config import ConfigLoader
-from bunking.direct_solver import DirectBunkingSolver
+from bunking.config import ConfigLoader, snapshot_config
 from bunking.logging_config import get_logger
-from bunking.solver.diagnostics import resolve_localization
-from bunking.solver.feasibility import localize_hard_mso_infeasibility
-from bunking.solver.impossibility import filter_immaterial_requests
 from pocketbase import PocketBase
 
 from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
@@ -32,6 +27,7 @@ from .data_fetcher import (
     prepare_direct_solver_input,
 )
 from .run_tagging import build_run_details, compose_minimal_run_details
+from .solve_executor import run_solve_in_subprocess, solve_and_diagnose
 
 logger = get_logger(__name__)
 
@@ -234,70 +230,37 @@ async def run_solver_task_v2(
                 actual_value = config_service.get_str(key)
                 logger.info(f"Config {key} is now: {actual_value}")
 
-        # Run solver (main + AG sessions are automatically fetched together)
-        logger.info("Creating DirectBunkingSolver instance")
-        if debug_constraints:
-            logger.info(f"DEBUG MODE: Constraints disabled: {list(debug_constraints.keys())}")
-        solver = DirectBunkingSolver(
-            input_data=solver_input, config_service=config_service, debug_constraints=debug_constraints or {}
-        )
+        # Run solver (main + AG sessions are automatically fetched together).
+        # The compute block (solve + failure diagnostics) lives in
+        # solve_executor; by default it executes in a throwaway spawn child so
+        # the CP-SAT memory high-water mark returns to the OS when the run
+        # ends (prod swap incident 2026-06-12). SOLVER_SUBPROCESS=false falls
+        # back to the legacy in-thread path — still off the event loop, which
+        # must stay responsive for status polls / health checks.
+        if settings.solver_subprocess:
+            config_values = snapshot_config(config_service)
+            logger.info(f"Running solver in subprocess ({len(config_values)} config keys snapshotted)")
+            outcome = await run_solve_in_subprocess(solver_input, time_limit, debug_constraints, config_values)
+        else:
+            logger.info("Running solver in-thread (SOLVER_SUBPROCESS disabled)")
+            outcome = await asyncio.to_thread(
+                solve_and_diagnose, solver_input, time_limit, debug_constraints, config_service
+            )
 
-        # The OR-Tools solver is synchronous and CPU-bound — running it
-        # directly on the event loop blocks every other request to this
-        # uvicorn worker (status polls, /health, the container HEALTHCHECK
-        # probe) for the full solve duration. Offload to a thread so the
-        # event loop stays responsive.
-        result = await asyncio.to_thread(solver.solve, time_limit_seconds=time_limit)
-
-        # Stream C: orchestrator returns an empty-assignments DirectSolverOutput
-        # with infeasibility_diagnosis on INFEASIBLE (instead of None) so the
-        # diagnosis travels with the result. Convert here so the existing
-        # failure path handles it; surface the diagnosis directly (avoid the
-        # redundant find_infeasibility_cause call below).
-        orchestrator_diagnosis: str | None = None
-        if result is not None and not result.assignments and result.infeasibility_diagnosis is not None:
-            orchestrator_diagnosis = result.infeasibility_diagnosis
-            result = None
-
-        if result is None:
-            # Try to identify the cause of infeasibility
-            logger.warning("Solver failed - running infeasibility analysis...")
-
-            # Surface the already-computed impossibility report (#1638). The solver
-            # holds it; immaterial-filter it to match the pre-validate surface.
-            try:
-                solver_runs[run_id]["impossibility_report"] = asdict(
-                    filter_immaterial_requests(solver.impossibility_report)
-                )
-            except Exception as e:
-                logger.error(f"Failed to capture impossibility report: {e}", exc_info=True)
-
-            try:
-                if orchestrator_diagnosis is not None:
-                    cause = orchestrator_diagnosis
-                    logger.info(f"Using orchestrator-supplied diagnosis: {cause}")
-                else:
-                    cause = await asyncio.to_thread(solver.find_infeasibility_cause, time_limit_seconds=10)
-                    logger.error(f"Infeasibility analysis result: {cause}")
-                solver_runs[run_id]["infeasibility_cause"] = cause
-
-                # If parent_paramount is the cause, localize the conflict to
-                # specific campers (see docs/architecture/solver-internals.md).
-                if isinstance(cause, str) and "parent_paramount" in cause:
-                    iis = await asyncio.to_thread(
-                        localize_hard_mso_infeasibility,
-                        solver_input,
-                        config_service,
-                        5,  # time_limit_seconds per probe
-                    )
-                    logger.error(f"Hard-MSO IIS localization: {iis}")
-                    solver_runs[run_id]["parent_paramount_iis"] = iis
-                    # Name-resolve for the frontend (#1638).
-                    solver_runs[run_id]["localization"] = resolve_localization(iis, solver_input.person_by_cm_id)
-            except Exception as e:
-                logger.error(f"Failed to run infeasibility analysis: {e}", exc_info=True)
-
+        if outcome.result is None:
+            # Diagnostics are best-effort: absent fields stay absent in
+            # solver_runs, matching the legacy key-absent semantics (#1638).
+            if outcome.impossibility_report is not None:
+                solver_runs[run_id]["impossibility_report"] = outcome.impossibility_report
+            if outcome.infeasibility_cause is not None:
+                solver_runs[run_id]["infeasibility_cause"] = outcome.infeasibility_cause
+            if outcome.parent_paramount_iis is not None:
+                solver_runs[run_id]["parent_paramount_iis"] = outcome.parent_paramount_iis
+            if outcome.localization is not None:
+                solver_runs[run_id]["localization"] = outcome.localization
             raise ValueError("Solver failed to find a solution")
+
+        result = outcome.result
 
         # Build bunk name map for results
         bunk_cm_to_name = {b.campminder_id: b.name for b in solver_input.bunks}
