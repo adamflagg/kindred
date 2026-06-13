@@ -83,7 +83,7 @@ dev = [
     # Security
     "pip-audit>=2.7.0",
     # Code metrics
-    "radon>=6.0.0",
+    "radon>=6.0.1",
     "pytest-xdist>=3.8.0",
 ]
 
