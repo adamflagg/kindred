@@ -33,7 +33,7 @@ dependencies = [
     "aiohttp>=3.14.0",
     "requests>=2.33.1",
     # AI/ML
-    "openai>=2.0.0",
+    "openai>=2.41.0",
     "ortools>=9.15.6755",
     # Data processing
     "pandas>=3.0.3",
