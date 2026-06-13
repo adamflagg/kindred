@@ -113,6 +113,16 @@ class Settings(BaseSettings):
             )
         return v
 
+    # === Solver Execution ===
+    solver_subprocess: bool = Field(
+        default=True,
+        description=(
+            "Run CP-SAT solves in a throwaway child process so the solve's memory "
+            "high-water mark returns to the OS. SOLVER_SUBPROCESS=false is the "
+            "emergency kill-switch back to the legacy in-thread solve (no release needed)."
+        ),
+    )
+
     # === CORS Configuration ===
     # Note: Use str type for env var parsing, convert to list via property
     allowed_origins_str: str = Field(

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import api.services.solver_runner as sr_module
+from api.services.solve_executor import SolveOutcome
 from bunking.models_v2 import DirectSolverInput
 
 
@@ -30,7 +31,7 @@ class TestSolverRunnerLockGroups:
             patch.object(sr_module, "prepare_direct_solver_input") as mock_prepare,
             patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock) as mock_lock_groups,
             patch.object(sr_module, "ConfigLoader") as mock_config_cls,
-            patch.object(sr_module, "DirectBunkingSolver") as mock_solver_cls,
+            patch.object(sr_module, "solve_and_diagnose") as mock_solver_cls,
             patch.object(sr_module, "PocketBase") as mock_pb_cls,
             patch.object(sr_module, "get_settings") as mock_settings,
             patch.object(sr_module, "solver_runs", mock_runs),
@@ -47,17 +48,16 @@ class TestSolverRunnerLockGroups:
             mock_config = MagicMock()
             mock_config_cls.get_instance.return_value = mock_config
 
-            mock_solver = MagicMock()
             mock_result = MagicMock()
             mock_result.assignments = []
             mock_result.stats = {}
             mock_result.satisfied_requests = {}
-            mock_solver.solve.return_value = mock_result
-            mock_solver_cls.return_value = mock_solver
+            mock_solver_cls.return_value = SolveOutcome(result=mock_result)
 
             mock_settings.return_value = MagicMock(
                 pocketbase_admin_email="admin@camp.local",
                 pocketbase_admin_password="pass",
+                solver_subprocess=False,
             )
 
             # Pre-populate solver_runs dict
@@ -92,7 +92,7 @@ class TestSolverRunnerLockGroups:
             patch.object(sr_module, "prepare_direct_solver_input") as mock_prepare,
             patch.object(sr_module, "fetch_lock_groups", new_callable=AsyncMock) as mock_lock_groups,
             patch.object(sr_module, "ConfigLoader") as mock_config_cls,
-            patch.object(sr_module, "DirectBunkingSolver") as mock_solver_cls,
+            patch.object(sr_module, "solve_and_diagnose") as mock_solver_cls,
             patch.object(sr_module, "PocketBase") as mock_pb_cls,
             patch.object(sr_module, "get_settings") as mock_settings,
             patch.object(sr_module, "solver_runs", mock_runs),
@@ -108,17 +108,16 @@ class TestSolverRunnerLockGroups:
             mock_config = MagicMock()
             mock_config_cls.get_instance.return_value = mock_config
 
-            mock_solver = MagicMock()
             mock_result = MagicMock()
             mock_result.assignments = []
             mock_result.stats = {}
             mock_result.satisfied_requests = {}
-            mock_solver.solve.return_value = mock_result
-            mock_solver_cls.return_value = mock_solver
+            mock_solver_cls.return_value = SolveOutcome(result=mock_result)
 
             mock_settings.return_value = MagicMock(
                 pocketbase_admin_email="admin@camp.local",
                 pocketbase_admin_password="pass",
+                solver_subprocess=False,
             )
 
             mock_runs["test_run"] = {"status": "pending"}

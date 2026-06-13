@@ -1,9 +1,15 @@
-"""run_solver_task_v2 surfaces diagnostics on the result-is-None failure path (#1638)."""
+"""run_solver_task_v2 surfaces diagnostics on the result-is-None failure path (#1638).
+
+Runs with SOLVER_SUBPROCESS off so the REAL solve_and_diagnose executes
+in-process — keeping this an end-to-end runner+executor diagnostics test
+(the solver itself and the IIS probe are mocked at the executor module).
+"""
 
 import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import api.services.solve_executor as sx_module
 import api.services.solver_runner as sr_module
 from bunking.solver.impossibility import ImpossibilityReport
 
@@ -36,15 +42,20 @@ def test_failure_branch_stores_localization_and_impossibility_report() -> None:
         patch.object(sr_module, "fetch_historical_bunking", new_callable=AsyncMock) as m_hist,
         patch.object(sr_module, "prepare_direct_solver_input", return_value=mock_solver_input),
         patch.object(sr_module, "ConfigLoader") as m_config,
-        patch.object(sr_module, "DirectBunkingSolver", return_value=mock_solver),
+        patch.object(sx_module, "DirectBunkingSolver", return_value=mock_solver),
         patch.object(sr_module, "PocketBase") as m_pb,
-        patch.object(sr_module, "get_settings"),
-        patch.object(sr_module, "localize_hard_mso_infeasibility", return_value=fake_iis),
+        patch.object(sr_module, "get_settings") as m_settings,
+        patch.object(sx_module, "localize_hard_mso_infeasibility", return_value=fake_iis),
         patch.object(sr_module, "solver_runs", mock_runs),
     ):
         m_fetch.return_value = ([], [], [], [], [])
         m_hist.return_value = []
         m_config.get_instance.return_value = MagicMock()
+        # Gate off: route through the real in-thread solve_and_diagnose so this
+        # stays an integration test of runner + executor diagnostics.
+        m_settings.return_value = MagicMock(
+            pocketbase_admin_email="x", pocketbase_admin_password="x", solver_subprocess=False
+        )
         m_pb.return_value.collection.return_value.auth_with_password.return_value = {}
 
         asyncio.run(sr_module.run_solver_task_v2(run_id, 1000001, 2026, 5))
