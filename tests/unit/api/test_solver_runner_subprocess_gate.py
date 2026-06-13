@@ -72,6 +72,7 @@ async def test_gate_on_snapshots_config_and_runs_subprocess() -> None:
     snap.assert_called_once()
     sub.assert_awaited_once()
     in_thread.assert_not_called()
+    assert sub.await_args is not None
     assert sub.await_args.args[3] == {"k": 1}  # snapshot crosses the boundary
     assert mock_runs["r1"]["status"] == "completed"
     assert mock_runs["r1"]["results"]["assignments"] == {}

@@ -843,7 +843,6 @@ class TestFailedRunPersistsDetails:
             mock_pb_instance.collection.return_value.create.return_value = MagicMock(id="pb_record")
             m7.return_value = mock_pb_instance
             m5.get_instance.return_value = MagicMock()
-            mock_solver = MagicMock()
             mock_result = MagicMock()
             mock_result.assignments = []
             mock_result.stats = {"status": "OPTIMAL"}
