@@ -27,6 +27,7 @@ from .errors import (
 )
 from .loader import ConfigLoader
 from .schema import CONFIG_SCHEMA, get_all_required_keys
+from .static_service import StaticConfigService, snapshot_config
 from .types import ConfigKey, ConfigType
 
 __all__ = [
@@ -40,7 +41,9 @@ __all__ = [
     "ConfigType",
     "DatabaseUnavailableError",
     "MissingKeyError",
+    "StaticConfigService",
     "UnknownKeyError",
     "ValidationError",
     "get_all_required_keys",
+    "snapshot_config",
 ]
