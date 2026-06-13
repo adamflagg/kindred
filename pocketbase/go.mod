@@ -4,11 +4,11 @@ go 1.26.4
 
 require (
 	github.com/pocketbase/dbx v1.12.0
-	github.com/pocketbase/pocketbase v0.39.0
+	github.com/pocketbase/pocketbase v0.39.3
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/time v0.15.0
-	google.golang.org/api v0.282.0
+	google.golang.org/api v0.284.0
 )
 
 require (
@@ -55,14 +55,14 @@ require (
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/image v0.41.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260523011958-0a33c5d7ca68 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/grpc v1.81.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.51.0 // indirect
+	modernc.org/sqlite v1.52.0 // indirect
 )
