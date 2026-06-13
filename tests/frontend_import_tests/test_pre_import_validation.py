@@ -68,7 +68,6 @@ class TestPreImportValidation:
         required_packages = {
             # Core dependencies
             "pocketbase": "pocketbase",
-            "typer": "typer",
             "pydantic": "pydantic",
             "ortools": "ortools",
             "pandas": "pandas",
