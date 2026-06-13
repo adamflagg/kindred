@@ -9,6 +9,7 @@ This module provides:
 """
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 from bunking.graph.graph_cache_manager import GraphCacheManager
@@ -122,12 +123,43 @@ metrics_cache = MetricsCache(ttl_seconds=7200, max_size=200)
 # In-memory storage for solver runs (in production, use Redis or a database)
 solver_runs: dict[str, dict[str, Any]] = {}
 
+# Completed/failed runs stay readable in-memory for the frontend's status
+# polling, but the dict must not grow unboundedly (prod swap incident
+# 2026-06-12): each retained run holds full results + diagnostics. 50
+# comfortably exceeds any realistic sweep size.
+MAX_TERMINAL_SOLVER_RUNS = 50
+
+_TERMINAL_STATUSES = frozenset({"completed", "failed"})
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def prune_solver_runs() -> int:
+    """Evict the oldest terminal runs above the cap; returns the eviction count.
+
+    pending/running entries are never touched — the single-flight guards and
+    the frontend's status polling depend on them being present.
+    """
+    terminal = [
+        (run_id, run.get("completed_at") or _EPOCH)
+        for run_id, run in solver_runs.items()
+        if run.get("status") in _TERMINAL_STATUSES
+    ]
+    excess = len(terminal) - MAX_TERMINAL_SOLVER_RUNS
+    if excess <= 0:
+        return 0
+    terminal.sort(key=lambda item: item[1])
+    for run_id, _ in terminal[:excess]:
+        solver_runs.pop(run_id, None)
+    logger.info(f"Pruned {excess} terminal solver runs from memory (cap {MAX_TERMINAL_SOLVER_RUNS})")
+    return excess
+
 
 # ========================================
 # ID Translation Cache
 # ========================================
 
 __all__ = [
+    "MAX_TERMINAL_SOLVER_RUNS",
     "IDLookupCache",
     "auth_state",
     "authenticate_pb",
@@ -138,6 +170,7 @@ __all__ = [
     "metrics_cache",
     "pb",
     "pb_url",
+    "prune_solver_runs",
     "solver_runs",
     "start_pb_token_refresh",
 ]

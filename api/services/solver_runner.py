@@ -18,7 +18,7 @@ from bunking.logging_config import get_logger
 from pocketbase import PocketBase
 
 from ..constants.collections import CAMP_SESSIONS, SOLVER_RUNS, SUPERUSERS
-from ..dependencies import pb_url, solver_runs
+from ..dependencies import pb_url, prune_solver_runs, solver_runs
 from ..settings import get_settings
 from .data_fetcher import (
     fetch_historical_bunking,
@@ -367,6 +367,7 @@ async def run_solver_task_v2(
             logger.error(f"Traceback: {traceback.format_exc()}")
 
         logger.info(f"Solver run {run_id} completed successfully")
+        prune_solver_runs()
 
     except Exception as e:
         logger.error(f"Solver run {run_id} failed: {e}", exc_info=True)
@@ -402,3 +403,4 @@ async def run_solver_task_v2(
             await _persist_run_record(task_pb, run_id, failure_payload, sweep_id=sweep_id)
         except Exception:  # noqa: S110 — intentional silent handling
             pass
+        prune_solver_runs()
