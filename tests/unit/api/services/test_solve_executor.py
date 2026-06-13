@@ -5,11 +5,14 @@ freeze that behavior at the new boundary: orchestrator-diagnosis short-circuit,
 impossibility-report capture, parent_paramount IIS gating, exception tolerance.
 """
 
+import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import api.services.solve_executor as sx
-from bunking.models_v2 import DirectSolverInput
+from bunking.models_v2 import DirectSolverInput, DirectSolverOutput
 
 
 def _minimal_input() -> DirectSolverInput:
@@ -102,3 +105,41 @@ class TestSolveAndDiagnose:
         assert outcome.result is None
         assert outcome.impossibility_report is None
         assert outcome.infeasibility_cause is None
+
+
+def _pid_probe_entry(
+    solver_input: DirectSolverInput,
+    time_limit: int,
+    debug_constraints: dict[str, Any] | None,
+    config_values: dict[str, Any],
+) -> sx.SolveOutcome:
+    """Module-level so the spawn context can pickle it by reference."""
+    out = DirectSolverOutput(
+        assignments=[],
+        stats={"child_pid": os.getpid(), "echo": config_values.get("k")},
+    )
+    return sx.SolveOutcome(result=out)
+
+
+def _suicidal_entry(
+    solver_input: DirectSolverInput,
+    time_limit: int,
+    debug_constraints: dict[str, Any] | None,
+    config_values: dict[str, Any],
+) -> sx.SolveOutcome:
+    """Simulates an OOM kill: the worker vanishes without returning."""
+    os._exit(3)
+
+
+class TestRunSolveInSubprocess:
+    @pytest.mark.asyncio
+    async def test_executes_in_child_process_and_pickles_back(self) -> None:
+        outcome = await sx.run_solve_in_subprocess(_minimal_input(), 5, None, {"k": "v"}, _entry=_pid_probe_entry)
+        assert outcome.result is not None
+        assert outcome.result.stats["child_pid"] != os.getpid()
+        assert outcome.result.stats["echo"] == "v"
+
+    @pytest.mark.asyncio
+    async def test_dead_child_raises_solver_process_died(self) -> None:
+        with pytest.raises(sx.SolverProcessDiedError):
+            await sx.run_solve_in_subprocess(_minimal_input(), 5, None, {}, _entry=_suicidal_entry)

@@ -9,10 +9,16 @@ in-process path (`solve_and_diagnose`) remains available behind the
 SOLVER_SUBPROCESS kill-switch.
 """
 
+import asyncio
+import multiprocessing
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import asdict, dataclass
+from functools import partial
 from typing import Any
 
-from bunking.config import ConfigLoader
+from bunking.config import ConfigLoader, StaticConfigService
 from bunking.logging_config import get_logger
 from bunking.models_v2 import DirectSolverInput, DirectSolverOutput
 from bunking.solver import DirectBunkingSolver
@@ -112,3 +118,52 @@ def solve_and_diagnose(
         logger.error(f"Failed to run infeasibility analysis: {e}", exc_info=True)
 
     return outcome
+
+
+class SolverProcessDiedError(RuntimeError):
+    """The solver child process terminated without returning (likely OOM-killed)."""
+
+
+def _child_entry(
+    solver_input: DirectSolverInput,
+    time_limit: int,
+    debug_constraints: dict[str, Any] | None,
+    config_values: dict[str, Any],
+) -> SolveOutcome:
+    """Top-level spawn target: rebuild config from the snapshot, solve, return."""
+    config_service = StaticConfigService(config_values)
+    return solve_and_diagnose(solver_input, time_limit, debug_constraints, config_service)
+
+
+async def run_solve_in_subprocess(
+    solver_input: DirectSolverInput,
+    time_limit: int,
+    debug_constraints: dict[str, Any] | None,
+    config_values: dict[str, Any],
+    _entry: Callable[[DirectSolverInput, int, dict[str, Any] | None, dict[str, Any]], SolveOutcome] = _child_entry,
+) -> SolveOutcome:
+    """Execute one solve in a fresh spawn worker that exits after the task.
+
+    ``max_tasks_per_child=1`` IS the memory fix: the worker process dies after
+    the solve, returning the CP-SAT arena high-water mark to the OS. Spawn (not
+    fork): forking a threaded uvicorn process is unsafe, and max_tasks_per_child
+    requires a non-fork context anyway. The ~2-4 s import cost per solve is
+    noise against 30-300 s solve budgets.
+
+    ``_entry`` is injectable for tests only — production always uses
+    ``_child_entry``.
+    """
+    ctx = multiprocessing.get_context("spawn")
+    executor = ProcessPoolExecutor(max_workers=1, max_tasks_per_child=1, mp_context=ctx)
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            executor, partial(_entry, solver_input, time_limit, debug_constraints, config_values)
+        )
+    except BrokenProcessPool as e:
+        raise SolverProcessDiedError(
+            "Solver child process died before returning a result — likely OOM-killed. "
+            "The API process itself is unaffected; this run is recorded as failed."
+        ) from e
+    finally:
+        executor.shutdown(wait=False, cancel_futures=False)
