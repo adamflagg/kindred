@@ -24,8 +24,8 @@ classifiers = [
 dependencies = [
     # Web framework
     "fastapi>=0.136.1",
-    "uvicorn[standard]>=0.48.0",
     "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.49.0",
     # Database
     "pocketbase>=0.17.1",
     # HTTP clients
@@ -43,7 +43,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.2.2",
-    "PyYAML>=6.0",
+    "PyYAML>=6.0.3",
     # Auth
     "PyJWT[crypto]>=2.13.0",
     # CLI & utilities
@@ -70,9 +70,9 @@ dev = [
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.1.0",
     "coverage>=7.14.0",
-    "playwright>=1.59.0",
+    "playwright>=1.60.0",
     # Linting & formatting
-    "ruff>=0.15.15",
+    "ruff>=0.15.17",
     # Type checking
     "mypy>=2.1.0",
     "types-requests>=2.33.0.20260513",
