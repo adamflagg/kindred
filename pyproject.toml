@@ -43,7 +43,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.2.2",
-    "PyYAML>=6.0",
+    "PyYAML>=6.0.3",
     # Auth
     "PyJWT[crypto]>=2.13.0",
     # CLI & utilities
