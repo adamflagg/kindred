@@ -145,9 +145,9 @@ def bunk_graph_client() -> Generator[TestClient]:
     ):
         client = TestClient(app)
         # Store fixture data for the test to use in the URL
-        client._bunk_cm_id = bunk_cm_id  # type: ignore[attr-defined]
-        client._session_cm_id = session_cm_id  # type: ignore[attr-defined]
-        client._year = year  # type: ignore[attr-defined]
+        client._bunk_cm_id = bunk_cm_id
+        client._session_cm_id = session_cm_id
+        client._year = year
         yield client
 
 
@@ -157,9 +157,9 @@ class TestBunkGraphSatisfactionFields:
     def test_bunk_graph_endpoint_includes_satisfaction_fields(self, bunk_graph_client: TestClient) -> None:
         """Each node in BunkGraphResponse must carry all three satisfaction fields."""
         client = bunk_graph_client
-        bunk_cm_id = client._bunk_cm_id  # type: ignore[attr-defined]
-        session_cm_id = client._session_cm_id  # type: ignore[attr-defined]
-        year = client._year  # type: ignore[attr-defined]
+        bunk_cm_id = client._bunk_cm_id
+        session_cm_id = client._session_cm_id
+        year = client._year
 
         response = client.get(
             f"/api/bunks/{bunk_cm_id}/social-graph",
@@ -189,9 +189,9 @@ class TestBunkGraphSatisfactionFields:
     def test_bunk_graph_satisfaction_field_values_match_graph_attrs(self, bunk_graph_client: TestClient) -> None:
         """Satisfaction field values must match what the graph builder set on nodes."""
         client = bunk_graph_client
-        bunk_cm_id = client._bunk_cm_id  # type: ignore[attr-defined]
-        session_cm_id = client._session_cm_id  # type: ignore[attr-defined]
-        year = client._year  # type: ignore[attr-defined]
+        bunk_cm_id = client._bunk_cm_id
+        session_cm_id = client._session_cm_id
+        year = client._year
 
         response = client.get(
             f"/api/bunks/{bunk_cm_id}/social-graph",
