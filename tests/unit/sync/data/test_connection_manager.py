@@ -4,9 +4,16 @@ Tests for ConnectionManager - centralized PocketBase connection management.
 TDD: These tests define the expected behavior before implementation.
 """
 
+import logging
+import time
 from unittest.mock import Mock, patch
 
 import pytest
+
+from bunking.sync.bunk_request_processor.data.connection_manager import (
+    ConnectionConfig,
+    ConnectionManager,
+)
 
 
 class TestConnectionConfig:
@@ -251,3 +258,115 @@ class TestConnectionManager:
         # Should raise exception - no fallback to legacy method
         with pytest.raises(Exception, match="Auth failed"):
             manager.get_client()
+
+
+class TestConnectionManagerReauth:
+    """Proactive token re-auth on the shared cached client (issue #1765)."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_singleton(self):
+        ConnectionManager.reset()
+        yield
+        ConnectionManager.reset()
+
+    @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
+    def test_reauth_when_token_stale(self, mock_pb_class):
+        mock_pb = Mock()
+        mock_pb_class.return_value = mock_pb
+        config = ConnectionConfig(
+            admin_email="admin@test.com",
+            admin_password="pw",
+            use_wrapper=False,
+        )
+        mgr = ConnectionManager.get_instance(config)
+
+        client = mgr.get_client()
+        auth = mock_pb.collection.return_value.auth_with_password
+        assert auth.call_count == 1  # authed once on creation
+
+        mgr._authed_at = time.monotonic() - 100_000  # force staleness
+        client_again = mgr.get_client()
+
+        assert client_again is client  # same cached client, refreshed in place
+        assert auth.call_count == 2  # re-authenticated
+        assert mgr._authed_at is not None
+        assert time.monotonic() - mgr._authed_at < 5  # timestamp advanced
+
+    @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
+    def test_no_reauth_when_token_fresh(self, mock_pb_class):
+        mock_pb = Mock()
+        mock_pb_class.return_value = mock_pb
+        config = ConnectionConfig(
+            admin_email="admin@test.com",
+            admin_password="pw",
+            use_wrapper=False,
+        )
+        mgr = ConnectionManager.get_instance(config)
+
+        mgr.get_client()
+        mgr.get_client()  # still fresh -> no re-auth
+
+        assert mock_pb.collection.return_value.auth_with_password.call_count == 1
+
+    @patch("pocketbase.services.record_service.RecordService.auth_with_password")
+    @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
+    def test_reauth_when_token_stale_with_wrapper(self, mock_pb_class, mock_record_svc_auth):
+        """Production default use_wrapper=True: re-auth must refresh through the wrapper.
+
+        The re-auth path differs from use_wrapper=False:
+          - Initial auth: _authenticate(pb) calls pb.collection(...)  on the raw Mock pb,
+            so auth_with_password is a plain Mock attribute (not RecordService's method).
+          - Re-auth: _maybe_reauth() calls self._client.collection(...) on PocketBaseWrapper,
+            which returns a real WrappedRecordService (inherits RecordService). Since
+            RecordService defines auth_with_password, __getattr__ delegation is bypassed —
+            the inherited method runs. We patch it at the class level to intercept the call.
+        """
+        mock_pb = Mock()
+        mock_pb_class.return_value = mock_pb
+        config = ConnectionConfig(
+            admin_email="admin@test.com",
+            admin_password="pw",
+            use_wrapper=True,
+        )
+        mgr = ConnectionManager.get_instance(config)
+
+        client = mgr.get_client()  # PocketBaseWrapper wrapping mock_pb
+        # Initial auth went through the raw mock — RecordService patch not involved
+        assert mock_pb.collection.return_value.auth_with_password.call_count == 1
+        assert mock_record_svc_auth.call_count == 0
+
+        mgr._authed_at = time.monotonic() - 100_000  # force staleness
+        client_again = mgr.get_client()
+
+        assert client_again is client  # same cached wrapper, refreshed in place
+        # Re-auth routed through WrappedRecordService (inherits RecordService)
+        assert mock_record_svc_auth.call_count == 1
+        assert time.monotonic() - mgr._authed_at < 5  # _authed_at advanced (re-auth succeeded)
+
+    @patch("bunking.sync.bunk_request_processor.data.connection_manager.PocketBase")
+    def test_reauth_failure_is_non_fatal(self, mock_pb_class, caplog):
+        mock_pb = Mock()
+        mock_pb_class.return_value = mock_pb
+        config = ConnectionConfig(
+            admin_email="admin@test.com",
+            admin_password="pw",
+            use_wrapper=False,
+        )
+        mgr = ConnectionManager.get_instance(config)
+
+        client = mgr.get_client()  # initial auth succeeds
+        auth = mock_pb.collection.return_value.auth_with_password
+        auth.side_effect = Exception("token refresh boom")
+        mgr._authed_at = time.monotonic() - 100_000  # force staleness
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger="bunking.sync.bunk_request_processor.data.connection_manager",
+        ):
+            client_again = mgr.get_client()  # must NOT raise
+
+        assert client_again is client
+        assert any(
+            record.levelno == logging.WARNING and "Re-authentication failed" in record.getMessage()
+            for record in caplog.records
+        )

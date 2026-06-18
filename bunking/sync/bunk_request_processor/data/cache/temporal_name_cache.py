@@ -108,8 +108,15 @@ class TemporalNameCache:
                     if person:
                         self._person_cache[cm_id] = person
 
-            self._stats["persons_loaded"] = len(self._person_cache)
-            logger.info(f"Loaded {len(self._person_cache)} persons into cache")
+            count = len(self._person_cache)
+            self._stats["persons_loaded"] = count
+            if count == 0:
+                logger.warning(
+                    f"Loaded 0 persons into cache for year {self.year}; expected a "
+                    "populated season (possible auth/token expiry or wrong year)"
+                )
+            else:
+                logger.info(f"Loaded {count} persons into cache")
 
         except Exception as e:
             logger.error(f"Failed to load person cache: {e}")

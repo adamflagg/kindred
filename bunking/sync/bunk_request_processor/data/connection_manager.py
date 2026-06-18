@@ -8,6 +8,7 @@ for isolated connections when needed (e.g., concurrent operations).
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,9 @@ class ConnectionManager:
 
     _instance: ConnectionManager | None = None
     _lock_initialized: bool = False
+    # Superuser tokens live 24h; re-auth well within that to avoid the
+    # 200-and-empty silent failure (issue #1765).
+    _REAUTH_INTERVAL_SECONDS: float = 3600
 
     def __init__(self, config: ConnectionConfig | None = None):
         """
@@ -69,6 +73,7 @@ class ConnectionManager:
         """
         self._config = config or ConnectionConfig.from_env()
         self._client: PocketBase | PocketBaseWrapper | None = None
+        self._authed_at: float | None = None
 
     @classmethod
     def get_instance(cls, config: ConnectionConfig | None = None) -> ConnectionManager:
@@ -94,12 +99,42 @@ class ConnectionManager:
         """
         Get the shared PocketBase client, creating if needed.
 
+        Refreshes the cached client's superuser token in place when it has
+        gone stale, so long-lived processes don't silently lose auth.
+
         Returns:
             PocketBase client, optionally wrapped with PocketBaseWrapper.
         """
         if self._client is None:
             self._client = self._create_client()
+            self._authed_at = time.monotonic()
+        else:
+            self._maybe_reauth()
         return self._client
+
+    def _maybe_reauth(self) -> None:
+        """
+        Proactively refresh the cached client's token before it expires.
+
+        Superuser tokens expire after 24h, and PocketBase answers an expired
+        token with 200-and-empty-items (not 401) on rule-protected collections
+        — indistinguishable from "row missing". The refresh must therefore be
+        proactive; it cannot be triggered by detecting an auth error.
+        """
+        admin_email = self._config.admin_email
+        admin_password = self._config.admin_password
+        if not admin_email or not admin_password:
+            return
+        if self._authed_at is not None and time.monotonic() - self._authed_at < self._REAUTH_INTERVAL_SECONDS:
+            return
+        if self._client is None:
+            return
+        try:
+            self._client.collection("_superusers").auth_with_password(admin_email, admin_password)
+            self._authed_at = time.monotonic()
+            logger.debug("Re-authenticated cached PocketBase client")
+        except Exception as e:
+            logger.warning(f"Re-authentication failed, keeping existing client: {e}")
 
     def create_isolated_client(self) -> PocketBase | PocketBaseWrapper:
         """

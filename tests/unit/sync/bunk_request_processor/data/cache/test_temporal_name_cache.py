@@ -3,6 +3,7 @@
 Tests the pre-built name cache that enables O(1) name lookups,
 matching monolith's build_temporal_name_cache() behavior."""
 
+import logging
 from datetime import datetime
 from unittest.mock import Mock
 
@@ -651,3 +652,23 @@ class TestTemporalNameCache:
         cache._build_parent_surname_index()
         assert cache._parent_surname_index == {}
         assert cache.find_by_parent_surname("Emma", "Johnson") == []
+
+    def test_load_person_cache_warns_when_zero_persons(self, caplog):
+        from bunking.sync.bunk_request_processor.data.cache.temporal_name_cache import (
+            TemporalNameCache,
+        )
+
+        pb = Mock()
+        pb.collection.return_value.get_full_list.return_value = []
+        cache = TemporalNameCache(pb, year=2025)
+
+        with caplog.at_level(
+            logging.WARNING,
+            logger="bunking.sync.bunk_request_processor.data.cache.temporal_name_cache",
+        ):
+            cache._load_person_cache()
+
+        assert cache._stats["persons_loaded"] == 0
+        assert any(
+            record.levelno == logging.WARNING and "Loaded 0 persons" in record.message for record in caplog.records
+        )
