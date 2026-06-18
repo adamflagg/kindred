@@ -366,4 +366,7 @@ class TestConnectionManagerReauth:
             client_again = mgr.get_client()  # must NOT raise
 
         assert client_again is client
-        assert "Re-authentication failed" in caplog.text
+        assert any(
+            record.levelno == logging.WARNING and "Re-authentication failed" in record.getMessage()
+            for record in caplog.records
+        )
