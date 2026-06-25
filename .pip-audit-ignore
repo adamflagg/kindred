@@ -3,5 +3,3 @@
 #
 # Format: CVE-ID  # reason — added YYYY-MM-DD, remove by YYYY-MM-DD
 
-CVE-2026-4539  # pygments ReDoS in AdlLexer (archetype.py) — local-only, no upstream fix yet — added 2026-03-24, remove by 2026-04-24
-PYSEC-2025-183  # pyjwt weak-key advisory, disputed by supplier (key length is the application's choice); no fix version published — added 2026-05-20, remove by 2026-06-20
