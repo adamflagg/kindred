@@ -1623,7 +1623,10 @@ class DirectBunkingSolver:
         # enrollment-driven (see add_age_preference_satisfaction_vars), so
         # parent_paramount never tries to enforce them. Excluding them from the
         # material_parent_unmet trigger keeps mp_constraint_bug_signal a true
-        # "hard constraint failed to bind" alarm.
+        # "hard constraint failed to bind" alarm, and excluding them from the
+        # met/total rate counters keeps the denominators to requests the solver
+        # actually has a path to satisfy (same principle as the impossibility
+        # gate above).
         session_bunks: dict[int, list[DirectBunk]] = {}
         for bunk in self.bunks:
             session_bunks.setdefault(bunk.session_cm_id, []).append(bunk)
@@ -1656,10 +1659,18 @@ class DirectBunkingSolver:
             satisfied_ids_for_person: set[str] = set(all_satisfied.get(person_cm_id, []))
 
             resolved_mp = [
-                r for r in resolved_requests if r.id in self.material_request_ids and r.id not in yielded_request_ids
+                r
+                for r in resolved_requests
+                if r.id in self.material_request_ids
+                and r.id not in yielded_request_ids
+                and r.id not in ag_suppressed_request_ids
             ]
             resolved_possible_mp = [r for r in resolved_mp if r.id not in impossible_request_ids]
-            resolved_possible = [r for r in resolved_requests if r.id not in impossible_request_ids]
+            resolved_possible = [
+                r
+                for r in resolved_requests
+                if r.id not in impossible_request_ids and r.id not in ag_suppressed_request_ids
+            ]
 
             # Request-level "Optimized" (MP) rate.
             mp_requests_total += len(resolved_possible_mp)

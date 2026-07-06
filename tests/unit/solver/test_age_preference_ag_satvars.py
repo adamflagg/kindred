@@ -253,3 +253,38 @@ def test_unsatisfied_ag_age_pref_not_flagged_material_parent_unmet(mock_config: 
         f"AG camper falsely flagged material_parent_unmet: {material}"
     )
     assert solver.request_validation_summary["mp_constraint_bug_signal"] == 0
+
+
+def test_ag_age_pref_excluded_from_rate_denominators(mock_config: Any) -> None:
+    """The met/total rate metrics gate their denominators on "requests the
+    solver actually has a path to satisfy" — AG age_preferences have no solver
+    representation by design, so they must not drag the rates down. The
+    main-session camper's request in the same solve still counts."""
+    ag_req = _ag_age_req()  # camper 1 (AG, grade 6) wants younger — unenforced
+    main_req = _main_age_req()  # camper 4 (main, grade 6) wants younger
+    input_data = _combined_main_ag_input([ag_req, main_req])
+    solver = DirectBunkingSolver(input_data, config_service=mock_config)
+
+    # AG camper 1 shares a cabin with older camper 3 → predicate-unsatisfied.
+    # Main camper 4 shares bunk 30 with younger camper 5 only → satisfied.
+    assignments = [
+        DirectBunkAssignment(person_cm_id=1, session_cm_id=AG_SESSION, bunk_cm_id=10, year=2026),
+        DirectBunkAssignment(person_cm_id=2, session_cm_id=AG_SESSION, bunk_cm_id=20, year=2026),
+        DirectBunkAssignment(person_cm_id=3, session_cm_id=AG_SESSION, bunk_cm_id=10, year=2026),
+        DirectBunkAssignment(person_cm_id=4, session_cm_id=MAIN_SESSION, bunk_cm_id=30, year=2026),
+        DirectBunkAssignment(person_cm_id=5, session_cm_id=MAIN_SESSION, bunk_cm_id=30, year=2026),
+        DirectBunkAssignment(person_cm_id=6, session_cm_id=MAIN_SESSION, bunk_cm_id=40, year=2026),
+    ]
+
+    solver._check_must_satisfy_one_violations(assignments)
+
+    summary = solver.request_validation_summary
+    # Only the main-session request counts — in every denominator.
+    assert summary["mp_requests_total"] == 1
+    assert summary["mp_requests_satisfied"] == 1
+    assert summary["mp_campers_total"] == 1
+    assert summary["mp_campers_satisfied"] == 1
+    assert summary["all_requests_total"] == 1
+    assert summary["all_requests_satisfied"] == 1
+    assert summary["all_campers_total"] == 1
+    assert summary["all_campers_satisfied"] == 1
