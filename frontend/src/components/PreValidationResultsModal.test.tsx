@@ -112,7 +112,7 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     expect(screen.getByText(/heads up/i)).toBeInTheDocument()
   })
 
-  it('renders "Wants older — already at top grade" subtext for age_pref_no_eligible_grade older case', () => {
+  it('renders "Wants older — no older peers in this session" subtext for age_pref_no_eligible_grade older case', () => {
     const results = {
       valid: false,
       errors: [],
@@ -137,7 +137,12 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
               request_type: 'age_preference',
               requester: { name: 'Olivia Chen', cm_id: 1, grade: 6, gender: 'F' },
               requestee: null,
-              detail: { direction: 'older', requester_grade: 6, pool_max_grade: 6 },
+              detail: {
+                direction: 'older',
+                requester_grade: 6,
+                pool_min_grade: 4,
+                pool_max_grade: 6,
+              },
               bucket: 'material_parent' as const,
             },
           ],
@@ -156,7 +161,59 @@ describe('PreValidationResultsModal — staff modal updates (D1-D5)', () => {
     )
 
     expect(screen.getByText(/Wants older/)).toBeInTheDocument()
-    expect(screen.getByText(/already at oldest grade/)).toBeInTheDocument()
+    expect(screen.getByText(/no older peers in this session/)).toBeInTheDocument()
+  })
+
+  it('renders "Wants younger — no younger peers in this session" subtext for age_pref_no_eligible_grade younger case', () => {
+    const results = {
+      valid: false,
+      errors: [],
+      warnings: [],
+      statistics: {
+        total_campers: 10,
+        total_bunks: 2,
+        total_capacity: 20,
+        total_requests: 5,
+        campers_with_requests: 8,
+        campers_without_requests: 2,
+      },
+      impossibility_report: makeImpossibilityReport({
+        total_impossible: 1,
+        affected_campers: 1,
+        by_reason: {
+          age_pref_no_eligible_grade: [
+            {
+              request_id: 'br_age_y',
+              reason_code: 'age_pref_no_eligible_grade',
+              reason_message: 'no younger peer',
+              request_type: 'age_preference',
+              requester: { name: 'Olivia Chen', cm_id: 1, grade: 9, gender: 'F' },
+              requestee: null,
+              detail: {
+                direction: 'younger',
+                requester_grade: 9,
+                pool_min_grade: 9,
+                pool_max_grade: 10,
+              },
+              bucket: 'material_parent' as const,
+            },
+          ],
+        },
+        flat: [],
+      }),
+    }
+    render(
+      <PreValidationResultsModal
+        sessionCmId={1000001}
+        isOpen
+        onClose={() => {}}
+        results={results}
+        sessionLookup={() => 'Session'}
+      />
+    )
+
+    expect(screen.getByText(/Wants younger/)).toBeInTheDocument()
+    expect(screen.getByText(/no younger peers in this session/)).toBeInTheDocument()
   })
 
   it('renders cross_session subtext with sessionLookup-resolved session name', () => {
@@ -709,7 +766,10 @@ describe('PreValidationResultsModal — per-reason hint copy', () => {
     ['grade_compatibility', 'grade gap too wide — confirm priority with the family'],
     ['cross_session', 'requested friend is in a different session — confirm intent'],
     ['pair_no_shared_bunk', 'cross-gender request — confirm with the family'],
-    ['age_pref_no_eligible_grade', 'at the youngest/oldest grade — preference is moot'],
+    [
+      'age_pref_no_eligible_grade',
+      'no peers in the requested direction — preference cannot be met',
+    ],
     ['malformed', 'request is missing a name — needs parent resubmission'],
     // self_conflict is emitted by bunking/solver/constraints/self_conflict.py
     // and shows up in FRIENDLY_REASON_LABELS already; needs a hint too so a

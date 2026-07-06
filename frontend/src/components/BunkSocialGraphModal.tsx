@@ -737,7 +737,7 @@ export default function BunkSocialGraphModal({
                                   borderColor: CROSS_SCOPE_NODE_COLOR,
                                 }}
                               ></div>
-                              <span>In another bunk</span>
+                              <span>In another bunk / unassigned</span>
                             </div>
                           )}
                         </div>

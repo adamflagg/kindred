@@ -119,3 +119,17 @@ def test_grade_compatibility_no_cluster_check_emitted(mock_config):
         assert item.reason_code != "cluster_grade_compatibility", (
             f"cluster_grade_compatibility should be deleted, got {item}"
         )
+
+
+def test_ag_session_pair_wide_gap_not_flagged(mock_config):
+    """AG bunks are exempt from grade_spread + grade_adjacency (see
+    is_ag_session_bunk skips), so the 'cannot co-occupy ANY bunk' claim is
+    false for a pair in an AG session — the predicate must skip it (#1752)."""
+    p1 = make_person(1, session=100, gender="F", grade=6)
+    p2 = make_person(2, session=100, gender="M", grade=10)
+    req = make_request("r1", requester=1, requestee=2, session=100)
+    ag_bunk = make_bunk(10, session=100, gender="AG", name="AG Cabin 3")
+    input_data = make_input([p1, p2], [ag_bunk], [req])
+    ctx = _build_context(input_data, mock_config)
+
+    assert PREDICATE.check_pair(req, ctx) is None
