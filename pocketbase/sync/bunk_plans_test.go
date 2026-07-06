@@ -1,8 +1,146 @@
 package sync
 
 import (
+	"reflect"
 	"testing"
 )
+
+// pairAGBunksToSessions: the AG bunk's cabin number is a physical location in
+// the unit layout (5-6 Eilat, 7-8 Haifa, 9-10 Chalutzim 1), NOT a grade.
+// Pairing must never interpret it as one. See kindred#1749: AG-6 hosting the
+// 7th/8th-grade AG session was silently dropped by the old grade heuristic.
+func TestPairAGBunksToSessions_SingleAGSession_AllAGBunksMap(t *testing.T) {
+	// 2026 regression case: Session 2 plan (12424) — AG-6 (51897) must map to
+	// the "7th & 8th grades" AG session even though its cabin number is 6.
+	bunkNames := map[int]string{
+		4261:  "B-1",
+		4262:  "G-1",
+		51897: "AG-6",
+	}
+	sessionInfo := map[int]sessionInfoData{
+		1235404: {Name: "Session 2", SessionType: "main"},
+		1378704: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
+	}
+
+	got := pairAGBunksToSessions(
+		[]int{4261, 4262, 51897},
+		[]int{1235404, 1378704},
+		bunkNames, sessionInfo,
+	)
+
+	want := map[int]int{51897: 1378704}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("pairAGBunksToSessions() = %v, want %v (cabin number must not be treated as a grade)", got, want)
+	}
+}
+
+func TestPairAGBunksToSessions_NoAGSession_EmptyPairing(t *testing.T) {
+	bunkNames := map[int]string{
+		4259:  "Aleph",
+		51897: "AG-6",
+	}
+	sessionInfo := map[int]sessionInfoData{
+		1356533: {Name: "Session 2a", SessionType: "embedded"},
+	}
+
+	got := pairAGBunksToSessions([]int{4259, 51897}, []int{1356533}, bunkNames, sessionInfo)
+
+	if len(got) != 0 {
+		t.Errorf("pairAGBunksToSessions() = %v, want empty (no AG session in plan)", got)
+	}
+}
+
+func TestPairAGBunksToSessions_TwoAGSessions_DeterministicZip(t *testing.T) {
+	// 2025-shaped case: two AG sessions under one plan, two AG bunks.
+	// Pairing is sorted bunk cm_id ⇄ sorted session cm_id — deterministic,
+	// no grade semantics. Sibling AG sessions share the same parent board, so
+	// the provisional pairing is display-equivalent pre-assignments; camper
+	// assignments later resolve via each camper's own AG enrollment.
+	bunkNames := map[int]string{
+		66366: "AG-10",
+		70109: "AG-8",
+	}
+	sessionInfo := map[int]sessionInfoData{
+		1235404: {Name: "Session 2", SessionType: "main"},
+		1344557: {Name: "All-Gender Cabin-Session 2 (9th & 10th grades)", SessionType: "ag"},
+		1371790: {Name: "All-Gender Cabin-Session 2 (7th - 9th grades)", SessionType: "ag"},
+	}
+
+	want := map[int]int{
+		66366: 1344557, // lowest bunk cm_id → lowest AG session cm_id
+		70109: 1371790,
+	}
+
+	// Result must not depend on input slice order.
+	orderings := [][2][]int{
+		{{66366, 70109}, {1235404, 1344557, 1371790}},
+		{{70109, 66366}, {1371790, 1235404, 1344557}},
+	}
+	for i, o := range orderings {
+		got := pairAGBunksToSessions(o[0], o[1], bunkNames, sessionInfo)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ordering %d: pairAGBunksToSessions() = %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestPairAGBunksToSessions_MoreBunksThanSessions_LeftoverToLastSession(t *testing.T) {
+	bunkNames := map[int]string{
+		100: "AG-3",
+		200: "AG-7",
+		300: "AG-11",
+	}
+	sessionInfo := map[int]sessionInfoData{
+		1000: {Name: "AG A", SessionType: "ag"},
+		2000: {Name: "AG B", SessionType: "ag"},
+	}
+
+	got := pairAGBunksToSessions([]int{300, 100, 200}, []int{2000, 1000}, bunkNames, sessionInfo)
+
+	want := map[int]int{
+		100: 1000,
+		200: 2000,
+		300: 2000, // leftover bunk still gets a row — never invisible
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("pairAGBunksToSessions() = %v, want %v", got, want)
+	}
+}
+
+func TestPairAGBunksToSessions_MoreSessionsThanBunks_FirstSessionsPaired(t *testing.T) {
+	bunkNames := map[int]string{100: "AG-5"}
+	sessionInfo := map[int]sessionInfoData{
+		1000: {Name: "AG A", SessionType: "ag"},
+		2000: {Name: "AG B", SessionType: "ag"},
+	}
+
+	got := pairAGBunksToSessions([]int{100}, []int{1000, 2000}, bunkNames, sessionInfo)
+
+	want := map[int]int{100: 1000}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("pairAGBunksToSessions() = %v, want %v", got, want)
+	}
+}
+
+func TestPairAGBunksToSessions_UnknownBunksAndSessions_Ignored(t *testing.T) {
+	// Bunks with no known name and sessions with no metadata (not in PB) must
+	// not participate in pairing.
+	bunkNames := map[int]string{51897: "AG-6"}
+	sessionInfo := map[int]sessionInfoData{
+		1378704: {Name: "All-Gender Cabin-Session 2 (7th & 8th grades)", SessionType: "ag"},
+	}
+
+	got := pairAGBunksToSessions(
+		[]int{51897, 99999},   // 99999: unknown bunk
+		[]int{1378704, 88888}, // 88888: unknown session
+		bunkNames, sessionInfo,
+	)
+
+	want := map[int]int{51897: 1378704}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("pairAGBunksToSessions() = %v, want %v", got, want)
+	}
+}
 
 func TestBunkPlansSync_createBunkPlan_WithIsActive(t *testing.T) {
 	// This test verifies that is_active field is extracted and stored correctly
