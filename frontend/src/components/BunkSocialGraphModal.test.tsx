@@ -12,7 +12,11 @@
  * The helper unit tests plus TypeScript checking provide sufficient coverage.
  */
 import { describe, expect, it } from 'vitest'
-import { buildBunksFilter, extractBunkCmIdsFromPlans } from './BunkSocialGraphModal'
+import {
+  DEFAULT_SHOW_CROSS_SCOPE_EDGES,
+  buildBunksFilter,
+  extractBunkCmIdsFromPlans,
+} from './BunkSocialGraphModal'
 import { extractSortKey, getBunkType } from '../utils/bunkNaming'
 
 // ─── Inline simulation of sessionBunks derivation ────────────────────────────
@@ -93,6 +97,18 @@ describe('extractBunkCmIdsFromPlans', () => {
 // logical bunk, leaving allBunks/sessionBunks with adjacent duplicate-cm_id
 // entries. Navigation then silently no-ops when wrap lands on a same-cm_id-
 // different-year row (the "right arrow not rotating" symptom).
+
+// ─── 'Show other bunks' cross-scope default (#1745) ──────────────────────────
+// Staff want cross-bunk request connections visible by default in the bunk
+// graph, rather than ticking the "Show other bunks" checkbox each time. The
+// toggle's initial state is hoisted to an exported constant so the default is
+// unit-testable without standing up cytoscape / React providers.
+
+describe("'Show other bunks' cross-scope default (#1745)", () => {
+  it('defaults ON so cross-bunk connections show without ticking the box', () => {
+    expect(DEFAULT_SHOW_CROSS_SCOPE_EDGES).toBe(true)
+  })
+})
 
 describe('buildBunksFilter', () => {
   it('always includes a year clause', () => {
