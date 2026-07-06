@@ -29,6 +29,19 @@ from pocketbase import PocketBase
 logger = get_logger(__name__)
 
 
+def filter_to_enrolled(member_cm_ids: list[int], enrolled_cm_ids: set[int]) -> list[int]:
+    """Keep only bunk members who are enrolled attendees.
+
+    Staff hold ``bunk_assignments`` rows (assigned to a cabin) but have no
+    ``attendees`` row, so they must be excluded from the bunk graph — otherwise
+    they render as grade-null, request-less isolated nodes and inflate the
+    isolated-count (#1747). This mirrors the session graph builder, which sources
+    its nodes from enrolled attendees (``status_id = 2``). Order and duplicates
+    are preserved so downstream node-building is unaffected for real campers.
+    """
+    return [cm_id for cm_id in member_cm_ids if cm_id in enrolled_cm_ids]
+
+
 @dataclass
 class SocialEdge:
     """Represents a relationship between two campers"""
@@ -156,6 +169,32 @@ class SocialGraphBuilder:
             return BUNK_ASSIGNMENTS_DRAFT, f' && scenario = "{scenario_id}"'
         return BUNK_ASSIGNMENTS, ""
 
+    def _enrolled_member_cm_ids(self, member_cm_ids: list[int], year: int) -> set[int] | None:
+        """cm_ids of the given members who are enrolled attendees (``status_id = 2``).
+
+        Scoped to the member set so the query stays small regardless of session
+        size and works for AG bunks whose members span a sub-session. Returns
+        ``None`` if the lookup fails, signalling the caller to skip staff
+        filtering rather than blank the graph.
+        """
+        unique = set(member_cm_ids)
+        if not unique:
+            return set()
+        try:
+            clauses = " || ".join(f"person_id = {cm_id}" for cm_id in unique)
+            attendees = self.pb.collection(ATTENDEES).get_full_list(
+                query_params={"filter": f"({clauses}) && year = {year} && status_id = 2"}
+            )
+        except Exception as e:
+            logger.error(f"Error fetching enrolled attendees for staff exclusion: {e}")
+            return None
+        enrolled_ids = {int(pid) for a in attendees if (pid := getattr(a, "person_id", None)) is not None}
+        # An empty result means no enrolled attendee resolved for these members
+        # (e.g. attendee data unavailable). Skip filtering rather than blank the
+        # graph — same fail-open posture as the on-error path above. Real bunks
+        # always have enrolled campers, so staff still get excluded there.
+        return enrolled_ids or None
+
     def build_bunk_graph(
         self,
         year: int,
@@ -264,6 +303,14 @@ class SocialGraphBuilder:
                         logger.info(f"Found {len(bunk_members)} members in AG bunk using session {best_session[0]}")
             except Exception as e:
                 logger.error(f"Error checking for AG bunk assignments: {e}")
+
+        # Exclude staff before building nodes: staff hold bunk_assignments but
+        # aren't enrolled attendees, so they'd otherwise render as grade-null,
+        # request-less isolated nodes and inflate the isolated count (#1747).
+        # On lookup failure we skip filtering rather than blank the graph.
+        enrolled = self._enrolled_member_cm_ids(bunk_members, year)
+        if enrolled is not None:
+            bunk_members = filter_to_enrolled(bunk_members, enrolled)
 
         if not bunk_members:
             logger.warning(f"No members found for bunk {bunk_cm_id} after AG check")

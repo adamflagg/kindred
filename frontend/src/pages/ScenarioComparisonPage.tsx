@@ -43,6 +43,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useApiWithAuth } from '../hooks/useApiWithAuth'
 import { queryKeys, userDataOptions, syncDataOptions } from '../utils/queryKeys'
 import { formatGradeOrdinal } from '../utils/gradeUtils'
+import { filterToEnrolled } from '../utils/enrollment'
 import { findSessionByUrlSegment } from '../utils/sessionUtils'
 import {
   compareCamperByName,
@@ -315,6 +316,26 @@ export default function ScenarioComparisonPage() {
     enabled: !!user && sessionCmId > 0,
   })
 
+  // Enrolled attendee cm_ids for this session. Staff hold production
+  // bunk_assignments but aren't enrolled attendees, so comparison metrics built
+  // from raw production assignments over-count them (#1791). Draft assignments
+  // come from the solver, which already excludes staff, so only production
+  // needs the intersection.
+  const { data: enrolledPersonCmIds = new Set<number>() } = useQuery({
+    queryKey: ['enrolled-attendee-cmids', sessionCmId, currentYear],
+    queryFn: async () => {
+      const attendees = await pb.collection<AttendeesResponse>('attendees').getFullList({
+        filter: pb.filter(
+          'session.cm_id = {:sessionCmId} && year = {:year} && status = "enrolled"',
+          { sessionCmId, year: currentYear }
+        ),
+      })
+      return new Set(attendees.map((a) => a.person_id))
+    },
+    ...syncDataOptions,
+    enabled: !!user && sessionCmId > 0,
+  })
+
   // Fetch draft assignments for selected scenario
   const { data: leftDraftAssignments = [] } = useQuery({
     queryKey: ['draft-assignments', leftScenarioId, sessionCmId, currentYear],
@@ -459,19 +480,43 @@ export default function ScenarioComparisonPage() {
   )
 
   // Get left and right assignments
+  // Production assignments include staff (they have bunk_assignments but no
+  // attendee row); drop them by intersecting with the enrolled set. Guard on a
+  // non-empty set so an in-flight enrolled query degrades to unfiltered rather
+  // than briefly blanking the production side (#1791).
+  const excludeStaff = useCallback(
+    (campers: CamperAssignment[]) =>
+      enrolledPersonCmIds.size > 0
+        ? filterToEnrolled(campers, (c) => c.personCmId, enrolledPersonCmIds)
+        : campers,
+    [enrolledPersonCmIds]
+  )
+
   const leftAssignments = useMemo(() => {
     if (leftScenarioId === 'production') {
-      return normalizeAssignments(productionAssignments as ExpandedAssignment[])
+      return excludeStaff(normalizeAssignments(productionAssignments as ExpandedAssignment[]))
     }
     return normalizeAssignments(leftDraftAssignments as ExpandedAssignment[])
-  }, [leftScenarioId, productionAssignments, leftDraftAssignments, normalizeAssignments])
+  }, [
+    leftScenarioId,
+    productionAssignments,
+    leftDraftAssignments,
+    normalizeAssignments,
+    excludeStaff,
+  ])
 
   const rightAssignments = useMemo(() => {
     if (rightScenarioId === 'production') {
-      return normalizeAssignments(productionAssignments as ExpandedAssignment[])
+      return excludeStaff(normalizeAssignments(productionAssignments as ExpandedAssignment[]))
     }
     return normalizeAssignments(rightDraftAssignments as ExpandedAssignment[])
-  }, [rightScenarioId, productionAssignments, rightDraftAssignments, normalizeAssignments])
+  }, [
+    rightScenarioId,
+    productionAssignments,
+    rightDraftAssignments,
+    normalizeAssignments,
+    excludeStaff,
+  ])
 
   // Lookup Maps used by both `comparison` below and by FriendGroupPopover
   // to resolve friend-group members. Keyed by personCmId.

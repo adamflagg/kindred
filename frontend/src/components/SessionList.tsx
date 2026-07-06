@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { sessionNameToUrl } from '../utils/sessionUtils'
 import { useYear } from '../hooks/useCurrentYear'
 import { DEFAULT_BUNK_CAPACITY } from '../utils/capacityConstants'
+import { filterToEnrolled } from '../utils/enrollment'
 import { getFormattedSessionName } from '../utils/sessionDisplay'
 import { getCampNameShort } from '../config/branding'
 import { isMainSession, isEmbeddedSession } from '../utils/sessionTypePredicates'
@@ -510,7 +511,18 @@ export default function SessionList() {
         const bunkCapacity = DEFAULT_BUNK_CAPACITY
 
         const totalCampers = attendees.length
-        const assignedCampers = assignments.length
+        // Staff hold bunk_assignments but aren't enrolled attendees, so counting
+        // raw assignments let the numerator exceed the roster (e.g. 134/108).
+        // Count only assignments whose person is in the enrolled set already
+        // loaded above (#1787).
+        const enrolledPersonIds = new Set(
+          attendees.map((a) => a.person).filter((id): id is string => !!id)
+        )
+        const assignedCampers = filterToEnrolled(
+          assignments,
+          (a) => a.person,
+          enrolledPersonIds
+        ).length
         const unassignedCampers = totalCampers - assignedCampers
 
         const filteredBunkPlans = bunkPlans.filter((bp) => {
