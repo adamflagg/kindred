@@ -13,6 +13,7 @@ from typing import Any
 
 from pocketbase.client import ClientResponseError  # type: ignore[attr-defined]
 
+from api.constants.filters import ACTIVE_ENROLLED_FILTER
 from api.utils.pb_error import pb_error_to_http
 from api.utils.session_metrics import get_person_from_expand, get_session_from_expand
 from bunking.direct_solver import (
@@ -65,7 +66,7 @@ async def fetch_session_data_v2(
         attendees = await asyncio.to_thread(
             client.collection("attendees").get_full_list,
             query_params={
-                "filter": f'({session_relation_filter}) && status = "enrolled" && year = {ctx.year}',
+                "filter": f"({session_relation_filter}) && {ACTIVE_ENROLLED_FILTER} && year = {ctx.year}",
                 "expand": "session",
             },
         )
