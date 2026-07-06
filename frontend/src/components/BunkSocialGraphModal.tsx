@@ -160,6 +160,12 @@ export const extractBunkCmIdsFromPlans = (
   ),
 ]
 
+// Initial state of the "Show other bunks" (cross-scope edges) toggle. Staff
+// want cross-bunk request connections visible by default rather than ticking
+// the box on every open (#1745). Exported so the default is unit-testable
+// without rendering cytoscape.
+export const DEFAULT_SHOW_CROSS_SCOPE_EDGES = true
+
 export default function BunkSocialGraphModal({
   bunkCmId,
   bunkName,
@@ -177,7 +183,9 @@ export default function BunkSocialGraphModal({
   const scenarioId = currentScenario?.id ?? null
   const [selectedCamperId, setSelectedCamperId] = useState<string | null>(null)
   const [showLegend, setShowLegend] = useState<boolean>(false)
-  const [showCrossScopeEdges, setShowCrossScopeEdges] = useState<boolean>(false)
+  const [showCrossScopeEdges, setShowCrossScopeEdges] = useState<boolean>(
+    DEFAULT_SHOW_CROSS_SCOPE_EDGES
+  )
 
   // Fetch bunk graph data. The query key and the in-memory graph cache both
   // include scenarioId AND showCrossScopeEdges so scenario-sourced graphs and
